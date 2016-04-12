@@ -191,6 +191,7 @@ stamp-h?
 /tools/src/hfst-disjunct
 /tools/src/hfst-edit-metadata
 /tools/src/hfst-expand-equivalences
+/tools/src/hfst-flookup
 /tools/src/hfst-format
 /tools/src/hfst-fst2fst
 /tools/src/hfst-fst2strings
