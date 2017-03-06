@@ -253,3 +253,4 @@ Makefile
 # Add back files ignored by aggressive ignores
 !/tools/src/hfst-tagger/src/build_model_src/Makefile
 !/m4/README
+sfst-*
