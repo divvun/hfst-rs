@@ -35,10 +35,35 @@
 /check_installation/__pycache__/
 /python/_libhfst.i
 /python/build/
+/python/dist/
 /python/doc/html/
 /python/libhfst.py
 /python/libhfst_wrap.cpp
+/python/hfst.egg-info/
+/python/hfstpy.egg-info/
+/python/libhfst_swig.egg-info/
 *.pyc
+
+# Generated and copied python pypi files and folders
+/python/pypi/back-ends/
+/python/pypi/build/
+/python/pypi/dist/
+/python/pypi/docstrings.i
+/python/pypi/hfst.egg-info/
+/python/pypi/hfst/
+/python/pypi/hfst_extensions.cc
+/python/pypi/hfst_file_extensions.cc
+/python/pypi/hfst_lexc_extensions.cc
+/python/pypi/hfst_lookup_extensions.cc
+/python/pypi/hfst_pmatch_extensions.cc
+/python/pypi/hfst_prolog_extensions.cc
+/python/pypi/hfst_regex_extensions.cc
+/python/pypi/hfst_rules_extensions.cc
+/python/pypi/hfst_xfst_extensions.cc
+/python/pypi/libhfst.i
+/python/pypi/libhfst.py
+/python/pypi/libhfst/
+/python/pypi/libhfst_wrap.cpp
 
 # Back-up files
 *~
@@ -75,6 +100,7 @@ hfst-*.tar.gz
 /libhfst/src/implementations/FomaTransducer
 /libhfst/src/implementations/HfstOlTransducer
 /libhfst/src/implementations/HfstTransitionGraph
+/libhfst/src/implementations/HfstBasicTransducer
 /libhfst/src/implementations/LogWeightTransducer
 /libhfst/src/implementations/SfstTransducer
 /libhfst/src/implementations/TropicalWeightTransducer
@@ -167,6 +193,9 @@ stamp-h?
 /tools/src/hfst-twolc/src/htwolcpre?.cc
 /tools/src/hfst-twolc/src/scanner?.cc
 /tools/src/hfst-twolc/src/htwolcpre?.hh
+/tools/src/hfst-twolc/src/htwolcpre?-lexer.cc
+/tools/src/hfst-twolc/src/htwolcpre?-parser.cc
+/tools/src/hfst-twolc/src/htwolcpre?-parser.hh
 
 # Otherwise generated code
 /libhfst/hfst.pc
@@ -243,6 +272,7 @@ stamp-h?
 /tools/src/hfst-twolc/src/htwolcpre1
 /tools/src/hfst-twolc/src/htwolcpre2
 /tools/src/hfst-twolc/src/htwolcpre3
+/tools/src/hfst-twolc/src/htwolc
 /tools/src/hfst-txt2fst
 /tools/src/parsers/hfst-xfst
 
