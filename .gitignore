@@ -304,3 +304,4 @@ Makefile
 !/tools/src/hfst-tagger/src/build_model_src/Makefile
 !/m4/README
 sfst-*
+hfst-eliminate-flags
