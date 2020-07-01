@@ -1,1 +1,4 @@
 * text eol=lf
+*.bat text eol=crlf
+/scripts/windows_tests/* text eol=crlf
+/test/tools/dos.strings text eol=crlf
