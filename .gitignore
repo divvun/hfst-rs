@@ -245,6 +245,7 @@ stamp-h?
 /tools/src/hfst-guessify
 /tools/src/hfst-head
 /tools/src/hfst-info
+/tools/src/hfst-insert-freely
 /tools/src/hfst-invert
 /tools/src/hfst-lexc
 /tools/src/hfst-lexc-wrapper
@@ -256,12 +257,15 @@ stamp-h?
 /tools/src/hfst-pair-test
 /tools/src/hfst-pmatch
 /tools/src/hfst-pmatch2fst
+/tools/src/hfst-priority-disjunct
 /tools/src/hfst-proc/hfst-apertium-proc
 /tools/src/hfst-project
 /tools/src/hfst-prune-alphabet
+/tools/src/hfst-push-labels
 /tools/src/hfst-push-weights
 /tools/src/hfst-regexp2fst
 /tools/src/hfst-remove-epsilons
+/tools/src/hfst-realign
 /tools/src/hfst-repeat
 /tools/src/hfst-reverse
 /tools/src/hfst-reweight
@@ -313,4 +317,3 @@ hfst-eliminate-flags
 
 /.ccls-cache
 /compile_commands.json
-
