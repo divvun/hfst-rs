@@ -1,6 +1,23 @@
 #include "wrapper.hpp"
 
-hfst_ol_tokenize::TokenizeSettings settings;
+static hfst_ol_tokenize::TokenizeSettings init_settings()
+{
+    hfst_ol_tokenize::TokenizeSettings settings;
+
+    settings.output_format = hfst_ol_tokenize::giellacg;
+    settings.print_weights = true;
+    settings.print_all = true;
+    settings.dedupe = true;
+    settings.hack_uncompose = true;
+    settings.verbose = false;
+    if (settings.max_weight_classes == std::numeric_limits<int>::max())
+    {
+        settings.max_weight_classes = 2;
+    }
+    return settings;
+}
+
+hfst_ol_tokenize::TokenizeSettings settings = init_settings();
 
 class membuf : public std::basic_streambuf<char>
 {
@@ -23,22 +40,6 @@ public:
 private:
     membuf _buffer;
 };
-
-void error(int status, int errnum, const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-    if (errnum != 0)
-    {
-        fprintf(stderr, "%s", strerror(errnum));
-    }
-    if (status != 0)
-    {
-        exit(status);
-    }
-}
 
 inline void process_input_0delim_print(hfst_ol::PmatchContainer &container,
                                        std::ostream &outstream,
@@ -141,22 +142,12 @@ int process_input(hfst_ol::PmatchContainer &container, std::istream &infile, std
     return process_input_0delim<false>(container, infile, outstream);
 }
 
-extern "C" const hfst_ol::PmatchContainer *hfst_make_tokenizer(const char *tokenizer_bytes, size_t tokenizer_size) {
+extern "C" const hfst_ol::PmatchContainer *hfst_make_tokenizer(const char *tokenizer_bytes, size_t tokenizer_size)
+{
     // Settings to output CG format used in Giella infrastructure
-    settings.output_format = hfst_ol_tokenize::giellacg;
-    settings.print_weights = true;
-    settings.print_all = true;
-    settings.dedupe = true;
-    settings.hack_uncompose = true;
-    settings.verbose = false;
-    if (settings.max_weight_classes == std::numeric_limits<int>::max())
-    {
-        settings.max_weight_classes = 2;
-    }
-
-	std::stringstream tokenizer;
-	tokenizer.write(tokenizer_bytes, tokenizer_size);
-	tokenizer.seekg(0);
+    std::stringstream tokenizer;
+    tokenizer.write(tokenizer_bytes, tokenizer_size);
+    tokenizer.seekg(0);
 
     try
     {
@@ -184,7 +175,7 @@ extern "C" const hfst_ol::PmatchContainer *hfst_make_tokenizer(const char *token
         auto container = new hfst_ol::PmatchContainer(tokenizer);
         container->set_verbose(false);
         container->set_single_codepoint_tokenization(!settings.tokenize_multichar);
-        
+
         return container;
     }
     catch (HfstException &err)
@@ -207,10 +198,11 @@ extern "C" const char *hfst_tokenize(hfst_ol::PmatchContainer &tokenizer, const 
         return nullptr;
     }
 
-    char* c_str = strdup(output.str().c_str());
+    char *c_str = strdup(output.str().c_str());
     return c_str;
 }
 
-extern "C" void hfst_free(void* ptr) {
+extern "C" void hfst_free(void *ptr)
+{
     free(ptr);
 }
