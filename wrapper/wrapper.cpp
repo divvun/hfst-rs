@@ -1,34 +1,17 @@
 #include "wrapper.hpp"
 
-// Settings
-static bool superblanks = false;        // Input is apertium-style superblanks (overrides blankline_separated)
-static bool blankline_separated = true; // Input is separated by blank lines (as opposed to single newlines)
-static bool keep_newlines = false;
-
 // Global settings
-static bool verbose = false;
 static FILE *inputfile = stdin;
 
-// TODO: default format
 // TODO: tokenizer filename
 static hfst::ImplementationType default_format = hfst::TROPICAL_OPENFST_TYPE;
-std::string tokenizer_filename;
 hfst_ol_tokenize::TokenizeSettings settings;
-
-inline void maybe_erase_newline(string &input_text)
-{
-  if (!keep_newlines && input_text.size() > 0 && input_text.at(input_text.size() - 1) == '\n')
-  {
-    // Remove final newline
-    input_text.erase(input_text.size() - 1, 1);
-  }
-}
 
 void error(int status, int errnum, const char *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
-  //   vfprintf(stderr, fmt, ap);
+  vfprintf(stderr, fmt, ap);
   va_end(ap);
   if (errnum != 0)
   {
@@ -70,8 +53,10 @@ inline void process_input_0delim_print(hfst_ol::PmatchContainer &container,
                                        std::ostringstream &cur)
 {
   const std::string &input_text{cur.str()};
+  std::cout << "DELIM PRINT" << input_text << std::endl;
   if (!input_text.empty())
   {
+    std::cout << "INPUT TEXT NOT EMPTY" << std::endl;
     match_and_print(container, outstream, input_text, settings);
   }
   cur.clear();
@@ -87,9 +72,13 @@ int process_input_0delim(hfst_ol::PmatchContainer &container,
   bool in_blank = false;
   std::ostringstream cur;
   ssize_t len = -1;
+
+  std::cout << "INPUT DELIM" << std::endl;
+
   while ((len = hfst_getdelim(&line, &bufsize, '\0', inputfile)) > 0)
   {
-    bool escaped = false; // beginning of line is necessarily unescaped
+    std::cout << "WHILE GOT DELIM" << std::endl;
+    bool escaped = false; // Beginning of line is necessarily unescaped
     for (ssize_t i = 0; i < len; ++i)
     {
       if (escaped)
@@ -100,12 +89,14 @@ int process_input_0delim(hfst_ol::PmatchContainer &container,
       }
       else if (do_superblank && !in_blank && line[i] == '[')
       {
+        std::cout << "OPENING BRACKET" << std::endl;
         process_input_0delim_print(container, outstream, cur);
         cur << line[i];
         in_blank = true;
       }
       else if (do_superblank && in_blank && line[i] == ']')
       {
+        std::cout << "CLOSING BRACKET" << std::endl;
         cur << line[i];
         if (i + 1 < len && line[i + 1] == '[')
         {
@@ -115,6 +106,7 @@ int process_input_0delim(hfst_ol::PmatchContainer &container,
         }
         else
         {
+          std::cout << "NONE OF THEM" << std::endl;
           in_blank = false;
           print_nonmatching_sequence(cur.str(), outstream, settings);
           cur.clear();
@@ -123,20 +115,13 @@ int process_input_0delim(hfst_ol::PmatchContainer &container,
       }
       else if (!in_blank && line[i] == '\n')
       {
+        std::cout << "END OF LINE" << std::endl;
         cur << line[i];
-        if (verbose)
-        {
-          std::cout << "processing: " << cur.str() << "\\n"
-                    << std::endl;
-        }
         process_input_0delim_print(container, outstream, cur);
       }
       else if (line[i] == '\0')
       {
-        if (verbose)
-        {
-          std::cout << "processing: " << cur.str() << "\\0" << std::endl;
-        }
+        std::cout << "NULL CHARACTER" << std::endl;
         process_input_0delim_print(container, outstream, cur);
         outstream << "<STREAMCMD:FLUSH>" << std::endl; // CG format uses this instead of \0
         outstream.flush();
@@ -147,6 +132,7 @@ int process_input_0delim(hfst_ol::PmatchContainer &container,
       }
       else
       {
+        std::cout << "ELSE" << std::endl;
         cur << line[i];
       }
       escaped = (line[i] == '\\');
@@ -160,10 +146,12 @@ int process_input_0delim(hfst_ol::PmatchContainer &container,
   }
   if (in_blank)
   {
+    std::cout << "IN BLANK" << std::endl;
     print_nonmatching_sequence(cur.str(), outstream, settings);
   }
   else
   {
+    std::cout << "NOT IN BLANK" << std::endl;
     process_input_0delim_print(container, outstream, cur);
   }
   return EXIT_SUCCESS;
@@ -173,59 +161,18 @@ int process_input(hfst_ol::PmatchContainer &container, std::ostream &outstream)
 {
   outstream << std::fixed << std::setprecision(10);
   std::cout << "Processing giellacg without superblanks" << std::endl;
+
   // Processing giellacg without superblanks
   return process_input_0delim<false>(container, outstream);
-
-  string input_text;
-  char *line = NULL;
-  size_t bufsize = 0;
-  if (blankline_separated)
-  {
-    // Processing blankline separated input
-    std::cout << "Processing blankline separated input" << std::endl;
-    while (hfst_getline(&line, &bufsize, inputfile) > 0)
-    {
-      if (line[0] == '\n')
-      {
-        maybe_erase_newline(input_text);
-        match_and_print(container, outstream, input_text, settings);
-        input_text.clear();
-      }
-      else
-      {
-        input_text.append(line);
-      }
-      free(line);
-      line = NULL;
-    }
-    if (!input_text.empty())
-    {
-      maybe_erase_newline(input_text);
-      match_and_print(container, outstream, input_text, settings);
-    }
-  }
-  else
-  {
-    // newline or non-separated
-    // Processing non-separated input
-    std::cout << "Processing non-separated input" << std::endl;
-    while (hfst_getline(&line, &bufsize, inputfile) > 0)
-    {
-      input_text = line;
-      maybe_erase_newline(input_text);
-      match_and_print(container, outstream, input_text, settings);
-      free(line);
-      line = NULL;
-    }
-  }
-
-  return EXIT_SUCCESS;
 }
 
-extern "C" const char *hfst_tokenize(const uint8_t *input_data)
+extern "C" const char *hfst_tokenize(const uint8_t *input, size_t input_size, const uint8_t* tokenizer, size_t tokenizer_size)
 {
-  std::stringstream output;
+  std::ostringstream output;
+  std::string input_str( input, input+input_size );
+  std::string tokenizer_filename( tokenizer, tokenizer+tokenizer_size );
 
+  // Settings to output CG format used in Giella infrastructure
   settings.output_format = hfst_ol_tokenize::giellacg;
   settings.print_weights = true;
   settings.print_all = true;
@@ -237,9 +184,8 @@ extern "C" const char *hfst_tokenize(const uint8_t *input_data)
     settings.max_weight_classes = 2;
   }
 
-  std::cout << "Reading from" << tokenizer_filename.c_str() << std::endl;
-  std::ifstream instream("./gramcheck.pmhfst", std::ifstream::binary);
-
+  std::cout << "Reading from" << tokenizer_filename << std::endl;
+  std::ifstream instream(tokenizer_filename, std::ifstream::binary);
   if (!instream.good())
   {
     std::cerr << "Could not open file " << tokenizer_filename << std::endl;
@@ -255,40 +201,37 @@ extern "C" const char *hfst_tokenize(const uint8_t *input_data)
       instream.seekg(0);
       instream.clear();
     }
-    catch (TransducerHeaderException &e)
+    catch (TransducerHeaderException &err)
     {
       std::cerr << tokenizer_filename
                 << " is not an HFST archive" << std::endl
                 << "Exception thrown:" << std::endl
-                << e.what() << std::endl;
+                << err.what() << std::endl;
       return "ERR"; // TODO: this
     }
-    if (first_header_attributes.count("name") != 0 || first_header_attributes["name"] == "TOP")
-    {
-      std::cout << "Treating as pmatch script..." << std::endl;
-      hfst_ol::PmatchContainer container(instream);
-      container.set_verbose(verbose);
-      container.set_single_codepoint_tokenization(!settings.tokenize_multichar);
-      if (process_input(container, std::cout) == EXIT_SUCCESS)
-      {
-        std::cout << "OUT:" << output.str() << std::endl;
-        return output.str().c_str();
-      }
-      else
-      {
-        return "ERR"; // TODO: this
-      }
-    }
-    else
+
+    if (first_header_attributes.count("name") == 0 || first_header_attributes["name"] != "TOP")
     {
       std::cerr << "No TOP automaton found" << std::endl;
       return "ERR"; // TODO: this
     }
+
+    hfst_ol::PmatchContainer container(instream);
+    container.set_verbose(false);
+    container.set_single_codepoint_tokenization(!settings.tokenize_multichar);
+
+    if (process_input(container, output) != EXIT_SUCCESS)
+    {
+      return "ERR"; // TODO: this
+    }
+
+    std::cout << "OUT:" << output.str() << std::endl;
+    return output.str().c_str();
   }
-  catch (HfstException &e)
+  catch (HfstException &err)
   {
     std::cerr << "Exception thrown:" << std::endl
-              << e.what() << std::endl;
+              << err.what() << std::endl;
     return "ERR"; // TODO: this
   }
 

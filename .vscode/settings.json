@@ -83,6 +83,7 @@
     "format": "cpp",
     "numeric": "cpp",
     "*.ipp": "cpp",
-    "any": "cpp"
+    "any": "cpp",
+    "numbers": "cpp"
   }
 }
