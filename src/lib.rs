@@ -1,42 +1,57 @@
-use libc::c_char;
-use std::ffi::CStr;
+use libc::{c_char, c_void};
+use std::{ffi::CStr, path::Path};
 
 extern "C" {
     fn hfst_tokenize(
+        tokenizer: *const c_void,
         input_data: *const c_char,
         input_size: usize,
-        tokenizer: *const c_char,
-        tokenizer_size: usize,
     ) -> *const c_char;
-    fn hfst_free_cstr(c_str: *const c_char);
+    fn hfst_make_tokenizer(tokenizer: *const u8, tokenizer_size: usize) -> *const c_void;
+    fn hfst_free(ptr: *const c_void);
 }
 
-pub fn run(input: &str, tokenizer: &str) -> String {
-    let output = unsafe {
-        hfst_tokenize(
-            input.as_ptr() as _,
-            input.len(),
-            tokenizer.as_ptr() as _,
-            tokenizer.len(),
-        )
-    };
-    let bytes = unsafe { CStr::from_ptr(output).to_bytes() };
+pub struct Tokenizer {
+    ptr: *const c_void,
+}
 
-    let out = String::from_utf8(bytes.to_vec()).unwrap();
-    unsafe { hfst_free_cstr(output) };
+impl Drop for Tokenizer {
+    fn drop(&mut self) {
+        unsafe { hfst_free(self.ptr) };
+    }
+}
 
-    out
+impl Tokenizer {
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, String> {
+        let buf = std::fs::read(path).unwrap();
+        let ptr = unsafe { hfst_make_tokenizer(buf.as_ptr() as _, buf.len()) };
+
+        Ok(Self { ptr })
+    }
+
+    pub fn tokenize(&self, input: &str) -> Option<String> {
+        let output = unsafe { hfst_tokenize(self.ptr, input.as_ptr() as _, input.len()) };
+
+        if output.is_null() {
+            return None;
+        }
+
+        let bytes = unsafe { CStr::from_ptr(output).to_bytes() };
+
+        let out = String::from_utf8(bytes.to_vec()).unwrap();
+        unsafe { hfst_free(output as _) };
+
+        Some(out)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::run;
+    use super::*;
 
     #[test]
     fn test() {
-        println!(
-            "Something: {}",
-            run("an ape sat in a car", "tokeniser-gramcheck-gt-desc.pmhfst")
-        );
+        let t = Tokenizer::new("tokeniser-gramcheck-gt-desc.pmhfst").unwrap();
+        println!("Something: {:?}", t.tokenize("an ape sat in a car"));
     }
 }

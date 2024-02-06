@@ -141,12 +141,7 @@ int process_input(hfst_ol::PmatchContainer &container, std::istream &infile, std
     return process_input_0delim<false>(container, infile, outstream);
 }
 
-extern "C" const char *hfst_tokenize(const uint8_t *input, size_t input_size, const uint8_t *tokenizer, size_t tokenizer_size)
-{
-    std::ostringstream output;
-    std::string input_str(input, input + input_size);
-    std::string tokenizer_filename(tokenizer, tokenizer + tokenizer_size);
-
+extern "C" const hfst_ol::PmatchContainer *hfst_make_tokenizer(const char *tokenizer_bytes, size_t tokenizer_size) {
     // Settings to output CG format used in Giella infrastructure
     settings.output_format = hfst_ol_tokenize::giellacg;
     settings.print_weights = true;
@@ -159,64 +154,63 @@ extern "C" const char *hfst_tokenize(const uint8_t *input, size_t input_size, co
         settings.max_weight_classes = 2;
     }
 
-    std::ifstream instream(tokenizer_filename, std::ifstream::binary);
-    if (!instream.good())
-    {
-        std::cerr << "Could not open file " << tokenizer_filename << std::endl;
-        return "ERR"; // TODO: this
-    }
-
-    memstream text(input, input_size);
-    if (!instream.good())
-    {
-        std::cerr << "Could not open file " << tokenizer_filename << std::endl;
-        return "ERR"; // TODO: this
-    }
+	std::stringstream tokenizer;
+	tokenizer.write(tokenizer_bytes, tokenizer_size);
+	tokenizer.seekg(0);
 
     try
     {
         std::map<std::string, std::string> first_header_attributes;
         try
         {
-            first_header_attributes = hfst_ol::PmatchContainer::parse_hfst3_header(instream);
-            instream.seekg(0);
-            instream.clear();
+            first_header_attributes = hfst_ol::PmatchContainer::parse_hfst3_header(tokenizer);
+            tokenizer.seekg(0);
+            tokenizer.clear();
         }
         catch (TransducerHeaderException &err)
         {
-            std::cerr << tokenizer_filename
-                      << " is not an HFST archive" << std::endl
+            std::cerr << "Not an HFST archive" << std::endl
                       << "Exception thrown:" << std::endl
                       << err.what() << std::endl;
-            return "ERR"; // TODO: this
+            return nullptr;
         }
 
         if (first_header_attributes.count("name") == 0 || first_header_attributes["name"] != "TOP")
         {
             std::cerr << "No TOP automaton found" << std::endl;
-            return "ERR"; // TODO: this
+            return nullptr;
         }
 
-        hfst_ol::PmatchContainer container(instream);
-        container.set_verbose(false);
-        container.set_single_codepoint_tokenization(!settings.tokenize_multichar);
-
-        if (process_input(container, text, output) != EXIT_SUCCESS)
-        {
-            return "ERR"; // TODO: this
-        }
-
-        char* c_str = strdup(output.str().c_str());
-        return c_str;
+        auto container = new hfst_ol::PmatchContainer(tokenizer);
+        container->set_verbose(false);
+        container->set_single_codepoint_tokenization(!settings.tokenize_multichar);
+        
+        return container;
     }
     catch (HfstException &err)
     {
         std::cerr << "Exception thrown:" << std::endl
                   << err.what() << std::endl;
-        return "ERR"; // TODO: this
+        return nullptr;
     }
 }
 
-extern "C" void hfst_free_cstr(char* c_str) {
-    free(c_str);
+extern "C" const char *hfst_tokenize(hfst_ol::PmatchContainer &tokenizer, const uint8_t *input, size_t input_size)
+{
+    std::ostringstream output;
+
+    std::string input_str(input, input + input_size);
+    memstream text(input, input_size);
+
+    if (process_input(tokenizer, text, output) != EXIT_SUCCESS)
+    {
+        return nullptr;
+    }
+
+    char* c_str = strdup(output.str().c_str());
+    return c_str;
+}
+
+extern "C" void hfst_free(void* ptr) {
+    free(ptr);
 }
