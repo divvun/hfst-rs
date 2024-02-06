@@ -24,18 +24,6 @@ inline void maybe_erase_newline(string &input_text)
   }
 }
 
-inline void trim(std::string &str)
-{
-  while (!str.empty() && (std::isspace(str.back()) || str.back() == 0))
-  {
-    str.pop_back();
-  }
-  while (!str.empty() && (std::isspace(str.front()) || str.front() == 0))
-  {
-    str.erase(0, 1);
-  }
-}
-
 void error(int status, int errnum, const char *fmt, ...)
 {
   va_list ap;
@@ -181,96 +169,10 @@ int process_input_0delim(hfst_ol::PmatchContainer &container,
   return EXIT_SUCCESS;
 }
 
-int process_input_visl(hfst_ol::PmatchContainer &container, std::ostream &outstream)
-{
-  size_t bufsize = 0;
-  char *buffer = 0;
-  std::string line;
-
-  ssize_t len = 0;
-  while ((len = hfst_getline(&buffer, &bufsize, inputfile)) > 0)
-  {
-    line.assign(buffer, buffer + len);
-    trim(line);
-    if (!line.empty())
-    {
-      if (line.front() == '<' && line.back() == '>')
-      {
-        print_nonmatching_sequence(line, outstream, settings);
-      }
-      else
-      {
-        match_and_print(container, outstream, line, settings);
-      }
-    }
-    else
-    {
-      outstream << '\n';
-    }
-    outstream.flush();
-
-    buffer[0] = 0;
-    len = 0;
-
-    if (feof(inputfile))
-    {
-      break;
-    }
-  }
-
-  if (len < 0)
-  {
-    len = 0;
-  }
-
-  line.assign(buffer, buffer + len);
-  trim(line);
-  if (!line.empty())
-  {
-    if (line.front() == '<' && line.back() == '>')
-    {
-      print_nonmatching_sequence(line, outstream, settings);
-    }
-    else
-    {
-      match_and_print(container, outstream, line, settings);
-    }
-  }
-  outstream.flush();
-
-  free(buffer);
-  return EXIT_SUCCESS;
-}
-
 int process_input(hfst_ol::PmatchContainer &container, std::ostream &outstream)
 {
-  // if (settings.output_format == hfst_ol_tokenize::cg || settings.output_format == hfst_ol_tokenize::giellacg || settings.output_format == hfst_ol_tokenize::visl)
-  // {
-  //   outstream << std::fixed << std::setprecision(10);
-  // }
-  // if (settings.output_format == hfst_ol_tokenize::giellacg || superblanks)
-  // {
-  //   if (superblanks)
-  //   {
-  //     // Processing giellacg with superblanks
-  //     std::cout << "Processing giellacg with superblanks" << std::endl;
-  //     return process_input_0delim<true>(container, outstream);
-  //   }
-  //   else
-  //   {
-  // // Processing giellacg without superblanks
-  //     std::cout << "Processing giellacg without superblanks" << std::endl;
-  //     return process_input_0delim<false>(container, outstream);
-  //   }
-  // }
-  // if (settings.output_format == hfst_ol_tokenize::visl)
-  // {
-  //   // Processing VISL CG 3
-  //   std::cout << "Processing VISL CG 3" << std::endl;
-  //   return process_input_visl(container, outstream);
-  // }
-
   outstream << std::fixed << std::setprecision(10);
+  std::cout << "Processing giellacg without superblanks" << std::endl;
   // Processing giellacg without superblanks
   return process_input_0delim<false>(container, outstream);
 
@@ -280,6 +182,7 @@ int process_input(hfst_ol::PmatchContainer &container, std::ostream &outstream)
   if (blankline_separated)
   {
     // Processing blankline separated input
+    std::cout << "Processing blankline separated input" << std::endl;
     while (hfst_getline(&line, &bufsize, inputfile) > 0)
     {
       if (line[0] == '\n')
@@ -305,6 +208,7 @@ int process_input(hfst_ol::PmatchContainer &container, std::ostream &outstream)
   {
     // newline or non-separated
     // Processing non-separated input
+    std::cout << "Processing non-separated input" << std::endl;
     while (hfst_getline(&line, &bufsize, inputfile) > 0)
     {
       input_text = line;
@@ -318,83 +222,7 @@ int process_input(hfst_ol::PmatchContainer &container, std::ostream &outstream)
   return EXIT_SUCCESS;
 }
 
-hfst_ol::PmatchContainer make_naive_tokenizer(hfst::HfstTransducer *dictionary)
-{
-  hfst::HfstTransducer *word_boundary = hfst::pmatch::PmatchUtilityTransducers::make_latin1_whitespace_acceptor(default_format);
-  hfst::HfstTransducer *punctuation = hfst::pmatch::PmatchUtilityTransducers::make_latin1_punct_acceptor(default_format);
-  word_boundary->disjunct(*punctuation);
-  hfst::HfstTransducer *others = hfst::pmatch::make_exc_list(word_boundary, default_format);
-  others->repeat_plus();
-  // make the default token less likely than any dictionary token
-  others->set_final_weights(std::numeric_limits<float>::max());
-  hfst::HfstTransducer *word_boundary_list = hfst::pmatch::make_list(word_boundary, default_format);
-  // @BOUNDARY@ is pmatch's special input boundary marker
-  word_boundary_list->disjunct(hfst::HfstTransducer("@BOUNDARY@", default_format));
-  delete word_boundary;
-  delete punctuation;
-  hfst::HfstTransducer *left_context = new hfst::HfstTransducer(hfst::internal_epsilon, hfst::pmatch::LC_ENTRY_SYMBOL, default_format);
-  hfst::HfstTransducer *right_context = new hfst::HfstTransducer(hfst::internal_epsilon, hfst::pmatch::RC_ENTRY_SYMBOL, default_format);
-  left_context->concatenate(*word_boundary_list);
-  right_context->concatenate(*word_boundary_list);
-  delete word_boundary_list;
-  hfst::HfstTransducer *left_context_exit = new hfst::HfstTransducer(hfst::internal_epsilon, hfst::pmatch::LC_EXIT_SYMBOL, default_format);
-  hfst::HfstTransducer *right_context_exit = new hfst::HfstTransducer(hfst::internal_epsilon, hfst::pmatch::RC_EXIT_SYMBOL, default_format);
-  left_context->concatenate(*left_context_exit);
-  right_context->concatenate(*right_context_exit);
-  delete left_context_exit;
-  delete right_context_exit;
-  std::string dict_name = dictionary->get_name();
-  if (dict_name.empty())
-  {
-    dict_name = "unknown_pmatch_tokenized_dict";
-    dictionary->set_name(dict_name);
-  }
-  hfst::HfstTransducer dict_ins_arc(hfst::pmatch::get_Ins_transition(dict_name.c_str()), default_format);
-  // We now make the center of the tokenizer
-  others->disjunct(dict_ins_arc);
-  // And combine it with the context conditions
-  left_context->concatenate(*others);
-  left_context->concatenate(*right_context);
-  delete others;
-  delete right_context;
-  // Because there are context conditions we need delimiter markers
-  hfst::HfstTransducer *tokenizer = hfst::pmatch::add_pmatch_delimiters(left_context);
-  tokenizer->set_name("TOP");
-  tokenizer->minimize();
-  // Convert the dictionary to olw if it wasn't already
-  dictionary->convert(hfst::HFST_OLW_TYPE);
-  // Get the alphabets
-  std::set<std::string> dict_syms = dictionary->get_alphabet();
-  std::set<std::string> tokenizer_syms = tokenizer->get_alphabet();
-  std::vector<std::string> tokenizer_minus_dict;
-  // What to add to the dictionary
-  std::set_difference(tokenizer_syms.begin(), tokenizer_syms.end(), dict_syms.begin(), dict_syms.end(), std::inserter(tokenizer_minus_dict, tokenizer_minus_dict.begin()));
-  for (std::vector<std::string>::const_iterator it = tokenizer_minus_dict.begin();
-       it != tokenizer_minus_dict.end(); ++it)
-  {
-    dictionary->insert_to_alphabet(*it);
-  }
-  hfst::HfstBasicTransducer *tokenizer_basic = hfst::implementations::ConversionFunctions::
-      hfst_transducer_to_hfst_basic_transducer(*tokenizer);
-  hfst_ol::Transducer *tokenizer_ol = hfst::implementations::ConversionFunctions::
-      hfst_basic_transducer_to_hfst_ol(tokenizer_basic,
-                                       true,        // weighted
-                                       "",          // no special options
-                                       dictionary); // harmonize with the dictionary
-  delete tokenizer_basic;
-  hfst_ol::PmatchContainer retval(tokenizer_ol);
-  hfst_ol::Transducer *dict_backend = hfst::implementations::ConversionFunctions::hfst_transducer_to_hfst_ol(dictionary);
-  retval.add_rtn(dict_backend, dict_name);
-  delete tokenizer_ol;
-  return retval;
-}
-
-extern "C" int test()
-{
-  std::cout << "CPP TEST" << std::endl;
-}
-
-extern "C" const char* hfst_tokenize(const uint8_t *input_data)
+extern "C" const char *hfst_tokenize(const uint8_t *input_data)
 {
   std::stringstream output;
 
@@ -415,7 +243,7 @@ extern "C" const char* hfst_tokenize(const uint8_t *input_data)
   if (!instream.good())
   {
     std::cerr << "Could not open file " << tokenizer_filename << std::endl;
-    return "TODO";
+    return "ERR"; // TODO: this
   }
 
   try
@@ -429,58 +257,40 @@ extern "C" const char* hfst_tokenize(const uint8_t *input_data)
     }
     catch (TransducerHeaderException &e)
     {
-      std::cerr << tokenizer_filename << " doesn't look like a HFST archive. Exiting.\n"
-                                         "Exception thrown:\n"
+      std::cerr << tokenizer_filename
+                << " is not an HFST archive" << std::endl
+                << "Exception thrown:" << std::endl
                 << e.what() << std::endl;
-      return "TODO";
+      return "ERR"; // TODO: this
     }
-
-    if (first_header_attributes.count("name") == 0 || first_header_attributes["name"] != "TOP")
+    if (first_header_attributes.count("name") != 0 || first_header_attributes["name"] == "TOP")
     {
-      std::cout << "No TOP automaton found, using naive tokeniser?" << std::endl;
-      std::cout << "Creating input stream" << std::endl;
-      hfst::HfstInputStream is(tokenizer_filename);
-      std::cout << "Creating dictionary" << std::endl;
-      hfst::HfstTransducer *dictionary = new hfst::HfstTransducer(is);
-      std::cout << "TEST" << std::endl;
-      instream.close();
-      hfst_ol::PmatchContainer container = make_naive_tokenizer(dictionary);
-      delete dictionary;
-      container.set_verbose(verbose);
-      container.set_single_codepoint_tokenization(!settings.tokenize_multichar);
-      if (process_input(container, std::cout) == EXIT_SUCCESS)
-      {
-        // std::cout << "OUT:" << output.str() << std::endl;
-        return output.str().c_str();
-      }
-      else
-      {
-        return "TODO";
-      }
-    }
-    else
-    {
-      std::cout << "TOP automaton seen, treating as pmatch script..." << std::endl;
+      std::cout << "Treating as pmatch script..." << std::endl;
       hfst_ol::PmatchContainer container(instream);
       container.set_verbose(verbose);
       container.set_single_codepoint_tokenization(!settings.tokenize_multichar);
       if (process_input(container, std::cout) == EXIT_SUCCESS)
       {
-        // std::cout << "OUT:" << output.str() << std::endl;
+        std::cout << "OUT:" << output.str() << std::endl;
         return output.str().c_str();
       }
       else
       {
-        return "TODO";
+        return "ERR"; // TODO: this
       }
+    }
+    else
+    {
+      std::cerr << "No TOP automaton found" << std::endl;
+      return "ERR"; // TODO: this
     }
   }
   catch (HfstException &e)
   {
-    std::cerr << "Exception thrown:\n"
+    std::cerr << "Exception thrown:" << std::endl
               << e.what() << std::endl;
-    return "TODO";
+    return "ERR"; // TODO: this
   }
 
-  return "HELLO FROM CPP!";
+  return "END OF TOKENIZE"; // TODO: this
 }

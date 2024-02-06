@@ -81,6 +81,8 @@
     "type_traits": "cpp",
     "utility": "cpp",
     "format": "cpp",
-    "numeric": "cpp"
+    "numeric": "cpp",
+    "*.ipp": "cpp",
+    "any": "cpp"
   }
 }
