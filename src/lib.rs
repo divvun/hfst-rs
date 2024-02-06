@@ -1,5 +1,5 @@
-use std::ffi::CStr;
 use libc::c_char;
+use std::ffi::CStr;
 
 extern "C" {
     fn hfst_tokenize(
@@ -8,20 +8,24 @@ extern "C" {
         tokenizer: *const c_char,
         tokenizer_size: usize,
     ) -> *const c_char;
+    fn hfst_free_cstr(c_str: *const c_char);
 }
 
 pub fn run(input: &str, tokenizer: &str) -> String {
     let output = unsafe {
         hfst_tokenize(
-            input.as_ptr(),
+            input.as_ptr() as _,
             input.len(),
-            tokenizer.as_ptr(),
+            tokenizer.as_ptr() as _,
             tokenizer.len(),
         )
     };
     let bytes = unsafe { CStr::from_ptr(output).to_bytes() };
 
-    String::from_utf8(bytes.to_vec()).unwrap()
+    let out = String::from_utf8(bytes.to_vec()).unwrap();
+    unsafe { hfst_free_cstr(output) };
+
+    out
 }
 
 #[cfg(test)]
@@ -32,7 +36,7 @@ mod tests {
     fn test() {
         println!(
             "Something: {}",
-            run("an ape sat in a car", "gramcheck.pmhfst")
+            run("an ape sat in a car", "tokeniser-gramcheck-gt-desc.pmhfst")
         );
     }
 }

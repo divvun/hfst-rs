@@ -1,5 +1,6 @@
 {
   "files.associations": {
+    "*.lu": "rust",
     "new": "cpp",
     "set": "cpp",
     "__bit_reference": "cpp",
@@ -84,6 +85,10 @@
     "numeric": "cpp",
     "*.ipp": "cpp",
     "any": "cpp",
-    "numbers": "cpp"
+    "numbers": "cpp",
+    "cinttypes": "cpp",
+    "condition_variable": "cpp",
+    "span": "cpp",
+    "thread": "cpp"
   }
 }
