@@ -1,12 +1,13 @@
 use std::ffi::CStr;
+use libc::c_char;
 
 extern "C" {
     fn hfst_tokenize(
-        input_data: *const u8,
+        input_data: *const c_char,
         input_size: usize,
-        tokenizer: *const u8,
+        tokenizer: *const c_char,
         tokenizer_size: usize,
-    ) -> *const i8;
+    ) -> *const c_char;
 }
 
 pub fn run(input: &str, tokenizer: &str) -> String {

@@ -1,11 +1,30 @@
 #include "wrapper.hpp"
 
-// Global settings
-static FILE *inputfile = stdin;
-
 // TODO: tokenizer filename
 static hfst::ImplementationType default_format = hfst::TROPICAL_OPENFST_TYPE;
 hfst_ol_tokenize::TokenizeSettings settings;
+
+class membuf : public std::basic_streambuf<char>
+{
+public:
+    membuf(const uint8_t *p, size_t l)
+    {
+        setg((char *)p, (char *)p, (char *)p + l);
+    }
+};
+
+class memstream : public std::istream
+{
+public:
+    memstream(const uint8_t *p, size_t l) : std::istream(&_buffer),
+                                            _buffer(p, l)
+    {
+        rdbuf(&_buffer);
+    }
+
+private:
+    membuf _buffer;
+};
 
 void error(int status, int errnum, const char *fmt, ...)
 {
@@ -36,7 +55,7 @@ ssize_t hfst_getline(char **lineptr, size_t *n, FILE *stream)
   return rv;
 }
 
-size_t hfst_getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
+size_t hfst_getdelim(char **lineptr, size_t *n, int delim, std::istream *stream)
 {
   errno = 0;
   ssize_t rv = -1;
@@ -65,7 +84,7 @@ inline void process_input_0delim_print(hfst_ol::PmatchContainer &container,
 
 template <bool do_superblank>
 int process_input_0delim(hfst_ol::PmatchContainer &container,
-                         std::ostream &outstream)
+                         std::istream &infile, std::ostream &outstream)
 {
   char *line = NULL;
   size_t bufsize = 0;
@@ -75,7 +94,7 @@ int process_input_0delim(hfst_ol::PmatchContainer &container,
 
   std::cout << "INPUT DELIM" << std::endl;
 
-  while ((len = hfst_getdelim(&line, &bufsize, '\0', inputfile)) > 0)
+  while ((len = hfst_getdelim(&line, &bufsize, '\0', infile)) > 0)
   {
     std::cout << "WHILE GOT DELIM" << std::endl;
     bool escaped = false; // Beginning of line is necessarily unescaped
@@ -139,7 +158,7 @@ int process_input_0delim(hfst_ol::PmatchContainer &container,
     }
     free(line);
     line = NULL;
-    if (std::feof(inputfile))
+    if (std::feof(infile))
     {
       break;
     }
@@ -157,20 +176,20 @@ int process_input_0delim(hfst_ol::PmatchContainer &container,
   return EXIT_SUCCESS;
 }
 
-int process_input(hfst_ol::PmatchContainer &container, std::ostream &outstream)
+int process_input(hfst_ol::PmatchContainer &container, std::istream &infile, std::ostream &outstream)
 {
   outstream << std::fixed << std::setprecision(10);
   std::cout << "Processing giellacg without superblanks" << std::endl;
 
   // Processing giellacg without superblanks
-  return process_input_0delim<false>(container, outstream);
+  return process_input_0delim<false>(container, infile, outstream);
 }
 
-extern "C" const char *hfst_tokenize(const uint8_t *input, size_t input_size, const uint8_t* tokenizer, size_t tokenizer_size)
+extern "C" const char *hfst_tokenize(const uint8_t *input, size_t input_size, const uint8_t *tokenizer, size_t tokenizer_size)
 {
   std::ostringstream output;
-  std::string input_str( input, input+input_size );
-  std::string tokenizer_filename( tokenizer, tokenizer+tokenizer_size );
+  std::string input_str(input, input + input_size);
+  std::string tokenizer_filename(tokenizer, tokenizer + tokenizer_size);
 
   // Settings to output CG format used in Giella infrastructure
   settings.output_format = hfst_ol_tokenize::giellacg;
@@ -184,8 +203,16 @@ extern "C" const char *hfst_tokenize(const uint8_t *input, size_t input_size, co
     settings.max_weight_classes = 2;
   }
 
-  std::cout << "Reading from" << tokenizer_filename << std::endl;
+  std::cout << "Reading from " << tokenizer_filename << std::endl;
   std::ifstream instream(tokenizer_filename, std::ifstream::binary);
+  if (!instream.good())
+  {
+    std::cerr << "Could not open file " << tokenizer_filename << std::endl;
+    return "ERR"; // TODO: this
+  }
+
+  // std::ifstream text("test.txt");
+  memstream text(input, input_size);
   if (!instream.good())
   {
     std::cerr << "Could not open file " << tokenizer_filename << std::endl;
@@ -220,7 +247,7 @@ extern "C" const char *hfst_tokenize(const uint8_t *input, size_t input_size, co
     container.set_verbose(false);
     container.set_single_codepoint_tokenization(!settings.tokenize_multichar);
 
-    if (process_input(container, output) != EXIT_SUCCESS)
+    if (process_input(container, text, output) != EXIT_SUCCESS)
     {
       return "ERR"; // TODO: this
     }
