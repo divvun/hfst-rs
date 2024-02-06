@@ -8,6 +8,7 @@ extern "C" {
         input_size: usize,
     ) -> *const c_char;
     fn hfst_make_tokenizer(tokenizer: *const u8, tokenizer_size: usize) -> *const c_void;
+    fn hfst_tokenizer_free(ptr: *const c_void);
     fn hfst_free(ptr: *const c_void);
 }
 
@@ -17,7 +18,7 @@ pub struct Tokenizer {
 
 impl Drop for Tokenizer {
     fn drop(&mut self) {
-        unsafe { hfst_free(self.ptr) };
+        unsafe { hfst_tokenizer_free(self.ptr) };
     }
 }
 

@@ -202,6 +202,11 @@ extern "C" const char *hfst_tokenize(hfst_ol::PmatchContainer &tokenizer, const 
     return c_str;
 }
 
+extern "C" void hfst_tokenizer_free(void *ptr)
+{
+    free(ptr);
+}
+
 extern "C" void hfst_free(void *ptr)
 {
     free(ptr);
