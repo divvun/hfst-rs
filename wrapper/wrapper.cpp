@@ -202,12 +202,83 @@ extern "C" const char *hfst_tokenize(hfst_ol::PmatchContainer &tokenizer, const 
     return c_str;
 }
 
-extern "C" void hfst_tokenizer_free(void *ptr)
+extern "C" void hfst_tokenizer_free(hfst_ol::PmatchContainer *ptr)
 {
-    free(ptr);
+    delete ptr;
 }
 
 extern "C" void hfst_free(void *ptr)
 {
     free(ptr);
+}
+
+extern "C" void hfst_transducer_free(hfst::HfstTransducer *ptr)
+{
+    delete ptr;
+}
+
+void hfst_transducer_lookup_tags(hfst::HfstTransducer *analyzer, const char *input, size_t input_size, void* tags, void (*callback)(void* tags, const char *, size_t))
+{
+    std::string input_str(input, input + input_size);
+    hfst::HfstOneLevelPaths *results = analyzer->lookup_fd(input_str, -1, 2.0);
+
+    for (auto result : *results)
+    {
+        for (auto ss : result.second)
+        {
+            if (hfst::FdOperation::is_diacritic(ss))
+            {
+                (callback)(tags, ss.c_str(), ss.length());
+            }
+        }
+    }
+}
+
+const hfst::HfstTransducer *hfst_transducer_new(const uint8_t *analyzer_bytes, size_t analyzer_size)
+{
+    memstream analyzer_data(analyzer_bytes, analyzer_size);
+    hfst::HfstInputStream in;
+    try
+    {
+        in = hfst::HfstInputStream(analyzer_data);
+    }
+    catch (StreamNotReadableException &e)
+    {
+        std::cerr << "ERROR: File does not exist." << std::endl;
+        return nullptr;
+    }
+    catch (HfstException &e)
+    {
+        std::cerr << "ERROR: HfstException: " << e.what() << std::endl;
+        return nullptr;
+    }
+
+    hfst::HfstTransducer *t = nullptr;
+
+    while (!in.is_eof())
+    {
+        if (in.is_bad())
+        {
+            std::cerr << "ERROR: Stream cannot be read." << std::endl;
+            return nullptr;
+        }
+
+        t = new hfst::HfstTransducer(in);
+
+        if (!in.is_eof())
+        {
+            std::cerr << "WARNING: >1 transducers in stream! Only using the first." << std::endl;
+        }
+
+        break;
+    }
+
+    in.close();
+
+    if (t == nullptr)
+    {
+        std::cerr << "WARNING: Could not read any transducers!" << std::endl;
+    }
+
+    return t;
 }
