@@ -217,7 +217,7 @@ extern "C" void hfst_transducer_free(hfst::HfstTransducer *ptr)
     delete ptr;
 }
 
-void hfst_transducer_lookup_tags(hfst::HfstTransducer *analyzer, const char *input, size_t input_size, void* tags, void (*callback)(void* tags, const char *, size_t))
+extern "C" void hfst_transducer_lookup_tags(hfst::HfstTransducer *analyzer, const char *input, size_t input_size, void* tags, void (*callback)(void* tags, const char *, size_t))
 {
     std::string input_str(input, input + input_size);
     hfst::HfstOneLevelPaths *results = analyzer->lookup_fd(input_str, -1, 2.0);
@@ -234,7 +234,7 @@ void hfst_transducer_lookup_tags(hfst::HfstTransducer *analyzer, const char *inp
     }
 }
 
-const hfst::HfstTransducer *hfst_transducer_new(const uint8_t *analyzer_bytes, size_t analyzer_size)
+extern "C" const hfst::HfstTransducer *hfst_transducer_new(const uint8_t *analyzer_bytes, size_t analyzer_size)
 {
     memstream analyzer_data(analyzer_bytes, analyzer_size);
     hfst::HfstInputStream in;
