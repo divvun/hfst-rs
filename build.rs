@@ -25,8 +25,8 @@ fn main() {
 
     cc::Build::new()
         .file("wrapper/wrapper.cpp")
-        .include(sysroot.join("hfst"))
-        .include(&sysroot)
+        .include(sysroot.join("include").join("hfst"))
+        .include(sysroot.join("include"))
         .cpp(true)
         .compile("hfst_wrapper");
 }
