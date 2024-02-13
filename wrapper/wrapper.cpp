@@ -217,10 +217,10 @@ extern "C" void hfst_transducer_free(hfst::HfstTransducer *ptr)
     delete ptr;
 }
 
-extern "C" void hfst_transducer_lookup_tags(hfst::HfstTransducer *analyzer, const char *input, size_t input_size, void* tags, void (*callback)(void* tags, const char *, size_t))
+extern "C" void hfst_transducer_lookup_tags(hfst::HfstTransducer *analyzer, const char *input, size_t input_size ,double time_cutoff, void *tags, void (*callback)(void *tags, const char *, size_t))
 {
     std::string input_str(input, input + input_size);
-    hfst::HfstOneLevelPaths *results = analyzer->lookup_fd(input_str, -1, 2.0);
+    hfst::HfstOneLevelPaths *results = analyzer->lookup_fd(input_str, -1, time_cutoff);
 
     for (auto result : *results)
     {
@@ -237,10 +237,10 @@ extern "C" void hfst_transducer_lookup_tags(hfst::HfstTransducer *analyzer, cons
 extern "C" const hfst::HfstTransducer *hfst_transducer_new(const uint8_t *analyzer_bytes, size_t analyzer_size)
 {
     memstream analyzer_data(analyzer_bytes, analyzer_size);
-    hfst::HfstInputStream in;
+    hfst::HfstInputStream* in;
     try
     {
-        in = hfst::HfstInputStream(analyzer_data);
+        in = new hfst::HfstInputStream(analyzer_data);
     }
     catch (StreamNotReadableException &e)
     {
@@ -255,17 +255,17 @@ extern "C" const hfst::HfstTransducer *hfst_transducer_new(const uint8_t *analyz
 
     hfst::HfstTransducer *t = nullptr;
 
-    while (!in.is_eof())
+    while (!in->is_eof())
     {
-        if (in.is_bad())
+        if (in->is_bad())
         {
             std::cerr << "ERROR: Stream cannot be read." << std::endl;
             return nullptr;
         }
 
-        t = new hfst::HfstTransducer(in);
+        t = new hfst::HfstTransducer(*in);
 
-        if (!in.is_eof())
+        if (!in->is_eof())
         {
             std::cerr << "WARNING: >1 transducers in stream! Only using the first." << std::endl;
         }
@@ -273,7 +273,8 @@ extern "C" const hfst::HfstTransducer *hfst_transducer_new(const uint8_t *analyz
         break;
     }
 
-    in.close();
+    in->close();
+    delete in;
 
     if (t == nullptr)
     {

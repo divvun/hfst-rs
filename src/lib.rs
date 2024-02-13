@@ -16,6 +16,7 @@ extern "C" {
         analyzer: *const c_void,
         input: *const c_char,
         input_size: usize,
+        time_cutoff: f64,
         tags: *mut CVec,
         callback: extern "C" fn(tags: *mut CVec, it: *const u8, it_size: usize),
     );
@@ -91,6 +92,7 @@ impl Transducer {
                 self.ptr,
                 input.as_ptr() as _,
                 input.len(),
+                10.0,
                 &mut tags,
                 callback,
             );
