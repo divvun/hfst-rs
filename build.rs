@@ -22,7 +22,7 @@ fn main() {
 
     println!("cargo:rustc-link-search=native={}/lib", sysroot.display());
     println!("cargo:rustc-link-search=native={}/bin", sysroot.display());
-    println!("cargo:rustc-link-lib=hfst");
+    println!("cargo:rustc-link-lib=dylib=hfst");
 
     cc::Build::new()
         .file("wrapper/wrapper.cpp")
