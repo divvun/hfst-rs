@@ -21,7 +21,8 @@ fn main() {
     let sysroot = PathBuf::from(std::env::var("SYSROOT").unwrap());
 
     println!("cargo:rustc-link-search=native={}/lib", sysroot.display());
-    println!("cargo:rustc-link-lib=static=hfst");
+    println!("cargo:rustc-link-search=native={}/bin", sysroot.display());
+    println!("cargo:rustc-link-lib=hfst");
 
     cc::Build::new()
         .file("wrapper/wrapper.cpp")
