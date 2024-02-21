@@ -1,0 +1,91 @@
+Tutti	tutti PRO-INDEF-M-P
+Tutti	tutto ADJ:pos+m+p
+Tutti	tutto DET-INDEF:m+p
+
+gli	gli PRO-PERS-CLI-3-M-S
+gli	il ART-M:p
+
+esseri	essere NOUN-M:p
+
+umani	umano ADJ:pos+m+p
+
+nascono	nascere VER:ind+pres+3+p
+
+liberi	liberare VER:ind+pres+2+s
+liberi	liberare VER:sub+pres+1+s
+liberi	liberare VER:sub+pres+2+s
+liberi	liberare VER:sub+pres+3+s
+liberi	libero ADJ:pos+m+p
+
+ed	ed CON
+
+eguali	eguale ADJ:pos+f+p
+eguali	eguale ADJ:pos+m+p
+
+in	in PRE
+
+dignità	dignità NOUN-F:p
+dignità	dignità NOUN-F:s
+
+e	e CON
+
+diritti	diritto ADJ:pos+m+p
+diritti	diritto NOUN-M:p
+
+.	. SENT
+
+Essi	essi PRO-PERS-3-M-P
+
+sono	essere AUX:ind+pres+1+s
+sono	essere AUX:ind+pres+3+p
+sono	essere VER:ind+pres+1+s
+sono	essere VER:ind+pres+3+p
+
+dotati	dotare VER:part+past+p+m
+dotati	dotato ADJ:pos+m+p
+
+di	di PRE
+
+ragione	ragione NOUN-F:s
+
+e	e CON
+
+di	di PRE
+
+coscienza	coscienza NOUN-F:s
+
+e	e CON
+
+devono	dovere MOD:ind+pres+3+p
+devono	dovere VER:ind+pres+3+p
+
+agire	agire VER:inf+pres
+
+gli	gli PRO-PERS-CLI-3-M-S
+gli	il ART-M:p
+
+uni	uno NOUN-M:p
+
+verso	versare VER:ind+pres+1+s
+verso	verso ADJ:pos+m+s
+verso	verso NOUN-M:s
+verso	verso PRE
+
+gli	gli PRO-PERS-CLI-3-M-S
+gli	il ART-M:p
+
+altri	altri PRO-INDEF-M-P
+altri	altro ADJ:pos+m+p
+altri	altro DET-INDEF:m+p
+
+in	in PRE
+
+spirito	spirito NOUN-M:s
+
+di	di PRE
+
+fratellanza	fratellanza NOUN-F:s
+
+.	. SENT
+
+
