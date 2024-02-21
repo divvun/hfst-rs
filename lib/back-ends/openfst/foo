@@ -1,4 +1,0 @@
-(defun emacs-format-function ()
-   (untabify (point-min) (point-max))
-   (save-buffer)
-)

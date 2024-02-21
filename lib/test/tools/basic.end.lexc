@@ -1,9 +1,0 @@
-LEXICON Root
-  ja # ;
-  talo N ;
-
-END
-foo
-
-LEXICON N
-ssa # ;

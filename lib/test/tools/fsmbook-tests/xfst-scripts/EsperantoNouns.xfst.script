@@ -1,2 +1,0 @@
-read lexc lexc-files/EsperantoNouns.lexc;
-write prolog > Result

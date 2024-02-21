@@ -1,5 +1,0 @@
-set precision 1
-set print-weight ON
-
-regex a+ @> x::1 , b+ @> y::2 ;
-apply down abba

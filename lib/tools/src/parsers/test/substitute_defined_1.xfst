@@ -1,7 +1,0 @@
-define Foobar foo:bar;
-regex a b:c a;
-substitute defined Foobar for a
-write att
-echo --
-sigma net
-write att

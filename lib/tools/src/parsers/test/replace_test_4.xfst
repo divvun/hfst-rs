@@ -1,6 +1,0 @@
-set precision 1
-set print-weight ON
-
-regex [ c a -> d::2 || c a _ c ] ;
-apply down cacacac
-

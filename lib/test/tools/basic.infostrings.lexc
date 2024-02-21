@@ -1,8 +1,0 @@
-LEXICON Root
-kissa	Num	"cat"	;
-koira	Num	"dog"	;
-ja		#	"and"	;
-
-LEXICON Num
-	#	"+Pl"	;
-t	#	"+Sg"	;

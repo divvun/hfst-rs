@@ -1,6 +1,0 @@
-Alphabet a b ;
-Diacritics ' £ ;
-Rules
-"rule name"
-a:b <=> ' _ ;
-

@@ -1,5 +1,0 @@
-Alphabet a b ;
-
-Rules
-"R"
-[a:b | b:a] <=> a _ ;

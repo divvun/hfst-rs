@@ -1,7 +1,0 @@
-Alphabet a b ;
-Rules
-"rule name"
-a:b <=> x _ ;
-
-"rule name2"
-a:a <= x x _ ;

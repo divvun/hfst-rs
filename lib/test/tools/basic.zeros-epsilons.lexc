@@ -1,9 +1,0 @@
-LEXICON Root
-:oikee	#	;
-vasen:	#	;
-0:veenolla	#	;
-oonolla:0	#	;
-%<%>:veesfst	#	;
-oosfst:%<%>	#	;
-%0:nolla	#	;
-nolla:%0	#	;

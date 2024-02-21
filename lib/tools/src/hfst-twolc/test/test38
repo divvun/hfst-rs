@@ -1,7 +1,0 @@
-Alphabet a b a:b ;
-Sets
-X = a ;
-Y = a ;
-Rules
-"Rule1"
-a:b => X:Y _ ;

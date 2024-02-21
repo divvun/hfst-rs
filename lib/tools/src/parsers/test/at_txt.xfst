@@ -1,2 +1,0 @@
-regex @txt"words.txt";
-write att

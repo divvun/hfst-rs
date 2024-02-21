@@ -1,8 +1,0 @@
-Alphabet 
-a b ;
-Sets
-X = a;
-
-Rules
-"R"
-c:X => a [ c:a ]* _ ;

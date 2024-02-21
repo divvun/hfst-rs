@@ -1,5 +1,0 @@
-define Concat(x,y) x y;
-define Two(a) a a;
-define ConcatTwo(x,y) Concat(Two(x), Two(y));
-regex ConcatTwo(foo,bar);
-write att

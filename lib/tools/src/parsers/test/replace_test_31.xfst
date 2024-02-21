@@ -1,6 +1,0 @@
-set precision 1
-set print-weight ON
-
-regex a::1 (->) b::1 ||  x _ x ;
-apply down xaxax
-

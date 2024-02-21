@@ -1,3 +1,0 @@
-The tools are based on morph-it.
-
-Morph-it is licensed as LGPL version 2.1.

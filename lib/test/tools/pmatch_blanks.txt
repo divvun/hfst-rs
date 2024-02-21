@@ -1,5 +1,0 @@
-Define C "";
-Define CA "";
-Define B "b";
-Define D [ "d" EndTag(A) ];
-Define TOP [ Ins(B) | Ins(D) ];

@@ -1,2 +1,0 @@
-regex [ a:b a:b a:0 ] .P. [ a -> c ] ;
-write att

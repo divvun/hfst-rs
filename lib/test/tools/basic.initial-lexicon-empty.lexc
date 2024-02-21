@@ -1,5 +1,0 @@
-LEXICON Root
-      Continuation ;
-
-LEXICON Continuation
-foo   # ;

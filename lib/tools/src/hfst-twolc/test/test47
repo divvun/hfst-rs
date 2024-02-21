@@ -1,9 +1,0 @@
-Alphabet
-;
-Sets
-S = %0 ;
-
-Rules
-
-"R"
-a:b <=> X _ ; where X in S ;

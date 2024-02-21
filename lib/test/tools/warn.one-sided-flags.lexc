@@ -1,7 +1,0 @@
-Multichar_Symbols
-  @U.FOO.ON@
-  @U.FOO.OFF@
-
-LEXICON Root
-@U.FOO.ON@foo:bar # ;
-# ;

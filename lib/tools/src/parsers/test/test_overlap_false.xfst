@@ -1,5 +1,0 @@
-regex c:d;
-regex ?:?;
-regex a:b;
-test overlap
-exit

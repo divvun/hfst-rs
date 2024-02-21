@@ -1,9 +1,0 @@
-LEXICON Root
-walk	V	;
-
-LEXICON V
-s	#	;
-	#	;
-
-LEXICON DUMMY
-	#	;

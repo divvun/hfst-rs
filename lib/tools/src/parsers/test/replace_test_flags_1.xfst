@@ -1,2 +1,0 @@
-regex [ a ->  "@P.FOO.BAR@" || a _ "@u.a.b@" ] ;
-write att

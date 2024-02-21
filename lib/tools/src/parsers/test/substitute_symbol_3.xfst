@@ -1,7 +1,0 @@
-# a -> a
-regex a:x a y:a z;
-substitute symbol a for a
-write att
-echo --
-sigma net
-write att

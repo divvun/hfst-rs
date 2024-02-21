@@ -1,7 +1,0 @@
-set precision 1
-set print-weight ON
-
-regex a::1 -> b::2 || ? - a _ ;
-apply down maa
-# mba
-

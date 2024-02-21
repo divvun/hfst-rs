@@ -1,6 +1,0 @@
-Alphabet a a:0 b a:b ;
-Sets
-X = a ;
-Rules
-"Rule1"
-a:b => X:0 _ ;
