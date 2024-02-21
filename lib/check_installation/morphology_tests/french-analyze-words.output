@@ -1,0 +1,94 @@
+Tous	tous+functionWord
+Tous	tout+functionWord
+
+les	le+functionWord
+les	les+functionWord
+
+êtres	être+commonNoun+masculine+plural
+êtres	êtres+commonNoun+masculine+plural
+
+humains	humain+adjective+plural+masculine
+humains	humain+commonNoun+masculine+plural
+
+naissent	naître+verb+plural+indicative+present+thirdPerson
+naissent	naître+verb+plural+subjunctive+present+thirdPerson
+
+libres	libre+adjective+plural+feminine
+libres	libre+adjective+plural+masculine
+
+et	et+functionWord
+
+égaux	égal+adjective+plural+masculine
+égaux	égal+commonNoun+masculine+plural
+
+en	en+functionWord
+
+dignité	dignité+commonNoun+feminine+singular
+
+et	et+functionWord
+
+en	en+functionWord
+
+droits	droit+adjective+plural+masculine
+droits	droit+commonNoun+masculine+plural
+
+.	. Punct
+
+Ils	il+functionWord
+Ils	ils+functionWord
+
+sont	être+verb+plural+indicative+present+thirdPerson
+
+doués	douer+verb+plural+participle+masculine+past
+doués	doué+adjective+plural+masculine
+
+de	de+functionWord
+
+raison	raison+commonNoun+feminine+singular
+
+et	et+functionWord
+
+de	de+functionWord
+
+conscience	conscience+commonNoun+feminine+singular
+
+et	et+functionWord
+
+doivent	devoir+verb+plural+indicative+present+thirdPerson
+doivent	devoir+verb+plural+subjunctive+present+thirdPerson
+
+agir	agir+verb+infinitive
+
+les	le+functionWord
+les	les+functionWord
+
+uns	un+functionWord
+uns	uns+functionWord
+
+envers	envers+commonNoun+masculine+plural
+envers	envers+commonNoun+masculine+singular
+envers	envers+functionWord
+
+les	le+functionWord
+les	les+functionWord
+
+autres	autre+adjective+plural+feminine
+autres	autre+adjective+plural+masculine
+autres	autre+commonNoun+feminine+plural
+autres	autre+commonNoun+masculine+plural
+autres	autre+functionWord
+
+dans	dan+commonNoun+masculine+plural
+dans	dans+functionWord
+
+un	un+functionWord
+
+esprit	esprit+commonNoun+masculine+singular
+
+de	de+functionWord
+
+fraternité	fraternité+commonNoun+feminine+singular
+
+.	. Punct
+
+

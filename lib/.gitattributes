@@ -1,0 +1,5 @@
+* text eol=lf
+*.bat text eol=crlf
+*.zhfst binary
+/scripts/windows_tests/* text eol=crlf
+/test/tools/dos.strings text eol=crlf
