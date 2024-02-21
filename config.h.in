@@ -1,0 +1,255 @@
+/* config.h.in.  Generated from configure.ac by autoheader.  */
+
+/* Defines automake version */
+// #cmakedefine AUTOMAKE_VERSION 
+
+/* Define to compile with so entry loading enabled */
+// #cmakedefine ENABLE_LOAD_SO_ENTRIES 
+
+
+/* Define to compile foma support in HFST */
+#cmakedefine01 HAVE_FOMA 
+
+/* Define to compile optimized lookup support in HFST */
+#cmakedefine01 HAVE_HFSTOL 
+
+/* Define to compile OpenFst with lean log weight support in HFST */
+#cmakedefine01 HAVE_LEAN_OPENFST_LOG 
+
+/* Define to compile lean SFST support in HFST */
+#cmakedefine01 HAVE_LEAN_SFST 
+
+/* Define to compile OpenFst support in HFST */
+#cmakedefine01 HAVE_OPENFST 
+
+/* Define not to compile OpenFst with full log weight support in HFST */
+#cmakedefine01 HAVE_OPENFST_LOG 
+
+/* Define not to compile full SFST support in HFST */
+#cmakedefine01 HAVE_SFST 
+
+/* Define to compile xfsm support in HFST */
+#cmakedefine01 HAVE_XFSM 
+
+/* Define to 1 if you have the <backward/hash_map> header file. */
+#cmakedefine HAVE_BACKWARD_HASH_MAP 
+
+/* Define to 1 if you have the <backward/hash_set> header file. */
+#cmakedefine HAVE_BACKWARD_HASH_SET 
+
+/* Define to 1 if you have the declaration of `program_invocation_name', and
+   to 0 if you don't. */
+#cmakedefine HAVE_DECL_PROGRAM_INVOCATION_NAME 
+
+/* Define to 1 if you have the declaration of `program_invocation_short_name',
+   and to 0 if you don't. */
+#cmakedefine HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME 
+
+/* Define to 1 if you have the declaration of `program_name', and to 0 if you
+   don't. */
+#cmakedefine HAVE_DECL_PROGRAM_NAME 
+
+/* Define to 1 if you have the declaration of `rl_completion_matches', and to
+   0 if you don't. */
+#cmakedefine HAVE_DECL_RL_COMPLETION_MATCHES 
+
+/* Define to 1 if you have the declaration of `rl_completion_suppress_append',
+   and to 0 if you don't. */
+#cmakedefine HAVE_DECL_RL_COMPLETION_SUPPRESS_APPEND 
+
+/* Define to 1 if you have the <dlfcn.h> header file. */
+#cmakedefine HAVE_DLFCN_H 
+
+/* Define to 1 if you have the `error' function. */
+#cmakedefine HAVE_ERROR 
+
+/* Define to 1 if you have the `error_at_line' function. */
+#cmakedefine HAVE_ERROR_AT_LINE 
+
+/* Define to 1 if you have the <error.h> header file. */
+#cmakedefine HAVE_ERROR_H 
+
+/* Define to 1 if you have the <ext/hash_map> header file. */
+#cmakedefine01 HAVE_EXT_HASH_MAP 
+
+/* Define to 1 if you have the <ext/hash_set> header file. */
+#cmakedefine01 HAVE_EXT_HASH_SET 
+
+/* Define to 1 if you have the <ext/slist> header file. */
+#cmakedefine HAVE_EXT_SLIST 
+
+/* Define to 1 if you have the `floor' function. */
+#cmakedefine HAVE_FLOOR 
+
+/* Use upstream Foma */
+#cmakedefine HAVE_FOMA_UPSTREAM 
+
+/* Define to 1 if you have the `getdelim' function. */
+#cmakedefine HAVE_GETDELIM 
+
+/* Define to 1 if you have the `getline' function. */
+#cmakedefine HAVE_GETLINE 
+
+/* Define to 1 if you have the `getopt_long' function. */
+#cmakedefine HAVE_GETOPT_LONG 
+
+/* Define to 1 if you have the <glob.h> header file. */
+#cmakedefine HAVE_GLOB_H 
+
+/* Define to 1 if you have the <hash_map> header file. */
+#cmakedefine HAVE_HASH_MAP 
+
+/* Define to 1 if you have the <hash_set> header file. */
+#cmakedefine HAVE_HASH_SET 
+
+/* Define to 1 if you have the <inttypes.h> header file. */
+#cmakedefine HAVE_INTTYPES_H 
+
+/* Define to 1 if you have the <langinfo.h> header file. */
+#cmakedefine HAVE_LANGINFO_H 
+
+/* Define to 1 if you have the `dl' library (-ldl). */
+#cmakedefine HAVE_LIBDL 
+
+/* Define to 1 if you have the `m' library (-lm). */
+#cmakedefine HAVE_LIBM 
+
+/* Define to 1 if you have the `pthread' library (-lpthread). */
+#cmakedefine HAVE_LIBPTHREAD 
+
+/* Define to 1 if you have the `xfsm' library (-lxfsm). */
+#cmakedefine HAVE_LIBXFSM 
+
+/* Define to 1 if you have the <limits.h> header file. */
+#cmakedefine HAVE_LIMITS_H 
+
+/* Define to 1 if you have the <locale.h> header file. */
+#cmakedefine HAVE_LOCALE_H 
+
+/* Define to 1 if you have the `nl_langinfo' function. */
+#cmakedefine HAVE_NL_LANGINFO 
+
+/* Use upstream OpenFST */
+#cmakedefine HAVE_OPENFST_UPSTREAM 
+
+/* if readline can be used */
+#cmakedefine HAVE_READLINE 
+
+/* Define to 1 if you have the <readline/history.h> header file. */
+#cmakedefine HAVE_READLINE_HISTORY_H 
+
+/* Define to 1 if you have the <readline/readline.h> header file. */
+#cmakedefine HAVE_READLINE_READLINE_H 
+
+/* Define to 1 if you have the `setlocale' function. */
+#cmakedefine HAVE_SETLOCALE 
+
+/* Define to 1 if you have the `setprogname' function. */
+#cmakedefine HAVE_SETPROGNAME 
+
+/* Define to 1 if you have the `set_program_name' function. */
+#cmakedefine HAVE_SET_PROGRAM_NAME 
+
+/* Define to 1 if you have the <stdint.h> header file. */
+#cmakedefine HAVE_STDINT_H 
+
+/* Define to 1 if you have the <stdio.h> header file. */
+#cmakedefine HAVE_STDIO_H 
+
+/* Define to 1 if you have the <stdlib.h> header file. */
+#cmakedefine HAVE_STDLIB_H 
+
+/* Define to 1 if you have the `strchr' function. */
+#cmakedefine HAVE_STRCHR 
+
+/* Define to 1 if you have the `strcspn' function. */
+#cmakedefine HAVE_STRCSPN 
+
+/* Define to 1 if you have the `strdup' function. */
+#cmakedefine HAVE_STRDUP 
+
+/* Define to 1 if you have the `strerror' function. */
+#cmakedefine HAVE_STRERROR 
+
+/* Define to 1 if you have the <strings.h> header file. */
+#cmakedefine HAVE_STRINGS_H 
+
+/* Define to 1 if you have the <string.h> header file. */
+#cmakedefine HAVE_STRING_H 
+
+/* Define to 1 if you have the `strncasecmp' function. */
+#cmakedefine HAVE_STRNCASECMP 
+
+/* Define to 1 if you have the `strndup' function. */
+#cmakedefine HAVE_STRNDUP 
+
+/* Define to 1 if you have the `strtod' function. */
+#cmakedefine HAVE_STRTOD 
+
+/* Define to 1 if you have the `strtol' function. */
+#cmakedefine HAVE_STRTOL 
+
+/* Define to 1 if you have the `strtoul' function. */
+#cmakedefine HAVE_STRTOUL 
+
+/* Define to 1 if you have the <sys/stat.h> header file. */
+#cmakedefine HAVE_SYS_STAT_H 
+
+/* Define to 1 if you have the <sys/types.h> header file. */
+#cmakedefine HAVE_SYS_TYPES_H 
+
+/* Define to 1 if you have the <unistd.h> header file. */
+#cmakedefine HAVE_UNISTD_H 
+
+/* Define to 1 if you have the `xstrdup' function. */
+#cmakedefine HAVE_XSTRDUP 
+
+/* Define to hfst version vector as long in base 10000 */
+#cmakedefine HFST_LONGVERSION 
+
+/* Automatically substitute to configure.ac revision */
+#cmakedefine HFST_REVISION 
+
+/* Define to libhfst pretty name for programs to print */
+#cmakedefine HFST_STRING 
+
+/* Define to the sub-directory where libtool stores uninstalled libraries. */
+// #cmakedefine LT_OBJDIR 
+
+/* Name of package */
+#cmakedefine PACKAGE 
+
+/* Define to the address where bug reports for this package should be sent. */
+#cmakedefine PACKAGE_BUGREPORT 
+
+/* Define to the full name of this package. */
+#cmakedefine PACKAGE_NAME 
+
+/* Define to the full name and version of this package. */
+// #cmakedefine PACKAGE_STRING 
+
+/* Define to the one symbol short name of this package. */
+#cmakedefine PACKAGE_TARNAME 
+
+/* Define to the home page for this package. */
+#cmakedefine PACKAGE_URL 
+
+/* Define to the version of this package. */
+#cmakedefine PACKAGE_VERSION 
+
+/* Define to 1 if all of the C90 standard headers exist (not just the ones
+   required in a freestanding environment). This macro is provided for
+   backward compatibility; new code need not use it. */
+#cmakedefine STDC_HEADERS 
+
+/* if using icu for unicode string handling */
+#cmakedefine USE_ICU_UNICODE 
+
+/* Version number of package */
+#cmakedefine VERSION 
+
+/* Define to 1 if `lex' declares `yytext' as a `char *' by default, not a
+   `char[]'. */
+#cmakedefine YYTEXT_POINTER 
+
+#cmakedefine YY_NO_UNISTD_H

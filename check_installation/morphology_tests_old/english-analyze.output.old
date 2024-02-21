@@ -1,0 +1,114 @@
+All
+All	All[ADJ]+ADJ
+All	All[ADV]+ADV
+
+human
+human	hum[N]+AN[N/N]+N
+human	human[ADJ]+ADJ
+human	human[N]+N
+human	hume[N]+AN[N/N]+N
+
+beings
+beings	be[N]+ING[N/N]+N+PL
+beings	being[N]+N+PL
+beings	bey[N]+ING[N/N]+N+PL
+
+are
+are	A+re[N]+N
+are	are[N]+N
+
+born
+born	bear+V+PPART
+born	born[ADJ]+ADJ
+born	born[N]+N
+
+free
+free	free[ADJ]+ADJ
+free	free[ADV]+ADV
+free	free[N]+N
+free	free[V]+V+INF
+
+and
+and	A+nd[N]+N
+
+equal
+equal	equal[ADJ]+ADJ
+equal	equal[N]+N
+equal	equal[V]+V+INF
+
+in
+in	in[ADJ]+ADJ
+in	in[ADV]+ADV
+in	in[N]+N
+
+dignity
+dignity	dignity[N]+N
+
+and
+and	A+nd[N]+N
+
+rights
+rights	right[N]+N+PL
+rights	right[V]+V+3sg+PRES
+
+They	+?
+
+are
+are	A+re[N]+N
+are	are[N]+N
+
+endowed
+endowed	endow[V]+V+PAST
+endowed	endow[V]+V+PPART
+endowed	endowed[ADJ]+ADJ
+
+with	+?
+
+reason
+reason	reason[N]+N
+reason	reason[V]+V+INF
+
+and
+and	A+nd[N]+N
+
+conscience
+conscience	conscience[N]+N
+
+and
+and	A+nd[N]+N
+
+should
+should	should[V]+V+INF
+
+act
+act	A+ct[N]+N
+act	act[N]+N
+act	act[V]+V+INF
+
+towards	+?
+
+one
+one	one[ADJ]+ADJ
+one	one[N]+N
+
+another
+another	another[ADJ]+ADJ
+
+in
+in	in[ADJ]+ADJ
+in	in[ADV]+ADV
+in	in[N]+N
+
+a
+a	a[N]+N
+
+spirit
+spirit	spirit[N]+N
+spirit	spirit[V]+V+INF
+
+of	+?
+
+brotherhood
+brotherhood	brother[N]+HOOD[N/N]+N
+brotherhood	brotherhood[N]+N
+
