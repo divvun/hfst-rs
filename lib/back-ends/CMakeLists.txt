@@ -1,0 +1,15 @@
+if(HAVE_OPENFST)
+    if(NOT WIN32)
+        add_subdirectory(openfst)
+    else()
+        add_subdirectory(openfstwin)
+    endif()
+endif()
+
+if(HAVE_SFST)
+    add_subdirectory(sfst)
+endif()
+
+if(HAVE_FOMA)
+    add_subdirectory(foma)
+endif()
