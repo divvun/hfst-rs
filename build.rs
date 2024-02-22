@@ -18,16 +18,33 @@ fn main() {
         )
         .no_build_target(true)
         .build();
-    println!(
-        "cargo:rustc-link-search=native={}/build/libhfst",
-        dst.display()
-    );
+
+    if cfg!(windows) {
+        println!(
+            "cargo:rustc-link-search=native={}",
+            dst.join("build")
+                .join("libhfst")
+                .join(std::env::var("PROFILE").unwrap())
+                .display()
+        );
+    } else {
+        println!(
+            "cargo:rustc-link-search=native={}",
+            dst.join("build").join("libhfst").display()
+        );
+    }
     println!("cargo:rustc-link-lib=static=hfst");
 
     cc::Build::new()
         .file("wrapper/wrapper.cpp")
         .includes(includes)
-        .include(std::env::current_dir().unwrap().join("lib").join("libhfst").join("src"))
+        .include(
+            std::env::current_dir()
+                .unwrap()
+                .join("lib")
+                .join("libhfst")
+                .join("src"),
+        )
         // .include(Path::new("lib").join("libhfst").join("src"))
         .static_flag(true)
         .cpp(true)
