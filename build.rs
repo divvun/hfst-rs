@@ -8,11 +8,11 @@ fn main() {
     cc::Build::new()
         .file("wrapper/wrapper.cpp")
         // .include("/usr/local/include/hfst")
-        .include("/opt/homebrew/include")
+        // .include("/opt/homebrew/include")
         .include(Path::new("lib/libhfst/src"))
         .static_flag(true)
         .cpp(true)
-        .flag("-std=c++11")
+        // .flag("-std=c++11")
         .compile("hfst_wrapper");
 
 }
