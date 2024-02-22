@@ -34,16 +34,18 @@ fn main() {
         );
     }
     
-    println!("cargo:rustc-link-lib=static=hfst");
-    println!("cargo:rustc-link-lib=static=icuuc");
-    println!("cargo:rustc-link-lib=static=icuio");
+    println!("cargo:rustc-link-lib=hfst");
+    println!("cargo:rustc-link-lib=icuuc");
+    println!("cargo:rustc-link-lib=icuio");
     if cfg!(windows) {
-        println!("cargo:rustc-link-lib=static=icudt");
-        println!("cargo:rustc-link-lib=static=icuin");
+        println!("cargo:rustc-link-lib=icudt");
+        println!("cargo:rustc-link-lib=icuin");
     } else {
-        println!("cargo:rustc-link-lib=static=icudata");
-        println!("cargo:rustc-link-lib=static=icui18n");
+        println!("cargo:rustc-link-lib=icudata");
+        println!("cargo:rustc-link-lib=icui18n");
     }
+
+    let is_shared = cfg!(windows) && std::env::var("VCPKGRS_DYNAMIC").is_ok();
 
     cc::Build::new()
         .file("wrapper/wrapper.cpp")
@@ -55,8 +57,8 @@ fn main() {
                 .join("libhfst")
                 .join("src"),
         )
-        .static_flag(!cfg!(windows))
-        .static_crt(cfg!(windows))
+        .static_flag(!is_shared)
+        .static_crt(!is_shared)
         .cpp(true)
         .flag(if cfg!(windows) {
             "/std:c++14"
