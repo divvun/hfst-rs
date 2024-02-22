@@ -27,14 +27,15 @@ fn main() {
                 .join(std::env::var("PROFILE").unwrap())
                 .display()
         );
+        println!("cargo:rustc-link-lib=hfst");
     } else {
         println!(
             "cargo:rustc-link-search=native={}",
             dst.join("build").join("libhfst").display()
         );
+        println!("cargo:rustc-link-lib=static=hfst");
     }
     
-    println!("cargo:rustc-link-lib=hfst");
     println!("cargo:rustc-link-lib=icuuc");
     println!("cargo:rustc-link-lib=icuio");
     if cfg!(windows) {
