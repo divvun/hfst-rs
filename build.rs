@@ -33,7 +33,17 @@ fn main() {
             dst.join("build").join("libhfst").display()
         );
     }
+    
     println!("cargo:rustc-link-lib=static=hfst");
+    println!("cargo:rustc-link-lib=static=icuuc");
+    println!("cargo:rustc-link-lib=static=icuio");
+    if cfg!(windows) {
+        println!("cargo:rustc-link-lib=static=icudt");
+        println!("cargo:rustc-link-lib=static=icuin");
+    } else {
+        println!("cargo:rustc-link-lib=static=icudata");
+        println!("cargo:rustc-link-lib=static=icui18n");
+    }
 
     cc::Build::new()
         .file("wrapper/wrapper.cpp")
