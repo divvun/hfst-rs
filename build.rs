@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 fn main() {
     let includes = if cfg!(windows) {
         let lib = vcpkg::Config::new()
-            .find_package("icu4c")
+            .find_package("icu")
             .unwrap();
         lib.include_paths
     } else if cfg!(target_os = "macos") {
