@@ -7,6 +7,7 @@ edition = "2021"
 cc = "1.0.79"
 cmake = "0.1.50"
 pkg-config = "0.3.27"
+vcpkg = "0.2.15"
 
 [dependencies]
 libc = "0.2.153"
