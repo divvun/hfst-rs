@@ -32,11 +32,12 @@ fn main() {
         println!("cargo:rustc-link-lib=icuio");
         println!("cargo:rustc-link-lib=icudt");
         println!("cargo:rustc-link-lib=icuin");
-    } else {
+    } else if cfg!(target_os = "macos") {
         println!(
             "cargo:rustc-link-search=native={}",
             dst.join("build").join("libhfst").display()
         );
+        println!("cargo:rustc-link-search=native=/opt/homebrew/lib",);
         println!("cargo:rustc-link-lib=static=hfst");
         println!("cargo:rustc-link-lib=static=icuuc");
         println!("cargo:rustc-link-lib=static=icuio");
