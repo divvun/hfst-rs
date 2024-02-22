@@ -27,7 +27,8 @@ fn main() {
     cc::Build::new()
         .file("wrapper/wrapper.cpp")
         .includes(includes)
-        .include(Path::new("lib").join("libhfst").join("src"))
+        .include(std::env::current_dir().unwrap().join("lib").join("libhfst").join("src"))
+        // .include(Path::new("lib").join("libhfst").join("src"))
         .static_flag(true)
         .cpp(true)
         .flag(if cfg!(windows) {

@@ -1,4 +1,4 @@
-#include <hfst.h>
-#include <hfst/implementations/optimized-lookup/pmatch.h>
-#include <hfst/implementations/optimized-lookup/pmatch_tokenize.h>
-#include <hfst/parsers/pmatch_utils.h>
+#include "hfst.h"
+#include "implementations/optimized-lookup/pmatch.h"
+#include "implementations/optimized-lookup/pmatch_tokenize.h"
+#include "parsers/pmatch_utils.h"
