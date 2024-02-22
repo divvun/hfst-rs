@@ -3,6 +3,7 @@ use std::path::Path;
 fn main() {
     let dst = cmake::Config::new("lib").always_configure(true).no_build_target(true).build();
     println!("cargo:rustc-link-search=native={}/build/libhfst", dst.display());
+    println!("cargo:rustc-link-lib=static=hfst");
 
     cc::Build::new()
         .file("wrapper/wrapper.cpp")
