@@ -3,6 +3,10 @@ name = "hfst"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["rlib", "lib", "staticlib"]
+#crate-type = ["cdylib", "staticlib", "lib"]
+
 [build-dependencies]
 cc = "1.0.79"
 cmake = "0.1.50"

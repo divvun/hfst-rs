@@ -45,8 +45,8 @@ fn main() {
                 .join("libhfst")
                 .join("src"),
         )
-        // .include(Path::new("lib").join("libhfst").join("src"))
-        .static_flag(true)
+        .static_flag(!cfg!(windows))
+        .static_crt(cfg!(windows))
         .cpp(true)
         .flag(if cfg!(windows) {
             "/std:c++14"
