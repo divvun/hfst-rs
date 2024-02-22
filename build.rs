@@ -2,9 +2,7 @@ use std::path::{Path, PathBuf};
 
 fn main() {
     let includes = if cfg!(windows) {
-        let lib = vcpkg::Config::new()
-            .find_package("icu")
-            .unwrap();
+        let lib = vcpkg::Config::new().find_package("icu").unwrap();
         lib.include_paths
     } else if cfg!(target_os = "macos") {
         vec![PathBuf::from("/opt/homebrew/include")]
@@ -14,7 +12,10 @@ fn main() {
 
     let dst = cmake::Config::new("lib")
         .always_configure(true)
-        .define("CMAKE_CXX_FLAGS", "/EHsc /O2")
+        .define(
+            "CMAKE_CXX_FLAGS",
+            if cfg!(windows) { "/EHsc /O2" } else { "-O2" },
+        )
         .no_build_target(true)
         .build();
     println!(
@@ -26,9 +27,13 @@ fn main() {
     cc::Build::new()
         .file("wrapper/wrapper.cpp")
         .includes(includes)
-        .include(Path::new("lib/libhfst/src"))
+        .include(Path::new("lib").join("libhfst").join("src"))
         .static_flag(true)
         .cpp(true)
-        // .flag("-std=c++11")
+        .flag(if cfg!(windows) {
+            "/std:c++14"
+        } else {
+            "-std=c++11"
+        })
         .compile("hfst_wrapper");
 }
