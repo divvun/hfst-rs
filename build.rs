@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
 fn main() {
-    let includes = if cfg!(windows) {
+    let (includes, libs) = if cfg!(windows) {
         let lib = vcpkg::Config::new().find_package("icu").unwrap();
-        lib.include_paths
+        (lib.include_paths, lib.link_paths)
     } else if cfg!(target_os = "macos") {
-        vec![PathBuf::from("/opt/homebrew/include")]
+        (vec![PathBuf::from("/opt/homebrew/include")], vec![])
     } else {
-        vec![]
+        (vec![], vec![])
     };
 
     let dst = cmake::Config::new("lib")
@@ -28,16 +28,16 @@ fn main() {
                 .display()
         );
         println!("cargo:rustc-link-lib=hfst");
-        println!("cargo:rustc-link-lib=icuuc");
-        println!("cargo:rustc-link-lib=icuio");
-        println!("cargo:rustc-link-lib=icudt");
-        println!("cargo:rustc-link-lib=icuin");
+        // println!("cargo:rustc-link-lib=icuuc");
+        // println!("cargo:rustc-link-lib=icuio");
+        // println!("cargo:rustc-link-lib=icudt");
+        // println!("cargo:rustc-link-lib=icuin");
     } else if cfg!(target_os = "macos") {
         println!(
             "cargo:rustc-link-search=native={}",
             dst.join("build").join("libhfst").display()
         );
-        println!("cargo:rustc-link-search=native=/opt/homebrew/lib",);
+        println!("cargo:rustc-link-search=native=/opt/homebrew/lib");
         println!("cargo:rustc-link-lib=static=hfst");
         println!("cargo:rustc-link-lib=static=icuuc");
         println!("cargo:rustc-link-lib=static=icuio");
