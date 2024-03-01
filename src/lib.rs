@@ -1,5 +1,5 @@
 use libc::{c_char, c_void};
-use std::{ffi::CStr, path::Path};
+use std::{ffi::CStr, path::Path, sync::Arc};
 
 extern "C" {
     fn hfst_tokenize(
@@ -63,14 +63,25 @@ impl Drop for CVec {
 }
 
 pub struct Transducer {
-    ptr: *const c_void,
+    ptr: Arc<*const c_void>,
+}
+
+unsafe impl Send for Transducer {}
+unsafe impl Sync for Transducer {}
+
+impl Drop for Transducer {
+    fn drop(&mut self) {
+        if let Some(x) = Arc::get_mut(&mut self.ptr) {
+            unsafe { hfst_transducer_free(*x) };
+        }
+    }
 }
 
 impl Transducer {
     pub fn new<P: AsRef<Path>>(path: P) -> Transducer {
         let buf = std::fs::read(path).unwrap();
         let ptr = unsafe { hfst_transducer_new(buf.as_ptr(), buf.len()) };
-        Self { ptr }
+        Self { ptr: Arc::new(ptr) }
     }
 
     pub fn lookup_tags(&self, input: &str) -> Vec<String> {
@@ -89,7 +100,7 @@ impl Transducer {
 
         unsafe {
             hfst_transducer_lookup_tags(
-                self.ptr,
+                *self.ptr,
                 input.as_ptr() as _,
                 input.len(),
                 10.0,
@@ -105,19 +116,18 @@ impl Transducer {
     }
 }
 
-impl Drop for Transducer {
-    fn drop(&mut self) {
-        unsafe { hfst_transducer_free(self.ptr) };
-    }
+pub struct Tokenizer {
+    ptr: Arc<*const c_void>,
 }
 
-pub struct Tokenizer {
-    ptr: *const c_void,
-}
+unsafe impl Send for Tokenizer {}
+unsafe impl Sync for Tokenizer {}
 
 impl Drop for Tokenizer {
     fn drop(&mut self) {
-        unsafe { hfst_tokenizer_free(self.ptr) };
+        if let Some(x) = Arc::get_mut(&mut self.ptr) {
+            unsafe { hfst_tokenizer_free(*x) };
+        }
     }
 }
 
@@ -126,11 +136,11 @@ impl Tokenizer {
         let buf = std::fs::read(path).unwrap();
         let ptr = unsafe { hfst_make_tokenizer(buf.as_ptr() as _, buf.len()) };
 
-        Ok(Self { ptr })
+        Ok(Self { ptr: Arc::new(ptr) })
     }
 
     pub fn tokenize(&self, input: &str) -> Option<String> {
-        let output = unsafe { hfst_tokenize(self.ptr, input.as_ptr() as _, input.len()) };
+        let output = unsafe { hfst_tokenize(*self.ptr, input.as_ptr() as _, input.len()) };
 
         if output.is_null() {
             return None;
