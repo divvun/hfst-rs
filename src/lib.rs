@@ -14,6 +14,7 @@ extern "C" {
     fn hfst_transducer_new(analyzer_bytes: *const u8, analyzer_size: usize) -> *const c_void;
     fn hfst_transducer_lookup_tags(
         analyzer: *const c_void,
+        is_diacritic: bool,
         input: *const c_char,
         input_size: usize,
         time_cutoff: f64,
@@ -84,7 +85,7 @@ impl Transducer {
         Self { ptr: Arc::new(ptr) }
     }
 
-    pub fn lookup_tags(&self, input: &str) -> Vec<String> {
+    pub fn lookup_tags(&self, input: &str, is_diacritic: bool) -> Vec<String> {
         let mut tags = CVec::new();
 
         extern "C" fn callback(tags: *mut CVec, it: *const u8, it_size: usize) {
@@ -101,6 +102,7 @@ impl Transducer {
         unsafe {
             hfst_transducer_lookup_tags(
                 *self.ptr,
+                is_diacritic,
                 input.as_ptr() as _,
                 input.len(),
                 10.0,
