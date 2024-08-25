@@ -3,6 +3,7 @@
 *.lo
 *.o
 *.obj
+*.exe
 
 # Precompiled Headers
 *.gch
@@ -223,6 +224,7 @@ stamp-h?
 # Binary files
 /tools/src/hfst-affix-guessify
 /tools/src/hfst-calculate
+/tools/src/hfst-check-alpha
 /tools/src/hfst-compare
 /tools/src/hfst-compose
 /tools/src/hfst-compose-intersect
@@ -244,6 +246,7 @@ stamp-h?
 /tools/src/hfst-info
 /tools/src/hfst-insert-freely
 /tools/src/hfst-invert
+/tools/src/hfst-kill-paths
 /tools/src/hfst-lexc
 /tools/src/hfst-lookup
 /tools/src/hfst-minimize
