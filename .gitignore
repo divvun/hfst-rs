@@ -215,6 +215,7 @@ stamp-h?
 
 # Otherwise generated code
 /libhfst/hfst.pc
+/libhfst/hfst_c.pc
 /libhfst/src/hfst.hpp
 
 # Generated man files
