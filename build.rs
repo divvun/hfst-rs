@@ -1,20 +1,36 @@
 use std::path::{Path, PathBuf};
 
 fn main() {
-    let (includes, libs) = if cfg!(windows) {
+    let mut dst = cmake::Config::new("lib");
+
+    let (includes, _libs) = if cfg!(windows) {
         let lib = vcpkg::Config::new().find_package("icu").unwrap();
         (lib.include_paths, lib.link_paths)
     } else if cfg!(target_os = "macos") {
-        (vec![PathBuf::from("/opt/homebrew/include")], vec![])
+        dst.define("CMAKE_PREFIX_PATH", "/opt/homebrew/opt/icu4c");
+        (
+            vec![
+                PathBuf::from("/opt/homebrew/include"),
+                PathBuf::from("/opt/homebrew/opt/icu4c/include"),
+            ],
+            vec![
+                PathBuf::from("/opt/homebrew/lib"),
+                PathBuf::from("/opt/homebrew/opt/icu4c/lib"),
+            ],
+        )
     } else {
         (vec![], vec![])
     };
 
-    let dst = cmake::Config::new("lib")
+    let dst = dst
         .always_configure(true)
         .define(
             "CMAKE_CXX_FLAGS",
-            if cfg!(windows) { "/EHsc /O2" } else { "-O2" },
+            if cfg!(windows) {
+                "/EHsc /O2"
+            } else {
+                "-std=c++20 -O2"
+            },
         )
         .no_build_target(true)
         .build();
@@ -36,6 +52,7 @@ fn main() {
 
     if cfg!(target_os = "macos") {
         println!("cargo:rustc-link-search=native=/opt/homebrew/lib");
+        println!("cargo:rustc-link-search=native=/opt/homebrew/opt/icu4c/lib");
     }
 
     if cfg!(unix) {
@@ -91,7 +108,7 @@ fn main() {
         .flag(if cfg!(windows) {
             "/std:c++14"
         } else {
-            "-std=c++11"
+            "-std=c++20"
         })
         .compile("hfst_wrapper");
 }
