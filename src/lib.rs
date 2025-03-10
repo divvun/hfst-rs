@@ -45,6 +45,10 @@ impl CVec {
     pub fn push(&mut self, s: String) {
         let mut v = unsafe { Vec::from_raw_parts(self.ptr as _, self.len, self.cap) };
         v.push(s);
+
+        self.ptr = v.as_mut_ptr() as _;
+        self.len = v.len();
+        self.cap = v.capacity();
         std::mem::forget(v);
     }
 
