@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 fn main() {
     let mut dst = cmake::Config::new("lib");
+    dst.define("CMAKE_POSITION_INDEPENDENT_CODE", "ON");
 
     let (includes, _libs) = if cfg!(windows) {
         let lib = vcpkg::Config::new().find_package("icu").unwrap();
