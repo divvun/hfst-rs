@@ -63,16 +63,15 @@ impl Drop for CVec {
     }
 }
 
-pub struct Transducer<'a> {
+pub struct Transducer {
     ptr: *const c_void,
     inner: Option<(*mut u8, usize)>,
-    _marker: std::marker::PhantomData<&'a ()>,
 }
 
-unsafe impl<'a> Send for Transducer<'a> {}
-unsafe impl<'a> Sync for Transducer<'a> {}
+unsafe impl Send for Transducer {}
+unsafe impl Sync for Transducer {}
 
-impl<'a> Drop for Transducer<'a> {
+impl Drop for Transducer {
     fn drop(&mut self) {
         unsafe { hfst_transducer_free(self.ptr) };
         if let Some((ptr, len)) = self.inner.take() {
@@ -81,13 +80,13 @@ impl<'a> Drop for Transducer<'a> {
     }
 }
 
-impl<'a> Transducer<'a> {
-    pub fn new<P: AsRef<Path>>(path: P) -> Transducer<'a> {
+impl Transducer {
+    pub fn new<P: AsRef<Path>>(path: P) -> Transducer {
         let buf = std::fs::read(path).unwrap();
         Self::from_bytes(buf)
     }
 
-    pub fn from_bytes(mut buf: Vec<u8>) -> Transducer<'a> {
+    pub fn from_bytes(mut buf: Vec<u8>) -> Transducer {
         buf.shrink_to_fit();
         assert!(buf.len() == buf.capacity());
         let vec_ptr = buf.as_mut_ptr();
@@ -98,17 +97,12 @@ impl<'a> Transducer<'a> {
         Self {
             ptr,
             inner: Some((vec_ptr, len)),
-            _marker: std::marker::PhantomData,
         }
     }
 
-    pub unsafe fn from_ptr(ptr: *const u8, size: usize) -> Transducer<'a> {
+    pub unsafe fn from_ptr(ptr: *const u8, size: usize) -> Transducer {
         let ptr = unsafe { hfst_transducer_new(ptr, size) };
-        Self {
-            ptr,
-            inner: None,
-            _marker: std::marker::PhantomData,
-        }
+        Self { ptr, inner: None }
     }
 
     pub fn lookup_tags(&self, input: &str, is_diacritic: bool) -> Vec<String> {
