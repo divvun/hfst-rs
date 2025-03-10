@@ -42,6 +42,12 @@ impl CVec {
         cvec
     }
 
+    pub fn push(&mut self, s: String) {
+        let mut v = unsafe { Vec::from_raw_parts(self.ptr as _, self.len, self.cap) };
+        v.push(s);
+        std::mem::forget(v);
+    }
+
     pub unsafe fn inner(&mut self) -> Vec<String> {
         Vec::from_raw_parts(self.ptr as _, self.len, self.cap)
     }
@@ -115,14 +121,10 @@ impl Transducer {
         extern "C" fn callback(tags: *mut CVec, it: *const u8, it_size: usize) {
             println!("Callback");
             let slice = unsafe { std::slice::from_raw_parts(it, it_size) };
-            println!("Slice: {:?}", slice);
+            println!("Slice: {:?}, size: {:?}", slice, it_size);
             let s = std::str::from_utf8(slice).unwrap();
-
-            let mut vec = unsafe { tags.as_mut().unwrap().inner() };
-            vec.push(s.to_string());
-            unsafe {
-                *tags = CVec::from(vec);
-            }
+            println!("String: {:?}", s);
+            unsafe { tags.as_mut().unwrap().push(s.to_string()) };
         }
 
         println!("Looking up tags: {:?}", input);

@@ -179,12 +179,19 @@ extern "C" void hfst_transducer_lookup_tags(
     hfst::HfstTransducer *analyzer, bool is_diacritic, const char *input,
     size_t input_size, double time_cutoff, void *tags,
     void (*callback)(void *tags, const char *, size_t)) {
+  
+  std::cerr << "hfst_transducer_lookup_tags" << std::endl;
+
   std::string input_str(input, input + input_size);
   hfst::HfstOneLevelPaths *results =
       analyzer->lookup_fd(input_str, -1, time_cutoff);
 
+  std::cerr << "results: " << results->size() << std::endl;
+
   for (auto result : *results) {
+    std::cerr << "result: " << result.first << std::endl;
     for (auto ss : result.second) {
+      std::cerr << "ss: " << ss << std::endl;
       if (is_diacritic ? hfst::FdOperation::is_diacritic(ss)
                        : !hfst::FdOperation::is_diacritic(ss)) {
         (callback)(tags, ss.c_str(), ss.length());
