@@ -113,7 +113,7 @@ impl Transducer {
         let mut tags = tags.into_inner();
         println!("Tags: {:?}", tags);
 
-        tags.sort();
+        // tags.sort();
         tags
     }
 }
