@@ -23,53 +23,22 @@ extern "C" {
     );
 }
 
-#[repr(C)]
+#[repr(transparent)]
 pub struct CVec {
-    ptr: *mut c_void,
-    len: usize,
-    cap: usize,
+    vec: Vec<String>,
 }
 
 impl CVec {
     pub fn new() -> CVec {
-        let mut v = vec![];
-        let cvec = CVec {
-            ptr: v.as_mut_ptr(),
-            len: v.len(),
-            cap: v.capacity(),
-        };
-        std::mem::forget(v);
-        cvec
+        CVec { vec: Vec::new() }
     }
 
     pub fn push(&mut self, s: String) {
-        let mut v = unsafe { Vec::from_raw_parts(self.ptr as _, self.len, self.cap) };
-        v.push(s);
-
-        self.ptr = v.as_mut_ptr() as _;
-        self.len = v.len();
-        self.cap = v.capacity();
-        std::mem::forget(v);
+        self.vec.push(s);
     }
 
-    pub unsafe fn inner(&mut self) -> Vec<String> {
-        Vec::from_raw_parts(self.ptr as _, self.len, self.cap)
-    }
-
-    pub fn from(mut v: Vec<String>) -> CVec {
-        let cvec = CVec {
-            ptr: v.as_mut_ptr() as _,
-            len: v.len(),
-            cap: v.capacity(),
-        };
-        std::mem::forget(v);
-        cvec
-    }
-}
-
-impl Drop for CVec {
-    fn drop(&mut self) {
-        drop(unsafe { Vec::from_raw_parts(self.ptr, self.len, self.cap) });
+    pub fn into_inner(self) -> Vec<String> {
+        self.vec
     }
 }
 
@@ -123,11 +92,8 @@ impl Transducer {
         let mut tags = CVec::new();
 
         extern "C" fn callback(tags: *mut CVec, it: *const u8, it_size: usize) {
-            println!("Callback");
             let slice = unsafe { std::slice::from_raw_parts(it, it_size) };
-            println!("Slice: {:?}, size: {:?}", slice, it_size);
             let s = std::str::from_utf8(slice).unwrap();
-            println!("String: {:?}", s);
             unsafe { tags.as_mut().unwrap().push(s.to_string()) };
         }
 
@@ -144,7 +110,7 @@ impl Transducer {
             );
         }
 
-        let mut tags = unsafe { tags.inner() };
+        let mut tags = tags.into_inner();
         println!("Tags: {:?}", tags);
 
         tags.sort();
