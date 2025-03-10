@@ -29,7 +29,7 @@ fn main() {
             if cfg!(windows) {
                 "/EHsc /O2"
             } else {
-                "-std=c++20 -O2"
+                "-std=c++20 -O2 -fPIC"
             },
         )
         .no_build_target(true)
@@ -110,5 +110,6 @@ fn main() {
         } else {
             "-std=c++20"
         })
+        .flag("-fPIC")
         .compile("hfst_wrapper");
 }
