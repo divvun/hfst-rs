@@ -190,13 +190,17 @@ extern "C" void hfst_transducer_lookup_tags(
 
   for (auto result : *results) {
     std::cerr << "result: " << result.first << std::endl;
+    auto string_builder = std::stringstream();
     for (auto ss : result.second) {
       std::cerr << "ss: " << ss << std::endl;
+
       if (is_diacritic ? hfst::FdOperation::is_diacritic(ss)
                        : !hfst::FdOperation::is_diacritic(ss)) {
-        (callback)(tags, ss.c_str(), ss.length());
+        string_builder << ss;
       }
     }
+    auto s = string_builder.str();
+    (callback)(tags, s.c_str(), s.length());
   }
 }
 
