@@ -63,26 +63,52 @@ impl Drop for CVec {
     }
 }
 
-pub struct Transducer {
-    ptr: Arc<*const c_void>,
+pub struct Transducer<'a> {
+    ptr: *const c_void,
+    inner: Option<(*mut u8, usize)>,
+    _marker: std::marker::PhantomData<&'a ()>,
 }
 
-unsafe impl Send for Transducer {}
-unsafe impl Sync for Transducer {}
+unsafe impl<'a> Send for Transducer<'a> {}
+unsafe impl<'a> Sync for Transducer<'a> {}
 
-impl Drop for Transducer {
+impl<'a> Drop for Transducer<'a> {
     fn drop(&mut self) {
-        if let Some(x) = Arc::get_mut(&mut self.ptr) {
-            unsafe { hfst_transducer_free(*x) };
+        unsafe { hfst_transducer_free(self.ptr) };
+        if let Some((ptr, len)) = self.inner.take() {
+            drop(unsafe { Vec::from_raw_parts(ptr, len, len) });
         }
     }
 }
 
-impl Transducer {
-    pub fn new<P: AsRef<Path>>(path: P) -> Transducer {
+impl<'a> Transducer<'a> {
+    pub fn new<P: AsRef<Path>>(path: P) -> Transducer<'a> {
         let buf = std::fs::read(path).unwrap();
-        let ptr = unsafe { hfst_transducer_new(buf.as_ptr(), buf.len()) };
-        Self { ptr: Arc::new(ptr) }
+        Self::from_bytes(buf)
+    }
+
+    pub fn from_bytes(mut buf: Vec<u8>) -> Transducer<'a> {
+        buf.shrink_to_fit();
+        assert!(buf.len() == buf.capacity());
+        let vec_ptr = buf.as_mut_ptr();
+        let len = buf.len();
+        std::mem::forget(buf);
+
+        let ptr = unsafe { hfst_transducer_new(vec_ptr, len) };
+        Self {
+            ptr,
+            inner: Some((vec_ptr, len)),
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub unsafe fn from_ptr(ptr: *const u8, size: usize) -> Transducer<'a> {
+        let ptr = unsafe { hfst_transducer_new(ptr, size) };
+        Self {
+            ptr,
+            inner: None,
+            _marker: std::marker::PhantomData,
+        }
     }
 
     pub fn lookup_tags(&self, input: &str, is_diacritic: bool) -> Vec<String> {
@@ -101,7 +127,7 @@ impl Transducer {
 
         unsafe {
             hfst_transducer_lookup_tags(
-                *self.ptr,
+                self.ptr,
                 is_diacritic,
                 input.as_ptr() as _,
                 input.len(),
