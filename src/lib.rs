@@ -82,17 +82,20 @@ impl Drop for Transducer {
 
 impl Transducer {
     pub fn new<P: AsRef<Path>>(path: P) -> Transducer {
+        println!("Loading transducer from {:?}", path.as_ref());
         let buf = std::fs::read(path).unwrap();
         Self::from_bytes(buf)
     }
 
     pub fn from_bytes(mut buf: Vec<u8>) -> Transducer {
+        println!("Loading transducer from bytes");
         buf.shrink_to_fit();
         assert!(buf.len() == buf.capacity());
         let vec_ptr = buf.as_mut_ptr();
         let len = buf.len();
         std::mem::forget(buf);
 
+        println!("Creating transducer");
         let ptr = unsafe { hfst_transducer_new(vec_ptr, len) };
         Self {
             ptr,
@@ -106,10 +109,13 @@ impl Transducer {
     }
 
     pub fn lookup_tags(&self, input: &str, is_diacritic: bool) -> Vec<String> {
+        println!("Looking up tags: {:?}", input);
         let mut tags = CVec::new();
 
         extern "C" fn callback(tags: *mut CVec, it: *const u8, it_size: usize) {
+            println!("Callback");
             let slice = unsafe { std::slice::from_raw_parts(it, it_size) };
+            println!("Slice: {:?}", slice);
             let s = std::str::from_utf8(slice).unwrap();
 
             let mut vec = unsafe { tags.as_mut().unwrap().inner() };
@@ -119,6 +125,7 @@ impl Transducer {
             }
         }
 
+        println!("Looking up tags: {:?}", input);
         unsafe {
             hfst_transducer_lookup_tags(
                 self.ptr,
@@ -132,6 +139,7 @@ impl Transducer {
         }
 
         let mut tags = unsafe { tags.inner() };
+        println!("Tags: {:?}", tags);
 
         tags.sort();
         tags
