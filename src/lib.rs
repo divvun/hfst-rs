@@ -61,20 +61,20 @@ impl Drop for Transducer {
 
 impl Transducer {
     pub fn new<P: AsRef<Path>>(path: P) -> Transducer {
-        println!("Loading transducer from {:?}", path.as_ref());
+        // println!("Loading transducer from {:?}", path.as_ref());
         let buf = std::fs::read(path).unwrap();
         Self::from_bytes(buf)
     }
 
     pub fn from_bytes(mut buf: Vec<u8>) -> Transducer {
-        println!("Loading transducer from bytes");
+        // println!("Loading transducer from bytes");
         buf.shrink_to_fit();
         assert!(buf.len() == buf.capacity());
         let vec_ptr = buf.as_mut_ptr();
         let len = buf.len();
         std::mem::forget(buf);
 
-        println!("Creating transducer");
+        // println!("Creating transducer");
         let ptr = unsafe { hfst_transducer_new(vec_ptr, len) };
         Self {
             ptr,
@@ -88,7 +88,7 @@ impl Transducer {
     }
 
     pub fn lookup_tags(&self, input: &str, is_diacritic: bool) -> Vec<String> {
-        println!("Looking up tags: {:?}", input);
+        // println!("Looking up tags: {:?}", input);
         let mut tags = CVec::new();
 
         extern "C" fn callback(tags: *mut CVec, it: *const u8, it_size: usize) {
@@ -97,7 +97,7 @@ impl Transducer {
             unsafe { tags.as_mut().unwrap().push(s.to_string()) };
         }
 
-        println!("Looking up tags: {:?}", input);
+        // println!("Looking up tags: {:?}", input);
         unsafe {
             hfst_transducer_lookup_tags(
                 self.ptr,
@@ -111,7 +111,7 @@ impl Transducer {
         }
 
         let tags = tags.into_inner();
-        println!("Tags: {:?}", tags);
+        // println!("Tags: {:?}", tags);
 
         // tags.sort();
         tags
@@ -164,6 +164,6 @@ mod tests {
     #[test]
     fn test() {
         let t = Tokenizer::new("tokeniser-gramcheck-gt-desc.pmhfst").unwrap();
-        println!("Something: {:?}", t.tokenize("an ape sat in a car"));
+        // println!("Something: {:?}", t.tokenize("an ape sat in a car"));
     }
 }
