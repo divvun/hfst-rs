@@ -233,6 +233,7 @@ stamp-h?
 /tools/src/hfst-conjunct
 /tools/src/hfst-determinize
 /tools/src/hfst-disjunct
+/tools/src/hfst-dump-alphabets
 /tools/src/hfst-edit-metadata
 /tools/src/hfst-expand-equivalences
 /tools/src/hfst-flookup
