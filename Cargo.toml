@@ -1,14 +1,14 @@
 [package]
 name = "hfst"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 #[lib]
 #crate-type = ["lib", "staticlib"]
 
 [build-dependencies]
 cc = "1.0.79"
-cmake = "0.1.50"
+cmake = "=0.1.48"
 pkg-config = "0.3.27"
 vcpkg = "0.2.15"
 
