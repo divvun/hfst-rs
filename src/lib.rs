@@ -1,7 +1,7 @@
 use libc::{c_char, c_void};
 use std::{ffi::CStr, path::Path, sync::Arc};
 
-extern "C" {
+unsafe extern "C" {
     fn hfst_tokenize(
         tokenizer: *const c_void,
         input_data: *const c_char,
