@@ -10,3 +10,4 @@ hfst-core = { workspace = true }
 hfst-openfst = { workspace = true }
 hfst-ol = { workspace = true }
 libc = "0.2"
+icu = "2.2.0"

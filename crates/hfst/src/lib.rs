@@ -21,4 +21,5 @@ pub mod hfst_exception_defs;
 pub mod hfst_flag_diacritics;
 pub mod hfst_lookup_flag_diacritics;
 pub mod hfst_symbol_defs;
+pub mod hfst_tokenizer;
 pub mod string_utils;
