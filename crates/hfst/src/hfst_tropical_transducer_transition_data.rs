@@ -124,8 +124,9 @@ impl HfstTropicalTransducerTransitionData {
         harmv
     }
 
-    /* Get the symbol that is mapped as `number`. */
-    fn get_symbol(number: u32) -> String {
+    /* Get the symbol that is mapped as `number`. (C++ `protected`; reached by
+    HfstBasicTransducer etc. via `friend` — here crate-visible.) */
+    pub(crate) fn get_symbol(number: u32) -> String {
         let map = NUMBER2SYMBOL_MAP.lock().unwrap();
         if number as usize >= map.len() {
             drop(map);
@@ -139,7 +140,7 @@ impl HfstTropicalTransducerTransitionData {
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-number-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-number-fn]
-    fn get_number(symbol: &str) -> u32 {
+    pub(crate) fn get_number(symbol: &str) -> u32 {
         if symbol.is_empty() {
             // FAIL
             match SYMBOL2NUMBER_MAP.lock().unwrap().get(symbol) {

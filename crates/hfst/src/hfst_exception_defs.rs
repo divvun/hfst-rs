@@ -84,11 +84,13 @@ impl HfstException {
 macro_rules! HFST_THROW {
     ($e:ident) => {{
         $crate::hfst_exception_defs::hfst_set_exception(stringify!($e).to_string());
+        // No trailing `;`: the block is `!`-typed so callers' `?`-free control
+        // flow (e.g. a throw as a function's tail) type-checks.
         std::panic::panic_any($e::new(
             stringify!($e).to_string(),
             file!().to_string(),
             line!() as usize,
-        ));
+        ))
     }};
 }
 
@@ -100,7 +102,8 @@ macro_rules! HFST_THROW_MESSAGE {
     ($e:ident, $m:expr) => {{
         $crate::hfst_exception_defs::hfst_set_exception(stringify!($e).to_string());
         let __name = format!("{}: {}", stringify!($e), $m);
-        std::panic::panic_any($e::new(__name, file!().to_string(), line!() as usize));
+        // No trailing `;`: see HFST_THROW.
+        std::panic::panic_any($e::new(__name, file!().to_string(), line!() as usize))
     }};
 }
 

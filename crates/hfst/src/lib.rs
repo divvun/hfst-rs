@@ -16,6 +16,7 @@
 #![allow(non_upper_case_globals)]
 
 pub mod format_specifiers;
+pub mod hfst_basic_transducer;
 pub mod hfst_basic_transition;
 pub mod hfst_data_types;
 pub mod hfst_exception_defs;
