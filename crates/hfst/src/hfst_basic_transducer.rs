@@ -206,6 +206,34 @@ pub struct HfstBasicTransducer {
     pub name: String,
 }
 
+// Where a substituting copy of a graph is inserted (origin/target state, weight,
+// and a raw pointer to the substituting graph — the C++ stores a
+// `const_cast` `HfstBasicTransducer*`).
+pub struct substitution_data {
+    pub origin_state: HfstState,
+    pub target_state: HfstState,
+    pub weight: WeightType,
+    pub substituting_graph: *const HfstBasicTransducer,
+}
+
+impl substitution_data {
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.substitution-data.substitution-data-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.substitution-data.substitution-data-fn]
+    pub fn new(
+        origin: HfstState,
+        target: HfstState,
+        weight: WeightType,
+        substituting: *const HfstBasicTransducer,
+    ) -> Self {
+        substitution_data {
+            origin_state: origin,
+            target_state: target,
+            weight,
+            substituting_graph: substituting,
+        }
+    }
+}
+
 // Ported in batches; several protected helpers (check_alphabet,
 // swap_state_numbers, the initialize_* reservers, …) are only called by methods
 // in not-yet-ported batches (AT&T I/O, substitution). Allowed until complete.
@@ -2442,6 +2470,280 @@ impl HfstBasicTransducer {
     ) -> &mut Self {
         self.substitute_in_place_func(func);
         self
+    }
+
+    /** @brief Substitute transitions `sp` with a copy of `graph`. */
+    pub fn substitute_pair_with_graph(
+        &mut self,
+        sp: &HfstSymbolPair,
+        graph: &HfstBasicTransducer,
+    ) -> &mut Self {
+        if !(HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.0)
+            && HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1))
+        {
+            crate::HFST_THROW_MESSAGE!(
+                EmptyStringException,
+                "HfstBasicTransducer::substitute(const HfstSymbolPair&, const HfstBasicTransducer&)"
+            );
+        }
+
+        // If neither symbol is known to the graph, do nothing.
+        if !self.alphabet.contains(&sp.0) && !self.alphabet.contains(&sp.1) {
+            return self;
+        }
+
+        let graph_ptr = graph as *const HfstBasicTransducer;
+        let mut substitutions: Vec<substitution_data> = Vec::new();
+
+        for s in 0..self.state_vector.len() {
+            // The transitions that are substituted, i.e. removed.
+            let mut old_indices: Vec<usize> = Vec::new();
+
+            for i in 0..self.state_vector[s].len() {
+                let data = self.state_vector[s][i].get_transition_data().clone();
+                if data.get_input_symbol() == sp.0 && data.get_output_symbol() == sp.1 {
+                    substitutions.push(substitution_data::new(
+                        s as HfstState,
+                        self.state_vector[s][i].get_target_state(),
+                        data.get_weight(),
+                        graph_ptr,
+                    ));
+                    old_indices.push(i);
+                }
+            }
+            // C++ erases collected forward iterators (UB after the first erase);
+            // the evident intent is to remove all matches — done in reverse.
+            for &i in old_indices.iter().rev() {
+                self.state_vector[s].remove(i);
+            }
+        }
+
+        for substitution in substitutions.iter() {
+            self.add_substitution(substitution);
+        }
+        self
+    }
+
+    /* Add a copy of the substituting graph with epsilon transitions between
+    states and with weight as defined in `sub`. */
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-substitution-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-substitution-fn]
+    pub fn add_substitution(&mut self, sub: &substitution_data) {
+        // Epsilon transition to initial state of the substituting graph.
+        let s = self.add_state_new();
+        let epsilon_transition = HfstBasicTransition::new_symbols(
+            s,
+            HfstTropicalTransducerTransitionData::get_epsilon(),
+            HfstTropicalTransducerTransitionData::get_epsilon(),
+            sub.weight,
+        );
+        self.add_transition(sub.origin_state, &epsilon_transition, true);
+
+        let offset = s;
+
+        // Copy the graph. The raw-pointer deref mirrors the C++ (the graphs are
+        // distinct; aliasing self would be UB there too).
+        let graph_ref = unsafe { &*sub.substituting_graph };
+        let mut source_state: HfstState = 0;
+        for it in graph_ref.state_vector.iter() {
+            for tr_it in it.iter() {
+                let data = tr_it.get_transition_data();
+                let transition = HfstBasicTransition::new_symbols(
+                    tr_it.get_target_state() + offset,
+                    data.get_input_symbol(),
+                    data.get_output_symbol(),
+                    data.get_weight(),
+                );
+                self.add_transition(source_state + offset, &transition, true);
+            }
+            source_state += 1;
+        }
+
+        // Epsilon transitions from final states of the graph.
+        for (k, v) in graph_ref.final_weight_map.iter() {
+            let epsilon_transition = HfstBasicTransition::new_symbols(
+                sub.target_state,
+                HfstTropicalTransducerTransitionData::get_epsilon(),
+                HfstTropicalTransducerTransitionData::get_epsilon(),
+                *v,
+            );
+            self.add_transition(*k + offset, &epsilon_transition, true);
+        }
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.weight2marker-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.weight2marker-fn]
+    //
+    // The C++ uses `ostringstream <<` (default float text); Rust's `{}` differs
+    // textually but round-trips with marker2weight's parse internally.
+    pub fn weight2marker(weight: f32) -> String {
+        format!("@{}@", weight)
+    }
+
+    /** @brief Replace each non-zero transition weight with a `@w@` marker arc. */
+    pub fn substitute_weights_with_markers(&mut self) -> &mut Self {
+        let limit = self.state_vector.len();
+        for state in 0..limit {
+            let mut old_indices: Vec<usize> = Vec::new();
+            let mut new_transitions: Vec<HfstBasicTransition> = Vec::new();
+
+            for i in 0..self.state_vector[state].len() {
+                let data = self.state_vector[state][i].get_transition_data().clone();
+                if data.get_weight() != 0.0 {
+                    new_transitions.push(HfstBasicTransition::new_symbols(
+                        self.state_vector[state][i].get_target_state(),
+                        data.get_input_symbol(),
+                        data.get_output_symbol(),
+                        data.get_weight(),
+                    ));
+                    old_indices.push(i);
+                }
+            }
+
+            // Remove the substituted transitions (stack LIFO = reverse position).
+            for &i in old_indices.iter().rev() {
+                self.state_vector[state].remove(i);
+            }
+
+            // Add the substituting transitions.
+            for it in new_transitions.iter() {
+                let new_state = self.add_state_new();
+                let marker = Self::weight2marker(it.get_weight());
+                let marker_transition = HfstBasicTransition::new_symbols(
+                    it.get_target_state(),
+                    marker.clone(),
+                    marker,
+                    0.0,
+                );
+                let new_transition = HfstBasicTransition::new_symbols(
+                    new_state,
+                    it.get_input_symbol(),
+                    it.get_output_symbol(),
+                    0.0,
+                );
+                let source_state = size_t_to_uint(state);
+                self.add_transition(source_state, &new_transition, true);
+                self.add_transition(new_state, &marker_transition, true);
+            }
+        }
+
+        // Go through the final states (snapshot first; the C++ iterates the map
+        // while inserting weight-0 finals that it then skips).
+        let mut final_states_to_remove: BTreeSet<HfstState> = BTreeSet::new();
+        let finals: Vec<(HfstState, f32)> = self
+            .final_weight_map
+            .iter()
+            .map(|(k, v)| (*k, *v))
+            .collect();
+        for (k, v) in finals {
+            if v != 0.0 {
+                let new_state = self.add_state_new();
+                self.set_final_weight(new_state, &0.0);
+                let marker = Self::weight2marker(v);
+                let epsilon_transition =
+                    HfstBasicTransition::new_symbols(new_state, marker.clone(), marker, 0.0);
+                self.add_transition(k, &epsilon_transition, true);
+                final_states_to_remove.insert(k);
+            }
+        }
+        for it in final_states_to_remove.iter() {
+            self.final_weight_map.remove(it);
+        }
+
+        self
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.marker2weight-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.marker2weight-fn]
+    pub fn marker2weight(str: &str, weight: &mut f32) -> bool {
+        if str.len() < 3 {
+            return false;
+        }
+        let bytes = str.as_bytes();
+        if bytes[0] != b'@' || bytes[str.len() - 1] != b'@' {
+            return false;
+        }
+        let weight_string = &str[1..str.len() - 1];
+        match weight_string.parse::<f32>() {
+            Ok(w) => *weight = w,
+            Err(_) => return false,
+        }
+        true
+    }
+
+    /** @brief Replace `@w@` marker arcs with transition weights. */
+    pub fn substitute_markers_with_weights(&mut self) -> &mut Self {
+        let limit = self.state_vector.len();
+        for state in 0..limit {
+            let mut old_indices: Vec<usize> = Vec::new();
+            let mut new_transitions: Vec<HfstBasicTransition> = Vec::new();
+
+            for i in 0..self.state_vector[state].len() {
+                let data = self.state_vector[state][i].get_transition_data().clone();
+                let mut weight: f32 = 0.0;
+                if !Self::marker2weight(&data.get_input_symbol(), &mut weight)
+                    && Self::marker2weight(&data.get_output_symbol(), &mut weight)
+                {
+                    new_transitions.push(HfstBasicTransition::new_symbols(
+                        self.state_vector[state][i].get_target_state(),
+                        data.get_input_symbol(),
+                        crate::hfst_symbol_defs::internal_epsilon.to_string(),
+                        weight,
+                    ));
+                    old_indices.push(i);
+                } else if Self::marker2weight(&data.get_input_symbol(), &mut weight)
+                    && Self::marker2weight(&data.get_output_symbol(), &mut weight)
+                {
+                    old_indices.push(i);
+                }
+            }
+
+            for &i in old_indices.iter().rev() {
+                self.state_vector[state].remove(i);
+            }
+            for new_transition in new_transitions.iter() {
+                self.state_vector[state].push(new_transition.clone());
+            }
+        }
+
+        // Remove weight-marker symbols from the alphabet.
+        let mut weight_markers: Vec<HfstSymbol> = Vec::new();
+        for it in self.alphabet.iter() {
+            let mut foo: f32 = 0.0;
+            if Self::marker2weight(it, &mut foo) {
+                weight_markers.push(it.clone());
+            }
+        }
+        for it in weight_markers.iter() {
+            self.alphabet.remove(it);
+        }
+
+        self
+    }
+
+    // aliases
+    pub fn substitute_symbol_pair(
+        &mut self,
+        old_symbol_pair: &StringPair,
+        new_symbol_pair: &StringPair,
+    ) -> &mut Self {
+        self.substitute_pair(old_symbol_pair, new_symbol_pair)
+    }
+
+    pub fn substitute_symbol_pair_with_set(
+        &mut self,
+        old_symbol_pair: &StringPair,
+        new_symbol_pair_set: &StringPairSet,
+    ) -> &mut Self {
+        self.substitute_pair_with_set(old_symbol_pair, new_symbol_pair_set)
+    }
+
+    pub fn substitute_symbol_pair_with_transducer(
+        &mut self,
+        symbol_pair: &StringPair,
+        transducer: &HfstBasicTransducer,
+    ) -> &mut Self {
+        self.substitute_pair_with_graph(symbol_pair, transducer)
     }
 }
 

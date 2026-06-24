@@ -27,4 +27,39 @@ fn main() {
             .any(|tr| tr.get_input_symbol() == "c" && tr.get_output_symbol() == "d")
     );
     println!("substitute_pair OK ({} transition(s) at state 0)", t.len());
+
+    // weight<->marker encoding round-trip
+    let m = HfstBasicTransducer::weight2marker(0.5);
+    let mut w = 0.0f32;
+    assert!(HfstBasicTransducer::marker2weight(&m, &mut w));
+    assert!((w - 0.5).abs() < 1e-6);
+    println!("weight2marker/marker2weight OK ({m} -> {w})");
+
+    // substitute a:b with a copy of another graph (p:q)
+    let mut sub = HfstBasicTransducer::new();
+    sub.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(1, "p".to_string(), "q".to_string(), 0.0),
+        true,
+    );
+    sub.set_final_weight(1, &0.0);
+    let mut host = HfstBasicTransducer::new();
+    host.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0),
+        true,
+    );
+    host.set_final_weight(1, &0.0);
+    host.substitute_pair_with_graph(&("a".to_string(), "b".to_string()), &sub);
+    // p:q now appears somewhere in the host's expanded graph
+    let found = (0..=host.get_max_state()).any(|s| {
+        host.transitions(s)
+            .iter()
+            .any(|tr| tr.get_input_symbol() == "p" && tr.get_output_symbol() == "q")
+    });
+    assert!(found, "substituting graph not inserted");
+    println!(
+        "substitute_pair_with_graph OK (max_state={})",
+        host.get_max_state()
+    );
 }
