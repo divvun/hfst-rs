@@ -16,8 +16,10 @@ use std::io::{BufRead, Write};
 use crate::harmonize_unknown_and_identity_symbols::HarmonizeUnknownAndIdentitySymbols;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::{
-    HfstOneLevelPath, StringVector, double_to_float, size_t_to_int, size_t_to_uint,
+    HfstOneLevelPath, HfstTwoLevelPath, HfstTwoLevelPaths, StringVector, double_to_float,
+    size_t_to_int, size_t_to_uint,
 };
+use crate::hfst_epsilon_handler::HfstEpsilonHandler;
 use crate::hfst_exception_defs::{
     EmptyStringException, EndOfStreamException, HfstException, NotValidAttFormatException,
     NotValidPrologFormatException, StateIndexOutOfBoundsException, StateIsNotFinalException,
@@ -3496,6 +3498,284 @@ impl HfstBasicTransducer {
             &mut fds,
             obey_flags,
         )
+    }
+
+    // --- Lookup ---
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.push-back-to-two-level-path-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.push-back-to-two-level-path-fn]
+    pub fn push_back_to_two_level_path(
+        path: &mut HfstTwoLevelPath,
+        sp: &StringPair,
+        weight: f32,
+        fds_so_far: Option<&mut StringVector>,
+    ) {
+        path.second.push(sp.clone());
+        path.first += weight;
+        if let Some(fds) = fds_so_far {
+            if FdOperation::is_diacritic(&sp.0) {
+                fds.push(sp.0.clone());
+            }
+        }
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.pop-back-from-two-level-path-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.pop-back-from-two-level-path-fn]
+    pub fn pop_back_from_two_level_path(
+        path: &mut HfstTwoLevelPath,
+        weight: f32,
+        fds_so_far: Option<&mut StringVector>,
+    ) {
+        if let Some(fds) = fds_so_far {
+            let sp = path.second.last().unwrap().clone();
+            if FdOperation::is_diacritic(&sp.0) {
+                fds.pop();
+            }
+        }
+        path.second.pop();
+        path.first -= weight;
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-to-results-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-to-results-fn]
+    pub fn add_to_results(
+        results: &mut HfstTwoLevelPaths,
+        path_so_far: &mut HfstTwoLevelPath,
+        final_weight: f32,
+        max_weight: Option<&f32>,
+    ) {
+        path_so_far.first += final_weight;
+
+        match max_weight {
+            None => {
+                results.insert(path_so_far.clone());
+            }
+            Some(mw) => {
+                if !(path_so_far.first > *mw) {
+                    results.insert(path_so_far.clone());
+                }
+            }
+        }
+        path_so_far.first -= final_weight;
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-possible-transition-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-possible-transition-fn]
+    pub fn is_possible_transition(
+        transition: &HfstBasicTransition,
+        lookup_path: &StringVector,
+        lookup_index: u32,
+        alphabet: &StringSet,
+        input_symbol_consumed: &mut bool,
+        fds_so_far: Option<&mut StringVector>,
+    ) -> bool {
+        let isymbol = transition.get_input_symbol();
+
+        // If we are not at the end of lookup_path,
+        if !(lookup_index == lookup_path.len() as u32) {
+            if isymbol == lookup_path[lookup_index as usize]
+                || ((is_identity(&isymbol) || is_unknown(&isymbol))
+                    && !alphabet.contains(&lookup_path[lookup_index as usize]))
+            {
+                *input_symbol_consumed = true;
+                return true;
+            }
+        }
+        // Epsilons and flag diacritics can always be taken.
+        if is_epsilon(&isymbol) {
+            *input_symbol_consumed = false;
+            return true;
+        }
+        if FdOperation::is_diacritic(&isymbol) {
+            match fds_so_far {
+                None => {
+                    *input_symbol_consumed = false;
+                    return true;
+                }
+                Some(fds) => {
+                    let mut fd_t = FlagDiacriticTable::new();
+                    fds.push(isymbol.clone());
+                    let valid = fd_t.is_valid_string(fds);
+                    fds.pop();
+                    if valid {
+                        *input_symbol_consumed = false;
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.lookup-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.lookup-fn]
+    pub fn lookup_recursive(
+        &self,
+        lookup_path: &StringVector,
+        results: &mut HfstTwoLevelPaths,
+        state: HfstState,
+        mut lookup_index: u32,
+        path_so_far: &mut HfstTwoLevelPath,
+        alphabet: &StringSet,
+        mut eh: HfstEpsilonHandler,
+        max_epsilon_cycles: usize,
+        max_weight: Option<&f32>,
+        max_number: i32,
+        mut flag_diacritic_path: Option<&mut StringVector>,
+    ) {
+        // Check the input-epsilon-cycle, weight and result-count limits.
+        if !eh.can_continue(state) {
+            return;
+        }
+        if let Some(mw) = max_weight {
+            if path_so_far.first > *mw {
+                return;
+            }
+        }
+        if max_number >= 0 && (max_number as usize) <= results.len() {
+            return;
+        }
+
+        // At the end of lookup_path and in a final state -> a valid result.
+        if lookup_index == lookup_path.len() as u32 && self.is_final_state(state) {
+            Self::add_to_results(
+                results,
+                path_so_far,
+                self.get_final_weight(state),
+                max_weight,
+            );
+        }
+
+        let transitions = self.index(state);
+        for transition in transitions.iter() {
+            let mut input_symbol_consumed = false;
+            if Self::is_possible_transition(
+                transition,
+                lookup_path,
+                lookup_index,
+                alphabet,
+                &mut input_symbol_consumed,
+                flag_diacritic_path.as_mut().map(|r| &mut **r),
+            ) {
+                let istr;
+                let ostr;
+                // identity symbol is replaced with the lookup symbol
+                if is_identity(&transition.get_input_symbol()) {
+                    istr = lookup_path[lookup_index as usize].clone();
+                    ostr = istr.clone();
+                } else {
+                    if is_unknown(&transition.get_input_symbol()) {
+                        istr = lookup_path[lookup_index as usize].clone();
+                    } else {
+                        istr = transition.get_input_symbol();
+                    }
+                    ostr = transition.get_output_symbol();
+                }
+
+                Self::push_back_to_two_level_path(
+                    path_so_far,
+                    &(istr, ostr),
+                    transition.get_weight(),
+                    flag_diacritic_path.as_mut().map(|r| &mut **r),
+                );
+
+                if input_symbol_consumed {
+                    lookup_index += 1;
+                    let ehp = HfstEpsilonHandler::new(max_epsilon_cycles);
+                    self.lookup_recursive(
+                        lookup_path,
+                        results,
+                        transition.get_target_state(),
+                        lookup_index,
+                        path_so_far,
+                        alphabet,
+                        ehp,
+                        max_epsilon_cycles,
+                        max_weight,
+                        max_number,
+                        flag_diacritic_path.as_mut().map(|r| &mut **r),
+                    );
+                    lookup_index -= 1;
+                } else {
+                    eh.push_back(state);
+                    self.lookup_recursive(
+                        lookup_path,
+                        results,
+                        transition.get_target_state(),
+                        lookup_index,
+                        path_so_far,
+                        alphabet,
+                        eh.clone(),
+                        max_epsilon_cycles,
+                        max_weight,
+                        max_number,
+                        flag_diacritic_path.as_mut().map(|r| &mut **r),
+                    );
+                }
+
+                Self::pop_back_from_two_level_path(
+                    path_so_far,
+                    transition.get_weight(),
+                    flag_diacritic_path.as_mut().map(|r| &mut **r),
+                );
+            }
+        }
+    }
+
+    /** @brief Look up `lookup_path`, collecting two-level paths into `results`. */
+    pub fn lookup(
+        &self,
+        lookup_path: &StringVector,
+        results: &mut HfstTwoLevelPaths,
+        max_epsilon_cycles: Option<usize>,
+        max_weight: Option<&f32>,
+        max_number: i32,
+        obey_flags: bool,
+    ) {
+        let state: HfstState = 0;
+        let lookup_index: u32 = 0;
+        let mut path_so_far = HfstTwoLevelPath {
+            first: 0.0,
+            second: Vec::new(),
+        };
+        let alphabet = self.get_alphabet().clone();
+        let mut flag_diacritic_path: Option<StringVector> =
+            if obey_flags { Some(Vec::new()) } else { None };
+
+        match max_epsilon_cycles {
+            Some(mec) => {
+                let eh = HfstEpsilonHandler::new(mec);
+                self.lookup_recursive(
+                    lookup_path,
+                    results,
+                    state,
+                    lookup_index,
+                    &mut path_so_far,
+                    &alphabet,
+                    eh,
+                    mec,
+                    max_weight,
+                    max_number,
+                    flag_diacritic_path.as_mut(),
+                );
+            }
+            None => {
+                let eh = HfstEpsilonHandler::new(100000);
+                self.lookup_recursive(
+                    lookup_path,
+                    results,
+                    state,
+                    lookup_index,
+                    &mut path_so_far,
+                    &alphabet,
+                    eh,
+                    100000,
+                    max_weight,
+                    max_number,
+                    flag_diacritic_path.as_mut(),
+                );
+            }
+        }
     }
 }
 
