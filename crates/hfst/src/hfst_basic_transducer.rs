@@ -32,6 +32,14 @@ unsafe fn c_fputs(file: *mut libc::FILE, s: &str) {
     }
 }
 
+// C `atoi`: parse the leading integer, 0 on failure. State numbers here are
+// non-negative, so only leading whitespace and ASCII digits are consumed.
+fn atoi(s: &str) -> u32 {
+    let s = s.trim_start();
+    let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse::<u32>().unwrap_or(0)
+}
+
 /// \brief The number of a state in an HfstTransitionGraph.
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-state]
 pub use crate::hfst_data_types::implementations::HfstState;
@@ -983,6 +991,418 @@ impl HfstBasicTransducer {
         }
         str.truncate(str.len() - 2); // erase(length-2)
         true
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-network-line-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-network-line-fn]
+    //
+    // sscanf(line, "network(%s", namearr): match the literal prefix, then `%s`
+    // (skip leading whitespace, read one non-whitespace token).
+    pub fn parse_prolog_network_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
+        // 'network(NAME).'
+        let n;
+        let mut namearr = String::new();
+        if let Some(rest) = line.strip_prefix("network(") {
+            let tok: String = rest
+                .trim_start()
+                .chars()
+                .take_while(|c| !c.is_whitespace())
+                .collect();
+            if tok.is_empty() {
+                n = 0;
+            } else {
+                namearr = tok;
+                n = 1;
+            }
+        } else {
+            n = 0;
+        }
+        if n != 1 {
+            return false;
+        }
+
+        let mut namestr = namearr;
+        // strip the ending ")." from namestr
+        if !Self::strip_ending_parenthesis_and_comma(&mut namestr) {
+            return false;
+        }
+
+        graph.name = namestr;
+        true
+    }
+
+    // Get positions of `c` in `str`. If `esc` precedes `c`, `c` is not included.
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-positions-of-unescaped-char-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-positions-of-unescaped-char-fn]
+    pub fn get_positions_of_unescaped_char(str: &str, c: char, esc: char) -> Vec<u32> {
+        let mut retval: Vec<u32> = Vec::new();
+        let bytes = str.as_bytes();
+        for i in 0..str.len() {
+            if bytes[i] == c as u8 {
+                if i == 0 {
+                    retval.push(i as u32);
+                } else if bytes[i - 1] == esc as u8 {
+                    // skip escaped chars
+                } else {
+                    retval.push(i as u32);
+                }
+            }
+        }
+        retval
+    }
+
+    // Extract input/output symbols from prolog arc `str` of format "foo":"bar"
+    // or "foo". Return whether symbols were successfully extracted.
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-prolog-arc-symbols-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-prolog-arc-symbols-fn]
+    pub fn get_prolog_arc_symbols(str: &str, isymbol: &mut String, osymbol: &mut String) -> bool {
+        // find positions of non-escaped double quotes
+        let quote_positions = Self::get_positions_of_unescaped_char(str, '"', '\\');
+
+        // "foo"
+        if quote_positions.len() == 2 {
+            if quote_positions[0] != 0 || quote_positions[1] != (str.len() - 1) as u32 {
+                return false; // extra characters outside quotes
+            }
+        }
+        // "foo":"bar"
+        else if quote_positions.len() == 4 {
+            if quote_positions[0] != 0 || quote_positions[3] != (str.len() - 1) as u32 {
+                return false; // extra characters outside quotes
+            }
+            if quote_positions[2] - quote_positions[1] != 2 {
+                return false; // missing colon between inner quotes
+            }
+            if str.as_bytes()[(quote_positions[1] + 1) as usize] != b':' {
+                return false; // else than colon between inner quotes
+            }
+        }
+        // not valid prolog arc
+        else {
+            return false;
+        }
+
+        // "foo"
+        if quote_positions.len() == 2 {
+            // "foo" -> foo
+            let start = (quote_positions[0] + 1) as usize;
+            let len = (quote_positions[1] - quote_positions[0] - 1) as usize;
+            let symbol = str[start..start + len].to_string();
+            *isymbol = Self::deprologize_symbol(&symbol);
+            if *isymbol == "@_UNKNOWN_SYMBOL_@" {
+                // single unknown -> identity
+                *isymbol = "@_IDENTITY_SYMBOL_@".to_string();
+            }
+            *osymbol = isymbol.clone();
+        }
+        // "foo":"bar"
+        else {
+            let s1 = (quote_positions[0] + 1) as usize;
+            let l1 = (quote_positions[1] - quote_positions[0] - 1) as usize;
+            let insymbol = str[s1..s1 + l1].to_string();
+            let s2 = (quote_positions[2] + 1) as usize;
+            let l2 = (quote_positions[3] - quote_positions[2] - 1) as usize;
+            let outsymbol = str[s2..s2 + l2].to_string();
+            *isymbol = Self::deprologize_symbol(&insymbol);
+            *osymbol = Self::deprologize_symbol(&outsymbol);
+        }
+
+        true
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.extract-weight-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.extract-weight-fn]
+    pub fn extract_weight(symbol: &mut String, weight: &mut f32) -> bool {
+        let last_double_quote = symbol.rfind('"');
+        let last_space = symbol.rfind(' ');
+
+        // at least one double quote should be found
+        let ldq = match last_double_quote {
+            None => return false,
+            Some(p) => p,
+        };
+
+        match last_space {
+            None => {
+                // no weight
+            }
+            Some(ls) => {
+                if ldq > ls {
+                    // no weight, last space is part of a symbol
+                } else if ldq + 2 == ls && ls < symbol.len() - 1 {
+                    // + 2 because of the comma
+                    let buffer = &symbol[ls + 1..];
+                    match buffer.parse::<f32>() {
+                        Ok(w) => *weight = w,
+                        Err(_) => return false, // a float could not be read
+                    }
+                    symbol.truncate(ls - 1); // get rid of the comma and weight
+                } else {
+                    return false; // not valid symbol and weight
+                }
+            }
+        }
+        true
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-arc-line-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-arc-line-fn]
+    pub fn parse_prolog_arc_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
+        // sscanf(line, "arc(%[^,], %[^,], %[^,], %[^\t\n]", ...): four scanset
+        // fields separated by a literal comma plus optional whitespace.
+        let mut n = 0;
+        let mut namestr = String::new();
+        let mut sourcestr = String::new();
+        let mut targetstr = String::new();
+        let mut symbolstr = String::new();
+        if let Some(mut rest) = line.strip_prefix("arc(") {
+            let f1: String = rest.chars().take_while(|&c| c != ',').collect();
+            if !f1.is_empty() {
+                namestr = f1.clone();
+                n = 1;
+                rest = &rest[f1.len()..];
+                if let Some(r) = rest.strip_prefix(',') {
+                    rest = r.trim_start();
+                    let f2: String = rest.chars().take_while(|&c| c != ',').collect();
+                    if !f2.is_empty() {
+                        sourcestr = f2.clone();
+                        n = 2;
+                        rest = &rest[f2.len()..];
+                        if let Some(r) = rest.strip_prefix(',') {
+                            rest = r.trim_start();
+                            let f3: String = rest.chars().take_while(|&c| c != ',').collect();
+                            if !f3.is_empty() {
+                                targetstr = f3.clone();
+                                n = 3;
+                                rest = &rest[f3.len()..];
+                                if let Some(r) = rest.strip_prefix(',') {
+                                    rest = r.trim_start();
+                                    let f4: String = rest
+                                        .chars()
+                                        .take_while(|&c| c != '\t' && c != '\n')
+                                        .collect();
+                                    if !f4.is_empty() {
+                                        symbolstr = f4;
+                                        n = 4;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut symbol = symbolstr;
+        // strip the ending ")." from symbolstr
+        if !Self::strip_ending_parenthesis_and_comma(&mut symbol) {
+            return false;
+        }
+
+        if n != 4 {
+            return false;
+        }
+        if namestr != graph.name {
+            return false;
+        }
+
+        let source: u32 = atoi(&sourcestr);
+        let target: u32 = atoi(&targetstr);
+
+        // handle the weight that might be included in symbol string
+        let mut weight: f32 = 0.0;
+        if !Self::extract_weight(&mut symbol, &mut weight) {
+            return false;
+        }
+
+        let mut isymbol = String::new();
+        let mut osymbol = String::new();
+
+        if !Self::get_prolog_arc_symbols(&symbol, &mut isymbol, &mut osymbol) {
+            return false;
+        }
+
+        graph.add_transition(
+            source,
+            &HfstBasicTransition::new_symbols(target, isymbol, osymbol, weight),
+            true,
+        );
+        true
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-final-line-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-final-line-fn]
+    pub fn parse_prolog_final_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
+        // 'final(NAME, number).' or 'final(NAME, number, weight).'
+        let mut weight: f32 = 0.0;
+        let number_of_commas = line.chars().filter(|&c| c == ',').count();
+
+        let namestr: String;
+        let finalstr: String;
+
+        if number_of_commas == 1 {
+            // sscanf(line, "final(%[^,], %[^)]).", namestr, finalstr)
+            let rest = match line.strip_prefix("final(") {
+                Some(r) => r,
+                None => return false,
+            };
+            let name: String = rest.chars().take_while(|&c| c != ',').collect();
+            if name.is_empty() {
+                return false;
+            }
+            let after = &rest[name.len()..];
+            let r = match after.strip_prefix(',') {
+                Some(x) => x.trim_start(),
+                None => return false,
+            };
+            let fin: String = r.chars().take_while(|&c| c != ')').collect();
+            if fin.is_empty() {
+                return false;
+            }
+            namestr = name;
+            finalstr = fin;
+        } else if number_of_commas == 2 {
+            // sscanf(line, "final(%[^,], %[^,], %[^)]).", namestr, finalstr, weightstr)
+            let rest = match line.strip_prefix("final(") {
+                Some(r) => r,
+                None => return false,
+            };
+            let name: String = rest.chars().take_while(|&c| c != ',').collect();
+            if name.is_empty() {
+                return false;
+            }
+            let after = &rest[name.len()..];
+            let r = match after.strip_prefix(',') {
+                Some(x) => x.trim_start(),
+                None => return false,
+            };
+            let fin: String = r.chars().take_while(|&c| c != ',').collect();
+            if fin.is_empty() {
+                return false;
+            }
+            let after2 = &r[fin.len()..];
+            let r2 = match after2.strip_prefix(',') {
+                Some(x) => x.trim_start(),
+                None => return false,
+            };
+            let weightstr: String = r2.chars().take_while(|&c| c != ')').collect();
+            if weightstr.is_empty() {
+                return false;
+            }
+            match weightstr.parse::<f32>() {
+                Ok(w) => weight = w,
+                Err(_) => return false, // a float could not be read
+            }
+            namestr = name;
+            finalstr = fin;
+        } else {
+            return false;
+        }
+
+        if namestr != graph.name {
+            return false;
+        }
+
+        graph.set_final_weight(atoi(&finalstr), &weight);
+        true
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-symbol-line-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-symbol-line-fn]
+    pub fn parse_prolog_symbol_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
+        // sscanf(line, "symbol(%[^,], %s", namearr, symbolarr)
+        let mut n = 0;
+        let mut namearr = String::new();
+        let mut symbolarr = String::new();
+        if let Some(rest) = line.strip_prefix("symbol(") {
+            let name: String = rest.chars().take_while(|&c| c != ',').collect();
+            if !name.is_empty() {
+                namearr = name.clone();
+                n = 1;
+                let after = &rest[name.len()..];
+                if let Some(after_comma) = after.strip_prefix(',') {
+                    let sym: String = after_comma
+                        .trim_start()
+                        .chars()
+                        .take_while(|c| !c.is_whitespace())
+                        .collect();
+                    if !sym.is_empty() {
+                        symbolarr = sym;
+                        n = 2;
+                    }
+                }
+            }
+        }
+
+        if n != 2 {
+            return false;
+        }
+
+        let namestr = namearr;
+        let mut symbolstr = symbolarr;
+
+        if namestr != graph.name {
+            return false;
+        }
+
+        if !Self::strip_ending_parenthesis_and_comma(&mut symbolstr) {
+            return false;
+        }
+
+        if !Self::strip_quotes_from_both_sides(&mut symbolstr) {
+            return false;
+        }
+
+        graph.add_symbol_to_alphabet(&Self::deprologize_symbol(&symbolstr));
+        true
+    }
+
+    // Erase newlines from the end of `str` and return `str`.
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-newlines-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-newlines-fn]
+    pub fn strip_newlines(str: &mut String) -> String {
+        let mut i: i64 = str.len() as i64 - 1;
+        while i >= 0 {
+            let b = str.as_bytes()[i as usize];
+            if b == b'\n' || b == b'\r' {
+                str.remove(i as usize);
+            } else {
+                break;
+            }
+            i -= 1;
+        }
+        str.clone()
+    }
+
+    /** @brief Write the graph in xfst text format to FILE `file`. */
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-xfst-format-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-xfst-format-fn]
+    pub unsafe fn write_in_xfst_format_file(&self, file: *mut libc::FILE, write_weights: bool) {
+        unsafe {
+            let _ = write_weights;
+            let mut source_state: u32 = 0;
+            for it in self.state_vector.iter() {
+                self.print_xfst_state_file(file, source_state);
+                c_fputs(file, ":\t");
+
+                if it.is_empty() {
+                    c_fputs(file, "(no arcs)");
+                } else {
+                    for (i, tr_it) in it.iter().enumerate() {
+                        if i != 0 {
+                            c_fputs(file, ", ");
+                        }
+                        let data = tr_it.get_transition_data();
+                        self.print_xfst_arc_file(file, data);
+
+                        c_fputs(file, " -> ");
+                        self.print_xfst_state_file(file, tr_it.get_target_state());
+                    }
+                }
+                c_fputs(file, ".\n");
+                source_state += 1;
+            }
+        }
     }
 }
 
