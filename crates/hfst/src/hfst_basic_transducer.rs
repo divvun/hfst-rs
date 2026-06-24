@@ -11,13 +11,26 @@
 //! ConvertTransducerFormat).
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write;
 
 use crate::hfst_basic_transition::HfstBasicTransition;
-use crate::hfst_exception_defs::{StateIndexOutOfBoundsException, StateIsNotFinalException};
+use crate::hfst_exception_defs::{
+    HfstException, StateIndexOutOfBoundsException, StateIsNotFinalException,
+};
 use crate::hfst_symbol_defs::{StringPair, StringPairSet, StringSet};
 use crate::hfst_tropical_transducer_transition_data::{
     HfstTropicalTransducerTransitionData, SymbolType, WeightType,
 };
+
+// Raw byte-faithful stand-in for `fprintf` to a C `FILE*`: writes the
+// already-formatted `s` verbatim with `fwrite` (no NUL handling needed, so any
+// bytes are safe). `%f` conversions are pre-rendered as `{:.6}` to match
+// printf's default precision; the rest become ordinary `format!`.
+unsafe fn c_fputs(file: *mut libc::FILE, s: &str) {
+    unsafe {
+        libc::fwrite(s.as_ptr() as *const libc::c_void, 1, s.len(), file);
+    }
+}
 
 /// \brief The number of a state in an HfstTransitionGraph.
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-state]
@@ -584,6 +597,392 @@ impl HfstBasicTransducer {
             self.final_weight_map.remove(&s2);
             self.final_weight_map.insert(s1, w);
         }
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-weight-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-weight-fn]
+    pub unsafe fn write_weight_file(file: *mut libc::FILE, weight: f32) {
+        unsafe {
+            c_fputs(file, &format!("{:.6}", weight));
+        }
+    }
+
+    // The C++ ostream `<<` float formatting (6 significant digits) differs from
+    // the FILE `%f` path above, and Rust's default `{}` differs from both;
+    // forgiven unless a ported test proves the exact text.
+    pub fn write_weight_os(os: &mut dyn Write, weight: f32) {
+        let _ = write!(os, "{}", weight);
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.xfstize-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.xfstize-fn]
+    //
+    // Iterates bytes (C++ `for (char pos : symbol)` over a byte string); the
+    // escaped chars are ASCII and never appear as UTF-8 continuation bytes, so
+    // multibyte symbols are reconstructed byte-for-byte.
+    pub fn xfstize(symbol: &mut String) {
+        let mut escaped_symbol: Vec<u8> = Vec::new();
+        for pos in symbol.bytes() {
+            if pos == b'%' {
+                escaped_symbol.extend_from_slice(b"\"%\"");
+            } else if pos == b'"' {
+                escaped_symbol.extend_from_slice(b"%\"");
+            } else if pos == b'?' {
+                escaped_symbol.extend_from_slice(b"\"?\"");
+            } else {
+                escaped_symbol.push(pos);
+            }
+        }
+        *symbol = String::from_utf8(escaped_symbol).unwrap();
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.xfstize-symbol-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.xfstize-symbol-fn]
+    pub fn xfstize_symbol(symbol: &mut String) {
+        Self::xfstize(symbol);
+        crate::string_utils::replace_all(symbol, "@_EPSILON_SYMBOL_@", "0");
+        crate::string_utils::replace_all(symbol, "@_UNKNOWN_SYMBOL_@", "?");
+        crate::string_utils::replace_all(symbol, "@_IDENTITY_SYMBOL_@", "?");
+        crate::string_utils::replace_all(symbol, "\t", "@_TAB_@");
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.print-xfst-state-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.print-xfst-state-fn]
+    pub fn print_xfst_state_os(&self, os: &mut dyn Write, state: HfstState) {
+        if state == Self::INITIAL_STATE {
+            let _ = write!(os, "S");
+        }
+        if self.is_final_state(state) {
+            let _ = write!(os, "f");
+        }
+        let _ = write!(os, "s{}", state);
+    }
+
+    pub unsafe fn print_xfst_state_file(&self, file: *mut libc::FILE, state: HfstState) {
+        unsafe {
+            if state == Self::INITIAL_STATE {
+                c_fputs(file, "S");
+            }
+            if self.is_final_state(state) {
+                c_fputs(file, "f");
+            }
+            c_fputs(file, &format!("s{}", state));
+        }
+    }
+
+    pub fn print_xfst_arc_os(
+        &self,
+        os: &mut dyn Write,
+        data: &HfstTropicalTransducerTransitionData,
+    ) {
+        // replace all spaces, epsilons and tabs
+        if data.get_input_symbol() != data.get_output_symbol() {
+            let _ = write!(os, "<");
+        }
+        let mut s = data.get_input_symbol();
+        Self::xfstize_symbol(&mut s);
+        let _ = write!(os, "{}", s);
+        if data.get_input_symbol() != data.get_output_symbol()
+            || data.get_output_symbol() == "@_UNKNOWN_SYMBOL_@"
+        {
+            s = data.get_output_symbol();
+            Self::xfstize_symbol(&mut s);
+            let _ = write!(os, ":{}", s);
+        }
+        if data.get_input_symbol() != data.get_output_symbol() {
+            let _ = write!(os, ">");
+        }
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.print-xfst-arc-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.print-xfst-arc-fn]
+    pub unsafe fn print_xfst_arc_file(
+        &self,
+        file: *mut libc::FILE,
+        data: &HfstTropicalTransducerTransitionData,
+    ) {
+        unsafe {
+            if data.get_input_symbol() != data.get_output_symbol() {
+                c_fputs(file, "<");
+            }
+            // replace all spaces, epsilons and tabs
+            let mut s = data.get_input_symbol();
+            Self::xfstize_symbol(&mut s);
+            c_fputs(file, &s);
+            if data.get_input_symbol() != data.get_output_symbol()
+                || data.get_output_symbol() == "@_UNKNOWN_SYMBOL_@"
+            {
+                s = data.get_output_symbol();
+                Self::xfstize_symbol(&mut s);
+                c_fputs(file, &format!(":{}", s));
+            }
+            if data.get_input_symbol() != data.get_output_symbol() {
+                c_fputs(file, ">");
+            }
+        }
+    }
+
+    /** @brief Write the graph in xfst text format to ostream `os`. */
+    pub fn write_in_xfst_format(&self, os: &mut dyn Write, write_weights: bool) {
+        let _ = write_weights; // todo
+        let mut source_state: u32 = 0;
+        for it in self.state_vector.iter() {
+            self.print_xfst_state_os(os, source_state);
+            let _ = write!(os, ":\t");
+
+            if it.is_empty() {
+                let _ = write!(os, "(no arcs)");
+            } else {
+                for (i, tr_it) in it.iter().enumerate() {
+                    if i != 0 {
+                        let _ = write!(os, ", ");
+                    }
+                    let data = tr_it.get_transition_data();
+                    self.print_xfst_arc_os(os, data);
+
+                    let _ = write!(os, " -> ");
+                    self.print_xfst_state_os(os, tr_it.get_target_state());
+                }
+            }
+            let _ = writeln!(os, ".");
+            source_state += 1;
+        }
+    }
+
+    // note: unknown and identity are both '?'
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.prologize-symbol-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.prologize-symbol-fn]
+    pub fn prologize_symbol(symbol: &str) -> String {
+        if symbol == "0" {
+            return "%0".to_string();
+        }
+        if symbol == "?" {
+            return "%?".to_string();
+        }
+        if symbol == "@_EPSILON_SYMBOL_@" {
+            return "0".to_string();
+        }
+        if symbol == "@_UNKNOWN_SYMBOL_@" {
+            return "?".to_string();
+        }
+        if symbol == "@_IDENTITY_SYMBOL_@" {
+            return "?".to_string();
+        }
+        // prepend a backslash to a double quote and to a backslash
+        let mut retval = symbol.to_string();
+        crate::string_utils::replace_all(&mut retval, "\\", "\\\\");
+        crate::string_utils::replace_all(&mut retval, "\"", "\\\"");
+        retval
+    }
+
+    // caveat: '?' is always unknown
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.deprologize-symbol-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.deprologize-symbol-fn]
+    pub fn deprologize_symbol(symbol: &str) -> String {
+        if symbol == "%0" {
+            return "0".to_string();
+        }
+        if symbol == "%?" {
+            return "?".to_string();
+        }
+        if symbol == "0" {
+            return "@_EPSILON_SYMBOL_@".to_string();
+        }
+        if symbol == "?" {
+            return "@_UNKNOWN_SYMBOL_@".to_string();
+        }
+        // remove the escaping backslash in front of a double quote and a backslash
+        let mut retval = symbol.to_string();
+        crate::string_utils::replace_all(&mut retval, "\\\"", "\"");
+        crate::string_utils::replace_all(&mut retval, "\\\\", "\\");
+        retval
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.print-prolog-arc-symbols-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.print-prolog-arc-symbols-fn]
+    pub unsafe fn print_prolog_arc_symbols_file(
+        file: *mut libc::FILE,
+        data: &HfstTropicalTransducerTransitionData,
+    ) {
+        unsafe {
+            let symbol = Self::prologize_symbol(&data.get_input_symbol());
+            c_fputs(file, &format!("\"{}\"", symbol));
+
+            if data.get_input_symbol() != data.get_output_symbol()
+                || data.get_input_symbol() == "@_UNKNOWN_SYMBOL_@"
+            {
+                let symbol = Self::prologize_symbol(&data.get_output_symbol());
+                c_fputs(file, &format!(":\"{}\"", symbol));
+            }
+        }
+    }
+
+    pub fn print_prolog_arc_symbols_os(
+        os: &mut dyn Write,
+        data: &HfstTropicalTransducerTransitionData,
+    ) {
+        let symbol = Self::prologize_symbol(&data.get_input_symbol());
+        let _ = write!(os, "\"{}\"", symbol);
+
+        if data.get_input_symbol() != data.get_output_symbol()
+            || data.get_input_symbol() == "@_UNKNOWN_SYMBOL_@"
+        {
+            let symbol = Self::prologize_symbol(&data.get_output_symbol());
+            let _ = write!(os, ":\"{}\"", symbol);
+        }
+    }
+
+    /** @brief Write the graph in prolog format to FILE `file`. */
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-prolog-format-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-prolog-format-fn]
+    pub unsafe fn write_in_prolog_format_file(
+        &self,
+        file: *mut libc::FILE,
+        name: &str,
+        write_weights: bool,
+    ) {
+        unsafe {
+            let mut source_state: u32 = 0;
+            let identifier = name;
+            // Print the name.
+            if name.contains(',') {
+                let msg = "no commas allowed in the name of prolog networks".to_string();
+                crate::HFST_THROW_MESSAGE!(HfstException, msg);
+            }
+            c_fputs(file, &format!("network({}).\n", identifier));
+
+            // Print symbols that are in the alphabet but not used in arcs.
+            let mut symbols_used_ = self.symbols_used();
+            Self::initialize_alphabet(&mut symbols_used_); // exclude special symbols
+            for it in self.alphabet.iter() {
+                if !symbols_used_.contains(it) {
+                    c_fputs(
+                        file,
+                        &format!(
+                            "symbol({}, \"{}\").\n",
+                            identifier,
+                            Self::prologize_symbol(it)
+                        ),
+                    );
+                }
+            }
+
+            // Print arcs.
+            for it in self.state_vector.iter() {
+                for tr_it in it.iter() {
+                    c_fputs(
+                        file,
+                        &format!(
+                            "arc({}, {}, {}, ",
+                            identifier,
+                            source_state,
+                            tr_it.get_target_state()
+                        ),
+                    );
+                    let data = tr_it.get_transition_data();
+                    Self::print_prolog_arc_symbols_file(file, data);
+                    if write_weights {
+                        c_fputs(file, ", ");
+                        Self::write_weight_file(file, data.get_weight());
+                    }
+                    c_fputs(file, ").\n");
+                }
+                source_state += 1;
+            }
+
+            // Print final states.
+            for (k, v) in self.final_weight_map.iter() {
+                c_fputs(file, &format!("final({}, {}", identifier, k));
+                if write_weights {
+                    c_fputs(file, ", ");
+                    Self::write_weight_file(file, *v);
+                }
+                c_fputs(file, ").\n");
+            }
+        }
+    }
+
+    /** @brief Write the graph in prolog format to ostream `os`. */
+    pub fn write_in_prolog_format_os(&self, os: &mut dyn Write, name: &str, write_weights: bool) {
+        let mut source_state: u32 = 0;
+
+        // Print the name.
+        if name.contains(',') {
+            let msg = "no commas allowed in the name of prolog networks".to_string();
+            crate::HFST_THROW_MESSAGE!(HfstException, msg);
+        }
+        let _ = writeln!(os, "network({}).", name);
+
+        // Print symbols that are in the alphabet but not used in arcs.
+        let mut symbols_used_ = self.symbols_used();
+        Self::initialize_alphabet(&mut symbols_used_); // exclude special symbols
+        for it in self.alphabet.iter() {
+            if !symbols_used_.contains(it) {
+                let _ = writeln!(os, "symbol({}, \"{}\").", name, Self::prologize_symbol(it));
+            }
+        }
+
+        // Print arcs.
+        for it in self.state_vector.iter() {
+            for tr_it in it.iter() {
+                let _ = write!(
+                    os,
+                    "arc({}, {}, {}, ",
+                    name,
+                    source_state,
+                    tr_it.get_target_state()
+                );
+                let data = tr_it.get_transition_data();
+                Self::print_prolog_arc_symbols_os(os, data);
+                if write_weights {
+                    let _ = write!(os, ", ");
+                    Self::write_weight_os(os, data.get_weight());
+                }
+                let _ = writeln!(os, ").");
+            }
+            source_state += 1;
+        }
+
+        // Print final states.
+        for (k, v) in self.final_weight_map.iter() {
+            let _ = write!(os, "final({}, {}", name, k);
+            if write_weights {
+                let _ = write!(os, ", ");
+                Self::write_weight_os(os, *v);
+            }
+            let _ = writeln!(os, ").");
+        }
+    }
+
+    // If `str` is of format ".+", change it to .+ and return true. Else false.
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-quotes-from-both-sides-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-quotes-from-both-sides-fn]
+    pub fn strip_quotes_from_both_sides(str: &mut String) -> bool {
+        if str.len() < 3 {
+            return false;
+        }
+        let bytes = str.as_bytes();
+        if bytes[0] != b'"' || bytes[str.len() - 1] != b'"' {
+            return false;
+        }
+        str.remove(0); // erase(0, 1)
+        str.pop(); // erase(length-1, 1)
+        true
+    }
+
+    // If `str` is of format .+)\." change it to .+ and return true. Else false.
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-ending-parenthesis-and-comma-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-ending-parenthesis-and-comma-fn]
+    pub fn strip_ending_parenthesis_and_comma(str: &mut String) -> bool {
+        if str.len() < 3 {
+            return false;
+        }
+        let bytes = str.as_bytes();
+        if bytes[str.len() - 2] != b')' || bytes[str.len() - 1] != b'.' {
+            return false;
+        }
+        str.truncate(str.len() - 2); // erase(length-2)
+        true
     }
 }
 
