@@ -18,10 +18,12 @@ use crate::hfst_data_types::{double_to_float, size_t_to_uint};
 use crate::hfst_exception_defs::{
     EmptyStringException, EndOfStreamException, HfstException, NotValidAttFormatException,
     NotValidPrologFormatException, StateIndexOutOfBoundsException, StateIsNotFinalException,
+    TransducersAreNotAutomataException,
 };
+use crate::hfst_flag_diacritics::FdOperation;
 use crate::hfst_symbol_defs::{
-    HfstSymbolPairSubstitutions, HfstSymbolSubstitutions, StringPair, StringPairSet, StringSet,
-    is_epsilon, is_identity, is_unknown,
+    HfstSymbolPairSubstitutions, HfstSymbolSubstitutions, StringPair, StringPairSet,
+    StringPairVector, StringSet, is_epsilon, is_identity, is_unknown,
 };
 use crate::hfst_tropical_transducer_transition_data::{
     HfstTropicalTransducerTransitionData, SymbolType, WeightType,
@@ -2744,6 +2746,248 @@ impl HfstBasicTransducer {
         transducer: &HfstBasicTransducer,
     ) -> &mut Self {
         self.substitute_pair_with_graph(symbol_pair, transducer)
+    }
+
+    // --- Insert freely ---
+
+    /** @brief Insert freely any number of `symbol_pair` with weight `weight`. */
+    pub fn insert_freely_pair(
+        &mut self,
+        symbol_pair: &HfstSymbolPair,
+        weight: WeightType,
+    ) -> &mut Self {
+        if !(HfstTropicalTransducerTransitionData::is_valid_symbol(&symbol_pair.0)
+            && HfstTropicalTransducerTransitionData::is_valid_symbol(&symbol_pair.1))
+        {
+            crate::HFST_THROW_MESSAGE!(
+                EmptyStringException,
+                "HfstBasicTransducer::insert_freely(const HfstSymbolPair&, W)"
+            );
+        }
+
+        self.alphabet.insert(symbol_pair.0.clone());
+        self.alphabet.insert(symbol_pair.1.clone());
+
+        for s in 0..self.state_vector.len() {
+            // self-loop on each state
+            let tr = HfstBasicTransition::new_symbols(
+                s as HfstState,
+                symbol_pair.0.clone(),
+                symbol_pair.1.clone(),
+                weight,
+            );
+            self.state_vector[s].push(tr);
+        }
+        self
+    }
+
+    /** @brief Insert freely any of the pairs in `symbol_pairs`. */
+    pub fn insert_freely_set(
+        &mut self,
+        symbol_pairs: &HfstSymbolPairSet,
+        weight: WeightType,
+    ) -> &mut Self {
+        for symbol_pair in symbol_pairs.iter() {
+            if !(HfstTropicalTransducerTransitionData::is_valid_symbol(&symbol_pair.0)
+                && HfstTropicalTransducerTransitionData::is_valid_symbol(&symbol_pair.1))
+            {
+                crate::HFST_THROW_MESSAGE!(
+                    EmptyStringException,
+                    "HfstBasicTransducer::insert_freely(const HfstSymbolPairSet&, W)"
+                );
+            }
+            self.alphabet.insert(symbol_pair.0.clone());
+            self.alphabet.insert(symbol_pair.1.clone());
+        }
+
+        for s in 0..self.state_vector.len() {
+            for symbol_pair in symbol_pairs.iter() {
+                let tr = HfstBasicTransition::new_symbols(
+                    s as HfstState,
+                    symbol_pair.0.clone(),
+                    symbol_pair.1.clone(),
+                    weight,
+                );
+                self.state_vector[s].push(tr);
+            }
+        }
+        self
+    }
+
+    /** @brief Insert freely any number of `graph` in this graph. */
+    pub fn insert_freely_graph(&mut self, graph: &HfstBasicTransducer) -> &mut Self {
+        let marker_this = HfstTropicalTransducerTransitionData::get_marker(&self.alphabet);
+        let marker_graph = HfstTropicalTransducerTransitionData::get_marker(&self.alphabet);
+        let mut marker = marker_this;
+        if marker_graph > marker {
+            marker = marker_graph;
+        }
+
+        // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.marker-pair-fn]
+        // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.marker-pair-fn]
+        let marker_pair = (marker.clone(), marker.clone());
+        self.insert_freely_pair(&marker_pair, 0.0);
+        self.substitute_pair_with_graph(&marker_pair, graph);
+        self.alphabet.remove(&marker); // (C++ flags this line as needing a fix)
+
+        self
+    }
+
+    // --- Disjunction ---
+
+    /* Disjunct the transition of path `spv` pointed by `it` to state `s`. */
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.disjunct-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.disjunct-fn]
+    pub fn disjunct(&mut self, spv: &StringPairVector, it: &mut usize, s: HfstState) -> HfstState {
+        let mut current_state = s;
+        while *it != spv.len() {
+            // C++ copies the transition vector before searching it.
+            let tr = self.state_vector[current_state as usize].clone();
+            let mut transition_found = false;
+            let mut next_state: HfstState = 0;
+
+            for tr_it in tr.iter() {
+                let data = tr_it.get_transition_data();
+                if data.get_input_symbol() == spv[*it].0 && data.get_output_symbol() == spv[*it].1 {
+                    transition_found = true;
+                    next_state = tr_it.get_target_state();
+                    break;
+                }
+            }
+
+            if !transition_found {
+                next_state = self.add_state_new();
+                let transition = HfstBasicTransition::new_symbols(
+                    next_state,
+                    spv[*it].0.clone(),
+                    spv[*it].1.clone(),
+                    0.0,
+                );
+                self.add_transition(current_state, &transition, true);
+            }
+
+            *it += 1;
+            current_state = next_state;
+        }
+        current_state
+    }
+
+    /** @brief Disjunct this graph with a one-path graph defined by `spv`. */
+    pub fn disjunct_path(&mut self, spv: &StringPairVector, weight: WeightType) -> &mut Self {
+        let mut it: usize = 0;
+        let final_state = self.disjunct(spv, &mut it, Self::INITIAL_STATE);
+
+        if self.is_final_state(final_state) {
+            let old_weight = self.get_final_weight(final_state);
+            if old_weight < weight {
+                return self; // smaller-weight path remains
+            }
+        }
+        self.set_final_weight(final_state, &weight);
+        self
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-special-symbol-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-special-symbol-fn]
+    pub fn is_special_symbol(symbol: &str) -> bool {
+        if symbol.len() < 2 {
+            return false;
+        }
+        let bytes = symbol.as_bytes();
+        if bytes[0] == b'@' && bytes[1] == b'_' {
+            return true;
+        }
+        false
+    }
+
+    /** @brief Make the graph complete (add a failure state). */
+    pub fn complete(&mut self) -> &mut Self {
+        let failure_state = self.add_state_new();
+        let mut current_state: HfstState = 0;
+
+        for s in 0..self.state_vector.len() {
+            let mut symbols_present: BTreeSet<HfstSymbol> = BTreeSet::new();
+
+            for i in 0..self.state_vector[s].len() {
+                let data = self.state_vector[s][i].get_transition_data().clone();
+                if data.get_input_symbol() != data.get_output_symbol() {
+                    crate::HFST_THROW!(TransducersAreNotAutomataException);
+                }
+                symbols_present.insert(data.get_input_symbol());
+            }
+
+            let alpha_snapshot: Vec<HfstSymbol> = self.alphabet.iter().cloned().collect();
+            for alpha_it in alpha_snapshot.iter() {
+                if !symbols_present.contains(alpha_it) && !Self::is_special_symbol(alpha_it) {
+                    let tr = HfstBasicTransition::new_symbols(
+                        failure_state,
+                        alpha_it.clone(),
+                        alpha_it.clone(),
+                        0.0,
+                    );
+                    self.add_transition(current_state, &tr, true);
+                }
+            }
+            current_state += 1;
+        }
+        self
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-flags-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-flags-fn]
+    pub fn get_flags(&self) -> StringSet {
+        let mut flags = StringSet::new();
+        for it in self.alphabet.iter() {
+            if FdOperation::is_diacritic(it) {
+                flags.insert(it.clone());
+            }
+        }
+        flags
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.purge-symbol-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.purge-symbol-fn]
+    pub fn purge_symbol(symbol: &str, flag: &str) -> bool {
+        if !FdOperation::is_diacritic(symbol) {
+            return false;
+        }
+        if flag.is_empty() {
+            return true;
+        } else if FdOperation::get_feature(symbol) == flag {
+            return true;
+        }
+        false
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.flag-purge-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.flag-purge-fn]
+    pub fn flag_purge(&mut self, flag: &str) {
+        // (1) Go through all states and transitions
+        for s in 0..self.state_vector.len() {
+            for i in 0..self.state_vector[s].len() {
+                let isym = self.state_vector[s][i].get_input_symbol();
+                let osym = self.state_vector[s][i].get_output_symbol();
+                if Self::purge_symbol(&isym, flag) || Self::purge_symbol(&osym, flag) {
+                    let target = self.state_vector[s][i].get_target_state();
+                    let weight = self.state_vector[s][i].get_weight();
+                    let tr = HfstBasicTransition::new_symbols(
+                        target,
+                        "@_EPSILON_SYMBOL_@".to_string(),
+                        "@_EPSILON_SYMBOL_@".to_string(),
+                        weight,
+                    );
+                    self.state_vector[s][i] = tr;
+                }
+            }
+        }
+        // (2) Go through the alphabet
+        let mut extra_symbols = StringSet::new();
+        for it in self.alphabet.iter() {
+            if Self::purge_symbol(it, flag) {
+                extra_symbols.insert(it.clone());
+            }
+        }
+        self.remove_symbols_from_alphabet(&extra_symbols);
     }
 }
 
