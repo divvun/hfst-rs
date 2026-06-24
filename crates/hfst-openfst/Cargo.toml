@@ -1,0 +1,9 @@
+[package]
+name = "hfst-openfst"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+hfst-types = { workspace = true }
+rustfst = { workspace = true }

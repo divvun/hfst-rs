@@ -1,7 +1,223 @@
 name hfst
+
 source {
     url "git@github.com:hfst/hfst"
     ref master
 }
 
-children ()
+children (
+    {
+        id scaffold
+        title "Cargo workspace + crate skeletons, nfst path deps, Rust nplan platform, manifest re-scope"
+        priority 0
+        log (
+            {
+                at 2026-06-24T16:34:38.219695Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-06-24T17:12:44.389107Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
+        )
+    }
+
+    {
+        id types
+        title "Port hfst-types (data types, exceptions, symbol defs, string utils)"
+        priority 0
+        deps (scaffold)
+    }
+
+    {
+        id core
+        title "Port hfst-core (tokenizer, flag diacritics, HfstBasicTransducer, transition graph, convert)"
+        priority 0
+        deps (types)
+        children (
+            {
+                id core.util
+                title "string-conversions, tokenizer, flag diacritics, epsilon handler, harmonize"
+                priority 0
+                deps (types)
+            }
+
+            {
+                id core.basic
+                title "transition data/graph + HfstBasicTransducer (the interchange format)"
+                priority 0
+                deps (core.util)
+            }
+
+            {
+                id core.convert
+                title "ConvertTransducerFormat (HfstBasicTransducer ↔ backend interchange)"
+                priority 0
+                deps (core.basic)
+            }
+        )
+    }
+
+    {
+        id openfst
+        title "Reimplement used OpenFST subset (hfst-openfst): VectorFst, semirings, algorithms, SymbolTable, binary I/O"
+        priority 0
+        deps (types)
+        children (
+            {
+                id openfst.containers
+                title "VectorFst, Transition, tropical/log semirings, SymbolTable, state/transition iterators"
+                priority 0
+                deps (types)
+            }
+
+            {
+                id openfst.algo
+                title "compose/determinize/minimize/shortest-path/push/encode/rm-eps/equivalent + basic ops"
+                priority 0
+                deps (openfst.containers)
+            }
+
+            {
+                id openfst.io
+                title "OpenFST binary FST read/write + header"
+                priority 0
+                deps (openfst.containers)
+            }
+        )
+    }
+
+    {
+        id ol
+        title "Port hfst-ol (optimized-lookup + HfstOlTransducer + ConvertOl)"
+        priority 1
+        deps (types core)
+    }
+
+    {
+        id facade
+        title "Port hfst facade (HfstTransducer, I/O streams, Tropical/Log wrappers, compose_intersect, rules, print/extract)"
+        priority 1
+        deps (core openfst ol)
+        children (
+            {
+                id facade.transducer
+                title "HfstTransducer class (backend-dispatching facade)"
+                priority 1
+                deps (core openfst)
+            }
+
+            {
+                id facade.weight
+                title "Tropical/LogWeightTransducer + Convert* over hfst-openfst"
+                priority 1
+                deps (openfst core)
+            }
+
+            {
+                id facade.compose-intersect
+                title "compose_intersect/* (optimized composition engine over HfstBasicTransducer)"
+                priority 1
+                deps (core)
+            }
+
+            {
+                id facade.io
+                title "HfstInputStream / HfstOutputStream (format detection + binary I/O)"
+                priority 1
+                deps (facade.transducer)
+            }
+
+            {
+                id facade.rules
+                title "HfstRules, HfstXeroxRules, HfstApply"
+                priority 1
+                deps (facade.transducer)
+            }
+
+            {
+                id facade.print
+                title "PrintDot, PrintPCKimmo, ExtractStrings, Strings2FstTokenizer"
+                priority 1
+                deps (facade.transducer)
+            }
+        )
+    }
+
+    {
+        id parsers
+        title "Port hfst-parsers (XRE/LEXC/PMATCH/TWOLC/XFST evaluators over nfst + AT&T I/O)"
+        priority 2
+        deps (facade)
+        children (
+            {
+                id parsers.xre
+                title "XRE evaluator (nfst-xre AST → transducer; xre_utils, XreCompiler semantics)"
+                priority 2
+                deps (facade)
+            }
+
+            {
+                id parsers.lexc
+                title "LEXC evaluator (nfst-lexc AST → transducer; lexc-utils, LexcCompiler semantics)"
+                priority 2
+                deps (facade)
+            }
+
+            {
+                id parsers.pmatch
+                title "PMATCH evaluator (nfst-pmatch AST → transducer; pmatch_utils, PmatchCompiler semantics)"
+                priority 2
+                deps (facade)
+            }
+
+            {
+                id parsers.twolc
+                title "TWOLC evaluator (nfst-twolc AST → rules → transducers; rule_src/variable_src semantics)"
+                priority 2
+                deps (facade)
+            }
+
+            {
+                id parsers.xfst
+                title "XFST evaluator (nfst-xfst AST → command/stack dispatch; xfst-utils, XfstCompiler semantics)"
+                priority 2
+                deps (facade)
+            }
+
+            {
+                id parsers.att
+                title "AT&T format reader/writer (not covered by nfst)"
+                priority 2
+                deps (facade)
+            }
+        )
+    }
+
+    {
+        id capi
+        title "Port hfst-c (C API via cbindgen)"
+        priority 2
+        deps (facade)
+    }
+
+    {
+        id literal-port
+        title "Literal 1:1 bug-for-bug port of all of libhfst/src into the hfst crate (progress tracked by port_check/manifest, not sub-nodes)"
+        priority 0
+        deps (scaffold)
+        log (
+            {
+                at 2026-06-24T17:19:59.6827Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+        )
+    }
+)

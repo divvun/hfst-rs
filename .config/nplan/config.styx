@@ -26,6 +26,17 @@ platforms (
             }
         }
     }
+
+    {
+        platform "rust"
+        files (crates/**/*.rs)
+        checks {
+            format {
+                cmd "cargo fmt --check"
+                fix "cargo fmt"
+            }
+        }
+    }
 )
 
 commit {

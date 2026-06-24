@@ -318,3 +318,9 @@ hfst-eliminate-flags
 
 /.ccls-cache
 /compile_commands.json
+
+# Rust build output
+/target
+
+# OpenFST reference clone (behavioural reference for rustfst gap-fills; not committed)
+/openfst

@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "LGPL-3.0-or-later"
+repository = "https://github.com/hfst/hfst"
+
+[workspace.dependencies]
+# internal crates (dependency layers, bottom-up)
+hfst-types = { path = "crates/hfst-types" }
+hfst-core = { path = "crates/hfst-core" }
+hfst-openfst = { path = "crates/hfst-openfst" }
+hfst-ol = { path = "crates/hfst-ol" }
+hfst = { path = "crates/hfst" }
+
+# weighted-FST backend (git submodule; our fork of rustfst). Missing algos
+# (difference/intersect/prune/equivalent/eps-normalize) get added here + upstreamed.
+rustfst = { path = "rustfst/rustfst" }
+
+# parser front-ends (sibling repo: text -> AST). The port owns AST -> transducer.
+nfst-xre = { path = "../nfst/crates/nfst-xre" }
+nfst-lexc = { path = "../nfst/crates/nfst-lexc" }
+nfst-pmatch = { path = "../nfst/crates/nfst-pmatch" }
+nfst-twolc = { path = "../nfst/crates/nfst-twolc" }
+nfst-xfst = { path = "../nfst/crates/nfst-xfst" }

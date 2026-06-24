@@ -1,0 +1,11 @@
+[package]
+name = "hfst"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+hfst-types = { workspace = true }
+hfst-core = { workspace = true }
+hfst-openfst = { workspace = true }
+hfst-ol = { workspace = true }
