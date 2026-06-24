@@ -204,6 +204,11 @@ pub type HfstNumberPairSubstitutions = BTreeMap<HfstNumberPair, HfstNumberPair>;
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.subst-map]
 pub type SubstMap = BTreeMap<HfstSymbol, HfstBasicTransducer>;
 
+// [spec:hfst:def:hfst-basic-transducer.hfst.implementations.state-pair]
+pub type StatePair = (HfstState, HfstState);
+// [spec:hfst:def:hfst-basic-transducer.hfst.implementations.state-map]
+pub type StateMap = BTreeMap<StatePair, HfstState>;
+
 /* A topological sort. */
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topological-sort]
 pub struct TopologicalSort {
@@ -3949,6 +3954,427 @@ impl HfstBasicTransducer {
                 );
             }
         }
+    }
+
+    // --- Intersection / merge ---
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-target-state-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-target-state-fn]
+    pub fn find_target_state(
+        target1: HfstState,
+        target2: HfstState,
+        state_map: &mut StateMap,
+        intersection: &mut HfstBasicTransducer,
+        was_new_state: &mut bool,
+    ) -> HfstState {
+        let state_pair = (target1, target2);
+        if let Some(s) = state_map.get(&state_pair) {
+            *was_new_state = false;
+            return *s;
+        }
+        let retval = intersection.add_state_new();
+        state_map.insert(state_pair, retval);
+        *was_new_state = true;
+        retval
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-match-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-match-fn]
+    pub fn handle_match(
+        graph1: &HfstBasicTransducer,
+        tr1: &HfstBasicTransition,
+        graph2: &HfstBasicTransducer,
+        tr2: &HfstBasicTransition,
+        intersection: &mut HfstBasicTransducer,
+        state: HfstState,
+        state_map: &mut StateMap,
+    ) -> HfstState {
+        let target1 = tr1.get_target_state();
+        let target2 = tr2.get_target_state();
+        let mut was_new_state = false;
+        let retval = Self::find_target_state(
+            target1,
+            target2,
+            state_map,
+            intersection,
+            &mut was_new_state,
+        );
+        // the sum of weights is copied to the resulting intersection
+        let transition_weight = tr1.get_weight() + tr2.get_weight();
+        intersection.add_transition(
+            state,
+            &HfstBasicTransition::new_symbols(
+                retval,
+                tr1.get_input_symbol(),
+                tr1.get_output_symbol(),
+                transition_weight,
+            ),
+            true,
+        );
+        if was_new_state && (graph1.is_final_state(target1) && graph2.is_final_state(target2)) {
+            let final_weight = graph1.get_final_weight(target1) + graph2.get_final_weight(target2);
+            intersection.set_final_weight(retval, &final_weight);
+        }
+        retval
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-matches-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-matches-fn]
+    pub fn find_matches(
+        graph1: &HfstBasicTransducer,
+        state1: HfstState,
+        graph2: &HfstBasicTransducer,
+        state2: HfstState,
+        intersection: &mut HfstBasicTransducer,
+        state: HfstState,
+        state_map: &mut StateMap,
+        agenda: &mut BTreeSet<HfstState>,
+    ) {
+        agenda.insert(state); // do not handle `state` twice
+        let tr1 = &graph1.state_vector[state1 as usize];
+        let tr2 = &graph2.state_vector[state2 as usize];
+
+        if tr1.len() == 0 || tr2.len() == 0 {
+            return; // no matches possible
+        }
+        let mut start_search_from: u32 = 0;
+
+        for transition1 in tr1.iter() {
+            let transition_data1 = transition1.get_transition_data();
+
+            for j in start_search_from..tr2.len() as u32 {
+                let transition2 = &tr2[j as usize];
+                let transition_data2 = transition2.get_transition_data();
+                if transition_data2.less_than_ignore_weight(transition_data1) {
+                    // no match found, continue searching
+                } else if transition_data1.less_than_ignore_weight(transition_data2) {
+                    start_search_from = j;
+                    break;
+                } else {
+                    // match found
+                    let target = Self::handle_match(
+                        graph1,
+                        transition1,
+                        graph2,
+                        transition2,
+                        intersection,
+                        state,
+                        state_map,
+                    );
+                    if !agenda.contains(&target) {
+                        Self::find_matches(
+                            graph1,
+                            transition1.get_target_state(),
+                            graph2,
+                            transition2.get_target_state(),
+                            intersection,
+                            target,
+                            state_map,
+                            agenda,
+                        );
+                    }
+                    start_search_from = j + 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.intersect-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.intersect-fn]
+    pub fn intersect(
+        graph1: &mut HfstBasicTransducer,
+        graph2: &mut HfstBasicTransducer,
+    ) -> HfstBasicTransducer {
+        let mut retval = HfstBasicTransducer::new();
+        let mut state_map: StateMap = BTreeMap::new();
+        let mut agenda: BTreeSet<HfstState> = BTreeSet::new();
+        graph1.sort_arcs();
+        graph2.sort_arcs();
+        state_map.insert((0, 0), 0); // initial states
+
+        if graph1.is_final_state(0) && graph2.is_final_state(0) {
+            let final_weight = graph1.get_final_weight(0).min(graph2.get_final_weight(0));
+            retval.set_final_weight(0, &final_weight);
+        }
+
+        Self::find_matches(
+            graph1,
+            0,
+            graph2,
+            0,
+            &mut retval,
+            0,
+            &mut state_map,
+            &mut agenda,
+        );
+
+        retval
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-non-list-match-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-non-list-match-fn]
+    pub fn handle_non_list_match(
+        graph: &HfstBasicTransducer,
+        graph_transition: &HfstBasicTransition,
+        merger: &HfstBasicTransducer,
+        merger_target: HfstState,
+        result: &mut HfstBasicTransducer,
+        result_state: HfstState,
+        state_map: &mut StateMap,
+    ) -> HfstState {
+        let graph_target = graph_transition.get_target_state();
+        let mut was_new_state = false;
+        let retval = Self::find_target_state(
+            graph_target,
+            merger_target,
+            state_map,
+            result,
+            &mut was_new_state,
+        );
+        result.add_transition(
+            result_state,
+            &HfstBasicTransition::new_symbols(
+                retval,
+                graph_transition.get_input_symbol(),
+                graph_transition.get_output_symbol(),
+                graph_transition.get_weight(),
+            ),
+            true,
+        );
+        if was_new_state
+            && (graph.is_final_state(graph_target) && merger.is_final_state(merger_target))
+        {
+            let final_weight =
+                graph.get_final_weight(graph_target) + merger.get_final_weight(merger_target);
+            result.set_final_weight(retval, &final_weight);
+        }
+        retval
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-list-match-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-list-match-fn]
+    pub fn handle_list_match(
+        graph: &HfstBasicTransducer,
+        graph_transition: &HfstBasicTransition,
+        merger: &HfstBasicTransducer,
+        merger_transition: &HfstBasicTransition,
+        result: &mut HfstBasicTransducer,
+        result_state: HfstState,
+        state_map: &mut StateMap,
+        markers_added: &mut BTreeSet<String>,
+    ) -> HfstState {
+        let graph_target = graph_transition.get_target_state();
+        let merger_target = merger_transition.get_target_state();
+        let mut was_new_state = false;
+        let retval = Self::find_target_state(
+            graph_target,
+            merger_target,
+            state_map,
+            result,
+            &mut was_new_state,
+        );
+        let transition_weight = graph_transition.get_weight() + merger_transition.get_weight();
+
+        // testing: add a marker
+        let extra_state = result.add_state_new();
+        result.add_transition(
+            result_state,
+            &HfstBasicTransition::new_symbols(
+                extra_state,
+                format!("@{}@", graph_transition.get_input_symbol()),
+                format!("@{}@", graph_transition.get_output_symbol()),
+                0.0,
+            ),
+            true,
+        );
+        markers_added.insert(format!("@{}@", graph_transition.get_input_symbol()));
+
+        result.add_transition(
+            extra_state,
+            &HfstBasicTransition::new_symbols(
+                retval,
+                merger_transition.get_input_symbol(),
+                merger_transition.get_output_symbol(),
+                transition_weight,
+            ),
+            true,
+        );
+        if was_new_state
+            && (graph.is_final_state(graph_target) && merger.is_final_state(merger_target))
+        {
+            let final_weight =
+                graph.get_final_weight(graph_target) + merger.get_final_weight(merger_target);
+            result.set_final_weight(retval, &final_weight);
+        }
+        retval
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-list-symbol-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-list-symbol-fn]
+    pub fn is_list_symbol(
+        transition_data: &HfstTropicalTransducerTransitionData,
+        list_symbols: &BTreeMap<String, BTreeSet<String>>,
+    ) -> bool {
+        let isymbol = transition_data.get_input_symbol();
+        let osymbol = transition_data.get_output_symbol();
+
+        if isymbol != osymbol {
+            panic!("is_list_symbol: input and output symbols must be the same");
+        }
+        list_symbols.contains_key(&isymbol)
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-matches-for-merge-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-matches-for-merge-fn]
+    #[allow(clippy::too_many_arguments)]
+    pub fn find_matches_for_merge(
+        graph: &HfstBasicTransducer,
+        graph_state: HfstState,
+        merger: &HfstBasicTransducer,
+        merger_state: HfstState,
+        result: &mut HfstBasicTransducer,
+        result_state: HfstState,
+        state_map: &mut StateMap,
+        agenda: &mut BTreeSet<HfstState>,
+        list_symbols: &BTreeMap<String, BTreeSet<String>>,
+        markers_added: &mut BTreeSet<String>,
+    ) {
+        agenda.insert(result_state); // do not handle `result_state` twice
+        let graph_transitions = &graph.state_vector[graph_state as usize];
+        let merger_transitions = &merger.state_vector[merger_state as usize];
+
+        if graph_transitions.len() == 0 {
+            return; // no matches possible
+        }
+
+        for graph_transition in graph_transitions.iter() {
+            let graph_transition_data = graph_transition.get_transition_data();
+
+            // List symbols must be checked separately.
+            if Self::is_list_symbol(graph_transition_data, list_symbols) {
+                let symbol_list = &list_symbols[&graph_transition_data.get_input_symbol()];
+                let mut list_match_found = false;
+                for merger_transition in merger_transitions.iter() {
+                    let merger_transition_data = merger_transition.get_transition_data();
+                    let isymbol = merger_transition_data.get_input_symbol();
+                    let osymbol = merger_transition_data.get_output_symbol();
+
+                    if isymbol != osymbol {
+                        panic!("find_matches_for_merge: input and output symbols must be the same");
+                    }
+
+                    if symbol_list.contains(&isymbol) {
+                        list_match_found = true;
+                        let target = Self::handle_list_match(
+                            graph,
+                            graph_transition,
+                            merger,
+                            merger_transition,
+                            result,
+                            result_state,
+                            state_map,
+                            markers_added,
+                        );
+                        if !agenda.contains(&target) {
+                            Self::find_matches_for_merge(
+                                graph,
+                                graph_transition.get_target_state(),
+                                merger,
+                                merger_transition.get_target_state(),
+                                result,
+                                target,
+                                state_map,
+                                agenda,
+                                list_symbols,
+                                markers_added,
+                            );
+                        }
+                    }
+                }
+                if list_match_found {
+                    continue;
+                }
+            }
+            // Not a list symbol (or no match): copy the symbol as such, using
+            // merger_state as the merger transition target state.
+            let target = Self::handle_non_list_match(
+                graph,
+                graph_transition,
+                merger,
+                merger_state,
+                result,
+                result_state,
+                state_map,
+            );
+            if !agenda.contains(&target) {
+                Self::find_matches_for_merge(
+                    graph,
+                    graph_transition.get_target_state(),
+                    merger,
+                    merger_state,
+                    result,
+                    target,
+                    state_map,
+                    agenda,
+                    list_symbols,
+                    markers_added,
+                );
+            }
+        }
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.merge-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.merge-fn]
+    pub fn merge(
+        graph: &mut HfstBasicTransducer,
+        merger: &mut HfstBasicTransducer,
+        list_symbols: &BTreeMap<String, BTreeSet<String>>,
+        markers_added: &mut BTreeSet<String>,
+    ) -> HfstBasicTransducer {
+        let mut result = HfstBasicTransducer::new();
+        let mut state_map: StateMap = BTreeMap::new();
+        let mut agenda: BTreeSet<HfstState> = BTreeSet::new();
+        graph.sort_arcs();
+        merger.sort_arcs();
+        state_map.insert((0, 0), 0); // initial states
+
+        if graph.is_final_state(0) && merger.is_final_state(0) {
+            let final_weight = graph.get_final_weight(0) + merger.get_final_weight(0);
+            result.set_final_weight(0, &final_weight);
+        }
+
+        // The C++ catches the const char* throws and rethrows as
+        // TransducersAreNotAutomataException.
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            Self::find_matches_for_merge(
+                graph,
+                0,
+                merger,
+                0,
+                &mut result,
+                0,
+                &mut state_map,
+                &mut agenda,
+                list_symbols,
+                markers_added,
+            )
+        }));
+        std::panic::set_hook(prev);
+        if let Err(e) = r {
+            let msg = if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                std::panic::resume_unwind(e)
+            };
+            crate::HFST_THROW_MESSAGE!(TransducersAreNotAutomataException, msg);
+        }
+
+        result
     }
 }
 
