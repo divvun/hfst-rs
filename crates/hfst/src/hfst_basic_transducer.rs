@@ -3722,6 +3722,179 @@ impl HfstBasicTransducer {
         }
     }
 
+    // --- compile-replace regexp paths ---
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-state-for-cycle-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-state-for-cycle-fn]
+    pub fn check_regexp_state_for_cycle(s: HfstState, states_visited: &BTreeSet<HfstState>) {
+        if states_visited.contains(&s) {
+            panic!("error: loop detected inside compile-replace regular expression");
+        }
+    }
+
+    // Returns whether tr is "^]":"^]". Throws (panics) if tr is not allowed.
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-transition-end-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-transition-end-fn]
+    pub fn check_regexp_transition_end(tr: &HfstBasicTransition, input_side: bool) -> bool {
+        let istr = tr.get_input_symbol();
+        let ostr = tr.get_output_symbol();
+
+        if input_side && is_epsilon(&istr) {
+        } else if !input_side && is_epsilon(&ostr) {
+        } else if (input_side && Self::is_special_symbol(&istr))
+            || (!input_side && Self::is_special_symbol(&ostr))
+        {
+            panic!("error: special symbol detected in compile-replace regular expression");
+        } else {
+        }
+
+        if (input_side && istr == "^[") || (!input_side && ostr == "^[") {
+            panic!("error: ^[ detected inside compile-replace regular expression");
+        }
+        if (input_side && istr == "^]") || (!input_side && ostr == "^]") {
+            return true;
+        }
+        false
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-regexp-paths-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-regexp-paths-fn]
+    pub fn find_regexp_paths(
+        &self,
+        s: HfstState,
+        states_visited: &mut BTreeSet<HfstState>,
+        path: &mut Vec<(String, String)>,
+        full_paths: &mut HfstReplacements,
+        input_side: bool,
+    ) {
+        // no cycles allowed inside "^[" and "^]"
+        Self::check_regexp_state_for_cycle(s, states_visited);
+        states_visited.insert(s);
+
+        let transitions = self.index(s);
+        for transition in transitions.iter() {
+            // closing bracket
+            if Self::check_regexp_transition_end(transition, input_side) {
+                // cannot lead to a state already visited
+                Self::check_regexp_state_for_cycle(transition.get_target_state(), states_visited);
+                path.push((
+                    transition.get_input_symbol(),
+                    transition.get_output_symbol(),
+                ));
+                full_paths.push((transition.get_target_state(), path.clone()));
+                path.pop();
+            } else {
+                path.push((
+                    transition.get_input_symbol(),
+                    transition.get_output_symbol(),
+                ));
+                self.find_regexp_paths(
+                    transition.get_target_state(),
+                    states_visited,
+                    path,
+                    full_paths,
+                    input_side,
+                );
+                path.pop();
+            }
+        }
+        states_visited.remove(&s);
+    }
+
+    pub fn find_regexp_paths_driver(
+        &self,
+        s: HfstState,
+        full_paths: &mut HfstReplacements,
+        input_side: bool,
+    ) {
+        let transitions = self.index(s);
+        for transition in transitions.iter() {
+            let istr = transition.get_input_symbol();
+            let ostr = transition.get_output_symbol();
+            if (input_side && istr == "^[") || (!input_side && ostr == "^[") {
+                let mut states_visited: BTreeSet<HfstState> = BTreeSet::new();
+                states_visited.insert(s);
+                let mut path: Vec<(String, String)> = Vec::new();
+                path.push((istr.clone(), ostr.clone()));
+                self.find_regexp_paths(
+                    transition.get_target_state(),
+                    &mut states_visited,
+                    &mut path,
+                    full_paths,
+                    input_side,
+                );
+            }
+        }
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-replacements-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-replacements-fn]
+    pub fn find_replacements(&self, input_side: bool) -> HfstReplacementsMap {
+        let mut replacements = HfstReplacementsMap::new();
+        let mut state: u32 = 0;
+        for _it in self.state_vector.iter() {
+            let mut full_paths: HfstReplacements = Vec::new();
+            self.find_regexp_paths_driver(state, &mut full_paths, input_side);
+            if full_paths.len() > 0 {
+                replacements.insert(state, full_paths);
+            }
+            state += 1;
+        }
+        replacements
+    }
+
+    // Attach a copy of `graph` between states `state1` and `state2` with epsilon
+    // transitions.
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.insert-transducer-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.insert-transducer-fn]
+    pub fn insert_transducer(
+        &mut self,
+        state1: HfstState,
+        state2: HfstState,
+        graph: &HfstBasicTransducer,
+    ) {
+        let offset = self.add_state_new();
+        let mut source_state: u32 = 0;
+        for it in graph.state_vector.iter() {
+            for tr_it in it.iter() {
+                let data = tr_it.get_transition_data();
+                let transition = HfstBasicTransition::new_symbols(
+                    tr_it.get_target_state() + offset,
+                    data.get_input_symbol(),
+                    data.get_output_symbol(),
+                    data.get_weight(),
+                );
+                self.add_transition(source_state + offset, &transition, true);
+            }
+            source_state += 1;
+        }
+
+        // Epsilon transitions from final states of `graph`.
+        let finals: Vec<(HfstState, f32)> = graph
+            .final_weight_map
+            .iter()
+            .map(|(k, v)| (*k, *v))
+            .collect();
+        for (k, v) in finals {
+            let epsilon_transition = HfstBasicTransition::new_symbols(
+                state2,
+                HfstTropicalTransducerTransitionData::get_epsilon(),
+                HfstTropicalTransducerTransitionData::get_epsilon(),
+                v,
+            );
+            self.add_transition(k + offset, &epsilon_transition, true);
+        }
+
+        // Initial transition.
+        let epsilon_transition = HfstBasicTransition::new_symbols(
+            offset,
+            HfstTropicalTransducerTransitionData::get_epsilon(),
+            HfstTropicalTransducerTransitionData::get_epsilon(),
+            0.0,
+        );
+        self.add_transition(state1, &epsilon_transition, true);
+    }
+
     /** @brief Look up `lookup_path`, collecting two-level paths into `results`. */
     pub fn lookup(
         &self,
