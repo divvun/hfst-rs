@@ -1,0 +1,37 @@
+platforms (
+    {
+        platform "c++"
+        files (src/**/*.c src/**/*.cc src/**/*.cpp src/**/*.cxx src/**/*.h src/**/*.hpp include/**/*.h include/**/*.hpp)
+        checks {
+            format {
+                cmd "find src include -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' | xargs clang-format --dry-run --Werror"
+                fix "find src include -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' | xargs clang-format -i"
+            }
+        }
+    }
+
+    {
+        platform "python"
+        files (src/**/*.py **/*.py)
+        checks {
+            format {
+                cmd "ruff format --check ."
+                fix "ruff format ."
+            }
+            lint {
+                cmd "ruff check ."
+            }
+            test {
+                cmd "pytest"
+            }
+        }
+    }
+)
+
+commit {
+    type-prefix "required"
+}
+
+adoption {
+    scope "porting"
+}

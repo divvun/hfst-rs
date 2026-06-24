@@ -1,0 +1,13 @@
+// Porting config — two impl blocks: source-impl (the original,
+// impl-only) and target-impl (the new language, impl + tests).
+// Wave 1 annotates source-impl; waves 2-3 give each rule a second
+// impl site + a /test facet in target-impl. Narrow the include
+// globs to your real source/target roots as needed.
+specs ({
+    name hfst,
+    include (docs/spec/**/*.md),
+    impls (
+        {name source-impl, languages (@cpp), include (libhfst/src/**/*.cc libhfst/src/**/*.cpp libhfst/src/**/*.cxx libhfst/src/**/*.h libhfst/src/**/*.hpp libhfst/src/**/*.hh back-ends/**/*.cc back-ends/**/*.cpp back-ends/**/*.h back-ends/**/*.hpp), mode @impl-only}
+        {name target-impl, languages (@rust), include (src/**/*.rs crates/**/*.rs), exclude (target/**), mode @both}
+    )
+})

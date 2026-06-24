@@ -1,0 +1,7 @@
+name hfst
+source {
+    url "git@github.com:hfst/hfst"
+    ref master
+}
+
+children ()

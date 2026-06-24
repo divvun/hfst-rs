@@ -3,3 +3,6 @@
 *.zhfst binary
 /scripts/windows_tests/* text eol=crlf
 /test/tools/dos.strings text eol=crlf
+
+# Semantic merge for nplan plan / state / lock files at any depth under plan/.
+plan/**/*.styx merge=nplan
