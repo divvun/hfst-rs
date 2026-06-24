@@ -36,5 +36,27 @@ fn main() {
     assert_eq!(trs[0].get_output_symbol(), "b");
     assert!((trs[0].get_weight() - 0.5).abs() < 1e-6);
     assert_eq!(trs[0].get_target_state(), 1);
-    println!("att round-trip OK");
+    println!("att round-trip (add_att_line) OK");
+
+    // Also exercise the FILE* reader path (c_fgets + the read loop) via a tmpfile.
+    unsafe {
+        let f = libc::tmpfile();
+        assert!(!f.is_null(), "tmpfile");
+        libc::fwrite(text.as_ptr() as *const libc::c_void, 1, text.len(), f);
+        libc::rewind(f);
+        let mut lc: u32 = 0;
+        let g3 =
+            HfstBasicTransducer::read_in_att_format_file(f, "@_EPSILON_SYMBOL_@", &mut lc, false);
+        libc::fclose(f);
+
+        assert_eq!(g3.get_max_state(), 1);
+        assert!(g3.is_final_state(1));
+        assert!((g3.get_final_weight(1) - 0.3).abs() < 1e-6);
+        let t = g3.transitions(0);
+        assert_eq!(t.len(), 1);
+        assert_eq!(t[0].get_input_symbol(), "a");
+        assert_eq!(t[0].get_output_symbol(), "b");
+        assert!((t[0].get_weight() - 0.5).abs() < 1e-6);
+        println!("att round-trip (read_in_att_format_file) OK");
+    }
 }

@@ -11,12 +11,13 @@
 //! ConvertTransducerFormat).
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Write;
+use std::io::{BufRead, Write};
 
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::double_to_float;
 use crate::hfst_exception_defs::{
-    HfstException, StateIndexOutOfBoundsException, StateIsNotFinalException,
+    EndOfStreamException, HfstException, NotValidAttFormatException, NotValidPrologFormatException,
+    StateIndexOutOfBoundsException, StateIsNotFinalException,
 };
 use crate::hfst_symbol_defs::{StringPair, StringPairSet, StringSet};
 use crate::hfst_tropical_transducer_transition_data::{
@@ -58,6 +59,83 @@ unsafe fn sprintf_at(ptr: *mut libc::c_char, offset: usize, s: &str) -> usize {
         *dst.add(s.len()) = 0;
     }
     s.len()
+}
+
+// `fgets(buf, 255, file)`: read up to 254 bytes or through a newline; None at
+// EOF. A trailing newline (if any) is kept, matching fgets.
+unsafe fn c_fgets(file: *mut libc::FILE) -> Option<String> {
+    let mut buf = [0u8; 255];
+    let r = unsafe { libc::fgets(buf.as_mut_ptr() as *mut libc::c_char, 255, file) };
+    if r.is_null() {
+        return None;
+    }
+    let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    Some(String::from_utf8_lossy(&buf[..len]).into_owned())
+}
+
+// `std::istream::getline(buf, 255)`: read up to 254 bytes until '\n' (extracted
+// and discarded) or EOF. Returns (line, eof_reached) mirroring the stream's
+// eofbit after the call.
+fn cpp_getline(is: &mut dyn BufRead) -> (String, bool) {
+    let mut line: Vec<u8> = Vec::new();
+    let mut eof = false;
+    loop {
+        let mut byte = [0u8; 1];
+        match is.read(&mut byte) {
+            Ok(0) => {
+                eof = true;
+                break;
+            }
+            Ok(_) => {
+                if byte[0] == b'\n' {
+                    break;
+                }
+                if line.len() >= 254 {
+                    break;
+                }
+                line.push(byte[0]);
+            }
+            Err(_) => {
+                eof = true;
+                break;
+            }
+        }
+    }
+    (String::from_utf8_lossy(&line).into_owned(), eof)
+}
+
+// Approximation of `std::istream::eof()` for a fresh reader: no bytes remain.
+fn is_eof(is: &mut dyn BufRead) -> bool {
+    match is.fill_buf() {
+        Ok(b) => b.is_empty(),
+        Err(_) => true,
+    }
+}
+
+// `get_stripped_line` wrapped in the C++ try/catch: returns None when it would
+// throw `EndOfStreamException`. The panic hook is silenced so the caught
+// exception (a `panic_any`) does not print.
+fn catch_get_stripped_line(
+    is: &mut dyn BufRead,
+    file: *mut libc::FILE,
+    linecount: &mut u32,
+) -> Option<String> {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        HfstBasicTransducer::get_stripped_line(is, file, linecount)
+    }));
+    std::panic::set_hook(prev);
+    match r {
+        Ok(v) => Some(v),
+        Err(e) => {
+            if e.downcast_ref::<EndOfStreamException>().is_some() {
+                None
+            } else {
+                std::panic::resume_unwind(e)
+            }
+        }
+    }
 }
 
 /// \brief The number of a state in an HfstTransitionGraph.
@@ -1688,6 +1766,219 @@ impl HfstBasicTransducer {
             return false;
         }
         true
+    }
+
+    // HfstBasicTransducer(FILE*) — read an AT&T transducer from `file`.
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.hfst-basic-transducer-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.hfst-basic-transducer-fn]
+    pub fn new_from_file(file: *mut libc::FILE) -> Self {
+        let mut alphabet = HfstAlphabet::new();
+        Self::initialize_alphabet(&mut alphabet);
+        let mut state_vector = HfstBasicStates::new();
+        state_vector.push(HfstBasicTransitions::new());
+        let mut retval = HfstBasicTransducer {
+            state_vector,
+            final_weight_map: FinalWeightMap::new(),
+            alphabet,
+            name: String::new(),
+        };
+        let mut linecount: u32 = 0;
+        let read = Self::read_in_att_format_file(file, "@0@", &mut linecount, false);
+        retval.assign(&read);
+        retval.name = String::new();
+        retval
+    }
+
+    // Try to get a line from `is` (if `file` is null) or `file`. On success,
+    // strip newlines, increment `linecount`, and return the line; else throw
+    // EndOfStreamException.
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-stripped-line-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-stripped-line-fn]
+    pub fn get_stripped_line(
+        is: &mut dyn BufRead,
+        file: *mut libc::FILE,
+        linecount: &mut u32,
+    ) -> String {
+        let linestr: String;
+        if file.is_null() {
+            // streams: the C++ condition is inverted (throws when NOT at eof) —
+            // bug preserved.
+            let (line, eof) = cpp_getline(is);
+            if !eof {
+                crate::HFST_THROW!(EndOfStreamException);
+            }
+            linestr = line;
+        } else {
+            match unsafe { c_fgets(file) } {
+                None => crate::HFST_THROW!(EndOfStreamException),
+                Some(l) => linestr = l,
+            }
+        }
+        *linecount += 1;
+
+        let mut s = linestr;
+        Self::strip_newlines(&mut s)
+    }
+
+    // Create a graph from prolog format in `is` (if `file` is null) or `file`.
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-prolog-format-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-prolog-format-fn]
+    pub fn read_in_prolog_format(
+        is: &mut dyn BufRead,
+        file: *mut libc::FILE,
+        linecount: &mut u32,
+    ) -> HfstBasicTransducer {
+        let mut retval = HfstBasicTransducer::new();
+        let mut linestr: String;
+
+        loop {
+            match catch_get_stripped_line(is, file, linecount) {
+                Some(l) => linestr = l,
+                None => crate::HFST_THROW!(NotValidPrologFormatException),
+            }
+
+            if linestr.len() != 0 && linestr.as_bytes()[0] == b'#' {
+                continue; // comment line
+            } else {
+                break; // first non-comment line
+            }
+        }
+
+        if !Self::parse_prolog_network_line(&linestr, &mut retval) {
+            let mut message = String::from("first line not valid prolog: ");
+            message.push_str(&linestr);
+            crate::HFST_THROW_MESSAGE!(NotValidPrologFormatException, message);
+        }
+
+        loop {
+            match catch_get_stripped_line(is, file, linecount) {
+                Some(l) => {
+                    linestr = l;
+                    if linestr.is_empty() {
+                        // prolog separator
+                        return retval;
+                    }
+                }
+                None => return retval,
+            }
+
+            if !(Self::parse_prolog_arc_line(&linestr, &mut retval)
+                || Self::parse_prolog_final_line(&linestr, &mut retval)
+                || Self::parse_prolog_symbol_line(&linestr, &mut retval))
+            {
+                let mut message = String::from("line not valid prolog: ");
+                message.push_str(&linestr);
+                crate::HFST_THROW_MESSAGE!(NotValidPrologFormatException, message);
+            }
+        }
+    }
+
+    pub fn read_in_prolog_format_is(
+        is: &mut dyn BufRead,
+        linecount: &mut u32,
+    ) -> HfstBasicTransducer {
+        Self::read_in_prolog_format(is, std::ptr::null_mut(), linecount)
+    }
+
+    pub fn read_in_prolog_format_file(
+        file: *mut libc::FILE,
+        linecount: &mut u32,
+    ) -> HfstBasicTransducer {
+        let mut dummy = std::io::empty();
+        Self::read_in_prolog_format(&mut dummy, file, linecount)
+    }
+
+    // Create a graph from AT&T format in `is` (if `file` is null) or `file`.
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-att-format-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-att-format-fn]
+    pub fn read_in_att_format(
+        is: &mut dyn BufRead,
+        file: *mut libc::FILE,
+        epsilon_symbol: &str,
+        linecount: &mut u32,
+        warn_negs: bool,
+    ) -> HfstBasicTransducer {
+        if file.is_null() {
+            if is_eof(is) {
+                crate::HFST_THROW!(EndOfStreamException);
+            }
+        } else if unsafe { libc::feof(file) != 0 } {
+            crate::HFST_THROW!(EndOfStreamException);
+        }
+
+        let mut retval = HfstBasicTransducer::new();
+        loop {
+            let line: String;
+            if file.is_null() {
+                // bug preserved: breaks when the getline did NOT reach eof
+                let (l, eof) = cpp_getline(is);
+                if !eof {
+                    break;
+                }
+                line = l;
+            } else {
+                match unsafe { c_fgets(file) } {
+                    None => break,
+                    Some(l) => line = l,
+                }
+            }
+
+            *linecount += 1;
+
+            let bytes = line.as_bytes();
+            // an empty line (with or without newline, incl. windows newline)
+            if bytes.is_empty()
+                || (bytes.len() == 1 && bytes[0] == b'\n')
+                || (bytes.len() == 2 && bytes[0] == b'\r' && bytes[1] == b'\n')
+            {
+                // make sure that the end-of-file is reached
+                if file.is_null() {
+                    let mut b = [0u8; 1];
+                    let _ = is.read(&mut b);
+                } else {
+                    unsafe {
+                        libc::fgetc(file);
+                    }
+                }
+                break;
+            }
+
+            if bytes[0] == b'-' {
+                // transducer separator line is "--"
+                return retval;
+            }
+
+            if !retval.add_att_line(&line, epsilon_symbol, warn_negs) {
+                let message = line.clone();
+                crate::HFST_THROW_MESSAGE!(NotValidAttFormatException, message);
+            }
+        }
+        retval
+    }
+
+    pub fn read_in_att_format_is(
+        is: &mut dyn BufRead,
+        epsilon_symbol: &str,
+        linecount: &mut u32,
+        warn_negs: bool,
+    ) -> HfstBasicTransducer {
+        Self::read_in_att_format(
+            is,
+            std::ptr::null_mut(),
+            epsilon_symbol,
+            linecount,
+            warn_negs,
+        )
+    }
+
+    pub fn read_in_att_format_file(
+        file: *mut libc::FILE,
+        epsilon_symbol: &str,
+        linecount: &mut u32,
+        warn_negs: bool,
+    ) -> HfstBasicTransducer {
+        let mut dummy = std::io::empty();
+        Self::read_in_att_format(&mut dummy, file, epsilon_symbol, linecount, warn_negs)
     }
 }
 
