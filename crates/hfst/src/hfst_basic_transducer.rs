@@ -15,13 +15,16 @@ use std::io::{BufRead, Write};
 
 use crate::harmonize_unknown_and_identity_symbols::HarmonizeUnknownAndIdentitySymbols;
 use crate::hfst_basic_transition::HfstBasicTransition;
-use crate::hfst_data_types::{double_to_float, size_t_to_int, size_t_to_uint};
+use crate::hfst_data_types::{
+    HfstOneLevelPath, StringVector, double_to_float, size_t_to_int, size_t_to_uint,
+};
 use crate::hfst_exception_defs::{
     EmptyStringException, EndOfStreamException, HfstException, NotValidAttFormatException,
     NotValidPrologFormatException, StateIndexOutOfBoundsException, StateIsNotFinalException,
     TransducersAreNotAutomataException,
 };
 use crate::hfst_flag_diacritics::FdOperation;
+use crate::hfst_lookup_flag_diacritics::FlagDiacriticTable;
 use crate::hfst_symbol_defs::{
     HfstSymbolPairSubstitutions, HfstSymbolSubstitutions, StringPair, StringPairSet,
     StringPairVector, StringSet, is_epsilon, is_identity, is_unknown,
@@ -3244,6 +3247,255 @@ impl HfstBasicTransducer {
             }
         }
         result
+    }
+
+    // --- Cycle detection ---
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.has-negative-epsilon-cycles-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.has-negative-epsilon-cycles-fn]
+    pub fn has_negative_epsilon_cycles_recursive(
+        &self,
+        state: HfstState,
+        total_weight: f32,
+        state_weights: &mut BTreeMap<HfstState, f32>,
+    ) -> bool {
+        if let Some(w) = state_weights.get(&state) {
+            // cycle detected
+            if total_weight - *w < 0.0 {
+                return true; // cycle with negative weight
+            }
+            return false; // cycle with positive weight
+        }
+        state_weights.insert(state, total_weight);
+
+        let transitions = self.index(state);
+        for transition in transitions.iter() {
+            if is_epsilon(&transition.get_input_symbol())
+                && is_epsilon(&transition.get_output_symbol())
+                && self.has_negative_epsilon_cycles_recursive(
+                    transition.get_target_state(),
+                    total_weight + transition.get_weight(),
+                    state_weights,
+                )
+            {
+                return true;
+            }
+        }
+        state_weights.remove(&state);
+        false
+    }
+
+    pub fn has_negative_epsilon_cycles(&self) -> bool {
+        let mut has_negative_epsilon_transitions = false;
+        for it in self.state_vector.iter() {
+            for tr_it in it.iter() {
+                if is_epsilon(&tr_it.get_input_symbol())
+                    && is_epsilon(&tr_it.get_output_symbol())
+                    && tr_it.get_weight() < 0.0
+                {
+                    has_negative_epsilon_transitions = true;
+                    break;
+                }
+            }
+        }
+        if !has_negative_epsilon_transitions {
+            return false;
+        }
+
+        let mut state_weights: BTreeMap<HfstState, f32> = BTreeMap::new();
+        for state in Self::INITIAL_STATE..(self.get_max_state() + 1) {
+            if self.has_negative_epsilon_cycles_recursive(state, 0.0, &mut state_weights) {
+                return true;
+            }
+        }
+        false
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-infinitely-ambiguous-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-infinitely-ambiguous-fn]
+    pub fn is_infinitely_ambiguous_recursive(
+        &self,
+        state: HfstState,
+        epsilon_path_states: &mut BTreeSet<HfstState>,
+        states_handled: &mut Vec<u32>,
+    ) -> bool {
+        if states_handled[state as usize] != 0 {
+            return false;
+        }
+
+        let transitions = self.index(state);
+        for transition in transitions.iter() {
+            // Diacritics are also treated as epsilons (may yield false positives).
+            if is_epsilon(&transition.get_input_symbol())
+                || FdOperation::is_diacritic(&transition.get_input_symbol())
+            {
+                epsilon_path_states.insert(state);
+                if epsilon_path_states.contains(&transition.get_target_state()) {
+                    return true;
+                }
+                if self.is_infinitely_ambiguous_recursive(
+                    transition.get_target_state(),
+                    epsilon_path_states,
+                    states_handled,
+                ) {
+                    return true;
+                }
+                epsilon_path_states.remove(&state);
+            }
+        }
+        states_handled[state as usize] = 1;
+        false
+    }
+
+    pub fn is_infinitely_ambiguous(&self) -> bool {
+        let mut epsilon_path_states: BTreeSet<HfstState> = BTreeSet::new();
+        let max_state = self.get_max_state();
+        let mut states_handled: Vec<u32> = vec![0; (max_state + 1) as usize];
+
+        for state in Self::INITIAL_STATE..(max_state + 1) {
+            if self.is_infinitely_ambiguous_recursive(
+                state,
+                &mut epsilon_path_states,
+                &mut states_handled,
+            ) {
+                return true;
+            }
+        }
+        false
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-possible-flag-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-possible-flag-fn]
+    pub fn is_possible_flag(symbol: String, fds: &mut StringVector, obey_flags: bool) -> bool {
+        if FdOperation::is_diacritic(&symbol) {
+            let mut fd_t = FlagDiacriticTable::new();
+            fds.push(symbol);
+            if (!obey_flags) || fd_t.is_valid_string(fds) {
+                return true;
+            } else {
+                fds.pop();
+                return false;
+            }
+        }
+        false
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-lookup-infinitely-ambiguous-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-lookup-infinitely-ambiguous-fn]
+    pub fn is_lookup_infinitely_ambiguous_recursive(
+        &self,
+        s: &HfstOneLevelPath,
+        index: &mut u32,
+        state: HfstState,
+        epsilon_path_states: &mut BTreeSet<HfstState>,
+        fds: &mut StringVector,
+        obey_flags: bool,
+    ) -> bool {
+        // Whether the end of the lookup path s has been reached
+        let mut only_epsilons = false;
+        if s.second.len() as u32 == *index {
+            only_epsilons = true;
+        }
+
+        let transitions = self.index(state);
+        for transition in transitions.iter() {
+            // CASE 1: input epsilons (and flags) do not consume a path symbol.
+            let possible_flag =
+                Self::is_possible_flag(transition.get_input_symbol(), fds, obey_flags);
+            if is_epsilon(&transition.get_input_symbol()) || possible_flag {
+                epsilon_path_states.insert(state);
+                if epsilon_path_states.contains(&transition.get_target_state()) {
+                    return true;
+                }
+                if self.is_lookup_infinitely_ambiguous_recursive(
+                    s,
+                    index,
+                    transition.get_target_state(),
+                    epsilon_path_states,
+                    fds,
+                    obey_flags,
+                ) {
+                    return true;
+                }
+                epsilon_path_states.remove(&state);
+                if possible_flag {
+                    fds.pop();
+                }
+            }
+            // CASE 2: other input symbols consume a path symbol.
+            else if !only_epsilons {
+                let mut continu = false;
+                if transition.get_input_symbol() == s.second[*index as usize] {
+                    continu = true;
+                } else if (transition.get_input_symbol() == "@_UNKNOWN_SYMBOL_@"
+                    || transition.get_input_symbol() == "@_IDENTITY_SYMBOL_@")
+                    && !self.alphabet.contains(&s.second[*index as usize])
+                {
+                    continu = true;
+                }
+
+                if continu {
+                    *index += 1; // consume an input symbol
+                    let mut empty_set: BTreeSet<HfstState> = BTreeSet::new();
+                    if self.is_lookup_infinitely_ambiguous_recursive(
+                        s,
+                        index,
+                        transition.get_target_state(),
+                        &mut empty_set,
+                        fds,
+                        obey_flags,
+                    ) {
+                        return true;
+                    }
+                    *index -= 1; // add the input symbol back
+                }
+            }
+        }
+        false
+    }
+
+    pub fn is_lookup_infinitely_ambiguous_path(
+        &self,
+        s: &HfstOneLevelPath,
+        obey_flags: bool,
+    ) -> bool {
+        let mut epsilon_path_states: BTreeSet<HfstState> = BTreeSet::new();
+        epsilon_path_states.insert(0);
+        let mut index: u32 = 0;
+        let mut fds: StringVector = Vec::new();
+
+        self.is_lookup_infinitely_ambiguous_recursive(
+            s,
+            &mut index,
+            Self::INITIAL_STATE,
+            &mut epsilon_path_states,
+            &mut fds,
+            obey_flags,
+        )
+    }
+
+    pub fn is_lookup_infinitely_ambiguous_string_vector(
+        &self,
+        s: &StringVector,
+        obey_flags: bool,
+    ) -> bool {
+        let mut epsilon_path_states: BTreeSet<HfstState> = BTreeSet::new();
+        epsilon_path_states.insert(0);
+        let mut index: u32 = 0;
+        let path = HfstOneLevelPath {
+            first: 0.0,
+            second: s.clone(),
+        };
+        let mut fds: StringVector = Vec::new();
+
+        self.is_lookup_infinitely_ambiguous_recursive(
+            &path,
+            &mut index,
+            Self::INITIAL_STATE,
+            &mut epsilon_path_states,
+            &mut fds,
+            obey_flags,
+        )
     }
 }
 
