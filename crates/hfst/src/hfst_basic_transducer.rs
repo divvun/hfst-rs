@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
 use crate::hfst_basic_transition::HfstBasicTransition;
+use crate::hfst_data_types::double_to_float;
 use crate::hfst_exception_defs::{
     HfstException, StateIndexOutOfBoundsException, StateIsNotFinalException,
 };
@@ -21,6 +22,7 @@ use crate::hfst_symbol_defs::{StringPair, StringPairSet, StringSet};
 use crate::hfst_tropical_transducer_transition_data::{
     HfstTropicalTransducerTransitionData, SymbolType, WeightType,
 };
+use crate::string_utils::replace_all;
 
 // Raw byte-faithful stand-in for `fprintf` to a C `FILE*`: writes the
 // already-formatted `s` verbatim with `fwrite` (no NUL handling needed, so any
@@ -38,6 +40,24 @@ fn atoi(s: &str) -> u32 {
     let s = s.trim_start();
     let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
     digits.parse::<u32>().unwrap_or(0)
+}
+
+// C `atof`: parse the leading float, 0.0 on failure. The inputs here are clean
+// whitespace-delimited tokens, so a plain parse suffices.
+fn atof(s: &str) -> f64 {
+    s.trim_start().parse::<f64>().unwrap_or(0.0)
+}
+
+// Raw stand-in for `sprintf(ptr + offset, ...)` into a caller-provided buffer:
+// copies the pre-formatted bytes and a trailing NUL (as sprintf does), returning
+// the byte count excluding the NUL (sprintf's return value).
+unsafe fn sprintf_at(ptr: *mut libc::c_char, offset: usize, s: &str) -> usize {
+    unsafe {
+        let dst = (ptr as *mut u8).add(offset);
+        std::ptr::copy_nonoverlapping(s.as_ptr(), dst, s.len());
+        *dst.add(s.len()) = 0;
+    }
+    s.len()
 }
 
 /// \brief The number of a state in an HfstTransitionGraph.
@@ -1403,6 +1423,271 @@ impl HfstBasicTransducer {
                 source_state += 1;
             }
         }
+    }
+
+    /** @brief Write the graph in AT&T format to ostream `os`. */
+    pub fn write_in_att_format_os(&self, os: &mut dyn Write, write_weights: bool) {
+        let mut source_state: u32 = 0;
+        for it in self.state_vector.iter() {
+            for tr_it in it.iter() {
+                let data = tr_it.get_transition_data().clone();
+
+                let mut isymbol = data.get_input_symbol();
+                replace_all(&mut isymbol, " ", "@_SPACE_@");
+                replace_all(&mut isymbol, "@_EPSILON_SYMBOL_@", "@0@");
+                replace_all(&mut isymbol, "\t", "@_TAB_@");
+
+                let mut osymbol = data.get_output_symbol();
+                replace_all(&mut osymbol, " ", "@_SPACE_@");
+                replace_all(&mut osymbol, "@_EPSILON_SYMBOL_@", "@0@");
+                replace_all(&mut osymbol, "\t", "@_TAB_@");
+
+                let _ = write!(
+                    os,
+                    "{}\t{}\t{}\t{}",
+                    source_state,
+                    tr_it.get_target_state(),
+                    isymbol,
+                    osymbol
+                );
+
+                if write_weights {
+                    let _ = write!(os, "\t");
+                    Self::write_weight_os(os, data.get_weight());
+                }
+                let _ = write!(os, "\n");
+            }
+            if self.is_final_state(source_state) {
+                let _ = write!(os, "{}", source_state);
+                if write_weights {
+                    let _ = write!(os, "\t");
+                    Self::write_weight_os(os, self.get_final_weight(source_state));
+                }
+                let _ = write!(os, "\n");
+            }
+            source_state += 1;
+        }
+    }
+
+    /** @brief Write the graph in AT&T format to FILE `file`. */
+    pub unsafe fn write_in_att_format_file(&self, file: *mut libc::FILE, write_weights: bool) {
+        unsafe {
+            let mut source_state: u32 = 0;
+            for it in self.state_vector.iter() {
+                for tr_it in it.iter() {
+                    let data = tr_it.get_transition_data().clone();
+
+                    let mut isymbol = data.get_input_symbol();
+                    replace_all(&mut isymbol, " ", "@_SPACE_@");
+                    replace_all(&mut isymbol, "@_EPSILON_SYMBOL_@", "@0@");
+                    replace_all(&mut isymbol, "\t", "@_TAB_@");
+
+                    let mut osymbol = data.get_output_symbol();
+                    replace_all(&mut osymbol, " ", "@_SPACE_@");
+                    replace_all(&mut osymbol, "@_EPSILON_SYMBOL_@", "@0@");
+                    replace_all(&mut osymbol, "\t", "@_TAB_@");
+
+                    c_fputs(
+                        file,
+                        &format!(
+                            "{}\t{}\t{}\t{}",
+                            source_state,
+                            tr_it.get_target_state(),
+                            isymbol,
+                            osymbol
+                        ),
+                    );
+
+                    if write_weights {
+                        c_fputs(file, "\t");
+                        Self::write_weight_file(file, data.get_weight());
+                    }
+                    c_fputs(file, "\n");
+                }
+                if self.is_final_state(source_state) {
+                    c_fputs(file, &format!("{}", source_state));
+                    if write_weights {
+                        c_fputs(file, "\t");
+                        Self::write_weight_file(file, self.get_final_weight(source_state));
+                    }
+                    c_fputs(file, "\n");
+                }
+                source_state += 1;
+            }
+        }
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-att-format-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-att-format-fn]
+    //
+    // Writes into a caller-provided C buffer via `sprintf` at a running offset.
+    pub unsafe fn write_in_att_format_ptr(&self, ptr: *mut libc::c_char, write_weights: bool) {
+        unsafe {
+            let mut source_state: u32 = 0;
+            let mut cwt: usize = 0; // characters written in total
+            #[allow(unused_assignments)]
+            let mut cw: usize = 0; // characters written in latest call to sprintf
+            for it in self.state_vector.iter() {
+                for tr_it in it.iter() {
+                    let data = tr_it.get_transition_data().clone();
+
+                    let mut isymbol = data.get_input_symbol();
+                    replace_all(&mut isymbol, " ", "@_SPACE_@");
+                    replace_all(&mut isymbol, "@_EPSILON_SYMBOL_@", "@0@");
+                    replace_all(&mut isymbol, "\t", "@_TAB_@");
+
+                    let mut osymbol = data.get_output_symbol();
+                    replace_all(&mut osymbol, " ", "@_SPACE_@");
+                    replace_all(&mut osymbol, "@_EPSILON_SYMBOL_@", "@0@");
+                    replace_all(&mut osymbol, "\t", "@_TAB_@");
+
+                    cw = sprintf_at(
+                        ptr,
+                        cwt,
+                        &format!(
+                            "{}\t{}\t{}\t{}",
+                            source_state,
+                            tr_it.get_target_state(),
+                            isymbol,
+                            osymbol
+                        ),
+                    );
+                    cwt += cw;
+
+                    if write_weights {
+                        cw = sprintf_at(ptr, cwt, &format!("\t{:.6}", data.get_weight()));
+                    }
+                    cwt += cw;
+                    cw = sprintf_at(ptr, cwt, "\n");
+                    cwt += cw;
+                }
+                if self.is_final_state(source_state) {
+                    cw = sprintf_at(ptr, cwt, &format!("{}", source_state));
+                    cwt += cw;
+                    if write_weights {
+                        cw = sprintf_at(
+                            ptr,
+                            cwt,
+                            &format!("\t{:.6}", self.get_final_weight(source_state)),
+                        );
+                    }
+                    cwt += cw;
+                    cw = sprintf_at(ptr, cwt, "\n");
+                    cwt += cw;
+                }
+                source_state += 1;
+            }
+        }
+    }
+
+    /** @brief Write the graph in AT&T format to FILE `file` using numbers
+    instead of symbol names. */
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-att-format-number-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-att-format-number-fn]
+    //
+    // NB: the C++ prints the final-state line *inside* the transition loop (so a
+    // multi-transition final state repeats it); preserved bug-for-bug.
+    pub unsafe fn write_in_att_format_number_file(
+        &self,
+        file: *mut libc::FILE,
+        write_weights: bool,
+    ) {
+        unsafe {
+            let mut source_state: u32 = 0;
+            for it in self.state_vector.iter() {
+                for tr_it in it.iter() {
+                    let data = tr_it.get_transition_data().clone();
+
+                    c_fputs(
+                        file,
+                        &format!(
+                            "{}\t{}\t{}\t{}",
+                            source_state,
+                            tr_it.get_target_state(),
+                            tr_it.get_input_number(),
+                            tr_it.get_output_number()
+                        ),
+                    );
+
+                    if write_weights {
+                        c_fputs(file, &format!("\t{:.6}", data.get_weight()));
+                    }
+                    c_fputs(file, "\n");
+
+                    if self.is_final_state(source_state) {
+                        c_fputs(file, &format!("{}", source_state));
+                        if write_weights {
+                            c_fputs(
+                                file,
+                                &format!("\t{:.6}", self.get_final_weight(source_state)),
+                            );
+                        }
+                        c_fputs(file, "\n");
+                    }
+                }
+                source_state += 1;
+            }
+        }
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-att-line-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-att-line-fn]
+    //
+    // sscanf(line, "%s%s%s%s%s", ...) reads up to five whitespace-delimited
+    // fields; `n` is how many were read.
+    pub fn add_att_line(&mut self, line: &str, epsilon_symbol: &str, warn_negs: bool) -> bool {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        let n = tokens.len().min(5);
+        let a = |i: usize| -> &str { tokens.get(i).copied().unwrap_or("") };
+
+        // set value of weight
+        let mut weight: f32 = 0.0;
+        if n == 2 {
+            // a final state line with weight
+            weight = double_to_float(atof(a(1)));
+        }
+        if n == 5 {
+            // a transition line with weight
+            weight = double_to_float(atof(a(4)));
+        }
+        if (weight < 0.0) && warn_negs {
+            eprintln!("Negative weight {:.6} found :-(", weight);
+        }
+
+        if n == 1 || n == 2 {
+            // a final state line
+            self.set_final_weight(atoi(a(0)), &weight);
+        } else if n == 4 || n == 5 {
+            // a transition line
+            let mut input_symbol = a(2).to_string();
+            let mut output_symbol = a(3).to_string();
+
+            // replace "@_SPACE_@"s with " " and "@0@"s with "@_EPSILON_SYMBOL_@"
+            replace_all(&mut input_symbol, "@_SPACE_@", " ");
+            replace_all(&mut input_symbol, "@0@", "@_EPSILON_SYMBOL_@");
+            replace_all(&mut input_symbol, "@_TAB_@", "\t");
+            replace_all(&mut input_symbol, "@_COLON_@", ":");
+
+            replace_all(&mut output_symbol, "@_SPACE_@", " ");
+            replace_all(&mut output_symbol, "@0@", "@_EPSILON_SYMBOL_@");
+            replace_all(&mut output_symbol, "@_TAB_@", "\t");
+            replace_all(&mut output_symbol, "@_COLON_@", ":");
+
+            if epsilon_symbol == input_symbol {
+                input_symbol = "@_EPSILON_SYMBOL_@".to_string();
+            }
+            if epsilon_symbol == output_symbol {
+                output_symbol = "@_EPSILON_SYMBOL_@".to_string();
+            }
+
+            let tr =
+                HfstBasicTransition::new_symbols(atoi(a(1)), input_symbol, output_symbol, weight);
+            self.add_transition(atoi(a(0)), &tr, true);
+        } else {
+            // line could not be parsed
+            return false;
+        }
+        true
     }
 }
 
