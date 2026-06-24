@@ -230,6 +230,7 @@ dependencies = [
  "hfst-ol",
  "hfst-openfst",
  "hfst-types",
+ "libc",
 ]
 
 [[package]]

@@ -9,3 +9,4 @@ hfst-types = { workspace = true }
 hfst-core = { workspace = true }
 hfst-openfst = { workspace = true }
 hfst-ol = { workspace = true }
+libc = "0.2"
