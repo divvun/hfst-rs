@@ -15,7 +15,7 @@ use std::io::{BufRead, Write};
 
 use crate::harmonize_unknown_and_identity_symbols::HarmonizeUnknownAndIdentitySymbols;
 use crate::hfst_basic_transition::HfstBasicTransition;
-use crate::hfst_data_types::{double_to_float, size_t_to_uint};
+use crate::hfst_data_types::{double_to_float, size_t_to_int, size_t_to_uint};
 use crate::hfst_exception_defs::{
     EmptyStringException, EndOfStreamException, HfstException, NotValidAttFormatException,
     NotValidPrologFormatException, StateIndexOutOfBoundsException, StateIsNotFinalException,
@@ -198,6 +198,70 @@ pub type HfstNumberPairSubstitutions = BTreeMap<HfstNumberPair, HfstNumberPair>;
 
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.subst-map]
 pub type SubstMap = BTreeMap<HfstSymbol, HfstBasicTransducer>;
+
+/* A topological sort. */
+// [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topological-sort]
+pub struct TopologicalSort {
+    pub distance_of_state: Vec<i32>,
+    pub states_at_distance: Vec<BTreeSet<HfstState>>,
+}
+
+impl TopologicalSort {
+    pub fn new() -> Self {
+        TopologicalSort {
+            distance_of_state: Vec::new(),
+            states_at_distance: Vec::new(),
+        }
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topological-sort.set-biggest-state-number-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topological-sort.set-biggest-state-number-fn]
+    pub fn set_biggest_state_number(&mut self, biggest_state_number: u32) {
+        self.distance_of_state = vec![-1; (biggest_state_number + 1) as usize];
+    }
+
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topological-sort.set-state-at-distance-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topological-sort.set-state-at-distance-fn]
+    pub fn set_state_at_distance(&mut self, state: HfstState, distance: u32, overwrite: bool) {
+        if state as usize > self.distance_of_state.len() - 1 {
+            eprintln!(
+                "ERROR in TopologicalSort::set_state_at_distance: first argument ({}) is out of range (should be < {})",
+                state,
+                self.distance_of_state.len()
+            );
+        }
+        while (distance + 1) as usize > self.states_at_distance.len() {
+            self.states_at_distance.push(BTreeSet::new());
+        }
+        let previous_distance = self.distance_of_state[state as usize];
+        if previous_distance != -1 && previous_distance != distance as i32 && overwrite {
+            self.states_at_distance[previous_distance as usize].remove(&state);
+        }
+        self.states_at_distance[distance as usize].insert(state);
+        self.distance_of_state[state as usize] = distance as i32;
+    }
+
+    /* The states that have a maximum distance of `distance`. */
+    pub fn get_states_at_distance(&mut self, distance: u32) -> &BTreeSet<HfstState> {
+        while distance as usize > self.states_at_distance.len() - 1 {
+            self.states_at_distance.push(BTreeSet::new());
+        }
+        &self.states_at_distance[distance as usize]
+    }
+}
+
+impl Default for TopologicalSort {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.sort-distance]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SortDistance {
+    MaximumDistance,
+    MinimumDistance,
+}
 
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer]
 #[derive(Clone, Debug)]
@@ -3089,6 +3153,97 @@ impl HfstBasicTransducer {
             self.add_substitution(substitution);
         }
         self
+    }
+
+    // --- Topological sort / path sizes ---
+
+    /* Get a topological (maximum/minimum distance) sort of this graph. */
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topsort-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topsort-fn]
+    pub fn topsort(&self, dist: SortDistance) -> Vec<BTreeSet<HfstState>> {
+        let mut current_distance: u32 = 0; // topological distance
+        let mut top_sort = TopologicalSort::new();
+
+        let st = self.state_vector.len();
+        if st == 0 {
+            return Vec::new();
+        }
+        let st = st - 1;
+        let biggest_state_number = size_t_to_uint(st);
+        top_sort.set_biggest_state_number(biggest_state_number);
+
+        top_sort.set_state_at_distance(0, current_distance, dist == SortDistance::MaximumDistance);
+        let mut new_states_found; // end condition for the do-while loop
+
+        loop {
+            new_states_found = false;
+            let mut new_states: BTreeSet<HfstState> = BTreeSet::new();
+
+            // states accessible from the current set of states
+            let states = top_sort.get_states_at_distance(current_distance).clone();
+            for state in states.iter() {
+                let transitions = &self.state_vector[*state as usize];
+                for transition in transitions.iter() {
+                    new_states_found = true;
+                    new_states.insert(transition.get_target_state());
+                }
+            }
+
+            for new_state in new_states.iter() {
+                top_sort.set_state_at_distance(
+                    *new_state,
+                    current_distance + 1,
+                    dist == SortDistance::MaximumDistance,
+                );
+            }
+            current_distance += 1;
+
+            if !new_states_found {
+                break;
+            }
+        }
+
+        top_sort.states_at_distance
+    }
+
+    /** The length of the longest string accepted by this graph, or -1. */
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.longest-path-size-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.longest-path-size-fn]
+    pub fn longest_path_size(&self) -> i32 {
+        let states_sorted = self.topsort(SortDistance::MaximumDistance);
+        let st = states_sorted.len();
+        if st > 0 {
+            for distance in (0..=size_t_to_int(st - 1)).rev() {
+                let states = &states_sorted[distance as usize];
+                for state in states.iter() {
+                    if self.is_final_state(*state) {
+                        return distance;
+                    }
+                }
+            }
+        }
+        -1
+    }
+
+    /** The lengths of strings accepted by this graph, in descending order. */
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.path-sizes-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.path-sizes-fn]
+    pub fn path_sizes(&self) -> Vec<u32> {
+        let mut result: Vec<u32> = Vec::new();
+        let states_sorted = self.topsort(SortDistance::MinimumDistance);
+        let st = states_sorted.len();
+        if st > 0 {
+            for distance in (0..=size_t_to_int(st - 1)).rev() {
+                let states = &states_sorted[distance as usize];
+                for state in states.iter() {
+                    if self.is_final_state(*state) {
+                        result.push(distance as u32);
+                        break;
+                    }
+                }
+            }
+        }
+        result
     }
 }
 

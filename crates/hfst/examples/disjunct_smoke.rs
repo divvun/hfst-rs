@@ -20,4 +20,9 @@ fn main() {
     // state 2 branches to two transitions (t and r)
     assert_eq!(lex.transitions(2).len(), 2);
     println!("disjunct trie OK (max_state={})", lex.get_max_state());
+
+    // longest accepted path is "cat"/"car" = length 3
+    assert_eq!(lex.longest_path_size(), 3);
+    assert_eq!(lex.path_sizes(), vec![3]);
+    println!("longest_path_size/path_sizes OK");
 }
