@@ -99,11 +99,8 @@ macro_rules! HFST_THROW {
 macro_rules! HFST_THROW_MESSAGE {
     ($e:ident, $m:expr) => {{
         $crate::hfst_exception_defs::hfst_set_exception(stringify!($e).to_string());
-        std::panic::panic_any($e::new(
-            std::string::String::from(stringify!($e)) + ": " + &std::string::String::from($m),
-            file!().to_string(),
-            line!() as usize,
-        ));
+        let __name = format!("{}: {}", stringify!($e), $m);
+        std::panic::panic_any($e::new(__name, file!().to_string(), line!() as usize));
     }};
 }
 

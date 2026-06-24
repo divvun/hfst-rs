@@ -1,0 +1,383 @@
+//! Port of
+//! `libhfst/src/implementations/HfstTropicalTransducerTransitionData.{h,cc}`.
+//!
+//! One implementation of the transition-data template parameter `C` used by
+//! `HfstTransition`. Symbols are interned to `unsigned int` numbers via two
+//! process-global `static` maps (shared by every transducer using this data
+//! type); those are ported as module-level `LazyLock<Mutex<…>>`, seeded by the
+//! two initializer structs exactly as the C++ global `dummy1`/`dummy2` objects
+//! seed them. Symbol getters return an owned `String` (the C++ returns a
+//! `const std::string&` into the static vector; a reference cannot escape the
+//! `Mutex` guard, so the equal value is cloned out).
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{LazyLock, Mutex};
+
+use crate::hfst_exception_defs::{EmptyStringException, HfstFatalException};
+
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.symbol-type]
+pub type SymbolType = String;
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.weight-type]
+pub type WeightType = f32;
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.symbol-type-set]
+pub type SymbolTypeSet = BTreeSet<SymbolType>;
+
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.number2-symbol-vector]
+pub type Number2SymbolVector = Vec<SymbolType>;
+// `std::map<SymbolType, unsigned int, string_comparison>`. The `string_comparison`
+// comparator is plain lexicographic `<`, which is exactly `BTreeMap<String, _>`'s
+// own ordering.
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.symbol2-number-map]
+pub type Symbol2NumberMap = BTreeMap<SymbolType, u32>;
+
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.string-comparison]
+pub struct string_comparison;
+
+impl string_comparison {
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.string-comparison.operator-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.string-comparison.operator-fn]
+    pub fn operator_call(str1: &str, str2: &str) -> bool {
+        // str1.compare(str2) < 0
+        str1 < str2
+    }
+}
+
+// Static members of HfstTropicalTransducerTransitionData, seeded by the
+// initializer structs below (the C++ global `dummy1`/`dummy2`).
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.dummy1-fn]
+// [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.dummy1-fn]
+static NUMBER2SYMBOL_MAP: LazyLock<Mutex<Number2SymbolVector>> = LazyLock::new(|| {
+    let mut vect = Number2SymbolVector::new();
+    Number2SymbolVectorInitializer::new(&mut vect);
+    Mutex::new(vect)
+});
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.dummy2-fn]
+// [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.dummy2-fn]
+static SYMBOL2NUMBER_MAP: LazyLock<Mutex<Symbol2NumberMap>> = LazyLock::new(|| {
+    let mut map = Symbol2NumberMap::new();
+    Symbol2NumberMapInitializer::new(&mut map);
+    Mutex::new(map)
+});
+static MAX_NUMBER: Mutex<u32> = Mutex::new(2);
+
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data]
+#[derive(Clone, Debug)]
+pub struct HfstTropicalTransducerTransitionData {
+    /* The actual transition data */
+    pub input_number: u32,
+    pub output_number: u32,
+    pub weight: WeightType,
+}
+
+impl HfstTropicalTransducerTransitionData {
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-epsilon-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-epsilon-fn]
+    pub fn get_epsilon() -> SymbolType {
+        SymbolType::from("@_EPSILON_SYMBOL_@")
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-unknown-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-unknown-fn]
+    pub fn get_unknown() -> SymbolType {
+        SymbolType::from("@_UNKNOWN_SYMBOL_@")
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-identity-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-identity-fn]
+    pub fn get_identity() -> SymbolType {
+        SymbolType::from("@_IDENTITY_SYMBOL_@")
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-max-number-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-max-number-fn]
+    pub fn get_max_number() -> u32 {
+        *MAX_NUMBER.lock().unwrap()
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-harmonization-vector-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-harmonization-vector-fn]
+    pub fn get_harmonization_vector(symbols: &Vec<SymbolType>) -> Vec<u32> {
+        let mut harmv: Vec<u32> = Vec::new();
+        harmv.reserve(symbols.len());
+        harmv.resize(symbols.len(), 0);
+        for i in 0..symbols.len() {
+            if symbols[i] != "" {
+                harmv[i] = Self::get_number(&symbols[i]);
+            }
+        }
+        harmv
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-reverse-harmonization-vector-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-reverse-harmonization-vector-fn]
+    pub fn get_reverse_harmonization_vector(symbols: &BTreeMap<SymbolType, u32>) -> Vec<u32> {
+        let max_number = *MAX_NUMBER.lock().unwrap();
+        let mut harmv: Vec<u32> = Vec::new();
+        harmv.reserve((max_number + 1) as usize);
+        harmv.resize((max_number + 1) as usize, 0);
+        for i in 0..harmv.len() {
+            let sym = Self::get_symbol(i as u32);
+            if let Some(second) = symbols.get(&sym) {
+                harmv[i] = *second;
+            }
+        }
+        harmv
+    }
+
+    /* Get the symbol that is mapped as `number`. */
+    fn get_symbol(number: u32) -> String {
+        let map = NUMBER2SYMBOL_MAP.lock().unwrap();
+        if number as usize >= map.len() {
+            drop(map);
+            let mut message = String::from("HfstTropicalTransducerTransitionData: number ");
+            message.push_str(&number.to_string());
+            message.push_str(" is not mapped to any symbol");
+            crate::HFST_THROW_MESSAGE!(HfstFatalException, message);
+        }
+        map[number as usize].clone()
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-number-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-number-fn]
+    fn get_number(symbol: &str) -> u32 {
+        if symbol.is_empty() {
+            // FAIL
+            match SYMBOL2NUMBER_MAP.lock().unwrap().get(symbol) {
+                None => {
+                    eprintln!("ERROR: No number for the empty symbol\n");
+                }
+                Some(second) => {
+                    eprintln!("ERROR: The empty symbol corresdponds to number {}", second);
+                }
+            }
+            assert!(false);
+        }
+
+        {
+            let map = SYMBOL2NUMBER_MAP.lock().unwrap();
+            if let Some(second) = map.get(symbol) {
+                return *second;
+            }
+        }
+        let mut max = MAX_NUMBER.lock().unwrap();
+        *max += 1;
+        let new_max = *max;
+        drop(max);
+        SYMBOL2NUMBER_MAP
+            .lock()
+            .unwrap()
+            .insert(symbol.to_string(), new_max);
+        NUMBER2SYMBOL_MAP.lock().unwrap().push(symbol.to_string());
+        new_max
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.print-transition-data-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.print-transition-data-fn]
+    pub fn print_transition_data(&self) {
+        eprintln!(
+            "{}:{} {}",
+            self.input_number, self.output_number, self.weight
+        );
+    }
+
+    pub fn new() -> Self {
+        HfstTropicalTransducerTransitionData {
+            input_number: 0,
+            output_number: 0,
+            weight: 0.0,
+        }
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.hfst-tropical-transducer-transition-data-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.hfst-tropical-transducer-transition-data-fn]
+    pub fn new_symbols(isymbol: SymbolType, osymbol: SymbolType, weight: WeightType) -> Self {
+        if isymbol.is_empty() || osymbol.is_empty() {
+            crate::HFST_THROW_MESSAGE!(
+                EmptyStringException,
+                "HfstTropicalTransducerTransitionData(SymbolType, SymbolType, WeightType)"
+            );
+        }
+
+        HfstTropicalTransducerTransitionData {
+            input_number: Self::get_number(&isymbol),
+            output_number: Self::get_number(&osymbol),
+            weight,
+        }
+    }
+
+    pub fn new_numbers(inumber: u32, onumber: u32, weight: WeightType) -> Self {
+        HfstTropicalTransducerTransitionData {
+            input_number: inumber,
+            output_number: onumber,
+            weight,
+        }
+    }
+
+    pub fn get_input_symbol(&self) -> SymbolType {
+        Self::get_symbol(self.input_number)
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-input-symbol-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-input-symbol-fn]
+    pub fn set_input_symbol(&mut self, symbol: &SymbolType) {
+        self.input_number = Self::get_number(symbol);
+    }
+
+    pub fn get_output_symbol(&self) -> SymbolType {
+        Self::get_symbol(self.output_number)
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-output-symbol-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-output-symbol-fn]
+    pub fn set_output_symbol(&mut self, symbol: &SymbolType) {
+        self.output_number = Self::get_number(symbol);
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-input-number-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-input-number-fn]
+    pub fn get_input_number(&self) -> u32 {
+        self.input_number
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-output-number-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-output-number-fn]
+    pub fn get_output_number(&self) -> u32 {
+        self.output_number
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-weight-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-weight-fn]
+    pub fn get_weight(&self) -> WeightType {
+        self.weight
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-weight-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-weight-fn]
+    pub fn set_weight(&mut self, w: WeightType) {
+        self.weight = w;
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.is-epsilon-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.is-epsilon-fn]
+    pub fn is_epsilon(symbol: &SymbolType) -> bool {
+        symbol == "@_EPSILON_SYMBOL_@"
+    }
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.is-unknown-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.is-unknown-fn]
+    pub fn is_unknown(symbol: &SymbolType) -> bool {
+        symbol == "@_UNKNOWN_SYMBOL_@"
+    }
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.is-identity-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.is-identity-fn]
+    pub fn is_identity(symbol: &SymbolType) -> bool {
+        symbol == "@_IDENTITY_SYMBOL_@"
+    }
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.is-valid-symbol-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.is-valid-symbol-fn]
+    pub fn is_valid_symbol(symbol: &SymbolType) -> bool {
+        if symbol.is_empty() {
+            return false;
+        }
+        true
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-marker-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-marker-fn]
+    pub fn get_marker(_sts: &SymbolTypeSet) -> SymbolType {
+        SymbolType::from("@_MARKER_SYMBOL_@")
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.operator-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.operator-fn]
+    pub fn operator_lt(&self, another: &HfstTropicalTransducerTransitionData) -> bool {
+        if self.input_number < another.input_number {
+            return true;
+        }
+        if self.input_number > another.input_number {
+            return false;
+        }
+        if self.output_number < another.output_number {
+            return true;
+        }
+        if self.output_number > another.output_number {
+            return false;
+        }
+        self.weight < another.weight
+    }
+
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.less-than-ignore-weight-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.less-than-ignore-weight-fn]
+    pub fn less_than_ignore_weight(&self, another: &HfstTropicalTransducerTransitionData) -> bool {
+        if self.input_number < another.input_number {
+            return true;
+        }
+        if self.input_number > another.input_number {
+            return false;
+        }
+        if self.output_number < another.output_number {
+            return true;
+        }
+        if self.output_number > another.output_number {
+            return false;
+        }
+        false
+    }
+}
+
+// `bool operator<` is the canonical ordering; `Ord`/`PartialOrd` make the type
+// usable in ordered containers, using `total_cmp` for the weight to give a total
+// order that agrees with `operator<` for non-NaN weights.
+impl PartialEq for HfstTropicalTransducerTransitionData {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == std::cmp::Ordering::Equal
+    }
+}
+impl Eq for HfstTropicalTransducerTransitionData {}
+impl PartialOrd for HfstTropicalTransducerTransitionData {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for HfstTropicalTransducerTransitionData {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.input_number
+            .cmp(&other.input_number)
+            .then(self.output_number.cmp(&other.output_number))
+            .then(self.weight.total_cmp(&other.weight))
+    }
+}
+
+impl Default for HfstTropicalTransducerTransitionData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// Initialization of static members in class HfstTropicalTransducerTransitionData.
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.number2-symbol-vector-initializer]
+pub struct Number2SymbolVectorInitializer;
+
+impl Number2SymbolVectorInitializer {
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.number2-symbol-vector-initializer.number2-symbol-vector-initializer-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.number2-symbol-vector-initializer.number2-symbol-vector-initializer-fn]
+    pub fn new(vect: &mut Number2SymbolVector) -> Self {
+        vect.push(String::from("@_EPSILON_SYMBOL_@"));
+        vect.push(String::from("@_UNKNOWN_SYMBOL_@"));
+        vect.push(String::from("@_IDENTITY_SYMBOL_@"));
+        Number2SymbolVectorInitializer
+    }
+}
+
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.symbol2-number-map-initializer]
+pub struct Symbol2NumberMapInitializer;
+
+impl Symbol2NumberMapInitializer {
+    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.symbol2-number-map-initializer.symbol2-number-map-initializer-fn]
+    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.symbol2-number-map-initializer.symbol2-number-map-initializer-fn]
+    pub fn new(map: &mut Symbol2NumberMap) -> Self {
+        map.insert(String::from("@_EPSILON_SYMBOL_@"), 0);
+        map.insert(String::from("@_UNKNOWN_SYMBOL_@"), 1);
+        map.insert(String::from("@_IDENTITY_SYMBOL_@"), 2);
+        Symbol2NumberMapInitializer
+    }
+}
