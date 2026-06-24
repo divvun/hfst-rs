@@ -14,12 +14,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, Write};
 
 use crate::hfst_basic_transition::HfstBasicTransition;
-use crate::hfst_data_types::double_to_float;
+use crate::hfst_data_types::{double_to_float, size_t_to_uint};
 use crate::hfst_exception_defs::{
-    EndOfStreamException, HfstException, NotValidAttFormatException, NotValidPrologFormatException,
-    StateIndexOutOfBoundsException, StateIsNotFinalException,
+    EmptyStringException, EndOfStreamException, HfstException, NotValidAttFormatException,
+    NotValidPrologFormatException, StateIndexOutOfBoundsException, StateIsNotFinalException,
 };
-use crate::hfst_symbol_defs::{StringPair, StringPairSet, StringSet};
+use crate::hfst_symbol_defs::{
+    HfstSymbolPairSubstitutions, HfstSymbolSubstitutions, StringPair, StringPairSet, StringSet,
+    is_epsilon, is_identity, is_unknown,
+};
 use crate::hfst_tropical_transducer_transition_data::{
     HfstTropicalTransducerTransitionData, SymbolType, WeightType,
 };
@@ -1979,6 +1982,466 @@ impl HfstBasicTransducer {
     ) -> HfstBasicTransducer {
         let mut dummy = std::io::empty();
         Self::read_in_att_format(&mut dummy, file, epsilon_symbol, linecount, warn_negs)
+    }
+
+    // --- Substitution (private in-place helpers) ---
+
+    /* In-place substitution of `old_symbol` with `new_symbol`. */
+    fn substitute_in_place(
+        &mut self,
+        old_symbol: &HfstSymbol,
+        new_symbol: &HfstSymbol,
+        input_side: bool,
+        output_side: bool,
+    ) {
+        for s in 0..self.state_vector.len() {
+            for i in 0..self.state_vector[s].len() {
+                let mut substituting_input_symbol = self.state_vector[s][i].get_input_symbol();
+                let mut substituting_output_symbol = self.state_vector[s][i].get_output_symbol();
+                let mut substitution_made = false;
+
+                if input_side && self.state_vector[s][i].get_input_symbol() == *old_symbol {
+                    substituting_input_symbol = new_symbol.clone();
+                    substitution_made = true;
+                }
+                if output_side && self.state_vector[s][i].get_output_symbol() == *old_symbol {
+                    substituting_output_symbol = new_symbol.clone();
+                    substitution_made = true;
+                }
+
+                if substitution_made {
+                    self.add_symbol_to_alphabet(new_symbol);
+                    let target = self.state_vector[s][i].get_target_state();
+                    let weight = self.state_vector[s][i].get_weight();
+                    let tr = HfstBasicTransition::new_symbols(
+                        target,
+                        substituting_input_symbol,
+                        substituting_output_symbol,
+                        weight,
+                    );
+                    self.state_vector[s][i] = tr;
+                }
+            }
+        }
+    }
+
+    /* In-place substitution by number vector: substitutions[from] = to. */
+    fn substitute_in_place_numbers(
+        &mut self,
+        substitutions: &HfstNumberVector,
+        no_substitution: u32,
+    ) {
+        for s in 0..self.state_vector.len() {
+            for i in 0..self.state_vector[s].len() {
+                let old_inumber = self.state_vector[s][i].get_input_number();
+                let old_onumber = self.state_vector[s][i].get_output_number();
+
+                let mut new_inumber = substitutions[old_inumber as usize];
+                let mut new_onumber = substitutions[old_onumber as usize];
+
+                if new_inumber != no_substitution || new_onumber != no_substitution {
+                    if new_inumber != no_substitution {
+                        self.add_symbol_to_alphabet(
+                            &HfstTropicalTransducerTransitionData::get_symbol(new_inumber),
+                        );
+                    } else {
+                        new_inumber = old_inumber;
+                    }
+
+                    if new_onumber != no_substitution {
+                        self.add_symbol_to_alphabet(
+                            &HfstTropicalTransducerTransitionData::get_symbol(new_onumber),
+                        );
+                    } else {
+                        new_onumber = old_onumber;
+                    }
+
+                    let target = self.state_vector[s][i].get_target_state();
+                    let weight = self.state_vector[s][i].get_weight();
+                    let tr = HfstBasicTransition::new_numbers(
+                        target,
+                        new_inumber,
+                        new_onumber,
+                        weight,
+                        false,
+                    );
+                    self.state_vector[s][i] = tr;
+                }
+            }
+        }
+    }
+
+    /* In-place substitution by number-pair map. */
+    fn substitute_in_place_number_pairs(&mut self, substitutions: &HfstNumberPairSubstitutions) {
+        for s in 0..self.state_vector.len() {
+            for i in 0..self.state_vector[s].len() {
+                let old_number_pair = (
+                    self.state_vector[s][i].get_input_number(),
+                    self.state_vector[s][i].get_output_number(),
+                );
+
+                if let Some(subst) = substitutions.get(&old_number_pair) {
+                    let new_input_number = subst.0;
+                    let new_output_number = subst.1;
+
+                    self.add_symbol_to_alphabet(&HfstTropicalTransducerTransitionData::get_symbol(
+                        new_input_number,
+                    ));
+                    self.add_symbol_to_alphabet(&HfstTropicalTransducerTransitionData::get_symbol(
+                        new_output_number,
+                    ));
+
+                    let target = self.state_vector[s][i].get_target_state();
+                    let weight = self.state_vector[s][i].get_weight();
+                    let tr = HfstBasicTransition::new_numbers(
+                        target,
+                        new_input_number,
+                        new_output_number,
+                        weight,
+                        false,
+                    );
+                    self.state_vector[s][i] = tr;
+                }
+            }
+        }
+    }
+
+    /* In-place removal of all transitions equivalent to `sp`. */
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.remove-transitions-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.remove-transitions-fn]
+    pub fn remove_transitions(&mut self, sp: &HfstSymbolPair) {
+        let in_match = HfstTropicalTransducerTransitionData::get_number(&sp.0);
+        let out_match = HfstTropicalTransducerTransitionData::get_number(&sp.1);
+
+        let mut in_match_used = false;
+        let mut out_match_used = false;
+
+        for s in 0..self.state_vector.len() {
+            // C++ `for (i=0; i<size(); i++)` with erase but no `i--`: after an
+            // erase the shifted element is skipped — bug preserved.
+            let mut i = 0;
+            while i < self.state_vector[s].len() {
+                let in_tr = self.state_vector[s][i].get_input_number();
+                let out_tr = self.state_vector[s][i].get_output_number();
+                if in_tr == in_match && out_tr == out_match {
+                    self.state_vector[s].remove(i);
+                } else {
+                    if in_tr == in_match || out_tr == in_match {
+                        in_match_used = true;
+                    }
+                    if in_tr == out_match || out_tr == out_match {
+                        out_match_used = true;
+                    }
+                }
+                i += 1;
+            }
+        }
+
+        if !in_match_used {
+            self.alphabet.remove(&sp.0);
+        }
+        if !out_match_used {
+            self.alphabet.remove(&sp.1);
+        }
+    }
+
+    /* In-place substitution of `old_sp` with the set `new_sps`. */
+    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.substitute-fn]
+    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.substitute-fn]
+    fn substitute_in_place_pair_set(
+        &mut self,
+        old_sp: &HfstSymbolPair,
+        new_sps: &HfstSymbolPairSet,
+    ) {
+        if new_sps.is_empty() {
+            self.remove_transitions(old_sp);
+            return;
+        }
+
+        let old_input_number = HfstTropicalTransducerTransitionData::get_number(&old_sp.0);
+        let old_output_number = HfstTropicalTransducerTransitionData::get_number(&old_sp.1);
+
+        let mut substitution_performed = false;
+
+        for s in 0..self.state_vector.len() {
+            let mut new_transitions: HfstBasicTransitions = Vec::new();
+
+            for i in 0..self.state_vector[s].len() {
+                if self.state_vector[s][i].get_input_number() == old_input_number
+                    && self.state_vector[s][i].get_output_number() == old_output_number
+                {
+                    substitution_performed = true;
+                    let target = self.state_vector[s][i].get_target_state();
+                    let weight = self.state_vector[s][i].get_weight();
+
+                    // change the transition to the first substituting pair
+                    let first = new_sps.iter().next().unwrap();
+                    let tr = HfstBasicTransition::new_numbers(
+                        target,
+                        HfstTropicalTransducerTransitionData::get_number(&first.0),
+                        HfstTropicalTransducerTransitionData::get_number(&first.1),
+                        weight,
+                        true,
+                    );
+                    self.state_vector[s][i] = tr;
+
+                    // schedule the rest (C++ iterates from begin, so all of
+                    // new_sps incl. the first are appended).
+                    for sp in new_sps.iter() {
+                        let tr2 = HfstBasicTransition::new_numbers(
+                            target,
+                            HfstTropicalTransducerTransitionData::get_number(&sp.0),
+                            HfstTropicalTransducerTransitionData::get_number(&sp.1),
+                            weight,
+                            true,
+                        );
+                        new_transitions.push(tr2);
+                    }
+                }
+            }
+
+            for new_transition in new_transitions.iter() {
+                self.state_vector[s].push(new_transition.clone());
+            }
+        }
+
+        if substitution_performed {
+            self.add_symbols_to_alphabet_pair_set(new_sps);
+        }
+
+        let mut syms: BTreeSet<u32> = BTreeSet::new();
+        syms.insert(old_input_number);
+        syms.insert(old_output_number);
+        self.prune_alphabet_after_substitution(&syms);
+    }
+
+    /* In-place substitution by a user function. */
+    fn substitute_in_place_func(
+        &mut self,
+        func: fn(&HfstSymbolPair, &mut HfstSymbolPairSet) -> bool,
+    ) {
+        for s in 0..self.state_vector.len() {
+            let mut new_transitions: HfstBasicTransitions = Vec::new();
+
+            for i in 0..self.state_vector[s].len() {
+                let transition_symbol_pair = (
+                    self.state_vector[s][i].get_input_symbol(),
+                    self.state_vector[s][i].get_output_symbol(),
+                );
+                let mut substituting_transitions: HfstSymbolPairSet = BTreeSet::new();
+
+                // C++ wraps this in try/catch(HfstException){throw e;} — a no-op
+                // rethrow, so a thrown exception just propagates.
+                let perform_substitution =
+                    func(&transition_symbol_pair, &mut substituting_transitions);
+                if perform_substitution {
+                    let target = self.state_vector[s][i].get_target_state();
+                    let weight = self.state_vector[s][i].get_weight();
+
+                    let (fi, fo) = {
+                        let first = substituting_transitions.iter().next().unwrap();
+                        (first.0.clone(), first.1.clone())
+                    };
+                    if !HfstTropicalTransducerTransitionData::is_valid_symbol(&fi)
+                        || !HfstTropicalTransducerTransitionData::is_valid_symbol(&fo)
+                    {
+                        crate::HFST_THROW_MESSAGE!(
+                            EmptyStringException,
+                            "HfstBasicTransducer::substitute"
+                        );
+                    }
+
+                    let tr =
+                        HfstBasicTransition::new_symbols(target, fi.clone(), fo.clone(), weight);
+                    self.state_vector[s][i] = tr;
+
+                    self.add_symbol_to_alphabet(&fi);
+                    self.add_symbol_to_alphabet(&fo);
+
+                    for sp in substituting_transitions.iter() {
+                        if !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.0)
+                            || !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1)
+                        {
+                            crate::HFST_THROW_MESSAGE!(
+                                EmptyStringException,
+                                "HfstBasicTransducer::substitute"
+                            );
+                        }
+                        let tr2 = HfstBasicTransition::new_symbols(
+                            target,
+                            sp.0.clone(),
+                            sp.1.clone(),
+                            weight,
+                        );
+                        new_transitions.push(tr2);
+                        self.add_symbol_to_alphabet(&sp.0);
+                        self.add_symbol_to_alphabet(&sp.1);
+                    }
+                }
+            }
+
+            for new_transition in new_transitions.iter() {
+                self.state_vector[s].push(new_transition.clone());
+            }
+        }
+    }
+
+    // --- Substitution (public) ---
+
+    /** @brief Substitute `old_symbol` with `new_symbol` in all transitions. */
+    pub fn substitute_symbol(
+        &mut self,
+        old_symbol: &HfstSymbol,
+        new_symbol: &HfstSymbol,
+        input_side: bool,
+        output_side: bool,
+    ) -> &mut Self {
+        if !HfstTropicalTransducerTransitionData::is_valid_symbol(old_symbol)
+            || !HfstTropicalTransducerTransitionData::is_valid_symbol(new_symbol)
+        {
+            crate::HFST_THROW_MESSAGE!(EmptyStringException, "HfstBasicTransducer::substitute");
+        }
+
+        // If a symbol is substituted with itself, do nothing.
+        if old_symbol == new_symbol {
+            return self;
+        }
+        // If the old symbol is not known to the graph, do nothing.
+        if !self.alphabet.contains(old_symbol) {
+            return self;
+        }
+
+        // Remove the substituted symbol from the alphabet if both sides.
+        if input_side && output_side {
+            if !is_epsilon(old_symbol) && !is_unknown(old_symbol) && !is_identity(old_symbol) {
+                self.alphabet.remove(old_symbol);
+            }
+        }
+        self.alphabet.insert(new_symbol.clone());
+
+        self.substitute_in_place(old_symbol, new_symbol, input_side, output_side);
+
+        self
+    }
+
+    pub fn substitute_symbols(&mut self, substitutions: &HfstSymbolSubstitutions) -> &mut Self {
+        self.substitute_symbol_substitutions(substitutions)
+    }
+
+    /** @brief Substitute all transitions as defined in `substitutions`. */
+    pub fn substitute_symbol_substitutions(
+        &mut self,
+        substitutions: &HfstSymbolSubstitutions,
+    ) -> &mut Self {
+        // add symbols to the global HfstTransition alphabet
+        for (first, second) in substitutions.iter() {
+            let _ = self.get_symbol_number(first);
+            let _ = self.get_symbol_number(second);
+        }
+
+        // substitutions_[from_symbol] = to_symbol
+        let mut substitutions_: Vec<u32> = Vec::new();
+        let st: usize = HfstTropicalTransducerTransitionData::get_max_number() as usize
+            + substitutions.len()
+            + 1;
+        let no_substitution = size_t_to_uint(st);
+
+        substitutions_.resize(
+            (HfstTropicalTransducerTransitionData::get_max_number() + 1) as usize,
+            no_substitution,
+        );
+        for (first, second) in substitutions.iter() {
+            let from_symbol = self.get_symbol_number(first);
+            let to_symbol = self.get_symbol_number(second);
+            substitutions_[from_symbol as usize] = to_symbol;
+        }
+
+        self.substitute_in_place_numbers(&substitutions_, no_substitution);
+
+        self
+    }
+
+    pub fn substitute_symbol_pairs(
+        &mut self,
+        substitutions: &HfstSymbolPairSubstitutions,
+    ) -> &mut Self {
+        self.substitute_symbol_pair_substitutions(substitutions)
+    }
+
+    /** @brief Substitute transitions x:y -> X:Y as defined in `substitutions`. */
+    pub fn substitute_symbol_pair_substitutions(
+        &mut self,
+        substitutions: &HfstSymbolPairSubstitutions,
+    ) -> &mut Self {
+        // Convert from symbols to numbers
+        let mut substitutions_: HfstNumberPairSubstitutions = BTreeMap::new();
+        for (from, to) in substitutions.iter() {
+            let from_transition = (
+                self.get_symbol_number(&from.0),
+                self.get_symbol_number(&from.1),
+            );
+            let to_transition = (self.get_symbol_number(&to.0), self.get_symbol_number(&to.1));
+            substitutions_.insert(from_transition, to_transition);
+        }
+
+        self.substitute_in_place_number_pairs(&substitutions_);
+
+        self
+    }
+
+    /** @brief Substitute all transitions `sp` with a set of transitions `sps`. */
+    pub fn substitute_pair_with_set(
+        &mut self,
+        sp: &HfstSymbolPair,
+        sps: &HfstSymbolPairSet,
+    ) -> &mut Self {
+        if !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.0)
+            || !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1)
+        {
+            crate::HFST_THROW_MESSAGE!(EmptyStringException, "HfstBasicTransducer::substitute");
+        }
+
+        for sp in sps.iter() {
+            if !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.0)
+                || !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1)
+            {
+                crate::HFST_THROW_MESSAGE!(EmptyStringException, "HfstBasicTransducer::substitute");
+            }
+        }
+
+        self.substitute_in_place_pair_set(sp, sps);
+
+        self
+    }
+
+    /** @brief Substitute all transitions `old_pair` with `new_pair`. */
+    pub fn substitute_pair(
+        &mut self,
+        old_pair: &HfstSymbolPair,
+        new_pair: &HfstSymbolPair,
+    ) -> &mut Self {
+        if !HfstTropicalTransducerTransitionData::is_valid_symbol(&old_pair.0)
+            || !HfstTropicalTransducerTransitionData::is_valid_symbol(&new_pair.0)
+            || !HfstTropicalTransducerTransitionData::is_valid_symbol(&old_pair.1)
+            || !HfstTropicalTransducerTransitionData::is_valid_symbol(&new_pair.1)
+        {
+            crate::HFST_THROW_MESSAGE!(EmptyStringException, "HfstBasicTransducer::substitute");
+        }
+
+        let mut new_pair_set: StringPairSet = BTreeSet::new();
+        new_pair_set.insert(new_pair.clone());
+        self.substitute_in_place_pair_set(old_pair, &new_pair_set);
+
+        self
+    }
+
+    /** @brief Substitute all transitions with a set defined by function `func`. */
+    pub fn substitute_with_func(
+        &mut self,
+        func: fn(&HfstSymbolPair, &mut HfstSymbolPairSet) -> bool,
+    ) -> &mut Self {
+        self.substitute_in_place_func(func);
+        self
     }
 }
 
