@@ -16,6 +16,7 @@
 #![allow(non_upper_case_globals)]
 
 pub mod format_specifiers;
+pub mod harmonize_unknown_and_identity_symbols;
 pub mod hfst_basic_transducer;
 pub mod hfst_basic_transition;
 pub mod hfst_data_types;
@@ -26,4 +27,5 @@ pub mod hfst_symbol_defs;
 pub mod hfst_tokenizer;
 pub mod hfst_transition;
 pub mod hfst_tropical_transducer_transition_data;
+pub mod pmatch;
 pub mod string_utils;

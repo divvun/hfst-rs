@@ -13,6 +13,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, Write};
 
+use crate::harmonize_unknown_and_identity_symbols::HarmonizeUnknownAndIdentitySymbols;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::{double_to_float, size_t_to_uint};
 use crate::hfst_exception_defs::{
@@ -194,6 +195,9 @@ pub type HfstNumberVector = Vec<HfstNumber>;
 pub type HfstNumberPair = (HfstNumber, HfstNumber);
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.hfst-number-pair-substitutions]
 pub type HfstNumberPairSubstitutions = BTreeMap<HfstNumberPair, HfstNumberPair>;
+
+// [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.subst-map]
+pub type SubstMap = BTreeMap<HfstSymbol, HfstBasicTransducer>;
 
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer]
 #[derive(Clone, Debug)]
@@ -2988,6 +2992,103 @@ impl HfstBasicTransducer {
             }
         }
         self.remove_symbols_from_alphabet(&extra_symbols);
+    }
+
+    // --- Harmonization ---
+
+    /** @brief Harmonize this graph and `another` (expand unknown/identity). */
+    pub fn harmonize(&mut self, another: &mut HfstBasicTransducer) -> &mut Self {
+        let _foo = HarmonizeUnknownAndIdentitySymbols::new(self, another);
+        self
+    }
+
+    /** @brief Substitute symbols with transducers as defined in `substitution_map`. */
+    pub fn substitute_subst_map(
+        &mut self,
+        substitution_map: &mut SubstMap,
+        harmonize: bool,
+    ) -> &mut Self {
+        let mut symbol_found = false;
+        for (first, _) in substitution_map.iter() {
+            if !HfstTropicalTransducerTransitionData::is_valid_symbol(first) {
+                crate::HFST_THROW_MESSAGE!(
+                    EmptyStringException,
+                    "HfstBasicTransducer::substitute (const std::map<HfstSymbol, HfstBasicTransducer> &)"
+                );
+            }
+            if !symbol_found && self.alphabet.contains(first) {
+                symbol_found = true;
+            }
+        }
+
+        // If none of the symbols is known to the graph, do nothing.
+        if !symbol_found {
+            return self;
+        }
+
+        let mut substitutions_performed_for_symbols: StringSet = BTreeSet::new();
+        let mut substitutions: Vec<substitution_data> = Vec::new();
+
+        for s in 0..self.state_vector.len() {
+            let mut old_indices: Vec<usize> = Vec::new();
+
+            for j in 0..self.state_vector[s].len() {
+                let istr = self.state_vector[s][j].get_input_symbol();
+                let ostr = self.state_vector[s][j].get_output_symbol();
+                let map_in_found = substitution_map.contains_key(&istr);
+                let map_out_found = substitution_map.contains_key(&ostr);
+
+                if !map_in_found && !map_out_found {
+                    // nothing
+                } else if istr != ostr {
+                    let msg = "symbol to be substituted must not occur only on one side of \
+                               transition"
+                        .to_string();
+                    crate::HFST_THROW_MESSAGE!(HfstException, msg);
+                } else {
+                    let target = self.state_vector[s][j].get_target_state();
+                    let weight = self.state_vector[s][j].get_weight();
+                    // raw pointer into the map value (the substituting graph)
+                    let graph_ptr =
+                        substitution_map.get(&istr).unwrap() as *const HfstBasicTransducer;
+                    substitutions.push(substitution_data::new(
+                        s as HfstState,
+                        target,
+                        weight,
+                        graph_ptr,
+                    ));
+                    old_indices.push(j);
+                    substitutions_performed_for_symbols.insert(istr.clone());
+                }
+            }
+            for &j in old_indices.iter().rev() {
+                self.state_vector[s].remove(j);
+            }
+        }
+
+        // Remove all symbols that were substituted.
+        for sym_it in substitutions_performed_for_symbols.iter() {
+            if sym_it != "@_EPSILON_SYMBOL_@"
+                && sym_it != "@_UNKNOWN_SYMBOL_@"
+                && sym_it != "@_IDENTITY_SYMBOL_@"
+            {
+                self.remove_symbol_from_alphabet(sym_it);
+            }
+        }
+
+        // Harmonize the resulting and the substituting graphs, if needed.
+        if harmonize {
+            for sym_it in substitutions_performed_for_symbols.iter() {
+                let graph = substitution_map.get_mut(sym_it).unwrap();
+                self.harmonize(graph);
+            }
+        }
+
+        // Add the substitutions (reads the now-harmonized graphs via raw ptr).
+        for substitution in substitutions.iter() {
+            self.add_substitution(substitution);
+        }
+        self
     }
 }
 
