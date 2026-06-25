@@ -5400,8 +5400,14 @@ fn rename_flag_diacritics(_t: &HfstTransducer, _suffix: &str) {
     unimplemented!("deferred: rename_flag_diacritics file-static helper")
 }
 
-// C++ `operator<<(std::ostream&, const HfstTransducer&)` — AT&T print (deferred:
-// the ostream write_in_att_format paths are not yet ported).
-pub fn operator_shl_os(_out: &mut dyn std::io::Write, _t: &HfstTransducer) {
-    unimplemented!("deferred: operator<<(ostream, HfstTransducer) AT&T print")
+// C++ `operator<<(std::ostream &out, const HfstTransducer &t)` (HfstTransducer.cc:6419)
+// — write the transducer in AT&T format. Implemented only for the internal
+// (basic) transducer format: convert to a HfstBasicTransducer and write it.
+pub fn operator_shl_os(out: &mut dyn std::io::Write, t: &HfstTransducer) {
+    // (XFSM_TYPE branch is #if'd out.)
+    let net = HfstBasicTransducer::from_transducer(t);
+    // C++ writes weights for every type except SFST/FOMA (both out of scope here).
+    let write_weights = t.get_type() != ImplementationType::SFST_TYPE
+        && t.get_type() != ImplementationType::FOMA_TYPE;
+    net.write_in_att_format_os(out, write_weights);
 }

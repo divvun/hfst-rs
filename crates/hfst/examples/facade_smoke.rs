@@ -21,10 +21,20 @@ fn main() {
     let mut comp = ab.clone();
     comp.compose(&other, true);
 
+    // operator<<(ostream, HfstTransducer): write AT&T format to a buffer
+    let mut buf: Vec<u8> = Vec::new();
+    hfst::hfst_transducer::operator_shl_os(&mut buf, &ab);
+    let att = String::from_utf8(buf).unwrap();
+    assert!(
+        att.contains('\t'),
+        "AT&T output should be tab-separated, got: {att:?}"
+    );
+
     println!(
-        "facade OK: type={:?} ab_states={} compose_states={}",
+        "facade OK: type={:?} ab_states={} compose_states={} att_lines={}",
         ab.get_type(),
         states,
-        comp.number_of_states()
+        comp.number_of_states(),
+        att.lines().count()
     );
 }

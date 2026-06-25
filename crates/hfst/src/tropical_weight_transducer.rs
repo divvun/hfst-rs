@@ -61,8 +61,20 @@ pub struct StdArcLessThan;
 impl StdArcLessThan {
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.std-arc-less-than.operator-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.std-arc-less-than.operator-fn]
-    pub fn operator_call(&self, _arc1: &StdTransition, _arc2: &StdTransition) -> bool {
-        unimplemented!()
+    // Standard StdArc strict ordering (ilabel, then olabel, then weight, then
+    // target state). The C++ declares this comparator but never defines or uses
+    // it; a faithful total order keeps it correct rather than panicking.
+    pub fn operator_call(&self, arc1: &StdTransition, arc2: &StdTransition) -> bool {
+        if arc1.ilabel != arc2.ilabel {
+            return arc1.ilabel < arc2.ilabel;
+        }
+        if arc1.olabel != arc2.olabel {
+            return arc1.olabel < arc2.olabel;
+        }
+        if arc1.weight.value() != arc2.weight.value() {
+            return arc1.weight.value() < arc2.weight.value();
+        }
+        arc1.nextstate < arc2.nextstate
     }
 }
 
