@@ -273,6 +273,7 @@ dependencies = [
  "hfst-types",
  "icu",
  "libc",
+ "nfst-lexc",
  "nfst-xre",
 ]
 

@@ -12,3 +12,4 @@ hfst-ol = { workspace = true }
 libc = "0.2"
 icu = "2.2.0"
 nfst-xre = { workspace = true }
+nfst-lexc = { workspace = true }
