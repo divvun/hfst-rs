@@ -17,10 +17,14 @@
 //! object.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
 
 use crate::hfst_data_types::size_t_to_uint;
+use crate::hfst_data_types::{
+    HfstOneLevelPath, HfstOneLevelPaths, HfstTwoLevelPath, HfstTwoLevelPaths, StringVector,
+};
 use crate::hfst_exception_defs::TransducerHasWrongTypeException;
-use crate::hfst_flag_diacritics::{FdOperation, FdTable};
+use crate::hfst_flag_diacritics::{FdOperation, FdState, FdTable};
 use crate::hfst_symbol_defs::{is_default, is_identity, is_unknown};
 
 // [spec:hfst:def:transducer.hfst-ol.symbol-number]
@@ -1906,5 +1910,1153 @@ impl STransition {
             symbol: s,
             weight: w,
         }
+    }
+}
+
+// [spec:hfst:def:transducer.hfst-ol.n-byte-utf8-fn]
+// [spec:hfst:sem:transducer.hfst-ol.n-byte-utf8-fn]
+// (body lives in ospell.cc; ported here at its declaration site)
+pub fn nByte_utf8(c: u8) -> i32 {
+    /* utility function to determine how many bytes to peel off as
+    a utf-8 character for representing as OTHER */
+    if c <= 127 {
+        1
+    } else if (c & (128 + 64 + 32 + 16)) == (128 + 64 + 32 + 16) {
+        4
+    } else if (c & (128 + 64 + 32)) == (128 + 64 + 32) {
+        3
+    } else if (c & (128 + 64)) == (128 + 64) {
+        2
+    } else {
+        0
+    }
+}
+
+/** \brief A compiled transducer format, suitable for fast lookup operations. */
+// [spec:hfst:def:transducer.hfst-ol.transducer]
+pub struct Transducer {
+    header: Option<Box<TransducerHeader>>,
+    alphabet: Option<Box<TransducerAlphabet>>,
+    tables: Option<Box<dyn TransducerTablesInterface>>,
+
+    // for lookup
+    current_weight: Weight,
+    // Raw, aliasing pointer exactly as the C++ `HfstTwoLevelPaths *`: in
+    // `lookup_fd` it borrows a locally-owned set, in `lookup_fd_pairs` it
+    // borrows the result set being returned. Valid only across the
+    // `get_analyses` call it brackets.
+    lookup_paths: *mut HfstTwoLevelPaths,
+    encoder: Option<Box<Encoder>>,
+    input_tape: Tape,
+    output_tape: DoubleTape,
+    flag_state: FdState<SymbolNumber>,
+    // whether we're going to take a default transition
+    found_transition: bool,
+    traversal_states: TraversalStates,
+
+    max_lookups: isize,
+    recursion_depth_left: u32,
+    max_time: f64,
+    start_clock: Option<Instant>,
+}
+
+#[allow(dead_code)]
+impl Transducer {
+    // ---- small accessors mirroring the C++ member dereferences ----
+    fn hdr(&self) -> &TransducerHeader {
+        self.header.as_deref().unwrap()
+    }
+    fn alph(&self) -> &TransducerAlphabet {
+        self.alphabet.as_deref().unwrap()
+    }
+    fn tbl(&self) -> &dyn TransducerTablesInterface {
+        self.tables.as_deref().unwrap()
+    }
+
+    pub fn new() -> Self {
+        Transducer {
+            header: None,
+            alphabet: None,
+            tables: None,
+            current_weight: 0.0,
+            lookup_paths: std::ptr::null_mut(),
+            encoder: None,
+            input_tape: Tape::new(),
+            output_tape: DoubleTape::new(),
+            flag_state: FdState::new_default(),
+            found_transition: false,
+            traversal_states: TraversalStates::new(),
+            max_lookups: -1,
+            recursion_depth_left: MAX_RECURSION_DEPTH,
+            max_time: 0.0,
+            start_clock: None,
+        }
+    }
+
+    pub fn new_istream(is: &mut IStream) -> Self {
+        let header = Box::new(TransducerHeader::new_istream(is));
+        let alphabet = Box::new(TransducerAlphabet::new_istream(
+            is,
+            header.symbol_count(),
+            true,
+        ));
+        let encoder = Box::new(Encoder::new(
+            alphabet.get_symbol_table(),
+            header.input_symbol_count(),
+        ));
+        let flag_state = FdState::new(alphabet.get_fd_table());
+        let mut t = Transducer {
+            header: Some(header),
+            alphabet: Some(alphabet),
+            tables: None,
+            current_weight: 0.0,
+            lookup_paths: std::ptr::null_mut(),
+            encoder: Some(encoder),
+            input_tape: Tape::new(),
+            output_tape: DoubleTape::new(),
+            flag_state,
+            found_transition: false,
+            traversal_states: TraversalStates::new(),
+            max_lookups: -1,
+            recursion_depth_left: MAX_RECURSION_DEPTH,
+            max_time: 0.0,
+            start_clock: None,
+        };
+        t.load_tables(is);
+        t
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.transducer-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.transducer-fn]
+    pub fn new_weighted(weighted: bool) -> Self {
+        let header = Box::new(TransducerHeader::new_weighted(weighted));
+        let alphabet = Box::new(TransducerAlphabet::new());
+        let encoder = Box::new(Encoder::new(
+            alphabet.get_symbol_table(),
+            header.input_symbol_count(),
+        ));
+        let flag_state = FdState::new(alphabet.get_fd_table());
+        let tables: Box<dyn TransducerTablesInterface> = if weighted {
+            Box::new(TransducerTables::<TransitionWIndex, TransitionW>::new())
+        } else {
+            Box::new(TransducerTables::<TransitionIndex, Transition>::new())
+        };
+        Transducer {
+            header: Some(header),
+            alphabet: Some(alphabet),
+            tables: Some(tables),
+            current_weight: 0.0,
+            lookup_paths: std::ptr::null_mut(),
+            encoder: Some(encoder),
+            input_tape: Tape::new(),
+            output_tape: DoubleTape::new(),
+            flag_state,
+            found_transition: false,
+            traversal_states: TraversalStates::new(),
+            max_lookups: -1,
+            recursion_depth_left: MAX_RECURSION_DEPTH,
+            max_time: 0.0,
+            start_clock: None,
+        }
+    }
+
+    // The C++ builds `encoder`/`flag_state` from the *parameter* alphabet (dot,
+    // not arrow), so they reference the caller's alphabet; replicated here.
+    pub fn new_from_tables_unweighted(
+        header: &TransducerHeader,
+        alphabet: &TransducerAlphabet,
+        index_table: TransducerTable<TransitionIndex>,
+        transition_table: TransducerTable<Transition>,
+    ) -> Self {
+        let header_box = Box::new(header.clone());
+        let alphabet_box = Box::new(alphabet.clone());
+        let tables: Box<dyn TransducerTablesInterface> =
+            Box::new(TransducerTables::<TransitionIndex, Transition>::new_tables(
+                index_table,
+                transition_table,
+            ));
+        let encoder = Box::new(Encoder::new(
+            alphabet.get_symbol_table(),
+            header.input_symbol_count(),
+        ));
+        let flag_state = FdState::new(alphabet.get_fd_table());
+        Transducer {
+            header: Some(header_box),
+            alphabet: Some(alphabet_box),
+            tables: Some(tables),
+            current_weight: 0.0,
+            lookup_paths: std::ptr::null_mut(),
+            encoder: Some(encoder),
+            input_tape: Tape::new(),
+            output_tape: DoubleTape::new(),
+            flag_state,
+            found_transition: false,
+            traversal_states: TraversalStates::new(),
+            max_lookups: -1,
+            recursion_depth_left: MAX_RECURSION_DEPTH,
+            max_time: 0.0,
+            start_clock: None,
+        }
+    }
+
+    pub fn new_from_tables_weighted(
+        header: &TransducerHeader,
+        alphabet: &TransducerAlphabet,
+        index_table: TransducerTable<TransitionWIndex>,
+        transition_table: TransducerTable<TransitionW>,
+    ) -> Self {
+        let header_box = Box::new(header.clone());
+        let alphabet_box = Box::new(alphabet.clone());
+        let tables: Box<dyn TransducerTablesInterface> = Box::new(TransducerTables::<
+            TransitionWIndex,
+            TransitionW,
+        >::new_tables(
+            index_table, transition_table
+        ));
+        let encoder = Box::new(Encoder::new(
+            alphabet.get_symbol_table(),
+            header.input_symbol_count(),
+        ));
+        let flag_state = FdState::new(alphabet.get_fd_table());
+        Transducer {
+            header: Some(header_box),
+            alphabet: Some(alphabet_box),
+            tables: Some(tables),
+            current_weight: 0.0,
+            lookup_paths: std::ptr::null_mut(),
+            encoder: Some(encoder),
+            input_tape: Tape::new(),
+            output_tape: DoubleTape::new(),
+            flag_state,
+            found_transition: false,
+            traversal_states: TraversalStates::new(),
+            max_lookups: -1,
+            recursion_depth_left: MAX_RECURSION_DEPTH,
+            max_time: 0.0,
+            start_clock: None,
+        }
+    }
+
+    pub fn get_header(&self) -> &TransducerHeader {
+        self.hdr()
+    }
+    pub fn get_alphabet(&self) -> &TransducerAlphabet {
+        self.alph()
+    }
+    pub fn get_encoder(&self) -> &Encoder {
+        self.encoder.as_deref().unwrap()
+    }
+    pub fn get_fd_table(&self) -> &FdTable<SymbolNumber> {
+        self.alph().get_fd_table()
+    }
+    pub fn get_symbol_table(&self) -> &SymbolTable {
+        self.alph().get_symbol_table()
+    }
+
+    pub fn get_index(&self, i: TransitionTableIndex) -> &dyn IndexEntry {
+        self.tbl().get_index(i)
+    }
+    pub fn get_transition(&self, i: TransitionTableIndex) -> &dyn TransitionEntry {
+        self.tbl().get_transition(i)
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.final-index-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.final-index-fn]
+    pub fn final_index(&self, i: TransitionTableIndex) -> bool {
+        if indexes_transition_table(i) {
+            self.tbl().get_transition_finality(i)
+        } else {
+            self.tbl().get_index_finality(i)
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.is-infinitely-ambiguous-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.is-infinitely-ambiguous-fn]
+    pub fn is_infinitely_ambiguous(&self) -> bool {
+        self.hdr().probe_flag(HeaderFlag::Has_input_epsilon_cycles)
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.is-lookup-infinitely-ambiguous-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.is-lookup-infinitely-ambiguous-fn]
+    pub fn is_lookup_infinitely_ambiguous_str(&mut self, s: &str) -> bool {
+        if !self.initialize_input(s) {
+            return false;
+        }
+        self.traversal_states.clear();
+        // try { find_loop(0, 0); } catch (bool e) { ... return e; }
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.find_loop(0, 0);
+        }));
+        std::panic::set_hook(prev);
+        match result {
+            Ok(()) => {}
+            Err(e) => {
+                if let Some(b) = e.downcast_ref::<bool>() {
+                    let e = *b;
+                    self.current_weight = 0.0;
+                    let fs = FdState::new(self.alph().get_fd_table());
+                    self.flag_state = fs;
+                    return e;
+                } else {
+                    std::panic::resume_unwind(e);
+                }
+            }
+        }
+        false
+    }
+
+    pub fn is_lookup_infinitely_ambiguous_strvec(&mut self, s: &StringVector) -> bool {
+        let mut input_str = String::new();
+        for it in s.iter() {
+            input_str.push_str(it);
+        }
+        self.is_lookup_infinitely_ambiguous_str(&input_str)
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.copy-windex-table-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-windex-table-fn]
+    pub fn copy_windex_table(&self) -> TransducerTable<TransitionWIndex> {
+        if !self.hdr().probe_flag(HeaderFlag::Weighted) {
+            crate::HFST_THROW!(TransducerHasWrongTypeException);
+        }
+        let mut another = TransducerTable::new();
+        for i in 0..self.hdr().index_table_size() {
+            another.append(TransitionWIndex::new_values(
+                self.tbl().get_index_input(i),
+                self.tbl().get_index_target(i),
+            ));
+        }
+        another
+    }
+    // [spec:hfst:def:transducer.hfst-ol.transducer.copy-transitionw-table-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-transitionw-table-fn]
+    pub fn copy_transitionw_table(&self) -> TransducerTable<TransitionW> {
+        if !self.hdr().probe_flag(HeaderFlag::Weighted) {
+            crate::HFST_THROW!(TransducerHasWrongTypeException);
+        }
+        let mut another = TransducerTable::new();
+        for i in 0..self.hdr().target_table_size() {
+            another.append(TransitionW::new_values(
+                self.tbl().get_transition_input(i),
+                self.tbl().get_transition_output(i),
+                self.tbl().get_transition_target(i),
+                self.tbl().get_weight(i),
+            ));
+        }
+        another
+    }
+    // [spec:hfst:def:transducer.hfst-ol.transducer.copy-index-table-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-index-table-fn]
+    pub fn copy_index_table(&self) -> TransducerTable<TransitionIndex> {
+        if self.hdr().probe_flag(HeaderFlag::Weighted) {
+            crate::HFST_THROW!(TransducerHasWrongTypeException);
+        }
+        let mut another = TransducerTable::new();
+        for i in 0..self.hdr().index_table_size() {
+            // tables->get_index(i) returns a base TransitionIndex; copy its data
+            let idx = self.tbl().get_index(i);
+            another.append(TransitionIndex::new_values(
+                idx.get_input_symbol(),
+                idx.get_target(),
+            ));
+        }
+        another
+    }
+    // [spec:hfst:def:transducer.hfst-ol.transducer.copy-transition-table-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-transition-table-fn]
+    pub fn copy_transition_table(&self) -> TransducerTable<Transition> {
+        if self.hdr().probe_flag(HeaderFlag::Weighted) {
+            crate::HFST_THROW!(TransducerHasWrongTypeException);
+        }
+        let mut another = TransducerTable::new();
+        for i in 0..self.hdr().target_table_size() {
+            let tr = self.tbl().get_transition(i);
+            another.append(Transition::new_values(
+                tr.get_input_symbol(),
+                tr.get_output_symbol(),
+                tr.get_target(),
+            ));
+        }
+        another
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.load-tables-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.load-tables-fn]
+    pub fn load_tables(&mut self, is: &mut IStream) {
+        let weighted = self.hdr().probe_flag(HeaderFlag::Weighted);
+        let its = self.hdr().index_table_size();
+        let tts = self.hdr().target_table_size();
+        if weighted {
+            self.tables = Some(Box::new(
+                TransducerTables::<TransitionWIndex, TransitionW>::new_istream(is, its, tts),
+            ));
+        } else {
+            self.tables = Some(Box::new(
+                TransducerTables::<TransitionIndex, Transition>::new_istream(is, its, tts),
+            ));
+        }
+        if !is.good() {
+            crate::HFST_THROW!(TransducerHasWrongTypeException);
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.write-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.write-fn]
+    pub fn write(&self, os: &mut dyn std::io::Write) {
+        self.hdr().write(os);
+        self.alph().write(os);
+        let weighted = self.hdr().probe_flag(HeaderFlag::Weighted);
+        for i in 0..self.hdr().index_table_size() {
+            self.tbl()
+                .get_index(size_t_to_uint(i as usize))
+                .write(os, weighted);
+        }
+        for i in 0..self.hdr().target_table_size() {
+            self.tbl()
+                .get_transition(size_t_to_uint(i as usize))
+                .write(os, weighted);
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.copy-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-fn]
+    pub fn copy(t: &Transducer, weighted: bool) -> Transducer {
+        if weighted {
+            Transducer::new_from_tables_weighted(
+                t.get_header(),
+                t.get_alphabet(),
+                t.copy_windex_table(),
+                t.copy_transitionw_table(),
+            )
+        } else {
+            Transducer::new_from_tables_unweighted(
+                t.get_header(),
+                t.get_alphabet(),
+                t.copy_index_table(),
+                t.copy_transition_table(),
+            )
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.display-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.display-fn]
+    pub fn display(&self) {
+        println!("-----Displaying optimized-lookup transducer------");
+        self.hdr().display();
+        self.alph().display();
+        self.tbl().display();
+        println!("-------------------------------------------------");
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.get-transitions-from-state-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.get-transitions-from-state-fn]
+    pub fn get_transitions_from_state(
+        &self,
+        state_index: TransitionTableIndex,
+    ) -> TransitionTableIndexSet {
+        let mut transitions = TransitionTableIndexSet::new();
+
+        if indexes_transition_index_table(state_index) {
+            // for each input symbol that has a transition from this state
+            for symbol in 0..self.hdr().symbol_count() {
+                // There may be flags at index 0 even if there aren't any
+                // epsilons, so those have to be checked for
+                if self.alph().is_like_epsilon(symbol) {
+                    let mut transition_i = self.get_index(state_index + 1).get_target();
+                    if !self.get_index(state_index + 1).matches(0) {
+                        continue;
+                    }
+                    loop {
+                        let input = self.get_transition(transition_i).get_input_symbol();
+                        if self.get_transition(transition_i).matches(symbol) {
+                            transitions.insert(transition_i);
+                        // There could still be epsilons here, or other flags
+                        } else if input != 0 && !self.alph().is_like_epsilon(input) {
+                            break;
+                        }
+                        transition_i += 1;
+                    }
+                } else {
+                    // not a flag
+                    let test_input = self
+                        .get_index(state_index + 1 + symbol as u32)
+                        .get_input_symbol();
+                    let test_target = self.get_index(state_index + 1 + symbol as u32).get_target();
+                    if self
+                        .get_index(state_index + 1 + symbol as u32)
+                        .matches(symbol)
+                    {
+                        // there are one or more transitions with this input
+                        // symbol, starting at test_transition_index.get_target()
+                        let mut transition_i = test_target;
+                        loop {
+                            if self.get_transition(transition_i).matches(test_input) {
+                                transitions.insert(transition_i);
+                            } else {
+                                break;
+                            }
+                            transition_i += 1;
+                        }
+                    }
+                }
+            }
+        } else {
+            // indexes transition table
+            let in_sym = self.get_transition(state_index).get_input_symbol();
+            let out_sym = self.get_transition(state_index).get_output_symbol();
+            if in_sym != NO_SYMBOL_NUMBER || out_sym != NO_SYMBOL_NUMBER {
+                // Oops
+                panic!("get_transitions_from_state: malformed transition boundary");
+            }
+
+            let mut transition_i = state_index + 1;
+            loop {
+                if self.get_transition(transition_i).get_input_symbol() != NO_SYMBOL_NUMBER {
+                    transitions.insert(transition_i);
+                } else {
+                    break;
+                }
+                transition_i += 1;
+            }
+        }
+        transitions
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.next-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.next-fn]
+    pub fn next(&self, i: TransitionTableIndex, symbol: SymbolNumber) -> TransitionTableIndex {
+        if i >= TRANSITION_TARGET_TABLE_START {
+            i - TRANSITION_TARGET_TABLE_START + 1
+        } else {
+            self.get_index(i + 1 + symbol as u32).get_target() - TRANSITION_TARGET_TABLE_START
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.next-e-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.next-e-fn]
+    // (declared in transducer.h; defined in pmatch.cc — ported with pmatch.)
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.has-transitions-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.has-transitions-fn]
+    pub fn has_transitions(&self, i: TransitionTableIndex, symbol: SymbolNumber) -> bool {
+        if i >= TRANSITION_TARGET_TABLE_START {
+            self.get_transition(i - TRANSITION_TARGET_TABLE_START)
+                .get_input_symbol()
+                == symbol
+        } else {
+            self.get_index(i + symbol as u32).get_input_symbol() == symbol
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.has-epsilons-or-flags-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.has-epsilons-or-flags-fn]
+    pub fn has_epsilons_or_flags(&self, i: TransitionTableIndex) -> bool {
+        if i >= TRANSITION_TARGET_TABLE_START {
+            let input = self
+                .get_transition(i - TRANSITION_TARGET_TABLE_START)
+                .get_input_symbol();
+            input == 0 || self.is_flag(input)
+        } else {
+            self.get_index(i).get_input_symbol() == 0
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.take-epsilons-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.take-epsilons-fn]
+    pub fn take_epsilons(&self, i: TransitionTableIndex) -> STransition {
+        if self.get_transition(i).get_input_symbol() != 0 {
+            return STransition::new(0, NO_SYMBOL_NUMBER);
+        }
+        STransition::new_weighted(
+            self.get_transition(i).get_target(),
+            self.get_transition(i).get_output_symbol(),
+            self.get_transition(i).get_weight(),
+        )
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.take-epsilons-and-flags-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.take-epsilons-and-flags-fn]
+    pub fn take_epsilons_and_flags(&self, i: TransitionTableIndex) -> STransition {
+        if self.get_transition(i).get_input_symbol() != 0
+            && !self.is_flag(self.get_transition(i).get_input_symbol())
+        {
+            return STransition::new(0, NO_SYMBOL_NUMBER);
+        }
+        STransition::new_weighted(
+            self.get_transition(i).get_target(),
+            self.get_transition(i).get_output_symbol(),
+            self.get_transition(i).get_weight(),
+        )
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.take-non-epsilons-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.take-non-epsilons-fn]
+    pub fn take_non_epsilons(&self, i: TransitionTableIndex, symbol: SymbolNumber) -> STransition {
+        if self.get_transition(i).get_input_symbol() != symbol {
+            return STransition::new(0, NO_SYMBOL_NUMBER);
+        }
+        STransition::new_weighted(
+            self.get_transition(i).get_target(),
+            self.get_transition(i).get_output_symbol(),
+            self.get_transition(i).get_weight(),
+        )
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.final-weight-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.final-weight-fn]
+    pub fn final_weight(&self, i: TransitionTableIndex) -> Weight {
+        if i >= TRANSITION_TARGET_TABLE_START {
+            self.get_transition(i - TRANSITION_TARGET_TABLE_START)
+                .get_weight()
+        } else {
+            self.get_index(i).final_weight()
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.is-flag-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.is-flag-fn]
+    pub fn is_flag(&self, symbol: SymbolNumber) -> bool {
+        self.alph().is_flag_diacritic(symbol)
+    }
+    // [spec:hfst:def:transducer.hfst-ol.transducer.is-weighted-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.is-weighted-fn]
+    pub fn is_weighted(&self) -> bool {
+        self.hdr().probe_flag(HeaderFlag::Weighted)
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.get-unknown-symbol-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.get-unknown-symbol-fn]
+    pub fn get_unknown_symbol(&self) -> SymbolNumber {
+        self.alph().get_unknown_symbol()
+    }
+    // [spec:hfst:def:transducer.hfst-ol.transducer.get-string-symbol-map-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.get-string-symbol-map-fn]
+    pub fn get_string_symbol_map(&self) -> StringSymbolMap {
+        self.alph().build_string_symbol_map()
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.initialize-input-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.initialize-input-fn]
+    pub fn initialize_input(&mut self, input: &str) -> bool {
+        let mut buf: Vec<u8> = input.as_bytes().to_vec();
+        buf.push(0);
+        let mut i: u32 = 0;
+        let mut p: usize = 0;
+        while buf[p] != 0 {
+            let original_input_loc = p;
+            let mut k = self.encoder.as_ref().unwrap().find_key(&buf, &mut p);
+            if k == NO_SYMBOL_NUMBER {
+                // Add what we assume to be an unknown utf-8 symbol to the alphabet
+                p = original_input_loc;
+                let bytes_to_tokenize = nByte_utf8(buf[p]);
+                if bytes_to_tokenize == 0 {
+                    return false; // tokenization failed
+                }
+                let new_symbol =
+                    String::from_utf8_lossy(&buf[p..p + bytes_to_tokenize as usize]).into_owned();
+                p += bytes_to_tokenize as usize;
+                self.alphabet.as_mut().unwrap().add_symbol(&new_symbol);
+                k = size_t_to_uint(self.alph().get_symbol_table().len() - 1) as SymbolNumber;
+                self.encoder
+                    .as_mut()
+                    .unwrap()
+                    .read_input_symbol(&new_symbol, k as i32);
+            }
+            self.input_tape.write(i, k);
+            i += 1;
+        }
+        self.input_tape.write(i, NO_SYMBOL_NUMBER);
+        true
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.include-symbol-in-alphabet-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.include-symbol-in-alphabet-fn]
+    pub fn include_symbol_in_alphabet(&mut self, sym: &str) {
+        let key = self.alph().symbol_from_string(sym);
+        if key != NO_SYMBOL_NUMBER {
+            return;
+        }
+        let key = size_t_to_uint(self.alph().get_symbol_table().len()) as SymbolNumber;
+        self.alphabet.as_mut().unwrap().add_symbol_str(sym);
+        self.encoder
+            .as_mut()
+            .unwrap()
+            .read_input_symbol(sym, key as i32);
+    }
+
+    pub fn lookup_fd_strvec(
+        &mut self,
+        s: &StringVector,
+        limit: isize,
+        time_cutoff: f64,
+    ) -> HfstOneLevelPaths {
+        let mut input_str = String::new();
+        for it in s.iter() {
+            input_str.push_str(it);
+        }
+        self.lookup_fd_str(&input_str, limit, time_cutoff)
+    }
+
+    pub fn lookup_fd_str(&mut self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths {
+        self.lookup_fd_cstr(s, limit, time_cutoff)
+    }
+
+    pub fn lookup_fd_pairs_str(
+        &mut self,
+        s: &str,
+        limit: isize,
+        time_cutoff: f64,
+    ) -> HfstTwoLevelPaths {
+        self.lookup_fd_pairs_cstr(s, limit, time_cutoff)
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.lookup-fd-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.lookup-fd-fn]
+    pub fn lookup_fd_cstr(&mut self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths {
+        self.max_lookups = limit;
+        self.max_time = 0.0;
+        if time_cutoff > 0.0 {
+            self.max_time = time_cutoff;
+            self.start_clock = Some(Instant::now());
+        }
+        let mut results: HfstOneLevelPaths = BTreeSet::new();
+        if !self.initialize_input(s) {
+            return results;
+        }
+        let mut paths: Box<HfstTwoLevelPaths> = Box::new(BTreeSet::new());
+        self.lookup_paths = paths.as_mut() as *mut HfstTwoLevelPaths;
+        self.traversal_states.clear();
+        self.get_analyses(0, 0, 0);
+        for it in paths.iter() {
+            let mut output_path = HfstOneLevelPath {
+                first: it.first,
+                second: Vec::new(),
+            };
+            for v_it in it.second.iter() {
+                output_path.second.push(v_it.1.clone());
+            }
+            results.insert(output_path);
+        }
+        self.lookup_paths = std::ptr::null_mut();
+        results
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.lookup-fd-pairs-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.lookup-fd-pairs-fn]
+    pub fn lookup_fd_pairs_cstr(
+        &mut self,
+        s: &str,
+        limit: isize,
+        time_cutoff: f64,
+    ) -> HfstTwoLevelPaths {
+        self.max_lookups = limit;
+        self.max_time = 0.0;
+        if time_cutoff > 0.0 {
+            self.max_time = time_cutoff;
+            self.start_clock = Some(Instant::now());
+        }
+        let mut results: Box<HfstTwoLevelPaths> = Box::new(BTreeSet::new());
+        self.lookup_paths = results.as_mut() as *mut HfstTwoLevelPaths;
+        if !self.initialize_input(s) {
+            self.lookup_paths = std::ptr::null_mut();
+            return *results;
+        }
+        self.traversal_states.clear();
+        self.get_analyses(0, 0, 0);
+        self.lookup_paths = std::ptr::null_mut();
+        *results
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.try-epsilon-transitions-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.try-epsilon-transitions-fn]
+    fn try_epsilon_transitions(
+        &mut self,
+        input_pos: u32,
+        output_pos: u32,
+        mut i: TransitionTableIndex,
+    ) {
+        loop {
+            let input = self.tbl().get_transition_input(i);
+            let output = self.tbl().get_transition_output(i);
+            let target = self.tbl().get_transition_target(i);
+            let weight = self.tbl().get_weight(i);
+            let old_weight = self.current_weight;
+            if input == 0 {
+                // epsilon
+                self.output_tape.write_pair(output_pos, input, output);
+                self.current_weight += weight;
+                self.get_analyses(input_pos, output_pos + 1, target);
+                self.found_transition = true;
+                self.current_weight = old_weight;
+                i += 1;
+            } else if self.alph().is_flag_diacritic(input) {
+                let flags = self.flag_state.get_values().clone();
+                let op = self.alph().get_operation(input).unwrap().clone();
+                if self.flag_state.apply_operation(&op) {
+                    // flag diacritic allowed
+                    let flag_reachable = TraversalState::new(target, flags.clone());
+                    if self.traversal_states.contains(&flag_reachable) {
+                        // We've been here before at this input, back out
+                        self.flag_state.assign_values(&flags);
+                        i += 1;
+                        continue;
+                    }
+                    self.traversal_states.insert(flag_reachable.clone());
+                    self.output_tape.write_pair(output_pos, input, output);
+                    self.current_weight += weight;
+                    self.get_analyses(input_pos, output_pos + 1, target);
+                    self.found_transition = true;
+                    self.current_weight = old_weight;
+                    self.traversal_states.remove(&flag_reachable);
+                }
+                self.flag_state.assign_values(&flags);
+                i += 1;
+            } else {
+                // it's not epsilon and it's not a flag, so nothing to do
+                return;
+            }
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.try-epsilon-indices-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.try-epsilon-indices-fn]
+    fn try_epsilon_indices(&mut self, input_pos: u32, output_pos: u32, i: TransitionTableIndex) {
+        if self.tbl().get_index_input(i) == 0 {
+            let target = self.tbl().get_index_target(i) - TRANSITION_TARGET_TABLE_START;
+            self.try_epsilon_transitions(input_pos, output_pos, target);
+            self.found_transition = true;
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.find-transitions-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.find-transitions-fn]
+    fn find_transitions(
+        &mut self,
+        input: SymbolNumber,
+        input_pos: u32,
+        output_pos: u32,
+        mut i: TransitionTableIndex,
+    ) {
+        while self.tbl().get_transition_input(i) != NO_SYMBOL_NUMBER {
+            if self.tbl().get_transition_input(i) == input {
+                let old_weight = self.current_weight;
+                // We're not going to find an epsilon / flag loop
+                self.traversal_states.clear();
+                let mut output = self.tbl().get_transition_output(i);
+                if self.alph().is_meta_arc(output) {
+                    // we got here via default, identity or unknown, so look back
+                    // in the input tape to find the symbol we want to write
+                    output = self.input_tape.at(input_pos - 1);
+                }
+                self.output_tape.write_pair(output_pos, input, output);
+                let w = self.tbl().get_weight(i);
+                self.current_weight += w;
+                let target = self.tbl().get_transition_target(i);
+                self.get_analyses(input_pos, output_pos + 1, target);
+                self.current_weight = old_weight;
+                self.found_transition = true;
+            } else {
+                return;
+            }
+            i += 1;
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.find-index-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.find-index-fn]
+    fn find_index(
+        &mut self,
+        input: SymbolNumber,
+        input_pos: u32,
+        output_pos: u32,
+        i: TransitionTableIndex,
+    ) {
+        if self.tbl().get_index_input(i + input as u32) == input {
+            let target =
+                self.tbl().get_index_target(i + input as u32) - TRANSITION_TARGET_TABLE_START;
+            self.find_transitions(input, input_pos, output_pos, target);
+            self.found_transition = true;
+        }
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.get-analyses-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.get-analyses-fn]
+    fn get_analyses(&mut self, input_pos: u32, output_pos: u32, mut i: TransitionTableIndex) {
+        self.found_transition = false;
+
+        if self.recursion_depth_left == 0 {
+            return;
+        }
+        if self.max_lookups >= 0
+            && unsafe { (*self.lookup_paths).len() } as isize >= self.max_lookups
+        {
+            // Back out because we have enough results already
+            return;
+        }
+        if self.max_time > 0.0 {
+            // quit if we've overspent our time
+            if let Some(sc) = self.start_clock {
+                if sc.elapsed().as_secs_f64() > self.max_time {
+                    return;
+                }
+            }
+        }
+        self.recursion_depth_left -= 1;
+        if indexes_transition_table(i) {
+            i -= TRANSITION_TARGET_TABLE_START;
+            // First we check for finality and collect the result
+            if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
+                if self.max_lookups < 0
+                    || (unsafe { (*self.lookup_paths).len() } as isize) < self.max_lookups
+                {
+                    self.output_tape
+                        .write_pair(output_pos, NO_SYMBOL_NUMBER, NO_SYMBOL_NUMBER);
+                    if self.tbl().get_transition_finality(i) {
+                        let old_weight = self.current_weight;
+                        let w = self.tbl().get_weight(i);
+                        self.current_weight += w;
+                        self.note_analysis();
+                        self.current_weight = old_weight;
+                    }
+                }
+            }
+
+            // Then we check epsilons
+            self.try_epsilon_transitions(input_pos, output_pos, i + 1);
+
+            if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
+                // No more input
+                self.recursion_depth_left += 1;
+                return;
+            }
+
+            let input = self.input_tape.at(input_pos);
+            let input_pos = input_pos + 1;
+
+            if input < self.alph().get_orig_symbol_count() {
+                // Input is in the alphabet
+                self.find_transitions(input, input_pos, output_pos, i + 1);
+            } else {
+                if self.alph().get_identity_symbol() != NO_SYMBOL_NUMBER {
+                    let id = self.alph().get_identity_symbol();
+                    self.find_transitions(id, input_pos, output_pos, i + 1);
+                }
+                if self.alph().get_unknown_symbol() != NO_SYMBOL_NUMBER {
+                    let unk = self.alph().get_unknown_symbol();
+                    self.find_transitions(unk, input_pos, output_pos, i + 1);
+                }
+            }
+            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !self.found_transition {
+                let def = self.alph().get_default_symbol();
+                self.find_transitions(def, input_pos, output_pos, i + 1);
+            }
+        } else {
+            if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
+                if self.max_lookups < 0
+                    || (unsafe { (*self.lookup_paths).len() } as isize) < self.max_lookups
+                {
+                    self.output_tape
+                        .write_pair(output_pos, NO_SYMBOL_NUMBER, NO_SYMBOL_NUMBER);
+                    if self.tbl().get_index_finality(i) {
+                        let old_weight = self.current_weight;
+                        let w = self.tbl().get_final_weight(i);
+                        self.current_weight += w;
+                        self.note_analysis();
+                        self.current_weight = old_weight;
+                    }
+                }
+            }
+
+            self.try_epsilon_indices(input_pos, output_pos, i + 1);
+
+            if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
+                self.recursion_depth_left += 1;
+                return;
+            }
+
+            let input = self.input_tape.at(input_pos);
+            let input_pos = input_pos + 1;
+
+            if input < self.alph().get_orig_symbol_count() {
+                // Input is in the alphabet
+                self.find_index(input, input_pos, output_pos, i + 1);
+            } else {
+                if self.alph().get_identity_symbol() != NO_SYMBOL_NUMBER {
+                    let id = self.alph().get_identity_symbol();
+                    self.find_index(id, input_pos, output_pos, i + 1);
+                }
+                if self.alph().get_unknown_symbol() != NO_SYMBOL_NUMBER {
+                    let unk = self.alph().get_unknown_symbol();
+                    self.find_index(unk, input_pos, output_pos, i + 1);
+                }
+            }
+            // If we have a default symbol defined and we didn't find an index,
+            // check for that
+            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !self.found_transition {
+                let def = self.alph().get_default_symbol();
+                self.find_index(def, input_pos, output_pos, i + 1);
+            }
+        }
+        self.output_tape
+            .write_pair(output_pos, NO_SYMBOL_NUMBER, NO_SYMBOL_NUMBER);
+        self.recursion_depth_left += 1;
+    }
+
+    // [spec:hfst:def:transducer.hfst-ol.transducer.note-analysis-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.note-analysis-fn]
+    fn note_analysis(&mut self) {
+        let mut result = HfstTwoLevelPath {
+            first: 0.0,
+            second: Vec::new(),
+        };
+        let mut idx = 0usize;
+        while self.output_tape.inner[idx].output != NO_SYMBOL_NUMBER {
+            let pair = self.output_tape.inner[idx];
+            let in_s = self.alph().string_from_symbol(pair.input);
+            let out_s = self.alph().string_from_symbol(pair.output);
+            result.second.push((in_s, out_s));
+            idx += 1;
+        }
+        result.first = self.current_weight;
+        unsafe {
+            (*self.lookup_paths).insert(result);
+        }
+    }
+
+    // ---- find_epsilon_loops.cc ----
+
+    // [spec:hfst:def:find-epsilon-loops.hfst-ol.transducer.find-loop-epsilon-transitions-fn]
+    // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-epsilon-transitions-fn]
+    fn find_loop_epsilon_transitions(&mut self, input_pos: u32, mut i: TransitionTableIndex) {
+        let flags = self.flag_state.get_values().clone();
+        loop {
+            let target = self.tbl().get_transition_target(i);
+            let epsilon_reachable = TraversalState::new(target, flags.clone());
+            let tin = self.tbl().get_transition_input(i);
+            if tin == 0 {
+                // epsilon
+                // We try to trap non-progressing loops
+                if self.traversal_states.contains(&epsilon_reachable) {
+                    // We've been here before
+                    std::panic::panic_any(true);
+                }
+                self.traversal_states.insert(epsilon_reachable.clone());
+                self.find_loop(input_pos, target);
+                self.traversal_states.remove(&epsilon_reachable);
+                self.found_transition = true;
+                i += 1;
+            } else if self.alph().is_flag_diacritic(tin) {
+                let op = self.alph().get_operation(tin).unwrap().clone();
+                if self.flag_state.apply_operation(&op) {
+                    // flag diacritic allowed
+                    if self.traversal_states.contains(&epsilon_reachable) {
+                        // We've been here before
+                        std::panic::panic_any(true);
+                    }
+                    self.traversal_states.insert(epsilon_reachable.clone());
+                    self.find_loop(input_pos, target);
+                    self.traversal_states.remove(&epsilon_reachable);
+                }
+                self.flag_state.assign_values(&flags);
+                i += 1;
+            } else {
+                // it's not epsilon and it's not a flag, so nothing to do
+                return;
+            }
+        }
+    }
+
+    // [spec:hfst:def:find-epsilon-loops.hfst-ol.transducer.find-loop-epsilon-indices-fn]
+    // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-epsilon-indices-fn]
+    fn find_loop_epsilon_indices(&mut self, input_pos: u32, i: TransitionTableIndex) {
+        if self.tbl().get_index_input(i) == 0 {
+            let target = self.tbl().get_index_target(i) - TRANSITION_TARGET_TABLE_START;
+            self.find_loop_epsilon_transitions(input_pos, target);
+            self.found_transition = true;
+        }
+    }
+
+    // [spec:hfst:def:find-epsilon-loops.hfst-ol.transducer.find-loop-transitions-fn]
+    // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-transitions-fn]
+    fn find_loop_transitions(
+        &mut self,
+        input: SymbolNumber,
+        input_pos: u32,
+        mut i: TransitionTableIndex,
+    ) {
+        while self.tbl().get_transition_input(i) != NO_SYMBOL_NUMBER {
+            if self.tbl().get_transition_input(i) == input {
+                // We're not going to find an epsilon / flag loop
+                self.traversal_states.clear();
+                let target = self.tbl().get_transition_target(i);
+                self.find_loop(input_pos, target);
+                self.found_transition = true;
+            } else {
+                return;
+            }
+            i += 1;
+        }
+    }
+
+    // [spec:hfst:def:find-epsilon-loops.hfst-ol.transducer.find-loop-index-fn]
+    // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-index-fn]
+    fn find_loop_index(&mut self, input: SymbolNumber, input_pos: u32, i: TransitionTableIndex) {
+        if self.tbl().get_index_input(i + input as u32) == input {
+            let target =
+                self.tbl().get_index_target(i + input as u32) - TRANSITION_TARGET_TABLE_START;
+            self.find_loop_transitions(input, input_pos, target);
+            self.found_transition = true;
+        }
+    }
+
+    // [spec:hfst:def:find-epsilon-loops.hfst-ol.transducer.find-loop-fn]
+    // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-fn]
+    fn find_loop(&mut self, input_pos: u32, mut i: TransitionTableIndex) {
+        self.found_transition = false;
+
+        if indexes_transition_table(i) {
+            i -= TRANSITION_TARGET_TABLE_START;
+            self.find_loop_epsilon_transitions(input_pos, i + 1);
+
+            // input-string ended.
+            if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
+                return;
+            }
+
+            let input = self.input_tape.at(input_pos);
+            let input_pos = input_pos + 1;
+
+            self.find_loop_transitions(input, input_pos, i + 1);
+            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !self.found_transition {
+                let def = self.alph().get_default_symbol();
+                self.find_loop_transitions(def, input_pos, i + 1);
+            }
+        } else {
+            self.find_loop_epsilon_indices(input_pos, i + 1);
+
+            if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
+                // input-string ended.
+                return;
+            }
+
+            let input = self.input_tape.at(input_pos);
+            let input_pos = input_pos + 1;
+
+            self.find_loop_index(input, input_pos, i + 1);
+            // If we have a default symbol defined and we didn't find an index,
+            // check for that
+            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !self.found_transition {
+                let def = self.alph().get_default_symbol();
+                self.find_loop_index(def, input_pos, i + 1);
+            }
+        }
+    }
+}
+
+impl Default for Transducer {
+    fn default() -> Self {
+        Self::new()
     }
 }
