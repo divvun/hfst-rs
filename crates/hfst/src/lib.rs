@@ -16,6 +16,7 @@
 #![allow(non_upper_case_globals)]
 
 pub mod convert;
+pub mod convert_ol_transducer;
 pub mod convert_transducer_format;
 pub mod format_specifiers;
 pub mod harmonize_unknown_and_identity_symbols;

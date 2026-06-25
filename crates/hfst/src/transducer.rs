@@ -2379,7 +2379,15 @@ impl Transducer {
                         transition_i += 1;
                     }
                 } else {
-                    // not a flag
+                    // not a flag.
+                    // The C++ reads get_index(state_index+1+symbol) unconditionally;
+                    // for output-only symbols (whose number can reach symbol_count)
+                    // this indexes past the index table — a benign out-of-bounds read
+                    // in C++ that yields a non-matching entry. Guard it to the
+                    // intended "no entry beyond the table => no transitions" semantics.
+                    if state_index + 1 + symbol as u32 >= self.hdr().index_table_size() {
+                        continue;
+                    }
                     let test_input = self
                         .get_index(state_index + 1 + symbol as u32)
                         .get_input_symbol();
