@@ -212,6 +212,7 @@ impl FdOperation {
 /// \brief A collection of the flag diacritics from a symbol table indexed by
 /// keys of type `T`.
 // [spec:hfst:def:hfst-flag-diacritics.hfst.fd-table]
+#[derive(Clone)]
 pub struct FdTable<T: Ord + Clone> {
     // Used for generating IDs that stand in for feature and value strings
     feature_map: BTreeMap<String, FdFeature>,
