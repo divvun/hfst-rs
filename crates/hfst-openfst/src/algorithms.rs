@@ -25,6 +25,7 @@ use rustfst::algorithms::{ProjectType, ReweightType};
 use rustfst::semirings::{WeaklyDivisibleSemiring, WeightQuantize};
 
 pub use rustfst::algorithms::encode::{EncodeTable, EncodeType, decode, encode};
+pub use rustfst::algorithms::{PushType, ReweightType as FstReweightType};
 
 // ---- in-place algorithms ----
 
@@ -174,4 +175,91 @@ where
     F3: MutableFst<W> + AllocableFst<W>,
 {
     *ofst = compose::<W, F1, F2, F3, &F1, &F2>(fst1, fst2).expect("rustfst compose");
+}
+
+// [fst::Push<Arc, reweight_type>] — ofst := push(ifst); push_type selects
+// weights/labels (fst::kPushWeights / fst::kPushLabels).
+pub fn Push<W, F1, F2>(ifst: &F1, ofst: &mut F2, reweight_type: ReweightType, push_type: PushType)
+where
+    W: WeaklyDivisibleSemiring + WeightQuantize + Semiring<ReverseWeight = W>,
+    F1: ExpandedFst<W>,
+    F2: ExpandedFst<W> + MutableFst<W> + AllocableFst<W>,
+{
+    *ofst = push(ifst, reweight_type, push_type).expect("rustfst push");
+}
+
+// [fst::ShortestPath] — ofst := the single best path of ifst.
+pub fn ShortestPath<W, FI, FO>(ifst: &FI, ofst: &mut FO)
+where
+    W: WeaklyDivisibleSemiring + WeightQuantize + Semiring<ReverseWeight = W> + Into<W> + From<W>,
+    FI: ExpandedFst<W>,
+    FO: MutableFst<W>,
+{
+    *ofst = shortest_path(ifst).expect("rustfst shortest_path");
+}
+
+// ---- rustfst gaps ----
+// Not (yet) in rustfst. Per the plan these are implemented in the rustfst fork
+// when a ported HFST test proves one is needed; until then they panic loudly so
+// a reaching test fails visibly rather than silently misbehaving.
+
+// [fst::Difference] — ofst := fst1 - fst2
+pub fn Difference<W, F1, F2, F3>(_fst1: &F1, _fst2: &F2, _ofst: &mut F3)
+where
+    W: Semiring,
+    F1: ExpandedFst<W>,
+    F2: ExpandedFst<W>,
+    F3: MutableFst<W>,
+{
+    unimplemented!(
+        "rustfst gap: Difference — implement in the rustfst fork when a ported test needs it"
+    );
+}
+
+// [fst::Intersect] — ofst := fst1 ∩ fst2 (acceptors)
+pub fn Intersect<W, F1, F2, F3>(_fst1: &F1, _fst2: &F2, _ofst: &mut F3)
+where
+    W: Semiring,
+    F1: ExpandedFst<W>,
+    F2: ExpandedFst<W>,
+    F3: MutableFst<W>,
+{
+    unimplemented!(
+        "rustfst gap: Intersect — implement in the rustfst fork when a ported test needs it"
+    );
+}
+
+// [fst::Prune] — in-place prune of paths worse than `threshold`
+pub fn Prune<W, F>(_fst: &mut F, _threshold: W)
+where
+    W: Semiring,
+    F: MutableFst<W>,
+{
+    unimplemented!(
+        "rustfst gap: Prune — implement in the rustfst fork when a ported test needs it"
+    );
+}
+
+// [fst::Equivalent] — are fst1 and fst2 equivalent?
+pub fn Equivalent<W, F1, F2>(_fst1: &F1, _fst2: &F2) -> bool
+where
+    W: Semiring,
+    F1: ExpandedFst<W>,
+    F2: ExpandedFst<W>,
+{
+    unimplemented!(
+        "rustfst gap: Equivalent — implement in the rustfst fork when a ported test needs it"
+    );
+}
+
+// [fst::EpsNormalize] — ofst := eps-normalized ifst
+pub fn EpsNormalize<W, F1, F2>(_ifst: &F1, _ofst: &mut F2)
+where
+    W: Semiring,
+    F1: ExpandedFst<W>,
+    F2: MutableFst<W>,
+{
+    unimplemented!(
+        "rustfst gap: EpsNormalize — implement in the rustfst fork when a ported test needs it"
+    );
 }
