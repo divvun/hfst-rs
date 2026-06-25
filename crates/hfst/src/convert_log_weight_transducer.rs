@@ -309,7 +309,10 @@ impl ConversionFunctions {
 
         // Add also symbols that do not occur in transitions
         for it in net.get_alphabet().iter() {
-            st.add_symbol(it.clone());
+            // explicit-label add so the FST labels match the basic-transducer
+            // symbol numbers (see the tropical convert for the rationale).
+            let symbol_number = net.get_symbol_number(it);
+            st.add_symbol_with_key(it.clone(), symbol_number);
         }
 
         t.set_input_symbols(Arc::new(st));

@@ -246,8 +246,12 @@ impl ConversionFunctions {
             // an explicit (possibly sparse) label, so `get_symbol_number` is still
             // evaluated for its interning side effect but its value cannot be used
             // as the label. See the module-level note / deferred list.
-            let _symbol_number = net.get_symbol_number(it);
-            st.add_symbol(it.clone());
+            // `st.AddSymbol(*it, net->get_symbol_number(*it));` — assign the
+            // symbol's global number as its explicit label so the FST's arc
+            // labels coincide with the basic-transducer symbol numbers (and the
+            // tropical->basic round-trip recovers them).
+            let symbol_number = net.get_symbol_number(it);
+            st.add_symbol_with_key(it.clone(), symbol_number);
         }
 
         // Go through all states...

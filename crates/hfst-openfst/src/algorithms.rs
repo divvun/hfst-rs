@@ -146,6 +146,25 @@ pub fn Decode<W: Semiring, F: MutableFst<W>>(fst: &mut F, table: EncodeTable<W>)
 
 // ---- out-of-place algorithms (OpenFST out-param shape: result written to ofst) ----
 
+// OpenFST's out-of-place algorithms set the output's symbol tables from the
+// input; rustfst drops them when it builds a fresh fst. HFST relies on the fst
+// carrying its symbol table through every operation (it reads the table back as
+// the symbol↔number map when converting to a HfstBasicTransducer), so we
+// re-attach the input's tables to the output, mirroring OpenFST.
+fn propagate_symbols<W, F1, F2>(ifst: &F1, ofst: &mut F2)
+where
+    W: Semiring,
+    F1: Fst<W>,
+    F2: MutableFst<W>,
+{
+    if let Some(symt) = ifst.input_symbols() {
+        ofst.set_input_symbols(std::sync::Arc::clone(symt));
+    }
+    if let Some(symt) = ifst.output_symbols() {
+        ofst.set_output_symbols(std::sync::Arc::clone(symt));
+    }
+}
+
 // [fst::Determinize] — ofst := det(ifst)
 pub fn Determinize<W, F1, F2>(ifst: &F1, ofst: &mut F2)
 where
@@ -154,6 +173,7 @@ where
     F2: MutableFst<W> + AllocableFst<W>,
 {
     *ofst = determinize(ifst).expect("rustfst determinize");
+    propagate_symbols(ifst, ofst);
 }
 
 // [fst::Reverse] — ofst := reverse(ifst)
@@ -164,6 +184,13 @@ where
     F2: MutableFst<W> + ExpandedFst<W> + AllocableFst<W>,
 {
     *ofst = reverse(ifst).expect("rustfst reverse");
+    // Reverse swaps the two sides, so the tables swap too.
+    if let Some(symt) = ifst.output_symbols() {
+        ofst.set_input_symbols(std::sync::Arc::clone(symt));
+    }
+    if let Some(symt) = ifst.input_symbols() {
+        ofst.set_output_symbols(std::sync::Arc::clone(symt));
+    }
 }
 
 // [fst::Compose] — ofst := fst1 ∘ fst2
@@ -175,6 +202,13 @@ where
     F3: MutableFst<W> + AllocableFst<W>,
 {
     *ofst = compose::<W, F1, F2, F3, &F1, &F2>(fst1, fst2).expect("rustfst compose");
+    // OpenFST composition: result.input := fst1.input, result.output := fst2.output.
+    if let Some(symt) = fst1.input_symbols() {
+        ofst.set_input_symbols(std::sync::Arc::clone(symt));
+    }
+    if let Some(symt) = fst2.output_symbols() {
+        ofst.set_output_symbols(std::sync::Arc::clone(symt));
+    }
 }
 
 // [fst::Push<Arc, reweight_type>] — ofst := push(ifst); push_type selects
@@ -186,6 +220,7 @@ where
     F2: ExpandedFst<W> + MutableFst<W> + AllocableFst<W>,
 {
     *ofst = push(ifst, reweight_type, push_type).expect("rustfst push");
+    propagate_symbols(ifst, ofst);
 }
 
 // [fst::ShortestPath] — ofst := the single best path of ifst.
@@ -196,6 +231,7 @@ where
     FO: MutableFst<W>,
 {
     *ofst = shortest_path(ifst).expect("rustfst shortest_path");
+    propagate_symbols(ifst, ofst);
 }
 
 // ---- rustfst gaps ----
