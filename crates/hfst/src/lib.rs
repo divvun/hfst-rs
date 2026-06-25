@@ -16,6 +16,7 @@
 #![allow(non_upper_case_globals)]
 
 pub mod convert;
+pub mod convert_log_weight_transducer;
 pub mod convert_ol_transducer;
 pub mod convert_transducer_format;
 pub mod convert_tropical_weight_transducer;
@@ -35,6 +36,7 @@ pub mod hfst_symbol_defs;
 pub mod hfst_tokenizer;
 pub mod hfst_transition;
 pub mod hfst_tropical_transducer_transition_data;
+pub mod log_weight_transducer;
 pub mod ospell;
 pub mod pmatch;
 pub mod pmatch_tokenize;
