@@ -274,6 +274,7 @@ dependencies = [
  "icu",
  "libc",
  "nfst-lexc",
+ "nfst-twolc",
  "nfst-xre",
 ]
 
