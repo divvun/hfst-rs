@@ -1915,7 +1915,9 @@ impl STransition {
 
 // [spec:hfst:def:transducer.hfst-ol.n-byte-utf8-fn]
 // [spec:hfst:sem:transducer.hfst-ol.n-byte-utf8-fn]
-// (body lives in ospell.cc; ported here at its declaration site)
+// [spec:hfst:def:ospell.hfst-ol.n-byte-utf8-fn]
+// [spec:hfst:sem:ospell.hfst-ol.n-byte-utf8-fn]
+// (declared in transducer.h, defined in ospell.cc — one function, two ids)
 pub fn nByte_utf8(c: u8) -> i32 {
     /* utility function to determine how many bytes to peel off as
     a utf-8 character for representing as OTHER */

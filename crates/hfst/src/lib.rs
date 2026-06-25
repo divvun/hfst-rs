@@ -31,6 +31,7 @@ pub mod hfst_symbol_defs;
 pub mod hfst_tokenizer;
 pub mod hfst_transition;
 pub mod hfst_tropical_transducer_transition_data;
+pub mod ospell;
 pub mod pmatch;
 pub mod string_utils;
 pub mod transducer;

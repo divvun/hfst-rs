@@ -368,6 +368,7 @@ impl<T: Ord + Clone> Default for FdTable<T> {
 /// \brief Contains the values of each of the flag diacritic features from a
 /// table. It allows for evaluating a series of diacritic operations.
 // [spec:hfst:def:hfst-flag-diacritics.hfst.fd-state]
+#[derive(Clone)]
 pub struct FdState<T: Ord + Clone> {
     table: *const FdTable<T>,
 
