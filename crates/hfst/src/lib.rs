@@ -15,6 +15,11 @@
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
 
+pub mod compose_intersect_fst;
+pub mod compose_intersect_lexicon;
+pub mod compose_intersect_rule;
+pub mod compose_intersect_rule_pair;
+pub mod compose_intersect_utilities;
 pub mod convert;
 pub mod convert_log_weight_transducer;
 pub mod convert_ol_transducer;
@@ -29,13 +34,21 @@ pub mod hfst_epsilon_handler;
 pub mod hfst_exception_defs;
 pub mod hfst_extract_strings;
 pub mod hfst_flag_diacritics;
+pub mod hfst_input_stream;
 pub mod hfst_lookup_flag_diacritics;
+pub mod hfst_ol_transducer;
+pub mod hfst_output_stream;
+pub mod hfst_print_dot;
+pub mod hfst_print_pckimmo;
+pub mod hfst_rules;
 pub mod hfst_string_conversions;
 pub mod hfst_strings2_fst_tokenizer;
 pub mod hfst_symbol_defs;
 pub mod hfst_tokenizer;
+pub mod hfst_transducer;
 pub mod hfst_transition;
 pub mod hfst_tropical_transducer_transition_data;
+pub mod hfst_xerox_rules;
 pub mod log_weight_transducer;
 pub mod ospell;
 pub mod pmatch;
@@ -43,6 +56,7 @@ pub mod pmatch_tokenize;
 pub mod string_utils;
 pub mod transducer;
 pub mod tropical_weight_transducer;
+pub mod xre;
 
 // Facade global from HfstTransducer.cc (set_encode_weights/get_encode_weights);
 // stubbed at the crate root until the facade lands. C++ default is false.
