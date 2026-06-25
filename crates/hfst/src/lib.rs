@@ -36,5 +36,6 @@ pub mod hfst_transition;
 pub mod hfst_tropical_transducer_transition_data;
 pub mod ospell;
 pub mod pmatch;
+pub mod pmatch_tokenize;
 pub mod string_utils;
 pub mod transducer;
