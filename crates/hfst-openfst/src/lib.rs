@@ -17,3 +17,24 @@
 //! while HFST-side code uses `transition`.
 
 pub use rustfst;
+// The rustfst prelude brings the Fst/MutableFst/ExpandedFst traits, the
+// algorithms, the semirings and `Tr` into scope for downstream callers.
+pub use rustfst::prelude;
+
+/// `fst::TropicalWeight` — the tropical semiring (min, +) over `f32`.
+pub type TropicalWeight = rustfst::semirings::TropicalWeight;
+/// `fst::LogWeight` — the log semiring.
+pub type LogWeight = rustfst::semirings::LogWeight;
+
+/// `fst::StdArc` — a tropical-weighted transition (rustfst `Tr`).
+pub type StdTransition = rustfst::Tr<TropicalWeight>;
+/// `fst::LogArc` — a log-weighted transition.
+pub type LogTransition = rustfst::Tr<LogWeight>;
+
+/// `fst::StdVectorFst` — the mutable tropical-weighted vector FST that HFST's
+/// `TropicalWeightTransducer` is built on.
+pub type StdVectorFst = rustfst::fst_impls::VectorFst<TropicalWeight>;
+/// `fst::LogFst` — the log-weighted vector FST.
+pub type LogVectorFst = rustfst::fst_impls::VectorFst<LogWeight>;
+
+pub use rustfst::SymbolTable;
