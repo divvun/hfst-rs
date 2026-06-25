@@ -18,6 +18,7 @@
 pub mod convert;
 pub mod convert_ol_transducer;
 pub mod convert_transducer_format;
+pub mod convert_tropical_weight_transducer;
 pub mod format_specifiers;
 pub mod harmonize_unknown_and_identity_symbols;
 pub mod hfst_basic_transducer;
@@ -39,3 +40,10 @@ pub mod pmatch;
 pub mod pmatch_tokenize;
 pub mod string_utils;
 pub mod transducer;
+pub mod tropical_weight_transducer;
+
+// Facade global from HfstTransducer.cc (set_encode_weights/get_encode_weights);
+// stubbed at the crate root until the facade lands. C++ default is false.
+pub fn get_encode_weights() -> bool {
+    false
+}

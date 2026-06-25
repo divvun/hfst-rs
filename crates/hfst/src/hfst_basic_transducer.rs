@@ -417,7 +417,7 @@ impl HfstBasicTransducer {
     /* Get the number of the `symbol`. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-symbol-number-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-symbol-number-fn]
-    fn get_symbol_number(&self, symbol: &HfstSymbol) -> u32 {
+    pub fn get_symbol_number(&self, symbol: &HfstSymbol) -> u32 {
         HfstTropicalTransducerTransitionData::get_number(symbol)
     }
 
@@ -432,7 +432,7 @@ impl HfstBasicTransducer {
     transitions for state `state_number`. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.initialize-transition-vector-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.initialize-transition-vector-fn]
-    fn initialize_transition_vector(&mut self, state_number: u32, number_of_transitions: u32) {
+    pub fn initialize_transition_vector(&mut self, state_number: u32, number_of_transitions: u32) {
         self.add_state(state_number);
         self.state_vector[state_number as usize].reserve(number_of_transitions as usize);
     }
