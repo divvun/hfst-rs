@@ -16,10 +16,14 @@
 //! Note: rustfst names transitions `Tr`; at its API boundary we use its names,
 //! while HFST-side code uses `transition`.
 
+#![allow(non_snake_case)] // OpenFST-shaped wrapper names (ArcSort, RmEpsilon, …)
+
 pub use rustfst;
 // The rustfst prelude brings the Fst/MutableFst/ExpandedFst traits, the
 // algorithms, the semirings and `Tr` into scope for downstream callers.
 pub use rustfst::prelude;
+
+pub mod algorithms;
 
 /// `fst::TropicalWeight` — the tropical semiring (min, +) over `f32`.
 pub type TropicalWeight = rustfst::semirings::TropicalWeight;
