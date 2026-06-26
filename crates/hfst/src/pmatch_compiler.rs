@@ -270,52 +270,12 @@ pub struct WordVector {
 // PmatchObject trait (the abstract base of the lazy-evaluation AST)
 // ---------------------------------------------------------------------------
 
-/// Convenience macro generating the shared base-field accessors required by
-/// the [`PmatchObject`] trait. Body agents may invoke this inside an
-/// `impl PmatchObject for X { ... }` block (every node struct carries the
-/// identical `name`/`weight`/`line_defined`/`my_timer`/`cache` base fields).
-#[macro_export]
-macro_rules! pmatch_object_base_methods {
-    () => {
-        fn get_name(&self) -> &str {
-            &self.name
-        }
-        fn set_name(&mut self, name: String) {
-            self.name = name;
-        }
-        fn get_weight(&self) -> f64 {
-            self.weight
-        }
-        fn set_weight(&mut self, weight: f64) {
-            self.weight = weight;
-        }
-        fn get_line_defined(&self) -> i32 {
-            self.line_defined
-        }
-        fn set_line_defined(&mut self, line_defined: i32) {
-            self.line_defined = line_defined;
-        }
-        fn get_my_timer(&self) -> $crate::pmatch_compiler::clock_t {
-            self.my_timer
-        }
-        fn set_my_timer(&mut self, my_timer: $crate::pmatch_compiler::clock_t) {
-            self.my_timer = my_timer;
-        }
-        fn get_cache(&self) -> *mut $crate::hfst_transducer::HfstTransducer {
-            self.cache
-        }
-        fn set_cache(&mut self, cache: *mut $crate::hfst_transducer::HfstTransducer) {
-            self.cache = cache;
-        }
-    };
-}
-
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object]
 //
 // The C++ `struct PmatchObject` has base fields `name`/`weight`/`line_defined`/
 // `my_timer`/`cache` carried (verbatim) on every node struct below; the trait
-// exposes them through required accessor methods (see
-// `pmatch_object_base_methods!`).
+// exposes them through accessor methods (get_name/set_name/.../get_cache/
+// set_cache) implemented on each node struct.
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.pmatch-object-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.pmatch-object-fn]
 pub trait PmatchObject {
@@ -2248,7 +2208,36 @@ pub unsafe fn get_size_info(net: *mut HfstTransducer) -> String {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.evaluate-fn]
 impl PmatchObject for PmatchUnaryOperation {
-    pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         if !self.cache.is_null() {
@@ -2602,7 +2591,36 @@ impl PmatchObject for PmatchUnaryOperation {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-numeric-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-numeric-operation.evaluate-fn]
 impl PmatchObject for PmatchNumericOperation {
-    crate::pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe {
@@ -2750,7 +2768,36 @@ pub unsafe fn fix_list_overlap(
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.evaluate-fn]
 impl PmatchObject for PmatchBinaryOperation {
-    crate::pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe {
@@ -2955,7 +3002,36 @@ impl PmatchObject for PmatchBinaryOperation {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-ternary-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-ternary-operation.evaluate-fn]
 impl PmatchObject for PmatchTernaryOperation {
-    crate::pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe {
@@ -3030,7 +3106,36 @@ pub unsafe fn warn_on_nonsubtractable_symbols(t: *mut HfstTransducer) {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-parallel-rules-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-parallel-rules-container.evaluate-fn]
 impl PmatchObject for PmatchParallelRulesContainer {
-    crate::pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         if !self.cache.is_null() {
@@ -3108,7 +3213,36 @@ impl PmatchParallelRulesContainer {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-replace-rule-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-replace-rule-container.evaluate-fn]
 impl PmatchObject for PmatchReplaceRuleContainer {
-    crate::pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         if !self.cache.is_null() {
@@ -3200,7 +3334,36 @@ impl PmatchReplaceRuleContainer {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-restriction-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-restriction-container.evaluate-fn]
 impl PmatchObject for PmatchRestrictionContainer {
-    crate::pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         if !self.cache.is_null() {
@@ -3301,7 +3464,36 @@ impl PmatchObjectPairBase for PmatchMarkupContainer {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-mapping-pairs-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-mapping-pairs-container.evaluate-fn]
 impl PmatchObject for PmatchMappingPairsContainer {
-    crate::pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         pmatcherror("Should never happen\n");
@@ -3311,7 +3503,36 @@ impl PmatchObject for PmatchMappingPairsContainer {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-contexts-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-contexts-container.evaluate-fn]
 impl PmatchObject for PmatchContextsContainer {
-    crate::pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         pmatcherror("Should never happen\n");
@@ -3501,7 +3722,36 @@ pub unsafe fn PmatchObject_collect_initial_symbols_into(
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-symbol.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-symbol.evaluate-fn]
 impl PmatchObject for PmatchSymbol {
-    pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe {
@@ -3541,7 +3791,36 @@ impl PmatchObject for PmatchSymbol {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.evaluate-fn]
 impl PmatchObject for PmatchString {
-    pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe {
@@ -3576,7 +3855,36 @@ impl PmatchObject for PmatchString {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-question-mark.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-question-mark.evaluate-fn]
 impl PmatchObject for PmatchQuestionMark {
-    pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe {
@@ -3595,7 +3903,36 @@ impl PmatchObject for PmatchQuestionMark {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-acceptor.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-acceptor.evaluate-fn]
 impl PmatchObject for PmatchAcceptor {
-    pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe {
@@ -3690,7 +4027,36 @@ impl PmatchObject for PmatchAcceptor {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-empty.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-empty.evaluate-fn]
 impl PmatchObject for PmatchEmpty {
-    pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe { Box::into_raw(Box::new(HfstTransducer::new_type(format))) }
@@ -3699,7 +4065,36 @@ impl PmatchObject for PmatchEmpty {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc.evaluate-fn]
 impl PmatchObject for PmatchEpsilonArc {
-    pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe {
@@ -3713,7 +4108,36 @@ impl PmatchObject for PmatchEpsilonArc {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-transducer-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-transducer-container.evaluate-fn]
 impl PmatchObject for PmatchTransducerContainer {
-    pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe {
@@ -3732,7 +4156,36 @@ impl PmatchObject for PmatchTransducerContainer {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-function.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-function.evaluate-fn]
 impl PmatchObject for PmatchFunction {
-    pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate_args(&mut self, funargs: Vec<*mut dyn PmatchObject>) -> *mut HfstTransducer {
         unsafe {
@@ -3788,7 +4241,36 @@ impl PmatchObject for PmatchFunction {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-funcall.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-funcall.evaluate-fn]
 impl PmatchObject for PmatchFuncall {
-    pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe {
@@ -3813,7 +4295,36 @@ impl PmatchObject for PmatchFuncall {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-builtin-function.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-builtin-function.evaluate-fn]
 impl PmatchObject for PmatchBuiltinFunction {
-    pmatch_object_base_methods!();
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+    fn get_weight(&self) -> f64 {
+        self.weight
+    }
+    fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
+    }
+    fn get_line_defined(&self) -> i32 {
+        self.line_defined
+    }
+    fn set_line_defined(&mut self, line_defined: i32) {
+        self.line_defined = line_defined;
+    }
+    fn get_my_timer(&self) -> clock_t {
+        self.my_timer
+    }
+    fn set_my_timer(&mut self, my_timer: clock_t) {
+        self.my_timer = my_timer;
+    }
+    fn get_cache(&self) -> *mut HfstTransducer {
+        self.cache
+    }
+    fn set_cache(&mut self, cache: *mut HfstTransducer) {
+        self.cache = cache;
+    }
 
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer {
         unsafe {
