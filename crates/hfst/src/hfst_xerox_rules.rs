@@ -69,9 +69,13 @@ pub struct Rule {
 }
 
 // C++ 'friend std::ostream& operator<<(std::ostream&, const Rule&)' -> 'Display'.
+// Delegates to the free-function port 'operator_shl_os' (defined below) which
+// holds the actual 1:1 body; this bridges it to the std formatting machinery.
 impl fmt::Display for Rule {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unimplemented!("deferred: xeroxRules::operator<<(ostream, Rule) — body agent")
+        let mut buf: Vec<u8> = Vec::new();
+        operator_shl_os(&mut buf, self);
+        write!(out, "{}", String::from_utf8_lossy(&buf))
     }
 }
 
