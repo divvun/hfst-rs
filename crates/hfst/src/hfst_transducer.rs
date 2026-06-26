@@ -4691,6 +4691,7 @@ impl HfstTransducer {
     }
 
     #[allow(unused_variables, unused_mut, unreachable_code)]
+    #[allow(unused_variables, unused_mut, unreachable_code)]
     pub fn compose_intersect(
         &mut self,
         v: &HfstTransducerVector,
@@ -4796,9 +4797,18 @@ impl HfstTransducer {
             // In case there is only onw rule, compose with that.
             // [spec:hfst:def:hfst-transducer.hfst.rule-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.rule-fn]
-            // implementations::ComposeIntersectRule + ComposeIntersectLexicon
-            // (compose_with_rules) are deferred.
-            let mut res: HfstBasicTransducer = unimplemented!("deferred: ComposeIntersectLexicon");
+            // implementations::ComposeIntersectRule rule(rule_fst);
+            let mut rule = crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
+                &HfstBasicTransducer::from_transducer(&rule_fst),
+            );
+
+            // Create a ComposeIntersectLexicon from *harmonized_lexicon.
+            let mut lexicon =
+                crate::compose_intersect_lexicon::ComposeIntersectLexicon::new_from_transducer(
+                    &HfstBasicTransducer::from_transducer(unsafe { &*harmonized_lexicon }),
+                );
+
+            let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut rule);
 
             res.prune_alphabet(true);
             *self = HfstTransducer::from_basic(&res, self.type_);
@@ -4831,8 +4841,35 @@ impl HfstTransducer {
                 );
             }
 
-            // std::vector<ComposeIntersectRule*> + ComposeIntersectRulePair
-            // are deferred (see below).
+            // std::vector<implementations::ComposeIntersectRule *> rule_vector;
+            // (declared but unused in the C++; omitted)
+            //
+            // ComposeIntersectRule * first_rule = new ComposeIntersectRule(first_rule_fst);
+            // ComposeIntersectRule * second_rule = new ComposeIntersectRule(second_rule_fst);
+            // ComposeIntersectRulePair * rules =
+            //     new ComposeIntersectRulePair(first_rule, second_rule);
+            let first_rule: Box<
+                dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject,
+            > = Box::new(
+                crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
+                    &HfstBasicTransducer::from_transducer(&first_rule_fst),
+                ),
+            );
+            let second_rule: Box<
+                dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject,
+            > = Box::new(
+                crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
+                    &HfstBasicTransducer::from_transducer(&second_rule_fst),
+                ),
+            );
+            let mut rules: Box<dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject> =
+                Box::new(
+                    crate::compose_intersect_rule_pair::ComposeIntersectRulePair::new(
+                        first_rule,
+                        second_rule,
+                    ),
+                );
+
             for it in &v[2..] {
                 let mut rule_fst = it.clone();
                 if convert_to_openfst {
@@ -4846,10 +4883,29 @@ impl HfstTransducer {
                         &("@#@".to_string(), internal_epsilon.to_string()),
                     );
                 }
+
+                // rules = new ComposeIntersectRulePair(
+                //     new ComposeIntersectRule(rule_fst), rules);
+                let new_rule: Box<
+                    dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject,
+                > = Box::new(
+                    crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
+                        &HfstBasicTransducer::from_transducer(&rule_fst),
+                    ),
+                );
+                rules = Box::new(
+                    crate::compose_intersect_rule_pair::ComposeIntersectRulePair::new(
+                        new_rule, rules,
+                    ),
+                );
             }
 
-            // ComposeIntersectLexicon::compose_with_rules is deferred.
-            let mut res: HfstBasicTransducer = unimplemented!("deferred: ComposeIntersectLexicon");
+            // Create a ComposeIntersectLexicon from *harmonized_lexicon.
+            let mut lexicon =
+                crate::compose_intersect_lexicon::ComposeIntersectLexicon::new_from_transducer(
+                    &HfstBasicTransducer::from_transducer(unsafe { &*harmonized_lexicon }),
+                );
+            let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut *rules);
 
             res.prune_alphabet(true);
             *self = HfstTransducer::from_basic(&res, self.type_);
@@ -4857,6 +4913,9 @@ impl HfstTransducer {
             if invert {
                 self.invert();
             }
+
+            // delete rules; -> the owning 'rules' Box (and the recursively nested
+            // pairs/rules it owns) is dropped at the end of this scope.
         }
 
         unsafe {
@@ -5071,8 +5130,14 @@ impl HfstTransducer {
         name: &str,
         write_weights: bool,
     ) {
-        let _ = (file, name, write_weights);
-        unimplemented!("deferred: write_in_prolog_format")
+        /* For big transducers, converting from xfsm is slow. */
+        if self.type_ == ImplementationType::XFSM_TYPE {
+            crate::HFST_THROW!(FunctionNotImplementedException);
+        }
+        let fsm = HfstBasicTransducer::new_from_hfst_transducer(self);
+        unsafe {
+            fsm.write_in_prolog_format_file(file, name, write_weights);
+        }
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.prolog-file-to-xfsm-transducer-fn]

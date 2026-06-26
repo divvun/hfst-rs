@@ -90,13 +90,17 @@ pub type StateTransitionVector = Vec<SymbolTransitionMap>;
 /// * 'get_symbols' is inherited and not overridden, so it returns the component's
 ///   own 'symbol_set'.
 ///
-/// Only the three methods actually invoked on 'fst1' / 'fst2' in this file are
-/// included; extend this trait (e.g. with 'known_symbol') if/when
-/// 'ComposeIntersectLexicon' is ported and needs further polymorphic calls.
+/// The four methods invoked on a 'ComposeIntersectRule *' by the compose-intersect
+/// machinery are included. 'get_transitions' / 'get_final_weight' are the C++
+/// *virtual* methods (overridden by the pair); 'known_symbol' is the
+/// *non-virtual* 'ComposeIntersectRule::known_symbol' that 'ComposeIntersectLexicon'
+/// calls on the same pointer — see the per-impl notes below for how the
+/// non-virtual dispatch is reproduced.
 pub trait ComposeIntersectRuleObject {
     fn get_transitions(&mut self, s: HfstState, symbol: usize) -> &TransitionSet;
     fn get_final_weight(&self, s: HfstState) -> f32;
     fn get_symbols(&self) -> &SymbolSet;
+    fn known_symbol(&self, symbol: usize) -> bool;
 }
 
 // 'ComposeIntersectRule' used through a 'ComposeIntersectRule *' — the non-pair
@@ -110,6 +114,9 @@ impl ComposeIntersectRuleObject for ComposeIntersectRule {
     }
     fn get_symbols(&self) -> &SymbolSet {
         ComposeIntersectRule::get_symbols(self)
+    }
+    fn known_symbol(&self, symbol: usize) -> bool {
+        ComposeIntersectRule::known_symbol(self, symbol)
     }
 }
 
@@ -388,5 +395,15 @@ impl ComposeIntersectRuleObject for ComposeIntersectRulePair {
     }
     fn get_symbols(&self) -> &SymbolSet {
         &self.symbol_set
+    }
+    fn known_symbol(&self, _symbol: usize) -> bool {
+        // 'known_symbol' is the *non-virtual* 'ComposeIntersectRule::known_symbol',
+        // so calling it through a 'ComposeIntersectRule *' that actually points at a
+        // 'ComposeIntersectRulePair' reads the pair's *inherited* 'symbols' StringSet.
+        // That member is never populated for a pair (the constructor only assigns the
+        // numeric 'symbol_set'), so 'symbols.count(...) > 0' is always false. The
+        // flattened port has no 'symbols' field on the pair, so this returns 'false'
+        // unconditionally — bug-for-bug identical.
+        false
     }
 }
