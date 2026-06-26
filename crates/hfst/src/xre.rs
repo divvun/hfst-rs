@@ -366,6 +366,31 @@ impl XreCompiler {
     // Stream plumbing is deferred (the C++ error_ global is not ported); no-op.
     pub fn set_error_stream<T>(&mut self, _os: T) {}
 
+    // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.get-error-stream-fn]
+    // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.get-error-stream-fn]
+    // Returned 'hfst::xre::error_' in C++. Stream plumbing is deferred (no error
+    // stream object is modelled), so this is a no-op accessor.
+    pub fn get_error_stream(&self) {}
+
+    // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.get-output-to-console-fn]
+    // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.get-output-to-console-fn]
+    // Non-WINDOWS build: 'getOutputToConsole' returns 'false'.
+    pub fn get_output_to_console(&self) -> bool {
+        false
+    }
+
+    // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.get-stream-fn]
+    // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.get-stream-fn]
+    // Static in C++. Non-WINDOWS build: 'get_stream(oss)' returns 'oss' unchanged.
+    pub fn get_stream<T>(oss: T) -> T {
+        oss
+    }
+
+    // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.flush-fn]
+    // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.flush-fn]
+    // Static in C++. Non-WINDOWS build: 'flush(oss)' is a no-op.
+    pub fn flush<T>(_oss: T) {}
+
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.set-expand-definitions-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.set-expand-definitions-fn]
     pub fn set_expand_definitions(&mut self, expand: bool) {
@@ -503,6 +528,13 @@ impl XreCompiler {
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.compile-first-fn]
     // 'allow_extra_text_at_end' semantics: parse the whole string, keep only the
     // first expression, and report chars_read as that expression's span end.
+    //
+    // The merged free driver 'hfst::xre::compile_first' (xre_utils.cc) is folded
+    // in here: it set 'allow_extra_text_at_end', ran the parser, then returned
+    // 'last_compiled' and 'chars_read = cr'. The AST walk reproduces the same
+    // behaviour without the flex/bison position counters.
+    // [spec:hfst:def:xre-utils.hfst.xre.compile-first-fn]
+    // [spec:hfst:sem:xre-utils.hfst.xre.compile-first-fn]
     pub fn compile_first(&mut self, expression: &str, chars_read: &mut u32) -> *mut HfstTransducer {
         CONTAINS_ONLY_COMMENTS.with(|c| c.set(false));
         match parse_all(expression) {
@@ -1105,6 +1137,437 @@ fn build_symbol_list_transducer(
     retval
 }
 
+// ---- former xre_utils.cc string / lexer-support free helpers ----
+//
+// These are 1:1 ports of the pure 'char*'-style helpers that the original
+// flex/bison lexer leaned on. The nfst parser no longer drives them, but they
+// are faithful ports kept for completeness. C 'char*' buffers become Rust
+// 'String'; C 'strtol'/'strtod' are mirrored by the byte-level 'c_strtol' /
+// 'c_strtod' below (each returns the parsed value plus the index of the first
+// unconsumed byte, i.e. the C 'endptr').
+
+// Former 'hfst::xre::cr' / 'hfst::xre::lr' line/char counters, touched only by
+// 'count_lines'. They live as thread-locals exactly as the C++ globals did.
+thread_local! {
+    static XRE_CR: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static XRE_LR: std::cell::Cell<u32> = const { std::cell::Cell::new(1) };
+}
+
+// Mirror of C 'strtol(b + start, &endptr, 10)'. Returns '(value, endptr_index)';
+// on no conversion returns '(0, start)' just like 'strtol'.
+fn c_strtol(b: &[u8], start: usize) -> (i32, usize) {
+    let mut i = start;
+    while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r') {
+        i += 1;
+    }
+    let mut neg = false;
+    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+        neg = b[i] == b'-';
+        i += 1;
+    }
+    let digits_start = i;
+    let mut val: i64 = 0;
+    while i < b.len() && b[i].is_ascii_digit() {
+        val = val * 10 + i64::from(b[i] - b'0');
+        i += 1;
+    }
+    if i == digits_start {
+        return (0, start);
+    }
+    let v = if neg { -val } else { val } as i32;
+    (v, i)
+}
+
+// Mirror of C 'strtod(b + start, &endptr)'. Returns '(value, endptr_index)';
+// on no conversion returns '(0.0, start)'.
+fn c_strtod(b: &[u8], start: usize) -> (f64, usize) {
+    let mut i = start;
+    while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r') {
+        i += 1;
+    }
+    let num_start = i;
+    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+        i += 1;
+    }
+    while i < b.len() && b[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i < b.len() && b[i] == b'.' {
+        i += 1;
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+    }
+    if i < b.len() && (b[i] == b'e' || b[i] == b'E') {
+        let save = i;
+        i += 1;
+        if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+            i += 1;
+        }
+        if i < b.len() && b[i].is_ascii_digit() {
+            while i < b.len() && b[i].is_ascii_digit() {
+                i += 1;
+            }
+        } else {
+            i = save;
+        }
+    }
+    if i <= num_start {
+        return (0.0, start);
+    }
+    match std::str::from_utf8(&b[num_start..i])
+        .ok()
+        .and_then(|x| x.parse::<f64>().ok())
+    {
+        Some(v) => (v, i),
+        None => (0.0, start),
+    }
+}
+
+// [spec:hfst:def:xre-utils.hfst.xre.get-n-to-k-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.get-n-to-k-fn]
+// xre_utils.cc:228. Parses the '{n,k}' / 'n,k' bounds of a repetition token.
+fn get_n_to_k(s: &str) -> [i32; 2] {
+    let b = s.as_bytes();
+    let mut rv = [0i32; 2];
+    if b.get(1).copied() == Some(b'{') {
+        let (v0, endptr) = c_strtol(b, 2);
+        rv[0] = v0;
+        let (v1, finalptr) = c_strtol(b, endptr + 1);
+        rv[1] = v1;
+        assert!(b.get(finalptr).copied() == Some(b'}'));
+    } else {
+        let (v0, endptr) = c_strtol(b, 1);
+        rv[0] = v0;
+        let (v1, finalptr) = c_strtol(b, endptr + 1);
+        rv[1] = v1;
+        assert!(b.get(finalptr).copied().unwrap_or(0) == 0);
+    }
+    rv
+}
+
+// [spec:hfst:def:xre-utils.hfst.xre.strip-newline-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.strip-newline-fn]
+// xre_utils.cc:268. Replaces every '\n'/'\r' byte with a nul, in place.
+fn strip_newline(s: &str) -> String {
+    let mut b = s.as_bytes().to_vec();
+    for pos in 0..b.len() {
+        if b[pos] == b'\n' || b[pos] == b'\r' {
+            b[pos] = 0;
+        }
+    }
+    String::from_utf8_lossy(&b).into_owned()
+}
+
+// [spec:hfst:def:xre-utils.hfst.xre.count-lines-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.count-lines-fn]
+// xre_utils.cc:282. Advances the 'lr'/'cr' counters over a chunk of input.
+fn count_lines(s: &str) {
+    let b = s.as_bytes();
+    let mut i: usize = 0;
+    while i < b.len() && b[i] != 0 {
+        if b[i] == b'\n' {
+            XRE_LR.with(|c| c.set(c.get() + 1));
+        } else if b[i] == b'\r' {
+            i += 1;
+            if i < b.len() && b[i] == b'\n' {
+                XRE_CR.with(|c| c.set(c.get() + 1));
+            } else {
+                i -= 1;
+            }
+            XRE_LR.with(|c| c.set(c.get() + 1));
+        }
+        XRE_CR.with(|c| c.set(c.get() + 1));
+        i += 1;
+    }
+}
+
+// [spec:hfst:def:xre-utils.hfst.xre.strip-curly-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.strip-curly-fn]
+// xre_utils.cc:312. Drops an enclosing pair of curly braces.
+fn strip_curly(s: &str) -> String {
+    let c = s.as_bytes();
+    let mut stripped: Vec<u8> = vec![0u8; c.len() + 1];
+    let mut i: usize = 0;
+    let mut p: usize = 0;
+    while p < c.len() && c[p] != 0 {
+        let next_is_nul = p + 1 >= c.len() || c[p + 1] == 0;
+        if (c[p] == b'{' && i == 0) || (c[p] == b'}' && next_is_nul) {
+            if next_is_nul {
+                break;
+            } else {
+                stripped[i] = c[p + 1];
+                i += 1;
+                p += 2;
+            }
+        } else {
+            stripped[i] = c[p];
+            i += 1;
+            p += 1;
+        }
+    }
+    stripped[i] = 0;
+    String::from_utf8_lossy(&stripped[..i]).into_owned()
+}
+
+// [spec:hfst:def:xre-utils.hfst.xre.strip-percents-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.strip-percents-fn]
+// xre_utils.cc:347. Removes '%' escape prefixes.
+fn strip_percents(s: &str) -> String {
+    let c = s.as_bytes();
+    let mut stripped: Vec<u8> = vec![0u8; c.len() + 1];
+    let mut i: usize = 0;
+    let mut p: usize = 0;
+    while p < c.len() && c[p] != 0 {
+        if c[p] == b'%' {
+            if p + 1 >= c.len() || c[p + 1] == 0 {
+                break;
+            } else {
+                stripped[i] = c[p + 1];
+                i += 1;
+                p += 2;
+            }
+        } else {
+            stripped[i] = c[p];
+            i += 1;
+            p += 1;
+        }
+    }
+    stripped[i] = 0;
+    String::from_utf8_lossy(&stripped[..i]).into_owned()
+}
+
+// [spec:hfst:def:xre-utils.hfst.xre.add-percents-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.add-percents-fn]
+// xre_utils.cc:381. Prefixes '%' before xfst special characters.
+fn add_percents(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut ns: Vec<u8> = Vec::with_capacity(b.len() * 2 + 1);
+    for &ch in b {
+        if matches!(
+            ch,
+            b'@' | b'-'
+                | b' '
+                | b'|'
+                | b'!'
+                | b':'
+                | b';'
+                | b'0'
+                | b'\\'
+                | b'&'
+                | b'?'
+                | b'$'
+                | b'+'
+                | b'*'
+                | b'/'
+                | b'_'
+                | b'('
+                | b')'
+                | b'{'
+                | b'}'
+                | b'['
+                | b']'
+        ) {
+            ns.push(b'%');
+        }
+        ns.push(ch);
+    }
+    String::from_utf8_lossy(&ns).into_owned()
+}
+
+// [spec:hfst:def:xre-utils.hfst.xre.get-quoted-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.get-quoted-fn]
+// xre_utils.cc:408. Returns the substring between the first and last '"'.
+fn get_quoted(s: &str) -> String {
+    let b = s.as_bytes();
+    let first = b.iter().position(|&c| c == b'"').unwrap();
+    let qstart = first + 1;
+    let qend = b.iter().rposition(|&c| c == b'"').unwrap();
+    let len = qend - qstart;
+    String::from_utf8_lossy(&b[qstart..qstart + len]).into_owned()
+}
+
+// [spec:hfst:def:xre-utils.hfst.xre.parse-quoted-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.parse-quoted-fn]
+// xre_utils.cc:420. Unescapes a quoted string, writing its utf8 length to
+// 'length'. 'throw' becomes 'panic_any'; the deferred error stream is replaced
+// by stderr writes. The octal escape preserves the C bug of writing a nul
+// WITHOUT advancing the write pointer (so nothing is appended).
+fn parse_quoted(s: &str, length: &mut u32) -> String {
+    let quoted = get_quoted(s);
+    let qb = quoted.as_bytes();
+    let mut rv: Vec<u8> = Vec::with_capacity(qb.len() + 1);
+    let mut p: usize = 0;
+    while p < qb.len() && qb[p] != 0 {
+        let cur = qb[p];
+        if cur == b'\n' || cur == b'\r' {
+            std::panic::panic_any(
+                "Unescaped newline characters found inside quoted string.".to_string(),
+            );
+        } else if cur != b'\\' {
+            rv.push(cur);
+            p += 1;
+        } else {
+            let nxt = qb.get(p + 1).copied().unwrap_or(0);
+            match nxt {
+                b'0' | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' => {
+                    eprint!(
+                        "*** XRE unimplemented: parse octal escape in {}",
+                        String::from_utf8_lossy(&qb[p..])
+                    );
+                    p += 5;
+                }
+                b'a' => {
+                    rv.push(0x07);
+                    p += 2;
+                }
+                b'b' => {
+                    rv.push(0x08);
+                    p += 2;
+                }
+                b'f' => {
+                    rv.push(0x0c);
+                    p += 2;
+                }
+                b'n' => {
+                    rv.push(b'\n');
+                    p += 2;
+                }
+                b'r' => {
+                    rv.push(b'\r');
+                    p += 2;
+                }
+                b't' => {
+                    rv.push(b'\t');
+                    p += 2;
+                }
+                b'u' => {
+                    eprint!(
+                        "Unimplemented: parse unicode escapes in {}",
+                        String::from_utf8_lossy(&qb[p..])
+                    );
+                    rv.push(0);
+                    p += 6;
+                }
+                b'v' => {
+                    rv.push(0x0b);
+                    p += 2;
+                }
+                b'x' => {
+                    // NB: the C source uses base 10 here (a bug); preserved.
+                    let (i, endp) = c_strtol(qb, p + 2);
+                    if 0 < i && i <= 127 {
+                        rv.push(i as u8);
+                    } else {
+                        eprintln!("*** XRE unimplemented: parse \\x{}", i);
+                        rv.push(0);
+                    }
+                    assert!(endp != p);
+                    p = endp;
+                }
+                0 => {
+                    eprintln!("End of line after \\ escape");
+                    rv.push(0);
+                    p += 1;
+                }
+                other => {
+                    rv.push(other);
+                    p += 2;
+                }
+            }
+        }
+    }
+    // C builds a 'std::string' from the buffer, which truncates at the first
+    // interior nul left by a '\u'/'\x'/end-of-line escape.
+    let end = rv.iter().position(|&c| c == 0).unwrap_or(rv.len());
+    let result = String::from_utf8_lossy(&rv[..end]).into_owned();
+    *length =
+        crate::hfst_tokenizer::HfstTokenizer::check_utf8_correctness_and_calculate_length(&result);
+    result
+}
+
+// If 'str' is of form "@_<foo>_@", insert pair ("@_<foo>_@", "<foo>") into
+// 'substitutions'.
+// [spec:hfst:def:xre-utils.hfst.xre.insert-angle-bracket-substitutions-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.insert-angle-bracket-substitutions-fn]
+// xre_utils.cc:553.
+fn insert_angle_bracket_substitutions(
+    str_: &str,
+    substitutions: &mut crate::hfst_symbol_defs::HfstSymbolSubstitutions,
+) {
+    if str_.len() < 6 {
+        return;
+    }
+    let b = str_.as_bytes();
+    if &b[0..3] == b"@_<" && &b[b.len() - 3..] == b">_@" {
+        let substituting_str = &str_[2..str_.len() - 2];
+        substitutions.insert(str_.to_string(), substituting_str.to_string());
+    }
+}
+
+// [spec:hfst:def:xre-utils.hfst.xre.escape-enclosing-angle-brackets-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.escape-enclosing-angle-brackets-fn]
+// xre_utils.cc:569. Wraps a '<...>' symbol as "@_<...>_@".
+fn escape_enclosing_angle_brackets(s: &str) -> String {
+    let b = s.as_bytes();
+    if b.is_empty() || b[0] != b'<' {
+        return s.to_string();
+    }
+    let i = b.len() - 1;
+    if b[i] != b'>' {
+        return s.to_string();
+    }
+    format!("@_{}_@", s)
+}
+
+// [spec:hfst:def:xre-utils.hfst.xre.unescape-enclosing-angle-brackets-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.unescape-enclosing-angle-brackets-fn]
+// xre_utils.cc:591. Reverses the "@_<...>_@" wrapping for every alphabet symbol.
+fn unescape_enclosing_angle_brackets(t: &mut HfstTransducer) {
+    let mut substitutions: crate::hfst_symbol_defs::HfstSymbolSubstitutions =
+        crate::hfst_symbol_defs::HfstSymbolSubstitutions::new();
+    let alpha = t.get_alphabet();
+    for it in alpha.iter() {
+        insert_angle_bracket_substitutions(it, &mut substitutions);
+    }
+    if substitutions.is_empty() {
+        return;
+    }
+    t.substitute_substitutions(&substitutions);
+    t.optimize();
+}
+
+// [spec:hfst:def:xre-utils.hfst.xre.get-weight-fn]
+// [spec:hfst:sem:xre-utils.hfst.xre.get-weight-fn]
+// xre_utils.cc:610. Parses a trailing weight, skipping leading ' '/'\t'/';'.
+fn get_weight(s: &str) -> f64 {
+    let mut rv: f64 = -3.1415;
+    let b = s.as_bytes();
+    let mut weightstart: usize = 0;
+    while weightstart < b.len()
+        && b[weightstart] != 0
+        && (b[weightstart] == b' ' || b[weightstart] == b'\t' || b[weightstart] == b';')
+    {
+        weightstart += 1;
+    }
+    let (val, endp) = c_strtod(b, weightstart);
+    assert!(endp != weightstart);
+    rv = val;
+    rv
+}
+
+// [spec:hfst:def:xre-utils.should-colourise-fn]
+// [spec:hfst:sem:xre-utils.should-colourise-fn]
+// xre_utils.cc:95. 'isatty(1)' -> stdout is a terminal.
+fn should_colourise() -> bool {
+    use std::io::IsTerminal;
+    if std::io::stdout().is_terminal() {
+        true
+    } else {
+        false
+    }
+}
+
 impl XreCompiler {
     // ----------------------------------------------------------------
     // Definitions
@@ -1521,6 +1984,40 @@ impl XreCompiler {
     // ----------------------------------------------------------------
     // Warnings used in replace rules
     // ----------------------------------------------------------------
+
+    // [spec:hfst:def:xre-utils.hfst.xre.warn-about-xfst-special-symbol-fn]
+    // [spec:hfst:sem:xre-utils.hfst.xre.warn-about-xfst-special-symbol-fn]
+    // xre_utils.cc:1245. Warns that xfst-special symbols ('all', '<...>') carry
+    // no special meaning in hfst. The deferred error stream becomes stderr.
+    fn warn_about_xfst_special_symbol(&self, symbol: &str) {
+        if symbol == "all" {
+            if self.verbose_ {
+                eprint!("warning: symbol 'all' has no special meaning in hfst\n");
+            }
+            return;
+        }
+
+        let b = symbol.as_bytes();
+        if b.is_empty() || b[0] != b'<' {
+            return;
+        }
+        let mut max_index: usize = 1;
+        while max_index < b.len() && b[max_index] != 0 {
+            max_index += 1;
+        }
+        max_index -= 1;
+        if max_index < 1 {
+            return;
+        }
+
+        if b[max_index] != b'>' {
+            return;
+        }
+        if !self.verbose_ {
+            return;
+        }
+        eprintln!("warning: '{} ' is an ordinary symbol in hfst", symbol);
+    }
 
     // [spec:hfst:def:xre-utils.hfst.xre.warn-about-special-symbols-in-replace-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.warn-about-special-symbols-in-replace-fn]

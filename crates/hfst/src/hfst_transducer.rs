@@ -1856,6 +1856,8 @@ impl HfstTransducer {
 // -----------------------------------------------------------------------
 
 impl HfstTransducer {
+    // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.compare-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.compare-fn]
     pub fn compare(&self, another: &HfstTransducer, harmonize: bool) -> bool {
         if self.type_ != another.type_ {
             std::panic::panic_any(
@@ -2172,7 +2174,7 @@ impl HfstTransducer {
     }
 
     pub fn optimize(&mut self) -> &mut HfstTransducer {
-        if unsafe { can_minimize } {
+        if get_minimization() {
             self.minimize()
         } else {
             self.determinize()
@@ -2779,6 +2781,8 @@ impl<'a> ExtractStringsCb for ExtractStringsCb_<'a> {
 }
 
 impl HfstTransducer {
+    // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.extract-path-transducers-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.extract-path-transducers-fn]
     pub fn extract_path_transducers(&mut self) -> Vec<*mut HfstTransducer> {
         if self.type_ != ImplementationType::SFST_TYPE {
             crate::HFST_THROW!(FunctionNotImplementedException);
@@ -4298,7 +4302,7 @@ impl HfstTransducer {
         composition, FOMA and XFSM take care of this by default. */
         if (self.type_ != ImplementationType::FOMA_TYPE
             && self.type_ != ImplementationType::XFSM_TYPE)
-            && unknown_symbols_in_use
+            && get_unknown_symbols_in_use()
         {
             self.substitute_symbol("@_IDENTITY_SYMBOL_@", "@_UNKNOWN_SYMBOL_@", false, true);
             unsafe {
@@ -4366,7 +4370,7 @@ impl HfstTransducer {
 
         if (self.type_ != ImplementationType::FOMA_TYPE
             && self.type_ != ImplementationType::XFSM_TYPE)
-            && unknown_symbols_in_use
+            && get_unknown_symbols_in_use()
         {
             self.substitute_with_func(substitute_single_identity_with_the_other_symbol);
             unsafe {
@@ -5472,10 +5476,70 @@ impl HfstTransducer {
 }
 
 // ===== integration shims: HfstTransducer.cc file-static globals + accessors =====
-// C++ file-static bools (defaults from HfstTransducer.cc:93-103); read-only on the
-// ported paths. 'harmonize_smaller' has set/get accessors so it is an AtomicBool.
-static can_minimize: bool = true;
-static unknown_symbols_in_use: bool = true;
+// C++ file-static bools (defaults from HfstTransducer.cc:84-97). 'can_minimize',
+// 'unknown_symbols_in_use' and 'harmonize_smaller' have set/get accessors so they
+// are AtomicBools.
+static CAN_MINIMIZE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+static UNKNOWN_SYMBOLS_IN_USE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(true);
+
+// C++ file-static 'bool minimize_even_if_already_minimal = false;' (a debugging and
+// profiling flag). Default false.
+static MINIMIZE_EVEN_IF_ALREADY_MINIMAL: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+// [spec:hfst:def:hfst-transducer.hfst.set-minimization-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.set-minimization-fn]
+pub fn set_minimization(value: bool) {
+    CAN_MINIMIZE.store(value, std::sync::atomic::Ordering::Relaxed);
+}
+
+// [spec:hfst:def:hfst-transducer.hfst.get-minimization-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.get-minimization-fn]
+pub fn get_minimization() -> bool {
+    CAN_MINIMIZE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+// [spec:hfst:def:hfst-transducer.hfst.set-minimize-even-if-already-minimal-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.set-minimize-even-if-already-minimal-fn]
+pub fn set_minimize_even_if_already_minimal(value: bool) {
+    MINIMIZE_EVEN_IF_ALREADY_MINIMAL.store(value, std::sync::atomic::Ordering::Relaxed);
+    // '#if HAVE_XFSM XfsmTransducer::set_minimize_even_if_already_minimal(value)' is
+    // out of scope (XFSM backend not compiled).
+}
+
+// [spec:hfst:def:hfst-transducer.hfst.get-minimize-even-if-already-minimal-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.get-minimize-even-if-already-minimal-fn]
+pub fn get_minimize_even_if_already_minimal() -> bool {
+    MINIMIZE_EVEN_IF_ALREADY_MINIMAL.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+// [spec:hfst:def:hfst-transducer.hfst.set-unknown-symbols-in-use-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.set-unknown-symbols-in-use-fn]
+pub fn set_unknown_symbols_in_use(value: bool) {
+    UNKNOWN_SYMBOLS_IN_USE.store(value, std::sync::atomic::Ordering::Relaxed);
+}
+
+// [spec:hfst:def:hfst-transducer.hfst.get-unknown-symbols-in-use-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.get-unknown-symbols-in-use-fn]
+pub fn get_unknown_symbols_in_use() -> bool {
+    UNKNOWN_SYMBOLS_IN_USE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+// C++ '#if HAVE_OPENFST' branch is taken (OpenFst tropical backend is ported), so
+// these delegate to TropicalWeightTransducer's warning-stream globals. The std::ostream*
+// is modelled as a raw pointer to a boxed std::io::Write, matching that port.
+// [spec:hfst:def:hfst-transducer.hfst.set-warning-stream-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.set-warning-stream-fn]
+pub fn set_warning_stream(os: *mut Box<dyn std::io::Write>) {
+    crate::tropical_weight_transducer::TropicalWeightTransducer::set_warning_stream(os);
+}
+
+// [spec:hfst:def:hfst-transducer.hfst.get-warning-stream-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.get-warning-stream-fn]
+pub fn get_warning_stream() -> *mut Box<dyn std::io::Write> {
+    crate::tropical_weight_transducer::TropicalWeightTransducer::get_warning_stream()
+}
 
 // C++ 'set_flag_is_epsilon_in_composition(bool)' is a static setter (XFST 'set
 // flag-is-epsilon' toggles it), so this flag is mutable at runtime. The
@@ -5566,9 +5630,13 @@ pub fn set_xerox_composition(value: bool) {
 }
 
 static HARMONIZE_SMALLER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+// [spec:hfst:def:hfst-transducer.hfst.set-harmonize-smaller-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.set-harmonize-smaller-fn]
 fn set_harmonize_smaller(value: bool) {
     HARMONIZE_SMALLER.store(value, std::sync::atomic::Ordering::Relaxed);
 }
+// [spec:hfst:def:hfst-transducer.hfst.get-harmonize-smaller-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.get-harmonize-smaller-fn]
 fn get_harmonize_smaller() -> bool {
     HARMONIZE_SMALLER.load(std::sync::atomic::Ordering::Relaxed)
 }
@@ -5745,6 +5813,29 @@ fn has_flags(fst: &HfstTransducer) -> bool {
         }
     }
     false
+}
+
+// Return true if the flag in flag_diacritic ends in suffix and false
+// otherwise. E.g. if flag_diacritic = "@D.NeedNoun_1.ON@ and suffix =
+// "_1", return true.
+// [spec:hfst:def:hfst-transducer.hfst.is-flag-suffix-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.is-flag-suffix-fn]
+#[allow(dead_code)]
+fn is_flag_suffix(suffix: &str, flag_diacritic: &str) -> bool {
+    let flag_end_pos = match flag_diacritic.rfind('.') {
+        None => return false,
+        Some(pos) => pos,
+    };
+
+    if flag_end_pos < suffix.len() {
+        return false;
+    }
+
+    if flag_diacritic[flag_end_pos - suffix.len()..flag_end_pos] != *suffix {
+        return false;
+    }
+
+    true
 }
 
 // [spec:hfst:def:hfst-transducer.hfst.rename-flag-diacritics-fn]

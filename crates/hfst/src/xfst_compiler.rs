@@ -578,9 +578,8 @@ impl XfstCompiler {
                         crate::hfst_data_types::implementation_type_to_format((*t).get_type()),
                         crate::hfst_data_types::implementation_type_to_format(self.format_)
                     );
-                    if let Some(f) = filename {
-                        // to_filename(non-null) returns the filename itself
-                        eprint!(" when reading from file '{}'", f);
+                    if filename.is_some() {
+                        eprint!(" when reading from file '{}'", to_filename(filename));
                     }
                     if !HfstTransducer::is_safe_conversion((*t).get_type(), self.format_) {
                         eprint!(" (loss of information is possible)");
@@ -627,8 +626,10 @@ impl XfstCompiler {
         match result {
             Ok(instream) => instream,
             Err(_) => {
-                // to_filename(non-null) returns the filename itself
-                eprintln!("Unable to read transducers from {}", filename);
+                eprintln!(
+                    "Unable to read transducers from {}",
+                    to_filename(Some(filename))
+                );
                 self.flush();
                 self.xfst_fail();
                 std::ptr::null_mut()
@@ -3306,6 +3307,8 @@ fn strstrip(s: &str) -> String {
     String::from_utf8_lossy(&bytes[start..end]).into_owned()
 }
 
+// [spec:hfst:def:xfst-compiler.hfst.xfst.string-to-float-fn]
+// [spec:hfst:sem:xfst-compiler.hfst.xfst.string-to-float-fn]
 fn string_to_float(str_: &str) -> f32 {
     // Mirror 'std::istringstream >> float': skip leading whitespace, read the
     // leading numeric prefix, and yield 0 if nothing parses.
@@ -3341,6 +3344,8 @@ fn string_to_float(str_: &str) -> f32 {
     t[..end].parse::<f32>().unwrap_or(0.0)
 }
 
+// [spec:hfst:def:xfst-compiler.hfst.xfst.extract-output-paths-fn]
+// [spec:hfst:sem:xfst-compiler.hfst.xfst.extract-output-paths-fn]
 fn extract_output_paths(paths: &HfstTwoLevelPaths) -> HfstOneLevelPaths {
     let mut retval = HfstOneLevelPaths::new();
     for it in paths.iter() {
@@ -3361,6 +3366,75 @@ fn extract_output_paths(paths: &HfstTwoLevelPaths) -> HfstOneLevelPaths {
         });
     }
     retval
+}
+
+// [spec:hfst:def:xfst-compiler.hfst.xfst.to-filename-fn]
+// [spec:hfst:sem:xfst-compiler.hfst.xfst.to-filename-fn]
+fn to_filename(file: Option<&str>) -> &str {
+    if file.is_none() {
+        return "<stdin>";
+    } else {
+        return file.unwrap();
+    }
+}
+
+// The following three helpers are guarded by '#ifdef FOO' in the C++ source
+// (an undefined macro), so they are compiled out and unused there. They are
+// ported 1:1 for completeness and stay unused here too.
+
+// Convert 'str' to upper case.
+// [spec:hfst:def:xfst-compiler.hfst.xfst.to-upper-case-fn]
+// [spec:hfst:sem:xfst-compiler.hfst.xfst.to-upper-case-fn]
+#[allow(dead_code)]
+fn to_upper_case(str_: &str) -> String {
+    let str_bytes = str_.as_bytes();
+    let mut retval = String::new();
+    for i in 0..str_bytes.len() {
+        if str_bytes[i] >= 97 && str_bytes[i] <= 122 {
+            retval.push((str_bytes[i] - 32) as char);
+        } else {
+            retval.push(str_bytes[i] as char);
+        }
+    }
+    return retval;
+}
+
+// Whether 'c' is allowed before or after a word when
+// searching for the word in text.
+// [spec:hfst:def:xfst-compiler.hfst.xfst.allow-char-fn]
+// [spec:hfst:sem:xfst-compiler.hfst.xfst.allow-char-fn]
+#[allow(dead_code)]
+fn allow_char(c: u8) -> bool {
+    let allowed_chars = b" \n\t.,;:?!-/'\"<>()|";
+    for i in 0..allowed_chars.len() {
+        if allowed_chars[i] == c {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Whether word 'str_' is found in text 'text_'.
+// Punctuation characters and upper/lower case are handled in this function.
+// [spec:hfst:def:xfst-compiler.hfst.xfst.string-found-fn]
+// [spec:hfst:sem:xfst-compiler.hfst.xfst.string-found-fn]
+#[allow(dead_code)]
+fn string_found(str_: &str, text_: &str) -> bool {
+    let str_ = to_upper_case(str_);
+    let text = to_upper_case(text_);
+    let text_bytes = text.as_bytes();
+    let pos = match text.find(&str_) {
+        None => {
+            return false;
+        }
+        Some(p) => p,
+    };
+    if pos == 0 || allow_char(text_bytes[pos - 1]) {
+        if pos + str_.len() == text.len() || allow_char(text_bytes[pos + str_.len()]) {
+            return true;
+        }
+    }
+    return false;
 }
 
 impl XfstCompiler {

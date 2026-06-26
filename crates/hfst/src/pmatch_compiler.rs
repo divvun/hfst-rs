@@ -373,36 +373,50 @@ pub trait PmatchObject {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.get-real-initial-symbols-from-right-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.get-real-initial-symbols-from-right-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.get-real-initial-symbols-from-right-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-real-initial-symbols-from-right-fn]
     fn get_real_initial_symbols_from_right(&mut self) -> StringSet {
         StringSet::new()
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.is-left-concatenation-with-context-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.is-left-concatenation-with-context-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.is-left-concatenation-with-context-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.is-left-concatenation-with-context-fn]
     fn is_left_concatenation_with_context(&mut self) -> bool {
         false
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.is-context-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.is-context-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.is-context-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.is-context-fn]
     fn is_context(&mut self) -> bool {
         false
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.is-delimiter-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.is-delimiter-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.is-delimiter-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.is-delimiter-fn]
     fn is_delimiter(&mut self) -> bool {
         false
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.get-initial-symbols-from-unary-root-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.get-initial-symbols-from-unary-root-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.get-initial-symbols-from-unary-root-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-initial-symbols-from-unary-root-fn]
     fn get_initial_symbols_from_unary_root(&mut self) -> StringSet {
         StringSet::new()
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.get-initial-rc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.get-initial-rc-initial-symbols-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.get-initial-rc-initial-symbols-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-initial-rc-initial-symbols-fn]
     fn get_initial_RC_initial_symbols(&mut self) -> StringSet {
         StringSet::new()
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.get-initial-nrc-initial-symbols-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.get-initial-nrc-initial-symbols-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-initial-nrc-initial-symbols-fn]
     fn get_initial_NRC_initial_symbols(&mut self) -> StringSet {
         StringSet::new()
     }
@@ -419,6 +433,8 @@ pub trait PmatchObject {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-as-arg-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.evaluate-as-arg-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.evaluate-as-arg-fn]
     unsafe fn evaluate_as_arg(&mut self) -> *mut dyn PmatchObject {
         panic!("evaluate_as_arg called on a PmatchObject that does not support it")
     }
@@ -2585,6 +2601,57 @@ impl PmatchObject for PmatchUnaryOperation {
         self.report_time(String::new());
         return retval;
     }
+
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
+    fn get_initial_symbols_from_unary_root(&mut self) -> StringSet {
+        unsafe { PmatchObject_get_real_initial_symbols(&mut *self.root) }
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.is-context-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.is-context-fn]
+    fn is_context(&mut self) -> bool {
+        self.op == PmatchUnaryOp::LC
+            || self.op == PmatchUnaryOp::NLC
+            || self.op == PmatchUnaryOp::RC
+            || self.op == PmatchUnaryOp::NRC
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.is-delimiter-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.is-delimiter-fn]
+    fn is_delimiter(&mut self) -> bool {
+        self.op == PmatchUnaryOp::AddDelimiters
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.get-initial-rc-initial-symbols-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.get-initial-rc-initial-symbols-fn]
+    fn get_initial_RC_initial_symbols(&mut self) -> StringSet {
+        unsafe {
+            if self.op == PmatchUnaryOp::RC {
+                let tmp: *mut HfstTransducer = (*self.root).evaluate();
+                let retval: StringSet = (*tmp).get_initial_input_symbols();
+                drop(Box::from_raw(tmp));
+                return retval;
+            }
+            if self.op == PmatchUnaryOp::AddDelimiters {
+                return (*self.root).get_initial_RC_initial_symbols();
+            }
+            StringSet::new()
+        }
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
+    fn get_initial_NRC_initial_symbols(&mut self) -> StringSet {
+        unsafe {
+            if self.op == PmatchUnaryOp::NRC {
+                let tmp: *mut HfstTransducer = (*self.root).evaluate();
+                let retval: StringSet = (*tmp).get_initial_input_symbols();
+                drop(Box::from_raw(tmp));
+                return retval;
+            }
+            if self.op == PmatchUnaryOp::AddDelimiters {
+                return (*self.root).get_initial_NRC_initial_symbols();
+            }
+            StringSet::new()
+        }
+    }
 }
 
 // ===== body: binary-ternary-numeric-eval =====
@@ -2996,6 +3063,91 @@ impl PmatchObject for PmatchBinaryOperation {
             }
             self.report_time(String::new());
             return retval;
+        }
+    }
+
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
+    fn get_real_initial_symbols_from_right(&mut self) -> StringSet {
+        unsafe { PmatchObject_get_real_initial_symbols(&mut *self.right) }
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.is-left-concatenation-with-context-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.is-left-concatenation-with-context-fn]
+    fn is_left_concatenation_with_context(&mut self) -> bool {
+        unsafe { self.op == PmatchBinaryOp::Concatenate && (*self.left).is_context() }
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.get-initial-rc-initial-symbols-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.get-initial-rc-initial-symbols-fn]
+    fn get_initial_RC_initial_symbols(&mut self) -> StringSet {
+        unsafe {
+            let mut retval: StringSet = StringSet::new();
+            if self.op == PmatchBinaryOp::Concatenate {
+                let left_ss: StringSet = (*self.left).get_initial_RC_initial_symbols();
+                let mut right_ss: StringSet = StringSet::new();
+                if (*self.right).is_context() || (*self.right).is_delimiter() {
+                    right_ss = (*self.right).get_initial_NRC_initial_symbols();
+                }
+                for it in left_ss.iter() {
+                    retval.insert(it.clone());
+                }
+                for it in right_ss.iter() {
+                    retval.insert(it.clone());
+                }
+                return retval;
+            }
+            retval
+        }
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.get-initial-nrc-initial-symbols-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.get-initial-nrc-initial-symbols-fn]
+    fn get_initial_NRC_initial_symbols(&mut self) -> StringSet {
+        unsafe {
+            let mut retval: StringSet = StringSet::new();
+            if self.op == PmatchBinaryOp::Concatenate {
+                let left_ss: StringSet = (*self.left).get_initial_NRC_initial_symbols();
+                let mut right_ss: StringSet = StringSet::new();
+                if (*self.right).is_context() || (*self.right).is_delimiter() {
+                    right_ss = (*self.right).get_initial_NRC_initial_symbols();
+                }
+                for it in left_ss.iter() {
+                    retval.insert(it.clone());
+                }
+                for it in right_ss.iter() {
+                    retval.insert(it.clone());
+                }
+                return retval;
+            }
+            retval
+        }
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.collect-strings-into-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.collect-strings-into-fn]
+    fn collect_strings_into(&mut self, strings: &mut StringVector) {
+        unsafe {
+            (*self.left).collect_strings_into(strings);
+            (*self.right).collect_strings_into(strings);
+        }
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.as-string-pair-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.as-string-pair-fn]
+    fn as_string_pair(&mut self) -> StringPair {
+        unsafe {
+            if self.op == PmatchBinaryOp::CrossProduct {
+                let left_string: String = (*self.left).as_string();
+                let right_string: String = (*self.right).as_string();
+                return (left_string, right_string);
+            }
+            (String::new(), String::new())
+        }
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.is-unweighted-disjunction-of-strings-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.is-unweighted-disjunction-of-strings-fn]
+    fn is_unweighted_disjunction_of_strings(&mut self) -> bool {
+        unsafe {
+            self.weight == 0.0
+                && self.op == PmatchBinaryOp::Disjunct
+                && (*self.left).is_unweighted_disjunction_of_strings()
+                && (*self.right).is_unweighted_disjunction_of_strings()
         }
     }
 }
@@ -3787,6 +3939,51 @@ impl PmatchObject for PmatchSymbol {
             retval
         }
     }
+
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-symbol.evaluate-as-arg-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-symbol.evaluate-as-arg-fn]
+    unsafe fn evaluate_as_arg(&mut self) -> *mut dyn PmatchObject {
+        if symbol_in_local_context(&mut self.sym) {
+            return (*symbol_from_local_context(&mut self.sym)).evaluate_as_arg();
+        } else if symbol_in_global_context(&mut self.sym) {
+            used_definitions().insert(self.sym.clone());
+            if flatten && def_insed_expressions().contains_key(&self.sym) {
+                return (*def_insed_expressions()[&self.sym]).evaluate_as_arg();
+            } else {
+                return (*symbol_from_global_context(&mut self.sym)).evaluate_as_arg();
+            }
+        } else {
+            if verbose {
+                eprint!(
+                    "Warning: interpreting undefined symbol \"{}\" as label on line {}\n",
+                    self.sym, self.line_defined
+                );
+            }
+            return Box::into_raw(Box::new(PmatchString {
+                name: String::new(),
+                weight: 0.0,
+                line_defined: 0,
+                my_timer: 0,
+                cache: std::ptr::null_mut(),
+                string: self.sym.clone(),
+                multichar: false,
+            })) as *mut dyn PmatchObject;
+        }
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-symbol.collect-strings-into-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-symbol.collect-strings-into-fn]
+    fn collect_strings_into(&mut self, strings: &mut StringVector) {
+        unsafe {
+            if symbol_in_local_context(&mut self.sym) {
+                (*symbol_from_local_context(&mut self.sym)).collect_strings_into(strings);
+            } else if symbol_in_global_context(&mut self.sym) {
+                (*symbol_from_global_context(&mut self.sym)).collect_strings_into(strings);
+                used_definitions().insert(self.sym.clone());
+            } else {
+                strings.push(self.sym.clone());
+            }
+        }
+    }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.evaluate-fn]
@@ -3850,6 +4047,25 @@ impl PmatchObject for PmatchString {
             self.report_time(String::new());
             return tmp;
         }
+    }
+
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.collect-strings-into-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.collect-strings-into-fn]
+    fn collect_strings_into(&mut self, strings: &mut StringVector) {
+        strings.push(self.string.clone());
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.evaluate-as-arg-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.evaluate-as-arg-fn]
+    unsafe fn evaluate_as_arg(&mut self) -> *mut dyn PmatchObject {
+        Box::into_raw(Box::new(PmatchString {
+            name: self.name.clone(),
+            weight: self.weight,
+            line_defined: self.line_defined,
+            my_timer: self.my_timer,
+            cache: self.cache,
+            string: self.string.clone(),
+            multichar: self.multichar,
+        })) as *mut dyn PmatchObject
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-question-mark.evaluate-fn]
@@ -6875,5 +7091,11 @@ impl PmatchCompiler {
             len = 0;
             retval
         }
+    }
+
+    // [spec:hfst:def:pmatch-compiler.hfst.pmatch.pmatch-compiler.set-include-path-fn]
+    // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.set-include-path-fn]
+    pub fn set_include_path(&mut self, path: String) {
+        self.includedir = path;
     }
 }

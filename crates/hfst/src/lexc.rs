@@ -182,6 +182,10 @@ fn replace_zero(s: &str) -> String {
 
 // [spec:hfst:def:lexc-utils.hfst.lexc.should-colourise-fn]
 // [spec:hfst:sem:lexc-utils.hfst.lexc.should-colourise-fn]
+// The identical 'should_colourise' static is duplicated in LexcCompiler.cc; the
+// single Rust helper ports both copies.
+// [spec:hfst:def:lexc-compiler.should-colourise-fn]
+// [spec:hfst:sem:lexc-compiler.should-colourise-fn]
 fn should_colourise() -> bool {
     unsafe { libc::isatty(1) != 0 }
 }
@@ -473,6 +477,99 @@ impl LexcCompiler {
     /// The C++ stored an 'std::ostream*' and forwarded it to 'xre_'; the port
     /// drops the stream plumbing (errors go to stderr), so this is a no-op.
     pub fn set_error_stream<T>(&mut self, _os: T) {}
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.get-error-stream-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.get-error-stream-fn]
+    /// The C++ returned the stored 'error_' ostream pointer; the port drops the
+    /// stream plumbing (errors go to stderr), so there is no stored stream to
+    /// return.
+    pub fn get_error_stream(&self) {}
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.get-stream-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.get-stream-fn]
+    /// On non-WINDOWS the C++ 'get_stream' just returns its argument; the WINDOWS
+    /// console-redirection branch is dropped along with the rest of the stream
+    /// plumbing, so this returns the passed stream unchanged.
+    pub fn get_stream<T>(&mut self, oss: T) -> T {
+        oss
+    }
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.flush-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.flush-fn]
+    /// On non-WINDOWS the C++ 'flush' is a no-op ('(void)oss'); the WINDOWS
+    /// console-flush branch is dropped with the rest of the stream plumbing.
+    pub fn flush<T>(&mut self, _oss: T) {}
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.set-output-to-console-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.set-output-to-console-fn]
+    /// On non-WINDOWS the C++ 'setOutputToConsole' is a no-op ('(void)value');
+    /// the WINDOWS-only 'output_to_console_' field is dropped from the port.
+    pub fn set_output_to_console(&mut self, _value: bool) {}
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.get-output-to-console-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.get-output-to-console-fn]
+    /// On non-WINDOWS the C++ 'getOutputToConsole' always returns false; the
+    /// WINDOWS-only 'output_to_console_' field is dropped from the port.
+    pub fn get_output_to_console(&self) -> bool {
+        false
+    }
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.is-quiet-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.is-quiet-fn]
+    pub fn is_quiet(&self) -> bool {
+        self.quiet_
+    }
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.are-warnings-treated-as-errors-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.are-warnings-treated-as-errors-fn]
+    pub fn are_warnings_treated_as_errors(&self) -> bool {
+        self.treat_warnings_as_errors_
+    }
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.is-strict-alphabets-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.is-strict-alphabets-fn]
+    pub fn is_strict_alphabets(&self) -> bool {
+        self.warn_missing_alphabets_
+    }
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.set-strict-alphabets-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.set-strict-alphabets-fn]
+    pub fn set_strict_alphabets(&mut self, strictness: bool) {
+        self.warn_missing_alphabets_ = strictness;
+    }
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.has-split-characters-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.has-split-characters-fn]
+    pub fn has_split_characters(&self) -> bool {
+        self.split_characters_
+    }
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.set-split-characters-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.set-split-characters-fn]
+    pub fn set_split_characters(&mut self, splitness: bool) {
+        self.split_characters_ = splitness;
+    }
+
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.is-warning-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.is-warning-fn]
+    pub fn is_warning(&self, warning: &str) -> bool {
+        if warning == "-Wone-sided-flags" {
+            self.warn_one_sided_flags_
+        } else if warning == "-Wmissing-lexicons" {
+            self.warn_missing_lexicons_
+        } else if warning == "-Wunused-lexicons" {
+            self.warn_unused_lexicons_
+        } else if warning == "-Wrepeated-lexicons" {
+            self.warn_repeated_lexicons_
+        } else if warning == "-Wmissing-alphabets" {
+            self.warn_missing_alphabets_
+        } else if warning == "-Wunnecessary-escapes" {
+            self.warn_unnecessary_escapes_
+        } else {
+            eprintln!("unknown warning {}", warning);
+            false
+        }
+    }
 
     // ----- error / warning helpers (lexc-utils.cc, re-entrant) -----
 
