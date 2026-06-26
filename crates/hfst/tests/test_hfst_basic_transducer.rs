@@ -1,0 +1,334 @@
+// Port of test/libhfst/test_hfst_basic_transducer.cc
+//
+// Tests the standalone HfstBasicTransducer graph type: construction, copying,
+// the get_final_weight / read_in_att_format exceptions, alphabet pruning,
+// substitution, the EmptyStringException on an empty-symbol transition,
+// building graphs with unknown/identity symbols, and iterating through states
+// and transitions.
+//
+// HfstBasicTransducer is implementation-type independent, so unlike the other
+// suites this C++ test does NOT loop over the {SFST, FOMA, TROPICAL, LOG}
+// backends. The single backend-specific block (the unknown/identity disjunct)
+// is gated on is_implementation_type_available(SFST_TYPE); SFST is out of scope
+// for the Wave-2 port, so that disjunct is intentionally skipped and only the
+// in-scope HfstBasicTransducer construction it performs is ported.
+//
+// Each verbose_print-delimited block of the C++ main becomes one #[test] fn.
+// The shared helper from test/libhfst/auxiliary_functions.cc that this suite
+// uses (verbose_print) is inlined below; get_bin is unused here and omitted.
+
+use std::collections::BTreeSet;
+
+use hfst::hfst_basic_transducer::HfstBasicTransducer;
+use hfst::hfst_basic_transition::HfstBasicTransition;
+use hfst::hfst_exception_defs::{
+    EmptyStringException, NotValidAttFormatException, StateIsNotFinalException,
+};
+use hfst::hfst_symbol_defs::StringPairSet;
+
+// The tropical transition-data symbol coding lives in process-global statics
+// (NUMBER2SYMBOL_MAP / SYMBOL2NUMBER_MAP / MAX_NUMBER, each behind its own
+// Mutex). get_number bumps MAX_NUMBER under one lock and then appends to the
+// symbol vector under another, so concurrent callers race and get_symbol can
+// read a MAX_NUMBER ahead of the vector length and throw HfstFatalException. The
+// C++ test suite never hits this because each C++ test is its own process; cargo
+// runs every #[test] as a parallel thread in ONE process. Serializing the tests
+// through this lock restores the one-at-a-time-per-process model without
+// touching the library or weakening any assertion. It also makes the global
+// panic-hook swapping in expect_hfst_exception safe (only one test at a time).
+// into_inner() recovers from a poisoned lock so one failing test does not
+// cascade.
+static SYMBOL_TABLE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn serialized() -> std::sync::MutexGuard<'static, ()> {
+    SYMBOL_TABLE_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+// Shared helper inlined from test/libhfst/auxiliary_functions.cc.
+fn verbose_print(msg: &str) {
+    eprintln!("Testing:\t{msg} (type undefined)...");
+}
+
+// Run a closure that is expected to throw an HFST exception (a panic_any
+// carrying a typed exception payload). The C++ does this with try { ... }
+// catch (const E&). Returns the panic payload so the caller can downcast to the
+// specific exception type the C++ catch named. The panic hook is silenced so the
+// expected, caught panic does not print a backtrace.
+fn expect_hfst_exception<F: FnOnce()>(f: F) -> Box<dyn std::any::Any + Send> {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    std::panic::set_hook(prev);
+    match result {
+        Ok(()) => panic!("expected an HfstException to be thrown, but the closure returned"),
+        Err(payload) => payload,
+    }
+}
+
+// Build the [a:b c:d] transducer with final weight 1.0 used by several blocks
+// of the C++ main, returning it together with the two added state numbers.
+fn build_abcd() -> (HfstBasicTransducer, u32, u32) {
+    let mut t = HfstBasicTransducer::new();
+    let s1 = t.add_state_new();
+    t.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(s1, "a".to_string(), "b".to_string(), 1.2),
+        true,
+    );
+    let s2 = t.add_state_new();
+    t.add_transition(
+        s1,
+        &HfstBasicTransition::new_symbols(s2, "c".to_string(), "d".to_string(), 0.8),
+        true,
+    );
+    t.set_final_weight(s2, &1.0);
+    (t, s1, s2)
+}
+
+// --- "HfstBasicTransducer construction"
+#[test]
+fn construction() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer construction");
+
+    let mut t = HfstBasicTransducer::new();
+    assert!(!t.is_final_state(0));
+
+    let s1 = t.add_state_new();
+    assert_eq!(s1, 1);
+    t.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(s1, "a".to_string(), "b".to_string(), 1.2),
+        true,
+    );
+    assert!(!t.is_final_state(s1));
+
+    let s2 = t.add_state_new();
+    // The C++ writes 'assert(s2 = 2)' (assignment, a typo for '=='); s2 already
+    // equals 2 from add_state(), so the intended check is s2 == 2.
+    assert_eq!(s2, 2);
+    t.add_transition(
+        s1,
+        &HfstBasicTransition::new_symbols(s2, "c".to_string(), "d".to_string(), 0.8),
+        true,
+    );
+    assert!(!t.is_final_state(s2));
+
+    t.set_final_weight(s2, &1.0);
+    assert!(t.is_final_state(s2) && t.get_final_weight(s2) == 1.0);
+
+    // Take a copy (C++ 'HfstBasicTransducer tc(t)').
+    let tc = t.clone();
+    assert!(tc.is_final_state(s2) && tc.get_final_weight(s2) == 1.0);
+}
+
+// --- "HfstBasicTransducer exceptions"
+#[test]
+fn exceptions() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer exceptions");
+
+    let (t, _s1, s2) = build_abcd();
+
+    // Asking the weight of a non-final state. The C++ loop varies s over 0..5
+    // (skipping s2) but always calls get_final_weight(0); state 0 is not final,
+    // so every call throws StateIsNotFinalException.
+    for s in 0u32..5 {
+        if s != s2 {
+            let payload = expect_hfst_exception(|| {
+                let _w = t.get_final_weight(0);
+            });
+            assert!(
+                payload.downcast_ref::<StateIsNotFinalException>().is_some(),
+                "expected StateIsNotFinalException"
+            );
+        }
+    }
+
+    // Reading a file in non-valid AT&T format. The third line "1\t2\tb" has only
+    // three fields, so add_att_line cannot parse it and read_in_att_format
+    // throws NotValidAttFormatException.
+    let path = std::env::temp_dir().join("test_hfst_basic_transducer.att");
+    std::fs::write(&path, "0\n0\t1\ta\tb\n1\t2\tb\n2\n").unwrap();
+
+    let path_c = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+    let mode_c = std::ffi::CString::new("rb").unwrap();
+    let ifile = unsafe { libc::fopen(path_c.as_ptr(), mode_c.as_ptr()) };
+    assert!(!ifile.is_null());
+
+    let payload = expect_hfst_exception(|| {
+        let mut linecount: u32 = 0;
+        let _foo =
+            HfstBasicTransducer::read_in_att_format_file(ifile, "@0@", &mut linecount, false);
+    });
+    assert!(
+        payload
+            .downcast_ref::<NotValidAttFormatException>()
+            .is_some(),
+        "expected NotValidAttFormatException"
+    );
+
+    unsafe {
+        libc::fclose(ifile);
+    }
+    let _ = std::fs::remove_file(&path);
+}
+
+// --- "HfstBasicTransducer: symbol handling"
+#[test]
+fn symbol_handling() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer: symbol handling");
+
+    let (mut t, _s1, _s2) = build_abcd();
+
+    t.add_symbol_to_alphabet(&"foo".to_string());
+    // C++ prune_alphabet() defaults to force=true.
+    t.prune_alphabet(true);
+
+    let alphabet = t.get_alphabet();
+    // {epsilon, unknown, identity} special symbols + {a, b, c, d}; "foo" is
+    // pruned because it never occurs in a transition.
+    assert_eq!(alphabet.len(), 7);
+    assert!(alphabet.contains("a"));
+    assert!(alphabet.contains("b"));
+    assert!(alphabet.contains("c"));
+    assert!(alphabet.contains("d"));
+    assert!(!alphabet.contains("foo"));
+}
+
+// --- "HfstBasicTransducer: substitute"
+// The C++ block has no assertions: it only checks that substituting the pair
+// a:b with the set {A:B, C:D} does not throw.
+#[test]
+fn substitute() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer: substitute");
+
+    let mut tr = HfstBasicTransducer::new();
+    tr.add_state_new();
+    tr.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0),
+        true,
+    );
+    tr.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0),
+        true,
+    );
+    tr.set_final_weight(1, &0.0);
+
+    let mut sps: StringPairSet = BTreeSet::new();
+    sps.insert(("A".to_string(), "B".to_string()));
+    sps.insert(("C".to_string(), "D".to_string()));
+    tr.substitute_pair_with_set(&("a".to_string(), "b".to_string()), &sps);
+}
+
+// --- "HfstBasicTransducer: EmptyStringException"
+#[test]
+fn empty_string_exception() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer: EmptyStringException");
+
+    // Constructing a transition with empty input/output symbols throws
+    // EmptyStringException (from the transition-data constructor), before the
+    // add_transition call can run.
+    let payload = expect_hfst_exception(|| {
+        let mut empty_symbol = HfstBasicTransducer::new();
+        empty_symbol.add_transition(
+            0,
+            &HfstBasicTransition::new_symbols(0, "".to_string(), "".to_string(), 0.0),
+            true,
+        );
+    });
+    assert!(
+        payload.downcast_ref::<EmptyStringException>().is_some(),
+        "expected EmptyStringException"
+    );
+}
+
+// --- "HfstBasicTransducer: unknown and indentity symbols"
+// In the xerox formalism used here, "?" means the unknown symbol and "?:?" the
+// identity pair. The C++ builds tr1 = [ ?:foo ] and tr2 = [ [ ?:? ] [ bar:bar ] ]
+// and then, ONLY if SFST is available, converts both to HfstTransducers and
+// disjuncts them. SFST_TYPE is out of scope for the Wave-2 port, so that facade
+// disjunct block is intentionally skipped; the in-scope part is the construction
+// of the two HfstBasicTransducers exercised here.
+#[test]
+fn unknown_and_identity_symbols() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer: unknown and indentity symbols");
+
+    // tr1 is [ ?:foo ]
+    let mut tr1 = HfstBasicTransducer::new();
+    tr1.add_state(1);
+    tr1.set_final_weight(1, &0.0);
+    tr1.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(
+            1,
+            "@_UNKNOWN_SYMBOL_@".to_string(),
+            "foo".to_string(),
+            0.0,
+        ),
+        true,
+    );
+
+    // tr2 is [ [ ?:? ] [ bar:bar ] ]
+    let mut tr2 = HfstBasicTransducer::new();
+    tr2.add_state(1);
+    tr2.add_state(2);
+    tr2.set_final_weight(2, &0.0);
+    tr2.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(
+            1,
+            "@_IDENTITY_SYMBOL_@".to_string(),
+            "@_IDENTITY_SYMBOL_@".to_string(),
+            0.0,
+        ),
+        true,
+    );
+    tr2.add_transition(
+        1,
+        &HfstBasicTransition::new_symbols(2, "bar".to_string(), "bar".to_string(), 0.0),
+        true,
+    );
+
+    // Sanity: the constructed graphs have the expected final states.
+    assert!(tr1.is_final_state(1));
+    assert!(tr2.is_final_state(2));
+
+    // SFST facade disjunct block intentionally skipped (out of scope).
+}
+
+// --- "HfstBasicTransducer: iterating through"
+// The C++ block has no assertions: it walks every state and its transitions,
+// printing source/target/input/output/weight, and the final weight of final
+// states, to stderr. Ported faithfully as a walk over the iterator API.
+#[test]
+fn iterating_through() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer: iterating through");
+
+    let (t, _s1, _s2) = build_abcd();
+
+    let mut source_state: u32 = 0;
+    for it in t.iter() {
+        for tr_it in it.iter() {
+            eprintln!(
+                "{}\t{}\t{}\t{}\t{}",
+                source_state,
+                tr_it.get_target_state(),
+                tr_it.get_input_symbol(),
+                tr_it.get_output_symbol(),
+                tr_it.get_weight()
+            );
+        }
+        if t.is_final_state(source_state) {
+            eprintln!("{}\t{}", source_state, t.get_final_weight(source_state));
+        }
+        source_state += 1;
+    }
+}
