@@ -4206,7 +4206,7 @@ impl HfstTransducer {
         let mut diacritics_added_from_another_to_this: StringSet = StringSet::new();
         let mut diacritics_added_from_this_to_another: StringSet = StringSet::new();
 
-        if xerox_composition {
+        if get_xerox_composition() {
             if self.type_ != ImplementationType::XFSM_TYPE {
                 encode_flag_diacritics(self);
                 encode_flag_diacritics(unsafe { &mut *another_copy });
@@ -4296,7 +4296,7 @@ impl HfstTransducer {
         }
 
         // Revert changes made before composition
-        if xerox_composition {
+        if get_xerox_composition() {
             if self.type_ != ImplementationType::XFSM_TYPE {
                 decode_flag_diacritics(self);
                 decode_flag_diacritics(unsafe { &mut *another_copy });
@@ -5282,8 +5282,17 @@ impl HfstTransducer {
 // ported paths. `harmonize_smaller` has set/get accessors so it is an AtomicBool.
 static can_minimize: bool = true;
 static unknown_symbols_in_use: bool = true;
-static xerox_composition: bool = false;
 static flag_is_epsilon_in_composition: bool = false;
+
+// C++ `HfstTransducer::set_xerox_composition(bool)` is a static setter, so this
+// flag is mutable at runtime (PMATCH toggles it around replace compositions).
+static XEROX_COMPOSITION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub fn get_xerox_composition() -> bool {
+    XEROX_COMPOSITION.load(std::sync::atomic::Ordering::Relaxed)
+}
+pub fn set_xerox_composition(value: bool) {
+    XEROX_COMPOSITION.store(value, std::sync::atomic::Ordering::Relaxed);
+}
 
 static HARMONIZE_SMALLER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 fn set_harmonize_smaller(value: bool) {

@@ -13,4 +13,5 @@ libc = "0.2"
 icu = "2.2.0"
 nfst-xre = { workspace = true }
 nfst-lexc = { workspace = true }
+nfst-pmatch = { workspace = true }
 nfst-twolc = { workspace = true }

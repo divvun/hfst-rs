@@ -53,6 +53,7 @@ pub mod lexc;
 pub mod log_weight_transducer;
 pub mod ospell;
 pub mod pmatch;
+pub mod pmatch_compiler;
 pub mod pmatch_tokenize;
 pub mod string_utils;
 pub mod transducer;

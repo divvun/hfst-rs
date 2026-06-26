@@ -355,15 +355,101 @@ where
 }
 
 // [fst::Equivalent] — are fst1 and fst2 equivalent?
-pub fn Equivalent<W, F1, F2>(_fst1: &F1, _fst2: &F2) -> bool
+//
+// OpenFST's `Equivalent` requires both inputs to be DETERMINISTIC and
+// EPSILON-FREE acceptors; HFST's `are_equivalent` guarantees this by running
+// `RmEpsilon` + `Encode` + `Determinize` before calling here. Under that
+// precondition equivalence is decidable by a synchronized product walk: the two
+// machines are equivalent iff every reachable paired state agrees on finality
+// (and final weight) and exposes exactly the same outgoing labels with equal
+// arc weights (determinism makes the per-label successor unique).
+pub fn Equivalent<W, F1, F2>(fst1: &F1, fst2: &F2) -> bool
 where
     W: Semiring,
     F1: ExpandedFst<W>,
     F2: ExpandedFst<W>,
 {
-    unimplemented!(
-        "rustfst gap: Equivalent — implement in the rustfst fork when a ported test needs it"
-    );
+    use std::collections::{HashMap, HashSet, VecDeque};
+
+    let s1 = fst1.start();
+    let s2 = fst2.start();
+
+    // Language-emptiness fallback for the cases where one machine has no start
+    // state (the empty language): no final state is reachable from `start`.
+    let lang_empty_1 = |start: StateId| -> bool {
+        let mut seen: HashSet<StateId> = HashSet::new();
+        let mut stack = vec![start];
+        seen.insert(start);
+        while let Some(q) = stack.pop() {
+            if fst1.final_weight(q).unwrap().is_some() {
+                return false;
+            }
+            for tr in fst1.get_trs(q).unwrap().trs() {
+                if seen.insert(tr.nextstate) {
+                    stack.push(tr.nextstate);
+                }
+            }
+        }
+        true
+    };
+    let lang_empty_2 = |start: StateId| -> bool {
+        let mut seen: HashSet<StateId> = HashSet::new();
+        let mut stack = vec![start];
+        seen.insert(start);
+        while let Some(q) = stack.pop() {
+            if fst2.final_weight(q).unwrap().is_some() {
+                return false;
+            }
+            for tr in fst2.get_trs(q).unwrap().trs() {
+                if seen.insert(tr.nextstate) {
+                    stack.push(tr.nextstate);
+                }
+            }
+        }
+        true
+    };
+
+    match (s1, s2) {
+        (None, None) => return true,
+        (None, Some(b)) => return lang_empty_2(b),
+        (Some(a), None) => return lang_empty_1(a),
+        (Some(a), Some(b)) => {
+            let mut visited: HashSet<(StateId, StateId)> = HashSet::new();
+            let mut queue: VecDeque<(StateId, StateId)> = VecDeque::new();
+            visited.insert((a, b));
+            queue.push_back((a, b));
+            while let Some((q1, q2)) = queue.pop_front() {
+                if fst1.final_weight(q1).unwrap() != fst2.final_weight(q2).unwrap() {
+                    return false;
+                }
+                let mut m1: HashMap<Label, (StateId, W)> = HashMap::new();
+                for tr in fst1.get_trs(q1).unwrap().trs() {
+                    m1.insert(tr.ilabel, (tr.nextstate, tr.weight.clone()));
+                }
+                let mut m2: HashMap<Label, (StateId, W)> = HashMap::new();
+                for tr in fst2.get_trs(q2).unwrap().trs() {
+                    m2.insert(tr.ilabel, (tr.nextstate, tr.weight.clone()));
+                }
+                if m1.len() != m2.len() {
+                    return false;
+                }
+                for (label, (n1, w1)) in &m1 {
+                    match m2.get(label) {
+                        None => return false,
+                        Some((n2, w2)) => {
+                            if w1 != w2 {
+                                return false;
+                            }
+                            if visited.insert((*n1, *n2)) {
+                                queue.push_back((*n1, *n2));
+                            }
+                        }
+                    }
+                }
+            }
+            true
+        }
+    }
 }
 
 // [fst::EpsNormalize] — ofst := eps-normalized ifst

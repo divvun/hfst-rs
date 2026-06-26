@@ -1310,7 +1310,7 @@ impl XreCompiler {
     // [spec:hfst:def:xre-utils.hfst.xre.contains-once-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.contains-once-fn]
     // xre_utils.cc:1142
-    fn contains_once(&self, c: &HfstTransducer) -> HfstTransducer {
+    pub fn contains_once(&self, c: &HfstTransducer) -> HfstTransducer {
         let fmt = self.format_;
 
         // any_star = [?*]
@@ -1363,7 +1363,7 @@ impl XreCompiler {
     // [spec:hfst:def:xre-utils.hfst.xre.contains-once-optional-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.contains-once-optional-fn]
     // xre_utils.cc:1194
-    fn contains_once_optional(&self, t: &HfstTransducer) -> HfstTransducer {
+    pub fn contains_once_optional(&self, t: &HfstTransducer) -> HfstTransducer {
         let fmt = self.format_;
 
         // neg_t = ~$[t]
