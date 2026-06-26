@@ -239,30 +239,108 @@ where
 // when a ported HFST test proves one is needed; until then they panic loudly so
 // a reaching test fails visibly rather than silently misbehaving.
 
-// [fst::Difference] — ofst := fst1 - fst2
-pub fn Difference<W, F1, F2, F3>(_fst1: &F1, _fst2: &F2, _ofst: &mut F3)
-where
-    W: Semiring,
-    F1: ExpandedFst<W>,
-    F2: ExpandedFst<W>,
-    F3: MutableFst<W>,
-{
-    unimplemented!(
-        "rustfst gap: Difference — implement in the rustfst fork when a ported test needs it"
-    );
+// Collect the non-epsilon input labels of an fst (its acceptor alphabet).
+fn labels_of<W: Semiring, F: ExpandedFst<W>>(fst: &F) -> std::collections::BTreeSet<Label> {
+    let mut s = std::collections::BTreeSet::new();
+    for q in fst.states_iter() {
+        if let Ok(trs) = fst.get_trs(q) {
+            for tr in trs.trs() {
+                if tr.ilabel != 0 {
+                    s.insert(tr.ilabel);
+                }
+            }
+        }
+    }
+    s
 }
 
-// [fst::Intersect] — ofst := fst1 ∩ fst2 (acceptors)
-pub fn Intersect<W, F1, F2, F3>(_fst1: &F1, _fst2: &F2, _ofst: &mut F3)
+// complement of an acceptor over the alphabet `sigma`: determinize, complete with
+// a sink state (every missing label leads to the always-accepting sink), then flip
+// final/non-final. The language becomes Σ* \ L(fst). Mirrors OpenFST's
+// ComplementFst as used by Difference.
+fn complement_acceptor<W, F>(
+    fst: &F,
+    sigma: &std::collections::BTreeSet<Label>,
+) -> rustfst::fst_impls::VectorFst<W>
+where
+    W: WeaklyDivisibleSemiring + WeightQuantize,
+    F: ExpandedFst<W>,
+{
+    use rustfst::fst_impls::VectorFst;
+    let mut det: VectorFst<W> = determinize(fst).expect("rustfst determinize (for complement)");
+    // Empty source language -> complement is all of Σ*: a single accepting state
+    // looping on every symbol.
+    if det.start().is_none() {
+        let mut all: VectorFst<W> = VectorFst::new();
+        let s = all.add_state();
+        all.set_start(s).unwrap();
+        all.set_final(s, W::one()).unwrap();
+        for &l in sigma {
+            all.add_tr(s, Tr::new(l, l, W::one(), s)).unwrap();
+        }
+        return all;
+    }
+    let sink = det.add_state();
+    det.set_final(sink, W::one()).unwrap();
+    for &l in sigma {
+        det.add_tr(sink, Tr::new(l, l, W::one(), sink)).unwrap();
+    }
+    let states: Vec<StateId> = det.states_iter().collect();
+    for &q in &states {
+        if q == sink {
+            continue;
+        }
+        let present: std::collections::BTreeSet<Label> = det
+            .get_trs(q)
+            .unwrap()
+            .trs()
+            .iter()
+            .map(|t| t.ilabel)
+            .collect();
+        for &l in sigma {
+            if !present.contains(&l) {
+                det.add_tr(q, Tr::new(l, l, W::one(), sink)).unwrap();
+            }
+        }
+    }
+    for &q in &states {
+        if q == sink {
+            continue;
+        }
+        if det.final_weight(q).unwrap().is_some() {
+            det.delete_final_weight(q).unwrap();
+        } else {
+            det.set_final(q, W::one()).unwrap();
+        }
+    }
+    det
+}
+
+// [fst::Difference] — ofst := fst1 - fst2 = fst1 ∩ ¬fst2
+pub fn Difference<W, F1, F2, F3>(fst1: &F1, fst2: &F2, ofst: &mut F3)
+where
+    W: WeaklyDivisibleSemiring + WeightQuantize,
+    F1: ExpandedFst<W>,
+    F2: ExpandedFst<W>,
+    F3: MutableFst<W> + AllocableFst<W>,
+{
+    let mut sigma = labels_of(fst1);
+    sigma.append(&mut labels_of(fst2));
+    let comp = complement_acceptor(fst2, &sigma);
+    Intersect(fst1, &comp, ofst);
+}
+
+// [fst::Intersect] — ofst := fst1 ∩ fst2 (acceptors); OpenFST implements this as
+// the composition of the two acceptors.
+pub fn Intersect<W, F1, F2, F3>(fst1: &F1, fst2: &F2, ofst: &mut F3)
 where
     W: Semiring,
     F1: ExpandedFst<W>,
     F2: ExpandedFst<W>,
-    F3: MutableFst<W>,
+    F3: MutableFst<W> + AllocableFst<W>,
 {
-    unimplemented!(
-        "rustfst gap: Intersect — implement in the rustfst fork when a ported test needs it"
-    );
+    *ofst =
+        compose::<W, F1, F2, F3, &F1, &F2>(fst1, fst2).expect("rustfst intersect (via compose)");
 }
 
 // [fst::Prune] — in-place prune of paths worse than `threshold`
