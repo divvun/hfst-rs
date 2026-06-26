@@ -50,7 +50,6 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 
 use hfst_openfst::StdVectorFst;
-use hfst_openfst::prelude::SerializableFst;
 
 use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_data_types::{ImplementationType, StringPairVector};
@@ -127,6 +126,17 @@ impl PushbackReader {
     /// eof/fail bits (a successful putback makes the stream good again).
     fn unget(&mut self, b: u8) {
         self.pushback.push(b);
+        self.eof = false;
+        self.fail = false;
+    }
+
+    /// Push a run of bytes back so that subsequent reads return them in their
+    /// original order. The unget stack is LIFO ('get' pops the end), so the run
+    /// is pushed reversed. Used to restore the bytes of the following
+    /// transducer(s) after one FST payload has been parsed out of a slurped
+    /// multi-transducer stream.
+    fn unget_all(&mut self, bytes: &[u8]) {
+        self.pushback.extend(bytes.iter().rev());
         self.eof = false;
         self.fail = false;
     }
@@ -420,14 +430,23 @@ mod input_impl {
                     unimplemented!("deferred: SfstInputStream::read_transducer (no SFST backend)")
                 }
                 ImplementationType::TROPICAL_OPENFST_TYPE => {
+                    // Slurp the rest of the stream, parse exactly ONE FST off the
+                    // front, and unget the leftover (any following transducers in a
+                    // multi-transducer HFST stream) so the next 'read_transducer'
+                    // re-reads them. The C++ backend stream reads one OpenFst record
+                    // and leaves the istream positioned after it; load_prefix mirrors
+                    // that by reporting how many bytes the single FST consumed.
                     let bytes = self.read_remaining_bytes();
-                    let fst = match StdVectorFst::load(&bytes) {
-                        Ok(f) => f,
+                    let (fst, consumed) = match StdVectorFst::load_prefix(&bytes) {
+                        Ok(fc) => fc,
                         Err(_) => crate::HFST_THROW_MESSAGE!(
                             NotTransducerStreamException,
                             "could not read TROPICAL_OPENFST transducer payload"
                         ),
                     };
+                    if consumed < bytes.len() {
+                        self.pbr().unget_all(&bytes[consumed..]);
+                    }
                     t.implementation.tropical_ofst = Box::into_raw(Box::new(fst));
 
                     /* If we were reading an OpenFst transducer with no HFST header,
@@ -457,13 +476,16 @@ mod input_impl {
                 }
                 ImplementationType::LOG_OPENFST_TYPE => {
                     let bytes = self.read_remaining_bytes();
-                    let fst = match LogFst::load(&bytes) {
-                        Ok(f) => f,
+                    let (fst, consumed) = match LogFst::load_prefix(&bytes) {
+                        Ok(fc) => fc,
                         Err(_) => crate::HFST_THROW_MESSAGE!(
                             NotTransducerStreamException,
                             "could not read LOG_OPENFST transducer payload"
                         ),
                     };
+                    if consumed < bytes.len() {
+                        self.pbr().unget_all(&bytes[consumed..]);
+                    }
                     t.implementation.log_ofst = Box::into_raw(Box::new(fst));
 
                     if !self.has_hfst_header {

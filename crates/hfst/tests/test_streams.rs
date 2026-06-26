@@ -213,15 +213,7 @@ fn writing_att_format_tropical() {
     writing_att_format(TROPICAL_OPENFST_TYPE);
 }
 
-// PORT DISCREPANCY (in-scope path the C++ exercised): a multi-transducer HFST
-// stream reads back only its FIRST transducer. HfstInputStream::read_transducer
-// for the OpenFST backends calls read_remaining_bytes() (Read::read_to_end),
-// which slurps the ENTIRE rest of the stream and hands it to
-// StdVectorFst::load, which decodes only the leading VectorFst. The 2nd-4th
-// (header + payload) blocks are consumed and discarded, so the 4-transducer
-// file reads back as 1 and is_eof() is then true: transducers_read == 1, not 4.
 #[test]
-#[ignore = "PORT DISCREPANCY: HfstInputStream::read_transducer for OpenFST backends uses read_remaining_bytes (read_to_end) and StdVectorFst::load, so a multi-transducer HFST stream yields only the first transducer (read 1 of 4)"]
 fn stream_round_trip_tropical() {
     let _g = serialized();
     if !HfstTransducer::is_implementation_type_available(TROPICAL_OPENFST_TYPE) {
@@ -259,10 +251,7 @@ fn writing_att_format_log() {
     writing_att_format(LOG_OPENFST_TYPE);
 }
 
-// PORT DISCREPANCY: same multi-transducer over-read as stream_round_trip_tropical
-// (read_remaining_bytes slurps the whole stream, LogFst::load decodes one fst).
 #[test]
-#[ignore = "PORT DISCREPANCY: HfstInputStream::read_transducer for OpenFST backends uses read_remaining_bytes (read_to_end) and LogFst::load, so a multi-transducer HFST stream yields only the first transducer (read 1 of 4)"]
 fn stream_round_trip_log() {
     let _g = serialized();
     if !HfstTransducer::is_implementation_type_available(LOG_OPENFST_TYPE) {
