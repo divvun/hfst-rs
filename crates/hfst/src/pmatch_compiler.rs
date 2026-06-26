@@ -611,7 +611,7 @@ pub struct PmatchBuiltinFunction {
     pub my_timer: clock_t,
     pub cache: *mut HfstTransducer,
     pub args: *mut Vec<*mut dyn PmatchObject>,
-    pub r#type: PmatchBuiltin,
+    pub type_: PmatchBuiltin,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc]
@@ -710,7 +710,7 @@ pub struct PmatchContextsContainer {
     pub line_defined: i32,
     pub my_timer: clock_t,
     pub cache: *mut HfstTransducer,
-    pub r#type: ReplaceType,
+    pub type_: ReplaceType,
     pub context_pairs: MappingPairVector,
 }
 
@@ -722,7 +722,7 @@ pub struct PmatchReplaceRuleContainer {
     pub my_timer: clock_t,
     pub cache: *mut HfstTransducer,
     pub arrow: ReplaceArrow,
-    pub r#type: ReplaceType,
+    pub type_: ReplaceType,
     pub mapping: MappingPairVector,
     pub context: MappingPairVector,
 }
@@ -1029,7 +1029,7 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-acceptor-fn]
-    pub unsafe fn make_latin1_acceptor(r#type: ImplementationType) -> *const HfstTransducer {
+    pub unsafe fn make_latin1_acceptor(type_: ImplementationType) -> *const HfstTransducer {
         let retval: *mut HfstTransducer = PmatchUtilityTransducers::make_latin1_alpha_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
         ) as *mut HfstTransducer;
@@ -1054,7 +1054,7 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
-    pub unsafe fn make_latin1_alpha_acceptor(r#type: ImplementationType) -> *const HfstTransducer {
+    pub unsafe fn make_latin1_alpha_acceptor(type_: ImplementationType) -> *const HfstTransducer {
         let retval: *mut HfstTransducer = PmatchUtilityTransducers::make_latin1_lowercase_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
         ) as *mut HfstTransducer;
@@ -1070,9 +1070,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
     pub unsafe fn make_latin1_lowercase_acceptor(
-        r#type: ImplementationType,
+        type_: ImplementationType,
     ) -> *const HfstTransducer {
-        let retval: *mut HfstTransducer = acceptor_from_cstr(latin1_lower, r#type);
+        let retval: *mut HfstTransducer = acceptor_from_cstr(latin1_lower, type_);
         let tmp: *mut HfstTransducer = PmatchUtilityTransducers::make_combining_accent_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
         ) as *mut HfstTransducer;
@@ -1085,9 +1085,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
     pub unsafe fn make_latin1_uppercase_acceptor(
-        r#type: ImplementationType,
+        type_: ImplementationType,
     ) -> *const HfstTransducer {
-        let retval: *mut HfstTransducer = acceptor_from_cstr(latin1_upper, r#type);
+        let retval: *mut HfstTransducer = acceptor_from_cstr(latin1_upper, type_);
         let tmp: *mut HfstTransducer = PmatchUtilityTransducers::make_combining_accent_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
         ) as *mut HfstTransducer;
@@ -1100,20 +1100,18 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
     pub unsafe fn make_combining_accent_acceptor(
-        r#type: ImplementationType,
+        type_: ImplementationType,
     ) -> *const HfstTransducer {
-        acceptor_from_cstr(combining_accents, r#type) as *const HfstTransducer
+        acceptor_from_cstr(combining_accents, type_) as *const HfstTransducer
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
-    pub unsafe fn make_latin1_numeral_acceptor(
-        r#type: ImplementationType,
-    ) -> *const HfstTransducer {
-        let retval: *mut HfstTransducer = Box::into_raw(Box::new(HfstTransducer::new_type(r#type)));
+    pub unsafe fn make_latin1_numeral_acceptor(type_: ImplementationType) -> *const HfstTransducer {
+        let retval: *mut HfstTransducer = Box::into_raw(Box::new(HfstTransducer::new_type(type_)));
         let num: String = "0123456789".to_string();
         for it in num.chars() {
-            (*retval).disjunct(&HfstTransducer::new_symbol(&it.to_string(), r#type), true);
+            (*retval).disjunct(&HfstTransducer::new_symbol(&it.to_string(), type_), true);
         }
         // retval->minimize(); ?
         retval as *const HfstTransducer
@@ -1121,27 +1119,27 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
-    pub unsafe fn make_latin1_punct_acceptor(r#type: ImplementationType) -> *const HfstTransducer {
-        acceptor_from_cstr(latin1_punct, r#type) as *const HfstTransducer
+    pub unsafe fn make_latin1_punct_acceptor(type_: ImplementationType) -> *const HfstTransducer {
+        acceptor_from_cstr(latin1_punct, type_) as *const HfstTransducer
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
     pub unsafe fn make_latin1_whitespace_acceptor(
-        r#type: ImplementationType,
+        type_: ImplementationType,
     ) -> *const HfstTransducer {
-        acceptor_from_cstr(latin1_whitespace, r#type) as *const HfstTransducer
+        acceptor_from_cstr(latin1_whitespace, type_) as *const HfstTransducer
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-capify-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-capify-fn]
-    pub unsafe fn make_capify(&mut self, r#type: ImplementationType) -> *const HfstTransducer {
-        let retval: *mut HfstTransducer = Box::into_raw(Box::new(HfstTransducer::new_type(r#type)));
+    pub unsafe fn make_capify(&mut self, type_: ImplementationType) -> *const HfstTransducer {
+        let retval: *mut HfstTransducer = Box::into_raw(Box::new(HfstTransducer::new_type(type_)));
         let tok: HfstTokenizer = HfstTokenizer::new();
         let mut i: usize = 0;
         while i < array_len(latin1_upper) {
             (*retval).disjunct(
-                &HfstTransducer::new_tokenized_pair(latin1_lower[i], latin1_upper[i], &tok, r#type),
+                &HfstTransducer::new_tokenized_pair(latin1_lower[i], latin1_upper[i], &tok, type_),
                 true,
             );
             i += 1;
@@ -1156,13 +1154,13 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-lowerfy-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-lowerfy-fn]
-    pub unsafe fn make_lowerfy(&mut self, r#type: ImplementationType) -> *const HfstTransducer {
-        let retval: *mut HfstTransducer = Box::into_raw(Box::new(HfstTransducer::new_type(r#type)));
+    pub unsafe fn make_lowerfy(&mut self, type_: ImplementationType) -> *const HfstTransducer {
+        let retval: *mut HfstTransducer = Box::into_raw(Box::new(HfstTransducer::new_type(type_)));
         let tok: HfstTokenizer = HfstTokenizer::new();
         let mut i: usize = 0;
         while i < array_len(latin1_upper) {
             (*retval).disjunct(
-                &HfstTransducer::new_tokenized_pair(latin1_upper[i], latin1_lower[i], &tok, r#type),
+                &HfstTransducer::new_tokenized_pair(latin1_upper[i], latin1_lower[i], &tok, type_),
                 true,
             );
             i += 1;
@@ -3196,7 +3194,7 @@ impl PmatchReplaceRuleContainer {
             drop(Box::from_raw(pp.1));
             context_vector.push(p);
         }
-        Rule::new_mapping_context_repl_type(&pair_vector, &context_vector, self.r#type)
+        Rule::new_mapping_context_repl_type(&pair_vector, &context_vector, self.type_)
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-restriction-container.evaluate-fn]
@@ -3824,7 +3822,7 @@ impl PmatchObject for PmatchBuiltinFunction {
             }
             self.start_timing();
             let mut retval: *mut HfstTransducer = std::ptr::null_mut();
-            if self.r#type == PmatchBuiltin::Interpolate {
+            if self.type_ == PmatchBuiltin::Interpolate {
                 if (*self.args).len() < 3 {
                     let errstring = format!(
                         "Builtin function Interpolate called with {} arguments, but it expects at least 3.\n",
@@ -5705,7 +5703,7 @@ pub unsafe fn build_object(e: &nfst_pmatch::SpannedExpr) -> *mut dyn PmatchObjec
                     my_timer: 0,
                     cache: std::ptr::null_mut(),
                     arrow: mapped_arrow,
-                    r#type: rtype,
+                    type_: rtype,
                     mapping,
                     context,
                 })));
@@ -5864,7 +5862,7 @@ pub unsafe fn build_object(e: &nfst_pmatch::SpannedExpr) -> *mut dyn PmatchObjec
                 my_timer: 0,
                 cache: std::ptr::null_mut(),
                 args: Box::into_raw(Box::new(argvec)),
-                r#type: PmatchBuiltin::Interpolate,
+                type_: PmatchBuiltin::Interpolate,
             })))
         }
         PE::Substitute(a, b, c) => pmb_ternary(
