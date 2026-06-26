@@ -5387,7 +5387,13 @@ impl HfstTransducer {
                 // The C++ 'compiler.parse(filename.c_str())' reads the file via the
                 // Flex/Bison lexer; the ported LexcCompiler walks an AST built from
                 // source text instead, so read the file here and feed 'compile'.
-                unsafe { drop(Box::from_raw(retval)) };
+                //
+                // C++ does 'retval = compiler.compileLexical();' which overwrites the
+                // 'new HfstTransducer()' placeholder pointer and LEAKS it (the
+                // placeholder is never deleted, so its destructor never runs). We must
+                // likewise leak it: dropping the UNSPECIFIED_TYPE placeholder would run
+                // the faithful destructor and throw FunctionNotImplementedException.
+                let _leaked_placeholder = retval;
                 let mut compiler = crate::lexc::LexcCompiler::new(type_);
                 compiler.set_verbosity(verbose as u32);
                 let source = std::fs::read_to_string(filename).unwrap();

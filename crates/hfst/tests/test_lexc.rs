@@ -135,13 +135,7 @@ fn valid_file_parse_tropical() {
     valid_file_parse(TROPICAL_OPENFST_TYPE);
 }
 
-// PORT DISCREPANCY: HfstTransducer::read_lexc_ptr first heap-allocates a
-// placeholder HfstTransducer::new() (UNSPECIFIED_TYPE) and then explicitly drops
-// it; the Drop impl has no arm for UNSPECIFIED_TYPE and panics
-// (FunctionNotImplementedException, hfst_transducer.rs:1326), so read_lexc always
-// panics before returning. The C++ read_lexc returned a valid pointer here.
 #[test]
-#[ignore = "PORT DISCREPANCY: read_lexc_ptr drops a placeholder HfstTransducer::new() of UNSPECIFIED_TYPE, which the Drop impl panics on (FunctionNotImplementedException), so read_lexc always panics"]
 fn valid_file_read_lexc_tropical() {
     let _g = serialized();
     valid_file_read_lexc(TROPICAL_OPENFST_TYPE);
@@ -178,11 +172,12 @@ fn valid_file_parse_log() {
     valid_file_parse(LOG_OPENFST_TYPE);
 }
 
-// PORT DISCREPANCY: same read_lexc placeholder-drop panic as the tropical case
-// (read_lexc_ptr drops an UNSPECIFIED_TYPE placeholder); the LOG conversion bug
-// is never even reached.
+// read_lexc itself is now fixed (the tropical case passes); the LOG case falls
+// through to the genuine LOG conversion bug: log_ofst_to_hfst_basic_transducer
+// emits an empty-symbol transition, so HfstTropicalTransducerTransitionData
+// throws EmptyStringException. Same root cause as valid_file_parse_log.
 #[test]
-#[ignore = "PORT DISCREPANCY: read_lexc_ptr drops a placeholder HfstTransducer::new() of UNSPECIFIED_TYPE, which the Drop impl panics on (FunctionNotImplementedException), so read_lexc always panics"]
+#[ignore = "PORT DISCREPANCY: LOG log->basic conversion (log_ofst_to_hfst_basic_transducer) emits an empty-symbol transition, throwing EmptyStringException; LOG was commented out in the C++ array"]
 fn valid_file_read_lexc_log() {
     let _g = serialized();
     valid_file_read_lexc(LOG_OPENFST_TYPE);
