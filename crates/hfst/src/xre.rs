@@ -2377,9 +2377,66 @@ impl XreCompiler {
         arg.into_xre_compiler()
     }
 
-    /// '@bin'/'@txt'/'@stxt'/'@pl'/'@re' file-load evaluation — deferred (file I/O
-    /// + AT&T/prolog readers not yet ported).
-    fn eval_read_file(&mut self, _kind: ReadKind, _path: &str) -> HfstTransducer {
-        unimplemented!("deferred: ReadFile @-load file I/O")
+    /// '@bin'/'@txt'/'@stxt'/'@pl'/'@re' file-load evaluation. Ports the
+    /// xre_parse.yy READ_BIN/READ_TEXT/READ_SPACED/READ_PROLOG/READ_RE actions.
+    fn eval_read_file(&mut self, kind: ReadKind, path: &str) -> HfstTransducer {
+        use crate::hfst_basic_transducer::HfstBasicTransducer;
+        match kind {
+            // READ_BIN: HfstInputStream instream(path); new HfstTransducer(instream);
+            ReadKind::Binary => {
+                let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(path);
+                let retval = HfstTransducer::new_from_stream(&mut instream);
+                instream.close();
+                retval
+            }
+            // READ_TEXT / READ_SPACED: tokenize each line and disjunct it into a
+            // basic transducer, then build a transducer of the compiler format and
+            // optimize. READ_TEXT uses the multichar tokenizer; READ_SPACED splits
+            // on spaces.
+            ReadKind::Text | ReadKind::Spaced => {
+                let contents = std::fs::read_to_string(path)
+                    .unwrap_or_else(|_| panic!("File cannot be opened."));
+                let mut tmp = HfstBasicTransducer::new();
+                let tok = crate::hfst_tokenizer::HfstTokenizer::new();
+                for raw in contents.lines() {
+                    let line = strip_newline(raw);
+                    let spv = if kind == ReadKind::Spaced {
+                        crate::hfst_tokenizer::HfstTokenizer::tokenize_space_separated(&line)
+                    } else {
+                        tok.tokenize(&line, false)
+                    };
+                    tmp.disjunct_path(&spv, 0.0);
+                }
+                let mut retval = HfstTransducer::new_from_basic(&tmp, self.format_);
+                retval.optimize();
+                retval
+            }
+            // READ_PROLOG: read_in_prolog_format then build of the compiler format.
+            ReadKind::Prolog => {
+                let c_path = std::ffi::CString::new(path).unwrap();
+                let mode = std::ffi::CString::new("r").unwrap();
+                let f =
+                    unsafe { crate::hfst_data_types::hfst_fopen(c_path.as_ptr(), mode.as_ptr()) };
+                if f.is_null() {
+                    panic!("File cannot be opened.");
+                }
+                let mut linecount: u32 = 0;
+                let tmp = HfstBasicTransducer::read_in_prolog_format_file(f, &mut linecount);
+                unsafe {
+                    libc::fclose(f);
+                }
+                let mut retval = HfstTransducer::new_from_basic(&tmp, self.format_);
+                retval.optimize();
+                retval
+            }
+            // READ_RE: read the file content and re-compile it as a regex (the C++
+            // spins up a fresh scanner; the ported compiler re-parses the string).
+            ReadKind::Regex => {
+                let contents = std::fs::read_to_string(path)
+                    .unwrap_or_else(|_| panic!("File cannot be opened."));
+                let ptr = self.compile(&contents);
+                *unsafe { Box::from_raw(ptr) }
+            }
+        }
     }
 }
