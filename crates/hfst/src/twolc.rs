@@ -3258,6 +3258,8 @@ pub fn replace_substr(s: &str, substr: &str, replacement: &str) -> String {
 
 // [spec:hfst:def:rule.unescape-name-fn]
 // [spec:hfst:sem:rule.unescape-name-fn]
+// [spec:hfst:def:string-manipulation.unescape-name-fn]
+// [spec:hfst:sem:string-manipulation.unescape-name-fn]
 pub fn unescape_name(name: &str) -> String {
     replace_substr(
         &replace_substr(name, "__HFST_TWOLC_RULE_NAME=", ""),

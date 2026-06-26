@@ -15,6 +15,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
 
+pub mod alphabet;
 pub mod compose_intersect_fst;
 pub mod compose_intersect_lexicon;
 pub mod compose_intersect_rule;
@@ -50,11 +51,13 @@ pub mod hfst_transition;
 pub mod hfst_tropical_transducer_transition_data;
 pub mod hfst_xerox_rules;
 pub mod lexc;
+pub mod lexc_utils;
 pub mod log_weight_transducer;
 pub mod ospell;
 pub mod pmatch;
 pub mod pmatch_compiler;
 pub mod pmatch_tokenize;
+pub mod string_manipulation;
 pub mod string_utils;
 pub mod transducer;
 pub mod tropical_weight_transducer;
