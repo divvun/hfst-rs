@@ -4,53 +4,174 @@
 //! @FIXME (from the C++): the structure of this class and its functions is
 //! disorganised; the port mirrors it 1:1.
 //!
-//! ## Backend union modelling
-//! The C++ holds a 'union StreamImplementation' of raw backend-stream pointers
-//! ('sfst', 'tropical_ofst', 'log_ofst', 'foma', 'xfsm', 'hfst_ol'); exactly one
-//! member is live and the live member is selected by the 'type'
-//! ('ImplementationType') discriminant. Mirrored here as a struct of per-backend
-//! 'Option<Box<...>>' fields (['StreamImplementation']); the 'type_' field is the
-//! discriminant, and every accessor 'switch (type)'es on it exactly as the C++
-//! does. The tropical/log backend streams borrow their reader through
-//! ['IStream']'<'a>', so the whole 'HfstInputStream<'a>' carries that lifetime.
-//! 'sfst'/'foma'/'xfsm' backend streams are unported collaborators — modelled as
-//! 'unimplemented! ("deferred: …")' placeholder unit types so the field is present
-//! but cannot be constructed. 'HfstOlInputStream' is likewise not yet ported.
+//! ## Ownership redesign (owned reader)
+//! The C++ holds a raw 'std::istream * input_stream' pointing at 'std::cin' / an
+//! 'std::ifstream' / a caller 'std::istream', probes the first transducer's
+//! header through it, then constructs a backend stream from the SAME source. The
+//! original Rust skeleton tried to model 'input_stream' with ['IStream']'<'a>',
+//! which only BORROWS '&'a mut dyn Read' and offers no putback — so it could
+//! neither own 'std::cin'/a file nor support the heavy 'stream_unget' the header
+//! probing needs. Both made the constructors and 'read_transducer'
+//! 'unimplemented!'.
 //!
-//! ## 'std::istream * input_stream'
-//! The raw 'std::istream*' (NULL once a backend impl exists; non-NULL while the
-//! first transducer's type is still unknown) becomes 'Option<IStream<'a>>':
-//! 'Some' mirrors a non-NULL pointer (reads go to the raw stream), 'None' mirrors
-//! NULL (reads route through the backend implementation).
+//! This port fixes that: 'HfstInputStream' OWNS its reader via ['PushbackReader'],
+//! a heap-pinned buffered reader (a 'Box<dyn Read>' plus an unget stack) that
+//! models 'std::istream''s 'get' / 'putback' / 'peek' / 'eof'. The reader is held
+//! behind a raw pointer ('reader') so the in-scope backend streams can borrow the
+//! very same source via an ['IStream'] built from that pointer (the C++
+//! shares one underlying stream; we share one owned reader). 'reader' is freed in
+//! ['Drop'].
+//!
+//! ## Backend union modelling
+//! The C++ holds a 'union StreamImplementation' of raw backend-stream pointers;
+//! exactly one member is live, selected by 'type'. Mirrored here as
+//! ['StreamImplementation'] (a struct of per-backend 'Option<Box<...>>'), kept for
+//! fidelity. In this single-owned-reader port the in-scope backend stream is built
+//! transiently inside 'read_transducer' (it borrows the owned reader), so the
+//! field stays empty; the stream-state queries 'is_eof'/'is_bad'/'is_good' read
+//! the owned reader directly (the reader IS the shared stream). 'sfst'/'foma'/
+//! 'xfsm' are unported collaborators (deferred placeholders).
+//!
+//! ## In-scope reads
+//!   * TROPICAL_OPENFST / LOG_OPENFST: after the HFST header is consumed, the
+//!     remaining bytes are the OpenFst/rustfst 'VectorFst' payload that
+//!     'HfstOutputStream' wrote via 'store()'; we slurp them and rebuild with
+//!     'SerializableFst::load'.
+//!   * HFST_OL / HFST_OLW: built through the implemented
+//!     'HfstOlInputStream::read_transducer' / 'Transducer::new_istream'.
+//! SFST/FOMA/XFSM stay deferred (no backend).
 
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::{BufReader, Read};
 
+use hfst_openfst::StdVectorFst;
+use hfst_openfst::prelude::SerializableFst;
+
+use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_data_types::{ImplementationType, StringPairVector};
 use crate::hfst_exception_defs::{
     EndOfStreamException, FileIsInGZFormatException, HfstFatalException,
-    NotTransducerStreamException, TransducerHeaderException,
+    ImplementationTypeNotAvailableException, NotTransducerStreamException,
+    TransducerHeaderException, TransducerTypeMismatchException,
 };
-use crate::log_weight_transducer::LogWeightInputStream;
+use crate::hfst_ol_transducer::HfstOlInputStream as HfstOlBackendInputStream;
+use crate::hfst_transducer::HfstTransducer;
+use crate::log_weight_transducer::{LogFst, LogWeightInputStream, LogWeightTransducer};
 use crate::transducer::IStream;
-use crate::tropical_weight_transducer::TropicalWeightInputStream;
+use crate::tropical_weight_transducer::{TropicalWeightInputStream, TropicalWeightTransducer};
 
 /// Unported backend input-stream collaborators. Each is a placeholder unit type:
 /// the corresponding ['StreamImplementation'] field exists for fidelity with the
 /// C++ union, but no constructor is provided (the '#if HAVE_SFST' / 'HAVE_FOMA' /
-/// 'HAVE_XFSM' paths and 'HfstOlInputStream' are deferred).
+/// 'HAVE_XFSM' paths are deferred).
 pub struct SfstInputStream;
 pub struct FomaInputStream;
 pub struct XfsmInputStream;
-pub struct HfstOlInputStream;
+
+/// 'std::istream'-like owned reader used to probe the HFST header. It owns the
+/// underlying byte source ('Box<dyn Read>': a file, stdin, ...) and an unget
+/// stack, so it supports 'get' / 'unget' / 'peek' / 'eof' — exactly what the
+/// header probing requires (the borrowing ['IStream'] cannot). It also implements
+/// ['Read'] (draining the unget stack first) so a backend ['IStream'] can keep
+/// reading the same source after the header.
+pub struct PushbackReader {
+    inner: Box<dyn Read>,
+    /// Unget stack: bytes are pushed by 'unget' and popped LIFO. The probing code
+    /// ungets in reverse order, so popping restores the original order.
+    pushback: Vec<u8>,
+    /// 'std::istream' eofbit: set once a read tried to go past end.
+    eof: bool,
+    /// 'std::istream' failbit/badbit (collapsed): set on a failed read.
+    fail: bool,
+}
+
+impl PushbackReader {
+    fn new(inner: Box<dyn Read>) -> Self {
+        PushbackReader {
+            inner,
+            pushback: Vec::new(),
+            eof: false,
+            fail: false,
+        }
+    }
+
+    /// Models '(char) std::istream::get()': returns the next byte, or '0xFF' (the
+    /// truncation of 'EOF' == -1) plus eofbit/failbit on end of stream. Callers
+    /// distinguish a real '0xFF' byte from EOF via 'eof', exactly as the C++ tests
+    /// 'stream_eof()' rather than the returned value.
+    fn get(&mut self) -> u8 {
+        if let Some(b) = self.pushback.pop() {
+            return b;
+        }
+        let mut one = [0u8; 1];
+        match self.inner.read(&mut one) {
+            Ok(0) => {
+                self.eof = true;
+                self.fail = true;
+                0xFF
+            }
+            Ok(_) => one[0],
+            Err(_) => {
+                self.fail = true;
+                0xFF
+            }
+        }
+    }
+
+    /// Models 'std::istream::putback(c)': pushes a byte back and clears the
+    /// eof/fail bits (a successful putback makes the stream good again).
+    fn unget(&mut self, b: u8) {
+        self.pushback.push(b);
+        self.eof = false;
+        self.fail = false;
+    }
+
+    /// Models 'std::istream::ignore(n)': discard 'n' bytes.
+    fn ignore(&mut self, n: u32) {
+        for _ in 0..n {
+            let _ = self.get();
+        }
+    }
+}
+
+impl Read for PushbackReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut n = 0;
+        while n < buf.len() {
+            match self.pushback.pop() {
+                Some(b) => {
+                    buf[n] = b;
+                    n += 1;
+                }
+                None => break,
+            }
+        }
+        if n == buf.len() {
+            return Ok(n);
+        }
+        match self.inner.read(&mut buf[n..]) {
+            Ok(m) => Ok(n + m),
+            Err(e) => {
+                if n > 0 {
+                    Ok(n)
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
+}
 
 /// Port of the C++ 'union StreamImplementation' (the backend implementation).
-/// Exactly one field is 'Some', selected by 'HfstInputStream::type_'. The
-/// tropical/log members borrow their reader ('IStream<'a>'); the rest are
-/// deferred placeholders.
+/// Kept for fidelity with the C++ union; in this single-owned-reader port the
+/// in-scope backend stream is built transiently in 'read_transducer', so these
+/// fields stay 'None'. The tropical/log/hfst_ol members carry the reader lifetime
+/// ('IStream<'a>'); the rest are deferred placeholders.
 // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-implementation]
 #[derive(Default)]
 pub struct StreamImplementation<'a> {
@@ -59,7 +180,7 @@ pub struct StreamImplementation<'a> {
     pub log_ofst: Option<Box<LogWeightInputStream<'a>>>,
     pub foma: Option<Box<FomaInputStream>>,
     pub xfsm: Option<Box<XfsmInputStream>>,
-    pub hfst_ol: Option<Box<HfstOlInputStream>>,
+    pub hfst_ol: Option<Box<HfstOlBackendInputStream<'a>>>,
 }
 
 /// The type of a transducer not supported directly by HFST version 3.0 but which
@@ -93,6 +214,7 @@ pub enum TransducerType {
 // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream]
 pub struct HfstInputStream<'a> {
     /// The backend implementation (C++ 'StreamImplementation implementation').
+    /// Fidelity placeholder; see ['StreamImplementation'].
     implementation: StreamImplementation<'a>,
     /// Implementation type (the discriminant selecting the live 'implementation' member).
     type_: ImplementationType,
@@ -110,12 +232,26 @@ pub struct HfstInputStream<'a> {
     /// alphabet is appended at the end. Should not occur very often, but possible
     /// when converting old transducers into version 3.0. transducers.
     hfst_version_2_weighted_transducer: bool,
-    /// The stream that the reading operations use when reading the first
-    /// transducer. Then the type of the transducer is not known so there is no
-    /// backend implementation whose reading functions could be used. C++ raw
-    /// 'std::istream * input_stream': 'None' == NULL (use backend implementation),
-    /// 'Some' == non-NULL (read the raw stream directly).
-    input_stream: Option<IStream<'a>>,
+    /// The owned reader used to probe the first transducer's header (and shared,
+    /// via raw pointer, with the in-scope backend stream). Heap-pinned behind a
+    /// raw pointer; freed in 'Drop'. Mirrors C++ 'std::istream * input_stream' in
+    /// that it backs all the 'stream_*' primitives.
+    reader: *mut PushbackReader,
+    /// Mirrors C++ 'input_stream != NULL': 'true' while the first transducer's
+    /// type is still being established (reads behave like the raw 'input_stream'),
+    /// 'false' once 'read_transducer' has taken over.
+    input_stream_active: bool,
+}
+
+impl<'a> Drop for HfstInputStream<'a> {
+    fn drop(&mut self) {
+        if !self.reader.is_null() {
+            // Frees the owned reader. The backend collaborators in
+            // 'implementation' are 'None' in this port, so no dangling borrow.
+            drop(unsafe { Box::from_raw(self.reader) });
+            self.reader = std::ptr::null_mut();
+        }
+    }
 }
 
 // ===== input_impl (workflow body) =====
@@ -130,124 +266,32 @@ mod input_impl {
     }
 
     impl<'a> HfstInputStream<'a> {
+        /// Borrow the owned reader. Sound for the single-threaded, non-aliasing way
+        /// the 'stream_*' primitives use it (one call at a time).
+        #[inline]
+        fn pbr(&mut self) -> &mut PushbackReader {
+            unsafe { &mut *self.reader }
+        }
+
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.ignore-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.ignore-fn]
         fn ignore(&mut self, n: u32) {
-            match self.type_ {
-                ImplementationType::SFST_TYPE => {
-                    // this->implementation.sfst->ignore(n);
-                    unimplemented!("deferred: SfstInputStream::ignore (no SFST backend)")
-                }
-                ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    self.implementation
-                        .tropical_ofst
-                        .as_mut()
-                        .unwrap()
-                        .ignore(n);
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    self.implementation.log_ofst.as_mut().unwrap().ignore(n);
-                }
-                ImplementationType::FOMA_TYPE => {
-                    // this->implementation.foma->ignore(n);
-                    unimplemented!("deferred: FomaInputStream::ignore (no foma backend)")
-                }
-                ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    // this->implementation.hfst_ol->ignore(n);
-                    unimplemented!("deferred: HfstOlInputStream::ignore (no hfst_ol backend)")
-                }
-                _ => {
-                    assert!(false);
-                }
-            }
+            // C++ 'switch (type)' dispatches to the active backend's 'ignore'. In
+            // this single-owned-reader port the reader IS the shared stream.
+            self.pbr().ignore(n);
         }
 
         fn stream_get_char_ref(&mut self, c: &mut char) -> char {
-            if self.input_stream.is_some() {
-                let mut b = [0u8; 1];
-                self.input_stream.as_mut().unwrap().read(&mut b);
-                *c = b[0] as char;
-                return *c;
-            }
-            match self.type_ {
-                ImplementationType::SFST_TYPE => {
-                    // return c = this->implementation.sfst->stream_get();
-                    unimplemented!("deferred: SfstInputStream::stream_get (no SFST backend)")
-                }
-                ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    *c = self
-                        .implementation
-                        .tropical_ofst
-                        .as_mut()
-                        .unwrap()
-                        .stream_get();
-                    return *c;
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    *c = self.implementation.log_ofst.as_mut().unwrap().stream_get();
-                    return *c;
-                }
-                ImplementationType::FOMA_TYPE => {
-                    unimplemented!("deferred: FomaInputStream::stream_get (no foma backend)")
-                }
-                ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    unimplemented!("deferred: HfstOlInputStream::stream_get (no hfst_ol backend)")
-                }
-                _ => {
-                    assert!(false);
-                }
-            }
-            #[allow(unreachable_code)]
-            {
-                crate::HFST_THROW_MESSAGE!(HfstFatalException, "stream_get(char &) failed")
-            }
+            *c = self.pbr().get() as char;
+            *c
         }
 
         fn stream_get_short_ref(&mut self, i: &mut i16) -> i16 {
-            if self.input_stream.is_some() {
-                let mut b = [0u8; 2];
-                self.input_stream.as_mut().unwrap().read(&mut b);
-                *i = i16::from_ne_bytes(b);
-                return *i;
-            }
-            match self.type_ {
-                ImplementationType::SFST_TYPE => {
-                    unimplemented!("deferred: SfstInputStream::stream_get_short (no SFST backend)")
-                }
-                ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    *i = self
-                        .implementation
-                        .tropical_ofst
-                        .as_mut()
-                        .unwrap()
-                        .stream_get_short();
-                    return *i;
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    *i = self
-                        .implementation
-                        .log_ofst
-                        .as_mut()
-                        .unwrap()
-                        .stream_get_short();
-                    return *i;
-                }
-                ImplementationType::FOMA_TYPE => {
-                    unimplemented!("deferred: FomaInputStream::stream_get_short (no foma backend)")
-                }
-                ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    unimplemented!(
-                        "deferred: HfstOlInputStream::stream_get_short (no hfst_ol backend)"
-                    )
-                }
-                _ => {
-                    assert!(false);
-                }
-            }
-            #[allow(unreachable_code)]
-            {
-                crate::HFST_THROW_MESSAGE!(HfstFatalException, "stream_get(short &) failed")
-            }
+            let mut b = [0u8; 2];
+            b[0] = self.pbr().get();
+            b[1] = self.pbr().get();
+            *i = i16::from_ne_bytes(b);
+            *i
         }
 
         fn stream_get_ushort_ref(&mut self, i: &mut u16) -> u16 {
@@ -260,77 +304,15 @@ mod input_impl {
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-get-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.stream-get-fn]
         fn stream_get(&mut self) -> char {
-            if self.input_stream.is_some() {
-                let mut b = [0u8; 1];
-                self.input_stream.as_mut().unwrap().read(&mut b);
-                return b[0] as char;
-            }
-            match self.type_ {
-                ImplementationType::SFST_TYPE => {
-                    unimplemented!("deferred: SfstInputStream::stream_get (no SFST backend)")
-                }
-                ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    return self
-                        .implementation
-                        .tropical_ofst
-                        .as_mut()
-                        .unwrap()
-                        .stream_get();
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    return self.implementation.log_ofst.as_mut().unwrap().stream_get();
-                }
-                ImplementationType::FOMA_TYPE => {
-                    unimplemented!("deferred: FomaInputStream::stream_get (no foma backend)")
-                }
-                ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    unimplemented!("deferred: HfstOlInputStream::stream_get (no hfst_ol backend)")
-                }
-                _ => {
-                    assert!(false);
-                }
-            }
-            #[allow(unreachable_code)]
-            {
-                crate::HFST_THROW_MESSAGE!(HfstFatalException, "stream_get() failed")
-            }
+            // C++: if (input_stream != NULL) return (char) input_stream->get();
+            // else dispatch to the backend. Here the owned reader serves both.
+            self.pbr().get() as char
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-unget-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.stream-unget-fn]
         fn stream_unget(&mut self, c: char) {
-            if self.input_stream.is_some() {
-                // input_stream->putback(c); -- IStream has no putback/unget.
-                unimplemented!("deferred: input_stream putback — IStream has no putback/unget")
-            }
-            match self.type_ {
-                ImplementationType::SFST_TYPE => {
-                    unimplemented!("deferred: SfstInputStream::stream_unget (no SFST backend)")
-                }
-                ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    self.implementation
-                        .tropical_ofst
-                        .as_mut()
-                        .unwrap()
-                        .stream_unget(c);
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    self.implementation
-                        .log_ofst
-                        .as_mut()
-                        .unwrap()
-                        .stream_unget(c);
-                }
-                ImplementationType::FOMA_TYPE => {
-                    unimplemented!("deferred: FomaInputStream::stream_unget (no foma backend)")
-                }
-                ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    unimplemented!("deferred: HfstOlInputStream::stream_unget (no hfst_ol backend)")
-                }
-                _ => {
-                    assert!(false);
-                }
-            }
+            self.pbr().unget(c as u32 as u8);
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-peek-fn]
@@ -361,9 +343,10 @@ mod input_impl {
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-eof-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.stream-eof-fn]
         fn stream_eof(&mut self) -> bool {
-            if self.input_stream.is_some() {
-                // input_stream->eof(); IStream exposes its EOF/fail state via good().
-                return !self.input_stream.as_ref().unwrap().good();
+            if self.input_stream_active {
+                // C++ 'input_stream->eof()': the eofbit, set only once a read went
+                // past the end.
+                return self.pbr().eof;
             }
             self.is_eof()
         }
@@ -387,16 +370,157 @@ mod input_impl {
             false
         }
 
+        /// Slurp every remaining byte from the owned reader (unget stack first,
+        /// then the underlying source). Used to hand the OpenFst/rustfst
+        /// 'VectorFst' payload to 'SerializableFst::load'.
+        fn read_remaining_bytes(&mut self) -> Vec<u8> {
+            let reader = self.pbr();
+            let mut buf: Vec<u8> = Vec::new();
+            let _ = Read::read_to_end(reader, &mut buf);
+            buf
+        }
+
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.read-transducer-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.read-transducer-fn]
-        // The C++ 'read_transducer(HfstTransducer &t)' builds a HfstTransducer and
-        // touches 't.implementation.*', the OpenFst interfaces and ConversionFunctions.
-        // 'HfstTransducer' is not yet ported (facade layer), so the whole dispatch is
-        // deferred.
-        fn read_transducer(&mut self) {
-            unimplemented!(
-                "deferred: HfstInputStream::read_transducer — needs HfstTransducer facade"
-            )
+        // Reads the next transducer from the stream and stores it in 't'. The C++
+        // calls 'implementation.X->read_transducer()'; the tropical/log backend
+        // 'read_transducer' is deferred (rustfst exposes only the whole-buffer
+        // 'load'), so for those types we read the payload directly off the owned
+        // reader and rebuild the fst here.
+        pub fn read_transducer(&mut self, t: &mut HfstTransducer) {
+            if self.type_ != ImplementationType::XFSM_TYPE {
+                if self.input_stream_active {
+                    // first transducer in the stream
+                    self.input_stream_active = false;
+                    if self.stream_eof() {
+                        crate::HFST_THROW!(EndOfStreamException);
+                    }
+                    // C++ re-opens the backend stream by filename and skips the
+                    // already-read header bytes here ('ignore(bytes_to_skip)'). In
+                    // this single-owned-reader port the probe already consumed the
+                    // header from the one reader, so there is nothing to skip.
+                } else {
+                    if self.stream_eof() {
+                        crate::HFST_THROW!(EndOfStreamException);
+                    }
+                    let current_type = self.get_type();
+                    let stype = self.stream_fst_type();
+                    if stype != current_type {
+                        crate::HFST_THROW_MESSAGE!(
+                            TransducerTypeMismatchException,
+                            "HfstInputStream contains HfstTransducers whose type is not the same"
+                        );
+                    }
+                }
+            }
+
+            match self.type_ {
+                ImplementationType::SFST_TYPE => {
+                    // implementation.sfst->read_transducer() — no SFST backend.
+                    unimplemented!("deferred: SfstInputStream::read_transducer (no SFST backend)")
+                }
+                ImplementationType::TROPICAL_OPENFST_TYPE => {
+                    let bytes = self.read_remaining_bytes();
+                    let fst = match StdVectorFst::load(&bytes) {
+                        Ok(f) => f,
+                        Err(_) => crate::HFST_THROW_MESSAGE!(
+                            NotTransducerStreamException,
+                            "could not read TROPICAL_OPENFST transducer payload"
+                        ),
+                    };
+                    t.implementation.tropical_ofst = Box::into_raw(Box::new(fst));
+
+                    /* If we were reading an OpenFst transducer with no HFST header,
+                    round-trip it through HfstBasicTransducer to normalise its
+                    symbol tables / epsilon-unknown-identity coding. */
+                    if !self.has_hfst_header {
+                        let net = ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
+                            unsafe { &*t.implementation.tropical_ofst },
+                            false,
+                        );
+                        TropicalWeightTransducer::delete_transducer(unsafe {
+                            *Box::from_raw(t.implementation.tropical_ofst)
+                        });
+                        t.implementation.tropical_ofst = Box::into_raw(Box::new(
+                            ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(&net),
+                        ));
+                    }
+
+                    // A special case: HFST version 2 transducer with an appended
+                    // SFST alphabet. It needs the backend 'stream_get' loop, which
+                    // is not available in this port.
+                    if self.hfst_version_2_weighted_transducer {
+                        unimplemented!(
+                            "deferred: HFST version 2 weighted transducer (appended SFST alphabet)"
+                        );
+                    }
+                }
+                ImplementationType::LOG_OPENFST_TYPE => {
+                    let bytes = self.read_remaining_bytes();
+                    let fst = match LogFst::load(&bytes) {
+                        Ok(f) => f,
+                        Err(_) => crate::HFST_THROW_MESSAGE!(
+                            NotTransducerStreamException,
+                            "could not read LOG_OPENFST transducer payload"
+                        ),
+                    };
+                    t.implementation.log_ofst = Box::into_raw(Box::new(fst));
+
+                    if !self.has_hfst_header {
+                        let net = ConversionFunctions::log_ofst_to_hfst_basic_transducer(
+                            unsafe { &*t.implementation.log_ofst },
+                            false,
+                        );
+                        LogWeightTransducer::delete_transducer(unsafe {
+                            *Box::from_raw(t.implementation.log_ofst)
+                        });
+                        t.implementation.log_ofst = Box::into_raw(Box::new(
+                            ConversionFunctions::hfst_basic_transducer_to_log_ofst(&net),
+                        ));
+                    }
+
+                    if self.hfst_version_2_weighted_transducer {
+                        // this should not happen
+                        crate::HFST_THROW_MESSAGE!(HfstFatalException, "not transducer stream");
+                    }
+                }
+                ImplementationType::FOMA_TYPE => {
+                    unimplemented!("deferred: FomaInputStream::read_transducer (no foma backend)")
+                }
+                ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
+                    let weighted = self.type_ == ImplementationType::HFST_OLW_TYPE;
+                    // Build a transient backend stream that borrows the owned
+                    // reader (positioned just after the header that probing
+                    // consumed), then read with has_header = false.
+                    let reader: &'a mut PushbackReader = unsafe { &mut *self.reader };
+                    let is = IStream::new(reader);
+                    let mut ol_in = HfstOlBackendInputStream::new_istream(is, weighted);
+                    let tr = ol_in.read_transducer(false);
+                    t.implementation.hfst_ol = Box::into_raw(Box::new(tr));
+                    if t.get_type() != self.type_ {
+                        // weights need to be added or removed
+                        t.convert(self.type_, String::new());
+                    }
+                }
+                // case ERROR_TYPE: default:
+                _ => {
+                    debug_error("#1");
+                    crate::HFST_THROW!(NotTransducerStreamException);
+                }
+            }
+
+            if self.type_ != ImplementationType::XFSM_TYPE {
+                let nm = self.name.clone();
+                t.set_name(&nm);
+                let props: Vec<(String, String)> = self
+                    .props
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                for (k, v) in props {
+                    t.set_property(&k, &v);
+                }
+            }
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.guess-fst-type-fn]
@@ -800,161 +924,144 @@ mod input_impl {
             }
         }
 
-        /* Open a transducer stream to stdout.
+        /// Shared constructor body: own 'inner', probe the header, validate the
+        /// type. (The C++ constructors differ only in how 'input_stream' is seeded
+        /// and in re-constructing a per-type backend stream, which this port builds
+        /// transiently at read time.)
+        fn new_with_reader(inner: Box<dyn Read>, filename: String) -> Self {
+            let mut this = HfstInputStream {
+                implementation: StreamImplementation::default(),
+                type_: ImplementationType::ERROR_TYPE,
+                name: String::new(),
+                props: BTreeMap::new(),
+                bytes_to_skip: 0,
+                filename,
+                has_hfst_header: false,
+                hfst_version_2_weighted_transducer: false,
+                reader: Box::into_raw(Box::new(PushbackReader::new(inner))),
+                input_stream_active: true,
+            };
+
+            if this.stream_eof() {
+                crate::HFST_THROW!(EndOfStreamException);
+            }
+            this.type_ = this.stream_fst_type();
+
+            if !HfstTransducer::is_lean_implementation_type_available(this.type_) {
+                std::panic::panic_any(ImplementationTypeNotAvailableException::new(
+                    "ImplementationTypeNotAvailableException".to_string(),
+                    file!().to_string(),
+                    line!() as usize,
+                    this.type_,
+                ));
+            }
+
+            // C++ 'switch (type)' constructs the per-type backend stream here. We
+            // build it transiently in 'read_transducer'; this switch only rejects
+            // the unsupported / unrecognised types up front.
+            match this.type_ {
+                ImplementationType::TROPICAL_OPENFST_TYPE
+                | ImplementationType::LOG_OPENFST_TYPE
+                | ImplementationType::HFST_OL_TYPE
+                | ImplementationType::HFST_OLW_TYPE => {}
+                ImplementationType::SFST_TYPE => {
+                    unimplemented!("deferred: SfstInputStream (no SFST backend)")
+                }
+                ImplementationType::FOMA_TYPE => {
+                    unimplemented!("deferred: FomaInputStream (no foma backend)")
+                }
+                ImplementationType::XFSM_TYPE => {
+                    unimplemented!("deferred: XfsmInputStream (no xfsm backend)")
+                }
+                _ => {
+                    debug_error("#10");
+                    crate::HFST_THROW_MESSAGE!(
+                        NotTransducerStreamException,
+                        "transducer type not recognised"
+                    );
+                }
+            }
+
+            this
+        }
+
+        /* Open a transducer stream to stdin.
         The implementation type of the stream is defined by
         the type of the first transducer in the stream. */
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.hfst-input-stream-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.hfst-input-stream-fn]
         pub fn new() -> Self {
-            // input_stream = &std::cin; -- IStream cannot own/borrow std::cin in this
-            // skeleton (no source available), and the type-probing + backend dispatch
-            // reads from it before constructing the backend stream. Deferred.
-            unimplemented!(
-                "deferred: HfstInputStream::new — IStream cannot own a std::cin reader (lifetime)"
-            )
+            // C++ 'input_stream = &std::cin;'
+            Self::new_with_reader(Box::new(std::io::stdin()), String::new())
         }
 
         // FIXME: HfstOutputStream takes a string parameter,
         //        HfstInputStream a const char*
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.hfst-input-stream-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.hfst-input-stream-fn]
-        pub fn new_filename(_filename: &str) -> Self {
-            // The C++ opens an 'ifstream', probes it, then constructs a backend stream
-            // from the same filename. 'IStream' cannot own an 'ifstream' (lifetime),
-            // and the SFST/foma/xfsm/hfst_ol backends are absent. Deferred.
-            unimplemented!(
-                "deferred: HfstInputStream::new_filename — IStream cannot own a file reader (lifetime)"
-            )
+        pub fn new_filename(filename: &str) -> Self {
+            if !filename.is_empty() {
+                let f = match File::open(filename) {
+                    Ok(f) => f,
+                    Err(_) => crate::HFST_THROW_MESSAGE!(
+                        NotTransducerStreamException,
+                        "file could not be opened"
+                    ),
+                };
+                Self::new_with_reader(Box::new(BufReader::new(f)), filename.to_string())
+            } else {
+                Self::new_with_reader(Box::new(std::io::stdin()), String::new())
+            }
         }
 
         // HfstInputStream(std::istream &is)
         pub fn new_istream(_is: IStream<'a>) -> Self {
-            // The C++ probes 'is' (stream_fst_type) then, for OpenFst/HFST_OL types,
-            // constructs a backend stream from the SAME 'is'. After type probing the
-            // 'IStream' would have to be moved into the backend, but probing borrows
-            // 'self' (which owns the IStream) and the SFST/foma/xfsm/hfst_ol backends
-            // are absent. Deferred.
+            // The C++ probes 'is' then constructs a backend stream from the SAME
+            // borrowed 'is'. This owned-reader port cannot adopt a borrowed
+            // 'IStream' as its owned source (it would have to move the borrowed
+            // reader in), so this overload stays deferred; use 'new'/'new_filename'
+            // (which own a 'Box<dyn Read>') instead.
             unimplemented!(
-                "deferred: HfstInputStream::new_istream — needs IStream re-homing into backend + absent backends"
+                "deferred: HfstInputStream::new_istream — owned-reader port cannot adopt a borrowed IStream"
             )
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.close-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.close-fn]
         pub fn close(&mut self) {
-            match self.type_ {
-                ImplementationType::SFST_TYPE => {
-                    unimplemented!("deferred: SfstInputStream::close (no SFST backend)")
-                }
-                ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    self.implementation.tropical_ofst.as_mut().unwrap().close();
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    self.implementation.log_ofst.as_mut().unwrap().close();
-                }
-                ImplementationType::FOMA_TYPE => {
-                    unimplemented!("deferred: FomaInputStream::close (no foma backend)")
-                }
-                ImplementationType::XFSM_TYPE => {
-                    unimplemented!("deferred: XfsmInputStream::close (no xfsm backend)")
-                }
-                ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    unimplemented!("deferred: HfstOlInputStream::close (no hfst_ol backend)")
-                }
-                _ => {
-                    assert!(false);
-                }
-            }
+            // C++ 'switch (type)' dispatches to the active backend's 'close' (for a
+            // file it closes the handle). The owned reader is freed in 'Drop'; for
+            // stdin nothing is done. Either way there is nothing to do here.
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.is-eof-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.is-eof-fn]
         pub fn is_eof(&mut self) -> bool {
-            match self.type_ {
-                ImplementationType::SFST_TYPE => {
-                    unimplemented!("deferred: SfstInputStream::is_eof (no SFST backend)")
-                }
-                ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    self.implementation.tropical_ofst.as_ref().unwrap().is_eof()
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    self.implementation.log_ofst.as_ref().unwrap().is_eof()
-                }
-                ImplementationType::FOMA_TYPE => {
-                    unimplemented!("deferred: FomaInputStream::is_eof (no foma backend)")
-                }
-                ImplementationType::XFSM_TYPE => {
-                    unimplemented!("deferred: XfsmInputStream::is_eof (no xfsm backend)")
-                }
-                ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    unimplemented!("deferred: HfstOlInputStream::is_eof (no hfst_ol backend)")
-                }
-                _ => {
-                    assert!(false);
-                    false
-                }
+            // C++ dispatches to the active backend's 'is_eof', which peeks the
+            // shared stream ('peek() == EOF'). The owned reader IS that stream.
+            let c = self.pbr().get();
+            if self.pbr().eof {
+                return true;
             }
+            self.pbr().unget(c);
+            false
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.is-bad-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.is-bad-fn]
         pub fn is_bad(&mut self) -> bool {
-            match self.type_ {
-                ImplementationType::SFST_TYPE => {
-                    unimplemented!("deferred: SfstInputStream::is_bad (no SFST backend)")
-                }
-                ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    self.implementation.tropical_ofst.as_ref().unwrap().is_bad()
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    self.implementation.log_ofst.as_ref().unwrap().is_bad()
-                }
-                ImplementationType::FOMA_TYPE => {
-                    unimplemented!("deferred: FomaInputStream::is_bad (no foma backend)")
-                }
-                ImplementationType::XFSM_TYPE => {
-                    unimplemented!("deferred: XfsmInputStream::is_bad (no xfsm backend)")
-                }
-                ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    unimplemented!("deferred: HfstOlInputStream::is_bad (no hfst_ol backend)")
-                }
-                _ => {
-                    assert!(false);
-                    false
-                }
-            }
+            // C++ backend 'is_bad' ~ '!stream.good()'.
+            self.pbr().fail
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.is-good-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.is-good-fn]
         pub fn is_good(&mut self) -> bool {
-            match self.type_ {
-                ImplementationType::SFST_TYPE => {
-                    unimplemented!("deferred: SfstInputStream::is_good (no SFST backend)")
-                }
-                ImplementationType::TROPICAL_OPENFST_TYPE => self
-                    .implementation
-                    .tropical_ofst
-                    .as_ref()
-                    .unwrap()
-                    .is_good(),
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    self.implementation.log_ofst.as_ref().unwrap().is_good()
-                }
-                ImplementationType::FOMA_TYPE => {
-                    unimplemented!("deferred: FomaInputStream::is_good (no foma backend)")
-                }
-                ImplementationType::XFSM_TYPE => {
-                    unimplemented!("deferred: XfsmInputStream::is_good (no xfsm backend)")
-                }
-                ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    unimplemented!("deferred: HfstOlInputStream::is_good (no hfst_ol backend)")
-                }
-                _ => {
-                    assert!(false);
-                    false
-                }
+            // C++ backend 'is_good': false at eof, else 'stream.good()'.
+            if self.is_eof() {
+                return false;
             }
+            !self.pbr().fail
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.get-type-fn]

@@ -67,6 +67,7 @@ use crate::hfst_exception_defs::FunctionNotImplementedException;
 use crate::hfst_exception_defs::HfstFatalException;
 use crate::hfst_exception_defs::ImplementationTypeNotAvailableException;
 use crate::hfst_exception_defs::SpecifiedTypeRequiredException;
+use crate::hfst_exception_defs::StreamNotReadableException;
 use crate::hfst_exception_defs::TransducerHasWrongTypeException;
 use crate::hfst_exception_defs::TransducerTypeMismatchException;
 use crate::hfst_tokenizer::HfstTokenizer;
@@ -563,6 +564,37 @@ impl HfstTransducer {
             props: BTreeMap::new(),
             implementation,
         }
+    }
+
+    /// \brief Read a (binary) transducer from an HFST input stream.
+    ///
+    /// 'HfstTransducer(HfstInputStream &in)'.
+    // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.hfst-transducer-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.hfst-transducer-fn]
+    pub fn new_from_stream(instream: &mut crate::hfst_input_stream::HfstInputStream) -> Self {
+        let type_ = instream.get_type();
+        if !Self::is_lean_implementation_type_available(type_) {
+            std::panic::panic_any(ImplementationTypeNotAvailableException::new(
+                "ImplementationTypeNotAvailableException".to_string(),
+                file!().to_string(),
+                line!() as usize,
+                type_,
+            ));
+        }
+        // C++ leaves 'implementation' to be filled by 'in.read_transducer(*this)';
+        // seed it with a null pointer first (overwritten by the read).
+        let mut t = HfstTransducer {
+            type_,
+            anonymous: false,
+            is_trie: false,
+            name: String::new(),
+            props: BTreeMap::new(),
+            implementation: TransducerImplementation {
+                tropical_ofst: std::ptr::null_mut(),
+            },
+        };
+        instream.read_transducer(&mut t);
+        t
     }
 
     /// \brief Create '[symbol:symbol]' of type 'type_'.
@@ -5147,26 +5179,68 @@ impl HfstTransducer {
         crate::HFST_THROW!(FunctionNotImplementedException)
     }
 
+    /// 'HfstTransducer &read_in_att_format(const std::string &filename, type,
+    ///  const std::string &epsilon_symbol, bool warn_negs)'.
     pub fn read_in_att_format_filename<'a>(
         filename: &str,
         type_: ImplementationType,
         epsilon_symbol: &str,
         warn_negs: bool,
     ) -> &'a mut HfstTransducer {
-        // [spec:hfst:def:hfst-transducer.hfst.message-fn]
-        // [spec:hfst:sem:hfst-transducer.hfst.message-fn]
-        let _ = (filename, type_, epsilon_symbol, warn_negs);
-        unimplemented!("deferred: read_in_att_format (HfstInputStream-backed)")
+        if type_ == XFSM_TYPE {
+            HFST_THROW!(FunctionNotImplementedException);
+        }
+        let c_filename = std::ffi::CString::new(filename).unwrap();
+        let mode = std::ffi::CString::new("rb").unwrap();
+        let ifile =
+            unsafe { crate::hfst_data_types::hfst_fopen(c_filename.as_ptr(), mode.as_ptr()) };
+        if ifile.is_null() {
+            // [spec:hfst:def:hfst-transducer.hfst.message-fn]
+            // [spec:hfst:sem:hfst-transducer.hfst.message-fn]
+            HFST_THROW_MESSAGE!(StreamNotReadableException, filename);
+        }
+        HfstTokenizer::check_utf8_correctness(epsilon_symbol);
+
+        let retval =
+            unsafe { Self::read_in_att_format_file(ifile, type_, epsilon_symbol, warn_negs) };
+        unsafe {
+            libc::fclose(ifile);
+        }
+        retval
     }
 
+    /// 'HfstTransducer &read_in_att_format(FILE *ifile, type,
+    ///  const std::string &epsilon_symbol, bool warn_negs)'.
     pub unsafe fn read_in_att_format_file<'a>(
         ifile: *mut libc::FILE,
         type_: ImplementationType,
         epsilon_symbol: &str,
         warn_negs: bool,
     ) -> &'a mut HfstTransducer {
-        let _ = (ifile, type_, epsilon_symbol, warn_negs);
-        unimplemented!("deferred: read_in_att_format (HfstInputStream-backed)")
+        if type_ == XFSM_TYPE {
+            HFST_THROW!(FunctionNotImplementedException);
+        }
+        if !Self::is_implementation_type_available(type_) {
+            std::panic::panic_any(ImplementationTypeNotAvailableException::new(
+                "ImplementationTypeNotAvailableException".to_string(),
+                file!().to_string(),
+                line!() as usize,
+                type_,
+            ));
+        }
+        HfstTokenizer::check_utf8_correctness(epsilon_symbol);
+
+        let mut foo: u32 = 0;
+        let net = HfstBasicTransducer::read_in_att_format_file(
+            ifile,
+            epsilon_symbol,
+            &mut foo,
+            warn_negs,
+        );
+        // C++ 'new HfstTransducer(net, type)' returned by reference; 'Box::leak'
+        // mirrors the heap allocation the caller takes ownership of / deletes.
+        let _ = foo;
+        Box::leak(Box::new(HfstTransducer::new_from_basic(&net, type_)))
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.universal-pair-fn]
