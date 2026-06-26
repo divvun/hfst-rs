@@ -325,3 +325,4 @@ hfst-eliminate-flags
 # OpenFST reference clone (behavioural reference for rustfst gap-fills; not committed)
 /openfst
 .port-staging/
+INSTALL
