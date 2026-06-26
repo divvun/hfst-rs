@@ -1100,8 +1100,45 @@ impl PmatchContainer {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
     // explicit PmatchContainer(std::vector<hfst::HfstTransducer>)
-    pub fn new_from_hfst_transducers(/* transducers: Vec<HfstTransducer> */) -> PmatchContainer {
-        unimplemented!("deferred: needs HfstTransducer facade")
+    pub fn new_from_hfst_transducers(
+        transducers: Vec<crate::hfst_transducer::HfstTransducer>,
+    ) -> PmatchContainer {
+        if transducers.is_empty() {
+            let mut c = PmatchContainer::new();
+            c.set_properties();
+            c.reset_recursion();
+            return c;
+        }
+        if transducers.len() == 1 {
+            // C++: convert transducers[0] to HFST_OLW (unless already), then
+            // hfst_transducer_to_hfst_ol(top) to get the optimized-lookup backend,
+            // and build the container from it (exactly new_from_transducer). The
+            // backend is the (weighted) optimized-lookup transducer behind the OLW
+            // HfstTransducer, copied out of the union.
+            let mut top = transducers[0].clone();
+            if top.get_type() != crate::hfst_data_types::ImplementationType::HFST_OLW_TYPE {
+                top.convert(
+                    crate::hfst_data_types::ImplementationType::HFST_OLW_TYPE,
+                    String::new(),
+                );
+            }
+            let backend =
+                crate::transducer::Transducer::copy(unsafe { &*top.implementation.hfst_ol }, true);
+            let mut c = PmatchContainer::new_from_transducer(Box::new(backend));
+            // C++ sets these from transducers[0]'s properties before building; the
+            // build does not depend on them, so applying them afterwards is
+            // equivalent.
+            c.set_properties_map(transducers[0].get_properties());
+            c
+        } else {
+            // The C++ 'difficult case': multiple optimized-lookup archives are
+            // harmonized into one shared alphabet (collect every symbol into a
+            // harmonizer transducer, reconvert each member through it, locate the
+            // 'TOP' member). Distinct, larger sub-feature; not yet ported.
+            unimplemented!(
+                "PmatchContainer from multiple transducers (the C++ multi-archive harmonization case) is not yet ported"
+            )
+        }
     }
 
     // PmatchContainer(void)
