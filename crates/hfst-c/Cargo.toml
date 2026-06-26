@@ -6,3 +6,4 @@ license.workspace = true
 
 [dependencies]
 hfst = { workspace = true }
+libc = "0.2"
