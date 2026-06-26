@@ -188,11 +188,15 @@ impl HfstTransducer {
             LOG_OPENFST_TYPE => TransducerImplementation {
                 log_ofst: Box::into_raw(Box::new(LogWeightTransducer::create_empty_transducer())),
             },
-            HFST_OL_TYPE | HFST_OLW_TYPE => {
+            HFST_OL_TYPE | HFST_OLW_TYPE => TransducerImplementation {
                 // implementation.hfst_ol =
                 //   hfst_ol_interface.create_empty_transducer(type == HFST_OLW_TYPE);
-                unimplemented!("deferred: HfstOlTransducer")
-            }
+                hfst_ol: Box::into_raw(Box::new(
+                    crate::hfst_ol_transducer::HfstOlTransducer::create_empty_transducer(
+                        type_ == HFST_OLW_TYPE,
+                    ),
+                )),
+            },
             ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequiredException),
             _ => HFST_THROW!(FunctionNotImplementedException),
         };
@@ -1518,8 +1522,9 @@ impl HfstTransducer {
             }
             ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongTypeException),
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                // hfst_ol_interface.get_alphabet(implementation.hfst_ol)
-                unimplemented!("deferred: HfstOlTransducer")
+                crate::hfst_ol_transducer::HfstOlTransducer::get_alphabet(unsafe {
+                    &*self.implementation.hfst_ol
+                })
             }
             _ => crate::HFST_THROW_MESSAGE!(FunctionNotImplementedException, "get_alphabet"),
         }
@@ -1971,9 +1976,11 @@ impl HfstTransducer {
                     &*self.implementation.log_ofst,
                 )
             },
-            ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                unimplemented!("deferred: HfstOlTransducer")
-            }
+            ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => unsafe {
+                crate::hfst_ol_transducer::HfstOlTransducer::is_cyclic(
+                    &*self.implementation.hfst_ol,
+                )
+            },
             ImplementationType::ERROR_TYPE => std::panic::panic_any(
                 crate::hfst_exception_defs::TransducerHasWrongTypeException::new(
                     "TransducerHasWrongTypeException".to_string(),

@@ -315,22 +315,13 @@ fn copy_constructor_preserves_name_after_olw_convert_test() {
     copy_constructor_preserves_name_after_olw_convert();
 }
 
-// PORT DISCREPANCY: the C++ block constructs empty HFST_OL / HFST_OLW
-// transducers via 'HfstTransducer(HFST_OL_TYPE)'. The Rust port leaves the
-// HFST_OL/OLW arm of HfstTransducer::new_type as
-// the deferred HfstOlTransducer empty constructor, so this block panics before any
-// assertion runs. (The convert(HFST_OL/OLW) path itself works -- see
-// copy_constructor_preserves_name_after_olw_convert_test -- only the empty-OL
-// constructor is deferred.)
 #[test]
-#[ignore = "PORT DISCREPANCY: new_type(HFST_OL_TYPE)/(HFST_OLW_TYPE) empty-transducer construction is unimplemented (deferred HfstOlTransducer), so the operator= OL block panics"]
 fn operator_assign_ol_tropical() {
     let _g = serialized();
     operator_assign_ol(TROPICAL_OPENFST_TYPE);
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: new_type(HFST_OL_TYPE)/(HFST_OLW_TYPE) empty-transducer construction is unimplemented (deferred HfstOlTransducer), so the operator= OL block panics"]
 fn operator_assign_ol_log() {
     let _g = serialized();
     operator_assign_ol(LOG_OPENFST_TYPE);
