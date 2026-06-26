@@ -1,11 +1,11 @@
-//! Full port of `libhfst/src/implementations/optimized-lookup/pmatch_tokenize.{h,cc}`
-//! (namespace `hfst_ol_tokenize`).
+//! Full port of 'libhfst/src/implementations/optimized-lookup/pmatch_tokenize.{h,cc}'
+//! (namespace 'hfst_ol_tokenize').
 //!
-//! This is a standalone module that depends on the `pmatch` module types
-//! (`PmatchContainer`, `Location`, `LocationVector`, `LocationVectorVector`).
+//! This is a standalone module that depends on the 'pmatch' module types
+//! ('PmatchContainer', 'Location', 'LocationVector', 'LocationVectorVector').
 //!
-//! C++ `std::ostream &` parameters are modelled as `&mut dyn std::io::Write`.
-//! C++ `std::cerr` diagnostics become `eprint!`/`eprintln!`.
+//! C++ 'std::ostream &' parameters are modelled as '&mut dyn std::io::Write'.
+//! C++ 'std::cerr' diagnostics become 'eprint!'/'eprintln!'.
 
 use std::collections::BTreeSet;
 use std::io::Write;
@@ -70,7 +70,7 @@ const wtag: &str = "W"; // (C++ note) cg-conv has an argument --wtag, allow
 // changing here as well?
 
 // Only warn once on skipping modifier letters.
-// In C++ this is a file-scope `static bool`; here it is a process-global atomic.
+// In C++ this is a file-scope 'static bool'; here it is a process-global atomic.
 static IS_CG_TAG_MODIFIER_WARNED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
@@ -222,8 +222,8 @@ pub fn location_compare_using_only_weights(lhs: &Location, rhs: &Location) -> bo
     lhs.weight < rhs.weight
 }
 
-// Helper: insert `loc` into a vector that models a `std::set<Location, cmp>`,
-// keeping it sorted by the strict-weak-ordering `cmp` and dropping equivalents
+// Helper: insert 'loc' into a vector that models a 'std::set<Location, cmp>',
+// keeping it sorted by the strict-weak-ordering 'cmp' and dropping equivalents
 // (neither cmp(a,b) nor cmp(b,a)). Mirrors std::set insertion semantics.
 fn set_insert(set: &mut Vec<Location>, cmp: fn(&Location, &Location) -> bool, loc: &Location) {
     let mut idx = 0usize;
@@ -371,9 +371,9 @@ pub fn is_cg_tag(str: &str) -> bool {
 }
 
 // Compute the next grapheme-cluster boundary (BreakIterator::following) at or
-// after the UTF-16 code-unit index `from`, returned as a UTF-16 code-unit index.
+// after the UTF-16 code-unit index 'from', returned as a UTF-16 code-unit index.
 fn following_utf16(str: &str, utf16: &[u16], from: i32) -> i32 {
-    // Map the UTF-16 index `from` to a byte offset in the UTF-8 string.
+    // Map the UTF-16 index 'from' to a byte offset in the UTF-8 string.
     let byte_off = utf16_index_to_byte(str, from as usize);
     let segmenter = GraphemeClusterSegmenter::new();
     let mut bounds = segmenter.segment_str(&str[byte_off..]);
@@ -404,7 +404,7 @@ fn char32_at_utf16(utf16: &[u16], i: i32) -> u32 {
     c as u32
 }
 
-// Byte offset in `str` (UTF-8) of the UTF-16 code-unit index `u16_idx`.
+// Byte offset in 'str' (UTF-8) of the UTF-16 code-unit index 'u16_idx'.
 fn utf16_index_to_byte(str: &str, u16_idx: usize) -> usize {
     let mut units = 0usize;
     for (byte_off, ch) in str.char_indices() {
@@ -416,7 +416,7 @@ fn utf16_index_to_byte(str: &str, u16_idx: usize) -> usize {
     str.len()
 }
 
-// UTF-16 code-unit index corresponding to byte offset `byte_off` in `str`.
+// UTF-16 code-unit index corresponding to byte offset 'byte_off' in 'str'.
 fn byte_to_utf16_index(str: &str, byte_off: usize) -> usize {
     let mut units = 0usize;
     for (b, ch) in str.char_indices() {

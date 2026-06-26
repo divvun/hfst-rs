@@ -1,26 +1,26 @@
-//! Port of `libhfst/src/implementations/ConvertLogWeightTransducer.cc` — the
-//! `HfstBasicTransducer` <-> OpenFst log-weight `LogFst` (`LogVectorFst`)
+//! Port of 'libhfst/src/implementations/ConvertLogWeightTransducer.cc' — the
+//! 'HfstBasicTransducer' <-> OpenFst log-weight 'LogFst' ('LogVectorFst')
 //! conversions.
 //!
-//! This is the log-semiring sibling of [`crate::convert_tropical_weight_transducer`],
-//! but ported from the (older, string-table-based) log `.cc`: the converters
-//! walk the OpenFst `SymbolTable`s with `Find` (= rustfst `get_symbol`), recode
-//! the initial/zero state numbers by hand (`zero_print`/`origin`/`target`), and
-//! build the reverse transducer through the `state_map` +
-//! `hfst_state_to_state_id` helper rather than the harmonization-vector path.
+//! This is the log-semiring sibling of ['crate::convert_tropical_weight_transducer'],
+//! but ported from the (older, string-table-based) log '.cc': the converters
+//! walk the OpenFst 'SymbolTable's with 'Find' (= rustfst 'get_symbol'), recode
+//! the initial/zero state numbers by hand ('zero_print'/'origin'/'target'), and
+//! build the reverse transducer through the 'state_map' +
+//! 'hfst_state_to_state_id' helper rather than the harmonization-vector path.
 //!
-//! `using namespace fst;` is mapped onto the `hfst-openfst` adapter:
-//! `LogVectorFst`, `LogTransition` (= `fst::LogArc`), `LogWeight`,
-//! `SymbolTable`, and the rustfst trait methods brought in via
-//! `hfst_openfst::prelude::*`. The C++ `StateIterator`/`ArcIterator` traversal
-//! becomes `states_iter()` + `get_trs(s)`; `t->Start() == kNoStateId` becomes
-//! `t.start().is_none()`; and `t->Final(s) != Zero()` becomes `t.is_final(s)`.
+//! 'using namespace fst;' is mapped onto the 'hfst-openfst' adapter:
+//! 'LogVectorFst', 'LogTransition' (= 'fst::LogArc'), 'LogWeight',
+//! 'SymbolTable', and the rustfst trait methods brought in via
+//! 'hfst_openfst::prelude::*'. The C++ 'StateIterator'/'ArcIterator' traversal
+//! becomes 'states_iter()' + 'get_trs(s)'; 't->Start() == kNoStateId' becomes
+//! 't.start().is_none()'; and 't->Final(s) != Zero()' becomes 't.is_final(s)'.
 //!
-//! Ownership: the C++ `new`s and returns raw pointers; here both directions
-//! return owned values (`HfstBasicTransducer` / `LogVectorFst`).
+//! Ownership: the C++ 'new's and returns raw pointers; here both directions
+//! return owned values ('HfstBasicTransducer' / 'LogVectorFst').
 //!
-//! BUG-PRESERVATION: `hfst_basic_transducer_to_log_ofst` declares
-//! `unsigned int source_state = 0;` and uses it inside the state loop but never
+//! BUG-PRESERVATION: 'hfst_basic_transducer_to_log_ofst' declares
+//! 'unsigned int source_state = 0;' and uses it inside the state loop but never
 //! increments it, so every state's transitions are keyed off state 0. This is a
 //! genuine HFST bug; it is replicated verbatim below (the increment is absent on
 //! purpose).
@@ -233,7 +233,7 @@ impl ConversionFunctions {
         net
     }
 
-    /* Get a state id for a state in transducer `t` that corresponds
+    /* Get a state id for a state in transducer 't' that corresponds
     to HfstState s as defined in `state_map`.
     Used by function hfst_basic_transducer_to_log_ofst. */
     // [spec:hfst:def:convert-log-weight-transducer.hfst.implementations.conversion-functions.hfst-state-to-state-id-fn]
@@ -254,7 +254,7 @@ impl ConversionFunctions {
         }
     }
 
-    /* Create an OpenFst transducer equivalent to HfstBasicTransducer `net`. */
+    /* Create an OpenFst transducer equivalent to HfstBasicTransducer 'net'. */
     // [spec:hfst:def:convert-log-weight-transducer.hfst.implementations.conversion-functions.hfst-basic-transducer-to-log-ofst-fn]
     // [spec:hfst:sem:convert-log-weight-transducer.hfst.implementations.conversion-functions.hfst-basic-transducer-to-log-ofst-fn]
     pub fn hfst_basic_transducer_to_log_ofst(net: &HfstBasicTransducer) -> LogVectorFst {
@@ -266,8 +266,8 @@ impl ConversionFunctions {
         let mut state_map: BTreeMap<HfstState, StateId> = BTreeMap::new();
         state_map.insert(0, start_state);
 
-        // `fst::SymbolTable st("");` — an empty table (rustfst's `new()` would
-        // pre-seed epsilon, so `empty()` is used and epsilon is added below).
+        // 'fst::SymbolTable st("");' — an empty table (rustfst's 'new()' would
+        // pre-seed epsilon, so 'empty()' is used and epsilon is added below).
         let mut st = SymbolTable::empty();
         st.add_symbol(internal_epsilon);
         st.add_symbol(internal_unknown);
@@ -275,8 +275,8 @@ impl ConversionFunctions {
 
         // Go through all states
         // BUG-PRESERVATION: declared but never incremented inside the loop, so
-        // `hfst_state_to_state_id(source_state, ...)` always resolves to state 0.
-        // Replicated verbatim from the C++ (`unsigned int source_state = 0;`).
+        // 'hfst_state_to_state_id(source_state, ...)' always resolves to state 0.
+        // Replicated verbatim from the C++ ('unsigned int source_state = 0;').
         let source_state: u32 = 0;
         for it in net.iter() {
             // Go through the set of transitions in each state
@@ -296,7 +296,7 @@ impl ConversionFunctions {
         }
 
         // Go through the final states
-        // The C++ iterates `net->final_weight_map` (a map ordered by state); the
+        // The C++ iterates 'net->final_weight_map' (a map ordered by state); the
         // private map is not exposed, so the equivalent ascending-state walk over
         // the final states is used.
         for state in 0..=net.get_max_state() {

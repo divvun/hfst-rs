@@ -1,14 +1,14 @@
-//! Port of `libhfst/src/HfstRules.cc` — the `hfst::rules` namespace: two-level
+//! Port of 'libhfst/src/HfstRules.cc' — the 'hfst::rules' namespace: two-level
 //! rules, replace / restriction / coercion rule-transducer constructors.
 //!
 //! ABSOLUTE 1:1 literal C++->Rust translation (HFST port, Wave 2). NOT idiomatic.
 //! Mirrors structure/control-flow/eval-order; preserves bugs. The functions build
-//! transducers via the facade type `crate::hfst_transducer::HfstTransducer`.
+//! transducers via the facade type 'crate::hfst_transducer::HfstTransducer'.
 //!
-//! NOTE: the `rules::ReplaceType` and `rules::TwolType` enums below are declared in
-//! `libhfst/src/HfstTransducer.h` (namespace `hfst::rules`), NOT in a separate
-//! `HfstRules.h` (no such header exists). They are owned here because the
-//! `HfstRules.cc` body is their primary consumer; the facade module re-uses them.
+//! NOTE: the 'rules::ReplaceType' and 'rules::TwolType' enums below are declared in
+//! 'libhfst/src/HfstTransducer.h' (namespace 'hfst::rules'), NOT in a separate
+//! 'HfstRules.h' (no such header exists). They are owned here because the
+//! 'HfstRules.cc' body is their primary consumer; the facade module re-uses them.
 
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
@@ -24,15 +24,15 @@ use crate::hfst_data_types::StringPair;
 use crate::hfst_data_types::StringPairSet;
 // HfstTransducer, plus the HfstTransducer-dependent aliases
 // (HfstTransducerPair, HfstTransducerPairVector), live in the facade module that
-// is ported concurrently. Bodies import them from `crate::hfst_transducer`.
+// is ported concurrently. Bodies import them from 'crate::hfst_transducer'.
 use crate::hfst_transducer::HfstTransducer;
 use crate::hfst_transducer::HfstTransducerPair;
 use crate::hfst_transducer::HfstTransducerPairVector;
 
-/// \brief The replace direction / type used by the `rules` namespace.
+/// \brief The replace direction / type used by the 'rules' namespace.
 ///
-/// Distinct from `crate::hfst_xerox_rules::ReplaceType`: this one additionally
-/// carries `REPL_DOWN_KARTTUNEN`.
+/// Distinct from 'crate::hfst_xerox_rules::ReplaceType': this one additionally
+/// carries 'REPL_DOWN_KARTTUNEN'.
 // [spec:hfst:def:hfst-transducer.hfst.rules.replace-type]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum ReplaceType {
@@ -57,7 +57,7 @@ use crate::hfst_exception_defs::EmptySetOfContextsException;
 use crate::hfst_exception_defs::HfstFatalException;
 use crate::hfst_exception_defs::TransducerTypeMismatchException;
 use crate::hfst_symbol_defs::internal_epsilon;
-// Port of `libhfst/src/HfstRules.cc`, lines 1-790 (the `hfst::rules` namespace
+// Port of 'libhfst/src/HfstRules.cc', lines 1-790 (the 'hfst::rules' namespace
 // body, excluding the MAIN_TEST block). 1:1, bug-for-bug.
 
 // [spec:hfst:def:hfst-rules.hfst.rules.replace-fn]
@@ -880,8 +880,8 @@ pub fn deep_restriction_and_coercion(
 // [spec:hfst:sem:hfst-rules.main-fn]
 //
 // The entire assigned source range [790, 1580] of libhfst/src/HfstRules.cc
-// lies inside the `#else // MAIN_TEST was defined` block (lines 780-1580,
-// i.e. the `#ifdef MAIN_TEST` test section). Per the porting instructions,
+// lies inside the '#else // MAIN_TEST was defined' block (lines 780-1580,
+// i.e. the '#ifdef MAIN_TEST' test section). Per the porting instructions,
 // MAIN_TEST sections are skipped. All definitions in this range
 // (right_arrow_test1..4, left_arrow_test1..4, and main) are test code, so
 // there is no production code to port in this area.

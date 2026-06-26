@@ -1,19 +1,19 @@
-//! Port of `libhfst/src/HfstTokenizer.{h,cc}` — a tokenizer for creating
+//! Port of 'libhfst/src/HfstTokenizer.{h,cc}' — a tokenizer for creating
 //! transducers from UTF-8 strings (longest-match multichar tokenization).
 //!
-//! The C++ used ICU4C (`ubrk`/`u_strFromUTF8`); here:
-//! - grapheme-cluster segmentation uses the `icu` crate
-//!   (`GraphemeClusterSegmenter`), constructed per call as the C++ opened a new
-//!   `UBreakIterator` per call;
-//! - UTF-8 *validation* collapses to a no-op, because a Rust `&str` is valid
-//!   UTF-8 by construction (so `check_utf8_correctness` never throws and the
-//!   "split a single UTF-8 char" path is just the next `char`'s byte length).
+//! The C++ used ICU4C ('ubrk'/'u_strFromUTF8'); here:
+//! - grapheme-cluster segmentation uses the 'icu' crate
+//!   ('GraphemeClusterSegmenter'), constructed per call as the C++ opened a new
+//!   'UBreakIterator' per call;
+//! - UTF-8 *validation* collapses to a no-op, because a Rust '&str' is valid
+//!   UTF-8 by construction (so 'check_utf8_correctness' never throws and the
+//!   "split a single UTF-8 char" path is just the next 'char''s byte length).
 //!
-//! `MultiCharSymbolTrie` keeps the C++ algorithm verbatim, walking the input by
-//! byte index (mirroring the `const char*` pointer arithmetic, with "past end"
-//! reading as a NUL byte); child tries are owned `Box`es (the faithful owning
-//! equivalent of the C++ `new`/`delete` pointers, auto-freed where the C++
-//! destructor `delete`d them).
+//! 'MultiCharSymbolTrie' keeps the C++ algorithm verbatim, walking the input by
+//! byte index (mirroring the 'const char*' pointer arithmetic, with "past end"
+//! reading as a NUL byte); child tries are owned 'Box'es (the faithful owning
+//! equivalent of the C++ 'new'/'delete' pointers, auto-freed where the C++
+//! destructor 'delete'd them).
 
 use icu::segmenter::GraphemeClusterSegmenter;
 
@@ -21,14 +21,14 @@ use crate::hfst_data_types::StringVector;
 use crate::hfst_flag_diacritics::FdOperation;
 use crate::hfst_symbol_defs::{StringPair, StringPairVector, StringSet, internal_epsilon};
 
-// `UCHAR_MAX` (8-bit). The C++ sizes the child/leaf vectors at exactly this; a
+// 'UCHAR_MAX' (8-bit). The C++ sizes the child/leaf vectors at exactly this; a
 // byte value of 255 would be out of bounds (UB there, a panic here), but valid
-// UTF-8 never produces 0xFF, so it cannot occur via the `&str` API.
+// UTF-8 never produces 0xFF, so it cannot occur via the '&str' API.
 const UCHAR_MAX: usize = 255;
-// `std::string::npos`.
+// 'std::string::npos'.
 const NPOS: usize = usize::MAX;
 
-// `*p` where `p` walks a NUL-terminated buffer: byte at `i`, or 0 past the end.
+// '*p' where 'p' walks a NUL-terminated buffer: byte at 'i', or 0 past the end.
 fn byte_at(p: &[u8], i: usize) -> u8 {
     if i < p.len() { p[i] } else { 0 }
 }
@@ -101,8 +101,8 @@ impl MultiCharSymbolTrie {
     // [spec:hfst:def:hfst-tokenizer.hfst.multi-char-symbol-trie.find-fn]
     // [spec:hfst:sem:hfst-tokenizer.hfst.multi-char-symbol-trie.find-fn]
     //
-    // Returns the absolute byte index past the matched symbol (the C++ `p+1`
-    // pointer expressed as an offset), or `None` for the C++ `NULL`.
+    // Returns the absolute byte index past the matched symbol (the C++ 'p+1'
+    // pointer expressed as an offset), or 'None' for the C++ 'NULL'.
     pub fn find(&self, p: &[u8], pos: usize) -> Option<usize> {
         let symbol_rest_trie = self.get_symbol_rest_trie(p, pos);
         match symbol_rest_trie {
@@ -131,7 +131,7 @@ impl MultiCharSymbolTrie {
 // [spec:hfst:def:hfst-tokenizer.hfst.multi-char-symbol-trie.multi-char-symbol-trie-fn]
 // [spec:hfst:sem:hfst-tokenizer.hfst.multi-char-symbol-trie.multi-char-symbol-trie-fn]
 //
-// The C++ destructor `delete`s every child trie; here the owned `Box`es are
+// The C++ destructor 'delete's every child trie; here the owned 'Box'es are
 // dropped automatically once the empty body returns.
 impl Drop for MultiCharSymbolTrie {
     fn drop(&mut self) {}
@@ -462,9 +462,9 @@ impl HfstTokenizer {
     // [spec:hfst:def:hfst-tokenizer.hfst.hfst-tokenizer.check-utf8-correctness-and-calculate-length-fn]
     // [spec:hfst:sem:hfst-tokenizer.hfst.hfst-tokenizer.check-utf8-correctness-and-calculate-length-fn]
     //
-    // A Rust `&str` is always valid UTF-8, so the original ICU validity check
-    // can never fail (no `IncorrectUtf8CodingException`). The return value is the
-    // UTF-16 code-unit length, as `u_strFromUTF8` measured.
+    // A Rust '&str' is always valid UTF-8, so the original ICU validity check
+    // can never fail (no 'IncorrectUtf8CodingException'). The return value is the
+    // UTF-16 code-unit length, as 'u_strFromUTF8' measured.
     pub fn check_utf8_correctness_and_calculate_length(input_string: &str) -> u32 {
         input_string.encode_utf16().count() as u32
     }

@@ -1,7 +1,7 @@
-//! Port of `libhfst/src/hfst-string-conversions.{h,cc}`.
+//! Port of 'libhfst/src/hfst-string-conversions.{h,cc}'.
 //!
-//! The whole C++ file is `#ifdef WINDOWS`: it works around the Windows console
-//! code page so UTF-8 reaches `WriteConsoleW`/`ReadConsoleW`. Its own header
+//! The whole C++ file is '#ifdef WINDOWS': it works around the Windows console
+//! code page so UTF-8 reaches 'WriteConsoleW'/'ReadConsoleW'. Its own header
 //! documents that "on linux and mac, calls always fprintf directly". Rust's
 //! stdin/stdout/stderr are UTF-8 on every platform, so the wide-char dance is
 //! unnecessary; these are ported as cross-platform shims that capture the
@@ -9,8 +9,8 @@
 
 // [spec:hfst:def:hfst-string-conversions.hfst.hfst-fprintf-console-fn]
 // [spec:hfst:sem:hfst-string-conversions.hfst.hfst-fprintf-console-fn]
-// The C++ is variadic `fprintf`; on non-Windows it is exactly `vfprintf`. Here
-// the caller does the formatting (Rust `format!`) and passes the finished
+// The C++ is variadic 'fprintf'; on non-Windows it is exactly 'vfprintf'. Here
+// the caller does the formatting (Rust 'format!') and passes the finished
 // string; we write it to the FILE* stream. Rust strings are UTF-8, so no
 // codepage conversion is needed.
 pub fn hfst_fprintf_console(stream: *mut libc::FILE, s: &str) -> i32 {

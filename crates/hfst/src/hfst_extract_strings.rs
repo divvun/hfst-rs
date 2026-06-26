@@ -1,6 +1,6 @@
-//! Port of `libhfst/src/HfstExtractStrings.h` (header-only) — the path types
-//! and the `ExtractStringsCb` callback interface used by
-//! `HfstTransducer::extract_paths` (the facade consumer is deferred; the
+//! Port of 'libhfst/src/HfstExtractStrings.h' (header-only) — the path types
+//! and the 'ExtractStringsCb' callback interface used by
+//! 'HfstTransducer::extract_paths' (the facade consumer is deferred; the
 //! callback trait + path types are backend-independent and ported here).
 
 use crate::hfst_data_types::HfstTwoLevelPath;
@@ -13,7 +13,7 @@ pub use crate::hfst_data_types::HfstTwoLevelPath as ExtractHfstTwoLevelPath;
 // [spec:hfst:def:hfst-extract-strings.hfst.hfst-two-level-paths]
 pub use crate::hfst_data_types::HfstTwoLevelPaths as ExtractHfstTwoLevelPaths;
 
-// The WeightedPath / WeightedPaths templates are inside `#ifdef FOO` in the C++
+// The WeightedPath / WeightedPaths templates are inside '#ifdef FOO' in the C++
 // (never compiled — superseded by HfstOneLevelPath/HfstTwoLevelPath). Ported for
 // symbol coverage, kept dead like the original.
 // [spec:hfst:def:hfst-extract-strings.hfst.weighted-path]

@@ -1,4 +1,4 @@
-//! Port of `libhfst/src/implementations/HfstBasicTransducer.{h,cc}` — the
+//! Port of 'libhfst/src/implementations/HfstBasicTransducer.{h,cc}' — the
 //! standalone concrete graph type that is HFST's transducer interchange format.
 //!
 //! This is a large file ported in batches; this module currently covers the
@@ -6,8 +6,8 @@
 //! adding/removing/iterating states, transitions and final weights. Later
 //! batches add substitution, harmonization, lookup, and AT&T/xfst/prolog I/O.
 //!
-//! Deferred constructors: `HfstBasicTransducer(FILE*)` (needs the AT&T reader)
-//! and `HfstBasicTransducer(const HfstTransducer&)` (needs the facade +
+//! Deferred constructors: 'HfstBasicTransducer(FILE*)' (needs the AT&T reader)
+//! and 'HfstBasicTransducer(const HfstTransducer&)' (needs the facade +
 //! ConvertTransducerFormat).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -36,17 +36,17 @@ use crate::hfst_tropical_transducer_transition_data::{
 };
 use crate::string_utils::replace_all;
 
-// Raw byte-faithful stand-in for `fprintf` to a C `FILE*`: writes the
-// already-formatted `s` verbatim with `fwrite` (no NUL handling needed, so any
-// bytes are safe). `%f` conversions are pre-rendered as `{:.6}` to match
-// printf's default precision; the rest become ordinary `format!`.
+// Raw byte-faithful stand-in for 'fprintf' to a C 'FILE*': writes the
+// already-formatted 's' verbatim with 'fwrite' (no NUL handling needed, so any
+// bytes are safe). '%f' conversions are pre-rendered as '{:.6}' to match
+// printf's default precision; the rest become ordinary 'format!'.
 unsafe fn c_fputs(file: *mut libc::FILE, s: &str) {
     unsafe {
         libc::fwrite(s.as_ptr() as *const libc::c_void, 1, s.len(), file);
     }
 }
 
-// C `atoi`: parse the leading integer, 0 on failure. State numbers here are
+// C 'atoi': parse the leading integer, 0 on failure. State numbers here are
 // non-negative, so only leading whitespace and ASCII digits are consumed.
 fn atoi(s: &str) -> u32 {
     let s = s.trim_start();
@@ -54,13 +54,13 @@ fn atoi(s: &str) -> u32 {
     digits.parse::<u32>().unwrap_or(0)
 }
 
-// C `atof`: parse the leading float, 0.0 on failure. The inputs here are clean
+// C 'atof': parse the leading float, 0.0 on failure. The inputs here are clean
 // whitespace-delimited tokens, so a plain parse suffices.
 fn atof(s: &str) -> f64 {
     s.trim_start().parse::<f64>().unwrap_or(0.0)
 }
 
-// Raw stand-in for `sprintf(ptr + offset, ...)` into a caller-provided buffer:
+// Raw stand-in for 'sprintf(ptr + offset, ...)' into a caller-provided buffer:
 // copies the pre-formatted bytes and a trailing NUL (as sprintf does), returning
 // the byte count excluding the NUL (sprintf's return value).
 unsafe fn sprintf_at(ptr: *mut libc::c_char, offset: usize, s: &str) -> usize {
@@ -72,7 +72,7 @@ unsafe fn sprintf_at(ptr: *mut libc::c_char, offset: usize, s: &str) -> usize {
     s.len()
 }
 
-// `fgets(buf, 255, file)`: read up to 254 bytes or through a newline; None at
+// 'fgets(buf, 255, file)': read up to 254 bytes or through a newline; None at
 // EOF. A trailing newline (if any) is kept, matching fgets.
 unsafe fn c_fgets(file: *mut libc::FILE) -> Option<String> {
     let mut buf = [0u8; 255];
@@ -84,7 +84,7 @@ unsafe fn c_fgets(file: *mut libc::FILE) -> Option<String> {
     Some(String::from_utf8_lossy(&buf[..len]).into_owned())
 }
 
-// `std::istream::getline(buf, 255)`: read up to 254 bytes until '\n' (extracted
+// 'std::istream::getline(buf, 255)': read up to 254 bytes until '\n' (extracted
 // and discarded) or EOF. Returns (line, eof_reached) mirroring the stream's
 // eofbit after the call.
 fn cpp_getline(is: &mut dyn BufRead) -> (String, bool) {
@@ -115,7 +115,7 @@ fn cpp_getline(is: &mut dyn BufRead) -> (String, bool) {
     (String::from_utf8_lossy(&line).into_owned(), eof)
 }
 
-// Approximation of `std::istream::eof()` for a fresh reader: no bytes remain.
+// Approximation of 'std::istream::eof()' for a fresh reader: no bytes remain.
 fn is_eof(is: &mut dyn BufRead) -> bool {
     match is.fill_buf() {
         Ok(b) => b.is_empty(),
@@ -123,9 +123,9 @@ fn is_eof(is: &mut dyn BufRead) -> bool {
     }
 }
 
-// `get_stripped_line` wrapped in the C++ try/catch: returns None when it would
-// throw `EndOfStreamException`. The panic hook is silenced so the caught
-// exception (a `panic_any`) does not print.
+// 'get_stripped_line' wrapped in the C++ try/catch: returns None when it would
+// throw 'EndOfStreamException'. The panic hook is silenced so the caught
+// exception (a 'panic_any') does not print.
 fn catch_get_stripped_line(
     is: &mut dyn BufRead,
     file: *mut libc::FILE,
@@ -251,7 +251,7 @@ impl TopologicalSort {
         self.distance_of_state[state as usize] = distance as i32;
     }
 
-    /* The states that have a maximum distance of `distance`. */
+    /* The states that have a maximum distance of 'distance'. */
     pub fn get_states_at_distance(&mut self, distance: u32) -> &BTreeSet<HfstState> {
         while distance as usize > self.states_at_distance.len() - 1 {
             self.states_at_distance.push(BTreeSet::new());
@@ -288,7 +288,7 @@ pub struct HfstBasicTransducer {
 
 // Where a substituting copy of a graph is inserted (origin/target state, weight,
 // and a raw pointer to the substituting graph — the C++ stores a
-// `const_cast` `HfstBasicTransducer*`).
+// 'const_cast' 'HfstBasicTransducer*').
 pub struct substitution_data {
     pub origin_state: HfstState,
     pub target_state: HfstState,
@@ -358,7 +358,7 @@ impl HfstBasicTransducer {
         }
     }
 
-    /** @brief The assignment operator (`operator=` + `assign`). */
+    /** @brief The assignment operator ('operator=' + 'assign'). */
     pub fn assign(&mut self, graph: &HfstBasicTransducer) -> &mut Self {
         if self as *const HfstBasicTransducer == graph as *const HfstBasicTransducer {
             return self;
@@ -373,7 +373,7 @@ impl HfstBasicTransducer {
 
     // --- Initialization, optimization and debugging ---
 
-    /* Add epsilon, unknown and identity symbols to the alphabet `alpha`. */
+    /* Add epsilon, unknown and identity symbols to the alphabet 'alpha'. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.initialize-alphabet-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.initialize-alphabet-fn]
     fn initialize_alphabet(alpha: &mut HfstAlphabet) {
@@ -414,21 +414,21 @@ impl HfstBasicTransducer {
         eprintln!();
     }
 
-    /* Get the number of the `symbol`. */
+    /* Get the number of the 'symbol'. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-symbol-number-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-symbol-number-fn]
     pub fn get_symbol_number(&self, symbol: &HfstSymbol) -> u32 {
         HfstTropicalTransducerTransitionData::get_number(symbol)
     }
 
-    /* For internal optimization: reserve space for `number_of_states` states. */
+    /* For internal optimization: reserve space for 'number_of_states' states. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.initialize-state-vector-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.initialize-state-vector-fn]
     fn initialize_state_vector(&mut self, number_of_states: u32) {
         self.state_vector.reserve(number_of_states as usize);
     }
 
-    /* For internal optimization: reserve space for `number_of_transitions`
+    /* For internal optimization: reserve space for 'number_of_transitions'
     transitions for state `state_number`. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.initialize-transition-vector-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.initialize-transition-vector-fn]
@@ -496,7 +496,7 @@ impl HfstBasicTransducer {
             }
         }
 
-        // Remove symbols in `symbols` from the alphabet if they did not occur.
+        // Remove symbols in 'symbols' from the alphabet if they did not occur.
         for &symbol in symbols.iter() {
             if !symbols_found[symbol as usize] {
                 self.alphabet
@@ -727,8 +727,8 @@ impl HfstBasicTransducer {
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.begin-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.begin-fn]
     //
-    // The C++ `begin()`/`end()` container iterators map onto Rust slice iterators.
-    // `end()` has no Rust analogue; iteration uses `iter()`/`iter_mut()`.
+    // The C++ 'begin()'/'end()' container iterators map onto Rust slice iterators.
+    // 'end()' has no Rust analogue; iteration uses 'iter()'/'iter_mut()'.
     pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, HfstBasicTransitions> {
         self.state_vector.iter_mut()
     }
@@ -737,7 +737,7 @@ impl HfstBasicTransducer {
         self.state_vector.iter()
     }
 
-    /** @brief Get the transitions of state `s` (`operator[]`). Throws
+    /** @brief Get the transitions of state 's' ('operator[]'). Throws
     `StateIndexOutOfBoundsException` if the state does not exist. */
     pub fn index(&self, s: HfstState) -> &HfstBasicTransitions {
         if s as usize >= self.state_vector.len() {
@@ -746,7 +746,7 @@ impl HfstBasicTransducer {
         &self.state_vector[s as usize]
     }
 
-    /** @brief Alternative name for `operator[]`. */
+    /** @brief Alternative name for 'operator[]'. */
     pub fn transitions(&self, s: HfstState) -> &HfstBasicTransitions {
         self.index(s)
     }
@@ -793,7 +793,7 @@ impl HfstBasicTransducer {
         }
 
         // Swap final states, if needed. The C++ holds live map iterators, so a
-        // later `->second` reads the entry's current value; replicated by
+        // later '->second' reads the entry's current value; replicated by
         // capturing presence up front and re-reading the map value each time.
         let s1_present = self.final_weight_map.contains_key(&s1);
         let s2_present = self.final_weight_map.contains_key(&s2);
@@ -824,8 +824,8 @@ impl HfstBasicTransducer {
         }
     }
 
-    // The C++ ostream `<<` float formatting (6 significant digits) differs from
-    // the FILE `%f` path above, and Rust's default `{}` differs from both;
+    // The C++ ostream '<<' float formatting (6 significant digits) differs from
+    // the FILE '%f' path above, and Rust's default '{}' differs from both;
     // forgiven unless a ported test proves the exact text.
     pub fn write_weight_os(os: &mut dyn Write, weight: f32) {
         let _ = write!(os, "{}", weight);
@@ -834,7 +834,7 @@ impl HfstBasicTransducer {
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.xfstize-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.xfstize-fn]
     //
-    // Iterates bytes (C++ `for (char pos : symbol)` over a byte string); the
+    // Iterates bytes (C++ 'for (char pos : symbol)' over a byte string); the
     // escaped chars are ASCII and never appear as UTF-8 continuation bytes, so
     // multibyte symbols are reconstructed byte-for-byte.
     pub fn xfstize(symbol: &mut String) {
@@ -939,7 +939,7 @@ impl HfstBasicTransducer {
         }
     }
 
-    /** @brief Write the graph in xfst text format to ostream `os`. */
+    /** @brief Write the graph in xfst text format to ostream 'os'. */
     pub fn write_in_xfst_format(&self, os: &mut dyn Write, write_weights: bool) {
         let _ = write_weights; // todo
         let mut source_state: u32 = 0;
@@ -1049,7 +1049,7 @@ impl HfstBasicTransducer {
         }
     }
 
-    /** @brief Write the graph in prolog format to FILE `file`. */
+    /** @brief Write the graph in prolog format to FILE 'file'. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-prolog-format-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-prolog-format-fn]
     pub unsafe fn write_in_prolog_format_file(
@@ -1119,7 +1119,7 @@ impl HfstBasicTransducer {
         }
     }
 
-    /** @brief Write the graph in prolog format to ostream `os`. */
+    /** @brief Write the graph in prolog format to ostream 'os'. */
     pub fn write_in_prolog_format_os(&self, os: &mut dyn Write, name: &str, write_weights: bool) {
         let mut source_state: u32 = 0;
 
@@ -1171,7 +1171,7 @@ impl HfstBasicTransducer {
         }
     }
 
-    // If `str` is of format ".+", change it to .+ and return true. Else false.
+    // If 'str' is of format ".+", change it to .+ and return true. Else false.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-quotes-from-both-sides-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-quotes-from-both-sides-fn]
     pub fn strip_quotes_from_both_sides(str: &mut String) -> bool {
@@ -1187,7 +1187,7 @@ impl HfstBasicTransducer {
         true
     }
 
-    // If `str` is of format .+)\." change it to .+ and return true. Else false.
+    // If 'str' is of format .+)\." change it to .+ and return true. Else false.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-ending-parenthesis-and-comma-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-ending-parenthesis-and-comma-fn]
     pub fn strip_ending_parenthesis_and_comma(str: &mut String) -> bool {
@@ -1205,7 +1205,7 @@ impl HfstBasicTransducer {
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-network-line-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-network-line-fn]
     //
-    // sscanf(line, "network(%s", namearr): match the literal prefix, then `%s`
+    // sscanf(line, "network(%s", namearr): match the literal prefix, then '%s'
     // (skip leading whitespace, read one non-whitespace token).
     pub fn parse_prolog_network_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
         // 'network(NAME).'
@@ -1240,7 +1240,7 @@ impl HfstBasicTransducer {
         true
     }
 
-    // Get positions of `c` in `str`. If `esc` precedes `c`, `c` is not included.
+    // Get positions of 'c' in 'str'. If 'esc' precedes 'c', 'c' is not included.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-positions-of-unescaped-char-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-positions-of-unescaped-char-fn]
     pub fn get_positions_of_unescaped_char(str: &str, c: char, esc: char) -> Vec<u32> {
@@ -1260,7 +1260,7 @@ impl HfstBasicTransducer {
         retval
     }
 
-    // Extract input/output symbols from prolog arc `str` of format "foo":"bar"
+    // Extract input/output symbols from prolog arc 'str' of format "foo":"bar"
     // or "foo". Return whether symbols were successfully extracted.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-prolog-arc-symbols-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-prolog-arc-symbols-fn]
@@ -1566,7 +1566,7 @@ impl HfstBasicTransducer {
         true
     }
 
-    // Erase newlines from the end of `str` and return `str`.
+    // Erase newlines from the end of 'str' and return 'str'.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-newlines-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-newlines-fn]
     pub fn strip_newlines(str: &mut String) -> String {
@@ -1583,7 +1583,7 @@ impl HfstBasicTransducer {
         str.clone()
     }
 
-    /** @brief Write the graph in xfst text format to FILE `file`. */
+    /** @brief Write the graph in xfst text format to FILE 'file'. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-xfst-format-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-xfst-format-fn]
     pub unsafe fn write_in_xfst_format_file(&self, file: *mut libc::FILE, write_weights: bool) {
@@ -1614,7 +1614,7 @@ impl HfstBasicTransducer {
         }
     }
 
-    /** @brief Write the graph in AT&T format to ostream `os`. */
+    /** @brief Write the graph in AT&T format to ostream 'os'. */
     pub fn write_in_att_format_os(&self, os: &mut dyn Write, write_weights: bool) {
         let mut source_state: u32 = 0;
         for it in self.state_vector.iter() {
@@ -1658,7 +1658,7 @@ impl HfstBasicTransducer {
         }
     }
 
-    /** @brief Write the graph in AT&T format to FILE `file`. */
+    /** @brief Write the graph in AT&T format to FILE 'file'. */
     pub unsafe fn write_in_att_format_file(&self, file: *mut libc::FILE, write_weights: bool) {
         unsafe {
             let mut source_state: u32 = 0;
@@ -1709,7 +1709,7 @@ impl HfstBasicTransducer {
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-att-format-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-att-format-fn]
     //
-    // Writes into a caller-provided C buffer via `sprintf` at a running offset.
+    // Writes into a caller-provided C buffer via 'sprintf' at a running offset.
     pub unsafe fn write_in_att_format_ptr(&self, ptr: *mut libc::c_char, write_weights: bool) {
         unsafe {
             let mut source_state: u32 = 0;
@@ -1769,7 +1769,7 @@ impl HfstBasicTransducer {
         }
     }
 
-    /** @brief Write the graph in AT&T format to FILE `file` using numbers
+    /** @brief Write the graph in AT&T format to FILE 'file' using numbers
     instead of symbol names. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-att-format-number-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-att-format-number-fn]
@@ -1823,7 +1823,7 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-att-line-fn]
     //
     // sscanf(line, "%s%s%s%s%s", ...) reads up to five whitespace-delimited
-    // fields; `n` is how many were read.
+    // fields; 'n' is how many were read.
     pub fn add_att_line(&mut self, line: &str, epsilon_symbol: &str, warn_negs: bool) -> bool {
         let tokens: Vec<&str> = line.split_whitespace().collect();
         let n = tokens.len().min(5);
@@ -1879,7 +1879,7 @@ impl HfstBasicTransducer {
         true
     }
 
-    // HfstBasicTransducer(FILE*) — read an AT&T transducer from `file`.
+    // HfstBasicTransducer(FILE*) — read an AT&T transducer from 'file'.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.hfst-basic-transducer-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.hfst-basic-transducer-fn]
     pub fn new_from_file(file: *mut libc::FILE) -> Self {
@@ -1900,8 +1900,8 @@ impl HfstBasicTransducer {
         retval
     }
 
-    // Try to get a line from `is` (if `file` is null) or `file`. On success,
-    // strip newlines, increment `linecount`, and return the line; else throw
+    // Try to get a line from 'is' (if 'file' is null) or 'file'. On success,
+    // strip newlines, increment 'linecount', and return the line; else throw
     // EndOfStreamException.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-stripped-line-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-stripped-line-fn]
@@ -1931,7 +1931,7 @@ impl HfstBasicTransducer {
         Self::strip_newlines(&mut s)
     }
 
-    // Create a graph from prolog format in `is` (if `file` is null) or `file`.
+    // Create a graph from prolog format in 'is' (if 'file' is null) or 'file'.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-prolog-format-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-prolog-format-fn]
     pub fn read_in_prolog_format(
@@ -1999,7 +1999,7 @@ impl HfstBasicTransducer {
         Self::read_in_prolog_format(&mut dummy, file, linecount)
     }
 
-    // Create a graph from AT&T format in `is` (if `file` is null) or `file`.
+    // Create a graph from AT&T format in 'is' (if 'file' is null) or 'file'.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-att-format-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-att-format-fn]
     pub fn read_in_att_format(
@@ -2094,7 +2094,7 @@ impl HfstBasicTransducer {
 
     // --- Substitution (private in-place helpers) ---
 
-    /* In-place substitution of `old_symbol` with `new_symbol`. */
+    /* In-place substitution of 'old_symbol' with 'new_symbol'. */
     fn substitute_in_place(
         &mut self,
         old_symbol: &HfstSymbol,
@@ -2214,7 +2214,7 @@ impl HfstBasicTransducer {
         }
     }
 
-    /* In-place removal of all transitions equivalent to `sp`. */
+    /* In-place removal of all transitions equivalent to 'sp'. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.remove-transitions-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.remove-transitions-fn]
     pub fn remove_transitions(&mut self, sp: &HfstSymbolPair) {
@@ -2225,7 +2225,7 @@ impl HfstBasicTransducer {
         let mut out_match_used = false;
 
         for s in 0..self.state_vector.len() {
-            // C++ `for (i=0; i<size(); i++)` with erase but no `i--`: after an
+            // C++ 'for (i=0; i<size(); i++)' with erase but no 'i--': after an
             // erase the shifted element is skipped — bug preserved.
             let mut i = 0;
             while i < self.state_vector[s].len() {
@@ -2253,7 +2253,7 @@ impl HfstBasicTransducer {
         }
     }
 
-    /* In-place substitution of `old_sp` with the set `new_sps`. */
+    /* In-place substitution of 'old_sp' with the set 'new_sps'. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.substitute-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.substitute-fn]
     fn substitute_in_place_pair_set(
@@ -2396,7 +2396,7 @@ impl HfstBasicTransducer {
 
     // --- Substitution (public) ---
 
-    /** @brief Substitute `old_symbol` with `new_symbol` in all transitions. */
+    /** @brief Substitute 'old_symbol' with 'new_symbol' in all transitions. */
     pub fn substitute_symbol(
         &mut self,
         old_symbol: &HfstSymbol,
@@ -2436,7 +2436,7 @@ impl HfstBasicTransducer {
         self.substitute_symbol_substitutions(substitutions)
     }
 
-    /** @brief Substitute all transitions as defined in `substitutions`. */
+    /** @brief Substitute all transitions as defined in 'substitutions'. */
     pub fn substitute_symbol_substitutions(
         &mut self,
         substitutions: &HfstSymbolSubstitutions,
@@ -2476,7 +2476,7 @@ impl HfstBasicTransducer {
         self.substitute_symbol_pair_substitutions(substitutions)
     }
 
-    /** @brief Substitute transitions x:y -> X:Y as defined in `substitutions`. */
+    /** @brief Substitute transitions x:y -> X:Y as defined in 'substitutions'. */
     pub fn substitute_symbol_pair_substitutions(
         &mut self,
         substitutions: &HfstSymbolPairSubstitutions,
@@ -2497,7 +2497,7 @@ impl HfstBasicTransducer {
         self
     }
 
-    /** @brief Substitute all transitions `sp` with a set of transitions `sps`. */
+    /** @brief Substitute all transitions 'sp' with a set of transitions 'sps'. */
     pub fn substitute_pair_with_set(
         &mut self,
         sp: &HfstSymbolPair,
@@ -2522,7 +2522,7 @@ impl HfstBasicTransducer {
         self
     }
 
-    /** @brief Substitute all transitions `old_pair` with `new_pair`. */
+    /** @brief Substitute all transitions 'old_pair' with 'new_pair'. */
     pub fn substitute_pair(
         &mut self,
         old_pair: &HfstSymbolPair,
@@ -2543,7 +2543,7 @@ impl HfstBasicTransducer {
         self
     }
 
-    /** @brief Substitute all transitions with a set defined by function `func`. */
+    /** @brief Substitute all transitions with a set defined by function 'func'. */
     pub fn substitute_with_func(
         &mut self,
         func: fn(&HfstSymbolPair, &mut HfstSymbolPairSet) -> bool,
@@ -2552,7 +2552,7 @@ impl HfstBasicTransducer {
         self
     }
 
-    /** @brief Substitute transitions `sp` with a copy of `graph`. */
+    /** @brief Substitute transitions 'sp' with a copy of 'graph'. */
     pub fn substitute_pair_with_graph(
         &mut self,
         sp: &HfstSymbolPair,
@@ -2654,13 +2654,13 @@ impl HfstBasicTransducer {
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.weight2marker-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.weight2marker-fn]
     //
-    // The C++ uses `ostringstream <<` (default float text); Rust's `{}` differs
+    // The C++ uses 'ostringstream <<' (default float text); Rust's '{}' differs
     // textually but round-trips with marker2weight's parse internally.
     pub fn weight2marker(weight: f32) -> String {
         format!("@{}@", weight)
     }
 
-    /** @brief Replace each non-zero transition weight with a `@w@` marker arc. */
+    /** @brief Replace each non-zero transition weight with a '@w@' marker arc. */
     pub fn substitute_weights_with_markers(&mut self) -> &mut Self {
         let limit = self.state_vector.len();
         for state in 0..limit {
@@ -2751,7 +2751,7 @@ impl HfstBasicTransducer {
         true
     }
 
-    /** @brief Replace `@w@` marker arcs with transition weights. */
+    /** @brief Replace '@w@' marker arcs with transition weights. */
     pub fn substitute_markers_with_weights(&mut self) -> &mut Self {
         let limit = self.state_vector.len();
         for state in 0..limit {
@@ -2828,7 +2828,7 @@ impl HfstBasicTransducer {
 
     // --- Insert freely ---
 
-    /** @brief Insert freely any number of `symbol_pair` with weight `weight`. */
+    /** @brief Insert freely any number of 'symbol_pair' with weight 'weight'. */
     pub fn insert_freely_pair(
         &mut self,
         symbol_pair: &HfstSymbolPair,
@@ -2859,7 +2859,7 @@ impl HfstBasicTransducer {
         self
     }
 
-    /** @brief Insert freely any of the pairs in `symbol_pairs`. */
+    /** @brief Insert freely any of the pairs in 'symbol_pairs'. */
     pub fn insert_freely_set(
         &mut self,
         symbol_pairs: &HfstSymbolPairSet,
@@ -2892,7 +2892,7 @@ impl HfstBasicTransducer {
         self
     }
 
-    /** @brief Insert freely any number of `graph` in this graph. */
+    /** @brief Insert freely any number of 'graph' in this graph. */
     pub fn insert_freely_graph(&mut self, graph: &HfstBasicTransducer) -> &mut Self {
         let marker_this = HfstTropicalTransducerTransitionData::get_marker(&self.alphabet);
         let marker_graph = HfstTropicalTransducerTransitionData::get_marker(&self.alphabet);
@@ -2913,7 +2913,7 @@ impl HfstBasicTransducer {
 
     // --- Disjunction ---
 
-    /* Disjunct the transition of path `spv` pointed by `it` to state `s`. */
+    /* Disjunct the transition of path 'spv' pointed by 'it' to state 's'. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.disjunct-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.disjunct-fn]
     pub fn disjunct(&mut self, spv: &StringPairVector, it: &mut usize, s: HfstState) -> HfstState {
@@ -2950,7 +2950,7 @@ impl HfstBasicTransducer {
         current_state
     }
 
-    /** @brief Disjunct this graph with a one-path graph defined by `spv`. */
+    /** @brief Disjunct this graph with a one-path graph defined by 'spv'. */
     pub fn disjunct_path(&mut self, spv: &StringPairVector, weight: WeightType) -> &mut Self {
         let mut it: usize = 0;
         let final_state = self.disjunct(spv, &mut it, Self::INITIAL_STATE);
@@ -3070,13 +3070,13 @@ impl HfstBasicTransducer {
 
     // --- Harmonization ---
 
-    /** @brief Harmonize this graph and `another` (expand unknown/identity). */
+    /** @brief Harmonize this graph and 'another' (expand unknown/identity). */
     pub fn harmonize(&mut self, another: &mut HfstBasicTransducer) -> &mut Self {
         let _foo = HarmonizeUnknownAndIdentitySymbols::new(self, another);
         self
     }
 
-    /** @brief Substitute symbols with transducers as defined in `substitution_map`. */
+    /** @brief Substitute symbols with transducers as defined in 'substitution_map'. */
     pub fn substitute_subst_map(
         &mut self,
         substitution_map: &mut SubstMap,
@@ -3848,7 +3848,7 @@ impl HfstBasicTransducer {
         replacements
     }
 
-    // Attach a copy of `graph` between states `state1` and `state2` with epsilon
+    // Attach a copy of 'graph' between states 'state1' and 'state2' with epsilon
     // transitions.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.insert-transducer-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.insert-transducer-fn]
@@ -3874,7 +3874,7 @@ impl HfstBasicTransducer {
             source_state += 1;
         }
 
-        // Epsilon transitions from final states of `graph`.
+        // Epsilon transitions from final states of 'graph'.
         let finals: Vec<(HfstState, f32)> = graph
             .final_weight_map
             .iter()
@@ -3900,7 +3900,7 @@ impl HfstBasicTransducer {
         self.add_transition(state1, &epsilon_transition, true);
     }
 
-    /** @brief Look up `lookup_path`, collecting two-level paths into `results`. */
+    /** @brief Look up 'lookup_path', collecting two-level paths into 'results'. */
     pub fn lookup(
         &self,
         lookup_path: &StringVector,

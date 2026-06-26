@@ -1,50 +1,50 @@
 //! Port of
-//! `libhfst/src/implementations/compose_intersect/ComposeIntersectRulePair.{h,cc}`.
+//! 'libhfst/src/implementations/compose_intersect/ComposeIntersectRulePair.{h,cc}'.
 //!
-//! A `ComposeIntersectRulePair` lazily realises the *intersection* of two
-//! `ComposeIntersectRule`s as a single (on-demand) product transducer: its
-//! states are pairs `(s1, s2)` of states of `fst1` / `fst2`, and the
+//! A 'ComposeIntersectRulePair' lazily realises the *intersection* of two
+//! 'ComposeIntersectRule's as a single (on-demand) product transducer: its
+//! states are pairs '(s1, s2)' of states of 'fst1' / 'fst2', and the
 //! transitions out of a product state for a given symbol are the merge-join of
 //! the two component transition sets on a shared output label. It is itself a
-//! `ComposeIntersectRule` so several rules can be intersected by nesting pairs.
+//! 'ComposeIntersectRule' so several rules can be intersected by nesting pairs.
 //!
 //! 1:1 literal C++ -> Rust translation, bugs preserved.
 //!
 //! Structural mappings:
-//! * C++ class inheritance `ComposeIntersectRulePair : public ComposeIntersectRule`
+//! * C++ class inheritance 'ComposeIntersectRulePair : public ComposeIntersectRule'
 //!   provides two things this port must reproduce:
 //!   1. *runtime polymorphism* — the C++ machinery holds the components as
-//!      `ComposeIntersectRule *` and dispatches the **virtual** `get_transitions`
-//!      / `get_final_weight` (and the non-virtual-but-inherited `get_symbols`)
-//!      through that pointer, so the pointee may be a plain `ComposeIntersectRule`
-//!      *or* another `ComposeIntersectRulePair`. This is modelled with the
-//!      [`ComposeIntersectRuleObject`] trait, implemented for both
-//!      [`ComposeIntersectRule`] and `ComposeIntersectRulePair`; `fst1` / `fst2`
-//!      are `Box<dyn ComposeIntersectRuleObject>` (the owning `ComposeIntersectRule *`,
-//!      `delete`d in the C++ destructor — here freed automatically by `Box` drop).
+//!      'ComposeIntersectRule *' and dispatches the **virtual** 'get_transitions'
+//!      / 'get_final_weight' (and the non-virtual-but-inherited 'get_symbols')
+//!      through that pointer, so the pointee may be a plain 'ComposeIntersectRule'
+//!      *or* another 'ComposeIntersectRulePair'. This is modelled with the
+//!      ['ComposeIntersectRuleObject'] trait, implemented for both
+//!      ['ComposeIntersectRule'] and 'ComposeIntersectRulePair'; 'fst1' / 'fst2'
+//!      are 'Box<dyn ComposeIntersectRuleObject>' (the owning 'ComposeIntersectRule *',
+//!      'delete'd in the C++ destructor — here freed automatically by 'Box' drop).
 //!   2. *inherited state* — the constructor assigns the inherited
-//!      `ComposeIntersectFst::symbol_set` (`ComposeIntersectRule::symbol_set =
-//!      fst1->get_symbols();`), and the inherited (non-overridden) `get_symbols`
-//!      returns it. That is the *only* inherited member `ComposeIntersectRulePair`
-//!      uses (its own `state_*` members replace the rest), and the field is
-//!      `private` to `compose_intersect_fst` with no setter, so the inheritance is
-//!      flattened to a single owned `symbol_set` field here rather than carried as
-//!      a dead `base: ComposeIntersectRule` subobject.
-//! * `typedef std::pair<HfstState,HfstState> StatePair` -> `(HfstState, HfstState)`.
-//! * `std::map` -> `BTreeMap`, `std::vector` -> `Vec`.
-//! * `ComposeIntersectRule::START` (the inherited `ComposeIntersectFst::START`, = 0)
-//!   -> [`ComposeIntersectFst::START`]; the pair's own `START` static -> the
-//!   `ComposeIntersectRulePair::START` associated const (also 0).
-//! * `hfst::size_t_to_uint` -> [`crate::hfst_data_types::size_t_to_uint`].
-//! * `HFST_THROW(StateNotDefined)` -> `crate::HFST_THROW!(StateNotDefined)` with the
-//!   `StateNotDefined` child exception owned by `compose_intersect_fst`.
-//! * The merge-join in `compute_transition_set` holds `const TransitionSet &`s into
-//!   `fst1` / `fst2` while calling the *self*-mutating `get_state`; since `get_state`
-//!   never touches `fst1` / `fst2`, the component sets are snapshotted into
-//!   `Vec<Transition>` (sorted-vector order == C++ `begin()..end()`) so the borrows
-//!   are released before `&mut self` is needed.
+//!      'ComposeIntersectFst::symbol_set' ('ComposeIntersectRule::symbol_set =
+//!      fst1->get_symbols();'), and the inherited (non-overridden) 'get_symbols'
+//!      returns it. That is the *only* inherited member 'ComposeIntersectRulePair'
+//!      uses (its own 'state_*' members replace the rest), and the field is
+//!      'private' to 'compose_intersect_fst' with no setter, so the inheritance is
+//!      flattened to a single owned 'symbol_set' field here rather than carried as
+//!      a dead 'base: ComposeIntersectRule' subobject.
+//! * 'typedef std::pair<HfstState,HfstState> StatePair' -> '(HfstState, HfstState)'.
+//! * 'std::map' -> 'BTreeMap', 'std::vector' -> 'Vec'.
+//! * 'ComposeIntersectRule::START' (the inherited 'ComposeIntersectFst::START', = 0)
+//!   -> ['ComposeIntersectFst::START']; the pair's own 'START' static -> the
+//!   'ComposeIntersectRulePair::START' associated const (also 0).
+//! * 'hfst::size_t_to_uint' -> ['crate::hfst_data_types::size_t_to_uint'].
+//! * 'HFST_THROW(StateNotDefined)' -> 'crate::HFST_THROW!(StateNotDefined)' with the
+//!   'StateNotDefined' child exception owned by 'compose_intersect_fst'.
+//! * The merge-join in 'compute_transition_set' holds 'const TransitionSet &'s into
+//!   'fst1' / 'fst2' while calling the *self*-mutating 'get_state'; since 'get_state'
+//!   never touches 'fst1' / 'fst2', the component sets are snapshotted into
+//!   'Vec<Transition>' (sorted-vector order == C++ 'begin()..end()') so the borrows
+//!   are released before '&mut self' is needed.
 //!
-//! The `#ifdef MAIN_TEST` section (`print`, `operator<<`, `main`) is omitted per
+//! The '#ifdef MAIN_TEST' section ('print', 'operator<<', 'main') is omitted per
 //! the port conventions.
 
 use std::collections::BTreeMap;
@@ -56,51 +56,51 @@ use crate::hfst_data_types::size_t_to_uint;
 
 // [spec:hfst:def:compose-intersect-rule-pair.hfst.implementations.compose-intersect-rule-pair.transition-set]
 //
-// `typedef ComposeIntersectRule::TransitionSet TransitionSet;` — the same
-// `SpaceSavingSet<Transition, CompareTransitions>` owned by `compose_intersect_fst`.
+// 'typedef ComposeIntersectRule::TransitionSet TransitionSet;' — the same
+// 'SpaceSavingSet<Transition, CompareTransitions>' owned by 'compose_intersect_fst'.
 pub type TransitionSet = crate::compose_intersect_fst::TransitionSet;
 
 // [spec:hfst:def:compose-intersect-rule-pair.hfst.implementations.compose-intersect-rule-pair.state-pair]
 //
-// `typedef std::pair<HfstState,HfstState> StatePair;`
+// 'typedef std::pair<HfstState,HfstState> StatePair;'
 pub type StatePair = (HfstState, HfstState);
 // [spec:hfst:def:compose-intersect-rule-pair.hfst.implementations.compose-intersect-rule-pair.state-pair-vector]
 //
-// `typedef std::vector<StatePair> StatePairVector;`
+// 'typedef std::vector<StatePair> StatePairVector;'
 pub type StatePairVector = Vec<StatePair>;
 // [spec:hfst:def:compose-intersect-rule-pair.hfst.implementations.compose-intersect-rule-pair.pair-state-map]
 //
-// `typedef std::map<StatePair,HfstState> PairStateMap;`
+// 'typedef std::map<StatePair,HfstState> PairStateMap;'
 pub type PairStateMap = BTreeMap<StatePair, HfstState>;
 // [spec:hfst:def:compose-intersect-rule-pair.hfst.implementations.compose-intersect-rule-pair.symbol-transition-map]
 //
-// `typedef std::map<size_t,TransitionSet> SymbolTransitionMap;`
+// 'typedef std::map<size_t,TransitionSet> SymbolTransitionMap;'
 pub type SymbolTransitionMap = BTreeMap<usize, TransitionSet>;
 // [spec:hfst:def:compose-intersect-rule-pair.hfst.implementations.compose-intersect-rule-pair.state-transition-vector]
 //
-// `typedef std::vector<SymbolTransitionMap> StateTransitionVector;`
+// 'typedef std::vector<SymbolTransitionMap> StateTransitionVector;'
 pub type StateTransitionVector = Vec<SymbolTransitionMap>;
 
-/// The virtual interface of a `ComposeIntersectRule *` as exercised through the
-/// `fst1` / `fst2` pointers of a `ComposeIntersectRulePair`.
+/// The virtual interface of a 'ComposeIntersectRule *' as exercised through the
+/// 'fst1' / 'fst2' pointers of a 'ComposeIntersectRulePair'.
 ///
-/// C++ reaches these via virtual dispatch on `ComposeIntersectRule *` (which may
-/// point to a `ComposeIntersectRule` or a `ComposeIntersectRulePair`):
-/// * `get_transitions` / `get_final_weight` are `virtual` (overridden by the pair);
-/// * `get_symbols` is inherited and not overridden, so it returns the component's
-///   own `symbol_set`.
+/// C++ reaches these via virtual dispatch on 'ComposeIntersectRule *' (which may
+/// point to a 'ComposeIntersectRule' or a 'ComposeIntersectRulePair'):
+/// * 'get_transitions' / 'get_final_weight' are 'virtual' (overridden by the pair);
+/// * 'get_symbols' is inherited and not overridden, so it returns the component's
+///   own 'symbol_set'.
 ///
-/// Only the three methods actually invoked on `fst1` / `fst2` in this file are
-/// included; extend this trait (e.g. with `known_symbol`) if/when
-/// `ComposeIntersectLexicon` is ported and needs further polymorphic calls.
+/// Only the three methods actually invoked on 'fst1' / 'fst2' in this file are
+/// included; extend this trait (e.g. with 'known_symbol') if/when
+/// 'ComposeIntersectLexicon' is ported and needs further polymorphic calls.
 pub trait ComposeIntersectRuleObject {
     fn get_transitions(&mut self, s: HfstState, symbol: usize) -> &TransitionSet;
     fn get_final_weight(&self, s: HfstState) -> f32;
     fn get_symbols(&self) -> &SymbolSet;
 }
 
-// `ComposeIntersectRule` used through a `ComposeIntersectRule *` — the non-pair
-// case. Delegates to its inherent (inherited-from-`ComposeIntersectFst`) methods.
+// 'ComposeIntersectRule' used through a 'ComposeIntersectRule *' — the non-pair
+// case. Delegates to its inherent (inherited-from-'ComposeIntersectFst') methods.
 impl ComposeIntersectRuleObject for ComposeIntersectRule {
     fn get_transitions(&mut self, s: HfstState, symbol: usize) -> &TransitionSet {
         ComposeIntersectRule::get_transitions(self, s, symbol)
@@ -115,9 +115,9 @@ impl ComposeIntersectRuleObject for ComposeIntersectRule {
 
 // [spec:hfst:def:compose-intersect-rule-pair.hfst.implementations.compose-intersect-rule-pair]
 pub struct ComposeIntersectRulePair {
-    // Inherited `ComposeIntersectFst::symbol_set` — the only inherited member used
-    // by `ComposeIntersectRulePair` (assigned in the constructor, read back by the
-    // inherited `get_symbols`). See the module docs for why inheritance is flattened.
+    // Inherited 'ComposeIntersectFst::symbol_set' — the only inherited member used
+    // by 'ComposeIntersectRulePair' (assigned in the constructor, read back by the
+    // inherited 'get_symbols'). See the module docs for why inheritance is flattened.
     symbol_set: SymbolSet,
 
     // protected:
@@ -130,7 +130,7 @@ pub struct ComposeIntersectRulePair {
 }
 
 impl ComposeIntersectRulePair {
-    // `const HfstState ComposeIntersectRulePair::START = 0;`
+    // 'const HfstState ComposeIntersectRulePair::START = 0;'
     pub const START: HfstState = 0;
 
     // [spec:hfst:def:compose-intersect-rule-pair.hfst.implementations.compose-intersect-rule-pair.compose-intersect-rule-pair-fn]
@@ -179,8 +179,8 @@ impl ComposeIntersectRulePair {
     // ComposeIntersectRulePair::~ComposeIntersectRulePair(void)
     // { delete fst1; delete fst2; }
     //
-    // `fst1` / `fst2` are owning `Box`es; their `Drop` frees the pointees exactly
-    // as the C++ destructor's `delete`s do, so no explicit `Drop` impl is needed.
+    // 'fst1' / 'fst2' are owning 'Box'es; their 'Drop' frees the pointees exactly
+    // as the C++ destructor's 'delete's do, so no explicit 'Drop' impl is needed.
 
     // (no [spec] annotation in the C++ source)
     //
@@ -263,7 +263,7 @@ impl ComposeIntersectRulePair {
     //  size_t output_symbol,float weight)
     // { transitions.insert(Transition(target,input_symbol,output_symbol,weight)); }
     //
-    // The C++ member ignores `this`; rendered as an associated function.
+    // The C++ member ignores 'this'; rendered as an associated function.
     fn add_transition(
         transitions: &mut TransitionSet,
         target: HfstState,
@@ -332,8 +332,8 @@ impl ComposeIntersectRulePair {
         let state_pair = self.state_pair_vector[state as usize];
 
         // Snapshot the two component transition sets (sorted-vector order ==
-        // C++ `begin()..end()`); this releases the `&mut fst{1,2}` borrows so the
-        // self-mutating `get_state` can run inside the merge below.
+        // C++ 'begin()..end()'); this releases the '&mut fst{1,2}' borrows so the
+        // self-mutating 'get_state' can run inside the merge below.
         let fst1_transitions: Vec<Transition> = self
             .fst1
             .get_transitions(state_pair.0, symbol)
@@ -375,10 +375,10 @@ impl ComposeIntersectRulePair {
     }
 }
 
-// `ComposeIntersectRulePair` used through a `ComposeIntersectRule *` — the nested
-// case (`new ComposeIntersectRulePair(rule, pair)`). `get_transitions` /
-// `get_final_weight` are the overrides; `get_symbols` is inherited and returns the
-// `symbol_set` assigned in the constructor.
+// 'ComposeIntersectRulePair' used through a 'ComposeIntersectRule *' — the nested
+// case ('new ComposeIntersectRulePair(rule, pair)'). 'get_transitions' /
+// 'get_final_weight' are the overrides; 'get_symbols' is inherited and returns the
+// 'symbol_set' assigned in the constructor.
 impl ComposeIntersectRuleObject for ComposeIntersectRulePair {
     fn get_transitions(&mut self, s: HfstState, symbol: usize) -> &TransitionSet {
         ComposeIntersectRulePair::get_transitions(self, s, symbol)

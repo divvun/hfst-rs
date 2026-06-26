@@ -1,13 +1,13 @@
-//! Port of `libhfst/src/HfstLookupFlagDiacritics.{h,cc}`.
+//! Port of 'libhfst/src/HfstLookupFlagDiacritics.{h,cc}'.
 //!
-//! `FlagDiacriticTable`'s `diacritic_*` maps are C++ `static` class members, i.e.
+//! 'FlagDiacriticTable''s 'diacritic_*' maps are C++ 'static' class members, i.e.
 //! process-global mutable state shared across all instances. They are ported as
-//! module-level `static Mutex<BTreeMap<…>>`. C++ `map[key]` reads are ported as
-//! `entry(...).or_default()` / `.or_insert(...)` to preserve `operator[]`'s
+//! module-level 'static Mutex<BTreeMap<…>>'. C++ 'map[key]' reads are ported as
+//! 'entry(...).or_default()' / '.or_insert(...)' to preserve 'operator[]''s
 //! default-insert side effect.
 //!
-//! The `#ifdef DEBUG` `display`/`main` are dead code (they call an
-//! `insert_number`/`define_diacritic`/`KeyVector` API that no longer exists) and
+//! The '#ifdef DEBUG' 'display'/'main' are dead code (they call an
+//! 'insert_number'/'define_diacritic'/'KeyVector' API that no longer exists) and
 //! are not ported.
 
 use std::collections::BTreeMap;
@@ -41,7 +41,7 @@ pub type FeaturePolarities = BTreeMap<String, bool>;
 // [spec:hfst:def:hfst-lookup-flag-diacritics.hfst.string-vector]
 pub use crate::hfst_data_types::StringVector;
 
-// The `static` class members of FlagDiacriticTable.
+// The 'static' class members of FlagDiacriticTable.
 static DIACRITIC_OPERATORS: Mutex<DiacriticOperators> = Mutex::new(BTreeMap::new());
 static DIACRITIC_FEATURES: Mutex<DiacriticFeatures> = Mutex::new(BTreeMap::new());
 static DIACRITIC_VALUES: Mutex<DiacriticValues> = Mutex::new(BTreeMap::new());
@@ -55,7 +55,7 @@ pub struct FlagDiacriticTable {
 }
 
 impl FlagDiacriticTable {
-    // Accessors mirroring `operator[]` on the static maps (default-insert).
+    // Accessors mirroring 'operator[]' on the static maps (default-insert).
     fn op_of(symbol: &str) -> DiacriticOperator {
         *DIACRITIC_OPERATORS
             .lock()

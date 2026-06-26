@@ -1,26 +1,26 @@
-//! Port of `libhfst/src/HfstInputStream.{h,cc}` — `hfst::HfstInputStream`, the
+//! Port of 'libhfst/src/HfstInputStream.{h,cc}' — 'hfst::HfstInputStream', the
 //! stream for reading HFST binary transducers.
 //!
 //! @FIXME (from the C++): the structure of this class and its functions is
 //! disorganised; the port mirrors it 1:1.
 //!
 //! ## Backend union modelling
-//! The C++ holds a `union StreamImplementation` of raw backend-stream pointers
-//! (`sfst`, `tropical_ofst`, `log_ofst`, `foma`, `xfsm`, `hfst_ol`); exactly one
-//! member is live and the live member is selected by the `type`
-//! (`ImplementationType`) discriminant. Mirrored here as a struct of per-backend
-//! `Option<Box<...>>` fields ([`StreamImplementation`]); the `type_` field is the
-//! discriminant, and every accessor `switch (type)`es on it exactly as the C++
+//! The C++ holds a 'union StreamImplementation' of raw backend-stream pointers
+//! ('sfst', 'tropical_ofst', 'log_ofst', 'foma', 'xfsm', 'hfst_ol'); exactly one
+//! member is live and the live member is selected by the 'type'
+//! ('ImplementationType') discriminant. Mirrored here as a struct of per-backend
+//! 'Option<Box<...>>' fields (['StreamImplementation']); the 'type_' field is the
+//! discriminant, and every accessor 'switch (type)'es on it exactly as the C++
 //! does. The tropical/log backend streams borrow their reader through
-//! [`IStream`]`<'a>`, so the whole `HfstInputStream<'a>` carries that lifetime.
-//! `sfst`/`foma`/`xfsm` backend streams are unported collaborators — modelled as
-//! `unimplemented!("deferred: …")` placeholder unit types so the field is present
-//! but cannot be constructed. `HfstOlInputStream` is likewise not yet ported.
+//! ['IStream']'<'a>', so the whole 'HfstInputStream<'a>' carries that lifetime.
+//! 'sfst'/'foma'/'xfsm' backend streams are unported collaborators — modelled as
+//! 'unimplemented! ("deferred: …")' placeholder unit types so the field is present
+//! but cannot be constructed. 'HfstOlInputStream' is likewise not yet ported.
 //!
-//! ## `std::istream * input_stream`
-//! The raw `std::istream*` (NULL once a backend impl exists; non-NULL while the
-//! first transducer's type is still unknown) becomes `Option<IStream<'a>>`:
-//! `Some` mirrors a non-NULL pointer (reads go to the raw stream), `None` mirrors
+//! ## 'std::istream * input_stream'
+//! The raw 'std::istream*' (NULL once a backend impl exists; non-NULL while the
+//! first transducer's type is still unknown) becomes 'Option<IStream<'a>>':
+//! 'Some' mirrors a non-NULL pointer (reads go to the raw stream), 'None' mirrors
 //! NULL (reads route through the backend implementation).
 
 #![allow(non_snake_case)]
@@ -39,17 +39,17 @@ use crate::transducer::IStream;
 use crate::tropical_weight_transducer::TropicalWeightInputStream;
 
 /// Unported backend input-stream collaborators. Each is a placeholder unit type:
-/// the corresponding [`StreamImplementation`] field exists for fidelity with the
-/// C++ union, but no constructor is provided (the `#if HAVE_SFST` / `HAVE_FOMA` /
-/// `HAVE_XFSM` paths and `HfstOlInputStream` are deferred).
+/// the corresponding ['StreamImplementation'] field exists for fidelity with the
+/// C++ union, but no constructor is provided (the '#if HAVE_SFST' / 'HAVE_FOMA' /
+/// 'HAVE_XFSM' paths and 'HfstOlInputStream' are deferred).
 pub struct SfstInputStream;
 pub struct FomaInputStream;
 pub struct XfsmInputStream;
 pub struct HfstOlInputStream;
 
-/// Port of the C++ `union StreamImplementation` (the backend implementation).
-/// Exactly one field is `Some`, selected by `HfstInputStream::type_`. The
-/// tropical/log members borrow their reader (`IStream<'a>`); the rest are
+/// Port of the C++ 'union StreamImplementation' (the backend implementation).
+/// Exactly one field is 'Some', selected by 'HfstInputStream::type_'. The
+/// tropical/log members borrow their reader ('IStream<'a>'); the rest are
 /// deferred placeholders.
 // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-implementation]
 #[derive(Default)]
@@ -63,11 +63,11 @@ pub struct StreamImplementation<'a> {
 }
 
 /// The type of a transducer not supported directly by HFST version 3.0 but which
-/// can occur in conversion functions. (C++ nested `enum HfstInputStream::TransducerType`.)
+/// can occur in conversion functions. (C++ nested 'enum HfstInputStream::TransducerType'.)
 // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.transducer-type]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TransducerType {
-    /// See `hfst_version_2_weighted_transducer`.
+    /// See 'hfst_version_2_weighted_transducer'.
     HFST_VERSION_2_WEIGHTED,
     /// An SFST transducer with no alphabet, not supported.
     HFST_VERSION_2_UNWEIGHTED_WITHOUT_ALPHABET,
@@ -79,7 +79,7 @@ pub enum TransducerType {
     /// An SFST transducer.
     SFST_,
     /// A foma transducer in unzipped format. A zipped file is handled by throwing
-    /// a `FileIsInGZFormatException`.
+    /// a 'FileIsInGZFormatException'.
     FOMA_,
     /// An xfsm transducer.
     XFSM_,
@@ -89,12 +89,12 @@ pub enum TransducerType {
 
 /// A stream for reading HFST binary transducers.
 ///
-/// @see `HfstTransducer::HfstTransducer(HfstInputStream &in)`
+/// @see 'HfstTransducer::HfstTransducer(HfstInputStream &in)'
 // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream]
 pub struct HfstInputStream<'a> {
-    /// The backend implementation (C++ `StreamImplementation implementation`).
+    /// The backend implementation (C++ 'StreamImplementation implementation').
     implementation: StreamImplementation<'a>,
-    /// Implementation type (the discriminant selecting the live `implementation` member).
+    /// Implementation type (the discriminant selecting the live 'implementation' member).
     type_: ImplementationType,
     /// Name of next transducer, given in the hfst header.
     name: String,
@@ -113,8 +113,8 @@ pub struct HfstInputStream<'a> {
     /// The stream that the reading operations use when reading the first
     /// transducer. Then the type of the transducer is not known so there is no
     /// backend implementation whose reading functions could be used. C++ raw
-    /// `std::istream * input_stream`: `None` == NULL (use backend implementation),
-    /// `Some` == non-NULL (read the raw stream directly).
+    /// 'std::istream * input_stream': 'None' == NULL (use backend implementation),
+    /// 'Some' == non-NULL (read the raw stream directly).
     input_stream: Option<IStream<'a>>,
 }
 
@@ -126,7 +126,7 @@ mod input_impl {
     // [spec:hfst:sem:hfst-input-stream.hfst.debug-error-fn]
     pub fn debug_error(_msg: &str) {
         // #if PRINT_DEBUG_MESSAGES -> fprintf(stderr, ...); #else (void)msg; #endif
-        // PRINT_DEBUG_MESSAGES is off, so this is a no-op (mirrors `(void)msg;`).
+        // PRINT_DEBUG_MESSAGES is off, so this is a no-op (mirrors '(void)msg;').
     }
 
     impl<'a> HfstInputStream<'a> {
@@ -389,9 +389,9 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.read-transducer-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.read-transducer-fn]
-        // The C++ `read_transducer(HfstTransducer &t)` builds a HfstTransducer and
-        // touches `t.implementation.*`, the OpenFst interfaces and ConversionFunctions.
-        // `HfstTransducer` is not yet ported (facade layer), so the whole dispatch is
+        // The C++ 'read_transducer(HfstTransducer &t)' builds a HfstTransducer and
+        // touches 't.implementation.*', the OpenFst interfaces and ConversionFunctions.
+        // 'HfstTransducer' is not yet ported (facade layer), so the whole dispatch is
         // deferred.
         fn read_transducer(&mut self) {
             unimplemented!(
@@ -819,8 +819,8 @@ mod input_impl {
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.hfst-input-stream-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.hfst-input-stream-fn]
         pub fn new_filename(_filename: &str) -> Self {
-            // The C++ opens an `ifstream`, probes it, then constructs a backend stream
-            // from the same filename. `IStream` cannot own an `ifstream` (lifetime),
+            // The C++ opens an 'ifstream', probes it, then constructs a backend stream
+            // from the same filename. 'IStream' cannot own an 'ifstream' (lifetime),
             // and the SFST/foma/xfsm/hfst_ol backends are absent. Deferred.
             unimplemented!(
                 "deferred: HfstInputStream::new_filename — IStream cannot own a file reader (lifetime)"
@@ -829,10 +829,10 @@ mod input_impl {
 
         // HfstInputStream(std::istream &is)
         pub fn new_istream(_is: IStream<'a>) -> Self {
-            // The C++ probes `is` (stream_fst_type) then, for OpenFst/HFST_OL types,
-            // constructs a backend stream from the SAME `is`. After type probing the
-            // `IStream` would have to be moved into the backend, but probing borrows
-            // `self` (which owns the IStream) and the SFST/foma/xfsm/hfst_ol backends
+            // The C++ probes 'is' (stream_fst_type) then, for OpenFst/HFST_OL types,
+            // constructs a backend stream from the SAME 'is'. After type probing the
+            // 'IStream' would have to be moved into the backend, but probing borrows
+            // 'self' (which owns the IStream) and the SFST/foma/xfsm/hfst_ol backends
             // are absent. Deferred.
             unimplemented!(
                 "deferred: HfstInputStream::new_istream — needs IStream re-homing into backend + absent backends"

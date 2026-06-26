@@ -1,17 +1,17 @@
 //! Port of the OpenFST-independent part of
-//! `libhfst/src/implementations/optimized-lookup/convert.{h,cc}` (namespace
-//! `hfst_ol`).
+//! 'libhfst/src/implementations/optimized-lookup/convert.{h,cc}' (namespace
+//! 'hfst_ol').
 //!
 //! These are the placeholder structures and helpers that the
-//! `HfstBasicTransducer -> hfst_ol::Transducer` conversion (in
-//! `ConvertOlTransducer.cc`) builds the optimized-lookup index/transition
-//! tables from. Everything under `#if HAVE_OPENFST` (the `Convert*` classes that
-//! turn an `fst::StdVectorFst` into OL tables) is deferred to the rustfst
+//! 'HfstBasicTransducer -> hfst_ol::Transducer' conversion (in
+//! 'ConvertOlTransducer.cc') builds the optimized-lookup index/transition
+//! tables from. Everything under '#if HAVE_OPENFST' (the 'Convert*' classes that
+//! turn an 'fst::StdVectorFst' into OL tables) is deferred to the rustfst
 //! backend.
 //!
-//! Aliasing note: `write_transitions_from_state_placeholders` /
-//! `add_transitions_with` are passed both a slice of one state's transition
-//! placeholders *and* the whole `state_placeholders` vector — in the C++ these
+//! Aliasing note: 'write_transitions_from_state_placeholders' /
+//! 'add_transitions_with' are passed both a slice of one state's transition
+//! placeholders *and* the whole 'state_placeholders' vector — in the C++ these
 //! are non-const references but neither is mutated, so both are immutable
 //! borrows here and the overlap is fine.
 

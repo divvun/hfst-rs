@@ -1,19 +1,19 @@
-//! Port of `libhfst/src/implementations/optimized-lookup/transducer.{h,cc}`
-//! (+ `find_epsilon_loops.cc`), namespace `hfst_ol` — the compiled
+//! Port of 'libhfst/src/implementations/optimized-lookup/transducer.{h,cc}'
+//! (+ 'find_epsilon_loops.cc'), namespace 'hfst_ol' — the compiled
 //! optimized-lookup transducer format and its lookup engine.
 //!
 //! Binary I/O fidelity: the C++ reads/writes raw struct bytes via
-//! `is.read(reinterpret_cast<char*>(&p), sizeof(T))` (host-endian). That is
-//! mirrored with native-endian `from_ne_bytes`/`to_ne_bytes`. `std::istream`
-//! is modelled by [`IStream`], a thin wrapper over `&mut dyn Read` that tracks
-//! a fail flag so the C++ `if(!is)` checks port directly; `std::ostream`
-//! becomes `&mut dyn Write`.
+//! 'is.read(reinterpret_cast<char*>(&p), sizeof(T))' (host-endian). That is
+//! mirrored with native-endian 'from_ne_bytes'/'to_ne_bytes'. 'std::istream'
+//! is modelled by ['IStream'], a thin wrapper over '&mut dyn Read' that tracks
+//! a fail flag so the C++ 'if(!is)' checks port directly; 'std::ostream'
+//! becomes '&mut dyn Write'.
 //!
-//! C++ value-type inheritance (the concrete base `TransitionIndex` with a
-//! derived `TransitionWIndex` overriding `final_weight`, likewise
-//! `Transition`/`TransitionW`) is modelled as a base struct plus a trait that
+//! C++ value-type inheritance (the concrete base 'TransitionIndex' with a
+//! derived 'TransitionWIndex' overriding 'final_weight', likewise
+//! 'Transition'/'TransitionW') is modelled as a base struct plus a trait that
 //! captures the virtual methods, since the tables hand them out through base
-//! references. The pure-abstract `TransducerTablesInterface` becomes a trait
+//! references. The pure-abstract 'TransducerTablesInterface' becomes a trait
 //! object.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -111,7 +111,7 @@ impl TraversalState {
     }
 }
 
-// `std::set<TraversalState>` orders by `operator<`; mirror that exactly.
+// 'std::set<TraversalState>' orders by 'operator<'; mirror that exactly.
 impl PartialEq for TraversalState {
     fn eq(&self, other: &Self) -> bool {
         !self.operator_lt(other) && !other.operator_lt(self)
@@ -177,8 +177,8 @@ pub fn indexes_transition_index_table(i: TransitionTableIndex) -> bool {
     i < TRANSITION_TARGET_TABLE_START
 }
 
-/// `std::istream` modelled with a fail flag, so the C++ `if(!is)` checks port
-/// straight across. Reads are native-endian to mirror `reinterpret_cast`.
+/// 'std::istream' modelled with a fail flag, so the C++ 'if(!is)' checks port
+/// straight across. Reads are native-endian to mirror 'reinterpret_cast'.
 pub struct IStream<'a> {
     inner: &'a mut dyn std::io::Read,
     fail: bool,
@@ -194,12 +194,12 @@ impl<'a> IStream<'a> {
         }
     }
 
-    /// `!is` — true when the stream is in a good (non-failed) state.
+    /// '!is' — true when the stream is in a good (non-failed) state.
     pub fn good(&self) -> bool {
         !self.fail
     }
 
-    /// `is.read(buf, buf.len())`: a short read sets the fail flag.
+    /// 'is.read(buf, buf.len())': a short read sets the fail flag.
     pub fn read(&mut self, buf: &mut [u8]) {
         if self.fail {
             return;
@@ -225,8 +225,8 @@ impl<'a> IStream<'a> {
         }
     }
 
-    /// `std::getline(is, str, delim)`: collect bytes up to (not including)
-    /// `delim`; an immediate EOF with no bytes sets the fail flag.
+    /// 'std::getline(is, str, delim)': collect bytes up to (not including)
+    /// 'delim'; an immediate EOF with no bytes sets the fail flag.
     pub fn getline(&mut self, delim: u8) -> String {
         let mut bytes: Vec<u8> = Vec::new();
         let mut got_any = false;
@@ -268,7 +268,7 @@ impl<'a> IStream<'a> {
     }
 }
 
-// `os.write(reinterpret_cast<const char*>(&prop), sizeof(prop))` for the
+// 'os.write(reinterpret_cast<const char*>(&prop), sizeof(prop))' for the
 // integer/float properties, native-endian.
 // [spec:hfst:def:transducer.hfst-ol.transducer-header.write-property-fn]
 // [spec:hfst:sem:transducer.hfst-ol.transducer-header.write-property-fn]
@@ -327,7 +327,7 @@ impl TransducerHeader {
         Self::header_error();
     }
 
-    /// `TransducerHeader(bool weights)`.
+    /// 'TransducerHeader(bool weights)'.
     pub fn new_weighted(weights: bool) -> Self {
         TransducerHeader {
             number_of_input_symbols: 0,
@@ -450,7 +450,7 @@ impl TransducerHeader {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.set-flag-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-header.set-flag-fn]
-    // NB: faithful to the C++, which ignores `value` and always sets `true`.
+    // NB: faithful to the C++, which ignores 'value' and always sets 'true'.
     pub fn set_flag(&mut self, flag: HeaderFlag, _value: bool) {
         match flag {
             HeaderFlag::Weighted => self.weighted = true,
@@ -713,7 +713,7 @@ impl TransducerAlphabet {
         if self.unicode_cache[symbol as usize] != UnicodeClassCacheValue::no_value {
             return;
         }
-        // icu::UnicodeString::fromUTF8 + first code point's class. Rust `char`
+        // icu::UnicodeString::fromUTF8 + first code point's class. Rust 'char'
         // already carries the same Unicode properties ICU queries here.
         if let Some(c) = self.symbol_table[symbol as usize].chars().next() {
             if c.is_lowercase() {
@@ -839,16 +839,16 @@ impl Default for TransducerAlphabet {
     }
 }
 
-/// Captures the `static const size_t size` + `T(char*)` constructor that
-/// `TransducerTable<T>` requires of its entry type for binary loading.
+/// Captures the 'static const size_t size' + 'T(char*)' constructor that
+/// 'TransducerTable<T>' requires of its entry type for binary loading.
 pub trait TableEntry {
     const SIZE: usize;
     fn from_bytes(p: &[u8]) -> Self;
 }
 
-/// The (object-safe) virtual surface of `TransitionIndex` (base) used through
-/// base references; `TransitionWIndex` overrides `final_weight`. The static
-/// `create_final()` lives in [`IndexCtor`] so this stays dyn-compatible.
+/// The (object-safe) virtual surface of 'TransitionIndex' (base) used through
+/// base references; 'TransitionWIndex' overrides 'final_weight'. The static
+/// 'create_final()' lives in ['IndexCtor'] so this stays dyn-compatible.
 pub trait IndexEntry {
     fn get_target(&self) -> TransitionTableIndex;
     fn get_input_symbol(&self) -> SymbolNumber;
@@ -859,14 +859,14 @@ pub trait IndexEntry {
     fn display(&self);
 }
 
-/// `static TransitionIndex::create_final()` — a generic-bound-only trait
-/// (returns `Self`, so it can't ride on the dyn-safe [`IndexEntry`]).
+/// 'static TransitionIndex::create_final()' — a generic-bound-only trait
+/// (returns 'Self', so it can't ride on the dyn-safe ['IndexEntry']).
 pub trait IndexCtor {
     fn create_final() -> Self;
 }
 
-/// The (object-safe) virtual surface of `Transition` (base); `TransitionW`
-/// overrides `get_weight`.
+/// The (object-safe) virtual surface of 'Transition' (base); 'TransitionW'
+/// overrides 'get_weight'.
 pub trait TransitionEntry {
     fn get_target(&self) -> TransitionTableIndex;
     fn get_output_symbol(&self) -> SymbolNumber;
@@ -1193,7 +1193,7 @@ impl Transition {
         write_u16(self.output_symbol, os);
         write_u32(self.target_index, os);
         if weighted {
-            // C++ `os << 0.0f` writes the text representation, i.e. "0".
+            // C++ 'os << 0.0f' writes the text representation, i.e. "0".
             let _ = os.write_all(format!("{}", 0.0f32).as_bytes());
         }
     }
@@ -1618,7 +1618,7 @@ impl OlLetterTrie {
 
     // [spec:hfst:def:transducer.hfst-ol.ol-letter-trie.add-string-fn]
     // [spec:hfst:sem:transducer.hfst-ol.ol-letter-trie.add-string-fn]
-    // `p` is a 0-terminated byte slice positioned at the current char.
+    // 'p' is a 0-terminated byte slice positioned at the current char.
     pub fn add_string(&mut self, p: &[u8], symbol_key: SymbolNumber) {
         if p[1] == 0 {
             self.symbols[p[0] as usize] = symbol_key;
@@ -1642,7 +1642,7 @@ impl OlLetterTrie {
 
     // [spec:hfst:def:transducer.hfst-ol.ol-letter-trie.find-key-fn]
     // [spec:hfst:sem:transducer.hfst-ol.ol-letter-trie.find-key-fn]
-    // `p` is an index into `buf` advanced by reference, mirroring `char ** p`.
+    // 'p' is an index into 'buf' advanced by reference, mirroring 'char ** p'.
     pub fn find_key(&self, buf: &[u8], p: &mut usize) -> SymbolNumber {
         let old_p = *p;
         *p += 1;
@@ -1795,7 +1795,7 @@ impl DoubleTape {
 
     // [spec:hfst:def:transducer.hfst-ol.double-tape.write-fn]
     // [spec:hfst:sem:transducer.hfst-ol.double-tape.write-fn]
-    // The C++ `write(pos, pair<iterator,iterator>)` over a `[start, end)` slice.
+    // The C++ 'write(pos, pair<iterator,iterator>)' over a '[start, end)' slice.
     pub fn write_slice(&mut self, pos: u32, slice: &[SymbolNumber]) {
         let size = slice.len();
         while pos as usize + size >= self.inner.len() {
@@ -1943,10 +1943,10 @@ pub struct Transducer {
 
     // for lookup
     current_weight: Weight,
-    // Raw, aliasing pointer exactly as the C++ `HfstTwoLevelPaths *`: in
-    // `lookup_fd` it borrows a locally-owned set, in `lookup_fd_pairs` it
+    // Raw, aliasing pointer exactly as the C++ 'HfstTwoLevelPaths *': in
+    // 'lookup_fd' it borrows a locally-owned set, in 'lookup_fd_pairs' it
     // borrows the result set being returned. Valid only across the
-    // `get_analyses` call it brackets.
+    // 'get_analyses' call it brackets.
     lookup_paths: *mut HfstTwoLevelPaths,
     encoder: Option<Box<Encoder>>,
     input_tape: Tape,
@@ -2062,7 +2062,7 @@ impl Transducer {
         }
     }
 
-    // The C++ builds `encoder`/`flag_state` from the *parameter* alphabet (dot,
+    // The C++ builds 'encoder'/'flag_state' from the *parameter* alphabet (dot,
     // not arrow), so they reference the caller's alphabet; replicated here.
     pub fn new_from_tables_unweighted(
         header: &TransducerHeader,

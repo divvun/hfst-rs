@@ -1,20 +1,20 @@
 //! OpenFST-shaped algorithm wrappers over rustfst.
 //!
-//! These mirror the `fst::`-namespace function names and call shapes that HFST's
-//! `TropicalWeightTransducer`/`LogWeightTransducer` use (`using namespace fst`),
-//! so the wrapper ports can translate `ArcSort(fst, ILabelCompare())`,
-//! `Determinize(ifst, &ofst)`, etc. nearly 1:1. Each delegates to rustfst and
-//! unwraps its `Result` — OpenFST's algorithms are infallible by contract
+//! These mirror the 'fst::'-namespace function names and call shapes that HFST's
+//! 'TropicalWeightTransducer'/'LogWeightTransducer' use ('using namespace fst'),
+//! so the wrapper ports can translate 'ArcSort(fst, ILabelCompare())',
+//! 'Determinize(ifst, &ofst)', etc. nearly 1:1. Each delegates to rustfst and
+//! unwraps its 'Result' — OpenFST's algorithms are infallible by contract
 //! (errors abort), so a failed rustfst call is a panic here too.
 //!
-//! Generic over the weight `W` and fst `F` (covering both `VectorFst<Tropical>`
-//! and `VectorFst<Log>`); the heavier bounds (`WeaklyDivisibleSemiring`,
-//! `WeightQuantize`) are required only by determinize/minimize/reweight, which
+//! Generic over the weight 'W' and fst 'F' (covering both 'VectorFst<Tropical>'
+//! and 'VectorFst<Log>'); the heavier bounds ('WeaklyDivisibleSemiring',
+//! 'WeightQuantize') are required only by determinize/minimize/reweight, which
 //! both HFST semirings satisfy.
 
 use rustfst::prelude::*;
 // The module-shaped algorithms need their inner fn (the prelude brings the
-// module name, not the function); these explicit `use`s shadow that.
+// module name, not the function); these explicit 'use's shadow that.
 use rustfst::algorithms::compose::compose;
 use rustfst::algorithms::concat::concat;
 use rustfst::algorithms::determinize::determinize;
@@ -254,7 +254,7 @@ fn labels_of<W: Semiring, F: ExpandedFst<W>>(fst: &F) -> std::collections::BTree
     s
 }
 
-// complement of an acceptor over the alphabet `sigma`: determinize, complete with
+// complement of an acceptor over the alphabet 'sigma': determinize, complete with
 // a sink state (every missing label leads to the always-accepting sink), then flip
 // final/non-final. The language becomes Σ* \ L(fst). Mirrors OpenFST's
 // ComplementFst as used by Difference.
@@ -343,7 +343,7 @@ where
         compose::<W, F1, F2, F3, &F1, &F2>(fst1, fst2).expect("rustfst intersect (via compose)");
 }
 
-// [fst::Prune] — in-place prune of paths worse than `threshold`
+// [fst::Prune] — in-place prune of paths worse than 'threshold'
 pub fn Prune<W, F>(_fst: &mut F, _threshold: W)
 where
     W: Semiring,
@@ -356,9 +356,9 @@ where
 
 // [fst::Equivalent] — are fst1 and fst2 equivalent?
 //
-// OpenFST's `Equivalent` requires both inputs to be DETERMINISTIC and
-// EPSILON-FREE acceptors; HFST's `are_equivalent` guarantees this by running
-// `RmEpsilon` + `Encode` + `Determinize` before calling here. Under that
+// OpenFST's 'Equivalent' requires both inputs to be DETERMINISTIC and
+// EPSILON-FREE acceptors; HFST's 'are_equivalent' guarantees this by running
+// 'RmEpsilon' + 'Encode' + 'Determinize' before calling here. Under that
 // precondition equivalence is decidable by a synchronized product walk: the two
 // machines are equivalent iff every reachable paired state agrees on finality
 // (and final weight) and exposes exactly the same outgoing labels with equal
@@ -375,7 +375,7 @@ where
     let s2 = fst2.start();
 
     // Language-emptiness fallback for the cases where one machine has no start
-    // state (the empty language): no final state is reachable from `start`.
+    // state (the empty language): no final state is reachable from 'start'.
     let lang_empty_1 = |start: StateId| -> bool {
         let mut seen: HashSet<StateId> = HashSet::new();
         let mut stack = vec![start];

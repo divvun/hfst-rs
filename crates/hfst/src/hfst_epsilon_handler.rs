@@ -1,9 +1,9 @@
-//! Port of `libhfst/src/HfstEpsilonHandler.{h,cc}` — handles input-epsilon
+//! Port of 'libhfst/src/HfstEpsilonHandler.{h,cc}' — handles input-epsilon
 //! cycles during lookup.
 
 use crate::hfst_data_types::implementations::HfstState;
 
-/// A class for handling input epsilon cycles in `lookup_fd`.
+/// A class for handling input epsilon cycles in 'lookup_fd'.
 // [spec:hfst:def:hfst-epsilon-handler.hfst.hfst-epsilon-handler]
 #[derive(Clone)]
 pub struct HfstEpsilonHandler {

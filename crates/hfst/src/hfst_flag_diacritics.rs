@@ -1,9 +1,9 @@
-//! Port of `libhfst/src/HfstFlagDiacritics.{h,cc}` — flag diacritic handling.
+//! Port of 'libhfst/src/HfstFlagDiacritics.{h,cc}' — flag diacritic handling.
 //!
-//! `FdTable<T>` and `FdState<T>` are C++ class templates; here they are Rust
-//! generics over `T: Ord + Clone` (the symbol-key type). `FdState` keeps the
-//! C++ `const FdTable<T>*` as a raw `*const FdTable<T>` (nullable, as the C++
-//! default constructor leaves it `NULL`); table dereferences are `unsafe`,
+//! 'FdTable<T>' and 'FdState<T>' are C++ class templates; here they are Rust
+//! generics over 'T: Ord + Clone' (the symbol-key type). 'FdState' keeps the
+//! C++ 'const FdTable<T>*' as a raw '*const FdTable<T>' (nullable, as the C++
+//! default constructor leaves it 'NULL'); table dereferences are 'unsafe',
 //! mirroring the original pointer contract (the borrowed table outlives the
 //! state).
 
@@ -27,7 +27,7 @@ pub type FdFeature = u16;
 // [spec:hfst:def:hfst-flag-diacritics.hfst.fd-value]
 pub type FdValue = i16;
 
-// `std::string::npos`.
+// 'std::string::npos'.
 const NPOS: usize = usize::MAX;
 
 // [spec:hfst:def:hfst-flag-diacritics.hfst.fd-operation]
@@ -85,8 +85,8 @@ impl FdOperation {
     // [spec:hfst:def:hfst-flag-diacritics.hfst.fd-operation.char-to-operator-fn]
     // [spec:hfst:sem:hfst-flag-diacritics.hfst.fd-operation.char-to-operator-fn]
     //
-    // The C++ `default: throw;` rethrows with no active exception, i.e. calls
-    // `std::terminate`; here that is a `panic!`.
+    // The C++ 'default: throw;' rethrows with no active exception, i.e. calls
+    // 'std::terminate'; here that is a 'panic!'.
     pub fn char_to_operator(c: char) -> FdOperator {
         match c {
             'P' => FdOperator::Pop,
@@ -103,7 +103,7 @@ impl FdOperation {
     // [spec:hfst:sem:hfst-flag-diacritics.hfst.fd-operation.is-diacritic-fn]
     //
     // All diacritics have form @[PNDRCU][.][A-Z]+([.][A-Z]+)?@. Indexing is by
-    // byte, matching C++ `std::string::at`/`size`/`find_last_of` over the ASCII
+    // byte, matching C++ 'std::string::at'/'size'/'find_last_of' over the ASCII
     // diacritic syntax.
     pub fn is_diacritic(diacritic_string: &str) -> bool {
         let bytes = diacritic_string.as_bytes();
@@ -199,7 +199,7 @@ impl FdOperation {
     // [spec:hfst:sem:hfst-flag-diacritics.hfst.fd-operation.has-value-fn]
     //
     // True iff there is a second '.' in the diacritic. The C++ computes
-    // `find('.', find('.') + 1)`; when there is no first '.', its `npos + 1`
+    // 'find('.', find('.') + 1)'; when there is no first '.', its 'npos + 1'
     // wraps to a search from 0 that still finds none — the same false result.
     pub fn has_value(flag_diacritic: &str) -> bool {
         match flag_diacritic.find('.') {
@@ -210,7 +210,7 @@ impl FdOperation {
 }
 
 /// \brief A collection of the flag diacritics from a symbol table indexed by
-/// keys of type `T`.
+/// keys of type 'T'.
 // [spec:hfst:def:hfst-flag-diacritics.hfst.fd-table]
 #[derive(Clone)]
 pub struct FdTable<T: Ord + Clone> {
@@ -312,8 +312,8 @@ impl<T: Ord + Clone> FdTable<T> {
     // [spec:hfst:def:hfst-flag-diacritics.hfst.fd-table.get-operation-fn]
     // [spec:hfst:sem:hfst-flag-diacritics.hfst.fd-table.get-operation-fn]
     //
-    // The C++ returns `const FdOperation*` (NULL when absent); ported as
-    // `Option<&FdOperation>`.
+    // The C++ returns 'const FdOperation*' (NULL when absent); ported as
+    // 'Option<&FdOperation>'.
     pub fn get_operation(&self, symbol: T) -> Option<&FdOperation> {
         self.operations.get(&symbol)
     }
@@ -374,7 +374,7 @@ pub struct FdState<T: Ord + Clone> {
 
     // This is indexed with values of type FdFeature
     values: Vec<FdValue>,
-    // C++ types this `T`; it always holds a feature count (a `FdFeature`), so it
+    // C++ types this 'T'; it always holds a feature count (a 'FdFeature'), so it
     // is typed as such here.
     num_features: FdFeature,
 

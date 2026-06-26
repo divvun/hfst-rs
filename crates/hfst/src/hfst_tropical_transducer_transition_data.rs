@@ -1,14 +1,14 @@
 //! Port of
-//! `libhfst/src/implementations/HfstTropicalTransducerTransitionData.{h,cc}`.
+//! 'libhfst/src/implementations/HfstTropicalTransducerTransitionData.{h,cc}'.
 //!
-//! One implementation of the transition-data template parameter `C` used by
-//! `HfstTransition`. Symbols are interned to `unsigned int` numbers via two
-//! process-global `static` maps (shared by every transducer using this data
-//! type); those are ported as module-level `LazyLock<Mutex<…>>`, seeded by the
-//! two initializer structs exactly as the C++ global `dummy1`/`dummy2` objects
-//! seed them. Symbol getters return an owned `String` (the C++ returns a
-//! `const std::string&` into the static vector; a reference cannot escape the
-//! `Mutex` guard, so the equal value is cloned out).
+//! One implementation of the transition-data template parameter 'C' used by
+//! 'HfstTransition'. Symbols are interned to 'unsigned int' numbers via two
+//! process-global 'static' maps (shared by every transducer using this data
+//! type); those are ported as module-level 'LazyLock<Mutex<…>>', seeded by the
+//! two initializer structs exactly as the C++ global 'dummy1'/'dummy2' objects
+//! seed them. Symbol getters return an owned 'String' (the C++ returns a
+//! 'const std::string&' into the static vector; a reference cannot escape the
+//! 'Mutex' guard, so the equal value is cloned out).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{LazyLock, Mutex};
@@ -24,8 +24,8 @@ pub type SymbolTypeSet = BTreeSet<SymbolType>;
 
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.number2-symbol-vector]
 pub type Number2SymbolVector = Vec<SymbolType>;
-// `std::map<SymbolType, unsigned int, string_comparison>`. The `string_comparison`
-// comparator is plain lexicographic `<`, which is exactly `BTreeMap<String, _>`'s
+// 'std::map<SymbolType, unsigned int, string_comparison>'. The 'string_comparison'
+// comparator is plain lexicographic '<', which is exactly 'BTreeMap<String, _>''s
 // own ordering.
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.symbol2-number-map]
 pub type Symbol2NumberMap = BTreeMap<SymbolType, u32>;
@@ -43,7 +43,7 @@ impl string_comparison {
 }
 
 // Static members of HfstTropicalTransducerTransitionData, seeded by the
-// initializer structs below (the C++ global `dummy1`/`dummy2`).
+// initializer structs below (the C++ global 'dummy1'/'dummy2').
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.dummy1-fn]
 // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.dummy1-fn]
 static NUMBER2SYMBOL_MAP: LazyLock<Mutex<Number2SymbolVector>> = LazyLock::new(|| {
@@ -124,7 +124,7 @@ impl HfstTropicalTransducerTransitionData {
         harmv
     }
 
-    /* Get the symbol that is mapped as `number`. (C++ `protected`; reached by
+    /* Get the symbol that is mapped as 'number'. (C++ 'protected'; reached by
     HfstBasicTransducer etc. via `friend` — here crate-visible.) */
     pub(crate) fn get_symbol(number: u32) -> String {
         let map = NUMBER2SYMBOL_MAP.lock().unwrap();
@@ -325,9 +325,9 @@ impl HfstTropicalTransducerTransitionData {
     }
 }
 
-// `bool operator<` is the canonical ordering; `Ord`/`PartialOrd` make the type
-// usable in ordered containers, using `total_cmp` for the weight to give a total
-// order that agrees with `operator<` for non-NaN weights.
+// 'bool operator<' is the canonical ordering; 'Ord'/'PartialOrd' make the type
+// usable in ordered containers, using 'total_cmp' for the weight to give a total
+// order that agrees with 'operator<' for non-NaN weights.
 impl PartialEq for HfstTropicalTransducerTransitionData {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == std::cmp::Ordering::Equal

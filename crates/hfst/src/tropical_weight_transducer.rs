@@ -1,26 +1,26 @@
-//! Port of `libhfst/src/implementations/TropicalWeightTransducer.{h,cc}` — the
+//! Port of 'libhfst/src/implementations/TropicalWeightTransducer.{h,cc}' — the
 //! OpenFST tropical-weight backend bridge between the HFST API and rustfst's
-//! `VectorFst<TropicalWeight>` (= [`StdVectorFst`]).
+//! 'VectorFst<TropicalWeight>' (= ['StdVectorFst']).
 //!
-//! In C++ `TropicalWeightTransducer` is a class of (almost entirely) STATIC
-//! methods — a stateless operations wrapper over `fst::StdVectorFst`. It is
-//! modelled here as a unit struct [`TropicalWeightTransducer`] with an `impl`
+//! In C++ 'TropicalWeightTransducer' is a class of (almost entirely) STATIC
+//! methods — a stateless operations wrapper over 'fst::StdVectorFst'. It is
+//! modelled here as a unit struct ['TropicalWeightTransducer'] with an 'impl'
 //! block of associated functions. The two stream helper classes
-//! ([`TropicalWeightInputStream`] / [`TropicalWeightOutputStream`]) become their
-//! own structs, and the `StdArcLessThan` comparator becomes a small struct.
+//! (['TropicalWeightInputStream'] / ['TropicalWeightOutputStream']) become their
+//! own structs, and the 'StdArcLessThan' comparator becomes a small struct.
 //!
-//! `using namespace fst;` in the C++ header is mapped onto the
-//! `hfst-openfst` adapter: `StdVectorFst`, `StdTransition` (= `fst::StdArc`),
-//! `TropicalWeight`, `SymbolTable`, `StateId`, and the `algorithms::` module.
+//! 'using namespace fst;' in the C++ header is mapped onto the
+//! 'hfst-openfst' adapter: 'StdVectorFst', 'StdTransition' (= 'fst::StdArc'),
+//! 'TropicalWeight', 'SymbolTable', 'StateId', and the 'algorithms::' module.
 //!
-//! Ownership mapping for the C++ `StdVectorFst*` signatures:
-//! - factory / unary-op methods that the C++ `new`s a result and returns
-//!   `StdVectorFst*` -> return owned `StdVectorFst`.
-//! - methods that take a `StdVectorFst*` and read it -> `&StdVectorFst`.
-//! - methods that take a `StdVectorFst*` and mutate it in place (state/arc
-//!   builders, `add_to_weights`, symbol-table setters, ...) -> `&mut StdVectorFst`.
-//! - `delete_transducer(StdVectorFst*)` -> takes `StdVectorFst` by value (drops it).
-//! The C++ `int64` typedef is `i64` here.
+//! Ownership mapping for the C++ 'StdVectorFst*' signatures:
+//! - factory / unary-op methods that the C++ 'new's a result and returns
+//!   'StdVectorFst*' -> return owned 'StdVectorFst'.
+//! - methods that take a 'StdVectorFst*' and read it -> '&StdVectorFst'.
+//! - methods that take a 'StdVectorFst*' and mutate it in place (state/arc
+//!   builders, 'add_to_weights', symbol-table setters, ...) -> '&mut StdVectorFst'.
+//! - 'delete_transducer(StdVectorFst*)' -> takes 'StdVectorFst' by value (drops it).
+//! The C++ 'int64' typedef is 'i64' here.
 
 #![allow(non_snake_case)]
 #![allow(dead_code)] // many ported ops are only reached once the facade lands
@@ -48,7 +48,7 @@ pub type i64_ = i64;
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.state-id]
 pub type StateId = u32;
 
-/// `typedef std::set<std::string> StringSet` (used by the alphabet helpers).
+/// 'typedef std::set<std::string> StringSet' (used by the alphabet helpers).
 pub type StringSet = BTreeSet<String>;
 
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.std-arc-vector]
@@ -78,15 +78,15 @@ impl StdArcLessThan {
     }
 }
 
-/// `void openfst_tropical_set_hopcroft(bool value);`
+/// 'void openfst_tropical_set_hopcroft(bool value);'
 
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream]
 pub struct TropicalWeightInputStream<'a> {
     filename: String,
-    /// C++ holds an `std::ifstream i_stream` plus an `std::istream &input_stream`
-    /// reference that aliases either `i_stream` or `std::cin`. Modelled here as a
+    /// C++ holds an 'std::ifstream i_stream' plus an 'std::istream &input_stream'
+    /// reference that aliases either 'i_stream' or 'std::cin'. Modelled here as a
     /// single owned binary input stream (per the porting convention,
-    /// `std::istream` (binary) -> `crate::transducer::IStream`).
+    /// 'std::istream' (binary) -> 'crate::transducer::IStream').
     input_stream: IStream<'a>,
 }
 
@@ -96,8 +96,8 @@ pub struct TropicalWeightInputStream<'a> {
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-output-stream]
 pub struct TropicalWeightOutputStream {
     filename: String,
-    /// C++ holds `std::ofstream o_stream` + `std::ostream &output_stream` that
-    /// aliases either it or `std::cout`. Modelled as a single owned writer.
+    /// C++ holds 'std::ofstream o_stream' + 'std::ostream &output_stream' that
+    /// aliases either it or 'std::cout'. Modelled as a single owned writer.
     output_stream: Box<dyn std::io::Write>,
     hfst_format: bool,
 }
@@ -126,7 +126,7 @@ mod construction_io {
         TransducerHasWrongTypeException,
     };
     use crate::hfst_flag_diacritics::FdOperation;
-    // `HfstFatalException` is referenced by the (deferred) read_transducer path.
+    // 'HfstFatalException' is referenced by the (deferred) read_transducer path.
     #[allow(unused_imports)]
     use crate::hfst_exception_defs::HfstFatalException;
 
@@ -134,16 +134,16 @@ mod construction_io {
     // File-static globals from the .cc
     // ---------------------------------------------------------------------------
 
-    // `float tropical_seconds = 0;` — only ever non-zero under PROFILE_OPENFST,
+    // 'float tropical_seconds = 0;' — only ever non-zero under PROFILE_OPENFST,
     // which is compiled out here.
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-profile-seconds-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-profile-seconds-fn]
     // (the getter is an associated fn on TropicalWeightTransducer below)
 
-    // `bool openfst_tropical_use_hopcroft = false;`
+    // 'bool openfst_tropical_use_hopcroft = false;'
     static OPENFST_TROPICAL_USE_HOPCROFT: AtomicBool = AtomicBool::new(false);
 
-    // `std::ostream * TropicalWeightTransducer::warning_stream = NULL;`
+    // 'std::ostream * TropicalWeightTransducer::warning_stream = NULL;'
     static mut WARNING_STREAM: *mut Box<dyn std::io::Write> = std::ptr::null_mut();
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.openfst-tropical-set-hopcroft-fn]
@@ -152,8 +152,8 @@ mod construction_io {
         OPENFST_TROPICAL_USE_HOPCROFT.store(value, Ordering::Relaxed);
     }
 
-    /// Reader for the `openfst_tropical_use_hopcroft` global (added so the
-    /// operations-area `minimize` can consult the flag — not in the C++ header).
+    /// Reader for the 'openfst_tropical_use_hopcroft' global (added so the
+    /// operations-area 'minimize' can consult the flag — not in the C++ header).
     pub(crate) fn openfst_tropical_get_hopcroft() -> bool {
         OPENFST_TROPICAL_USE_HOPCROFT.load(Ordering::Relaxed)
     }
@@ -162,8 +162,8 @@ mod construction_io {
     // Private module helpers (introduced for the port; not in the C++ header).
     // ---------------------------------------------------------------------------
 
-    /// `std::ostream`-style sink wrapping a C `FILE *` (used by the `FILE *`
-    /// AT&T writers and `print_att_number`).
+    /// 'std::ostream'-style sink wrapping a C 'FILE *' (used by the 'FILE *'
+    /// AT&T writers and 'print_att_number').
     struct CFileWriter(*mut libc::FILE);
 
     impl std::io::Write for CFileWriter {
@@ -177,8 +177,8 @@ mod construction_io {
         }
     }
 
-    /// `%f` (FILE* `fprintf`) prints 6 decimals; `operator<<` (ostream) uses the
-    /// default float formatting. We approximate the latter with `Display`.
+    /// '%f' (FILE* 'fprintf') prints 6 decimals; 'operator<<' (ostream) uses the
+    /// default float formatting. We approximate the latter with 'Display'.
     fn fmt_w(w: f32, c_style: bool) -> String {
         if c_style {
             format!("{:.6}", w)
@@ -269,13 +269,13 @@ mod construction_io {
         }
     }
 
-    /// C `atof`: parse a leading float, 0.0 on failure (Rust `parse` is stricter —
+    /// C 'atof': parse a leading float, 0.0 on failure (Rust 'parse' is stricter —
     /// trailing garbage is not tolerated, a faithfulness gap).
     fn att_atof(s: &str) -> f32 {
         s.trim().parse::<f32>().unwrap_or(0.0)
     }
 
-    /// C `atoi`: parse a leading int, 0 on failure.
+    /// C 'atoi': parse a leading int, 0 on failure.
     fn att_atoi(s: &str) -> i32 {
         s.trim().parse::<i32>().unwrap_or(0)
     }
@@ -315,27 +315,27 @@ mod construction_io {
 
     #[allow(dead_code)]
     impl<'a> TropicalWeightInputStream<'a> {
-        /// `TropicalWeightInputStream(void)` — reads from stdin.
+        /// 'TropicalWeightInputStream(void)' — reads from stdin.
         pub fn new() -> Self {
-            // DEFERRED: `IStream` borrows its reader (`&'a mut dyn Read`); it cannot
-            // own a `std::cin`-backed stream. The skeleton struct holds
-            // `input_stream: IStream` by value, which has no source here.
+            // DEFERRED: 'IStream' borrows its reader ('&'a mut dyn Read'); it cannot
+            // own a 'std::cin'-backed stream. The skeleton struct holds
+            // 'input_stream: IStream' by value, which has no source here.
             unimplemented!(
                 "deferred: TropicalWeightInputStream::new — IStream cannot own a stdin reader (lifetime)"
             )
         }
 
-        /// `TropicalWeightInputStream(const std::string &filename)`.
+        /// 'TropicalWeightInputStream(const std::string &filename)'.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.tropical-weight-input-stream-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.tropical-weight-input-stream-fn]
         pub fn new_filename(_filename: &str) -> Self {
-            // DEFERRED: same lifetime problem — `IStream` cannot own an `ifstream`.
+            // DEFERRED: same lifetime problem — 'IStream' cannot own an 'ifstream'.
             unimplemented!(
                 "deferred: TropicalWeightInputStream::new_filename — IStream cannot own a file reader (lifetime)"
             )
         }
 
-        /// `TropicalWeightInputStream(std::istream &is)`.
+        /// 'TropicalWeightInputStream(std::istream &is)'.
         pub fn new_istream(is: IStream<'a>) -> Self {
             TropicalWeightInputStream {
                 filename: String::new(),
@@ -368,7 +368,7 @@ mod construction_io {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-eof-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-eof-fn]
         pub fn is_eof(&self) -> bool {
-            // C++ tests `input_stream.peek() == EOF`; `IStream` has no peek, so we
+            // C++ tests 'input_stream.peek() == EOF'; 'IStream' has no peek, so we
             // approximate with the good/fail flag (set once a read hits EOF).
             !self.input_stream.good()
         }
@@ -393,7 +393,7 @@ mod construction_io {
             unimplemented!("deferred: TropicalWeightInputStream::is_fst — IStream has no peek")
         }
 
-        /// `bool operator() (void) const;` — stream-good predicate.
+        /// 'bool operator() (void) const;' — stream-good predicate.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.operator-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.operator-fn]
         pub fn operator_call(&self) -> bool {
@@ -413,9 +413,9 @@ mod construction_io {
             if self.is_eof() {
                 crate::HFST_THROW!(StreamIsClosedException);
             }
-            // DEFERRED: OpenFST streaming read (`FstHeader::Read` + `StdVectorFst::Read`
+            // DEFERRED: OpenFST streaming read ('FstHeader::Read' + 'StdVectorFst::Read'
             // from an istream) has no rustfst equivalent — rustfst exposes only
-            // `SerializableFst::load(&[u8])`, and `IStream` cannot yield the
+            // 'SerializableFst::load(&[u8])', and 'IStream' cannot yield the
             // remaining-bytes buffer (no read-to-end, framing handled elsewhere).
             let _ = TransducerHasWrongTypeException::new(String::new(), String::new(), 0);
             unimplemented!(
@@ -442,11 +442,11 @@ mod construction_io {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.stream-unget-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.stream-unget-fn]
         pub fn stream_unget(&mut self, _c: char) {
-            // DEFERRED: `IStream` has no putback/unget.
+            // DEFERRED: 'IStream' has no putback/unget.
             unimplemented!("deferred: stream_unget — IStream has no putback/unget")
         }
 
-        /// `static bool is_fst(FILE * f);`
+        /// 'static bool is_fst(FILE * f);'
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-fst-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-fst-fn]
         pub fn is_fst_file(f: *mut libc::FILE) -> bool {
@@ -460,9 +460,9 @@ mod construction_io {
             c == 0xd6
         }
 
-        /// `static bool is_fst(std::istream &s);`
+        /// 'static bool is_fst(std::istream &s);'
         pub fn is_fst_istream(_s: &mut IStream) -> bool {
-            // DEFERRED: `s.good() && s.peek() == 0xd6` — IStream has no peek.
+            // DEFERRED: 's.good() && s.peek() == 0xd6' — IStream has no peek.
             unimplemented!("deferred: is_fst(istream) — IStream has no peek")
         }
     }
@@ -473,7 +473,7 @@ mod construction_io {
 
     #[allow(dead_code)]
     impl TropicalWeightOutputStream {
-        /// `TropicalWeightOutputStream(bool hfst_format=true)` — writes to stdout.
+        /// 'TropicalWeightOutputStream(bool hfst_format=true)' — writes to stdout.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-output-stream.tropical-weight-output-stream-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-output-stream.tropical-weight-output-stream-fn]
         pub fn new(hfst_format: bool) -> Self {
@@ -484,7 +484,7 @@ mod construction_io {
             }
         }
 
-        /// `TropicalWeightOutputStream(const std::string &filename, bool hfst_format=false)`.
+        /// 'TropicalWeightOutputStream(const std::string &filename, bool hfst_format=false)'.
         pub fn new_filename(filename: &str, hfst_format: bool) -> Self {
             let file = std::fs::File::create(filename)
                 .expect("TropicalWeightOutputStream: cannot open file");
@@ -517,7 +517,7 @@ mod construction_io {
             }
             // When not writing the HFST framing, OpenFST includes both input and
             // output symbol tables; the C++ sets the output table = input table on
-            // the caller's transducer. The skeleton hands us `&StdVectorFst`, so we
+            // the caller's transducer. The skeleton hands us '&StdVectorFst', so we
             // do it on a clone (NOTE: caller's transducer is not mutated, unlike C++).
             if !self.hfst_format {
                 let mut t = transducer.clone();
@@ -540,7 +540,7 @@ mod construction_io {
         // ---- profiling / warning-stream globals ----
 
         pub fn get_profile_seconds() -> f32 {
-            // `tropical_seconds` is 0 unless PROFILE_OPENFST (compiled out).
+            // 'tropical_seconds' is 0 unless PROFILE_OPENFST (compiled out).
             0.0
         }
 
@@ -563,9 +563,9 @@ mod construction_io {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.create-symbol-table-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.create-symbol-table-fn]
         fn create_symbol_table(_name: String) -> SymbolTable {
-            // rustfst `SymbolTable` has no name; the `name` arg is dropped. Start
-            // from `empty()` so the internal symbols land at exactly 0/1/2 (an
-            // `add_symbol` on a fresh `new()` table would already hold <eps> at 0).
+            // rustfst 'SymbolTable' has no name; the 'name' arg is dropped. Start
+            // from 'empty()' so the internal symbols land at exactly 0/1/2 (an
+            // 'add_symbol' on a fresh 'new()' table would already hold <eps> at 0).
             let mut st = SymbolTable::empty();
             st.add_symbol(internal_epsilon); // 0
             st.add_symbol(internal_unknown); // 1
@@ -915,26 +915,26 @@ mod construction_io {
 
         // ---- AT&T write ----
 
-        /// `write_in_att_format(StdVectorFst*, FILE *ofile)`.
+        /// 'write_in_att_format(StdVectorFst*, FILE *ofile)'.
         pub fn write_in_att_format_file(t: &StdVectorFst, ofile: *mut libc::FILE) {
             let mut w = CFileWriter(ofile);
             write_in_att_format_core(t, &mut w, false, true);
         }
 
-        /// `write_in_att_format_number(StdVectorFst*, FILE *ofile)`.
+        /// 'write_in_att_format_number(StdVectorFst*, FILE *ofile)'.
         pub fn write_in_att_format_number_file(t: &StdVectorFst, ofile: *mut libc::FILE) {
             let mut w = CFileWriter(ofile);
             write_in_att_format_core(t, &mut w, true, true);
         }
 
-        /// `write_in_att_format(StdVectorFst*, std::ostream &os)`.
+        /// 'write_in_att_format(StdVectorFst*, std::ostream &os)'.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.write-in-att-format-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.write-in-att-format-fn]
         pub fn write_in_att_format_ostream(t: &StdVectorFst, os: &mut dyn std::io::Write) {
             write_in_att_format_core(t, os, false, false);
         }
 
-        /// `write_in_att_format_number(StdVectorFst*, std::ostream &os)`.
+        /// 'write_in_att_format_number(StdVectorFst*, std::ostream &os)'.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.write-in-att-format-number-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.write-in-att-format-number-fn]
         pub fn write_in_att_format_number_ostream(t: &StdVectorFst, os: &mut dyn std::io::Write) {
@@ -1054,8 +1054,8 @@ mod construction_io {
             for (_label, sym) in old.iter() {
                 if sym != symbol {
                     // NOTE: rustfst's SymbolTable has no add-at-explicit-label, so
-                    // the original label of `sym` cannot be preserved (the C++ does
-                    // `AddSymbol(sym, label)`). Symbols after the removed one shift.
+                    // the original label of 'sym' cannot be preserved (the C++ does
+                    // 'AddSymbol(sym, label)'). Symbols after the removed one shift.
                     st.add_symbol(sym);
                 }
             }
@@ -1219,7 +1219,7 @@ mod construction_io {
             for s in states {
                 let trs = t.pop_trs(s).unwrap();
                 for arc in trs {
-                    // C++ `km[label]` inserts 0 for a missing key.
+                    // C++ 'km[label]' inserts 0 for a missing key.
                     let il = *km.entry(arc.ilabel).or_insert(0);
                     let ol = *km.entry(arc.olabel).or_insert(0);
                     t.add_tr(s, StdTransition::new(il, ol, arc.weight, arc.nextstate))
@@ -1233,8 +1233,8 @@ mod construction_io {
         pub fn set_symbol_table(t: &mut StdVectorFst, symbol_mappings: Vec<(u16, String)>) {
             let mut st = Self::create_symbol_table(String::new());
             for (num, sym) in &symbol_mappings {
-                // NOTE: C++ `AddSymbol(sym, num)` honours the explicit label; rustfst
-                // has no add-at-explicit-label, so `num` is ignored (gap).
+                // NOTE: C++ 'AddSymbol(sym, num)' honours the explicit label; rustfst
+                // has no add-at-explicit-label, so 'num' is ignored (gap).
                 let _ = num;
                 st.add_symbol(sym.as_str());
             }
@@ -1428,8 +1428,8 @@ mod construction_io {
             t2: &StdVectorFst,
             unknown_symbols_in_use: bool,
         ) -> (StdVectorFst, StdVectorFst) {
-            // NOTE: C++ takes `StdVectorFst*` and mutates the inputs in place; the
-            // skeleton hands us `&StdVectorFst`, so we work on clones — the caller's
+            // NOTE: C++ takes 'StdVectorFst*' and mutates the inputs in place; the
+            // skeleton hands us '&StdVectorFst', so we work on clones — the caller's
             // transducers are NOT mutated (a divergence from the C++ side effect).
             let mut t1 = t1.clone();
             let mut t2 = t2.clone();
@@ -1579,7 +1579,7 @@ mod construction_io {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-final-weight-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-final-weight-fn]
         pub fn get_final_weight(t: &StdVectorFst, s: StateId) -> f32 {
-            // C++ `t->Final(s).Value()` — Zero().Value() is +inf for a non-final state.
+            // C++ 't->Final(s).Value()' — Zero().Value() is +inf for a non-final state.
             t.final_weight(s)
                 .unwrap()
                 .map(|w| *w.value())
@@ -1589,7 +1589,7 @@ mod construction_io {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.is-final-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.is-final-fn]
         pub fn is_final(t: &StdVectorFst, s: StateId) -> f32 {
-            // C++ returns `(t->Final(s) != Zero())` implicitly converted to float.
+            // C++ returns '(t->Final(s) != Zero())' implicitly converted to float.
             if t.is_final(s).unwrap() { 1.0 } else { 0.0 }
         }
 
@@ -1603,13 +1603,17 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.represent-empty-transducer-as-having-one-state-fn]
         pub fn represent_empty_transducer_as_having_one_state(t: &mut StdVectorFst) {
             if t.start().is_none() || t.num_states() == 0 {
-                // BUG PRESERVED: the C++ does `delete t; t = create_empty_transducer();`,
+                // BUG PRESERVED: the C++ does 'delete t; t = create_empty_transducer();',
                 // assigning a LOCAL pointer — the caller's transducer is unchanged.
                 // We replicate the no-op (mutating *t here would change the caller).
             }
         }
     }
 }
+
+// Re-export the 'hfst::implementations' free function consumed by the facade
+// 'set_minimization_algorithm' (HfstTransducer.cc:246).
+pub use construction_io::openfst_tropical_set_hopcroft;
 
 // ===== operations (workflow body) =====
 mod operations {
@@ -1618,16 +1622,16 @@ mod operations {
     // ===========================================================================
     // area: operations — algebraic operations and OpenFST-algorithm wrappers.
     //
-    // These are method bodies for the `impl TropicalWeightTransducer` block defined
-    // in the skeleton (paste them in, replacing the corresponding `unimplemented!()`
+    // These are method bodies for the 'impl TropicalWeightTransducer' block defined
+    // in the skeleton (paste them in, replacing the corresponding 'unimplemented! ()'
     // stubs). Two private module-level free helpers are also provided.
     //
-    // Ports of `libhfst/src/implementations/TropicalWeightTransducer.cc`.
+    // Ports of 'libhfst/src/implementations/TropicalWeightTransducer.cc'.
     // ===========================================================================
 
-    /// Port of the `CHECK_EPSILON_CYCLES(x, y)` macro: convert `x` to an
-    /// `HfstBasicTransducer`, and if it has negative-weight epsilon cycles, emit a
-    /// warning to the (file-static) `warning_stream` if one is set.
+    /// Port of the 'CHECK_EPSILON_CYCLES(x, y)' macro: convert 'x' to an
+    /// 'HfstBasicTransducer', and if it has negative-weight epsilon cycles, emit a
+    /// warning to the (file-static) 'warning_stream' if one is set.
     #[allow(dead_code)]
     fn check_epsilon_cycles(x: &StdVectorFst, y: &str) {
         let fsm = crate::convert_transducer_format::ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(x, true);
@@ -1646,8 +1650,8 @@ mod operations {
         }
     }
 
-    /// `dst->SetInputSymbols(src->InputSymbols())` — copy `src`'s input symbol table
-    /// (as a shared `Arc`) onto `dst`. No-op when `src` has no input symbols.
+    /// 'dst->SetInputSymbols(src->InputSymbols())' — copy 'src''s input symbol table
+    /// (as a shared 'Arc') onto 'dst'. No-op when 'src' has no input symbols.
     #[allow(dead_code)]
     fn copy_input_symbol_table(src: &StdVectorFst, dst: &mut StdVectorFst) {
         if let Some(symt) = src.input_symbols().map(|s| std::sync::Arc::clone(s)) {
@@ -1721,7 +1725,7 @@ mod operations {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.minimize-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.minimize-fn]
         pub fn minimize(t: &StdVectorFst) -> StdVectorFst {
-            // C++ mutates `t` in place; the skeleton hands us `&StdVectorFst`, so we
+            // C++ mutates 't' in place; the skeleton hands us '&StdVectorFst', so we
             // operate on a local clone (the caller-side mutation side effect is lost).
             let mut t = t.clone();
 
@@ -1757,7 +1761,7 @@ mod operations {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.determinize-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.determinize-fn]
         pub fn determinize(t: &StdVectorFst) -> StdVectorFst {
-            // C++ mutates `t` in place; operate on a local clone.
+            // C++ mutates 't' in place; operate on a local clone.
             let mut t = t.clone();
 
             check_epsilon_cycles(&t, "determinize");
@@ -2078,8 +2082,8 @@ mod operations {
             t
         }
 
-        /// `static fst::StdVectorFst * disjunct_as_tries(fst::StdVectorFst * t1,
-        ///   const fst::StdVectorFst * t2)` — public trie-disjunction entry point.
+        /// 'static fst::StdVectorFst * disjunct_as_tries(fst::StdVectorFst * t1,
+        ///   const fst::StdVectorFst * t2)' — public trie-disjunction entry point.
         pub fn disjunct_as_tries_pub<'a>(
             t1: &'a mut StdVectorFst,
             t2: &StdVectorFst,
@@ -2343,8 +2347,8 @@ mod lookup_extract_misc {
     pub type LabelPairVector = Vec<LabelPair>;
 
     // ============================================================================
-    // File-static free helpers (C++ `static` functions in
-    // `namespace hfst::implementations`).  Kept module-private, like the C++.
+    // File-static free helpers (C++ 'static' functions in
+    // 'namespace hfst::implementations').  Kept module-private, like the C++.
     // ============================================================================
 
     /* The recursive path-extraction worker.  Note the faithful C++ quirk that
@@ -2516,7 +2520,7 @@ mod lookup_extract_misc {
         true
     }
 
-    /* Get a random path from transducer `t`.  Faithful to the C++ it signals
+    /* Get a random path from transducer 't'.  Faithful to the C++ it signals
     failure by throwing a C-string; here those become `panic_any(&'static str)`
     that `random_path` catches with `catch_unwind`. */
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.random-path-fn]
@@ -2617,7 +2621,7 @@ mod lookup_extract_misc {
         }
     }
 
-    /* Try to extract a random path from `t` at most `max_times` times. */
+    /* Try to extract a random path from 't' at most 'max_times' times. */
     fn random_path(t: &StdVectorFst, mut max_times: u32) -> HfstTwoLevelPath {
         while max_times > 0 {
             max_times -= 1;
@@ -2649,7 +2653,7 @@ mod lookup_extract_misc {
     }
 
     // ============================================================================
-    // `impl TropicalWeightTransducer` — lookup-extract-misc bodies.
+    // 'impl TropicalWeightTransducer' — lookup-extract-misc bodies.
     // ============================================================================
     #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
@@ -2700,7 +2704,7 @@ mod lookup_extract_misc {
                 };
                 callback.operator_call(&mut epsilon_path, true /* final */);
             }
-            // fd_state_stack dropped here (C++ `delete fd_state_stack`).
+            // fd_state_stack dropped here (C++ 'delete fd_state_stack').
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-random-paths-fd-fn]
@@ -2801,10 +2805,10 @@ mod lookup_extract_misc {
 
         // ---- substitute ----------------------------------------------------------
 
-        /// `substitute(StdVectorFst*, unsigned int, unsigned int)` — relabels label
-        /// `old_number` to `new_number` on both the input and output side (C++ uses
-        /// `RelabelFst<StdArc>(*t, v, v)`; modelled here as a direct rebuild since
-        /// rustfst's `relabel_pairs` module is private).
+        /// 'substitute(StdVectorFst*, unsigned int, unsigned int)' — relabels label
+        /// 'old_number' to 'new_number' on both the input and output side (C++ uses
+        /// 'RelabelFst<StdArc>(*t, v, v)'; modelled here as a direct rebuild since
+        /// rustfst's 'relabel_pairs' module is private).
         pub fn substitute_number(
             t: &StdVectorFst,
             old_number: u32,
@@ -2831,10 +2835,10 @@ mod lookup_extract_misc {
             result
         }
 
-        /// `substitute(StdVectorFst*, NumberPair old, NumberPair new)`. The C++
-        /// encodes label pairs (`kEncodeLabels`), substitutes the single encoded
-        /// label, then decodes; the net effect (replace arcs whose `(ilabel,olabel)`
-        /// equals `old` with `new`) is reproduced here directly.
+        /// 'substitute(StdVectorFst*, NumberPair old, NumberPair new)'. The C++
+        /// encodes label pairs ('kEncodeLabels'), substitutes the single encoded
+        /// label, then decodes; the net effect (replace arcs whose '(ilabel,olabel)'
+        /// equals 'old' with 'new') is reproduced here directly.
         pub fn substitute_number_pair(
             t: &StdVectorFst,
             old_number_pair: NumberPair,
@@ -2859,7 +2863,7 @@ mod lookup_extract_misc {
             result
         }
 
-        /// `substitute(StdVectorFst*, std::string old_symbol, std::string new_symbol)`.
+        /// 'substitute(StdVectorFst*, std::string old_symbol, std::string new_symbol)'.
         pub fn substitute_symbol(
             t: &StdVectorFst,
             old_symbol: String,
@@ -2874,7 +2878,7 @@ mod lookup_extract_misc {
             retval
         }
 
-        /// `substitute(StdVectorFst*, StringPair old, StringPair new)`.
+        /// 'substitute(StdVectorFst*, StringPair old, StringPair new)'.
         pub fn substitute_string_pair(
             t: &StdVectorFst,
             old_symbol_pair: StringPair,
@@ -2895,7 +2899,7 @@ mod lookup_extract_misc {
             retval
         }
 
-        /// `substitute(StdVectorFst*, StringPair old, StringPairSet new)`.
+        /// 'substitute(StdVectorFst*, StringPair old, StringPairSet new)'.
         pub fn substitute_string_pair_set(
             t: &StdVectorFst,
             old_symbol_pair: StringPair,
@@ -2914,7 +2918,7 @@ mod lookup_extract_misc {
                     if isym == old_symbol_pair.0 && osym == old_symbol_pair.1 {
                         // C++ replaces this arc with one arc per pair in the set;
                         // an empty set leaves the original arc untouched (the C++
-                        // `SetValue` is never reached).
+                        // 'SetValue' is never reached).
                         if new_symbol_pair_set.is_empty() {
                             nt.push(arc);
                         } else {
@@ -2941,7 +2945,7 @@ mod lookup_extract_misc {
             tc
         }
 
-        /// `substitute(StdVectorFst*, const StringPair old, StdVectorFst *transducer)`.
+        /// 'substitute(StdVectorFst*, const StringPair old, StdVectorFst *transducer)'.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.substitute-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.substitute-fn]
         pub fn substitute_string_transducer(
@@ -3020,7 +3024,7 @@ mod lookup_extract_misc {
             result
         }
 
-        /// `substitute(StdVectorFst*, const NumberPair old, StdVectorFst *transducer)`.
+        /// 'substitute(StdVectorFst*, const NumberPair old, StdVectorFst *transducer)'.
         pub fn substitute_number_transducer(
             t: &StdVectorFst,
             old_number_pair: NumberPair,
@@ -3087,7 +3091,7 @@ mod lookup_extract_misc {
 
         // ---- insert_freely -------------------------------------------------------
 
-        /// `insert_freely(StdVectorFst*, const StringPair &symbol_pair)`.
+        /// 'insert_freely(StdVectorFst*, const StringPair &symbol_pair)'.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.insert-freely-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.insert-freely-fn]
         pub fn insert_freely_string(t: &StdVectorFst, symbol_pair: &StringPair) -> StdVectorFst {
@@ -3118,7 +3122,7 @@ mod lookup_extract_misc {
 
         /* Recode the symbol numbers in this transducer as indicated in KeyMap km. */
 
-        /* Expand "?:?", "?:x" and "x:?" transitions according to `unknown`. */
+        /* Expand "?:?", "?:x" and "x:?" transitions according to 'unknown'. */
 
         // ---- alphabet / symbol-table queries -------------------------------------
 

@@ -1,21 +1,21 @@
-//! Port of `libhfst/src/implementations/ConvertTropicalWeightTransducer.cc` —
-//! the `HfstBasicTransducer` <-> OpenFst tropical-weight `StdVectorFst`
+//! Port of 'libhfst/src/implementations/ConvertTropicalWeightTransducer.cc' —
+//! the 'HfstBasicTransducer' <-> OpenFst tropical-weight 'StdVectorFst'
 //! conversions.
 //!
-//! As in [`crate::convert_ol_transducer`], the two self-contained entry points
-//! are ported here as methods on [`ConversionFunctions`], and the two C++
-//! file-`static` helpers (`handle_symbol_tables` / `copy_alphabet`) become
+//! As in ['crate::convert_ol_transducer'], the two self-contained entry points
+//! are ported here as methods on ['ConversionFunctions'], and the two C++
+//! file-'static' helpers ('handle_symbol_tables' / 'copy_alphabet') become
 //! module-private free functions.
 //!
-//! `using namespace fst;` is mapped onto the `hfst-openfst` adapter:
-//! `StdVectorFst`, `StdTransition` (= `fst::StdArc`), `SymbolTable`, and the
-//! rustfst trait methods brought in via `hfst_openfst::prelude::*`. The C++
-//! `StateIterator`/`ArcIterator` traversal becomes `states_iter()` +
-//! `get_trs(s)`; `t->Final(s) != Zero()` becomes `t.is_final(s)`; and
-//! `t->Start() == kNoStateId` becomes `t.start().is_none()`.
+//! 'using namespace fst;' is mapped onto the 'hfst-openfst' adapter:
+//! 'StdVectorFst', 'StdTransition' (= 'fst::StdArc'), 'SymbolTable', and the
+//! rustfst trait methods brought in via 'hfst_openfst::prelude::*'. The C++
+//! 'StateIterator'/'ArcIterator' traversal becomes 'states_iter()' +
+//! 'get_trs(s)'; 't->Final(s) != Zero()' becomes 't.is_final(s)'; and
+//! 't->Start() == kNoStateId' becomes 't.start().is_none()'.
 //!
-//! Ownership: the C++ `new`s and returns raw pointers; here both directions
-//! return owned values (`HfstBasicTransducer` / `StdVectorFst`).
+//! Ownership: the C++ 'new's and returns raw pointers; here both directions
+//! return owned values ('HfstBasicTransducer' / 'StdVectorFst').
 
 #![allow(non_snake_case)]
 
@@ -31,7 +31,7 @@ use crate::hfst_exception_defs::{HfstFatalException, MissingOpenFstInputSymbolTa
 use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unknown};
 use crate::hfst_tropical_transducer_transition_data::HfstTropicalTransducerTransitionData;
 
-/* Handle symbol tables when converting `t` to `net`. `has_hfst_header`
+/* Handle symbol tables when converting 't' to 'net'. 'has_hfst_header'
 defines whether `t` is an HFST transducer. */
 // [spec:hfst:def:convert-tropical-weight-transducer.hfst.implementations.handle-symbol-tables-fn]
 // [spec:hfst:sem:convert-tropical-weight-transducer.hfst.implementations.handle-symbol-tables-fn]
@@ -84,7 +84,7 @@ fn handle_symbol_tables(t: &StdVectorFst, net: &mut HfstBasicTransducer, has_hfs
     }
 }
 
-/* Copy alphabet of `t` to `net`. */
+/* Copy alphabet of 't' to 'net'. */
 // [spec:hfst:def:convert-tropical-weight-transducer.hfst.implementations.copy-alphabet-fn]
 // [spec:hfst:sem:convert-tropical-weight-transducer.hfst.implementations.copy-alphabet-fn]
 fn copy_alphabet(t: &StdVectorFst, net: &mut HfstBasicTransducer) {
@@ -139,8 +139,8 @@ impl ConversionFunctions {
         and state number zero (if it is not initial) is some other number
         (basically as the number of the initial state in that case, i.e.
         the numbers of initial state and state number zero are swapped) */
-        // `StateId initial_state = t->Start();` — OpenFst's `kNoStateId` sentinel
-        // (`-1`) cast to the unsigned `StateId` becomes `u32::MAX`; for an empty
+        // 'StateId initial_state = t->Start();' — OpenFst's 'kNoStateId' sentinel
+        // ('-1') cast to the unsigned 'StateId' becomes 'u32::MAX'; for an empty
         // transducer the state loop below never runs, so the value is unused.
         let initial_state: u32 = match t.start() {
             Some(s) => s,
@@ -231,8 +231,8 @@ impl ConversionFunctions {
             state_vector.push(t.add_state());
         }
 
-        // `fst::SymbolTable st("");` — an empty table (rustfst's `new()` would
-        // pre-seed epsilon, so `empty()` is used and epsilon is added below).
+        // 'fst::SymbolTable st("");' — an empty table (rustfst's 'new()' would
+        // pre-seed epsilon, so 'empty()' is used and epsilon is added below).
         let mut st = SymbolTable::empty();
         st.add_symbol(internal_epsilon); // label 0
         st.add_symbol(internal_unknown); // label 1
@@ -241,12 +241,12 @@ impl ConversionFunctions {
         // Copy the alphabet
         for it in net.get_alphabet().iter() {
             assert!(!it.is_empty());
-            // C++: `st.AddSymbol(*it, net->get_symbol_number(*it));` — rustfst's
-            // `SymbolTable::add_symbol` assigns labels sequentially and cannot set
-            // an explicit (possibly sparse) label, so `get_symbol_number` is still
+            // C++: 'st.AddSymbol(*it, net->get_symbol_number(*it));' — rustfst's
+            // 'SymbolTable::add_symbol' assigns labels sequentially and cannot set
+            // an explicit (possibly sparse) label, so 'get_symbol_number' is still
             // evaluated for its interning side effect but its value cannot be used
             // as the label. See the module-level note / deferred list.
-            // `st.AddSymbol(*it, net->get_symbol_number(*it));` — assign the
+            // 'st.AddSymbol(*it, net->get_symbol_number(*it));' — assign the
             // symbol's global number as its explicit label so the FST's arc
             // labels coincide with the basic-transducer symbol numbers (and the
             // tropical->basic round-trip recovers them).
@@ -279,7 +279,7 @@ impl ConversionFunctions {
         } // ... all states gone through
 
         // Go through the final states...
-        // The C++ iterates `net->final_weight_map` (a map ordered by state); the
+        // The C++ iterates 'net->final_weight_map' (a map ordered by state); the
         // private map is not exposed, so the equivalent ascending-state walk over
         // the final states is used.
         for state in 0..=net.get_max_state() {

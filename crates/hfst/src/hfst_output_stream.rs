@@ -1,14 +1,14 @@
-//! Port of `libhfst/src/HfstOutputStream.{h,cc}` — `hfst::HfstOutputStream`, the
+//! Port of 'libhfst/src/HfstOutputStream.{h,cc}' — 'hfst::HfstOutputStream', the
 //! stream for writing binary transducers.
 //!
 //! ## Backend union modelling
-//! The C++ holds a `union StreamImplementation` of raw backend-stream pointers
-//! (`log_ofst`, `tropical_ofst`, `sfst`, `foma`, `xfsm`, `hfst_ol`); exactly one
-//! member is live, selected by the `type` (`ImplementationType`) discriminant.
-//! Mirrored here as a struct of per-backend `Option<Box<...>>` fields
-//! ([`StreamImplementation`]). The tropical/log output streams own their writer
-//! (no lifetime), so `HfstOutputStream` needs no lifetime parameter.
-//! `sfst`/`foma`/`xfsm` backend streams and `HfstOlOutputStream` are unported
+//! The C++ holds a 'union StreamImplementation' of raw backend-stream pointers
+//! ('log_ofst', 'tropical_ofst', 'sfst', 'foma', 'xfsm', 'hfst_ol'); exactly one
+//! member is live, selected by the 'type' ('ImplementationType') discriminant.
+//! Mirrored here as a struct of per-backend 'Option<Box<...>>' fields
+//! (['StreamImplementation']). The tropical/log output streams own their writer
+//! (no lifetime), so 'HfstOutputStream' needs no lifetime parameter.
+//! 'sfst'/'foma'/'xfsm' backend streams and 'HfstOlOutputStream' are unported
 //! collaborators — placeholder unit types so the field exists but cannot be
 //! constructed.
 
@@ -21,16 +21,16 @@ use crate::log_weight_transducer::LogWeightOutputStream;
 use crate::tropical_weight_transducer::TropicalWeightOutputStream;
 
 /// Unported backend output-stream collaborators. Placeholder unit types: the
-/// corresponding [`StreamImplementation`] field exists for fidelity with the C++
-/// union, but no constructor is provided (the `#if HAVE_SFST` / `HAVE_FOMA` /
-/// `HAVE_XFSM` paths and `HfstOlOutputStream` are deferred).
+/// corresponding ['StreamImplementation'] field exists for fidelity with the C++
+/// union, but no constructor is provided (the '#if HAVE_SFST' / 'HAVE_FOMA' /
+/// 'HAVE_XFSM' paths and 'HfstOlOutputStream' are deferred).
 pub struct SfstOutputStream;
 pub struct FomaOutputStream;
 pub struct XfsmOutputStream;
 pub struct HfstOlOutputStream;
 
-/// Port of the C++ `union StreamImplementation` (backend implementation). Exactly
-/// one field is `Some`, selected by `HfstOutputStream::type_`.
+/// Port of the C++ 'union StreamImplementation' (backend implementation). Exactly
+/// one field is 'Some', selected by 'HfstOutputStream::type_'.
 // [spec:hfst:def:hfst-output-stream.hfst.hfst-output-stream.stream-implementation]
 #[derive(Default)]
 pub struct StreamImplementation {
@@ -46,11 +46,11 @@ pub struct StreamImplementation {
 // [spec:hfst:def:hfst-output-stream.hfst.hfst-output-stream]
 pub struct HfstOutputStream {
     /// Type of the stream implementation (the discriminant selecting the live
-    /// `implementation` member).
+    /// 'implementation' member).
     type_: ImplementationType,
     /// Whether an hfst header is written before every transducer.
     hfst_format: bool,
-    /// Backend implementation (C++ `StreamImplementation implementation`).
+    /// Backend implementation (C++ 'StreamImplementation implementation').
     implementation: StreamImplementation,
     /// If file is open.
     is_open: bool,
@@ -73,11 +73,11 @@ mod output_impl {
 
     #[allow(dead_code)]
     impl HfstOutputStream {
-        /// `HfstOutputStream(ImplementationType type, bool hfst_format=true)` — a
-        /// stream to standard output. (No `[spec:]` id in the C++ for this ctor.)
+        /// 'HfstOutputStream(ImplementationType type, bool hfst_format=true)' — a
+        /// stream to standard output. (No '[spec:]' id in the C++ for this ctor.)
         pub fn new(type_: ImplementationType, hfst_format: bool) -> Self {
             if !HfstTransducer::is_lean_implementation_type_available(type_) {
-                // `throw ImplementationTypeNotAvailableException(...)` — direct throw, so
+                // 'throw ImplementationTypeNotAvailableException(...)' — direct throw, so
                 // (unlike HFST_THROW) it does NOT touch the hfst_set_exception global.
                 std::panic::panic_any(ImplementationTypeNotAvailableException::new(
                     "ImplementationTypeNotAvailableException".to_string(),
@@ -139,8 +139,8 @@ mod output_impl {
         //        HfstInputStream a const char*
         // [spec:hfst:def:hfst-output-stream.hfst.hfst-output-stream.hfst-output-stream-fn]
         // [spec:hfst:sem:hfst-output-stream.hfst.hfst-output-stream.hfst-output-stream-fn]
-        /// `HfstOutputStream(const std::string &filename, ImplementationType type,
-        /// bool hfst_format=true)`.
+        /// 'HfstOutputStream(const std::string &filename, ImplementationType type,
+        /// bool hfst_format=true)'.
         pub fn new_filename(filename: &str, type_: ImplementationType, hfst_format: bool) -> Self {
             if !HfstTransducer::is_lean_implementation_type_available(type_) {
                 std::panic::panic_any(ImplementationTypeNotAvailableException::new(
@@ -210,9 +210,9 @@ mod output_impl {
             }
         }
 
-        // `~HfstOutputStream` (C++) just `delete`s the active backend pointer; in Rust
-        // each owned `Option<Box<…>>` backend is freed automatically when the struct is
-        // dropped, so no explicit `Drop` impl is required.
+        // '~HfstOutputStream' (C++) just 'delete's the active backend pointer; in Rust
+        // each owned 'Option<Box<…>>' backend is freed automatically when the struct is
+        // dropped, so no explicit 'Drop' impl is required.
 
         // [spec:hfst:def:hfst-output-stream.hfst.hfst-output-stream.append-fn]
         // [spec:hfst:sem:hfst-output-stream.hfst.hfst-output-stream.append-fn]
@@ -317,12 +317,12 @@ mod output_impl {
             self
         }
 
-        /// An alias for `operator<<`.
+        /// An alias for 'operator<<'.
         pub fn redirect(&mut self, transducer: &mut HfstTransducer) -> &mut Self {
             self.operator_shl(transducer)
         }
 
-        /// `HfstOutputStream &operator<< (HfstTransducer &transducer)`.
+        /// 'HfstOutputStream &operator<< (HfstTransducer &transducer)'.
         pub fn operator_shl(&mut self, transducer: &mut HfstTransducer) -> &mut Self {
             if !self.is_open {
                 crate::HFST_THROW!(StreamIsClosedException);
@@ -380,7 +380,7 @@ mod output_impl {
                     crate::HFST_THROW_MESSAGE!(HfstFatalException, "transducer header is too long");
                 }
 
-                // mirrors C++ `*((char*)(&header_length)+i)` (native-endian byte punning)
+                // mirrors C++ '*((char*)(&header_length)+i)' (native-endian byte punning)
                 let header_length_bytes = header_length.to_ne_bytes();
                 let first_byte = header_length_bytes[0] as char;
                 let second_byte = header_length_bytes[1] as char;

@@ -1,10 +1,10 @@
-//! Port of `libhfst/src/implementations/HfstBasicTransition.{h,cc}`.
+//! Port of 'libhfst/src/implementations/HfstBasicTransition.{h,cc}'.
 //!
-//! The concrete (non-template) transition class used by [`HfstBasicTransducer`].
-//! Structurally identical to `HfstTransition<HfstTropicalTransducerTransitionData>`,
+//! The concrete (non-template) transition class used by ['HfstBasicTransducer'].
+//! Structurally identical to 'HfstTransition<HfstTropicalTransducerTransitionData>',
 //! but the C++ keeps it as a separate concrete class, so it is ported as one.
 //!
-//! [`HfstBasicTransducer`]: crate::hfst_basic_transducer
+//! ['HfstBasicTransducer']: crate::hfst_basic_transducer
 
 use std::cmp::Ordering;
 
@@ -129,7 +129,7 @@ impl HfstBasicTransition {
     }
 }
 
-// `operator<` made usable in ordered containers.
+// 'operator<' made usable in ordered containers.
 impl PartialEq for HfstBasicTransition {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == Ordering::Equal

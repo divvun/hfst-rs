@@ -1,8 +1,8 @@
-//! Port of `libhfst/src/HfstPrintDot.{cc,h}` — render an [`HfstTransducer`] as
-//! a Graphviz `dot` graph.
+//! Port of 'libhfst/src/HfstPrintDot.{cc,h}' — render an ['HfstTransducer'] as
+//! a Graphviz 'dot' graph.
 //!
-//! The two C++ `print_dot` overloads (`FILE*` and `std::ostream&`) become the
-//! distinct names [`print_dot_file`] and [`print_dot_os`].
+//! The two C++ 'print_dot' overloads ('FILE*' and 'std::ostream&') become the
+//! distinct names ['print_dot_file'] and ['print_dot_os'].
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -14,21 +14,21 @@ use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unkn
 use crate::hfst_transducer::HfstTransducer;
 use crate::string_utils::replace_all;
 
-// `#define DOT_MAX_LABEL_SIZE 64`
+// '#define DOT_MAX_LABEL_SIZE 64'
 const DOT_MAX_LABEL_SIZE: usize = 64;
 
-// The MSVC (`_MSC_VER < 1900`) section that `#define`s `snprintf`/`vsnprintf` to
-// `c99_snprintf`/`c99_vsnprintf` is a Windows-only compatibility shim that
-// forwards to `_vsnprintf_s`/`_vscprintf`. On this target the standard
-// `snprintf`/`vsnprintf` (here, Rust `format!`) are used directly, so the shims
+// The MSVC ('_MSC_VER < 1900') section that '#define's 'snprintf'/'vsnprintf' to
+// 'c99_snprintf'/'c99_vsnprintf' is a Windows-only compatibility shim that
+// forwards to '_vsnprintf_s'/'_vscprintf'. On this target the standard
+// 'snprintf'/'vsnprintf' (here, Rust 'format!') are used directly, so the shims
 // are not ported. Their spec ids are carried verbatim:
 // [spec:hfst:def:hfst-print-dot.hfst.c99-vsnprintf-fn]
 // [spec:hfst:sem:hfst-print-dot.hfst.c99-vsnprintf-fn]
 // [spec:hfst:def:hfst-print-dot.hfst.c99-snprintf-fn]
 // [spec:hfst:sem:hfst-print-dot.hfst.c99-snprintf-fn]
 
-// C `fputs`-of-bytes helper mirroring `fprintf` of a pre-formatted string: the
-// raw bytes are written with `libc::fwrite`, so `std::string`'s non-UTF-8-checked
+// C 'fputs'-of-bytes helper mirroring 'fprintf' of a pre-formatted string: the
+// raw bytes are written with 'libc::fwrite', so 'std::string''s non-UTF-8-checked
 // byte semantics are preserved.
 unsafe fn c_fputs(file: *mut libc::FILE, s: &str) {
     unsafe {
@@ -36,8 +36,8 @@ unsafe fn c_fputs(file: *mut libc::FILE, s: &str) {
     }
 }
 
-// C++ `HfstBasicTransducer mutt {t};` invokes the
-// `HfstBasicTransducer(const HfstTransducer&)` conversion constructor, which
+// C++ 'HfstBasicTransducer mutt {t};' invokes the
+// 'HfstBasicTransducer(const HfstTransducer&)' conversion constructor, which
 // lives in the (deferred) facade layer.
 fn hfst_transducer_to_basic(_t: &HfstTransducer) -> HfstBasicTransducer {
     unimplemented!("deferred: HfstBasicTransducer(const HfstTransducer&)")
@@ -47,13 +47,13 @@ fn hfst_transducer_to_basic(_t: &HfstTransducer) -> HfstBasicTransducer {
 // [spec:hfst:sem:hfst-print-dot.hfst.trim-to-valid-utf8-fn]
 fn trim_to_valid_utf8(inp: &mut Vec<u8>) {
     let len = inp.len();
-    // C++ `for (int i=1; i<4 && (len-i>0); i++)`. With `len` a `size_t`,
-    // `len-i>0` equals `len>i` for every non-empty buffer (the only inputs that
-    // occur in practice); using `len > i` avoids the C `len==0` underflow OOB.
+    // C++ 'for (int i=1; i<4 && (len-i>0); i++)'. With 'len' a 'size_t',
+    // 'len-i>0' equals 'len>i' for every non-empty buffer (the only inputs that
+    // occur in practice); using 'len > i' avoids the C 'len==0' underflow OOB.
     let mut i: usize = 1;
     while i < 4 && len > i {
         if i < 2 && (inp[len - i] & 0xc0) == 0xc0 {
-            // `inp[len-i] = '\0'` truncates the C string at that byte.
+            // 'inp[len-i] = '\0'' truncates the C string at that byte.
             inp.truncate(len - i);
             return;
         } else if i < 3 && (inp[len - i] & 0xe0) == 0xe0 {
@@ -69,8 +69,8 @@ fn trim_to_valid_utf8(inp: &mut Vec<u8>) {
 
 // Build the target-state arc label for one transition, given the previously
 // accumulated label for that same target. This is the per-arc body shared
-// byte-for-byte by both `print_dot` overloads (the `snprintf` family always
-// uses `%.2f` for the arc weight in both functions).
+// byte-for-byte by both 'print_dot' overloads (the 'snprintf' family always
+// uses '%.2f' for the arc weight in both functions).
 fn arc_label(old_label: &str, arc: &HfstBasicTransition) -> String {
     let mut first = arc.get_input_symbol();
     let mut second = arc.get_output_symbol();
@@ -88,10 +88,10 @@ fn arc_label(old_label: &str, arc: &HfstBasicTransition) -> String {
     } else if second == internal_unknown {
         second = String::from("?2");
     }
-    // The C++ allocates a `DOT_MAX_LABEL_SIZE` byte buffer and `snprintf`s into
-    // it; `snprintf` never returns < 0 for these arguments, so the
-    // `HFST_THROW_MESSAGE(HfstException, "sprinting dot arc label")` branches are
-    // unreachable. Truncation to `DOT_MAX_LABEL_SIZE - 1` bytes is preserved.
+    // The C++ allocates a 'DOT_MAX_LABEL_SIZE' byte buffer and 'snprintf's into
+    // it; 'snprintf' never returns < 0 for these arguments, so the
+    // 'HFST_THROW_MESSAGE(HfstException, "sprinting dot arc label")' branches are
+    // unreachable. Truncation to 'DOT_MAX_LABEL_SIZE - 1' bytes is preserved.
     let formatted: String = if first == second {
         if arc.get_weight() > 0.0 {
             if !old_label.is_empty() {
@@ -131,7 +131,7 @@ fn arc_label(old_label: &str, arc: &HfstBasicTransition) -> String {
     let mut l: Vec<u8> = formatted.into_bytes();
     l.truncate(DOT_MAX_LABEL_SIZE - 1);
     trim_to_valid_utf8(&mut l);
-    // C++ `string sl(l)` copies the raw bytes; `std::string` is not UTF-8
+    // C++ 'string sl(l)' copies the raw bytes; 'std::string' is not UTF-8
     // validated, so keep the bytes verbatim.
     let mut sl = unsafe { String::from_utf8_unchecked(l) };
     replace_all(&mut sl, "\"", "\\\"");
@@ -199,11 +199,11 @@ pub unsafe fn print_dot_file(out: *mut libc::FILE, t: &mut HfstTransducer) {
 }
 
 pub fn print_dot_os(out: &mut dyn Write, t: &mut HfstTransducer) {
-    // C++ `out.precision(2)` sets the stream's general-format precision to 2
-    // significant figures for `<<`-printed floats (the final-state weight
-    // below). That is neither `%.2f` nor Rust `{}`; per the port convention we
-    // print that weight with `{}` and note the divergence. (The arc weights go
-    // through `arc_label`'s `snprintf`-equivalent `%.2f` in both overloads.)
+    // C++ 'out.precision(2)' sets the stream's general-format precision to 2
+    // significant figures for '<<'-printed floats (the final-state weight
+    // below). That is neither '%.2f' nor Rust '{}'; per the port convention we
+    // print that weight with '{}' and note the divergence. (The arc weights go
+    // through 'arc_label''s 'snprintf'-equivalent '%.2f' in both overloads.)
 
     //out << "// This graph generated with hfst-fst2txt" << std::endl;
     if t.get_name() != "" {

@@ -1,6 +1,6 @@
-//! Port of `libhfst/src/HfstStrings2FstTokenizer.{h,cc}` — tokenizes
-//! colon/space/backslash-escaped pair strings into `StringPairVector`s, built
-//! on top of `HfstTokenizer`.
+//! Port of 'libhfst/src/HfstStrings2FstTokenizer.{h,cc}' — tokenizes
+//! colon/space/backslash-escaped pair strings into 'StringPairVector's, built
+//! on top of 'HfstTokenizer'.
 
 use crate::hfst_data_types::StringPair;
 use crate::hfst_tokenizer::HfstTokenizer;
@@ -248,7 +248,7 @@ impl HfstStrings2FstTokenizer {
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.is-pair-input-symbol-fn]
     // [spec:hfst:sem:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.is-pair-input-symbol-fn]
     fn is_pair_input_symbol(&self, v: &[String], i: usize) -> bool {
-        // C++ walks an iterator from `it`: current, then next must be COL, then
+        // C++ walks an iterator from 'it': current, then next must be COL, then
         // another must follow.
         if i >= v.len() {
             return false;

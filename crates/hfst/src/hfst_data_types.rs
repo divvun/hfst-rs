@@ -1,18 +1,18 @@
-//! Port of `libhfst/src/HfstDataTypes.{h,cc}` — datatypes needed by the HFST API.
+//! Port of 'libhfst/src/HfstDataTypes.{h,cc}' — datatypes needed by the HFST API.
 //!
-//! 1:1 translation. `std::pair`s that are used as ordered-set elements and carry
-//! a leading `float` (`HfstOneLevelPath`, `HfstTwoLevelPath`) cannot be plain
-//! Rust tuples (an `f32` tuple is not `Ord`), so they are modelled as newtype
-//! structs that keep the C++ `.first`/`.second` field names and impl `Ord` via
-//! `f32::total_cmp` followed by the vector comparison — mirroring
-//! `std::pair::operator<`.
+//! 1:1 translation. 'std::pair's that are used as ordered-set elements and carry
+//! a leading 'float' ('HfstOneLevelPath', 'HfstTwoLevelPath') cannot be plain
+//! Rust tuples (an 'f32' tuple is not 'Ord'), so they are modelled as newtype
+//! structs that keep the C++ '.first'/'.second' field names and impl 'Ord' via
+//! 'f32::total_cmp' followed by the vector comparison — mirroring
+//! 'std::pair::operator<'.
 
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
 // The HfstTransducer-dependent typedefs from HfstDataTypes.h
-// (`HfstTransducerVector`, `HfstTransducerPair`, `HfstTransducerPairVector`)
-// are deferred until `HfstTransducer` is ported (facade layer), since Rust
+// ('HfstTransducerVector', 'HfstTransducerPair', 'HfstTransducerPairVector')
+// are deferred until 'HfstTransducer' is ported (facade layer), since Rust
 // cannot reference an as-yet-undefined type the way a C++ forward declaration
 // can.
 
@@ -51,7 +51,7 @@ pub type StringPairVector = Vec<StringPair>;
 
 /// \brief A path of one level of transitions with collected weight.
 ///
-/// `typedef std::pair<float, StringVector> HfstOneLevelPath`.
+/// 'typedef std::pair<float, StringVector> HfstOneLevelPath'.
 // [spec:hfst:def:hfst-data-types.hfst.hfst-one-level-path]
 #[derive(Clone, Debug)]
 pub struct HfstOneLevelPath {
@@ -83,7 +83,7 @@ pub type HfstOneLevelPaths = BTreeSet<HfstOneLevelPath>;
 
 /// \brief A path of two levels of transitions with collected weight.
 ///
-/// `typedef std::pair<float, StringPairVector> HfstTwoLevelPath`.
+/// 'typedef std::pair<float, StringPairVector> HfstTwoLevelPath'.
 // [spec:hfst:def:hfst-data-types.hfst.hfst-two-level-path]
 #[derive(Clone, Debug)]
 pub struct HfstTwoLevelPath {
@@ -192,9 +192,9 @@ pub fn double_to_float(value: f64) -> f32 {
 // [spec:hfst:sem:hfst-data-types.hfst.hfst-fopen-fn]
 //
 // Thin portability wrapper around the platform's file-open call. On MSVC the
-// C++ uses `fopen_s`; on all other platforms it is `fopen`. Mirrors the raw
-// `FILE *` C surface, so the signature is over raw C pointers and the call is
-// `unsafe`.
+// C++ uses 'fopen_s'; on all other platforms it is 'fopen'. Mirrors the raw
+// 'FILE *' C surface, so the signature is over raw C pointers and the call is
+// 'unsafe'.
 pub unsafe fn hfst_fopen(
     filename: *const libc::c_char,
     mode: *const libc::c_char,

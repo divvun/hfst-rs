@@ -1,10 +1,10 @@
-//! Port of `libhfst/src/HarmonizeUnknownAndIdentitySymbols.{h,cc}`.
+//! Port of 'libhfst/src/HarmonizeUnknownAndIdentitySymbols.{h,cc}'.
 //!
-//! Expands the unknown (`@_UNKNOWN_SYMBOL_@`) and identity (`@_IDENTITY_SYMBOL_@`)
-//! transitions of two `HfstBasicTransducer`s against each other's symbols. The
-//! work is all in the constructor (a sentinel object). The `debug_harmonize`
-//! branches are compiled out (`TEST_…` undefined) and not ported beyond the
-//! `debug_harmonize_print` helpers.
+//! Expands the unknown ('@_UNKNOWN_SYMBOL_@') and identity ('@_IDENTITY_SYMBOL_@')
+//! transitions of two 'HfstBasicTransducer's against each other's symbols. The
+//! work is all in the constructor (a sentinel object). The 'debug_harmonize'
+//! branches are compiled out ('TEST_…' undefined) and not ported beyond the
+//! 'debug_harmonize_print' helpers.
 
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
@@ -20,7 +20,7 @@ pub fn max_(t1: usize, t2: usize) -> usize {
 
 // [spec:hfst:def:harmonize-unknown-and-identity-symbols.hfst.is-subset-fn]
 // [spec:hfst:sem:harmonize-unknown-and-identity-symbols.hfst.is-subset-fn]
-// Used only by the compiled-out `debug_harmonize` asserts.
+// Used only by the compiled-out 'debug_harmonize' asserts.
 #[allow(dead_code)]
 fn is_subset(subset: &StringSet, superset: &StringSet) -> bool {
     for it in subset.iter() {

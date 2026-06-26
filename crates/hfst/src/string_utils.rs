@@ -1,12 +1,12 @@
-//! Port of `libhfst/src/string-utils.{h,cc}` — string manipulation utilities.
+//! Port of 'libhfst/src/string-utils.{h,cc}' — string manipulation utilities.
 
-/// \brief Replace all occurrences of `needle` in `haystack` with `replacement`,
-/// moving the cursor past the replacement each time (so if `needle` occurs in
-/// `replacement`, it won't be replaced).
+/// \brief Replace all occurrences of 'needle' in 'haystack' with 'replacement',
+/// moving the cursor past the replacement each time (so if 'needle' occurs in
+/// 'replacement', it won't be replaced).
 ///
-/// Mirrors the C++ byte-offset `find`/`replace` loop. The advance is by
-/// `replacement_len`, computed on the input — preserving the original behaviour
-/// (and its empty-`needle` non-termination) exactly.
+/// Mirrors the C++ byte-offset 'find'/'replace' loop. The advance is by
+/// 'replacement_len', computed on the input — preserving the original behaviour
+/// (and its empty-'needle' non-termination) exactly.
 pub fn replace_all<'a>(
     haystack: &'a mut String,
     needle: &str,

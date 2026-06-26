@@ -1,29 +1,29 @@
-//! Port of `libhfst/src/HfstPrintPCKimmo.{cc,h}` — writes a transducer in the
-//! PC-KIMMO transition-table text format to a C `FILE*`.
+//! Port of 'libhfst/src/HfstPrintPCKimmo.{cc,h}' — writes a transducer in the
+//! PC-KIMMO transition-table text format to a C 'FILE*'.
 //!
 //! The only deferred dependency is the entry point's construction of the
-//! interchange graph from the facade: C++ `HfstBasicTransducer mutt {t};`, which
-//! needs both the facade `crate::hfst_transducer::HfstTransducer` and the
-//! `HfstBasicTransducer(const HfstTransducer&)` conversion constructor (itself
-//! deferred in `crate::hfst_basic_transducer`). Everything after that point is
-//! ported literally against the already-available `HfstBasicTransducer`.
+//! interchange graph from the facade: C++ 'HfstBasicTransducer mutt {t};', which
+//! needs both the facade 'crate::hfst_transducer::HfstTransducer' and the
+//! 'HfstBasicTransducer(const HfstTransducer&)' conversion constructor (itself
+//! deferred in 'crate::hfst_basic_transducer'). Everything after that point is
+//! ported literally against the already-available 'HfstBasicTransducer'.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::hfst_basic_transducer::{HfstBasicTransducer, HfstState};
 use crate::hfst_symbol_defs::{internal_epsilon, internal_unknown};
 
-// Raw byte-faithful stand-in for `fprintf`'s output side: write the
-// already-formatted bytes verbatim with `fwrite`. Symbols may be truncated by
-// `%.*s` at an arbitrary byte boundary (mid-UTF-8), so the buffer is `[u8]`
-// rather than `str`.
+// Raw byte-faithful stand-in for 'fprintf''s output side: write the
+// already-formatted bytes verbatim with 'fwrite'. Symbols may be truncated by
+// '%.*s' at an arbitrary byte boundary (mid-UTF-8), so the buffer is '[u8]'
+// rather than 'str'.
 unsafe fn fwrite_bytes(out: *mut libc::FILE, bytes: &[u8]) {
     unsafe {
         libc::fwrite(bytes.as_ptr() as *const libc::c_void, 1, bytes.len(), out);
     }
 }
 
-// C printf `%*s`: right-justify `s` in a field of minimum `width` bytes,
+// C printf '%*s': right-justify 's' in a field of minimum 'width' bytes,
 // padding with spaces on the left.
 fn fmt_star_s(width: usize, s: &[u8]) -> Vec<u8> {
     let mut out: Vec<u8> = Vec::new();
@@ -36,14 +36,14 @@ fn fmt_star_s(width: usize, s: &[u8]) -> Vec<u8> {
     out
 }
 
-// C printf `%.*s`: print at most `precision` bytes of `s`.
+// C printf '%.*s': print at most 'precision' bytes of 's'.
 fn fmt_dot_star_s(precision: usize, s: &[u8]) -> Vec<u8> {
     let n = std::cmp::min(precision, s.len());
     s[..n].to_vec()
 }
 
-// C printf `%.*d`: decimal with a minimum of `precision` digits, zero-padded on
-// the left. The value is read as a signed `int` (the `%d` conversion). Per ISO
+// C printf '%.*d': decimal with a minimum of 'precision' digits, zero-padded on
+// the left. The value is read as a signed 'int' (the '%d' conversion). Per ISO
 // C, converting a zero value with a precision of zero yields no characters.
 fn fmt_dot_star_d(precision: usize, value: i32) -> Vec<u8> {
     if precision == 0 && value == 0 {
@@ -72,10 +72,10 @@ pub unsafe fn print_pckimmo(
     // t: &mut crate::hfst_transducer::HfstTransducer,  // deferred: HfstTransducer facade
 ) {
     unsafe {
-        // C++: `HfstBasicTransducer mutt {t};` — build the interchange graph from
-        // the facade. Deferred: needs the `HfstTransducer` facade
-        // (`crate::hfst_transducer::HfstTransducer`) and the
-        // `HfstBasicTransducer(const HfstTransducer&)` conversion constructor.
+        // C++: 'HfstBasicTransducer mutt {t};' — build the interchange graph from
+        // the facade. Deferred: needs the 'HfstTransducer' facade
+        // ('crate::hfst_transducer::HfstTransducer') and the
+        // 'HfstBasicTransducer(const HfstTransducer&)' conversion constructor.
         let mutt: HfstBasicTransducer = unimplemented!(
             "deferred: HfstBasicTransducer(const HfstTransducer&) + HfstTransducer facade"
         );

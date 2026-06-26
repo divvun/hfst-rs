@@ -1,30 +1,30 @@
 //! Port of
-//! `libhfst/src/implementations/compose_intersect/ComposeIntersectFst.{h,cc}`.
+//! 'libhfst/src/implementations/compose_intersect/ComposeIntersectFst.{h,cc}'.
 //!
 //! The "left-hand side" automaton of the compose-intersect machinery: it wraps
-//! an [`HfstBasicTransducer`], sorts its arcs, and indexes the transitions out
+//! an ['HfstBasicTransducer'], sorts its arcs, and indexes the transitions out
 //! of every state by input (or output) symbol number, so that
-//! [`ComposeIntersectFst::get_transitions`] can be answered quickly during the
-//! product construction. Identity transitions (`@_IDENTITY_SYMBOL_@`) are kept
-//! aside in `identity_transition_vector` and synthesised on demand for unknown
+//! ['ComposeIntersectFst::get_transitions'] can be answered quickly during the
+//! product construction. Identity transitions ('@_IDENTITY_SYMBOL_@') are kept
+//! aside in 'identity_transition_vector' and synthesised on demand for unknown
 //! symbols.
 //!
 //! 1:1 literal C++ -> Rust translation, bugs preserved.
 //!
 //! Notable structural mappings:
-//! * `TransitionSet = SpaceSavingSet<Transition, CompareTransitions>` from
-//!   [`crate::compose_intersect_utilities`]; the C++ static member
-//!   `template<> CompareTransitions TransitionSet::comparator = ...;` is carried
-//!   by the `CompareTransitions` type parameter / its [`Comparator`] impl.
-//! * `SymbolTransitionMap = std::map<size_t, TransitionSet>` -> `BTreeMap`.
-//! * The C++ `get_transitions`, `get_identity_transition`, `has_identity_transition`
-//!   and `get_symbol_number` take a non-const `this` (the first because `operator[]`
-//!   on the `std::map` may insert; the others are declared non-const in the .h);
-//!   they are ported with `&mut self`. (`get_final_weight`, `get_symbols`,
-//!   `is_known_symbol` stay `&self`.)
-//! * `HFST_THROW(StateNotDefined)` -> `crate::HFST_THROW!(StateNotDefined)`; the
-//!   `StateNotDefined` child exception (declared/defined in the `.cc`) is
-//!   reproduced here with the same shape as `hfst_exception_child!`.
+//! * 'TransitionSet = SpaceSavingSet<Transition, CompareTransitions>' from
+//!   ['crate::compose_intersect_utilities']; the C++ static member
+//!   'template<> CompareTransitions TransitionSet::comparator = ...;' is carried
+//!   by the 'CompareTransitions' type parameter / its ['Comparator'] impl.
+//! * 'SymbolTransitionMap = std::map<size_t, TransitionSet>' -> 'BTreeMap'.
+//! * The C++ 'get_transitions', 'get_identity_transition', 'has_identity_transition'
+//!   and 'get_symbol_number' take a non-const 'this' (the first because 'operator[]'
+//!   on the 'std::map' may insert; the others are declared non-const in the .h);
+//!   they are ported with '&mut self'. ('get_final_weight', 'get_symbols',
+//!   'is_known_symbol' stay '&self'.)
+//! * 'HFST_THROW(StateNotDefined)' -> 'crate::HFST_THROW!(StateNotDefined)'; the
+//!   'StateNotDefined' child exception (declared/defined in the '.cc') is
+//!   reproduced here with the same shape as 'hfst_exception_child!'.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -38,11 +38,11 @@ use crate::hfst_tropical_transducer_transition_data::HfstTropicalTransducerTrans
 // HFST_EXCEPTION_CHILD_DECLARATION(StateNotDefined);  (in the .h)
 // HFST_EXCEPTION_CHILD_DEFINITION(StateNotDefined);   (in the .cc)
 //
-// A subclass of `HfstException` whose constructor forwards `(name, file, line)`
-// to the base — exactly what the (non-exported) `hfst_exception_child!` macro
+// A subclass of 'HfstException' whose constructor forwards '(name, file, line)'
+// to the base — exactly what the (non-exported) 'hfst_exception_child!' macro
 // generates. Reproduced here because the macro is private to
-// `hfst_exception_defs`, and `HFST_THROW!(StateNotDefined)` needs
-// `StateNotDefined::new(String, String, usize)` in scope.
+// 'hfst_exception_defs', and 'HFST_THROW!(StateNotDefined)' needs
+// 'StateNotDefined::new(String, String, usize)' in scope.
 // [spec:hfst:def:compose-intersect-fst.state-not-defined]
 #[derive(Clone, Debug)]
 pub struct StateNotDefined {
@@ -104,8 +104,8 @@ impl Transition {
     }
 }
 
-// `bool operator==(const Transition&) const` made usable by `SpaceSavingSet`
-// (which compares elements with `==`).
+// 'bool operator==(const Transition&) const' made usable by 'SpaceSavingSet'
+// (which compares elements with '==').
 impl PartialEq for Transition {
     fn eq(&self, other: &Self) -> bool {
         self.operator_eq(other)
@@ -114,9 +114,9 @@ impl PartialEq for Transition {
 
 // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.compare-transitions]
 //
-// The default-constructed functor `static CompareTransitions comparator;`, used
-// as the `SpaceSavingSet` template parameter `C`. In Rust it carries no state, so
-// the comparison is provided as the `Comparator<Transition>` trait impl.
+// The default-constructed functor 'static CompareTransitions comparator;', used
+// as the 'SpaceSavingSet' template parameter 'C'. In Rust it carries no state, so
+// the comparison is provided as the 'Comparator<Transition>' trait impl.
 pub struct CompareTransitions;
 
 impl Comparator<Transition> for CompareTransitions {

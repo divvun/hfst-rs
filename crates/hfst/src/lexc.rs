@@ -1,25 +1,25 @@
 //! ABSOLUTE-faithful C++->Rust port of HFST's LEXC (lexicon) compiler,
-//! RESTRUCTURED to walk the `nfst-lexc` typed AST instead of the original
+//! RESTRUCTURED to walk the 'nfst-lexc' typed AST instead of the original
 //! Flex/Bison grammar. The AST-walk restructuring is the ONE sanctioned
 //! structural deviation in this port: the trie/transducer-building BEHAVIOUR of
-//! `compileLexical` and the `add*Entry` accumulators must still match the C++
-//! semantic actions in `lexc-parser.yy` / `LexcCompiler.cc` exactly.
+//! 'compileLexical' and the 'add*Entry' accumulators must still match the C++
+//! semantic actions in 'lexc-parser.yy' / 'LexcCompiler.cc' exactly.
 //!
-//! Ported from `libhfst/src/parsers/LexcCompiler.{h,cc}` and
-//! `libhfst/src/parsers/lexc-utils.{h,cc}`.
+//! Ported from 'libhfst/src/parsers/LexcCompiler.{h,cc}' and
+//! 'libhfst/src/parsers/lexc-utils.{h,cc}'.
 //!
 //! # C++ globals / file-statics folded onto the instance
-//!   * the `lexc_` singleton becomes `&mut self`;
-//!   * `static bool firstLexicon` becomes the `first_lexicon_` field;
-//!   * the unused `static StringVector multichar_symbols` is dropped.
+//!   * the 'lexc_' singleton becomes '&mut self';
+//!   * 'static bool firstLexicon' becomes the 'first_lexicon_' field;
+//!   * the unused 'static StringVector multichar_symbols' is dropped.
 //!
-//! # Stream / WINDOWS plumbing dropped — error text via `eprintln!`.
+//! # Stream / WINDOWS plumbing dropped — error text via 'eprintln!'.
 //!
-//! # Deferred (record as `unimplemented!`)
-//! - `parse(FILE*)` / `parse(const char*)` REPLACED by the AST-walk `compile(&str)`.
+//! # Deferred (record as 'unimplemented!')
+//! - 'parse(FILE*)' / 'parse(const char*)' REPLACED by the AST-walk 'compile(&str)'.
 //! - lexc-utils.cc Flex bookkeeping helpers (token positions, hand-lexer percent stripping).
-//! - `getStringTries()` / `getRegexpUnions()` — header-declared, never defined in .cc.
-//! - ICU grapheme segmentation inside `unicodeCheck_`.
+//! - 'getStringTries()' / 'getRegexpUnions()' — header-declared, never defined in .cc.
+//! - ICU grapheme segmentation inside 'unicodeCheck_'.
 
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
@@ -99,7 +99,7 @@ const LEXC_DFN_END: &str = "_@";
 const REG_EX_START: &str = "$_REG.";
 const REG_EX_END: &str = "_$";
 
-// `EPSILON_` and the med-alignment direction codes back `find_med_alingment`.
+// 'EPSILON_' and the med-alignment direction codes back 'find_med_alingment'.
 const EPSILON_: &str = "@@ANOTHER_EPSILON@@";
 const SUBSTITUTE: u32 = 2; // diag
 const DELETE: u32 = 1; // left
@@ -108,27 +108,27 @@ const INSERT: u32 = 0; // down
 // ==========================================================================
 // lexc-utils.cc — RECODE LEXC STYLE free helpers.
 //
-// The C++ encoders mutate-and-return a `std::string&`; here they are pure
-// `fn(&str, …) -> String`. These module-scope helpers are shared with the
-// `compileLexical` body (which calls `joiner_encode` / `flag_joiner_encode` /
-// `should_colourise`); they are owned by this registration/lexc-utils body.
+// The C++ encoders mutate-and-return a 'std::string&'; here they are pure
+// 'fn(&str, …) -> String'. These module-scope helpers are shared with the
+// 'compileLexical' body (which calls 'joiner_encode' / 'flag_joiner_encode' /
+// 'should_colourise'); they are owned by this registration/lexc-utils body.
 // ==========================================================================
 
-/// Port of `hfst::lexc::stripPercents`.
+/// Port of 'hfst::lexc::stripPercents'.
 fn strip_percents_str(s: &str) -> String {
     let stripped = s.replace("%%", "@PERCENT@");
     let stripped = stripped.replace('%', "");
     stripped.replace("@PERCENT@", "%")
 }
 
-/// Port of `hfst::lexc::addPercents`.
+/// Port of 'hfst::lexc::addPercents'.
 fn add_percents(s: &str) -> String {
     let added = s.replace('%', "%%");
     let added = added.replace('<', "%<");
     added.replace('>', "%>")
 }
 
-/// Port of `hfst::lexc::flagJoinerEncode`.
+/// Port of 'hfst::lexc::flagJoinerEncode'.
 fn flag_joiner_encode(s: &str, left: bool) -> String {
     if left {
         format!("{}{}{}", LEXC_FLAG_LEFT_START, s, LEXC_FLAG_END)
@@ -137,37 +137,37 @@ fn flag_joiner_encode(s: &str, left: bool) -> String {
     }
 }
 
-/// Port of `hfst::lexc::joinerEncode`.
+/// Port of 'hfst::lexc::joinerEncode'.
 fn joiner_encode(s: &str) -> String {
     format!("{}{}{}", LEXC_JOINER_START, s, LEXC_JOINER_END)
 }
 
-/// Port of `hfst::lexc::joinerDecode`.
+/// Port of 'hfst::lexc::joinerDecode'.
 fn joiner_decode(s: &str) -> String {
     let j_start = LEXC_JOINER_START.len();
     let j_end = LEXC_JOINER_END.len();
     s[j_start..s.len() - j_end].to_string()
 }
 
-/// Port of `hfst::lexc::regExpresionEncode` (suffix is `LEXC_JOINER_END`, as in
+/// Port of 'hfst::lexc::regExpresionEncode' (suffix is 'LEXC_JOINER_END', as in
 /// the C++).
 fn reg_expresion_encode(s: &str) -> String {
     format!("{}{}{}", REG_EX_START, s, LEXC_JOINER_END)
 }
 
-/// Port of `hfst::lexc::regExpresionDecode`.
+/// Port of 'hfst::lexc::regExpresionDecode'.
 fn reg_expresion_decode(s: &str) -> String {
     let j_start = REG_EX_START.len();
     let j_end = LEXC_JOINER_END.len();
     s[j_start..s.len() - j_end].to_string()
 }
 
-/// Port of `hfst::lexc::xreDefinitionEncode`.
+/// Port of 'hfst::lexc::xreDefinitionEncode'.
 fn xre_definition_encode(s: &str) -> String {
     format!("{}{}{}", LEXC_DFN_START, s, LEXC_DFN_END)
 }
 
-// replaces the first `@ZERO@` with "0" in a string
+// replaces the first '@ZERO@' with "0" in a string
 // [spec:hfst:def:lexc-utils.hfst.lexc.replace-zero-fn]
 // [spec:hfst:sem:lexc-utils.hfst.lexc.replace-zero-fn]
 fn replace_zero(s: &str) -> String {
@@ -264,11 +264,11 @@ fn find_med_alingment(s1: &[String], s2: &[String]) -> (Vec<String>, Vec<String>
     (medcwordin, medcwordout)
 }
 
-/// Parse a weight out of an entry gloss formatted `"weight: N"`.
+/// Parse a weight out of an entry gloss formatted '"weight: N"'.
 ///
-/// Mirrors `handle_string_entry_common` in `lexc-parser.yy`: locate the
-/// `weight:` marker, then the leading numeric run (chars in `-0.123456789`),
-/// and parse it. Anything else yields `0.0`.
+/// Mirrors 'handle_string_entry_common' in 'lexc-parser.yy': locate the
+/// 'weight:' marker, then the leading numeric run (chars in '-0.123456789'),
+/// and parse it. Anything else yields '0.0'.
 fn weight_from_gloss(gloss: Option<&str>) -> f64 {
     let gloss = match gloss {
         Some(g) if !g.is_empty() => g,
@@ -298,10 +298,10 @@ fn weight_from_gloss(gloss: Option<&str>) -> f64 {
 // ==========================================================================
 
 impl LexcCompiler {
-    /// Common body of the `LexcCompiler(impl)` and
-    /// `LexcCompiler(impl, withFlags, alignStrings)` constructors: seeds the
-    /// tokenizer with the epsilon/zero multichars + the `#` joiner, registers
-    /// `#` as a lexicon name, and configures `xre_`.
+    /// Common body of the 'LexcCompiler(impl)' and
+    /// 'LexcCompiler(impl, withFlags, alignStrings)' constructors: seeds the
+    /// tokenizer with the epsilon/zero multichars + the '#' joiner, registers
+    /// '#' as a lexicon name, and configures 'xre_'.
     fn seeded(format: ImplementationType) -> LexcCompiler {
         let mut compiler = LexcCompiler {
             format_: format,
@@ -352,14 +352,14 @@ impl LexcCompiler {
         compiler
     }
 
-    /// Port of `LexcCompiler(ImplementationType impl)` (unannotated in the .cc).
+    /// Port of 'LexcCompiler(ImplementationType impl)' (unannotated in the .cc).
     pub fn new(format: ImplementationType) -> LexcCompiler {
         LexcCompiler::seeded(format)
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.lexc-compiler-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.lexc-compiler-fn]
-    /// Port of `LexcCompiler(impl, withFlags, alignStrings)`.
+    /// Port of 'LexcCompiler(impl, withFlags, alignStrings)'.
     pub fn new_with_flags(
         format: ImplementationType,
         with_flags: bool,
@@ -391,7 +391,7 @@ impl LexcCompiler {
         self.lexiconNames_.insert("#".to_string());
         self.stringsTrie_ = HfstBasicTransducer::new(); // ?
         // The owned regexps_ transducers are dropped by clear() (C++ delete'd
-        // the raw pointers here). The C++ `static bool firstLexicon` was a
+        // the raw pointers here). The C++ 'static bool firstLexicon' was a
         // function-static and is NOT touched by reset(); first_lexicon_ is left
         // untouched to mirror that.
         self.regexps_.clear();
@@ -470,7 +470,7 @@ impl LexcCompiler {
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.set-error-stream-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.set-error-stream-fn]
-    /// The C++ stored an `std::ostream*` and forwarded it to `xre_`; the port
+    /// The C++ stored an 'std::ostream*' and forwarded it to 'xre_'; the port
     /// drops the stream plumbing (errors go to stderr), so this is a no-op.
     pub fn set_error_stream<T>(&mut self, _os: T) {}
 
@@ -498,8 +498,8 @@ impl LexcCompiler {
         }
     }
 
-    /// Port of `LexcCompiler::unicodeCheck_`. The ICU grapheme-segmentation
-    /// guard (auto-adding multi-codepoint graphemes to `alphabets_`) is deferred;
+    /// Port of 'LexcCompiler::unicodeCheck_'. The ICU grapheme-segmentation
+    /// guard (auto-adding multi-codepoint graphemes to 'alphabets_') is deferred;
     /// for the common single-codepoint-grapheme path the C++ adds nothing, so
     /// this is faithful for ASCII and only skips the multi-codepoint warning.
     fn unicode_check_(&mut self, _data: &str) -> &mut Self {
@@ -526,7 +526,7 @@ impl LexcCompiler {
         self
     }
 
-    /// Construct vector `nameJoiner data contJoiner` and add it to the trie.
+    /// Construct vector 'nameJoiner data contJoiner' and add it to the trie.
     pub fn add_string_entry(&mut self, data: &str, continuation: &str, weight: f64) -> &mut Self {
         self.currentEntries_ += 1;
         self.totalEntries_ += 1;
@@ -612,7 +612,7 @@ impl LexcCompiler {
     // callback function to stuff so static and uses global singleton :-(
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.warn-about-one-sided-flags-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.warn-about-one-sided-flags-fn]
-    /// In the C++ this was a static tokenize callback reaching the `lexc_`
+    /// In the C++ this was a static tokenize callback reaching the 'lexc_'
     /// global; the re-entrant port applies it to the tokenized pairs directly.
     fn warn_about_one_sided_flags(&mut self, symbol_pair: &StringPair) {
         if crate::hfst_flag_diacritics::FdOperation::is_diacritic(&symbol_pair.0) {
@@ -745,7 +745,7 @@ impl LexcCompiler {
             }
         }
 
-        // The C++ passed `warn_about_one_sided_flags` as the tokenize callback;
+        // The C++ passed 'warn_about_one_sided_flags' as the tokenize callback;
         // the re-entrant port tokenizes plainly then applies it to each pair.
         for idx in 0..new_vector.len() {
             let sp = new_vector[idx].clone();
@@ -820,7 +820,7 @@ impl LexcCompiler {
         self
     }
 
-    /// Construct transducer `nameJoiner XRE contJoiner` and add it to the trie.
+    /// Construct transducer 'nameJoiner XRE contJoiner' and add it to the trie.
     pub fn add_xre_entry(&mut self, regexp: &str, continuation: &str, weight: f64) -> &mut Self {
         self.currentEntries_ += 1;
         self.totalEntries_ += 1;
@@ -942,7 +942,7 @@ impl LexcCompiler {
             // [spec:hfst:def:lexc-compiler.hfst.lexc.encoded-name-fn]
             // [spec:hfst:sem:lexc-compiler.hfst.lexc.encoded-name-fn]
             // NOTE: faithful to the C++, the second encode is applied to the
-            // already-`$P`-encoded string (flagJoinerEncode mutated in place).
+            // already-'$P'-encoded string (flagJoinerEncode mutated in place).
             let mut encoded_name = flag_joiner_encode(lexicon_name, false);
             self.tokenizer_.add_multichar_symbol(&encoded_name);
             encoded_name = flag_joiner_encode(&encoded_name, true);
@@ -993,16 +993,16 @@ impl LexcCompiler {
 
     // ----- AST-walk driver (replaces parse(FILE*) / parse(filename)) -----
 
-    /// PUBLIC entry point: parse `lexc_source` via `nfst_lexc::parse`, walk the
-    /// typed AST through the registration API, then run `compileLexical`. This
-    /// replaces the Flex/Bison `parse(FILE*)` / `parse(const char*)` paths.
+    /// PUBLIC entry point: parse 'lexc_source' via 'nfst_lexc::parse', walk the
+    /// typed AST through the registration API, then run 'compileLexical'. This
+    /// replaces the Flex/Bison 'parse(FILE*)' / 'parse(const char*)' paths.
     /// Returns a raw owning pointer (null on parse error), matching the C++
-    /// `compileLexical` contract.
+    /// 'compileLexical' contract.
     pub fn compile(&mut self, lexc_source: &str) -> *mut HfstTransducer {
         match nfst_lexc::parse(lexc_source) {
             Ok(ast) => {
                 self.compile_file(&ast.value);
-                // mirrors `xre_.remove_defined_multichar_symbols()` in parse()
+                // mirrors 'xre_.remove_defined_multichar_symbols()' in parse()
                 self.xre_.remove_defined_multichar_symbols();
                 self.compile_lexical()
             }
@@ -1015,9 +1015,9 @@ impl LexcCompiler {
 
     /// Walk the typed AST, dispatching each section/entry to the matching
     /// registration method. This is the AST-walk equivalent of the bison
-    /// semantic actions (`handle_multichar` / `handle_noflag` /
-    /// `handle_definition` / `handle_lexicon_name` / `handle_string_entry` /
-    /// `handle_string_pair_entry` / `handle_regexp_entry`).
+    /// semantic actions ('handle_multichar' / 'handle_noflag' /
+    /// 'handle_definition' / 'handle_lexicon_name' / 'handle_string_entry' /
+    /// 'handle_string_pair_entry' / 'handle_regexp_entry').
     pub fn compile_file(&mut self, ast: &LexcFile) {
         for mc in &ast.multichars {
             self.add_alphabet(&mc.value.0);
@@ -1030,7 +1030,7 @@ impl LexcCompiler {
             self.add_xre_definition(&def.value.name, &body);
         }
         for lex in &ast.lexicons {
-            // mirror the C++ titlecase-`Lexicon` warning (lexc-parser.yy
+            // mirror the C++ titlecase-'Lexicon' warning (lexc-parser.yy
             // LEXICON_START_WRONG_CASE), emitted before the lexicon is set.
             if lex.value.case_warning {
                 if self.treat_warnings_as_errors_ {
@@ -1071,15 +1071,15 @@ impl LexcCompiler {
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.compile-lexical-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.compile-lexical-fn]
     //
-    // Port of `LexcCompiler::compileLexical()` (LexcCompiler.cc ~1300-1699).
+    // Port of 'LexcCompiler::compileLexical()' (LexcCompiler.cc ~1300-1699).
     //
-    // The C++ `std::ostream *err = get_stream(error_)` plumbing and every
-    // `flush(err)` are folded into plain `eprintln!`/`eprint!` to stderr, per the
-    // module docs (the non-WINDOWS code path). The `if (debug)` AT&T dumps are
-    // omitted because the file-global `bool debug` is always `false`. The
-    // `COLOUR_*` `#define`s are inlined as literal ANSI escapes to avoid a
+    // The C++ 'std::ostream *err = get_stream(error_)' plumbing and every
+    // 'flush(err)' are folded into plain 'eprintln!'/'eprint!' to stderr, per the
+    // module docs (the non-WINDOWS code path). The 'if (debug)' AT&T dumps are
+    // omitted because the file-global 'bool debug' is always 'false'. The
+    // 'COLOUR_*' '#define's are inlined as literal ANSI escapes to avoid a
     // duplicate module-scope definition with the lexc-utils body (which owns
-    // `should_colourise`).
+    // 'should_colourise').
     pub fn compile_lexical(&mut self) -> *mut HfstTransducer {
         if self.parseErrors_ {
             eprintln!("compilation aborted due to previous errors");
@@ -1353,11 +1353,11 @@ impl LexcCompiler {
         Box::into_raw(Box::new(rv))
     }
 
-    // Port of `LexcCompiler::printConnectedness(bool &warnings_generated)`
+    // Port of 'LexcCompiler::printConnectedness(bool &warnings_generated)'
     // (LexcCompiler.cc ~1701-1765): the missing/unused-lexicon validation. The
-    // C++ `set_difference` over the sorted `std::set`s becomes `BTreeSet`
-    // differences (also sorted). The `COLOUR_*` escapes are inlined to stderr,
-    // and `flush(err)` is dropped (folded into `eprintln!`).
+    // C++ 'set_difference' over the sorted 'std::set's becomes 'BTreeSet'
+    // differences (also sorted). The 'COLOUR_*' escapes are inlined to stderr,
+    // and 'flush(err)' is dropped (folded into 'eprintln!').
     pub fn print_connectedness(&self, warnings_generated: &mut bool) -> &Self {
         if self.lexiconNames_ != self.continuations_ {
             let lex_minus_cont: Vec<&String> = self

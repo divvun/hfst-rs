@@ -1,35 +1,35 @@
 //! Port of
-//! `libhfst/src/implementations/compose_intersect/ComposeIntersectLexicon.{h,cc}`.
+//! 'libhfst/src/implementations/compose_intersect/ComposeIntersectLexicon.{h,cc}'.
 //!
 //! The "lexicon" automaton of the compose-intersect machinery, derived from
-//! [`ComposeIntersectFst`]. It drives the lazy product construction
-//! ([`ComposeIntersectLexicon::compose_with_rules`]) between this lexicon and a
+//! ['ComposeIntersectFst']. It drives the lazy product construction
+//! (['ComposeIntersectLexicon::compose_with_rules']) between this lexicon and a
 //! rule transducer: pairs of (lexicon-state, rule-state) are mapped to states of
-//! the `result` [`HfstBasicTransducer`] on demand, with an agenda (FIFO queue)
+//! the 'result' ['HfstBasicTransducer'] on demand, with an agenda (FIFO queue)
 //! holding the states still to expand.
 //!
 //! 1:1 literal C++ -> Rust translation, bugs preserved.
 //!
 //! Structural mappings:
-//! * C++ inheritance `ComposeIntersectLexicon : public ComposeIntersectFst` ->
-//!   struct composition with a `base: ComposeIntersectFst` field (Wave-2 port
-//!   convention). The protected base member `transition_map_vector`, read
-//!   directly by `compute_state`, is exposed as `pub(crate)` on the base.
-//! * `std::pair<HfstState,HfstState>` -> `(HfstState, HfstState)` tuple;
-//!   `std::map` -> `BTreeMap`; `std::set` -> `BTreeSet`; `std::vector` -> `Vec`;
-//!   `std::queue<HfstState>` -> `VecDeque<HfstState>`
-//!   (`empty()`/`front()`/`pop()`/`push()` -> `is_empty()`/`front()`/
-//!   `pop_front()`/`push_back()`).
-//! * `HFST_THROW(StateNotDefined)` -> `crate::HFST_THROW!(StateNotDefined)`,
-//!   using the `StateNotDefined` child exception defined in
-//!   [`crate::compose_intersect_fst`].
-//! * `FdOperation::is_diacritic` -> [`crate::hfst_flag_diacritics::FdOperation::is_diacritic`].
-//! * The C++ parameter type of [`ComposeIntersectLexicon::compose_with_rules`] is
-//!   `ComposeIntersectRule *`, and the virtual methods `get_transitions` /
-//!   `get_final_weight` would, in C++, dispatch to a `ComposeIntersectRulePair`
+//! * C++ inheritance 'ComposeIntersectLexicon : public ComposeIntersectFst' ->
+//!   struct composition with a 'base: ComposeIntersectFst' field (Wave-2 port
+//!   convention). The protected base member 'transition_map_vector', read
+//!   directly by 'compute_state', is exposed as 'pub(crate)' on the base.
+//! * 'std::pair<HfstState,HfstState>' -> '(HfstState, HfstState)' tuple;
+//!   'std::map' -> 'BTreeMap'; 'std::set' -> 'BTreeSet'; 'std::vector' -> 'Vec';
+//!   'std::queue<HfstState>' -> 'VecDeque<HfstState>'
+//!   ('empty()'/'front()'/'pop()'/'push()' -> 'is_empty()'/'front()'/
+//!   'pop_front()'/'push_back()').
+//! * 'HFST_THROW(StateNotDefined)' -> 'crate::HFST_THROW!(StateNotDefined)',
+//!   using the 'StateNotDefined' child exception defined in
+//!   ['crate::compose_intersect_fst'].
+//! * 'FdOperation::is_diacritic' -> ['crate::hfst_flag_diacritics::FdOperation::is_diacritic'].
+//! * The C++ parameter type of ['ComposeIntersectLexicon::compose_with_rules'] is
+//!   'ComposeIntersectRule *', and the virtual methods 'get_transitions' /
+//!   'get_final_weight' would, in C++, dispatch to a 'ComposeIntersectRulePair'
 //!   override when one is passed. The composition-based port takes a concrete
-//!   `&mut ComposeIntersectRule`; that virtual dispatch is exercised only by the
-//!   (skipped) `MAIN_TEST` driver, so the live code path is faithful. See notes.
+//!   '&mut ComposeIntersectRule'; that virtual dispatch is exercised only by the
+//!   (skipped) 'MAIN_TEST' driver, so the live code path is faithful. See notes.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -59,7 +59,7 @@ pub type StateQueue = VecDeque<HfstState>;
 
 // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon]
 pub struct ComposeIntersectLexicon {
-    // C++: `class ComposeIntersectLexicon : public ComposeIntersectFst`.
+    // C++: 'class ComposeIntersectLexicon : public ComposeIntersectFst'.
     base: ComposeIntersectFst,
 
     // protected
@@ -124,14 +124,14 @@ impl ComposeIntersectLexicon {
             self.agenda.pop_front();
         }
 
-        // NB: matches the C++ — `lexicon_non_epsilon_states` is *not* cleared here.
+        // NB: matches the C++ — 'lexicon_non_epsilon_states' is *not* cleared here.
         self.result = HfstBasicTransducer::new();
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.map-state-and-add-to-agenda-fn]
     // [spec:hfst:sem:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.map-state-and-add-to-agenda-fn]
     //
-    // `allow_lexicon_epsilons` is unused in the C++ body too; carried for fidelity.
+    // 'allow_lexicon_epsilons' is unused in the C++ body too; carried for fidelity.
     fn map_state_and_add_to_agenda(
         &mut self,
         p: &StatePair,
@@ -182,7 +182,7 @@ impl ComposeIntersectLexicon {
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.get-state-fn]
     // [spec:hfst:sem:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.get-state-fn]
     //
-    // C++ default arg `bool allow_lexicon_epsilons = true`; call sites pass the
+    // C++ default arg 'bool allow_lexicon_epsilons = true'; call sites pass the
     // value the default would have produced.
     fn get_state(&mut self, p: &StatePair, allow_lexicon_epsilons: bool) -> HfstState {
         if !self.state_pair_map.contains_key(p) {
@@ -245,10 +245,10 @@ impl ComposeIntersectLexicon {
 
         //bool lexicon_eps_transition_found = false;
 
-        // The C++ iterates `transition_map_vector[p.first]` (a base/protected
-        // member) while mutating `result`/`agenda`/... through the called
+        // The C++ iterates 'transition_map_vector[p.first]' (a base/protected
+        // member) while mutating 'result'/'agenda'/... through the called
         // helpers. Snapshot the per-state map so the iteration does not alias
-        // `&mut self`; the lexicon's own `transition_map_vector` is never
+        // '&mut self'; the lexicon's own 'transition_map_vector' is never
         // modified inside this loop, so the snapshot is observably identical.
         let entries: Vec<(usize, TransitionSet)> = self.base.transition_map_vector[p.0 as usize]
             .iter()
@@ -356,8 +356,8 @@ impl ComposeIntersectLexicon {
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.identity-compose-fn]
     // [spec:hfst:sem:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.identity-compose-fn]
     //
-    // Declared in the header (`ComposeIntersectLexicon.h`) but never defined in
-    // `ComposeIntersectLexicon.cc`; reproduced as an unimplemented stub.
+    // Declared in the header ('ComposeIntersectLexicon.h') but never defined in
+    // 'ComposeIntersectLexicon.cc'; reproduced as an unimplemented stub.
     #[allow(dead_code)]
     fn identity_compose(
         &mut self,

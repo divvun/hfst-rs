@@ -1,22 +1,22 @@
-//! Port of `libhfst/src/implementations/HfstTransition.h`.
+//! Port of 'libhfst/src/implementations/HfstTransition.h'.
 //!
-//! The transition template `HfstTransition<C>`: a target state plus transition
-//! data of type `C`. The C++ template's implicit requirements on `C` are
-//! captured by the Rust [`TransitionData`] trait (a port-only construct, no spec
-//! id of its own), implemented for [`HfstTropicalTransducerTransitionData`].
+//! The transition template 'HfstTransition<C>': a target state plus transition
+//! data of type 'C'. The C++ template's implicit requirements on 'C' are
+//! captured by the Rust ['TransitionData'] trait (a port-only construct, no spec
+//! id of its own), implemented for ['HfstTropicalTransducerTransitionData'].
 //!
-//! `HfstTransition<C>::get_symbol_number` calls `C::get_symbol_number`, which
-//! `HfstTropicalTransducerTransitionData` does not provide — it is an
+//! 'HfstTransition<C>::get_symbol_number' calls 'C::get_symbol_number', which
+//! 'HfstTropicalTransducerTransitionData' does not provide — it is an
 //! uninstantiable (never-compiled) template member, so it is not ported.
-//! `HfstFastTransition` is likewise not ported: its data type
-//! `HfstFastTransitionData` does not exist (its include is commented out).
+//! 'HfstFastTransition' is likewise not ported: its data type
+//! 'HfstFastTransitionData' does not exist (its include is commented out).
 
 use std::cmp::Ordering;
 
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_tropical_transducer_transition_data::HfstTropicalTransducerTransitionData;
 
-/// The implicit C++ template requirements on the transition-data parameter `C`.
+/// The implicit C++ template requirements on the transition-data parameter 'C'.
 pub trait TransitionData {
     type SymbolType;
     type WeightType;
@@ -180,13 +180,13 @@ impl<C: TransitionData> HfstTransition<C> {
 // [spec:hfst:def:hfst-transition.hfst.implementations.hfst-transition-fn]
 // [spec:hfst:sem:hfst-transition.hfst.implementations.hfst-transition-fn]
 //
-// The C++ destructor `~HfstTransition() {}` is empty; an explicit empty Drop is
+// The C++ destructor '~HfstTransition() {}' is empty; an explicit empty Drop is
 // the faithful equivalent.
 impl<C: TransitionData> Drop for HfstTransition<C> {
     fn drop(&mut self) {}
 }
 
-// `operator<` (`bool operator<`) made usable in ordered containers. Requires the
+// 'operator<' ('bool operator<') made usable in ordered containers. Requires the
 // data to be ordered.
 impl<C: TransitionData + Ord> PartialEq for HfstTransition<C> {
     fn eq(&self, other: &Self) -> bool {

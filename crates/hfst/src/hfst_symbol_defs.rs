@@ -1,10 +1,10 @@
-//! Port of `libhfst/src/HfstSymbolDefs.{h,cc}` — symbols, symbol pairs, and
+//! Port of 'libhfst/src/HfstSymbolDefs.{h,cc}' — symbols, symbol pairs, and
 //! sets of symbols.
 //!
-//! The container typedefs shared with `HfstDataTypes.h` (`StringPair`,
-//! `StringVector`, `StringPairVector`, `StringPairSet`, `HfstTwoLevelPath`,
-//! `HfstTwoLevelPaths`) are owned by [`crate::hfst_data_types`] and re-exported
-//! here under their `HfstSymbolDefs` spec ids.
+//! The container typedefs shared with 'HfstDataTypes.h' ('StringPair',
+//! 'StringVector', 'StringPairVector', 'StringPairSet', 'HfstTwoLevelPath',
+//! 'HfstTwoLevelPaths') are owned by ['crate::hfst_data_types'] and re-exported
+//! here under their 'HfstSymbolDefs' spec ids.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -66,8 +66,8 @@ pub const internal_default: &str = "@_DEFAULT_SYMBOL_@";
 // [spec:hfst:def:hfst-symbol-defs.hfst.is-epsilon-fn]
 // [spec:hfst:sem:hfst-symbol-defs.hfst.is-epsilon-fn]
 //
-// The C++ `const char *` overloads collapse onto these `&str` functions: both
-// `std::string == internal_epsilon` and `std::string(str) == internal_epsilon`
+// The C++ 'const char *' overloads collapse onto these '&str' functions: both
+// 'std::string == internal_epsilon' and 'std::string(str) == internal_epsilon'
 // are the same equality test.
 pub fn is_epsilon(str: &str) -> bool {
     str == internal_epsilon
@@ -122,8 +122,8 @@ pub mod symbols {
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.std.string-to-string-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.std.string-to-string-fn]
     //
-    // `to_string(const StringVector &, bool spaces=false)`. The default
-    // argument is dropped (Rust has none); callers pass `spaces` explicitly.
+    // 'to_string(const StringVector &, bool spaces=false)'. The default
+    // argument is dropped (Rust has none); callers pass 'spaces' explicitly.
     pub fn to_string_string_vector(sv: &StringVector, spaces: bool) -> String {
         let mut result = String::new();
         for (i, s) in sv.iter().enumerate() {
@@ -138,7 +138,7 @@ pub mod symbols {
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.to-string-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.to-string-fn]
     //
-    // `to_string(const StringPairVector &, bool spaces)`.
+    // 'to_string(const StringPairVector &, bool spaces)'.
     pub fn to_string_string_pair_vector(spv: &StringPairVector, spaces: bool) -> String {
         let mut result = String::new();
         for (i, it) in spv.iter().enumerate() {
@@ -167,7 +167,7 @@ pub mod symbols {
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.to-string-vector-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.to-string-vector-fn]
     //
-    // `to_string_vector(const StringPairVector &, bool input_side)`.
+    // 'to_string_vector(const StringPairVector &, bool input_side)'.
     pub fn to_string_vector_from_string_pair_vector(
         spv: &StringPairVector,
         input_side: bool,
@@ -186,7 +186,7 @@ pub mod symbols {
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.string-vector-to-string-vector-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.string-vector-to-string-vector-fn]
     //
-    // `to_string_vector(const HfstTwoLevelPath & path)`.
+    // 'to_string_vector(const HfstTwoLevelPath & path)'.
     pub fn to_string_vector_from_two_level_path(path: &HfstTwoLevelPath) -> StringVector {
         let mut result = StringVector::new();
         let spv = path.second.clone();
@@ -199,7 +199,7 @@ pub mod symbols {
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.longest-path-length-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.longest-path-length-fn]
     //
-    // `longest_path_length(const HfstTwoLevelPaths &, bool equally_long=false)`.
+    // 'longest_path_length(const HfstTwoLevelPaths &, bool equally_long=false)'.
     pub fn longest_path_length(paths: &HfstTwoLevelPaths, equally_long: bool) -> i32 {
         if paths.len() == 0 {
             return -1;
@@ -249,7 +249,7 @@ pub mod symbols {
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.hfst.hfst-two-level-paths-remove-flags-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.hfst.hfst-two-level-paths-remove-flags-fn]
     //
-    // `remove_flags(const HfstTwoLevelPaths &)`.
+    // 'remove_flags(const HfstTwoLevelPaths &)'.
     pub fn remove_flags_two_level_paths(paths: &HfstTwoLevelPaths) -> HfstTwoLevelPaths {
         let mut result = HfstTwoLevelPaths::new();
 
@@ -265,7 +265,7 @@ pub mod symbols {
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.hfst.hfst-two-level-path-remove-flags-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.hfst.hfst-two-level-path-remove-flags-fn]
     //
-    // `remove_flags(const HfstTwoLevelPath &)`.
+    // 'remove_flags(const HfstTwoLevelPath &)'.
     pub fn remove_flags_two_level_path(path: &HfstTwoLevelPath) -> HfstTwoLevelPath {
         let spv = path.second.clone();
         let spv = remove_flags_string_pair_vector(&spv);
@@ -278,7 +278,7 @@ pub mod symbols {
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.string-vector-remove-flags-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.string-vector-remove-flags-fn]
     //
-    // `remove_flags(const StringVector &)`.
+    // 'remove_flags(const StringVector &)'.
     pub fn remove_flags_string_vector(v: &StringVector) -> StringVector {
         let mut v_wo_flags = StringVector::new();
         for it in v.iter() {
@@ -292,7 +292,7 @@ pub mod symbols {
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.remove-flags-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.remove-flags-fn]
     //
-    // `remove_flags(const StringPairVector &)`.
+    // 'remove_flags(const StringPairVector &)'.
     pub fn remove_flags_string_pair_vector(v: &StringPairVector) -> StringPairVector {
         let mut v_wo_flags = StringPairVector::new();
         for it in v.iter() {

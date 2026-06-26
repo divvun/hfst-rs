@@ -1,30 +1,30 @@
 //! ABSOLUTE-faithful C++->Rust port of HFST's XRE (Xerox regex) compiler,
-//! RESTRUCTURED to walk the `nfst-xre` typed AST instead of the original
+//! RESTRUCTURED to walk the 'nfst-xre' typed AST instead of the original
 //! Flex/Bison grammar. The AST-walk restructuring is the ONE sanctioned
 //! structural deviation in this port: the transducer-building BEHAVIOUR must
-//! still match the C++ semantic actions in `xre_parse.yy` / `xre_utils.cc`
+//! still match the C++ semantic actions in 'xre_parse.yy' / 'xre_utils.cc'
 //! exactly.
 //!
-//! Ported from `libhfst/src/parsers/XreCompiler.{h,cc}` and
-//! `libhfst/src/parsers/xre_utils.{h,cc}`.
+//! Ported from 'libhfst/src/parsers/XreCompiler.{h,cc}' and
+//! 'libhfst/src/parsers/xre_utils.{h,cc}'.
 //!
-//! # C++ globals folded into [`XreCompiler`]
+//! # C++ globals folded into ['XreCompiler']
 //!
-//! The C++ implementation kept compilation state in `xre_utils.cc` file-scope
-//! globals (`definitions`, `function_definitions`, `function_arguments`,
-//! `symbol_lists`, `format`, `expand_definitions`, `harmonize_`,
-//! `harmonize_flags_`, `verbose_`). Because this port walks the AST directly
-//! and is re-entrant, those globals become instance fields on [`XreCompiler`]
+//! The C++ implementation kept compilation state in 'xre_utils.cc' file-scope
+//! globals ('definitions', 'function_definitions', 'function_arguments',
+//! 'symbol_lists', 'format', 'expand_definitions', 'harmonize_',
+//! 'harmonize_flags_', 'verbose_'). Because this port walks the AST directly
+//! and is re-entrant, those globals become instance fields on ['XreCompiler']
 //! and the per-compile evaluation state, instead of process-wide mutable
 //! statics.
 //!
-//! # Deferred (record as `unimplemented!`)
+//! # Deferred (record as 'unimplemented!')
 //!
-//! - [`XreExpr::ReadFile`] — `@bin`/`@txt`/`@stxt`/`@pl`/`@re` file I/O loads.
-//! - The prolog/regex `@`-loads reached through the same path.
-//! - `contains_twolc` (the two-level twolc-contains helper; "doesn't work at
+//! - ['XreExpr::ReadFile'] — '@bin'/'@txt'/'@stxt'/'@pl'/'@re' file I/O loads.
+//! - The prolog/regex '@'-loads reached through the same path.
+//! - 'contains_twolc' (the two-level twolc-contains helper; "doesn't work at
 //!   the moment" in the C++ source) — kept as a documented helper that panics
-//!   with `unimplemented!`.
+//!   with 'unimplemented!'.
 
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
@@ -42,30 +42,30 @@ use nfst_xre::{
 use crate::hfst_data_types::ImplementationType;
 use crate::hfst_transducer::HfstTransducer;
 
-/// Arguments bundle mirroring `hfst::xre::XreConstructorArguments`
-/// (`XreCompiler.h`). Carries the four definition maps plus the target
-/// implementation format used to seed a fresh [`XreCompiler`]. Owned
-/// `HfstTransducer` values replace the C++ `HfstTransducer*` map values
-/// (the C++ destructor `delete`d them; ownership lives in the map here).
+/// Arguments bundle mirroring 'hfst::xre::XreConstructorArguments'
+/// ('XreCompiler.h'). Carries the four definition maps plus the target
+/// implementation format used to seed a fresh ['XreCompiler']. Owned
+/// 'HfstTransducer' values replace the C++ 'HfstTransducer*' map values
+/// (the C++ destructor 'delete'd them; ownership lives in the map here).
 ///
-/// `std::map` -> `BTreeMap`, `std::set` -> `BTreeSet` per port conventions.
+/// 'std::map' -> 'BTreeMap', 'std::set' -> 'BTreeSet' per port conventions.
 // [spec:hfst:def:xre-compiler.hfst.xre.xre-constructor-arguments]
 #[derive(Clone)]
 pub struct XreConstructorArguments {
-    /// `std::map<std::string, hfst::HfstTransducer*> definitions`.
+    /// 'std::map<std::string, hfst::HfstTransducer*> definitions'.
     pub definitions: BTreeMap<String, HfstTransducer>,
-    /// `std::map<std::string, std::string> function_definitions`.
+    /// 'std::map<std::string, std::string> function_definitions'.
     pub function_definitions: BTreeMap<String, String>,
-    /// `std::map<std::string, unsigned int> function_arguments`.
+    /// 'std::map<std::string, unsigned int> function_arguments'.
     pub function_arguments: BTreeMap<String, u32>,
-    /// `std::map<std::string, std::set<std::string>> list_definitions`.
+    /// 'std::map<std::string, std::set<std::string>> list_definitions'.
     pub list_definitions: BTreeMap<String, BTreeSet<String>>,
-    /// `hfst::ImplementationType format`.
+    /// 'hfst::ImplementationType format'.
     pub format: ImplementationType,
 }
 
 impl XreConstructorArguments {
-    /// Port of the `XreConstructorArguments(...)` field-copy constructor.
+    /// Port of the 'XreConstructorArguments(...)' field-copy constructor.
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-constructor-arguments.xre-constructor-arguments-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-constructor-arguments.xre-constructor-arguments-fn]
     pub fn new(
@@ -85,46 +85,46 @@ impl XreConstructorArguments {
     }
 }
 
-/// Lets `XreCompiler::new(..)` accept either an [`ImplementationType`] or a
-/// `&XreConstructorArguments`, reproducing the two C++ constructor overloads
-/// (`XreCompiler(ImplementationType)` and
-/// `XreCompiler(const XreConstructorArguments&)`) behind a single entry point,
-/// matching the existing facade call sites in `hfst_transducer.rs`.
+/// Lets 'XreCompiler::new(..)' accept either an ['ImplementationType'] or a
+/// '&XreConstructorArguments', reproducing the two C++ constructor overloads
+/// ('XreCompiler(ImplementationType)' and
+/// 'XreCompiler(const XreConstructorArguments&)') behind a single entry point,
+/// matching the existing facade call sites in 'hfst_transducer.rs'.
 pub trait XreCompilerNew {
-    /// Build the compiler from `self` (a format, or an args bundle).
+    /// Build the compiler from 'self' (a format, or an args bundle).
     fn into_xre_compiler(self) -> XreCompiler;
 }
 
 /// A compiler holding the information needed to compile XREs.
 ///
-/// Port of `hfst::xre::XreCompiler` plus the `xre_utils.cc` file-scope globals
+/// Port of 'hfst::xre::XreCompiler' plus the 'xre_utils.cc' file-scope globals
 /// it relied on. Field names match the C++ members 1:1
-/// (`definitions_`, `function_definitions_`, `function_arguments_`,
-/// `list_definitions_`, `format_`, `verbose_`), with the former globals
-/// `expand_definitions`, `harmonize_`, `harmonize_flags_` added as instance
+/// ('definitions_', 'function_definitions_', 'function_arguments_',
+/// 'list_definitions_', 'format_', 'verbose_'), with the former globals
+/// 'expand_definitions', 'harmonize_', 'harmonize_flags_' added as instance
 /// state so compilation is re-entrant.
 // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler]
 pub struct XreCompiler {
-    /// `std::map<std::string, hfst::HfstTransducer*> definitions_`.
-    /// Owned transducers (C++ stored raw pointers freed by `~XreCompiler`).
+    /// 'std::map<std::string, hfst::HfstTransducer*> definitions_'.
+    /// Owned transducers (C++ stored raw pointers freed by '~XreCompiler').
     pub(crate) definitions_: BTreeMap<String, HfstTransducer>,
-    /// `std::map<std::string, std::string> function_definitions_`.
+    /// 'std::map<std::string, std::string> function_definitions_'.
     pub(crate) function_definitions_: BTreeMap<String, String>,
-    /// `std::map<std::string, unsigned int> function_arguments_`.
+    /// 'std::map<std::string, unsigned int> function_arguments_'.
     pub(crate) function_arguments_: BTreeMap<String, u32>,
-    /// `std::map<std::string, std::set<std::string>> list_definitions_`.
+    /// 'std::map<std::string, std::set<std::string>> list_definitions_'.
     pub(crate) list_definitions_: BTreeMap<String, BTreeSet<String>>,
-    /// `hfst::ImplementationType format_` — target type for built transducers.
+    /// 'hfst::ImplementationType format_' — target type for built transducers.
     pub(crate) format_: ImplementationType,
-    /// `bool verbose_` — verbose warnings toggle.
+    /// 'bool verbose_' — verbose warnings toggle.
     pub(crate) verbose_: bool,
-    /// `xre_utils.cc` global `bool expand_definitions` (default `false`):
+    /// 'xre_utils.cc' global 'bool expand_definitions' (default 'false'):
     /// whether a defined name expands to its stored transducer.
     pub(crate) expand_definitions_: bool,
-    /// `xre_utils.cc` global `bool harmonize_` (default `true`): whether binary
+    /// 'xre_utils.cc' global 'bool harmonize_' (default 'true'): whether binary
     /// operators harmonize their argument transducers.
     pub(crate) harmonize_: bool,
-    /// `xre_utils.cc` global `bool harmonize_flags_` (default `false`): whether
+    /// 'xre_utils.cc' global 'bool harmonize_flags_' (default 'false'): whether
     /// composition harmonizes flag diacritics of its arguments.
     pub(crate) harmonize_flags_: bool,
 }
@@ -133,8 +133,8 @@ pub struct XreCompiler {
 // Method / helper roster filled by the body agents (declarations only here).
 //
 // Public API (XreCompiler.h surface; keep these signatures so the facade calls
-// `XreCompiler::new(type)`, `XreCompiler::new(&args)`, `compile(&str)`,
-// `set_verbosity(bool)` keep type-checking):
+// 'XreCompiler::new(type)', 'XreCompiler::new(&args)', 'compile(&str)',
+// 'set_verbosity(bool)' keep type-checking):
 //
 //   fn new<A: XreCompilerNew>(arg: A) -> XreCompiler          // both overloads
 //   fn default_compiler() -> XreCompiler                       // XreCompiler()
@@ -267,7 +267,7 @@ pub struct XreCompiler {
 // xre_parse.yy semantic actions, and the xre_utils.cc compile() driver,
 // RESTRUCTURED to walk the nfst-xre AST). This body owns: constructors
 // (XreCompilerNew impls), the full public API, compile/compile_first, and the
-// recursive `eval`. It delegates the Replace/Restriction/Substitute/ReadFile
+// recursive 'eval'. It delegates the Replace/Restriction/Substitute/ReadFile
 // arms and the transducer-building helpers (xfst_label_to_transducer, contains*,
 // expand_definition_sym, merge_first_to_second, ...) to the sibling body — see
 // the dependency list in NOTES.
@@ -277,7 +277,7 @@ use crate::hfst_exception_defs::HfstException;
 use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unknown};
 use crate::hfst_xerox_rules::{after, before};
 
-// Former xre_utils.cc file-scope global `bool contains_only_comments`. The
+// Former xre_utils.cc file-scope global 'bool contains_only_comments'. The
 // skeleton did not fold this onto the instance, so it stays a (thread-local)
 // global exactly as in C++; set by compile()/compile_first(), read by
 // contained_only_comments().
@@ -285,9 +285,9 @@ thread_local! {
     static CONTAINS_ONLY_COMMENTS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-// Classification of a `:` pair side. The nfst-xre parser only ever produces a
-// halfarc atom (Symbol/Epsilon/Any/BoundaryMarker), a Curly, or a `Group([E])`
-// on each side of a Pair; `None` from the classifier means "bracketed
+// Classification of a ':' pair side. The nfst-xre parser only ever produces a
+// halfarc atom (Symbol/Epsilon/Any/BoundaryMarker), a Curly, or a 'Group([E])'
+// on each side of a Pair; 'None' from the classifier means "bracketed
 // expression — evaluate it".
 enum XrePairSide {
     Half(String),
@@ -299,7 +299,7 @@ fn xre_pair_side_kind(e: &SpannedXre) -> Option<XrePairSide> {
         XreExpr::Symbol(s) => Some(XrePairSide::Half(s.clone())),
         XreExpr::Epsilon => Some(XrePairSide::Half(internal_epsilon.to_string())),
         XreExpr::Any => Some(XrePairSide::Half(internal_unknown.to_string())),
-        // nfst-xre actually emits `.#.` as Symbol(".#."); this arm is here for
+        // nfst-xre actually emits '.#.' as Symbol(".#."); this arm is here for
         // completeness. Per the porting spec the boundary symbol is ".#.".
         XreExpr::BoundaryMarker => Some(XrePairSide::Half(".#.".to_string())),
         XreExpr::Curly(s) => Some(XrePairSide::Curly(s.clone())),
@@ -312,9 +312,9 @@ fn xre_pair_side_kind(e: &SpannedXre) -> Option<XrePairSide> {
 // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.xre-compiler-fn]
 //
 // Reproduces the two C++ ctor overloads behind the skeleton's polymorphic
-// `XreCompiler::new`. ASSUMPTION: the skeleton trait is
-// `pub trait XreCompilerNew { fn into_xre_compiler(self) -> XreCompiler; }`. If the skeleton
-// named the trait method differently, rename `build` below to match.
+// 'XreCompiler::new'. ASSUMPTION: the skeleton trait is
+// 'pub trait XreCompilerNew { fn into_xre_compiler(self) -> XreCompiler; }'. If the skeleton
+// named the trait method differently, rename 'build' below to match.
 impl XreCompilerNew for ImplementationType {
     fn into_xre_compiler(self) -> XreCompiler {
         XreCompiler {
@@ -398,14 +398,14 @@ impl XreCompiler {
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.undefine-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.undefine-fn]
-    // (Drop of the owned-transducer map handles the C++ `delete it->second`.)
+    // (Drop of the owned-transducer map handles the C++ 'delete it->second'.)
     pub fn undefine(&mut self, name: &str) {
         self.definitions_.remove(name);
     }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.define-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.define-fn]
-    // C++ overload `define(name, const std::string& xre)`.
+    // C++ overload 'define(name, const std::string& xre)'.
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.get-positions-of-symbol-in-xre-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.get-positions-of-symbol-in-xre-fn]
     pub fn get_positions_of_symbol_in_xre(
@@ -447,7 +447,7 @@ impl XreCompiler {
         true
     }
 
-    // C++ overload `define(name, const HfstTransducer& transducer)`.
+    // C++ overload 'define(name, const HfstTransducer& transducer)'.
     pub fn define_transducer(&mut self, name: &str, transducer: &HfstTransducer) {
         self.undefine(name);
         self.definitions_
@@ -472,7 +472,7 @@ impl XreCompiler {
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.add-defined-multichar-symbol-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.add-defined-multichar-symbol-fn]
-    // The C++ `defined_multichar_symbols_` global set (used only for a "used but
+    // The C++ 'defined_multichar_symbols_' global set (used only for a "used but
     // not defined" warning via check_multichar_symbol) was left off the struct;
     // no-op until a field is added.
     pub fn add_defined_multichar_symbol(&mut self, _symbol: &str) {}
@@ -490,7 +490,7 @@ impl XreCompiler {
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.compile-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.compile-fn]
     // Returns a raw owning pointer (Box::into_raw) on success, or null on parse
-    // failure / comments-only — matching the C++ `HfstTransducer*` contract the
+    // failure / comments-only — matching the C++ 'HfstTransducer*' contract the
     // facade frees via Box::from_raw.
     pub fn compile(&mut self, expression: &str) -> *mut HfstTransducer {
         match self.compile_impl(expression) {
@@ -501,7 +501,7 @@ impl XreCompiler {
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.compile-first-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.compile-first-fn]
-    // `allow_extra_text_at_end` semantics: parse the whole string, keep only the
+    // 'allow_extra_text_at_end' semantics: parse the whole string, keep only the
     // first expression, and report chars_read as that expression's span end.
     pub fn compile_first(&mut self, expression: &str, chars_read: &mut u32) -> *mut HfstTransducer {
         CONTAINS_ONLY_COMMENTS.with(|c| c.set(false));
@@ -527,7 +527,7 @@ impl XreCompiler {
 
     // Internal compile driver: parse → eval root → optimize. None on parse error
     // or comments-only (the latter also flips the contains_only_comments flag,
-    // matching the `XRE: (empty) { contains_only_comments = true; }` action).
+    // matching the 'XRE: (empty) { contains_only_comments = true; }' action).
     fn compile_impl(&mut self, src: &str) -> Option<HfstTransducer> {
         CONTAINS_ONLY_COMMENTS.with(|c| c.set(false));
         match parse(src) {
@@ -564,7 +564,7 @@ impl XreCompiler {
             XreExpr::BoundaryMarker => self.label_from_halfarc(".#."),
             XreExpr::Curly(c) => self.xfst_curly_label_to_transducer(c, c),
 
-            // ---- pair (`upper:lower`) ----
+            // ---- pair ('upper:lower') ----
             XreExpr::Pair { upper, lower } => self.eval_pair(upper, lower),
 
             // ---- grouping ----
@@ -581,18 +581,18 @@ impl XreCompiler {
                 t
             }
             XreExpr::BracketedDotted(opt) => match opt {
-                // `[. E .]` as a bare expression behaves as grouping; `[..]` is
+                // '[. E .]' as a bare expression behaves as grouping; '[..]' is
                 // epsilon (it only carries replace semantics in mapping
                 // position, which is handled by MappingSide::Dotted).
                 Some(inner) => self.eval(inner),
                 None => HfstTransducer::new_symbol(internal_epsilon, fmt),
             },
 
-            // ---- weighted (`E::w`) ----
+            // ---- weighted ('E::w') ----
             XreExpr::Weighted { expr, weight } => {
                 let mut t = self.eval(expr);
                 t.set_final_weights(*weight as f32, true);
-                // `[E]::w` optimizes after weighting; bare `LABEL::w` does not.
+                // '[E]::w' optimizes after weighting; bare 'LABEL::w' does not.
                 if matches!(expr.value, XreExpr::Group(_)) {
                     t.optimize();
                 }
@@ -627,7 +627,7 @@ impl XreCompiler {
                 t
             }
 
-            // ---- containment with explicit weight (`$::w E`) ----
+            // ---- containment with explicit weight ('$::w E') ----
             XreExpr::ContainmentWithWeight { expr, weight } => {
                 let t = self.eval(expr);
                 if !t.is_automaton() {
@@ -650,7 +650,7 @@ impl XreCompiler {
         }
     }
 
-    // LABEL: HALFARC. `?` (internal_unknown) becomes a single identity arc;
+    // LABEL: HALFARC. '?' (internal_unknown) becomes a single identity arc;
     // anything else is definition-expanded (gated on expand_definitions_).
     fn label_from_halfarc(&self, sym: &str) -> HfstTransducer {
         if sym == internal_unknown {
@@ -660,8 +660,8 @@ impl XreCompiler {
         }
     }
 
-    // The `:` productions from LABEL / REGEXP11, dispatched on the kinds of the
-    // two sides. Cross-product orderings (including the `{c}:[F]` swap that the
+    // The ':' productions from LABEL / REGEXP11, dispatched on the kinds of the
+    // two sides. Cross-product orderings (including the '{c}:[F]' swap that the
     // grammar performs at xre_parse.yy:1001) are preserved verbatim.
     fn eval_pair(&mut self, upper: &SpannedXre, lower: &SpannedXre) -> HfstTransducer {
         match (xre_pair_side_kind(upper), xre_pair_side_kind(lower)) {
@@ -999,42 +999,42 @@ impl XreCompiler {
 // Substitute/Containment-with-weight semantic actions of xre_parse.yy.
 //
 // CONTRACT with the sibling (driver_eval) body:
-//   * This area calls `self.eval(node: &SpannedXre) -> HfstTransducer`, the
+//   * This area calls 'self.eval(node: &SpannedXre) -> HfstTransducer', the
 //     central recursive AST evaluator, which the driver body MUST provide
-//     (`&mut self`, since function-call evaluation mutates `definitions_`).
+//     ('&mut self', since function-call evaluation mutates 'definitions_').
 //   * This area EXPORTS (for the driver's dispatch arms): the four
-//     `contains*` helpers, `eval_containment` (the `$` arm), the
-//     `xfst_*_to_transducer` label builders, `expand_definition_sym/_tr`,
-//     the function-arg helpers, `merge_first_to_second`, and the
-//     `eval_replace/eval_restriction/eval_substitute/
-//     eval_containment_with_weight` arms.
-//   * Function-arg helpers expect `name` to be the key as stored by
-//     `define_function` (i.e. WITH its trailing '(', as in C++ FUNCTION_NAME);
-//     the FunctionCall arm must re-append '(' to the AST `name`.
-// All cross-module references use fully-qualified `crate::...` paths to avoid
-// colliding with the skeleton's / sibling's `use` imports in this same module.
+//     'contains*' helpers, 'eval_containment' (the '$' arm), the
+//     'xfst_*_to_transducer' label builders, 'expand_definition_sym/_tr',
+//     the function-arg helpers, 'merge_first_to_second', and the
+//     'eval_replace/eval_restriction/eval_substitute/
+//     eval_containment_with_weight' arms.
+//   * Function-arg helpers expect 'name' to be the key as stored by
+//     'define_function' (i.e. WITH its trailing '(', as in C++ FUNCTION_NAME);
+//     the FunctionCall arm must re-append '(' to the AST 'name'.
+// All cross-module references use fully-qualified 'crate::...' paths to avoid
+// colliding with the skeleton's / sibling's 'use' imports in this same module.
 // =====================================================================
 
 // ---- former xre_parse.yy file-scope globals (folded onto thread-locals) ----
 
 thread_local! {
-    // xre_parse.yy:40 `bool has_weight_been_zeroed`
+    // xre_parse.yy:40 'bool has_weight_been_zeroed'
     static HAS_WEIGHT_BEEN_ZEROED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    // xre_utils.cc:201 `std::string substitution_function_symbol`
+    // xre_utils.cc:201 'std::string substitution_function_symbol'
     static SUBSTITUTION_FUNCTION_SYMBOL: std::cell::RefCell<String> =
         const { std::cell::RefCell::new(String::new()) };
 }
 
-// xre_parse.yy:51 `bool is_weighted()`
+// xre_parse.yy:51 'bool is_weighted()'
 fn is_weighted(format: ImplementationType) -> bool {
     format == ImplementationType::TROPICAL_OPENFST_TYPE
         || format == ImplementationType::LOG_OPENFST_TYPE
 }
 
-// xre_parse.yy:41 `float zero_weights(float f)`.
+// xre_parse.yy:41 'float zero_weights(float f)'.
 // NOTE: the C++ emits a one-time "ignoring weights in rule context" warning
-// here; `transform_weights` takes a bare `fn(f32)->f32` that cannot read the
-// instance `verbose_`, so the warning is dropped. The weight-zeroing behaviour
+// here; 'transform_weights' takes a bare 'fn(f32)->f32' that cannot read the
+// instance 'verbose_', so the warning is dropped. The weight-zeroing behaviour
 // is preserved exactly.
 fn zero_weights(f: f32) -> f32 {
     HAS_WEIGHT_BEEN_ZEROED.with(|c| {
@@ -1077,9 +1077,9 @@ fn has_non_identity_pairs(t: &HfstTransducer) -> bool {
     false
 }
 
-// Builds the `$3` transducer of the substitute symbol-list grammar
+// Builds the '$3' transducer of the substitute symbol-list grammar
 // (xre_parse.yy SYMBOL_LIST). An empty list yields the empty transducer
-// (the `SUB3: RIGHT_BRACKET` alternative).
+// (the 'SUB3: RIGHT_BRACKET' alternative).
 fn build_symbol_list_transducer(
     symbols: &Vec<String>,
     format: ImplementationType,
@@ -1110,7 +1110,7 @@ impl XreCompiler {
     // Definitions
     // ----------------------------------------------------------------
 
-    // xre_utils.cc:837 `HfstTransducer* expand_definition(const char* symbol)`
+    // xre_utils.cc:837 'HfstTransducer* expand_definition(const char* symbol)'
     fn expand_definition_sym(&self, symbol: &str) -> HfstTransducer {
         if self.expand_definitions_ {
             for (k, v) in self.definitions_.iter() {
@@ -1124,7 +1124,7 @@ impl XreCompiler {
 
     // [spec:hfst:def:xre-utils.hfst.xre.expand-definition-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.expand-definition-fn]
-    // xre_utils.cc:857 `HfstTransducer* expand_definition(HfstTransducer*, const char*)`
+    // xre_utils.cc:857 'HfstTransducer* expand_definition(HfstTransducer*, const char*)'
     fn expand_definition_tr(&self, tr: &mut HfstTransducer, symbol: &str) {
         if self.expand_definitions_ {
             for (k, v) in self.definitions_.iter() {
@@ -1404,8 +1404,8 @@ impl XreCompiler {
         retval
     }
 
-    // Driver dispatch for the `$ E` (CONTAINMENT REGEXP8) production
-    // (xre_parse.yy:896). Exposed so the unary `$` arm can call it.
+    // Driver dispatch for the '$ E' (CONTAINMENT REGEXP8) production
+    // (xre_parse.yy:896). Exposed so the unary '$' arm can call it.
     fn eval_containment(&mut self, t: &HfstTransducer) -> HfstTransducer {
         if has_non_identity_pairs(t) {
             if self.verbose_ {
@@ -1418,7 +1418,7 @@ impl XreCompiler {
         }
     }
 
-    // Driver dispatch arm for `XreExpr::ContainmentWithWeight`
+    // Driver dispatch arm for 'XreExpr::ContainmentWithWeight'
     // (CONTAINMENT WEIGHT REGEXP8, xre_parse.yy:910).
     fn eval_containment_with_weight(&mut self, expr: &SpannedXre, weight: f64) -> HfstTransducer {
         let t = self.eval(expr);
@@ -1434,7 +1434,7 @@ impl XreCompiler {
 
     // [spec:hfst:def:xre-utils.hfst.xre.merge-first-to-second-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.merge-first-to-second-fn]
-    // xre_utils.cc:1214. `tr1` is optimized then merged into `tr2` (returned).
+    // xre_utils.cc:1214. 'tr1' is optimized then merged into 'tr2' (returned).
     fn merge_first_to_second(
         &self,
         tr1: &mut HfstTransducer,
@@ -1456,7 +1456,7 @@ impl XreCompiler {
 
     // ----------------------------------------------------------------
     // Function-call helpers (definitions named "@<name><N>@", 1-based)
-    // `name` must include its trailing '(' as stored by `define_function`.
+    // 'name' must include its trailing '(' as stored by 'define_function'.
     // ----------------------------------------------------------------
 
     // [spec:hfst:def:xre-utils.hfst.xre.is-valid-function-call-fn]
@@ -1547,9 +1547,9 @@ impl XreCompiler {
     // Replace (xre_parse.yy: REPLACE / PARALLEL_RULES / RULE / MAPPINGPAIR*)
     // ----------------------------------------------------------------
 
-    // Driver dispatch arm for `XreExpr::Replace`.
-    // Mirrors the `REPLACE: PARALLEL_RULES` action (xre_parse.yy:365): returns
-    // the raw `replace*` result (the REGEXP2-level `.optimize()` is applied by
+    // Driver dispatch arm for 'XreExpr::Replace'.
+    // Mirrors the 'REPLACE: PARALLEL_RULES' action (xre_parse.yy:365): returns
+    // the raw 'replace*' result (the REGEXP2-level '.optimize()' is applied by
     // the driver where the grammar reduces a REPLACE to a REGEXP2).
     fn eval_replace(&mut self, arrow: ReplaceArrow, rules: &Vec<ReplaceRule>) -> HfstTransducer {
         let mut rule_vector: Vec<crate::hfst_xerox_rules::Rule> = Vec::new();
@@ -1584,7 +1584,7 @@ impl XreCompiler {
                 crate::hfst_xerox_rules::replace_leftmost_shortest_match_rule_vector(&rule_vector)
             }
             // E_REPLACE_RIGHT_MARKUP / no replace left-right arrow in the
-            // xfst grammar: `xreerror("Unhandled arrow stuff I suppose")`.
+            // xfst grammar: 'xreerror("Unhandled arrow stuff I suppose")'.
             ReplaceArrow::LeftRight | ReplaceArrow::OptionalLeftRight => {
                 std::panic::panic_any("Unhandled arrow stuff I suppose".to_string())
             }
@@ -1630,7 +1630,7 @@ impl XreCompiler {
         match &mp.kind {
             MappingKind::Plain { lower } => {
                 let lower_tr = self.eval_mapping_side(lower);
-                // Only the bare `A -> B` production warns (the dotted forms do
+                // Only the bare 'A -> B' production warns (the dotted forms do
                 // not): warn iff both sides are plain expressions.
                 if matches!(mp.upper, MappingSide::Expr(_)) && matches!(lower, MappingSide::Expr(_))
                 {
@@ -1663,7 +1663,7 @@ impl XreCompiler {
         }
     }
 
-    // A mapping side: bare expr, `[. E .]`, or `[..]` (-> epsilon).
+    // A mapping side: bare expr, '[. E .]', or '[..]' (-> epsilon).
     fn eval_mapping_side(&mut self, side: &MappingSide) -> HfstTransducer {
         match side {
             MappingSide::Expr(e) => self.eval(&**e),
@@ -1746,7 +1746,7 @@ impl XreCompiler {
     // Restriction (xre_parse.yy REGEXP4 RIGHT_ARROW RESTR_CONTEXTS_VECTOR)
     // ----------------------------------------------------------------
 
-    // Driver dispatch arm for `XreExpr::Restriction`.
+    // Driver dispatch arm for 'XreExpr::Restriction'.
     fn eval_restriction(
         &mut self,
         body: &SpannedXre,
@@ -1762,7 +1762,7 @@ impl XreCompiler {
     }
 
     // xre_parse.yy RESTR_CONTEXT alternatives. One missing side -> 0 (epsilon),
-    // both missing -> <empty> (the bare `_` form).
+    // both missing -> <empty> (the bare '_' form).
     fn build_restr_context(&mut self, c: &RestrContext) -> (HfstTransducer, HfstTransducer) {
         let fmt = self.format_;
         match (&c.left, &c.right) {
@@ -1789,19 +1789,19 @@ impl XreCompiler {
     // Substitute (xre_parse.yy: SUB1 ... productions)
     // ----------------------------------------------------------------
 
-    // Driver dispatch arm for `XreExpr::Substitute`.
+    // Driver dispatch arm for 'XreExpr::Substitute'.
     fn eval_substitute(&mut self, haystack: &SpannedXre, what: &SubstituteWhat) -> HfstTransducer {
         let fmt = self.format_;
         let mut hay = self.eval(haystack);
 
         match what {
-            // `[ E, a:b, c:d ]  (xre_parse.yy:268)
+            // '[ E, a:b, c:d ]  (xre_parse.yy:268)
             SubstituteWhat::Pair { from, to } => {
                 hay.substitute_pair_with_pair(from, to);
                 hay.optimize();
                 hay
             }
-            // `[ E, b, x y ]  (xre_parse.yy:276 SUB1 SUB2 SUB3)
+            // '[ E, b, x y ]  (xre_parse.yy:276 SUB1 SUB2 SUB3)
             SubstituteWhat::Symbol {
                 needle,
                 replacement,
@@ -1874,13 +1874,13 @@ impl XreCompiler {
 
 // ===== integration shims: XreCompiler::new (both overloads via XreCompilerNew) + deferred eval_read_file =====
 impl XreCompiler {
-    /// `XreCompiler(ImplementationType)` / `XreCompiler(const XreConstructorArguments&)`
+    /// 'XreCompiler(ImplementationType)' / 'XreCompiler(const XreConstructorArguments&)'
     /// — both C++ constructor overloads behind one entry point.
     pub fn new<A: XreCompilerNew>(arg: A) -> Self {
         arg.into_xre_compiler()
     }
 
-    /// `@bin`/`@txt`/`@stxt`/`@pl`/`@re` file-load evaluation — deferred (file I/O
+    /// '@bin'/'@txt'/'@stxt'/'@pl'/'@re' file-load evaluation — deferred (file I/O
     /// + AT&T/prolog readers not yet ported).
     fn eval_read_file(&mut self, _kind: ReadKind, _path: &str) -> HfstTransducer {
         unimplemented!("deferred: ReadFile @-load file I/O")

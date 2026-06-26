@@ -1,9 +1,9 @@
-//! Port of `libhfst/src/HfstXeroxRules.{h,cc}` — the `hfst::xeroxRules` namespace:
-//! HFST-XFST replace functions and their `Rule` data type.
+//! Port of 'libhfst/src/HfstXeroxRules.{h,cc}' — the 'hfst::xeroxRules' namespace:
+//! HFST-XFST replace functions and their 'Rule' data type.
 //!
 //! ABSOLUTE 1:1 literal C++->Rust translation (HFST port, Wave 2). NOT idiomatic.
 //! Mirrors structure/control-flow/eval-order; preserves bugs. The free functions
-//! build transducers via the facade type `crate::hfst_transducer::HfstTransducer`.
+//! build transducers via the facade type 'crate::hfst_transducer::HfstTransducer'.
 
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
@@ -19,16 +19,16 @@ use crate::hfst_data_types::StringPair;
 // HfstTransducer, plus the HfstTransducer-dependent aliases
 // (HfstTransducerPair, HfstTransducerPairVector, HfstTransducerVector), live in the
 // facade module that is ported concurrently. Bodies import them from
-// `crate::hfst_transducer`.
+// 'crate::hfst_transducer'.
 use crate::hfst_transducer::HfstTransducer;
 use crate::hfst_transducer::HfstTransducerPair;
 use crate::hfst_transducer::HfstTransducerPairVector;
 use crate::hfst_transducer::HfstTransducerVector;
 
-/// \brief The replace direction / type used by the `xeroxRules` namespace.
+/// \brief The replace direction / type used by the 'xeroxRules' namespace.
 ///
-/// Distinct from `crate::hfst_rules::ReplaceType`: this one has only four variants
-/// (no `REPL_DOWN_KARTTUNEN`).
+/// Distinct from 'crate::hfst_rules::ReplaceType': this one has only four variants
+/// (no 'REPL_DOWN_KARTTUNEN').
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.replace-type]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum ReplaceType {
@@ -68,7 +68,7 @@ pub struct Rule {
     pub(crate) replType: ReplaceType,
 }
 
-// C++ `friend std::ostream& operator<<(std::ostream&, const Rule&)` -> `Display`.
+// C++ 'friend std::ostream& operator<<(std::ostream&, const Rule&)' -> 'Display'.
 impl fmt::Display for Rule {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
         unimplemented!("deferred: xeroxRules::operator<<(ostream, Rule) — body agent")
@@ -186,7 +186,7 @@ impl Rule {
         epsilonContext.push(contextPair);
         let context = epsilonContext;
         let replType = ReplaceType::REPL_UP;
-        // `mapping` is left default-constructed (an empty vector), as in C++.
+        // 'mapping' is left default-constructed (an empty vector), as in C++.
         let mapping: HfstTransducerPairVector = Vec::new();
 
         Rule {
@@ -236,7 +236,7 @@ impl Rule {
     }
 }
 
-// Ports `std::ostream & operator<<(std::ostream &out, const Rule & r)`.
+// Ports 'std::ostream & operator<<(std::ostream &out, const Rule & r)'.
 pub fn operator_shl_os(out: &mut dyn Write, r: &Rule) {
     writeln!(out, "hfst::xeroxRules::Rule:").unwrap();
     write!(out, "replType: ").unwrap();
@@ -376,10 +376,10 @@ pub fn disjunctVectorMembers(trVector: &HfstTransducerVector) -> HfstTransducer 
 }
 
 //////////////////////////////////////
-// Port of `libhfst/src/HfstXeroxRules.cc` lines 320..1500 (functions defined in
-// that span). Sibling areas of `crate::hfst_xerox_rules` own everything outside
-// this span (e.g. `decodeFlagDiacritics`, `Rule`, `ReplaceType`, the `replace*`
-// interface functions); they reach this module via `use super::*`.
+// Port of 'libhfst/src/HfstXeroxRules.cc' lines 320..1500 (functions defined in
+// that span). Sibling areas of 'crate::hfst_xerox_rules' own everything outside
+// this span (e.g. 'decodeFlagDiacritics', 'Rule', 'ReplaceType', the 'replace*'
+// interface functions); they reach this module via 'use super::*'.
 
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.remove-markers-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.remove-markers-fn]

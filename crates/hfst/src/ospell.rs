@@ -1,12 +1,12 @@
-//! Port of `libhfst/src/implementations/optimized-lookup/ospell.cc` (namespace
-//! `hfst_ol`) — the two-transducer spellchecker (`Speller`) plus the
-//! `TreeNode`/`InputString`/`AlphabetTranslationException`/priority-queue types
-//! it uses (declared in `transducer.h`, defined here; co-located in this module
-//! since they form one coherent ospell unit). `nByte_utf8`'s body lives in
-//! `transducer.rs` (it is declared in `transducer.h`).
+//! Port of 'libhfst/src/implementations/optimized-lookup/ospell.cc' (namespace
+//! 'hfst_ol') — the two-transducer spellchecker ('Speller') plus the
+//! 'TreeNode'/'InputString'/'AlphabetTranslationException'/priority-queue types
+//! it uses (declared in 'transducer.h', defined here; co-located in this module
+//! since they form one coherent ospell unit). 'nByte_utf8''s body lives in
+//! 'transducer.rs' (it is declared in 'transducer.h').
 //!
-//! The `mutator`/`lexicon` `Transducer*` raw pointers are non-owning in the
-//! C++; they become shared `&'a Transducer` references here, since every method
+//! The 'mutator'/'lexicon' 'Transducer*' raw pointers are non-owning in the
+//! C++; they become shared '&'a Transducer' references here, since every method
 //! the speller calls on them reads only.
 
 use std::collections::{BTreeMap, VecDeque};
@@ -44,9 +44,9 @@ impl StringWeightComparison {
     }
 }
 
-/// `std::priority_queue<StringWeightPair, vector, StringWeightComparison>` — the
-/// shared backing of CorrectionQueue / AnalysisQueue / HyphenationQueue. `top`
-/// is the greatest element under the comparator (a < b iff `comp(a, b)`), i.e.
+/// 'std::priority_queue<StringWeightPair, vector, StringWeightComparison>' — the
+/// shared backing of CorrectionQueue / AnalysisQueue / HyphenationQueue. 'top'
+/// is the greatest element under the comparator (a < b iff 'comp(a, b)'), i.e.
 /// the smallest weight with the default (non-reversed) comparator.
 #[derive(Clone)]
 pub struct StringWeightPriorityQueue {

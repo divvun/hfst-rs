@@ -1,11 +1,11 @@
-//! Full port of `libhfst/src/implementations/optimized-lookup/pmatch.{h,cc}`
-//! (namespace `hfst_ol`).
+//! Full port of 'libhfst/src/implementations/optimized-lookup/pmatch.{h,cc}'
+//! (namespace 'hfst_ol').
 //!
-//! Ownership scheme (see crate notes): `PmatchContainer` is the sole owner of
-//! the `PmatchAlphabet` and of every `PmatchTransducer` (the toplevel plus all
-//! RTNs, the latter living in `alphabet.rtns`). `PmatchTransducer` stores NO
+//! Ownership scheme (see crate notes): 'PmatchContainer' is the sole owner of
+//! the 'PmatchAlphabet' and of every 'PmatchTransducer' (the toplevel plus all
+//! RTNs, the latter living in 'alphabet.rtns'). 'PmatchTransducer' stores NO
 //! back-reference to its container or alphabet; every engine method instead
-//! receives `&mut PmatchContainer` as a parameter and reaches the alphabet
+//! receives '&mut PmatchContainer' as a parameter and reaches the alphabet
 //! through it.
 
 use std::collections::BTreeMap;
@@ -26,7 +26,7 @@ pub type RtnCallStack = Vec<RtnStackFrame>;
 // [spec:hfst:def:pmatch.hfst-ol.rtn-call-stacks]
 pub type RtnCallStacks = Vec<RtnCallStack>;
 // [spec:hfst:def:pmatch.hfst-ol.rtn-vector]
-// In C++ this is `std::vector<PmatchTransducer *>`. Because the container owns
+// In C++ this is 'std::vector<PmatchTransducer *>'. Because the container owns
 // the RTNs, we store owned boxes (Option = the NULL slot) here in the alphabet.
 pub type RtnVector = Vec<Option<Box<PmatchTransducer>>>;
 // [spec:hfst:def:pmatch.hfst-ol.rtn-name-map]
@@ -64,7 +64,7 @@ pub enum SpecialSymbol {
 // [spec:hfst:def:pmatch.hfst-ol.n-byte-grapheme-fn]
 // [spec:hfst:sem:pmatch.hfst-ol.n-byte-grapheme-fn]
 // Returns the number of UTF-8 bytes of the first grapheme cluster (ICU's
-// grapheme break iterator -> the `icu` crate's GraphemeClusterSegmenter).
+// grapheme break iterator -> the 'icu' crate's GraphemeClusterSegmenter).
 pub fn nByte_grapheme(u8_str: &str) -> i32 {
     let segmenter = GraphemeClusterSegmenter::new();
     let mut bounds = segmenter.segment_str(u8_str);
@@ -119,7 +119,7 @@ pub struct PmatchAlphabet {
 
 // [spec:hfst:def:pmatch.hfst-ol.rtn-stack-frame]
 pub struct RtnStackFrame {
-    // C++ stores a raw `PmatchTransducer * caller`. Since the RTNs are owned by
+    // C++ stores a raw 'PmatchTransducer * caller'. Since the RTNs are owned by
     // the container's alphabet, this stores the owning symbol of the caller so
     // the engine can look the caller back up. See notes.
     pub caller: SymbolNumber,
@@ -198,7 +198,7 @@ pub struct PmatchContainer {
     // This tracks the ENTRY and EXIT tags
     pub(crate) entry_stack: Vec<u32>,
     pub(crate) rtn_stacks: RtnCallStacks,
-    // C++ raw `hfst_ol::Transducer *`; deferred until the OL Transducer facade
+    // C++ raw 'hfst_ol::Transducer *'; deferred until the OL Transducer facade
     // path is wired (uncompose). Owned box, optional.
     pub(crate) uncompose_left: Option<Box<crate::transducer::Transducer>>,
     pub(crate) uncompose_right: Option<Box<crate::transducer::Transducer>>,
@@ -260,8 +260,8 @@ pub struct PmatchTransducer {
     pub(crate) transition_table: Vec<TransitionW>,
     pub(crate) index_table: Vec<TransitionWIndex>,
     pub(crate) orig_symbol_count: SymbolNumber,
-    // NOTE: no `alphabet` and no `container` back-references; the engine methods
-    // receive `&mut PmatchContainer` (which owns the alphabet) as a parameter.
+    // NOTE: no 'alphabet' and no 'container' back-references; the engine methods
+    // receive '&mut PmatchContainer' (which owns the alphabet) as a parameter.
 }
 
 // [spec:hfst:def:pmatch.hfst-ol.pmatch-transducer.context-checking]
@@ -896,9 +896,9 @@ impl PmatchAlphabet {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-alphabet.get-rtn-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-alphabet.get-rtn-fn]
-    // Returns the RTN by symbol. In C++ this returns a raw `PmatchTransducer *`.
+    // Returns the RTN by symbol. In C++ this returns a raw 'PmatchTransducer *'.
     // Because the container owns the RTNs and the engine needs &mut access to
-    // both the RTN and the container, the recursive callers instead `std::mem::take`
+    // both the RTN and the container, the recursive callers instead 'std::mem::take'
     // the box out of the slot for the duration of the call (see notes). This
     // convenience accessor unwraps the Option.
     pub fn get_rtn(&mut self, symbol: SymbolNumber) -> &mut Box<PmatchTransducer> {
@@ -945,7 +945,7 @@ impl PmatchAlphabet {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-alphabet.stringify-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-alphabet.stringify-fn]
     // Reads/writes container.pattern_counts and reads the pattern flags, so the
-    // container is passed in (C++ uses the back-pointer `container`).
+    // container is passed in (C++ uses the back-pointer 'container').
     pub fn stringify(&self, str: &DoubleTape, container: &mut PmatchContainer) -> String {
         let mut retval = String::new();
         let mut start_tag_pos: Vec<u32> = Vec::new();
@@ -1363,7 +1363,7 @@ impl PmatchContainer {
         if !self.alphabet.has_rtn(name) {
             self.alphabet.add_rtn(pmatch_rtn, name);
         } else {
-            // C++ does `delete rtn;` here (note: deletes the *argument*, not the
+            // C++ does 'delete rtn;' here (note: deletes the *argument*, not the
             // freshly-built pmatch_rtn — a faithful bug). We own neither; the
             // argument is borrowed and pmatch_rtn is simply dropped.
             drop(pmatch_rtn);
@@ -1578,8 +1578,8 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.get-longest-matching-capture-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.get-longest-matching-capture-fn]
-    // C++ returns a pair of iterators into `input`; we return the (begin, end)
-    // indices into `self.input` instead (an empty match is begin == end).
+    // C++ returns a pair of iterators into 'input'; we return the (begin, end)
+    // indices into 'self.input' instead (an empty match is begin == end).
     pub fn get_longest_matching_capture(
         &mut self,
         key: SymbolNumber,
@@ -1808,7 +1808,7 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.push-rtn-call-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.push-rtn-call-fn]
-    // C++ takes `PmatchTransducer * caller`; we take the caller's owning symbol.
+    // C++ takes 'PmatchTransducer * caller'; we take the caller's owning symbol.
     pub fn push_rtn_call(&mut self, return_index: u32, caller: SymbolNumber) {
         let new_top = RtnStackFrame {
             caller,
@@ -1996,7 +1996,7 @@ impl PmatchTransducer {
         }
     }
 
-    // Helper: the owning symbol of this running transducer (the C++ `this`
+    // Helper: the owning symbol of this running transducer (the C++ 'this'
     // pointer is identified by an owning symbol in our ownership scheme).
     // The toplevel (name "TOP") has no owning symbol -> NO_SYMBOL_NUMBER.
     fn self_symbol(&self, container: &PmatchContainer) -> SymbolNumber {
@@ -2012,7 +2012,7 @@ impl PmatchTransducer {
 
     // Helper: take the callee RTN box out of its owning slot (either the
     // container's toplevel for NO_SYMBOL_NUMBER, or alphabet.rtns[sym]),
-    // run `f` with it and `container`, then put the box back. This implements
+    // run 'f' with it and 'container', then put the box back. This implements
     // the "std::mem::take / put-back" dance documented in the skeleton notes.
     fn with_rtn<F: FnOnce(&mut PmatchTransducer, &mut PmatchContainer)>(
         container: &mut PmatchContainer,
@@ -2562,7 +2562,7 @@ impl PmatchTransducer {
                     false
                 }
             }
-            // NOTE: faithful to C++: the NRC case has no `else`/`break`, so on a
+            // NOTE: faithful to C++: the NRC case has no 'else'/'break', so on a
             // non-matching symbol it falls through to the NLC case (and then to
             // default). We reproduce that fallthrough explicitly.
             ContextChecking::NRC => {
@@ -2697,10 +2697,10 @@ impl PmatchTransducer {
     }
 }
 
-// Integration helpers: the C++ calls `alphabet.locatefy(.., this)` and
-// `alphabet.stringify(.., this)` where `alphabet` is a member and `this` is the
-// container — the same member-method-on-`this` aliasing. Both only read the
-// alphabet's own fields and mutate `container.pattern_counts` (disjoint), so the
+// Integration helpers: the C++ calls 'alphabet.locatefy(.., this)' and
+// 'alphabet.stringify(.., this)' where 'alphabet' is a member and 'this' is the
+// container — the same member-method-on-'this' aliasing. Both only read the
+// alphabet's own fields and mutate 'container.pattern_counts' (disjoint), so the
 // split borrow is sound; modelled with a raw pointer per the port conventions.
 impl PmatchContainer {
     fn c_locatefy(&mut self, input_offset: u32, str: &WeightedDoubleTape) -> Location {

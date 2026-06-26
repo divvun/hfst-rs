@@ -1680,18 +1680,22 @@ impl XfstCompiler {
         self.variables_.insert(name.to_string(), text.to_string());
         if name == "hopcroft-min" {
             if text == "ON" {
-                // hfst::set_minimization_algorithm(hfst::HOPCROFT);
+                crate::hfst_transducer::set_minimization_algorithm(
+                    crate::hfst_transducer::MinimizationAlgorithm::HOPCROFT,
+                );
             }
             if text == "OFF" {
-                // hfst::set_minimization_algorithm(hfst::BRZOZOWSKI);
+                crate::hfst_transducer::set_minimization_algorithm(
+                    crate::hfst_transducer::MinimizationAlgorithm::BRZOZOWSKI,
+                );
             }
         }
         if name == "encode-weights" {
             if text == "ON" {
-                // hfst::set_encode_weights(true);
+                crate::hfst_transducer::set_encode_weights(true);
             }
             if text == "OFF" {
-                // hfst::set_encode_weights(false);
+                crate::hfst_transducer::set_encode_weights(false);
             }
         }
         if name == "harmonize-flags" {
@@ -1712,10 +1716,10 @@ impl XfstCompiler {
         }
         if name == "flag-is-epsilon" {
             if text == "ON" {
-                // hfst::set_flag_is_epsilon_in_composition(true);
+                crate::hfst_transducer::set_flag_is_epsilon_in_composition(true);
             }
             if text == "OFF" {
-                // hfst::set_flag_is_epsilon_in_composition(false);
+                crate::hfst_transducer::set_flag_is_epsilon_in_composition(false);
             }
         }
         if name == "minimal" {

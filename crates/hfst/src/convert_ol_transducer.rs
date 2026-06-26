@@ -1,13 +1,13 @@
-//! Port of `libhfst/src/implementations/ConvertOlTransducer.cc` — the
-//! `HfstBasicTransducer` <-> `hfst_ol::Transducer` conversions.
+//! Port of 'libhfst/src/implementations/ConvertOlTransducer.cc' — the
+//! 'HfstBasicTransducer' <-> 'hfst_ol::Transducer' conversions.
 //!
 //! The two self-contained entry points are ported here as methods on
-//! [`ConversionFunctions`]. The facade-dependent pair
-//! `hfst_ol_to_hfst_transducer` / `hfst_transducer_to_hfst_ol` (which wrap/unwrap
-//! a `HfstTransducer`) and the `MAIN_TEST` main are deferred to the facade
-//! layer. The `harmonizer` parameter — in the C++ a `HfstTransducer*` whose
-//! optimized-lookup backend is unpacked via `harmonizer->implementation.hfst_ol`
-//! — is taken here as the already-unpacked `Option<&Transducer>`; the unpacking
+//! ['ConversionFunctions']. The facade-dependent pair
+//! 'hfst_ol_to_hfst_transducer' / 'hfst_transducer_to_hfst_ol' (which wrap/unwrap
+//! a 'HfstTransducer') and the 'MAIN_TEST' main are deferred to the facade
+//! layer. The 'harmonizer' parameter — in the C++ a 'HfstTransducer*' whose
+//! optimized-lookup backend is unpacked via 'harmonizer->implementation.hfst_ol'
+//! — is taken here as the already-unpacked 'Option<&Transducer>'; the unpacking
 //! step belongs to the deferred facade.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -194,8 +194,8 @@ pub fn get_states_and_symbols(
     // states except starting indices
     let mut state_number: usize = 0;
     while state_number < t.state_vector.len() {
-        // collect into a temp so the immutable `t` borrow doesn't overlap the
-        // mutable `state_placeholders[state_number]` borrow
+        // collect into a temp so the immutable 't' borrow doesn't overlap the
+        // mutable 'state_placeholders[state_number]' borrow
         let trs: Vec<HfstBasicTransition> = t.transitions(state_number as u32).clone();
         for tr_it in trs.iter() {
             let in_sym = string_symbol_map
@@ -217,7 +217,7 @@ pub fn get_states_and_symbols(
 }
 
 impl ConversionFunctions {
-    /* Create an HfstBasicTransducer equivalent to hfst_ol::Transducer `t`. */
+    /* Create an HfstBasicTransducer equivalent to hfst_ol::Transducer 't'. */
     // [spec:hfst:def:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
     // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
     pub fn hfst_ol_to_hfst_basic_transducer(t: &Transducer) -> HfstBasicTransducer {
@@ -277,7 +277,7 @@ impl ConversionFunctions {
         basic
     }
 
-    /* Create an hfst_ol::Transducer equivalent to HfstBasicTransducer `t`. */
+    /* Create an hfst_ol::Transducer equivalent to HfstBasicTransducer 't'. */
     // [spec:hfst:def:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-basic-transducer-to-hfst-ol-fn]
     // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-basic-transducer-to-hfst-ol-fn]
     #[allow(unused_assignments)] // C++ initialises previous_successful_index to 0

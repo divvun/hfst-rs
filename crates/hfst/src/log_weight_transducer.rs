@@ -1,26 +1,26 @@
-//! Port of `libhfst/src/implementations/LogWeightTransducer.{h,cc}` — the
+//! Port of 'libhfst/src/implementations/LogWeightTransducer.{h,cc}' — the
 //! OpenFST log-weight backend bridge between the HFST API and rustfst's
-//! `VectorFst<LogWeight>` (= [`LogFst`] / [`LogVectorFst`]).
+//! 'VectorFst<LogWeight>' (= ['LogFst'] / ['LogVectorFst']).
 //!
-//! In C++ `LogWeightTransducer` is a class of (almost entirely) STATIC
-//! methods — a stateless operations wrapper over `fst::LogFst`. It is
-//! modelled here as a unit struct [`LogWeightTransducer`] with an `impl`
+//! In C++ 'LogWeightTransducer' is a class of (almost entirely) STATIC
+//! methods — a stateless operations wrapper over 'fst::LogFst'. It is
+//! modelled here as a unit struct ['LogWeightTransducer'] with an 'impl'
 //! block of associated functions. The two stream helper classes
-//! ([`LogWeightInputStream`] / [`LogWeightOutputStream`]) become their
-//! own structs, and the `LogArcLessThan` comparator becomes a small struct.
+//! (['LogWeightInputStream'] / ['LogWeightOutputStream']) become their
+//! own structs, and the 'LogArcLessThan' comparator becomes a small struct.
 //!
-//! `using namespace fst;` in the C++ header is mapped onto the
-//! `hfst-openfst` adapter: `LogVectorFst`, `LogTransition` (= `fst::LogArc`),
-//! `LogWeight`, `SymbolTable`, `StateId`, and the `algorithms::` module.
+//! 'using namespace fst;' in the C++ header is mapped onto the
+//! 'hfst-openfst' adapter: 'LogVectorFst', 'LogTransition' (= 'fst::LogArc'),
+//! 'LogWeight', 'SymbolTable', 'StateId', and the 'algorithms::' module.
 //!
-//! Ownership mapping for the C++ `LogFst*` signatures:
-//! - factory / unary-op methods that the C++ `new`s a result and returns
-//!   `LogFst*` -> return owned `LogVectorFst`.
-//! - methods that take a `LogFst*` and read it -> `&LogVectorFst`.
-//! - methods that take a `LogFst*` and mutate it in place (state/arc
-//!   builders, `add_to_weights`, symbol-table setters, ...) -> `&mut LogVectorFst`.
-//! - `delete_transducer(LogFst*)` -> takes `LogVectorFst` by value (drops it).
-//! The C++ `int64` typedef is `i64` here.
+//! Ownership mapping for the C++ 'LogFst*' signatures:
+//! - factory / unary-op methods that the C++ 'new's a result and returns
+//!   'LogFst*' -> return owned 'LogVectorFst'.
+//! - methods that take a 'LogFst*' and read it -> '&LogVectorFst'.
+//! - methods that take a 'LogFst*' and mutate it in place (state/arc
+//!   builders, 'add_to_weights', symbol-table setters, ...) -> '&mut LogVectorFst'.
+//! - 'delete_transducer(LogFst*)' -> takes 'LogVectorFst' by value (drops it).
+//! The C++ 'int64' typedef is 'i64' here.
 
 #![allow(non_snake_case)]
 #![allow(dead_code)] // many ported ops are only reached once the facade lands
@@ -51,7 +51,7 @@ pub type StateId = u32;
 // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-fst]
 pub type LogFst = LogVectorFst;
 
-/// `typedef std::set<std::string> StringSet` (used by the alphabet helpers).
+/// 'typedef std::set<std::string> StringSet' (used by the alphabet helpers).
 pub type StringSet = BTreeSet<String>;
 
 // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-arc-vector]
@@ -81,15 +81,15 @@ impl LogArcLessThan {
     }
 }
 
-/// `void openfst_log_set_hopcroft(bool value);`
+/// 'void openfst_log_set_hopcroft(bool value);'
 
 // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-input-stream]
 pub struct LogWeightInputStream<'a> {
     filename: String,
-    /// C++ holds an `std::ifstream i_stream` plus an `std::istream &input_stream`
-    /// reference that aliases either `i_stream` or `std::cin`. Modelled here as a
+    /// C++ holds an 'std::ifstream i_stream' plus an 'std::istream &input_stream'
+    /// reference that aliases either 'i_stream' or 'std::cin'. Modelled here as a
     /// single owned binary input stream (per the porting convention,
-    /// `std::istream` (binary) -> `crate::transducer::IStream`).
+    /// 'std::istream' (binary) -> 'crate::transducer::IStream').
     input_stream: IStream<'a>,
 }
 
@@ -99,8 +99,8 @@ pub struct LogWeightInputStream<'a> {
 // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-output-stream]
 pub struct LogWeightOutputStream {
     filename: String,
-    /// C++ holds `std::ofstream o_stream` + `std::ostream &output_stream` that
-    /// aliases either it or `std::cout`. Modelled as a single owned writer.
+    /// C++ holds 'std::ofstream o_stream' + 'std::ostream &output_stream' that
+    /// aliases either it or 'std::cout'. Modelled as a single owned writer.
     output_stream: Box<dyn std::io::Write>,
 }
 
@@ -128,7 +128,7 @@ mod construction_io {
         TransducerHasWrongTypeException,
     };
     use crate::hfst_flag_diacritics::FdOperation;
-    // `HfstFatalException` is referenced by the (deferred) read_transducer path.
+    // 'HfstFatalException' is referenced by the (deferred) read_transducer path.
     #[allow(unused_imports)]
     use crate::hfst_exception_defs::HfstFatalException;
 
@@ -136,16 +136,16 @@ mod construction_io {
     // File-static globals from the .cc
     // ---------------------------------------------------------------------------
 
-    // `float log_seconds_in_harmonize = 0;` — UNLIKE Tropical's `tropical_seconds`
+    // 'float log_seconds_in_harmonize = 0;' — UNLIKE Tropical's 'tropical_seconds'
     // (which is only live under PROFILE_OPENFST), the Log .cc always accumulates the
-    // time spent inside `harmonize` here, and `get_profile_seconds` returns it.
-    // Modelled as a plain global float (C++ semantics) accessed under `unsafe`.
+    // time spent inside 'harmonize' here, and 'get_profile_seconds' returns it.
+    // Modelled as a plain global float (C++ semantics) accessed under 'unsafe'.
     static mut LOG_SECONDS_IN_HARMONIZE: f32 = 0.0;
 
-    // `bool openfst_log_use_hopcroft = false;`
+    // 'bool openfst_log_use_hopcroft = false;'
     static OPENFST_LOG_USE_HOPCROFT: AtomicBool = AtomicBool::new(false);
 
-    // `std::ostream * LogWeightTransducer::warning_stream = NULL;`
+    // 'std::ostream * LogWeightTransducer::warning_stream = NULL;'
     // (Not present in the Log .cc — mirrored from Tropical for API parity so the
     //  operations-area epsilon-cycle warning path has a sink to consult.)
     static mut WARNING_STREAM: *mut Box<dyn std::io::Write> = std::ptr::null_mut();
@@ -156,8 +156,8 @@ mod construction_io {
         OPENFST_LOG_USE_HOPCROFT.store(value, Ordering::Relaxed);
     }
 
-    /// Reader for the `openfst_log_use_hopcroft` global (added for parity with the
-    /// Tropical port — not in the C++ header). The Log `minimize` does NOT consult
+    /// Reader for the 'openfst_log_use_hopcroft' global (added for parity with the
+    /// Tropical port — not in the C++ header). The Log 'minimize' does NOT consult
     /// this flag (unlike Tropical), so this may be unused.
     pub(crate) fn openfst_log_get_hopcroft() -> bool {
         OPENFST_LOG_USE_HOPCROFT.load(Ordering::Relaxed)
@@ -167,8 +167,8 @@ mod construction_io {
     // Private module helpers (introduced for the port; not in the C++ header).
     // ---------------------------------------------------------------------------
 
-    /// `std::ostream`-style sink wrapping a C `FILE *` (used by the `FILE *`
-    /// AT&T writers and `print_att_number`).
+    /// 'std::ostream'-style sink wrapping a C 'FILE *' (used by the 'FILE *'
+    /// AT&T writers and 'print_att_number').
     struct CFileWriter(*mut libc::FILE);
 
     impl std::io::Write for CFileWriter {
@@ -182,8 +182,8 @@ mod construction_io {
         }
     }
 
-    /// `%f` (FILE* `fprintf`) prints 6 decimals; `operator<<` (ostream) uses the
-    /// default float formatting. We approximate the latter with `Display`.
+    /// '%f' (FILE* 'fprintf') prints 6 decimals; 'operator<<' (ostream) uses the
+    /// default float formatting. We approximate the latter with 'Display'.
     fn fmt_w(w: f32, c_style: bool) -> String {
         if c_style {
             format!("{:.6}", w)
@@ -274,13 +274,13 @@ mod construction_io {
         }
     }
 
-    /// C `atof`: parse a leading float, 0.0 on failure (Rust `parse` is stricter —
+    /// C 'atof': parse a leading float, 0.0 on failure (Rust 'parse' is stricter —
     /// trailing garbage is not tolerated, a faithfulness gap).
     fn att_atof(s: &str) -> f32 {
         s.trim().parse::<f32>().unwrap_or(0.0)
     }
 
-    /// C `atoi`: parse a leading int, 0 on failure.
+    /// C 'atoi': parse a leading int, 0 on failure.
     fn att_atoi(s: &str) -> i32 {
         s.trim().parse::<i32>().unwrap_or(0)
     }
@@ -320,27 +320,27 @@ mod construction_io {
 
     #[allow(dead_code)]
     impl<'a> LogWeightInputStream<'a> {
-        /// `LogWeightInputStream(void)` — reads from stdin.
+        /// 'LogWeightInputStream(void)' — reads from stdin.
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-input-stream.log-weight-input-stream-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-input-stream.log-weight-input-stream-fn]
         pub fn new() -> Self {
-            // DEFERRED: `IStream` borrows its reader (`&'a mut dyn Read`); it cannot
-            // own a `std::cin`-backed stream. The skeleton struct holds
-            // `input_stream: IStream` by value, which has no source here.
+            // DEFERRED: 'IStream' borrows its reader ('&'a mut dyn Read'); it cannot
+            // own a 'std::cin'-backed stream. The skeleton struct holds
+            // 'input_stream: IStream' by value, which has no source here.
             unimplemented!(
                 "deferred: LogWeightInputStream::new — IStream cannot own a stdin reader (lifetime)"
             )
         }
 
-        /// `LogWeightInputStream(const std::string &filename)`.
+        /// 'LogWeightInputStream(const std::string &filename)'.
         pub fn new_filename(_filename: &str) -> Self {
-            // DEFERRED: same lifetime problem — `IStream` cannot own an `ifstream`.
+            // DEFERRED: same lifetime problem — 'IStream' cannot own an 'ifstream'.
             unimplemented!(
                 "deferred: LogWeightInputStream::new_filename — IStream cannot own a file reader (lifetime)"
             )
         }
 
-        /// `LogWeightInputStream(std::istream &is)`.
+        /// 'LogWeightInputStream(std::istream &is)'.
         pub fn new_istream(is: IStream<'a>) -> Self {
             LogWeightInputStream {
                 filename: String::new(),
@@ -374,7 +374,7 @@ mod construction_io {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-input-stream.is-eof-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-input-stream.is-eof-fn]
         pub fn is_eof(&self) -> bool {
-            // C++ tests `input_stream.peek() == EOF`; `IStream` has no peek, so we
+            // C++ tests 'input_stream.peek() == EOF'; 'IStream' has no peek, so we
             // approximate with the good/fail flag (set once a read hits EOF).
             !self.input_stream.good()
         }
@@ -399,7 +399,7 @@ mod construction_io {
             unimplemented!("deferred: LogWeightInputStream::is_fst — IStream has no peek")
         }
 
-        /// `bool operator() (void) const;` — stream-good predicate.
+        /// 'bool operator() (void) const;' — stream-good predicate.
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-input-stream.operator-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-input-stream.operator-fn]
         pub fn operator_call(&self) -> bool {
@@ -419,9 +419,9 @@ mod construction_io {
             if self.is_eof() {
                 crate::HFST_THROW!(StreamIsClosedException);
             }
-            // DEFERRED: OpenFST streaming read (`FstHeader::Read` + `LogFst::Read`
+            // DEFERRED: OpenFST streaming read ('FstHeader::Read' + 'LogFst::Read'
             // from an istream) has no rustfst equivalent — rustfst exposes only
-            // `SerializableFst::load(&[u8])`, and `IStream` cannot yield the
+            // 'SerializableFst::load(&[u8])', and 'IStream' cannot yield the
             // remaining-bytes buffer (no read-to-end, framing handled elsewhere).
             let _ = TransducerHasWrongTypeException::new(String::new(), String::new(), 0);
             unimplemented!(
@@ -448,11 +448,11 @@ mod construction_io {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-input-stream.stream-unget-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-input-stream.stream-unget-fn]
         pub fn stream_unget(&mut self, _c: char) {
-            // DEFERRED: `IStream` has no putback/unget.
+            // DEFERRED: 'IStream' has no putback/unget.
             unimplemented!("deferred: stream_unget — IStream has no putback/unget")
         }
 
-        /// `static bool is_fst(FILE * f);`
+        /// 'static bool is_fst(FILE * f);'
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-input-stream.is-fst-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-input-stream.is-fst-fn]
         pub fn is_fst_file(f: *mut libc::FILE) -> bool {
@@ -466,9 +466,9 @@ mod construction_io {
             c == 0xd6
         }
 
-        /// `static bool is_fst(std::istream &s);`
+        /// 'static bool is_fst(std::istream &s);'
         pub fn is_fst_istream(_s: &mut IStream) -> bool {
-            // DEFERRED: `s.good() && s.peek() == 0xd6` — IStream has no peek.
+            // DEFERRED: 's.good() && s.peek() == 0xd6' — IStream has no peek.
             unimplemented!("deferred: is_fst(istream) — IStream has no peek")
         }
     }
@@ -479,19 +479,19 @@ mod construction_io {
 
     #[allow(dead_code)]
     impl LogWeightOutputStream {
-        /// `LogWeightOutputStream(void)` — writes to stdout.
+        /// 'LogWeightOutputStream(void)' — writes to stdout.
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-output-stream.log-weight-output-stream-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-output-stream.log-weight-output-stream-fn]
         pub fn new() -> Self {
-            // C++ also does `if (!output_stream) fprintf(stderr, "...failbit set (3)")`,
-            // but a `Box<dyn Write>` over stdout cannot report a fail state here.
+            // C++ also does 'if (!output_stream) fprintf(stderr, "...failbit set (3)")',
+            // but a 'Box<dyn Write>' over stdout cannot report a fail state here.
             LogWeightOutputStream {
                 filename: String::new(),
                 output_stream: Box::new(std::io::stdout()),
             }
         }
 
-        /// `LogWeightOutputStream(const std::string &filename)`.
+        /// 'LogWeightOutputStream(const std::string &filename)'.
         pub fn new_filename(filename: &str) -> Self {
             let file =
                 std::fs::File::create(filename).expect("LogWeightOutputStream: cannot open file");
@@ -518,14 +518,14 @@ mod construction_io {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-output-stream.write-transducer-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-output-stream.write-transducer-fn]
         pub fn write_transducer(&mut self, transducer: &LogVectorFst) {
-            // C++ also does `if (!output_stream) fprintf(stderr, "...failbit set (1)")`;
-            // a `Box<dyn Write>` cannot report a fail state, so that check is dropped.
+            // C++ also does 'if (!output_stream) fprintf(stderr, "...failbit set (1)")';
+            // a 'Box<dyn Write>' cannot report a fail state, so that check is dropped.
             //
             // When writing a transducer, both input and output symbol tables are
             // included; the C++ sets the output table = input table on the caller's
-            // transducer. The skeleton hands us `&LogVectorFst`, so we do it on a clone
+            // transducer. The skeleton hands us '&LogVectorFst', so we do it on a clone
             // (NOTE: caller's transducer is not mutated, unlike C++). Unlike Tropical,
-            // the Log .cc has NO `hfst_format` branch — it always re-symbols.
+            // the Log .cc has NO 'hfst_format' branch — it always re-symbols.
             let mut t = transducer.clone();
             let output_st = transducer.input_symbols().unwrap().as_ref().clone();
             t.set_output_symbols(Arc::new(output_st));
@@ -545,7 +545,7 @@ mod construction_io {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.get-profile-seconds-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.get-profile-seconds-fn]
         pub fn get_profile_seconds() -> f32 {
-            // Log: `return log_seconds_in_harmonize;` (accumulated by harmonize).
+            // Log: 'return log_seconds_in_harmonize;' (accumulated by harmonize).
             unsafe { LOG_SECONDS_IN_HARMONIZE }
         }
 
@@ -568,9 +568,9 @@ mod construction_io {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.create-symbol-table-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.create-symbol-table-fn]
         fn create_symbol_table(_name: String) -> SymbolTable {
-            // rustfst `SymbolTable` has no name; the `name` arg is dropped. Start
-            // from `empty()` so the internal symbols land at exactly 0/1/2 (an
-            // `add_symbol` on a fresh `new()` table would already hold <eps> at 0).
+            // rustfst 'SymbolTable' has no name; the 'name' arg is dropped. Start
+            // from 'empty()' so the internal symbols land at exactly 0/1/2 (an
+            // 'add_symbol' on a fresh 'new()' table would already hold <eps> at 0).
             let mut st = SymbolTable::empty();
             st.add_symbol(internal_epsilon); // 0
             st.add_symbol(internal_unknown); // 1
@@ -796,7 +796,7 @@ mod construction_io {
 
         // ---- weight properties / setters ----
         //
-        // NOTE: `add_to_weights`, `get_smallest_weight` and `has_weights` are NOT in
+        // NOTE: 'add_to_weights', 'get_smallest_weight' and 'has_weights' are NOT in
         // the Log .cc — mirrored from the Tropical port for API parity (the Log
         // determinize/minimize do not actually call them).
 
@@ -862,9 +862,9 @@ mod construction_io {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.set-final-weights-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.set-final-weights-fn]
         pub fn set_final_weights(t: &LogVectorFst, weight: f32) -> LogVectorFst {
-            // NOTE: the Log .cc has NO `increment` parameter (unlike Tropical); it
-            // always overwrites. C++ mutates `t` in place and returns it; the skeleton
-            // hands us `&LogVectorFst`, so we work on a clone (caller not mutated).
+            // NOTE: the Log .cc has NO 'increment' parameter (unlike Tropical); it
+            // always overwrites. C++ mutates 't' in place and returns it; the skeleton
+            // hands us '&LogVectorFst', so we work on a clone (caller not mutated).
             let mut t = t.clone();
             let states: Vec<StateId> = t.states_iter().collect();
             for s in states {
@@ -879,7 +879,7 @@ mod construction_io {
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.transform-weights-fn]
         pub fn transform_weights(t: &LogVectorFst, func: fn(f32) -> f32) -> LogVectorFst {
             // C++ mutates in place (final first, then arcs via MutableArcIterator) and
-            // returns `t`; we operate on a clone, pop/re-add to preserve arc order.
+            // returns 't'; we operate on a clone, pop/re-add to preserve arc order.
             let mut t = t.clone();
             let states: Vec<StateId> = t.states_iter().collect();
             for s in states {
@@ -915,26 +915,26 @@ mod construction_io {
 
         // ---- AT&T write ----
 
-        /// `write_in_att_format(LogFst*, FILE *ofile)`.
+        /// 'write_in_att_format(LogFst*, FILE *ofile)'.
         pub fn write_in_att_format_file(t: &LogVectorFst, ofile: *mut libc::FILE) {
             let mut w = CFileWriter(ofile);
             write_in_att_format_core(t, &mut w, false, true);
         }
 
-        /// `write_in_att_format_number(LogFst*, FILE *ofile)`.
+        /// 'write_in_att_format_number(LogFst*, FILE *ofile)'.
         pub fn write_in_att_format_number_file(t: &LogVectorFst, ofile: *mut libc::FILE) {
             let mut w = CFileWriter(ofile);
             write_in_att_format_core(t, &mut w, true, true);
         }
 
-        /// `write_in_att_format(LogFst*, std::ostream &os)`.
+        /// 'write_in_att_format(LogFst*, std::ostream &os)'.
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.write-in-att-format-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.write-in-att-format-fn]
         pub fn write_in_att_format_ostream(t: &LogVectorFst, os: &mut dyn std::io::Write) {
             write_in_att_format_core(t, os, false, false);
         }
 
-        /// `write_in_att_format_number(LogFst*, std::ostream &os)`.
+        /// 'write_in_att_format_number(LogFst*, std::ostream &os)'.
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.write-in-att-format-number-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.write-in-att-format-number-fn]
         pub fn write_in_att_format_number_ostream(t: &LogVectorFst, os: &mut dyn std::io::Write) {
@@ -1054,8 +1054,8 @@ mod construction_io {
             for (_label, sym) in old.iter() {
                 if sym != symbol {
                     // NOTE: rustfst's SymbolTable has no add-at-explicit-label, so
-                    // the original label of `sym` cannot be preserved (the C++ does
-                    // `AddSymbol(sym, label)`). Symbols after the removed one shift.
+                    // the original label of 'sym' cannot be preserved (the C++ does
+                    // 'AddSymbol(sym, label)'). Symbols after the removed one shift.
                     st.add_symbol(sym);
                 }
             }
@@ -1074,7 +1074,7 @@ mod construction_io {
             s
         }
 
-        // NOTE: `get_initial_input_symbols(_rec)` / `get_first_input_symbols(_rec)` are
+        // NOTE: 'get_initial_input_symbols(_rec)' / 'get_first_input_symbols(_rec)' are
         // NOT in the Log .cc — mirrored from the Tropical port for API parity.
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.get-initial-input-symbols-fn]
@@ -1175,8 +1175,8 @@ mod construction_io {
             }
         }
 
-        // NOTE: `get_biggest_symbol_number` / `get_symbol_vector` / `set_symbol_table`
-        // / `print_alphabet` are NOT in the Log .cc — mirrored from Tropical.
+        // NOTE: 'get_biggest_symbol_number' / 'get_symbol_vector' / 'set_symbol_table'
+        // / 'print_alphabet' are NOT in the Log .cc — mirrored from Tropical.
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.get-biggest-symbol-number-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.get-biggest-symbol-number-fn]
@@ -1225,7 +1225,7 @@ mod construction_io {
             for s in states {
                 let trs = t.pop_trs(s).unwrap();
                 for arc in trs {
-                    // C++ `km[label]` inserts 0 for a missing key.
+                    // C++ 'km[label]' inserts 0 for a missing key.
                     let il = *km.entry(arc.ilabel).or_insert(0);
                     let ol = *km.entry(arc.olabel).or_insert(0);
                     t.add_tr(s, LogTransition::new(il, ol, arc.weight, arc.nextstate))
@@ -1239,8 +1239,8 @@ mod construction_io {
         pub fn set_symbol_table(t: &mut LogVectorFst, symbol_mappings: Vec<(u16, String)>) {
             let mut st = Self::create_symbol_table(String::new());
             for (num, sym) in &symbol_mappings {
-                // NOTE: C++ `AddSymbol(sym, num)` honours the explicit label; rustfst
-                // has no add-at-explicit-label, so `num` is ignored (gap).
+                // NOTE: C++ 'AddSymbol(sym, num)' honours the explicit label; rustfst
+                // has no add-at-explicit-label, so 'num' is ignored (gap).
                 let _ = num;
                 st.add_symbol(sym.as_str());
             }
@@ -1276,8 +1276,8 @@ mod construction_io {
             unknown: &mut StringSet,
             unknown_symbols_in_use: bool,
         ) -> LogVectorFst {
-            // NOTE: unlike the Tropical port, the Log .cc does NOT filter `unknown`
-            // entries through `FdOperation::is_diacritic` — every unknown symbol is
+            // NOTE: unlike the Tropical port, the Log .cc does NOT filter 'unknown'
+            // entries through 'FdOperation::is_diacritic' — every unknown symbol is
             // expanded unconditionally. We follow the Log source.
             let mut result = LogVectorFst::new();
 
@@ -1424,8 +1424,8 @@ mod construction_io {
             t2: &LogVectorFst,
             unknown_symbols_in_use: bool,
         ) -> (LogVectorFst, LogVectorFst) {
-            // NOTE: C++ takes `LogFst*` and mutates the inputs in place; the skeleton
-            // hands us `&LogVectorFst`, so we work on clones — the caller's transducers
+            // NOTE: C++ takes 'LogFst*' and mutates the inputs in place; the skeleton
+            // hands us '&LogVectorFst', so we work on clones — the caller's transducers
             // are NOT mutated (a divergence from the C++ side effect).
             let mut t1 = t1.clone();
             let mut t2 = t2.clone();
@@ -1446,7 +1446,7 @@ mod construction_io {
             );
 
             // 2. add new symbols from t1 to t2's symbol table...
-            // (the Log .cc has NO `< 3` sanity check that the Tropical port carries)
+            // (the Log .cc has NO '< 3' sanity check that the Tropical port carries)
             let mut st2 = t2.input_symbols().unwrap().as_ref().clone();
             for it in unknown_t2.iter() {
                 st2.add_symbol(it.as_str());
@@ -1518,7 +1518,7 @@ mod construction_io {
             retval
         }
 
-        // `number_of_arcs` is NOT in the Log .cc — mirrored from Tropical for parity.
+        // 'number_of_arcs' is NOT in the Log .cc — mirrored from Tropical for parity.
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.number-of-arcs-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.number-of-arcs-fn]
         pub fn number_of_arcs(t: &LogVectorFst) -> u32 {
@@ -1568,7 +1568,7 @@ mod construction_io {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.get-final-weight-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.get-final-weight-fn]
         pub fn get_final_weight(t: &LogVectorFst, s: StateId) -> f32 {
-            // C++ `t->Final(s).Value()` — Zero().Value() is +inf for a non-final state.
+            // C++ 't->Final(s).Value()' — Zero().Value() is +inf for a non-final state.
             t.final_weight(s)
                 .unwrap()
                 .map(|w| *w.value())
@@ -1578,7 +1578,7 @@ mod construction_io {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.is-final-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.is-final-fn]
         pub fn is_final(t: &LogVectorFst, s: StateId) -> f32 {
-            // C++ returns `(t->Final(s) != Zero())` implicitly converted to float.
+            // C++ returns '(t->Final(s) != Zero())' implicitly converted to float.
             if t.is_final(s).unwrap() { 1.0 } else { 0.0 }
         }
 
@@ -1592,7 +1592,7 @@ mod construction_io {
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.represent-empty-transducer-as-having-one-state-fn]
         pub fn represent_empty_transducer_as_having_one_state(t: &mut LogVectorFst) {
             if t.start().is_none() || t.num_states() == 0 {
-                // BUG PRESERVED: the C++ does `delete t; t = create_empty_transducer();`,
+                // BUG PRESERVED: the C++ does 'delete t; t = create_empty_transducer();',
                 // assigning a LOCAL pointer — the caller's transducer is unchanged.
                 // We replicate the no-op (mutating *t here would change the caller).
                 let _ = &t;
@@ -1601,6 +1601,10 @@ mod construction_io {
     }
 }
 
+// Re-export the 'hfst::implementations' free function consumed by the facade
+// 'set_minimization_algorithm' (HfstTransducer.cc:251).
+pub use construction_io::openfst_log_set_hopcroft;
+
 // ===== operations (workflow body) =====
 mod operations {
     #![allow(unused_imports)]
@@ -1608,22 +1612,22 @@ mod operations {
     // ===========================================================================
     // area: operations — algebraic operations and OpenFST-algorithm wrappers.
     //
-    // Method bodies for the `impl LogWeightTransducer` block defined in the
+    // Method bodies for the 'impl LogWeightTransducer' block defined in the
     // skeleton. One private module-level free helper is also provided.
     //
-    // Ports of `libhfst/src/implementations/LogWeightTransducer.cc`. The Log .cc is
+    // Ports of 'libhfst/src/implementations/LogWeightTransducer.cc'. The Log .cc is
     // a simpler/older sibling of the Tropical backend: it has NO CHECK_EPSILON_CYCLES,
     // NO get_smallest_weight/add_to_weights weight-shifting, NO encode-weights toggle,
-    // and NO `prune`. `n_best` is unimplemented (throws), `are_equivalent` is built on
-    // `minimize`, and `intersect`/`subtract` determinize *both* operands.
+    // and NO 'prune'. 'n_best' is unimplemented (throws), 'are_equivalent' is built on
+    // 'minimize', and 'intersect'/'subtract' determinize *both* operands.
     // ===========================================================================
 
-    // `FunctionNotImplementedException` is needed by `n_best`'s HFST_THROW; the
+    // 'FunctionNotImplementedException' is needed by 'n_best''s HFST_THROW; the
     // skeleton does not import it, so pull it in here.
     use crate::hfst_exception_defs::FunctionNotImplementedException;
 
-    /// `dst->SetInputSymbols(src->InputSymbols())` — copy `src`'s input symbol table
-    /// (as a shared `Arc`) onto `dst`. No-op when `src` has no input symbols.
+    /// 'dst->SetInputSymbols(src->InputSymbols())' — copy 'src''s input symbol table
+    /// (as a shared 'Arc') onto 'dst'. No-op when 'src' has no input symbols.
     #[allow(dead_code)]
     fn copy_input_symbol_table(src: &LogVectorFst, dst: &mut LogVectorFst) {
         if let Some(symt) = src.input_symbols().map(|s| std::sync::Arc::clone(s)) {
@@ -1687,7 +1691,7 @@ mod operations {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.determinize-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.determinize-fn]
         pub fn determinize(t: &LogVectorFst) -> LogVectorFst {
-            // C++ mutates `t` in place; operate on a local clone.
+            // C++ mutates 't' in place; operate on a local clone.
             let mut t = t.clone();
 
             algorithms::RmEpsilon(&mut t);
@@ -1703,7 +1707,7 @@ mod operations {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.minimize-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.minimize-fn]
         pub fn minimize(t: &LogVectorFst) -> LogVectorFst {
-            // C++ mutates `t` in place; operate on a local clone.
+            // C++ mutates 't' in place; operate on a local clone.
             let mut t = t.clone();
 
             algorithms::RmEpsilon(&mut t);
@@ -1967,7 +1971,7 @@ mod operations {
             t
         }
 
-        /// `static LogFst * disjunct_as_tries(LogFst * t1, const LogFst * t2)` —
+        /// 'static LogFst * disjunct_as_tries(LogFst * t1, const LogFst * t2)' —
         /// public trie-disjunction entry point.
         pub fn disjunct_as_tries_pub<'a>(
             t1: &'a mut LogVectorFst,
@@ -2214,8 +2218,8 @@ mod lookup_extract_misc {
     pub type LabelPairVector = Vec<LabelPair>;
 
     // ============================================================================
-    // File-static free helpers (C++ `static` functions in
-    // `namespace hfst::implementations`).  Kept module-private, like the C++.
+    // File-static free helpers (C++ 'static' functions in
+    // 'namespace hfst::implementations').  Kept module-private, like the C++.
     // ============================================================================
 
     /* The recursive path-extraction worker.  Note the faithful C++ quirk that
@@ -2375,7 +2379,7 @@ mod lookup_extract_misc {
     }
 
     // ============================================================================
-    // `impl LogWeightTransducer` — lookup-extract-misc bodies.
+    // 'impl LogWeightTransducer' — lookup-extract-misc bodies.
     // ============================================================================
     #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
@@ -2406,7 +2410,7 @@ mod lookup_extract_misc {
             let start = t.start().unwrap();
             let mut spv = StringPairVector::new();
             // NOTE: faithful to the Log .cc, which (unlike Tropical) does NOT add a
-            // trailing epsilon path and does NOT `delete fd_state_stack` afterwards.
+            // trailing epsilon path and does NOT 'delete fd_state_stack' afterwards.
             extract_paths(
                 t,
                 start,
@@ -2422,9 +2426,9 @@ mod lookup_extract_misc {
             // fd_state_stack dropped here (the C++ leaks it; harmless in Rust).
         }
 
-        /// `extract_random_paths(const LogFst*, HfstTwoLevelPaths&, int)`.  Unlike the
+        /// 'extract_random_paths(const LogFst*, HfstTwoLevelPaths&, int)'.  Unlike the
         /// Tropical backend (which implements this), the Log .cc throws
-        /// `FunctionNotImplementedException`.
+        /// 'FunctionNotImplementedException'.
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.extract-random-paths-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.extract-random-paths-fn]
         pub fn extract_random_paths(
@@ -2438,10 +2442,10 @@ mod lookup_extract_misc {
 
         // ---- substitute ----------------------------------------------------------
 
-        /// `substitute(LogFst*, unsigned int, unsigned int)` — relabels label
-        /// `old_number` to `new_number` on both the input and output side (C++ uses
-        /// `RelabelFst<LogArc>(*t, v, v)`; modelled here as a direct rebuild since
-        /// rustfst's `relabel_pairs` module is private).
+        /// 'substitute(LogFst*, unsigned int, unsigned int)' — relabels label
+        /// 'old_number' to 'new_number' on both the input and output side (C++ uses
+        /// 'RelabelFst<LogArc>(*t, v, v)'; modelled here as a direct rebuild since
+        /// rustfst's 'relabel_pairs' module is private).
         pub fn substitute_number(
             t: &LogVectorFst,
             old_number: u32,
@@ -2468,10 +2472,10 @@ mod lookup_extract_misc {
             result
         }
 
-        /// `substitute(LogFst*, NumberPair old, NumberPair new)`. The C++ encodes
-        /// label pairs (`kEncodeLabels`), substitutes the single encoded label, then
-        /// decodes; the net effect (replace arcs whose `(ilabel,olabel)` equals `old`
-        /// with `new`) is reproduced here directly.
+        /// 'substitute(LogFst*, NumberPair old, NumberPair new)'. The C++ encodes
+        /// label pairs ('kEncodeLabels'), substitutes the single encoded label, then
+        /// decodes; the net effect (replace arcs whose '(ilabel,olabel)' equals 'old'
+        /// with 'new') is reproduced here directly.
         pub fn substitute_number_pair(
             t: &LogVectorFst,
             old_number_pair: NumberPair,
@@ -2496,7 +2500,7 @@ mod lookup_extract_misc {
             result
         }
 
-        /// `substitute(LogFst*, std::string old_symbol, std::string new_symbol)`.
+        /// 'substitute(LogFst*, std::string old_symbol, std::string new_symbol)'.
         pub fn substitute_symbol(
             t: &LogVectorFst,
             old_symbol: String,
@@ -2511,7 +2515,7 @@ mod lookup_extract_misc {
             retval
         }
 
-        /// `substitute(LogFst*, StringPair old, StringPair new)`.
+        /// 'substitute(LogFst*, StringPair old, StringPair new)'.
         pub fn substitute_string_pair(
             t: &LogVectorFst,
             old_symbol_pair: StringPair,
@@ -2532,7 +2536,7 @@ mod lookup_extract_misc {
             retval
         }
 
-        /// `substitute(LogFst*, StringPair old, StringPairSet new)`.
+        /// 'substitute(LogFst*, StringPair old, StringPairSet new)'.
         pub fn substitute_string_pair_set(
             t: &LogVectorFst,
             old_symbol_pair: StringPair,
@@ -2551,7 +2555,7 @@ mod lookup_extract_misc {
                     if isym == old_symbol_pair.0 && osym == old_symbol_pair.1 {
                         // C++ replaces this arc with one arc per pair in the set;
                         // an empty set leaves the original arc untouched (the C++
-                        // `SetValue` is never reached).
+                        // 'SetValue' is never reached).
                         if new_symbol_pair_set.is_empty() {
                             nt.push(arc);
                         } else {
@@ -2578,7 +2582,7 @@ mod lookup_extract_misc {
             tc
         }
 
-        /// `substitute(LogFst*, const StringPair old, LogFst *transducer)`.
+        /// 'substitute(LogFst*, const StringPair old, LogFst *transducer)'.
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.substitute-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.substitute-fn]
         pub fn substitute_string_transducer(
@@ -2657,7 +2661,7 @@ mod lookup_extract_misc {
             result
         }
 
-        /// `substitute(LogFst*, const NumberPair old, LogFst *transducer)`.
+        /// 'substitute(LogFst*, const NumberPair old, LogFst *transducer)'.
         pub fn substitute_number_transducer(
             t: &LogVectorFst,
             old_number_pair: NumberPair,
@@ -2724,7 +2728,7 @@ mod lookup_extract_misc {
 
         // ---- insert_freely -------------------------------------------------------
 
-        /// `insert_freely(LogFst*, const StringPair &symbol_pair)`.
+        /// 'insert_freely(LogFst*, const StringPair &symbol_pair)'.
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.insert-freely-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.insert-freely-fn]
         pub fn insert_freely_string(t: &LogVectorFst, symbol_pair: &StringPair) -> LogVectorFst {
