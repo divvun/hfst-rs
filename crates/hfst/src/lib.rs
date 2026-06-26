@@ -59,6 +59,7 @@ pub mod string_utils;
 pub mod transducer;
 pub mod tropical_weight_transducer;
 pub mod twolc;
+pub mod xfst_compiler;
 pub mod xre;
 
 // Facade global from HfstTransducer.cc (set_encode_weights/get_encode_weights);

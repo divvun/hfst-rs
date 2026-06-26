@@ -276,6 +276,7 @@ dependencies = [
  "nfst-lexc",
  "nfst-pmatch",
  "nfst-twolc",
+ "nfst-xfst",
  "nfst-xre",
 ]
 
