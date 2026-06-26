@@ -6,7 +6,6 @@ use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
-use hfst::transducer::Transducer;
 
 fn roundtrip(type_: ImplementationType, label: &str) {
     let path = std::env::temp_dir().join(format!("hfst_bin_roundtrip_{label}.hfst"));
@@ -47,51 +46,41 @@ fn roundtrip(type_: ImplementationType, label: &str) {
     println!("{label} binary round-trip OK");
 }
 
-// The HFST-OL output stream is deferred, so assemble a valid HFST-OL file by
-// hand: the same HFST header the writer emits (HFST\0 + 2-byte length + \0 +
-// "version\03.3\0type\0HFST_OL[W]\0") followed by the optimized-lookup payload
-// 'Transducer::write' produces.
-fn read_hfst_ol(weighted: bool, label: &str) {
+// Full binary round-trip through the real HFST-OL output stream: build an
+// acceptor, convert it to optimized-lookup form, write it with the now-wired
+// HfstOlOutputStream behind HfstOutputStream, then read it back.
+fn roundtrip_hfst_ol(weighted: bool, label: &str) {
     let type_ = if weighted {
         ImplementationType::HFST_OLW_TYPE
     } else {
         ImplementationType::HFST_OL_TYPE
     };
-    let type_str = if weighted { "HFST_OLW" } else { "HFST_OL" };
 
-    let mut payload: Vec<u8> = Vec::new();
-    Transducer::new_weighted(weighted).write(&mut payload);
-
-    let mut header_data: Vec<u8> = Vec::new();
-    for s in ["version", "3.3", "type", type_str] {
-        header_data.extend_from_slice(s.as_bytes());
-        header_data.push(0);
-    }
-    let len = header_data.len() as u16;
-    let lb = len.to_le_bytes();
-
-    let mut file: Vec<u8> = Vec::new();
-    file.extend_from_slice(b"HFST");
-    file.push(0);
-    file.push(lb[0]);
-    file.push(lb[1]);
-    file.push(0);
-    file.extend_from_slice(&header_data);
-    file.extend_from_slice(&payload);
+    let mut t = HfstTransducer::new_symbol("a", ImplementationType::TROPICAL_OPENFST_TYPE);
+    t.convert(type_, String::new());
+    t.set_name("ol_ab");
 
     let path = std::env::temp_dir().join(format!("hfst_bin_roundtrip_{label}.hfst"));
     let path = path.to_str().unwrap().to_string();
-    std::fs::write(&path, &file).unwrap();
+    {
+        let mut out = HfstOutputStream::new_filename(&path, type_, true);
+        out.redirect(&mut t);
+        out.close();
+    }
 
     let mut input = HfstInputStream::new_filename(&path);
     assert_eq!(input.get_type(), type_, "{label}: OL type from header");
+    assert!(
+        input.is_hfst_header_included(),
+        "{label}: OL header written"
+    );
     let t2 = HfstTransducer::new_from_stream(&mut input);
     assert_eq!(t2.get_type(), type_, "{label}: read OL type");
     assert!(input.is_eof(), "{label}: at eof after the only transducer");
     input.close();
 
     let _ = std::fs::remove_file(&path);
-    println!("{label} HFST-OL read OK");
+    println!("{label} HFST-OL write+read round-trip OK");
 }
 
 // Exercise the facade AT&T text reader HfstTransducer::read_in_att_format_*.
@@ -122,8 +111,8 @@ fn read_att_facade() {
 fn main() {
     roundtrip(ImplementationType::TROPICAL_OPENFST_TYPE, "tropical");
     roundtrip(ImplementationType::LOG_OPENFST_TYPE, "log");
-    read_hfst_ol(false, "hfst_ol");
-    read_hfst_ol(true, "hfst_olw");
+    roundtrip_hfst_ol(false, "hfst_ol");
+    roundtrip_hfst_ol(true, "hfst_olw");
     read_att_facade();
     println!("all binary stream round-trips OK");
 }

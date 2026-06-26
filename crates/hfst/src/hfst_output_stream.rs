@@ -8,26 +8,26 @@
 //! Mirrored here as a struct of per-backend 'Option<Box<...>>' fields
 //! (['StreamImplementation']). The tropical/log output streams own their writer
 //! (no lifetime), so 'HfstOutputStream' needs no lifetime parameter.
-//! 'sfst'/'foma'/'xfsm' backend streams and 'HfstOlOutputStream' are unported
-//! collaborators — placeholder unit types so the field exists but cannot be
-//! constructed.
+//! 'sfst'/'foma'/'xfsm' backend streams are unported collaborators — placeholder
+//! unit types so the field exists but cannot be constructed. 'hfst_ol' uses the
+//! real ['HfstOlOutputStream'] from 'hfst_ol_transducer'.
 
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
 use crate::hfst_data_types::ImplementationType;
+use crate::hfst_ol_transducer::HfstOlOutputStream;
 use crate::log_weight_transducer::LogWeightOutputStream;
 use crate::tropical_weight_transducer::TropicalWeightOutputStream;
 
 /// Unported backend output-stream collaborators. Placeholder unit types: the
 /// corresponding ['StreamImplementation'] field exists for fidelity with the C++
 /// union, but no constructor is provided (the '#if HAVE_SFST' / 'HAVE_FOMA' /
-/// 'HAVE_XFSM' paths and 'HfstOlOutputStream' are deferred).
+/// 'HAVE_XFSM' paths are deferred).
 pub struct SfstOutputStream;
 pub struct FomaOutputStream;
 pub struct XfsmOutputStream;
-pub struct HfstOlOutputStream;
 
 /// Port of the C++ 'union StreamImplementation' (backend implementation). Exactly
 /// one field is 'Some', selected by 'HfstOutputStream::type_'.
@@ -117,12 +117,10 @@ mod output_impl {
                     unimplemented!("deferred: XfsmOutputStream");
                 }
                 ImplementationType::HFST_OL_TYPE => {
-                    // implementation.hfst_ol = new HfstOlOutputStream(false);
-                    unimplemented!("deferred: HfstOlOutputStream");
+                    implementation.hfst_ol = Some(Box::new(HfstOlOutputStream::new(false)));
                 }
                 ImplementationType::HFST_OLW_TYPE => {
-                    // implementation.hfst_ol = new HfstOlOutputStream(true);
-                    unimplemented!("deferred: HfstOlOutputStream");
+                    implementation.hfst_ol = Some(Box::new(HfstOlOutputStream::new(true)));
                 }
                 _ => crate::HFST_THROW!(SpecifiedTypeRequiredException),
             }
@@ -192,12 +190,12 @@ mod output_impl {
                     unimplemented!("deferred: XfsmOutputStream");
                 }
                 ImplementationType::HFST_OL_TYPE => {
-                    // implementation.hfst_ol = new HfstOlOutputStream(filename, false);
-                    unimplemented!("deferred: HfstOlOutputStream");
+                    implementation.hfst_ol =
+                        Some(Box::new(HfstOlOutputStream::new_filename(filename, false)));
                 }
                 ImplementationType::HFST_OLW_TYPE => {
-                    // implementation.hfst_ol = new HfstOlOutputStream(filename.c_str(), true);
-                    unimplemented!("deferred: HfstOlOutputStream");
+                    implementation.hfst_ol =
+                        Some(Box::new(HfstOlOutputStream::new_filename(filename, true)));
                 }
                 _ => crate::HFST_THROW!(SpecifiedTypeRequiredException),
             }
@@ -254,7 +252,7 @@ mod output_impl {
                 }
                 // we always have HFST_OL, right?
                 ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    unimplemented!("deferred: HfstOlOutputStream")
+                    self.implementation.hfst_ol.as_mut().unwrap().write(c);
                 }
                 _ => {
                     assert!(false);
@@ -423,8 +421,12 @@ mod output_impl {
                     unimplemented!("deferred: XfsmOutputStream")
                 }
                 ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    // implementation.hfst_ol->write_transducer(transducer.implementation.hfst_ol);
-                    unimplemented!("deferred: HfstOlOutputStream")
+                    self.implementation
+                        .hfst_ol
+                        .as_mut()
+                        .unwrap()
+                        .write_transducer(unsafe { &*transducer.implementation.hfst_ol });
+                    self
                 }
                 _ => {
                     assert!(false);
@@ -447,7 +449,7 @@ mod output_impl {
                 ImplementationType::FOMA_TYPE => unimplemented!("deferred: FomaOutputStream"),
                 ImplementationType::XFSM_TYPE => unimplemented!("deferred: XfsmOutputStream"),
                 ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    unimplemented!("deferred: HfstOlOutputStream")
+                    self.implementation.hfst_ol.as_mut().unwrap().close();
                 }
                 _ => {
                     assert!(false);

@@ -1844,7 +1844,10 @@ impl HfstTransducer {
             _ => {
                 // hfst::implementations::HfstBasicTransducer net(*this);
                 // return net.is_infinitely_ambiguous();
-                unimplemented!("deferred: HfstBasicTransducer(const HfstTransducer&)")
+                let net = self.get_basic_transducer();
+                let result = unsafe { (*net).is_infinitely_ambiguous() };
+                drop(unsafe { Box::from_raw(net) });
+                result
             }
         }
     }
