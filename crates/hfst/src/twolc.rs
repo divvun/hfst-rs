@@ -1501,11 +1501,30 @@ impl Rule {
         self.is_empty
     }
 
-    /// 'Rule::store(out)' ('Rule.cc'). Binary 'HfstOutputStream' write path.
+    /// 'Rule::store(out)' ('Rule.cc'). Names the rule, maps the internal TWOLC
+    /// symbols back to their HFST-facing forms, and writes the rule transducer to
+    /// the binary 'HfstOutputStream'.
     // [spec:hfst:def:rule.rule.store-fn]
     // [spec:hfst:sem:rule.rule.store-fn]
-    pub fn store(&mut self) {
-        unimplemented!("deferred: HfstOutputStream store")
+    pub fn store(&mut self, out: &mut crate::hfst_output_stream::HfstOutputStream) {
+        if self.is_empty {
+            return;
+        }
+        self.add_name();
+        self.rule_transducer.remove_diacritics_from_output();
+        self.rule_transducer
+            .apply_subst(TWOLC_EPSILON, HFST_EPSILON, true, true);
+        self.rule_transducer
+            .apply_subst("__HFST_TWOLC_.#.", "@#@", true, true);
+        self.rule_transducer
+            .apply_subst("__HFST_TWOLC_SPACE", " ", true, true);
+        self.rule_transducer.apply_subst_pair(
+            &("@#@".to_string(), "@#@".to_string()),
+            &("@#@".to_string(), HFST_EPSILON.to_string()),
+        );
+        self.rule_transducer
+            .apply_subst(TWOLC_IDENTITY, HFST_IDENTITY, true, true);
+        out.redirect(&mut self.rule_transducer.transducer);
     }
 
     /// 'Rule::get_name()' ('Rule.cc').
@@ -2062,9 +2081,20 @@ impl RuleContainer {
     // [spec:hfst:def:rule-container.rule-container.store-fn]
     // [spec:hfst:sem:rule-container.rule-container.store-fn]
     //
-    // DEFERRED: the HfstOutputStream binary store path is not yet ported.
-    pub fn store(&mut self, _be_verbose: bool) {
-        unimplemented!("deferred: HfstOutputStream RuleContainer::store");
+    // C++ takes (HfstOutputStream &out, std::ostream &msg_out, bool be_verbose);
+    // the progress messages go to stderr here (as elsewhere in this port).
+    pub fn store(
+        &mut self,
+        out: &mut crate::hfst_output_stream::HfstOutputStream,
+        be_verbose: bool,
+    ) {
+        for rule in self.rule_vector.iter_mut() {
+            if be_verbose {
+                let name = Rule::get_print_name(&rule.rule().get_name());
+                eprintln!("Storing {name}");
+            }
+            rule.rule_mut().store(out);
+        }
     }
 
     // [spec:hfst:def:rule-container.rule-container.add-missing-symbols-freely-fn]
