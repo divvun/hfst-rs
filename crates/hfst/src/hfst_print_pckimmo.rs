@@ -65,20 +65,12 @@ fn fmt_dot_star_d(precision: usize, value: i32) -> Vec<u8> {
 
 // [spec:hfst:def:hfst-print-pc-kimmo.hfst.print-pckimmo-fn]
 // [spec:hfst:sem:hfst-print-pc-kimmo.hfst.print-pckimmo-fn]
-#[allow(unreachable_code)]
-#[allow(unused_variables)]
-pub unsafe fn print_pckimmo(
-    out: *mut libc::FILE,
-    // t: &mut crate::hfst_transducer::HfstTransducer,  // deferred: HfstTransducer facade
-) {
+pub unsafe fn print_pckimmo(out: *mut libc::FILE, t: &crate::hfst_transducer::HfstTransducer) {
     unsafe {
         // C++: 'HfstBasicTransducer mutt {t};' — build the interchange graph from
-        // the facade. Deferred: needs the 'HfstTransducer' facade
-        // ('crate::hfst_transducer::HfstTransducer') and the
-        // 'HfstBasicTransducer(const HfstTransducer&)' conversion constructor.
-        let mutt: HfstBasicTransducer = unimplemented!(
-            "deferred: HfstBasicTransducer(const HfstTransducer&) + HfstTransducer facade"
-        );
+        // the facade. get_basic_transducer is the HfstBasicTransducer(const
+        // HfstTransducer&) conversion (heap-allocated like the C++ temporary).
+        let mutt: HfstBasicTransducer = *Box::from_raw(t.get_basic_transducer());
         let mut s: HfstState = 0;
         let mut last: HfstState = 0;
         let mut pairs: BTreeSet<(String, String)> = BTreeSet::new();

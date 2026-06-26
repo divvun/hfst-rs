@@ -1028,12 +1028,16 @@ impl HfstTransducer {
         // C++: HfstBasicTransducer net(t);
         //      HfstTransducer *retval = new HfstTransducer(net, type);
         //      return *retval;
-        // The HfstBasicTransducer(const HfstTransducer&) ctor (==
-        // ConversionFunctions::hfst_transducer_to_hfst_basic_transducer, the full
-        // type-dispatch incl. HFST_OL) is not yet ported.
-        unimplemented!(
-            "deferred: hfst_transducer_to_hfst_basic_transducer (HfstBasicTransducer-from-HfstTransducer ctor)"
-        )
+        // The HfstBasicTransducer(const HfstTransducer&) ctor is the facade's
+        // get_basic_transducer (full type-dispatch incl. HFST_OL, heap-allocated
+        // like the C++ stack temporary); new_from_basic is HfstTransducer(net, type).
+        let net = t.get_basic_transducer();
+        let retval = Box::into_raw(Box::new(HfstTransducer::new_from_basic(
+            unsafe { &*net },
+            type_,
+        )));
+        drop(unsafe { Box::from_raw(net) });
+        retval
     }
 
     /// \brief Convert the transducer into an equivalent transducer in format
