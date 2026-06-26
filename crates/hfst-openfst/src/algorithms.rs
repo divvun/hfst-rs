@@ -344,14 +344,12 @@ where
 }
 
 // [fst::Prune] — in-place prune of paths worse than 'threshold'
-pub fn Prune<W, F>(_fst: &mut F, _threshold: W)
+pub fn Prune<W, F>(fst: &mut F, threshold: W)
 where
     W: Semiring,
-    F: MutableFst<W>,
+    F: ExpandedFst<W> + MutableFst<W>,
 {
-    unimplemented!(
-        "rustfst gap: Prune — implement in the rustfst fork when a ported test needs it"
-    );
+    rustfst::algorithms::prune(fst, threshold).expect("rustfst prune");
 }
 
 // [fst::Equivalent] — are fst1 and fst2 equivalent?
@@ -452,14 +450,6 @@ where
     }
 }
 
-// [fst::EpsNormalize] — ofst := eps-normalized ifst
-pub fn EpsNormalize<W, F1, F2>(_ifst: &F1, _ofst: &mut F2)
-where
-    W: Semiring,
-    F1: ExpandedFst<W>,
-    F2: MutableFst<W>,
-{
-    unimplemented!(
-        "rustfst gap: EpsNormalize — implement in the rustfst fork when a ported test needs it"
-    );
-}
+// fst::EpsNormalize is intentionally not ported: nothing in the HFST facade or
+// backends invokes eps-normalization, so there is no call site to serve. Add it
+// to the rustfst fork if a ported path ever needs it.
