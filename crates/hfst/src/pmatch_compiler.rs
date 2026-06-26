@@ -1,16 +1,16 @@
-//! `pmatch_compiler` — 1:1 port of `libhfst/src/parsers/pmatch_utils.{h,cc}`,
-//! the PMATCH compiler (the `PmatchObject` lazy-evaluation AST + every
-//! `evaluate()` + every free function in `namespace hfst::pmatch`).
+//! 'pmatch_compiler' — 1:1 port of 'libhfst/src/parsers/pmatch_utils.{h,cc}',
+//! the PMATCH compiler (the 'PmatchObject' lazy-evaluation AST + every
+//! 'evaluate()' + every free function in 'namespace hfst::pmatch').
 //!
-//! The runtime matcher (`pmatch.cc`) is ported separately in [`crate::pmatch`]
+//! The runtime matcher ('pmatch.cc') is ported separately in ['crate::pmatch']
 //! and is NOT part of this module.
 //!
 //! Faithfulness over idiom: C++ identifiers are kept verbatim (Rust casing),
-//! bugs are preserved, and `unsafe`/raw pointers mirror the C++ `PmatchObject*`
-//! hierarchy and `hfst::pmatch` namespace globals. The ONE sanctioned
+//! bugs are preserved, and 'unsafe'/raw pointers mirror the C++ 'PmatchObject*'
+//! hierarchy and 'hfst::pmatch' namespace globals. The ONE sanctioned
 //! structural deviation is that the bison tree construction is replaced by a
-//! walk over the `nfst-pmatch` parse-only AST (see [`build_object`],
-//! [`build_statement`], [`PmatchCompiler`]).
+//! walk over the 'nfst-pmatch' parse-only AST (see ['build_object'],
+//! ['build_statement'], ['PmatchCompiler']).
 
 #![allow(dead_code)]
 #![allow(unused_variables)]
@@ -48,10 +48,10 @@ use std::os::raw::c_char;
 // Primitive typedefs
 // ---------------------------------------------------------------------------
 
-/// Mirror of C `clock_t` (used for the verbose-mode compilation timers).
+/// Mirror of C 'clock_t' (used for the verbose-mode compilation timers).
 pub type clock_t = i64;
 
-/// Mirror of C `CLOCKS_PER_SEC` for [`clock`].
+/// Mirror of C 'CLOCKS_PER_SEC' for ['clock'].
 pub const CLOCKS_PER_SEC: clock_t = 1_000_000;
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.word-vec-float]
@@ -63,7 +63,7 @@ pub type TransducerPointerPair = (*mut HfstTransducer, *mut HfstTransducer);
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.mapping-pair-vector]
 pub type MappingPairVector = Vec<*mut dyn PmatchObjectPairBase>;
 
-/// Mirror of C `clock()` — processor time in [`CLOCKS_PER_SEC`] ticks. The
+/// Mirror of C 'clock()' — processor time in ['CLOCKS_PER_SEC'] ticks. The
 /// skeleton uses wall-clock microseconds, which is only consulted in verbose
 /// timing output.
 pub fn clock() -> clock_t {
@@ -272,8 +272,8 @@ pub struct WordVector {
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object]
 //
-// The C++ `struct PmatchObject` has base fields `name`/`weight`/`line_defined`/
-// `my_timer`/`cache` carried (verbatim) on every node struct below; the trait
+// The C++ 'struct PmatchObject' has base fields 'name'/'weight'/'line_defined'/
+// 'my_timer'/'cache' carried (verbatim) on every node struct below; the trait
 // exposes them through accessor methods (get_name/set_name/.../get_cache/
 // set_cache) implemented on each node struct.
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.pmatch-object-fn]
@@ -412,7 +412,7 @@ pub trait PmatchObject {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-fn]
     unsafe fn evaluate(&mut self) -> *mut HfstTransducer;
-    /// The C++ overload `evaluate(std::vector<PmatchObject*> args)` (base
+    /// The C++ overload 'evaluate(std::vector<PmatchObject*> args)' (base
     /// default).
     unsafe fn evaluate_args(&mut self, args: Vec<*mut dyn PmatchObject>) -> *mut HfstTransducer {
         self.evaluate()
@@ -604,8 +604,8 @@ pub struct PmatchAcceptor {
 
 // ---------------------------------------------------------------------------
 // PmatchObjectPair hierarchy (NOT PmatchObject subclasses; carries the virtual
-// evaluate_pair()). The `PmatchObjectPairBase` trait preserves the C++ virtual
-// dispatch between `PmatchObjectPair` and `PmatchMarkupContainer`.
+// evaluate_pair()). The 'PmatchObjectPairBase' trait preserves the C++ virtual
+// dispatch between 'PmatchObjectPair' and 'PmatchMarkupContainer'.
 // ---------------------------------------------------------------------------
 
 pub trait PmatchObjectPairBase {
@@ -718,12 +718,12 @@ pub struct PmatchUtilityTransducers {
 }
 
 // ---------------------------------------------------------------------------
-// Global state (mirroring the `hfst::pmatch` namespace globals).
+// Global state (mirroring the 'hfst::pmatch' namespace globals).
 //
-// Collection globals are `static mut` plus an accessor returning a
-// `&'static mut` (built through `addr_of_mut!`, which avoids the edition-2024
-// `static_mut_refs` hard error). Scalar/pointer globals are read/written
-// directly inside `unsafe` blocks, exactly like the C++ namespace globals.
+// Collection globals are 'static mut' plus an accessor returning a
+// '&'static mut' (built through 'addr_of_mut!', which avoids the edition-2024
+// 'static_mut_refs' hard error). Scalar/pointer globals are read/written
+// directly inside 'unsafe' blocks, exactly like the C++ namespace globals.
 // ---------------------------------------------------------------------------
 
 pub static mut data: *mut c_char = std::ptr::null_mut();
@@ -901,9 +901,9 @@ pub fn array_len(strings: &[&str]) -> usize {
     strings.len()
 }
 
-/// Facade mirroring the C++ `hfst::pmatch::compile`: construct the
-/// `PmatchObject` definitions + TOP from a pmatch source string and return the
-/// evaluated transducers (`map<string, HfstTransducer*>` in C++).
+/// Facade mirroring the C++ 'hfst::pmatch::compile': construct the
+/// 'PmatchObject' definitions + TOP from a pmatch source string and return the
+/// evaluated transducers ('map<string, HfstTransducer*>' in C++).
 pub struct PmatchCompiler {
     pub type_: ImplementationType,
     pub verbose: bool,
@@ -1423,8 +1423,8 @@ impl PmatchUtilityTransducers {
 }
 
 // ===== body: string-symbol-marker-helpers =====
-// Helper for faithfully constructing a freshly-`new`ed PmatchObject node's base
-// fields, mirroring the C++ `PmatchObject::PmatchObject()` default constructor
+// Helper for faithfully constructing a freshly-'new'ed PmatchObject node's base
+// fields, mirroring the C++ 'PmatchObject::PmatchObject()' default constructor
 // (name="", weight=0.0, line_defined=pmatchlineno, my_timer uninitialised,
 // cache=NULL). There is no lexer line counter in this port, so line_defined=0.
 
@@ -2977,7 +2977,7 @@ impl PmatchObject for PmatchBinaryOperation {
                     }
                     let _ = Box::from_raw(lhs);
                     // NB: mirrors the C++ aliasing (lhs now points at rhs); the
-                    // unconditional `delete rhs` below frees it and the later use
+                    // unconditional 'delete rhs' below frees it and the later use
                     // is the original's behaviour.
                     lhs = tmp;
                 }
@@ -3543,10 +3543,10 @@ impl PmatchObject for PmatchContextsContainer {
 // ===== body: atom-symbol-function-eval =====
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.evaluate-fn]
-// The C++ overload `PmatchObject::evaluate(std::vector<PmatchObject*> args)`
-// (the base default for the trait `evaluate_args`); this is the shared
-// weight/cache handling. (`pmatchlineno` does not exist in the AST-walk port,
-// so the diagnostic uses `line_defined`.)
+// The C++ overload 'PmatchObject::evaluate(std::vector<PmatchObject*> args)'
+// (the base default for the trait 'evaluate_args'); this is the shared
+// weight/cache handling. ('pmatchlineno' does not exist in the AST-walk port,
+// so the diagnostic uses 'line_defined'.)
 pub unsafe fn PmatchObject_evaluate_args(
     this: &mut dyn PmatchObject,
     args: Vec<*mut dyn PmatchObject>,
@@ -5111,8 +5111,8 @@ pub unsafe fn read_args(filename: *mut c_char, argcount: u32) -> Vec<Vec<String>
 // ===== body: fileio-compile-driver =====
 // ---------------------------------------------------------------------------
 // Bison-bridge globals/functions consumed by this group (the bison parser is
-// replaced by the nfst-pmatch walk, but `compile`/`init_globals`/
-// `expand_includes` still reference these). The integrator links them if
+// replaced by the nfst-pmatch walk, but 'compile'/'init_globals'/
+// 'expand_includes' still reference these). The integrator links them if
 // another group provides them; otherwise these definitions stand in.
 // ---------------------------------------------------------------------------
 
@@ -5314,9 +5314,9 @@ pub unsafe fn compile(
         eprintln!();
     }
 
-    // === SEAM: replaces the bison `pmatchparse()` call ====================
+    // === SEAM: replaces the bison 'pmatchparse()' call ====================
     // The build-driver group walks the nfst-pmatch parse tree, populating the
-    // `hfst::pmatch` globals exactly as the bison actions would have.
+    // 'hfst::pmatch' globals exactly as the bison actions would have.
     match nfst_pmatch::parse(&expanded_script) {
         Ok(parsed) => {
             for statement in &parsed.value.statements {
@@ -5765,8 +5765,8 @@ fn map_caseop(op: nfst_pmatch::CaseOp, side: Option<nfst_pmatch::CaseSide>) -> P
     }
 }
 // ===========================================================================
-// PmatchObject node constructors (mirror the C++ `new PmatchX(...)` calls; all
-// share the `PmatchObject()` base-field initialisation: name="", weight=0.0,
+// PmatchObject node constructors (mirror the C++ 'new PmatchX(...)' calls; all
+// share the 'PmatchObject()' base-field initialisation: name="", weight=0.0,
 // line_defined=pmatchlineno (unavailable in the walk -> 0), my_timer=0,
 // cache=NULL).
 // ===========================================================================
@@ -6024,7 +6024,7 @@ unsafe fn build_read_file(kind: nfst_pmatch::ReadKind, path: &str) -> *mut dyn P
         }
     }
 }
-/// Build a `PmatchObject*` AST node from an `nfst-pmatch` expression node.
+/// Build a 'PmatchObject*' AST node from an 'nfst-pmatch' expression node.
 pub unsafe fn build_object(e: &nfst_pmatch::SpannedExpr) -> *mut dyn PmatchObject {
     use nfst_pmatch::BinaryOp as B;
     use nfst_pmatch::PmatchExpr as PE;
@@ -6486,7 +6486,7 @@ pub unsafe fn build_object(e: &nfst_pmatch::SpannedExpr) -> *mut dyn PmatchObjec
 }
 // EXPRESSION1: EXPRESSION2 END_OF_WEIGHTED_EXPRESSION { weight += w; wrap in
 // AddDelimiters if need_delimiters; reset need_delimiters. } The trailing
-// weight is folded into a `Weighted` node by nfst, so only the delimiter wrap
+// weight is folded into a 'Weighted' node by nfst, so only the delimiter wrap
 // remains here.
 unsafe fn build_expression1(body: &nfst_pmatch::SpannedExpr) -> *mut dyn PmatchObject {
     let obj = build_object(body);
@@ -6519,9 +6519,9 @@ unsafe fn insert_definition(name: String, obj: *mut dyn PmatchObject) {
     }
     definitions().insert(name, obj);
 }
-/// Apply one top-level `nfst-pmatch` statement (definition / def-ins /
+/// Apply one top-level 'nfst-pmatch' statement (definition / def-ins /
 /// regex-top / set-variable / list-definition / read-vec), populating the
-/// `hfst::pmatch` globals.
+/// 'hfst::pmatch' globals.
 pub unsafe fn build_statement(s: &nfst_pmatch::Spanned<nfst_pmatch::PmatchStatement>) {
     use nfst_pmatch::PmatchStatement as PS;
     use nfst_pmatch::VariableValue;
@@ -6598,8 +6598,8 @@ impl PmatchCompiler {
         }
     }
 
-    // Mirrors `hfst::pmatch::compile`, with the bison `pmatchparse()` step
-    // replaced by a walk over the `nfst-pmatch` AST (the sanctioned deviation).
+    // Mirrors 'hfst::pmatch::compile', with the bison 'pmatchparse()' step
+    // replaced by a walk over the 'nfst-pmatch' AST (the sanctioned deviation).
     pub fn compile(&mut self, src: &str) -> HashMap<String, *mut HfstTransducer> {
         unsafe {
             init_globals();
