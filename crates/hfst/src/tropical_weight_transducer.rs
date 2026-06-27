@@ -2112,8 +2112,9 @@ mod operations {
 
             // weights must not be encoded, else e.g. [a:b::1] & [a:b::2] will be empty
             // EncodeMapper<StdArc> encoder(0x0001, ENCODE); (0x0001 == kEncodeLabels)
+            // One shared encoder for t1 AND t2 (and the Decode below).
             let encoder = algorithms::Encode(&mut t1, algorithms::EncodeType::EncodeLabels);
-            let _encoder2 = algorithms::Encode(&mut t2, algorithms::EncodeType::EncodeLabels);
+            let encoder = algorithms::EncodeInto(&mut t2, encoder);
 
             algorithms::ArcSortOutput(&mut t1);
             algorithms::ArcSortInput(&mut t2);
@@ -2177,9 +2178,9 @@ mod operations {
                 }
             }
 
-            // EncodeMapper<StdArc> encoder(kEncodeLabels, ENCODE);
+            // EncodeMapper<StdArc> encoder(kEncodeLabels, ENCODE); shared by t1 AND t2.
             let encoder = algorithms::Encode(&mut t1, algorithms::EncodeType::EncodeLabels);
-            let _encoder2 = algorithms::Encode(&mut t2_, algorithms::EncodeType::EncodeLabels);
+            let encoder = algorithms::EncodeInto(&mut t2_, encoder);
 
             algorithms::ArcSortOutput(&mut t1);
             algorithms::ArcSortInput(&mut t2_);
@@ -2215,8 +2216,12 @@ mod operations {
                 algorithms::EncodeType::EncodeLabels
             };
 
-            let _mapper_a = algorithms::Encode(&mut a, encode_type);
-            let _mapper_b = algorithms::Encode(&mut b, encode_type);
+            // Encode both fsts through ONE shared table (OpenFST's
+            // Encode(fst, &encoder)): the same (ilabel, olabel) pair then maps to
+            // the same encoded label in both, so the subsequent Equivalent does
+            // not depend on the order the global symbol table numbered the labels.
+            let table = algorithms::Encode(&mut a, encode_type);
+            let _table = algorithms::EncodeInto(&mut b, table);
 
             let mut deta = StdVectorFst::new();
             let mut detb = StdVectorFst::new();

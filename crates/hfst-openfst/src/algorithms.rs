@@ -24,7 +24,7 @@ use rustfst::algorithms::union::union;
 use rustfst::algorithms::{ProjectType, ReweightType};
 use rustfst::semirings::{WeaklyDivisibleSemiring, WeightQuantize};
 
-pub use rustfst::algorithms::encode::{EncodeTable, EncodeType, decode, encode};
+pub use rustfst::algorithms::encode::{EncodeTable, EncodeType, decode, encode, encode_into};
 pub use rustfst::algorithms::{PushType, ReweightType as FstReweightType};
 
 // ---- in-place algorithms ----
@@ -142,6 +142,16 @@ pub fn Encode<W: Semiring, F: MutableFst<W>>(
 
 pub fn Decode<W: Semiring, F: MutableFst<W>>(fst: &mut F, table: EncodeTable<W>) {
     decode(fst, table).expect("rustfst decode");
+}
+
+// [fst::Encode] with a SHARED EncodeMapper — encode another fst into an existing
+// table so the two share one label space (OpenFST's Encode(fst, &encoder)).
+// Without this, comparing two independently-encoded fsts is order-sensitive.
+pub fn EncodeInto<W: Semiring, F: MutableFst<W>>(
+    fst: &mut F,
+    table: EncodeTable<W>,
+) -> EncodeTable<W> {
+    encode_into(fst, table).expect("rustfst encode_into")
 }
 
 // ---- out-of-place algorithms (OpenFST out-param shape: result written to ofst) ----

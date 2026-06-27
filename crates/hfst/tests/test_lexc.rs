@@ -135,18 +135,7 @@ fn valid_file_parse_tropical() {
     valid_file_parse(TROPICAL_OPENFST_TYPE);
 }
 
-// PORT DISCREPANCY (real bug, exposed by per-process isolation -- run under
-// nextest, which gives each test its own process like the C++ tests had):
-// HfstTransducer::compare is order-of-construction sensitive via the process-
-// global symbol-number table. This test builds the in-code 'animals' BEFORE the
-// lexc result; with a fresh table that makes compare_default return false, while
-// building 'animals' AFTER (as valid_file_parse does) returns true for the same
-// two transducers. read_lexc itself is correct -- the bug is in the
-// compare/harmonize path (HarmonizeUnknownAndIdentitySymbols). Under plain
-// 'cargo test' this passed only because sibling tests leaked a favorable global
-// numbering into this one. See [[compare-order-sensitivity-bug]].
 #[test]
-#[ignore = "PORT DISCREPANCY: compare/harmonize is order-of-construction sensitive via the global symbol-number table (animals-built-first + fresh table -> compare_default false); read_lexc is correct, the bug is in HarmonizeUnknownAndIdentitySymbols"]
 fn valid_file_read_lexc_tropical() {
     let _g = serialized();
     valid_file_read_lexc(TROPICAL_OPENFST_TYPE);
