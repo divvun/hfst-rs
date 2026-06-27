@@ -59,6 +59,34 @@ compiler front-ends (`hfst-lexc-compiler`/`-pmatch2fst`/`-regexp2fst`), then the
 lookup tools (`hfst-lookup`/`-flookup`/`-optimized-lookup`). `hfst-invert.cc` is
 the canonical unary template; read it first.
 
+## STATUS 2026-06-28: 56 tools built (fan-out workflow complete)
+
+The two-workflow approach landed: foundation workflow, then a 59-agent fan-out +
+serial integrate. **56 of 59 tool bins build clean and run `--help`** (commits
+`2647b49a`, `47118059`, `7971b707`). Wave-2 coverage 2299 -> **2867/3295 (87%)**.
+`cargo build -p hfst-cli` is clean.
+
+**4 deferred (deleted from src/bin; need an un-ported library item):**
+- `hfst-guess` — port `tools/src/generate_model_forms.{cc,h}` into the `hfst`
+  crate (StringVectorVector, read_model_forms, get_guesses, get_paradigms, …).
+- `hfst-guessify` — port `tools/src/guessify_fst.{cc,h}` (`guessify_analyzer`,
+  `store_guesser`, `CATEGORY_SYMBOL_PREFIX`).
+- `hfst-lexc-compiler` — needs an incremental `LexcCompiler::parse(&str)` entry
+  point in the lib (it currently only exposes one-shot `compile`).
+- `hfst-unary-tool` — the example/template tool; calls a placeholder
+  `HfstTransducer::do_stuff()` that does not (and need not) exist. Leave deferred.
+
+**Built-but-runtime-gapped (compile + `--help` fine, panic on one path):**
+- `hfst-tokenize`, `hfst-pmatch` — the pmatch-script / "TOP" path calls
+  `PmatchContainer::{new_from_stream,parse_hfst3_header}`, still `unimplemented!`
+  in `crates/hfst/src/pmatch.rs` (Wave-3 lib work). Their naive/non-TOP paths are
+  fully wired.
+
+**Integrate-stage mechanical fixes worth knowing (faithful, no logic change):**
+13 bins needed `#![allow(static_mut_refs)]` (edition-2024) for their C file-scope
+statics; several bins needed the macOS `link_name="__std*p"` stream fix; a few had
+import-path/`libc::getc`->`fgetc`/`clock` portability fixes.
+
 ## Proven so far
 
 - `hfst-getopt` (committed) and the foundation (`globals`, `hfst_commandline`,
