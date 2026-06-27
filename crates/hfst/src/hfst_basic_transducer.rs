@@ -1699,6 +1699,8 @@ impl HfstBasicTransducer {
     // Erase newlines from the end of 'str' and return 'str'.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-newlines-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-newlines-fn]
+    // [spec:hfst:def:hfst-transition-graph.std.string-strip-newlines-fn]
+    // [spec:hfst:sem:hfst-transition-graph.std.string-strip-newlines-fn]
     pub fn strip_newlines(str: &mut String) -> String {
         let mut i: i64 = str.len() as i64 - 1;
         while i >= 0 {
@@ -1842,6 +1844,8 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-att-format-fn]
     //
     // Writes into a caller-provided C buffer via 'sprintf' at a running offset.
+    // [spec:hfst:def:hfst-transition-graph.write-in-att-format-fn]
+    // [spec:hfst:sem:hfst-transition-graph.write-in-att-format-fn]
     pub unsafe fn write_in_att_format_ptr(&self, ptr: *mut libc::c_char, write_weights: bool) {
         unsafe {
             let mut source_state: u32 = 0;
@@ -1908,6 +1912,8 @@ impl HfstBasicTransducer {
     //
     // NB: the C++ prints the final-state line *inside* the transition loop (so a
     // multi-transition final state repeats it); preserved bug-for-bug.
+    // [spec:hfst:def:hfst-transition-graph.write-in-att-format-number-fn]
+    // [spec:hfst:sem:hfst-transition-graph.write-in-att-format-number-fn]
     pub unsafe fn write_in_att_format_number_file(
         &self,
         file: *mut libc::FILE,
@@ -2041,6 +2047,8 @@ impl HfstBasicTransducer {
     // EndOfStreamException.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-stripped-line-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-stripped-line-fn]
+    // [spec:hfst:def:hfst-transition-graph.std.string-get-stripped-line-fn]
+    // [spec:hfst:sem:hfst-transition-graph.std.string-get-stripped-line-fn]
     pub fn get_stripped_line(
         is: &mut dyn BufRead,
         file: *mut libc::FILE,
@@ -2070,6 +2078,8 @@ impl HfstBasicTransducer {
     // Create a graph from prolog format in 'is' (if 'file' is null) or 'file'.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-prolog-format-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-prolog-format-fn]
+    // [spec:hfst:def:hfst-transition-graph.hfst-transition-graph-read-in-prolog-format-fn]
+    // [spec:hfst:sem:hfst-transition-graph.hfst-transition-graph-read-in-prolog-format-fn]
     pub fn read_in_prolog_format(
         is: &mut dyn BufRead,
         file: *mut libc::FILE,
@@ -2138,6 +2148,8 @@ impl HfstBasicTransducer {
     // Create a graph from AT&T format in 'is' (if 'file' is null) or 'file'.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-att-format-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-att-format-fn]
+    // [spec:hfst:def:hfst-transition-graph.hfst-transition-graph-read-in-att-format-fn]
+    // [spec:hfst:sem:hfst-transition-graph.hfst-transition-graph-read-in-att-format-fn]
     pub fn read_in_att_format(
         is: &mut dyn BufRead,
         file: *mut libc::FILE,
@@ -2394,6 +2406,8 @@ impl HfstBasicTransducer {
     /* In-place substitution of 'old_sp' with the set 'new_sps'. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.substitute-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.substitute-fn]
+    // [spec:hfst:def:hfst-transition-graph.substitute-fn]
+    // [spec:hfst:sem:hfst-transition-graph.substitute-fn]
     fn substitute_in_place_pair_set(
         &mut self,
         old_sp: &HfstSymbolPair,
@@ -2796,6 +2810,8 @@ impl HfstBasicTransducer {
     //
     // The C++ uses 'ostringstream <<' (default float text); Rust's '{}' differs
     // textually but round-trips with marker2weight's parse internally.
+    // [spec:hfst:def:hfst-transition-graph.std.string-weight2marker-fn]
+    // [spec:hfst:sem:hfst-transition-graph.std.string-weight2marker-fn]
     pub fn weight2marker(weight: f32) -> String {
         format!("@{}@", weight)
     }
@@ -3324,6 +3340,8 @@ impl HfstBasicTransducer {
     /* Get a topological (maximum/minimum distance) sort of this graph. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topsort-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topsort-fn]
+    // [spec:hfst:def:hfst-transition-graph.std.vector-std.set-hfst-state-topsort-fn]
+    // [spec:hfst:sem:hfst-transition-graph.std.vector-std.set-hfst-state-topsort-fn]
     pub fn topsort(&self, dist: SortDistance) -> Vec<BTreeSet<HfstState>> {
         let mut current_distance: u32 = 0; // topological distance
         let mut top_sort = TopologicalSort::new();
@@ -3394,6 +3412,8 @@ impl HfstBasicTransducer {
     /** The lengths of strings accepted by this graph, in descending order. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.path-sizes-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.path-sizes-fn]
+    // [spec:hfst:def:hfst-transition-graph.std.vector-unsigned-int-path-sizes-fn]
+    // [spec:hfst:sem:hfst-transition-graph.std.vector-unsigned-int-path-sizes-fn]
     pub fn path_sizes(&self) -> Vec<u32> {
         let mut result: Vec<u32> = Vec::new();
         let states_sorted = self.topsort(SortDistance::MinimumDistance);
@@ -3551,6 +3571,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-lookup-infinitely-ambiguous-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-lookup-infinitely-ambiguous-fn]
+    // [spec:hfst:def:hfst-transition-graph.is-lookup-infinitely-ambiguous-fn]
+    // [spec:hfst:sem:hfst-transition-graph.is-lookup-infinitely-ambiguous-fn]
     pub fn is_lookup_infinitely_ambiguous_recursive(
         &self,
         s: &HfstOneLevelPath,
@@ -3940,6 +3962,8 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-regexp-paths-fn]
     // [spec:hfst:def:hfst-transition-graph.find-regexp-paths-fn]
     // [spec:hfst:sem:hfst-transition-graph.find-regexp-paths-fn]
+    // [spec:hfst:def:hfst-transition-graph.void-find-regexp-paths-fn]
+    // [spec:hfst:sem:hfst-transition-graph.void-find-regexp-paths-fn]
     pub fn find_regexp_paths(
         &self,
         s: HfstState,
@@ -4010,6 +4034,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-replacements-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-replacements-fn]
+    // [spec:hfst:def:hfst-transition-graph.hfst-replacements-map-find-replacements-fn]
+    // [spec:hfst:sem:hfst-transition-graph.hfst-replacements-map-find-replacements-fn]
     pub fn find_replacements(&self, input_side: bool) -> HfstReplacementsMap {
         let mut replacements = HfstReplacementsMap::new();
         let mut state: u32 = 0;
@@ -4520,6 +4546,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.merge-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.merge-fn]
+    // [spec:hfst:def:hfst-transition-graph.hfst-transition-graph-fn]
+    // [spec:hfst:sem:hfst-transition-graph.hfst-transition-graph-fn]
     pub fn merge(
         graph: &mut HfstBasicTransducer,
         merger: &mut HfstBasicTransducer,

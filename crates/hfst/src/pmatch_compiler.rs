@@ -928,6 +928,7 @@ pub struct PmatchCompiler {
     pub flatten: bool,
     pub include_cosine_distances: bool,
     pub includedir: String,
+    pub definitions_: BTreeMap<String, *mut HfstTransducer>,
 }
 
 // ===== body: utility-transducers =====
@@ -6917,6 +6918,16 @@ pub unsafe fn build_statement(s: &nfst_pmatch::Spanned<nfst_pmatch::PmatchStatem
         }
     }
 }
+// [spec:hfst:def:pmatch-compiler.hfst.pmatch.pmatch-compiler.pmatch-compiler-fn]
+// [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.pmatch-compiler-fn]
+//
+// The C++ default constructor fixes the format to TROPICAL_OPENFST_TYPE.
+impl Default for PmatchCompiler {
+    fn default() -> Self {
+        PmatchCompiler::new(ImplementationType::TROPICAL_OPENFST_TYPE)
+    }
+}
+
 impl PmatchCompiler {
     pub fn new(type_: ImplementationType) -> Self {
         PmatchCompiler {
@@ -6925,9 +6936,46 @@ impl PmatchCompiler {
             flatten: false,
             include_cosine_distances: false,
             includedir: String::new(),
+            definitions_: BTreeMap::new(),
         }
     }
 
+    // [spec:hfst:def:pmatch-compiler.hfst.pmatch.pmatch-compiler.set-flatten-fn]
+    // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.set-flatten-fn]
+    pub fn set_flatten(&mut self, val: bool) {
+        self.flatten = val;
+    }
+
+    // [spec:hfst:def:pmatch-compiler.hfst.pmatch.pmatch-compiler.set-verbose-fn]
+    // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.set-verbose-fn]
+    pub fn set_verbose(&mut self, val: bool) {
+        self.verbose = val;
+    }
+
+    // [spec:hfst:def:pmatch-compiler.hfst.pmatch.pmatch-compiler.set-include-cosine-distances-fn]
+    // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.set-include-cosine-distances-fn]
+    pub fn set_include_cosine_distances(&mut self, val: bool) {
+        self.include_cosine_distances = val;
+    }
+
+    // [spec:hfst:def:pmatch-compiler.hfst.pmatch.pmatch-compiler.define-fn]
+    // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.define-fn]
+    //
+    // Reads the global 'definitions' map (populated by 'compile') and stores the
+    // evaluated transducer into the member 'definitions_', mirroring the C++.
+    pub fn define(&mut self, name: &str, pmatch: &str) {
+        self.compile(pmatch);
+        unsafe {
+            if definitions().contains_key(name) {
+                let obj = definitions()[name];
+                self.definitions_
+                    .insert(name.to_string(), (*obj).evaluate());
+            }
+        }
+    }
+
+    // [spec:hfst:def:pmatch-compiler.hfst.pmatch.pmatch-compiler.compile-fn]
+    // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.compile-fn]
     // Mirrors 'hfst::pmatch::compile', with the bison 'pmatchparse()' step
     // replaced by a walk over the 'nfst-pmatch' AST (the sanctioned deviation).
     pub fn compile(&mut self, src: &str) -> HashMap<String, *mut HfstTransducer> {
