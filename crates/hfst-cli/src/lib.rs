@@ -12,8 +12,8 @@
 //! hfst-tool-metadata, hfst-file-to-mem) is ported into the modules below; each
 //! tool's main lives in src/bin/ and drives them.
 
-// Shared infrastructure modules are added here as they are ported, e.g.
-//   pub mod hfst_getopt;
+pub mod hfst_getopt;
+// More shared infrastructure modules are added here as they are ported:
 //   pub mod hfst_commandline;
 //   pub mod hfst_program_options;
 //   pub mod hfst_tool_metadata;
