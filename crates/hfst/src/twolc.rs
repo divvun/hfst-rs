@@ -2043,6 +2043,16 @@ impl RuleT for ConflictResolvingLeftArrowRule {
 // 'Box<dyn RuleT>' back to its concrete conflict-resolving type.
 // ───────────────────────────────────────────────────────────────────────────
 
+// [spec:hfst:def:rule-container.rule-container.rule-container-fn]
+// [spec:hfst:sem:rule-container.rule-container.rule-container-fn]
+//
+// C++ '~RuleContainer' iterates 'rule_vector' and 'delete's every 'Rule*'.
+// Here each rule is owned as a 'Box<dyn RuleT>', so dropping 'rule_vector' is
+// the deleting destructor; the explicit empty 'drop' makes the symbol present.
+impl Drop for RuleContainer {
+    fn drop(&mut self) {}
+}
+
 // [spec:hfst:def:rule-container.rule-container]
 impl RuleContainer {
     /// C++ 'RuleContainer::RuleContainer(void): report(true) {}'.

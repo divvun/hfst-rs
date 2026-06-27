@@ -5633,6 +5633,8 @@ pub fn set_minimization_algorithm(a: MinimizationAlgorithm) {
 
 // [spec:hfst:def:hfst-transducer.hfst.get-minimization-algorithm-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.get-minimization-algorithm-fn]
+// [spec:hfst:def:hfst-transducer.hfst.minimization-algorithm-get-minimization-algorithm-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.minimization-algorithm-get-minimization-algorithm-fn]
 pub fn get_minimization_algorithm() -> MinimizationAlgorithm {
     if MINIMIZATION_ALGORITHM.load(std::sync::atomic::Ordering::Relaxed) == 0 {
         MinimizationAlgorithm::HOPCROFT

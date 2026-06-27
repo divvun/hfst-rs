@@ -656,6 +656,8 @@ pub fn expandContextsWithMapping(
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.bracketed-replace-fn]
 // [spec:hfst:def:hfst-transducer.hfst.xerox-rules.bracketed-replace-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.xerox-rules.bracketed-replace-fn]
+// [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.hfst.xerox-rules.bracketed-replace-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.hfst.xerox-rules.bracketed-replace-fn]
 pub fn bracketedReplace(rule: &Rule, optional: bool) -> HfstTransducer {
     let mut TOK = HfstTokenizer::new();
     TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
