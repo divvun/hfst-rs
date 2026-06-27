@@ -76,8 +76,12 @@ impl TraversalState {
     }
 
     // Define an operation for checking state equivalence for the
-    // purpose of detecting the same situation happening twice
+    // purpose of detecting the same situation happening twice.
+    // 'operator==' is declared in transducer.h and defined in
+    // find-epsilon-loops.cc — one function, two ids.
     // [spec:hfst:def:find-epsilon-loops.hfst-ol.traversal-state.operator-fn]
+    // [spec:hfst:def:transducer.hfst-ol.traversal-state.operator-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.traversal-state.operator-fn]
     pub fn operator_eq(&self, rhs: &TraversalState) -> bool {
         if self.index != rhs.index {
             return false;
@@ -256,6 +260,11 @@ impl<'a> IStream<'a> {
         String::from_utf8_lossy(&bytes).into_owned()
     }
 
+    // 'is.read(reinterpret_cast<char*>(&p), sizeof(T))' for the integer
+    // properties, native-endian — the typed mirror of the static template
+    // 'read_property<T>' that 'TransducerHeader' uses to read its fields.
+    // [spec:hfst:def:transducer.hfst-ol.transducer-header.read-property-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer-header.read-property-fn]
     fn read_u16(&mut self) -> u16 {
         let mut b = [0u8; 2];
         self.read(&mut b);
@@ -900,6 +909,18 @@ impl TransitionIndex {
         }
     }
 
+    // [spec:hfst:def:transducer.hfst-ol.transition-index.transition-index-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transition-index.transition-index-fn]
+    pub fn new_istream(is: &mut IStream) -> Self {
+        let mut ti = TransitionIndex {
+            input_symbol: NO_SYMBOL_NUMBER,
+            first_transition_index: 0,
+        };
+        ti.input_symbol = is.read_u16();
+        ti.first_transition_index = is.read_u32();
+        ti
+    }
+
     // [spec:hfst:def:transducer.hfst-ol.transition-index.get-target-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transition-index.get-target-fn]
     pub fn get_target(&self) -> TransitionTableIndex {
@@ -1445,6 +1466,12 @@ impl<T: TransitionEntry> TransducerTable<T> {
 
 // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface]
 pub trait TransducerTablesInterface {
+    // 'virtual ~TransducerTablesInterface() {}' — the empty virtual destructor
+    // exists only so deleting through a base 'Box<dyn TransducerTablesInterface>'
+    // runs the concrete type's destructor. Rust does this automatically via the
+    // trait object's vtable drop glue, so there is nothing to write.
+    // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.transducer-tables-interface-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer-tables-interface.transducer-tables-interface-fn]
     fn get_index(&self, i: TransitionTableIndex) -> &dyn IndexEntry;
     fn get_transition(&self, i: TransitionTableIndex) -> &dyn TransitionEntry;
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.get-weight-fn]
@@ -1658,6 +1685,19 @@ impl OlLetterTrie {
             return self.symbols[buf[old_p] as usize];
         }
         s
+    }
+}
+
+impl Drop for OlLetterTrie {
+    // [spec:hfst:def:transducer.hfst-ol.ol-letter-trie.ol-letter-trie-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.ol-letter-trie.ol-letter-trie-fn]
+    fn drop(&mut self) {
+        for i in 0..self.letters.len() {
+            // 'delete letters[i]; letters[i] = 0;' — dropping the 'Box' frees the
+            // child trie (which recursively frees its children) and resetting the
+            // slot to 'None' mirrors the null assignment.
+            self.letters[i] = None;
+        }
     }
 }
 
@@ -1932,6 +1972,16 @@ pub fn nByte_utf8(c: u8) -> i32 {
     } else {
         0
     }
+}
+
+// 'void increment_mutator(void)' on 'TreeNode' (declared in transducer.h:1503)
+// is only declared, never defined anywhere in the codebase — effectively dead.
+// A faithful port is an empty stub; there is no behavior to replicate. 'TreeNode'
+// itself lives in the 'ospell' module; this inherent impl is a same-crate split.
+impl crate::ospell::TreeNode {
+    // [spec:hfst:def:transducer.hfst-ol.tree-node.increment-mutator-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.tree-node.increment-mutator-fn]
+    pub fn increment_mutator(&mut self) {}
 }
 
 /** \brief A compiled transducer format, suitable for fast lookup operations. */

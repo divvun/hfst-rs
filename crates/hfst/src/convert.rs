@@ -991,6 +991,34 @@ impl ConvertTransitionIndex {
     }
 }
 
+// The comparator functors used by 'std::set<ConvertTransition*,
+// ConvertTransitionCompare>' / 'std::set<ConvertTransitionIndex*,
+// ConvertTransitionIndexCompare>'. The ordered-insert helpers on
+// 'ConvertFstState' apply these to keep their 'Vec' equivalents in set order.
+// [spec:hfst:def:convert.hfst-ol.convert-transition-compare]
+struct ConvertTransitionCompare;
+
+impl ConvertTransitionCompare {
+    // 'return t1->operator<(*t2);'
+    // [spec:hfst:def:convert.hfst-ol.convert-transition-compare.operator-fn]
+    // [spec:hfst:sem:convert.hfst-ol.convert-transition-compare.operator-fn]
+    fn operator(t1: &ConvertTransition, t2: &ConvertTransition) -> bool {
+        t1.lt(t2)
+    }
+}
+
+// [spec:hfst:def:convert.hfst-ol.convert-transition-index-compare]
+struct ConvertTransitionIndexCompare;
+
+impl ConvertTransitionIndexCompare {
+    // 'return i1->operator<(*i2);'
+    // [spec:hfst:def:convert.hfst-ol.convert-transition-index-compare.operator-fn]
+    // [spec:hfst:sem:convert.hfst-ol.convert-transition-index-compare.operator-fn]
+    fn operator(i1: &ConvertTransitionIndex, i2: &ConvertTransitionIndex) -> bool {
+        i1.lt(i2)
+    }
+}
+
 // The two C++ 'TransducerTable<T>' entry types ('TransitionIndex'/
 // 'TransitionWIndex' and 'Transition'/'TransitionW') are reached through the
 // '<T>' templates 'make_index_table'/'make_transition_table' /
@@ -1115,26 +1143,27 @@ impl ConvertFstState {
         state
     }
 
-    // 'std::set'-style ordered insert of a transition: skip an element
-    // equivalent under 'ConvertTransition::lt'.
+    // 'std::set'-style ordered insert of a transition under
+    // 'ConvertTransitionCompare': skip an element equivalent under the comparator.
     fn insert_transition(vec: &mut Vec<Box<ConvertTransition>>, t: Box<ConvertTransition>) {
         let mut i = 0;
-        while i < vec.len() && vec[i].lt(&t) {
+        while i < vec.len() && ConvertTransitionCompare::operator(&vec[i], &t) {
             i += 1;
         }
-        if i < vec.len() && !t.lt(&vec[i]) {
+        if i < vec.len() && !ConvertTransitionCompare::operator(&t, &vec[i]) {
             return;
         }
         vec.insert(i, t);
     }
 
-    // 'std::set'-style ordered insert of a transition index (by input symbol).
+    // 'std::set'-style ordered insert of a transition index under
+    // 'ConvertTransitionIndexCompare' (by input symbol).
     fn insert_index(vec: &mut Vec<Box<ConvertTransitionIndex>>, idx: Box<ConvertTransitionIndex>) {
         let mut i = 0;
-        while i < vec.len() && vec[i].lt(&idx) {
+        while i < vec.len() && ConvertTransitionIndexCompare::operator(&vec[i], &idx) {
             i += 1;
         }
-        if i < vec.len() && !idx.lt(&vec[i]) {
+        if i < vec.len() && !ConvertTransitionIndexCompare::operator(&idx, &vec[i]) {
             return;
         }
         vec.insert(i, idx);
