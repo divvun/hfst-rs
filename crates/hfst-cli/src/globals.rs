@@ -99,6 +99,7 @@ pub fn secondfile() -> *mut libc::FILE {
 // 'stdout'/'stdin' as FILE* (same shape as getopt's 'stderr_file()').
 fn stdout_file() -> *mut libc::FILE {
     unsafe extern "C" {
+        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
         static mut stdout: *mut libc::FILE;
     }
     unsafe { stdout }
@@ -106,6 +107,7 @@ fn stdout_file() -> *mut libc::FILE {
 
 fn stdin_file() -> *mut libc::FILE {
     unsafe extern "C" {
+        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
         static mut stdin: *mut libc::FILE;
     }
     unsafe { stdin }

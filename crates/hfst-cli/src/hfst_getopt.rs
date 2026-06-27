@@ -192,6 +192,7 @@ pub unsafe fn getopt_long(
 // 'stderr' as a FILE* for the faithful fprintf above.
 fn stderr_file() -> *mut libc::FILE {
     unsafe extern "C" {
+        #[cfg_attr(target_os = "macos", link_name = "__stderrp")]
         static mut stderr: *mut libc::FILE;
     }
     unsafe { stderr }

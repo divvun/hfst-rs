@@ -107,6 +107,7 @@ pub fn hfst_file_to_mem(filename: &str) -> *mut c_char {
 // shape as the rest of the crate (see 'hfst_getopt.rs' / 'globals.rs').
 fn stdin_file() -> *mut libc::FILE {
     unsafe extern "C" {
+        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
         static mut stdin: *mut libc::FILE;
     }
     unsafe { stdin }

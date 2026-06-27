@@ -54,18 +54,21 @@ const PACKAGE_BUGREPORT: &str = "";
 // 'stderr', 'stdin', 'stdout' as FILE* for the faithful fprintf calls below.
 fn stderr_file() -> *mut libc::FILE {
     unsafe extern "C" {
+        #[cfg_attr(target_os = "macos", link_name = "__stderrp")]
         static mut stderr: *mut libc::FILE;
     }
     unsafe { stderr }
 }
 fn stdin_file() -> *mut libc::FILE {
     unsafe extern "C" {
+        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
         static mut stdin: *mut libc::FILE;
     }
     unsafe { stdin }
 }
 fn stdout_file() -> *mut libc::FILE {
     unsafe extern "C" {
+        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
         static mut stdout: *mut libc::FILE;
     }
     unsafe { stdout }

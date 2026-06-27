@@ -59,6 +59,28 @@ compiler front-ends (`hfst-lexc-compiler`/`-pmatch2fst`/`-regexp2fst`), then the
 lookup tools (`hfst-lookup`/`-flookup`/`-optimized-lookup`). `hfst-invert.cc` is
 the canonical unary template; read it first.
 
+## Proven so far
+
+- `hfst-getopt` (committed) and the foundation (`globals`, `hfst_commandline`,
+  `hfst_program_options`, `hfst_tool_metadata`, `hfst_file_to_mem`, `inc`) build
+  clean. First tool **`hfst-invert`** is ported (`src/bin/hfst-invert.rs`): builds,
+  links, `--help` prints faithful usage (exit 0), and it functionally inverts +
+  writes a binary transducer.
+- macOS link fix: the std-stream externs (`stdin`/`stdout`/`stderr`) needed
+  `#[cfg_attr(target_os = "macos", link_name = "__std*p")]` — the lib only surfaced
+  this when the first **binary** linked. Applied across globals/getopt/commandline/
+  file-to-mem/inc.
+
+## Known Wave-3 LIBRARY bug surfaced by hfst-invert (do not fix here)
+
+Reading back a binary transducer whose header carries a **multi-byte UTF-8
+property** panics in `crates/hfst/src/hfst_input_stream.rs:901`
+(`get_header_data`: "more bytes read than the header contains"). Reproduced with
+the library alone (write `[a:b]` + `set_property("formula", "⁻¹")`, read
+back) — it is NOT a tool defect. hfst-invert sets the formula property to the
+inverse sign, so its output round-trips only once this lib header byte-accounting
+bug (writer vs reader length measure for multi-byte values) is fixed in Wave 3.
+
 ## Guardrails
 
 - `cargo nextest run` for tests (process isolation); avoid backticks in NEW
