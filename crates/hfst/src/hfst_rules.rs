@@ -62,6 +62,8 @@ use crate::hfst_symbol_defs::internal_epsilon;
 
 // [spec:hfst:def:hfst-rules.hfst.rules.replace-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-fn]
 pub fn replace(
     t: &mut HfstTransducer,
     repl_type: ReplaceType,
@@ -107,6 +109,8 @@ pub fn replace(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.replace-transducer-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-transducer-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-transducer-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-transducer-fn]
 pub fn replace_transducer(
     t: &mut HfstTransducer,
     lm: String,
@@ -137,6 +141,8 @@ pub fn replace_transducer(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.replace-context-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-context-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-context-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-context-fn]
 pub fn replace_context(
     t: &mut HfstTransducer,
     m1: String,
@@ -200,6 +206,8 @@ pub fn replace_context(
 /* identical to  ![ .* l [a:. & !a:b] r .* ]  */
 // [spec:hfst:def:hfst-rules.hfst.rules.two-level-if-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.two-level-if-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-fn]
 pub fn two_level_if(
     context: &mut HfstTransducerPair,
     mappings: &mut StringPairSet,
@@ -258,6 +266,8 @@ pub fn two_level_if(
 // equivalent to !(!(.* l) a:b .* | .* a:b !(r .*))
 // [spec:hfst:def:hfst-rules.hfst.rules.two-level-only-if-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.two-level-only-if-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-two-level-only-if-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-two-level-only-if-fn]
 pub fn two_level_only_if(
     context: &mut HfstTransducerPair,
     mappings: &mut StringPairSet,
@@ -304,6 +314,8 @@ pub fn two_level_only_if(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.two-level-if-and-only-if-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.two-level-if-and-only-if-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-and-only-if-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-and-only-if-fn]
 pub fn two_level_if_and_only_if(
     context: &mut HfstTransducerPair,
     mappings: &mut StringPairSet,
@@ -316,6 +328,8 @@ pub fn two_level_if_and_only_if(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.replace-in-context-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-in-context-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-in-context-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-in-context-fn]
 pub fn replace_in_context(
     context: &mut HfstTransducerPair,
     repl_type: ReplaceType,
@@ -467,6 +481,8 @@ pub fn replace_in_context(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.replace-up-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-up-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-up-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-up-fn]
 pub fn replace_up(
     context: &mut HfstTransducerPair,
     mapping: &mut HfstTransducer,
@@ -478,6 +494,8 @@ pub fn replace_up(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.replace-down-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-down-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-down-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-down-fn]
 pub fn replace_down(
     context: &mut HfstTransducerPair,
     mapping: &mut HfstTransducer,
@@ -489,6 +507,8 @@ pub fn replace_down(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.replace-down-karttunen-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-down-karttunen-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-down-karttunen-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-down-karttunen-fn]
 pub fn replace_down_karttunen(
     context: &mut HfstTransducerPair,
     mapping: &mut HfstTransducer,
@@ -506,6 +526,8 @@ pub fn replace_down_karttunen(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.replace-right-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-right-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-right-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-right-fn]
 pub fn replace_right(
     context: &mut HfstTransducerPair,
     mapping: &mut HfstTransducer,
@@ -523,6 +545,8 @@ pub fn replace_right(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.replace-left-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-left-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-left-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-left-fn]
 pub fn replace_left(
     context: &mut HfstTransducerPair,
     mapping: &mut HfstTransducer,
@@ -551,6 +575,8 @@ pub fn replace_down_mapping(
 // Left arrow replace up without context
 // [spec:hfst:def:hfst-rules.hfst.rules.left-replace-up-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.left-replace-up-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-up-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-up-fn]
 pub fn left_replace_up_mapping(
     mapping: &mut HfstTransducer,
     optional: bool,
@@ -586,6 +612,8 @@ pub fn left_replace_up(
 // Left arrow replace down (XFST's version)
 // [spec:hfst:def:hfst-rules.hfst.rules.left-replace-down-karttunen-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.left-replace-down-karttunen-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-karttunen-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-karttunen-fn]
 pub fn left_replace_down_karttunen(
     context: &mut HfstTransducerPair,
     mapping: &mut HfstTransducer,
@@ -606,6 +634,8 @@ pub fn left_replace_down_karttunen(
 // Left arrow replace down (SFST's version)
 // [spec:hfst:def:hfst-rules.hfst.rules.left-replace-down-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.left-replace-down-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-fn]
 pub fn left_replace_down(
     context: &mut HfstTransducerPair,
     mapping: &mut HfstTransducer,
@@ -626,6 +656,8 @@ pub fn left_replace_down(
 // Left arrow replace left
 // [spec:hfst:def:hfst-rules.hfst.rules.left-replace-left-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.left-replace-left-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-left-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-left-fn]
 pub fn left_replace_left(
     context: &mut HfstTransducerPair,
     mapping: &mut HfstTransducer,
@@ -646,6 +678,8 @@ pub fn left_replace_left(
 // Left arrow replace right
 // [spec:hfst:def:hfst-rules.hfst.rules.left-replace-right-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.left-replace-right-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-right-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-right-fn]
 pub fn left_replace_right(
     context: &mut HfstTransducerPair,
     mapping: &mut HfstTransducer,
@@ -665,6 +699,8 @@ pub fn left_replace_right(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.restriction-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.restriction-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-restriction-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-restriction-fn]
 pub fn restriction(
     contexts: &mut HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
@@ -781,6 +817,8 @@ pub fn restriction_default(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.coercion-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.coercion-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-coercion-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-coercion-fn]
 pub fn coercion(
     contexts: &mut HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
@@ -791,6 +829,8 @@ pub fn coercion(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.restriction-and-coercion-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.restriction-and-coercion-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-restriction-and-coercion-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-restriction-and-coercion-fn]
 pub fn restriction_and_coercion(
     contexts: &mut HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
@@ -801,6 +841,8 @@ pub fn restriction_and_coercion(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.surface-restriction-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.surface-restriction-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-fn]
 pub fn surface_restriction(
     contexts: &mut HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
@@ -811,6 +853,8 @@ pub fn surface_restriction(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.surface-coercion-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.surface-coercion-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-surface-coercion-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-surface-coercion-fn]
 pub fn surface_coercion(
     contexts: &mut HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
@@ -821,6 +865,8 @@ pub fn surface_coercion(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.surface-restriction-and-coercion-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.surface-restriction-and-coercion-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-and-coercion-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-and-coercion-fn]
 pub fn surface_restriction_and_coercion(
     contexts: &mut HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
@@ -831,6 +877,8 @@ pub fn surface_restriction_and_coercion(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.deep-restriction-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.deep-restriction-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-fn]
 pub fn deep_restriction(
     contexts: &mut HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
@@ -841,6 +889,8 @@ pub fn deep_restriction(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.deep-coercion-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.deep-coercion-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-deep-coercion-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-deep-coercion-fn]
 pub fn deep_coercion(
     contexts: &mut HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
@@ -851,6 +901,8 @@ pub fn deep_coercion(
 
 // [spec:hfst:def:hfst-rules.hfst.rules.deep-restriction-and-coercion-fn]
 // [spec:hfst:sem:hfst-rules.hfst.rules.deep-restriction-and-coercion-fn]
+// [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-and-coercion-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-and-coercion-fn]
 pub fn deep_restriction_and_coercion(
     contexts: &mut HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
