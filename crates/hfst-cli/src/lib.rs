@@ -12,8 +12,14 @@
 //! hfst-tool-metadata, hfst-file-to-mem) is ported into the modules below; each
 //! tool's main lives in src/bin/ and drives them.
 
+pub mod globals;
+pub mod hfst_commandline;
+pub mod hfst_file_to_mem;
 pub mod hfst_getopt;
-// More shared infrastructure modules are added here as they are ported:
-//   pub mod hfst_commandline;
-//   pub mod hfst_program_options;
-//   pub mod hfst_tool_metadata;
+pub mod hfst_program_options;
+pub mod hfst_tool_metadata;
+
+// The 'inc/' switch-case and post-parse-validation fragments that every tool
+// '#include's into its 'parse_options' (getopt-cases-*.h, check-params-*.h),
+// translated once into shared helpers the bin mains call.
+pub mod inc;
