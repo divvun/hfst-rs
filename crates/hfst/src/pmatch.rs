@@ -578,6 +578,8 @@ impl PmatchAlphabet {
     pub fn is_captured_tag_sym(&self, symbol: SymbolNumber) -> bool {
         self.captured2capture[symbol as usize] != NO_SYMBOL_NUMBER
     }
+    // [spec:hfst:def:pmatch.hfst-ol.pmatch-alphabet.is-input-mark-fn]
+    // [spec:hfst:sem:pmatch.hfst-ol.pmatch-alphabet.is-input-mark-fn]
     pub fn is_input_mark(&self, symbol: SymbolNumber) -> bool {
         self.input_mark_symbol == symbol
     }

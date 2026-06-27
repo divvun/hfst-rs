@@ -384,6 +384,8 @@ impl HfstBasicTransducer {
         retval
     }
 
+    // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.states-and-transitions-fn]
+    // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.states-and-transitions-fn]
     pub fn states_and_transitions(&self) -> &HfstBasicStates {
         &self.state_vector
     }
@@ -1046,6 +1048,8 @@ impl HfstBasicTransducer {
     }
 
     /** @brief Write the graph in xfst text format to ostream 'os'. */
+    // [spec:hfst:def:hfst-transition-graph.write-in-xfst-format-fn]
+    // [spec:hfst:sem:hfst-transition-graph.write-in-xfst-format-fn]
     pub fn write_in_xfst_format(&self, os: &mut dyn Write, write_weights: bool) {
         let _ = write_weights; // todo
         let mut source_state: u32 = 0;
@@ -1380,6 +1384,8 @@ impl HfstBasicTransducer {
     // or "foo". Return whether symbols were successfully extracted.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-prolog-arc-symbols-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-prolog-arc-symbols-fn]
+    // [spec:hfst:def:hfst-transition-graph.get-prolog-arc-symbols-fn]
+    // [spec:hfst:sem:hfst-transition-graph.get-prolog-arc-symbols-fn]
     pub fn get_prolog_arc_symbols(str: &str, isymbol: &mut String, osymbol: &mut String) -> bool {
         // find positions of non-escaped double quotes
         let quote_positions = Self::get_positions_of_unescaped_char(str, '"', '\\');
@@ -1437,6 +1443,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.extract-weight-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.extract-weight-fn]
+    // [spec:hfst:def:hfst-transition-graph.extract-weight-fn]
+    // [spec:hfst:sem:hfst-transition-graph.extract-weight-fn]
     pub fn extract_weight(symbol: &mut String, weight: &mut f32) -> bool {
         let last_double_quote = symbol.rfind('"');
         let last_space = symbol.rfind(' ');
@@ -1472,6 +1480,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-arc-line-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-arc-line-fn]
+    // [spec:hfst:def:hfst-transition-graph.parse-prolog-arc-line-fn]
+    // [spec:hfst:sem:hfst-transition-graph.parse-prolog-arc-line-fn]
     pub fn parse_prolog_arc_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
         // sscanf(line, "arc(%[^,], %[^,], %[^,], %[^\t\n]", ...): four scanset
         // fields separated by a literal comma plus optional whitespace.
@@ -1557,6 +1567,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-final-line-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-final-line-fn]
+    // [spec:hfst:def:hfst-transition-graph.parse-prolog-final-line-fn]
+    // [spec:hfst:sem:hfst-transition-graph.parse-prolog-final-line-fn]
     pub fn parse_prolog_final_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
         // 'final(NAME, number).' or 'final(NAME, number, weight).'
         let mut weight: f32 = 0.0;
@@ -1634,6 +1646,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-symbol-line-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-symbol-line-fn]
+    // [spec:hfst:def:hfst-transition-graph.parse-prolog-symbol-line-fn]
+    // [spec:hfst:sem:hfst-transition-graph.parse-prolog-symbol-line-fn]
     pub fn parse_prolog_symbol_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
         // sscanf(line, "symbol(%[^,], %s", namearr, symbolarr)
         let mut n = 0;
@@ -1942,6 +1956,8 @@ impl HfstBasicTransducer {
     //
     // sscanf(line, "%s%s%s%s%s", ...) reads up to five whitespace-delimited
     // fields; 'n' is how many were read.
+    // [spec:hfst:def:hfst-transition-graph.add-att-line-fn]
+    // [spec:hfst:sem:hfst-transition-graph.add-att-line-fn]
     pub fn add_att_line(&mut self, line: &str, epsilon_symbol: &str, warn_negs: bool) -> bool {
         let tokens: Vec<&str> = line.split_whitespace().collect();
         let n = tokens.len().min(5);
@@ -2337,6 +2353,8 @@ impl HfstBasicTransducer {
     /* In-place removal of all transitions equivalent to 'sp'. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.remove-transitions-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.remove-transitions-fn]
+    // [spec:hfst:def:hfst-transition-graph.remove-transitions-fn]
+    // [spec:hfst:sem:hfst-transition-graph.remove-transitions-fn]
     pub fn remove_transitions(&mut self, sp: &HfstSymbolPair) {
         let in_match = HfstTropicalTransducerTransitionData::get_number(&sp.0);
         let out_match = HfstTropicalTransducerTransitionData::get_number(&sp.1);
@@ -2728,6 +2746,8 @@ impl HfstBasicTransducer {
     states and with weight as defined in `sub`. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-substitution-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-substitution-fn]
+    // [spec:hfst:def:hfst-transition-graph.add-substitution-fn]
+    // [spec:hfst:sem:hfst-transition-graph.add-substitution-fn]
     pub fn add_substitution(&mut self, sub: &substitution_data) {
         // Epsilon transition to initial state of the substituting graph.
         let s = self.add_state_new();
@@ -2855,6 +2875,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.marker2weight-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.marker2weight-fn]
+    // [spec:hfst:def:hfst-transition-graph.marker2weight-fn]
+    // [spec:hfst:sem:hfst-transition-graph.marker2weight-fn]
     pub fn marker2weight(str: &str, weight: &mut f32) -> bool {
         if str.len() < 3 {
             return false;
@@ -3038,6 +3060,8 @@ impl HfstBasicTransducer {
     /* Disjunct the transition of path 'spv' pointed by 'it' to state 's'. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.disjunct-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.disjunct-fn]
+    // [spec:hfst:def:hfst-transition-graph.disjunct-fn]
+    // [spec:hfst:sem:hfst-transition-graph.disjunct-fn]
     pub fn disjunct(&mut self, spv: &StringPairVector, it: &mut usize, s: HfstState) -> HfstState {
         let mut current_state = s;
         while *it != spv.len() {
@@ -3089,6 +3113,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-special-symbol-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-special-symbol-fn]
+    // [spec:hfst:def:hfst-transition-graph.is-special-symbol-fn]
+    // [spec:hfst:sem:hfst-transition-graph.is-special-symbol-fn]
     pub fn is_special_symbol(symbol: &str) -> bool {
         if symbol.len() < 2 {
             return false;
@@ -3135,6 +3161,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-flags-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-flags-fn]
+    // [spec:hfst:def:hfst-transition-graph.get-flags-fn]
+    // [spec:hfst:sem:hfst-transition-graph.get-flags-fn]
     pub fn get_flags(&self) -> StringSet {
         let mut flags = StringSet::new();
         for it in self.alphabet.iter() {
@@ -3147,6 +3175,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.purge-symbol-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.purge-symbol-fn]
+    // [spec:hfst:def:hfst-transition-graph.purge-symbol-fn]
+    // [spec:hfst:sem:hfst-transition-graph.purge-symbol-fn]
     pub fn purge_symbol(symbol: &str, flag: &str) -> bool {
         if !FdOperation::is_diacritic(symbol) {
             return false;
@@ -3161,6 +3191,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.flag-purge-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.flag-purge-fn]
+    // [spec:hfst:def:hfst-transition-graph.flag-purge-fn]
+    // [spec:hfst:sem:hfst-transition-graph.flag-purge-fn]
     pub fn flag_purge(&mut self, flag: &str) {
         // (1) Go through all states and transitions
         for s in 0..self.state_vector.len() {
@@ -3341,6 +3373,8 @@ impl HfstBasicTransducer {
     /** The length of the longest string accepted by this graph, or -1. */
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.longest-path-size-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.longest-path-size-fn]
+    // [spec:hfst:def:hfst-transition-graph.longest-path-size-fn]
+    // [spec:hfst:sem:hfst-transition-graph.longest-path-size-fn]
     pub fn longest_path_size(&self) -> i32 {
         let states_sorted = self.topsort(SortDistance::MaximumDistance);
         let st = states_sorted.len();
@@ -3414,6 +3448,8 @@ impl HfstBasicTransducer {
         false
     }
 
+    // [spec:hfst:def:hfst-transition-graph.has-negative-epsilon-cycles-fn]
+    // [spec:hfst:sem:hfst-transition-graph.has-negative-epsilon-cycles-fn]
     pub fn has_negative_epsilon_cycles(&self) -> bool {
         let mut has_negative_epsilon_transitions = false;
         for it in self.state_vector.iter() {
@@ -3476,6 +3512,8 @@ impl HfstBasicTransducer {
         false
     }
 
+    // [spec:hfst:def:hfst-transition-graph.is-infinitely-ambiguous-fn]
+    // [spec:hfst:sem:hfst-transition-graph.is-infinitely-ambiguous-fn]
     pub fn is_infinitely_ambiguous(&self) -> bool {
         let mut epsilon_path_states: BTreeSet<HfstState> = BTreeSet::new();
         let max_state = self.get_max_state();
@@ -3495,6 +3533,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-possible-flag-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-possible-flag-fn]
+    // [spec:hfst:def:hfst-transition-graph.is-possible-flag-fn]
+    // [spec:hfst:sem:hfst-transition-graph.is-possible-flag-fn]
     pub fn is_possible_flag(symbol: String, fds: &mut StringVector, obey_flags: bool) -> bool {
         if FdOperation::is_diacritic(&symbol) {
             let mut fd_t = FlagDiacriticTable::new();
@@ -3631,6 +3671,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.push-back-to-two-level-path-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.push-back-to-two-level-path-fn]
+    // [spec:hfst:def:hfst-transition-graph.push-back-to-two-level-path-fn]
+    // [spec:hfst:sem:hfst-transition-graph.push-back-to-two-level-path-fn]
     pub fn push_back_to_two_level_path(
         path: &mut HfstTwoLevelPath,
         sp: &StringPair,
@@ -3648,6 +3690,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.pop-back-from-two-level-path-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.pop-back-from-two-level-path-fn]
+    // [spec:hfst:def:hfst-transition-graph.pop-back-from-two-level-path-fn]
+    // [spec:hfst:sem:hfst-transition-graph.pop-back-from-two-level-path-fn]
     pub fn pop_back_from_two_level_path(
         path: &mut HfstTwoLevelPath,
         weight: f32,
@@ -3665,6 +3709,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-to-results-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-to-results-fn]
+    // [spec:hfst:def:hfst-transition-graph.add-to-results-fn]
+    // [spec:hfst:sem:hfst-transition-graph.add-to-results-fn]
     pub fn add_to_results(
         results: &mut HfstTwoLevelPaths,
         path_so_far: &mut HfstTwoLevelPath,
@@ -3688,6 +3734,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-possible-transition-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-possible-transition-fn]
+    // [spec:hfst:def:hfst-transition-graph.is-possible-transition-fn]
+    // [spec:hfst:sem:hfst-transition-graph.is-possible-transition-fn]
     pub fn is_possible_transition(
         transition: &HfstBasicTransition,
         lookup_path: &StringVector,
@@ -3853,6 +3901,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-state-for-cycle-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-state-for-cycle-fn]
+    // [spec:hfst:def:hfst-transition-graph.check-regexp-state-for-cycle-fn]
+    // [spec:hfst:sem:hfst-transition-graph.check-regexp-state-for-cycle-fn]
     pub fn check_regexp_state_for_cycle(s: HfstState, states_visited: &BTreeSet<HfstState>) {
         if states_visited.contains(&s) {
             panic!("error: loop detected inside compile-replace regular expression");
@@ -3862,6 +3912,8 @@ impl HfstBasicTransducer {
     // Returns whether tr is "^]":"^]". Throws (panics) if tr is not allowed.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-transition-end-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-transition-end-fn]
+    // [spec:hfst:def:hfst-transition-graph.check-regexp-transition-end-fn]
+    // [spec:hfst:sem:hfst-transition-graph.check-regexp-transition-end-fn]
     pub fn check_regexp_transition_end(tr: &HfstBasicTransition, input_side: bool) -> bool {
         let istr = tr.get_input_symbol();
         let ostr = tr.get_output_symbol();
@@ -3886,6 +3938,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-regexp-paths-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-regexp-paths-fn]
+    // [spec:hfst:def:hfst-transition-graph.find-regexp-paths-fn]
+    // [spec:hfst:sem:hfst-transition-graph.find-regexp-paths-fn]
     pub fn find_regexp_paths(
         &self,
         s: HfstState,
@@ -3974,6 +4028,8 @@ impl HfstBasicTransducer {
     // transitions.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.insert-transducer-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.insert-transducer-fn]
+    // [spec:hfst:def:hfst-transition-graph.insert-transducer-fn]
+    // [spec:hfst:sem:hfst-transition-graph.insert-transducer-fn]
     pub fn insert_transducer(
         &mut self,
         state1: HfstState,
@@ -4023,6 +4079,8 @@ impl HfstBasicTransducer {
     }
 
     /** @brief Look up 'lookup_path', collecting two-level paths into 'results'. */
+    // [spec:hfst:def:hfst-transition-graph.lookup-fn]
+    // [spec:hfst:sem:hfst-transition-graph.lookup-fn]
     pub fn lookup(
         &self,
         lookup_path: &StringVector,
@@ -4082,6 +4140,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-target-state-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-target-state-fn]
+    // [spec:hfst:def:hfst-transition-graph.find-target-state-fn]
+    // [spec:hfst:sem:hfst-transition-graph.find-target-state-fn]
     pub fn find_target_state(
         target1: HfstState,
         target2: HfstState,
@@ -4102,6 +4162,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-match-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-match-fn]
+    // [spec:hfst:def:hfst-transition-graph.handle-match-fn]
+    // [spec:hfst:sem:hfst-transition-graph.handle-match-fn]
     pub fn handle_match(
         graph1: &HfstBasicTransducer,
         tr1: &HfstBasicTransition,
@@ -4142,6 +4204,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-matches-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-matches-fn]
+    // [spec:hfst:def:hfst-transition-graph.find-matches-fn]
+    // [spec:hfst:sem:hfst-transition-graph.find-matches-fn]
     pub fn find_matches(
         graph1: &HfstBasicTransducer,
         state1: HfstState,
@@ -4236,6 +4300,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-non-list-match-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-non-list-match-fn]
+    // [spec:hfst:def:hfst-transition-graph.handle-non-list-match-fn]
+    // [spec:hfst:sem:hfst-transition-graph.handle-non-list-match-fn]
     pub fn handle_non_list_match(
         graph: &HfstBasicTransducer,
         graph_transition: &HfstBasicTransition,
@@ -4276,6 +4342,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-list-match-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-list-match-fn]
+    // [spec:hfst:def:hfst-transition-graph.handle-list-match-fn]
+    // [spec:hfst:sem:hfst-transition-graph.handle-list-match-fn]
     pub fn handle_list_match(
         graph: &HfstBasicTransducer,
         graph_transition: &HfstBasicTransition,
@@ -4334,6 +4402,8 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-list-symbol-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-list-symbol-fn]
+    // [spec:hfst:def:hfst-transition-graph.is-list-symbol-fn]
+    // [spec:hfst:sem:hfst-transition-graph.is-list-symbol-fn]
     pub fn is_list_symbol(
         transition_data: &HfstTropicalTransducerTransitionData,
         list_symbols: &BTreeMap<String, BTreeSet<String>>,
@@ -4350,6 +4420,8 @@ impl HfstBasicTransducer {
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-matches-for-merge-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-matches-for-merge-fn]
     #[allow(clippy::too_many_arguments)]
+    // [spec:hfst:def:hfst-transition-graph.find-matches-for-merge-fn]
+    // [spec:hfst:sem:hfst-transition-graph.find-matches-for-merge-fn]
     pub fn find_matches_for_merge(
         graph: &HfstBasicTransducer,
         graph_state: HfstState,

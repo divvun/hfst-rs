@@ -5644,9 +5644,13 @@ pub fn get_minimization_algorithm() -> MinimizationAlgorithm {
 // C++ 'HfstTransducer::set_xerox_composition(bool)' is a static setter, so this
 // flag is mutable at runtime (PMATCH toggles it around replace compositions).
 static XEROX_COMPOSITION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+// [spec:hfst:def:hfst-transducer.hfst.get-xerox-composition-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.get-xerox-composition-fn]
 pub fn get_xerox_composition() -> bool {
     XEROX_COMPOSITION.load(std::sync::atomic::Ordering::Relaxed)
 }
+// [spec:hfst:def:hfst-transducer.hfst.set-xerox-composition-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.set-xerox-composition-fn]
 pub fn set_xerox_composition(value: bool) {
     XEROX_COMPOSITION.store(value, std::sync::atomic::Ordering::Relaxed);
 }
@@ -5665,6 +5669,8 @@ fn get_harmonize_smaller() -> bool {
 
 // C++ file-static substitution callbacks passed to substitute_with_func; deferred
 // port (signature fn(&StringPair, &mut StringPairSet) -> bool).
+// [spec:hfst:def:hfst-transducer.hfst.substitute-one-sided-flags-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.substitute-one-sided-flags-fn]
 fn substitute_one_sided_flags(sp: &StringPair, sps: &mut StringPairSet) -> bool {
     if FdOperation::is_diacritic(&sp.0) && (sp.1 == crate::hfst_symbol_defs::internal_epsilon) {
         let new_pair: StringPair = (sp.0.clone(), sp.0.clone());
@@ -5678,6 +5684,8 @@ fn substitute_one_sided_flags(sp: &StringPair, sps: &mut StringPairSet) -> bool 
     }
     false
 }
+// [spec:hfst:def:hfst-transducer.hfst.substitute-input-flag-with-epsilon-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.substitute-input-flag-with-epsilon-fn]
 fn substitute_input_flag_with_epsilon(sp: &StringPair, sps: &mut StringPairSet) -> bool {
     if FdOperation::is_diacritic(&sp.0) {
         let new_pair: StringPair = (
@@ -5689,6 +5697,8 @@ fn substitute_input_flag_with_epsilon(sp: &StringPair, sps: &mut StringPairSet) 
     }
     false
 }
+// [spec:hfst:def:hfst-transducer.hfst.substitute-output-flag-with-epsilon-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.substitute-output-flag-with-epsilon-fn]
 fn substitute_output_flag_with_epsilon(sp: &StringPair, sps: &mut StringPairSet) -> bool {
     if FdOperation::is_diacritic(&sp.1) {
         let new_pair: StringPair = (
