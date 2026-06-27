@@ -46,6 +46,8 @@ impl ConversionFunctions {
     transducer `t`. */
     // [spec:hfst:def:convert-log-weight-transducer.hfst.implementations.conversion-functions.log-ofst-to-hfst-basic-transducer-fn]
     // [spec:hfst:sem:convert-log-weight-transducer.hfst.implementations.conversion-functions.log-ofst-to-hfst-basic-transducer-fn]
+    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.log-ofst-to-hfst-basic-transducer-fn]
+    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.log-ofst-to-hfst-basic-transducer-fn]
     pub fn log_ofst_to_hfst_basic_transducer(
         t: &LogVectorFst,
         has_hfst_header: bool,
@@ -238,6 +240,8 @@ impl ConversionFunctions {
     Used by function hfst_basic_transducer_to_log_ofst. */
     // [spec:hfst:def:convert-log-weight-transducer.hfst.implementations.conversion-functions.hfst-state-to-state-id-fn]
     // [spec:hfst:sem:convert-log-weight-transducer.hfst.implementations.conversion-functions.hfst-state-to-state-id-fn]
+    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-state-to-state-id-fn]
+    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-state-to-state-id-fn]
     pub fn hfst_state_to_state_id(
         s: HfstState,
         state_map: &mut BTreeMap<HfstState, StateId>,
@@ -257,6 +261,8 @@ impl ConversionFunctions {
     /* Create an OpenFst transducer equivalent to HfstBasicTransducer 'net'. */
     // [spec:hfst:def:convert-log-weight-transducer.hfst.implementations.conversion-functions.hfst-basic-transducer-to-log-ofst-fn]
     // [spec:hfst:sem:convert-log-weight-transducer.hfst.implementations.conversion-functions.hfst-basic-transducer-to-log-ofst-fn]
+    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-basic-transducer-to-log-ofst-fn]
+    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-basic-transducer-to-log-ofst-fn]
     pub fn hfst_basic_transducer_to_log_ofst(net: &HfstBasicTransducer) -> LogVectorFst {
         let mut t = LogVectorFst::new();
         let start_state = t.add_state();

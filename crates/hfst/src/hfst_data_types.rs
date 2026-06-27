@@ -53,6 +53,8 @@ pub type StringPairVector = Vec<StringPair>;
 ///
 /// 'typedef std::pair<float, StringVector> HfstOneLevelPath'.
 // [spec:hfst:def:hfst-data-types.hfst.hfst-one-level-path]
+// [spec:hfst:def:hfst-tokenizer.hfst.hfst-one-level-path]
+// [spec:hfst:sem:hfst-tokenizer.hfst.hfst-one-level-path]
 #[derive(Clone, Debug)]
 pub struct HfstOneLevelPath {
     pub first: f32,

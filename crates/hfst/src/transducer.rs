@@ -2939,6 +2939,8 @@ impl Transducer {
 
     // [spec:hfst:def:find-epsilon-loops.hfst-ol.transducer.find-loop-epsilon-transitions-fn]
     // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-epsilon-transitions-fn]
+    // [spec:hfst:def:transducer.hfst-ol.transducer.find-loop-epsilon-transitions-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.find-loop-epsilon-transitions-fn]
     fn find_loop_epsilon_transitions(&mut self, input_pos: u32, mut i: TransitionTableIndex) {
         let flags = self.flag_state.get_values().clone();
         loop {
@@ -2980,6 +2982,8 @@ impl Transducer {
 
     // [spec:hfst:def:find-epsilon-loops.hfst-ol.transducer.find-loop-epsilon-indices-fn]
     // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-epsilon-indices-fn]
+    // [spec:hfst:def:transducer.hfst-ol.transducer.find-loop-epsilon-indices-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.find-loop-epsilon-indices-fn]
     fn find_loop_epsilon_indices(&mut self, input_pos: u32, i: TransitionTableIndex) {
         if self.tbl().get_index_input(i) == 0 {
             let target = self.tbl().get_index_target(i) - TRANSITION_TARGET_TABLE_START;
@@ -2990,6 +2994,8 @@ impl Transducer {
 
     // [spec:hfst:def:find-epsilon-loops.hfst-ol.transducer.find-loop-transitions-fn]
     // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-transitions-fn]
+    // [spec:hfst:def:transducer.hfst-ol.transducer.find-loop-transitions-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.find-loop-transitions-fn]
     fn find_loop_transitions(
         &mut self,
         input: SymbolNumber,
@@ -3012,6 +3018,8 @@ impl Transducer {
 
     // [spec:hfst:def:find-epsilon-loops.hfst-ol.transducer.find-loop-index-fn]
     // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-index-fn]
+    // [spec:hfst:def:transducer.hfst-ol.transducer.find-loop-index-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.find-loop-index-fn]
     fn find_loop_index(&mut self, input: SymbolNumber, input_pos: u32, i: TransitionTableIndex) {
         if self.tbl().get_index_input(i + input as u32) == input {
             let target =
@@ -3023,6 +3031,8 @@ impl Transducer {
 
     // [spec:hfst:def:find-epsilon-loops.hfst-ol.transducer.find-loop-fn]
     // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-fn]
+    // [spec:hfst:def:transducer.hfst-ol.transducer.find-loop-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transducer.find-loop-fn]
     fn find_loop(&mut self, input_pos: u32, mut i: TransitionTableIndex) {
         self.found_transition = false;
 

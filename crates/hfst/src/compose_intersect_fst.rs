@@ -69,6 +69,8 @@ pub struct Transition {
 impl Transition {
     // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.transition.transition-fn]
     // [spec:hfst:sem:compose-intersect-fst.hfst.implementations.compose-intersect-fst.transition.transition-fn]
+    // [spec:hfst:def:transducer.hfst-ol.transition.transition-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.transition.transition-fn]
     pub fn new_from_basic(t: &HfstBasicTransition) -> Self {
         let transition = Transition {
             ilabel: HfstTropicalTransducerTransitionData::get_number(

@@ -5588,6 +5588,8 @@ pub fn set_encode_weights(value: bool) {
 }
 // [spec:hfst:def:hfst-transducer.hfst.get-encode-weights-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.get-encode-weights-fn]
+// [spec:hfst:def:tropical-weight-transducer.hfst.get-encode-weights-fn]
+// [spec:hfst:sem:tropical-weight-transducer.hfst.get-encode-weights-fn]
 pub fn get_encode_weights() -> bool {
     ENCODE_WEIGHTS.load(std::sync::atomic::Ordering::Relaxed)
 }

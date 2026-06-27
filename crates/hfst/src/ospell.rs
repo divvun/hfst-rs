@@ -158,6 +158,8 @@ impl TreeNode {
 
     // [spec:hfst:def:ospell.hfst-ol.tree-node.update-lexicon-fn]
     // [spec:hfst:sem:ospell.hfst-ol.tree-node.update-lexicon-fn]
+    // [spec:hfst:def:transducer.hfst-ol.tree-node.update-lexicon-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.tree-node.update-lexicon-fn]
     pub fn update_lexicon(
         &self,
         next_symbol: SymbolNumber,
@@ -178,6 +180,8 @@ impl TreeNode {
 
     // [spec:hfst:def:ospell.hfst-ol.tree-node.update-mutator-fn]
     // [spec:hfst:sem:ospell.hfst-ol.tree-node.update-mutator-fn]
+    // [spec:hfst:def:transducer.hfst-ol.tree-node.update-mutator-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.tree-node.update-mutator-fn]
     pub fn update_mutator(
         &self,
         next_symbol: SymbolNumber,
@@ -198,6 +202,8 @@ impl TreeNode {
 
     // [spec:hfst:def:ospell.hfst-ol.tree-node.update-fn]
     // [spec:hfst:sem:ospell.hfst-ol.tree-node.update-fn]
+    // [spec:hfst:def:transducer.hfst-ol.tree-node.update-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.tree-node.update-fn]
     #[allow(clippy::too_many_arguments)]
     pub fn update_input(
         &self,
@@ -258,6 +264,8 @@ impl InputString {
 
     // [spec:hfst:def:ospell.hfst-ol.input-string.initialize-fn]
     // [spec:hfst:sem:ospell.hfst-ol.input-string.initialize-fn]
+    // [spec:hfst:def:transducer.hfst-ol.input-string.initialize-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.input-string.initialize-fn]
     pub fn initialize(&mut self, encoder: &Encoder, input: &str, other: SymbolNumber) -> bool {
         // Initialize the symbol vector to the tokenization given by encoder. On
         // tokenization failure, valid utf-8 characters are tokenized as "other"
@@ -361,12 +369,16 @@ impl<'a> Speller<'a> {
 
     // [spec:hfst:def:ospell.hfst-ol.speller.init-input-fn]
     // [spec:hfst:sem:ospell.hfst-ol.speller.init-input-fn]
+    // [spec:hfst:def:transducer.hfst-ol.speller.init-input-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.speller.init-input-fn]
     pub fn init_input(&mut self, str: &str, encoder: &Encoder, other: SymbolNumber) -> bool {
         self.input.initialize(encoder, str, other)
     }
 
     // [spec:hfst:def:ospell.hfst-ol.speller.build-alphabet-translator-fn]
     // [spec:hfst:sem:ospell.hfst-ol.speller.build-alphabet-translator-fn]
+    // [spec:hfst:def:transducer.hfst-ol.speller.build-alphabet-translator-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.speller.build-alphabet-translator-fn]
     pub fn build_alphabet_translator(&mut self) {
         let mutator = self.mutator;
         let lexicon = self.lexicon;
@@ -397,6 +409,8 @@ impl<'a> Speller<'a> {
 
     // [spec:hfst:def:ospell.hfst-ol.speller.lexicon-epsilons-fn]
     // [spec:hfst:sem:ospell.hfst-ol.speller.lexicon-epsilons-fn]
+    // [spec:hfst:def:transducer.hfst-ol.speller.lexicon-epsilons-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.speller.lexicon-epsilons-fn]
     pub fn lexicon_epsilons(&mut self) {
         let front_lex = self.queue.front().unwrap().lexicon_state;
         if !self.lexicon.has_epsilons_or_flags(front_lex + 1) {
@@ -428,6 +442,8 @@ impl<'a> Speller<'a> {
 
     // [spec:hfst:def:ospell.hfst-ol.speller.lexicon-consume-fn]
     // [spec:hfst:sem:ospell.hfst-ol.speller.lexicon-consume-fn]
+    // [spec:hfst:def:transducer.hfst-ol.speller.lexicon-consume-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.speller.lexicon-consume-fn]
     pub fn lexicon_consume(&mut self) {
         let input_state = self.queue.front().unwrap().input_state;
         let front_lex = self.queue.front().unwrap().lexicon_state;
@@ -464,6 +480,8 @@ impl<'a> Speller<'a> {
 
     // [spec:hfst:def:ospell.hfst-ol.speller.mutator-epsilons-fn]
     // [spec:hfst:sem:ospell.hfst-ol.speller.mutator-epsilons-fn]
+    // [spec:hfst:def:transducer.hfst-ol.speller.mutator-epsilons-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.speller.mutator-epsilons-fn]
     pub fn mutator_epsilons(&mut self) {
         let front_mut = self.queue.front().unwrap().mutator_state;
         if !self.mutator.has_transitions(front_mut + 1, 0) {
@@ -510,6 +528,8 @@ impl<'a> Speller<'a> {
 
     // [spec:hfst:def:ospell.hfst-ol.speller.consume-input-fn]
     // [spec:hfst:sem:ospell.hfst-ol.speller.consume-input-fn]
+    // [spec:hfst:def:transducer.hfst-ol.speller.consume-input-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.speller.consume-input-fn]
     pub fn consume_input(&mut self) {
         let input_state = self.queue.front().unwrap().input_state;
         let front_mut = self.queue.front().unwrap().mutator_state;
@@ -572,6 +592,8 @@ impl<'a> Speller<'a> {
 
     // [spec:hfst:def:ospell.hfst-ol.speller.correct-fn]
     // [spec:hfst:sem:ospell.hfst-ol.speller.correct-fn]
+    // [spec:hfst:def:transducer.hfst-ol.speller.correct-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.speller.correct-fn]
     pub fn correct(&mut self, line: &str) -> CorrectionQueue {
         // if input initialization fails, return empty correction queue
         let enc = self.mutator.get_encoder();
@@ -618,6 +640,8 @@ impl<'a> Speller<'a> {
 
     // [spec:hfst:def:ospell.hfst-ol.speller.check-fn]
     // [spec:hfst:sem:ospell.hfst-ol.speller.check-fn]
+    // [spec:hfst:def:transducer.hfst-ol.speller.check-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.speller.check-fn]
     pub fn check(&mut self, line: &str) -> bool {
         let enc = self.lexicon.get_encoder();
         if !self.init_input(line, enc, NO_SYMBOL_NUMBER) {
@@ -642,6 +666,8 @@ impl<'a> Speller<'a> {
 
     // [spec:hfst:def:ospell.hfst-ol.speller.stringify-fn]
     // [spec:hfst:sem:ospell.hfst-ol.speller.stringify-fn]
+    // [spec:hfst:def:transducer.hfst-ol.speller.stringify-fn]
+    // [spec:hfst:sem:transducer.hfst-ol.speller.stringify-fn]
     pub fn stringify(&self, symbol_vector: SymbolNumberVector) -> String {
         let mut s = String::new();
         for it in symbol_vector.iter() {

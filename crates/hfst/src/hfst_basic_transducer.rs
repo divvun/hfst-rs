@@ -154,10 +154,16 @@ fn catch_get_stripped_line(
 pub use crate::hfst_data_types::implementations::HfstState;
 
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-replacement]
+// [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-replacement]
+// [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-replacement]
 pub type HfstReplacement = (HfstState, Vec<(String, String)>);
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-replacements]
+// [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-replacements]
+// [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-replacements]
 pub type HfstReplacements = Vec<HfstReplacement>;
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-replacements-map]
+// [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-replacements-map]
+// [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-replacements-map]
 pub type HfstReplacementsMap = BTreeMap<HfstState, HfstReplacements>;
 
 /// \brief Datatype for the states of a transition in a graph.
@@ -166,6 +172,8 @@ pub type HfstBasicTransitions = Vec<HfstBasicTransition>;
 /// Datatype for the states of a graph and their transitions. Each index of the
 /// vector is a state and the transitions on that index are its transitions.
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-states]
+// [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-basic-states]
+// [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-basic-states]
 pub type HfstBasicStates = Vec<HfstBasicTransitions>;
 
 // --- Class-nested typedefs ---
@@ -230,12 +238,16 @@ impl TopologicalSort {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topological-sort.set-biggest-state-number-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topological-sort.set-biggest-state-number-fn]
+    // [spec:hfst:def:hfst-transition-graph.topological-sort.set-biggest-state-number-fn]
+    // [spec:hfst:sem:hfst-transition-graph.topological-sort.set-biggest-state-number-fn]
     pub fn set_biggest_state_number(&mut self, biggest_state_number: u32) {
         self.distance_of_state = vec![-1; (biggest_state_number + 1) as usize];
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topological-sort.set-state-at-distance-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.topological-sort.set-state-at-distance-fn]
+    // [spec:hfst:def:hfst-transition-graph.topological-sort.set-state-at-distance-fn]
+    // [spec:hfst:sem:hfst-transition-graph.topological-sort.set-state-at-distance-fn]
     pub fn set_state_at_distance(&mut self, state: HfstState, distance: u32, overwrite: bool) {
         if state as usize > self.distance_of_state.len() - 1 {
             eprintln!(
@@ -303,6 +315,8 @@ pub struct substitution_data {
 impl substitution_data {
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.substitution-data.substitution-data-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.substitution-data.substitution-data-fn]
+    // [spec:hfst:def:hfst-transition-graph.substitution-data.substitution-data-fn]
+    // [spec:hfst:sem:hfst-transition-graph.substitution-data.substitution-data-fn]
     pub fn new(
         origin: HfstState,
         target: HfstState,

@@ -220,6 +220,8 @@ impl ConversionFunctions {
     /* Create an HfstBasicTransducer equivalent to hfst_ol::Transducer 't'. */
     // [spec:hfst:def:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
     // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
+    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
+    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
     pub fn hfst_ol_to_hfst_basic_transducer(t: &Transducer) -> HfstBasicTransducer {
         let mut basic = HfstBasicTransducer::new();
         let weighted = t.get_header().probe_flag(HeaderFlag::Weighted);
@@ -280,6 +282,8 @@ impl ConversionFunctions {
     /* Create an hfst_ol::Transducer equivalent to HfstBasicTransducer 't'. */
     // [spec:hfst:def:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-basic-transducer-to-hfst-ol-fn]
     // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-basic-transducer-to-hfst-ol-fn]
+    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-basic-transducer-to-hfst-ol-fn]
+    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-basic-transducer-to-hfst-ol-fn]
     #[allow(unused_assignments)] // C++ initialises previous_successful_index to 0
     pub fn hfst_basic_transducer_to_hfst_ol(
         t: &HfstBasicTransducer,

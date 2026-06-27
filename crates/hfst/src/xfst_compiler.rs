@@ -3385,6 +3385,8 @@ fn to_filename(file: Option<&str>) -> &str {
 // Convert 'str' to upper case.
 // [spec:hfst:def:xfst-compiler.hfst.xfst.to-upper-case-fn]
 // [spec:hfst:sem:xfst-compiler.hfst.xfst.to-upper-case-fn]
+// [spec:hfst:def:xfst-help-message.hfst.xfst.to-upper-case-fn]
+// [spec:hfst:sem:xfst-help-message.hfst.xfst.to-upper-case-fn]
 #[allow(dead_code)]
 fn to_upper_case(str_: &str) -> String {
     let str_bytes = str_.as_bytes();

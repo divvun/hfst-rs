@@ -121,6 +121,8 @@ impl ConversionFunctions {
 
     // [spec:hfst:def:convert-tropical-weight-transducer.hfst.implementations.conversion-functions.tropical-ofst-to-hfst-basic-transducer-fn]
     // [spec:hfst:sem:convert-tropical-weight-transducer.hfst.implementations.conversion-functions.tropical-ofst-to-hfst-basic-transducer-fn]
+    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.tropical-ofst-to-hfst-basic-transducer-fn]
+    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.tropical-ofst-to-hfst-basic-transducer-fn]
     pub fn tropical_ofst_to_hfst_basic_transducer(
         t: &StdVectorFst,
         has_hfst_header: bool,
@@ -219,6 +221,8 @@ impl ConversionFunctions {
 
     // [spec:hfst:def:convert-tropical-weight-transducer.hfst.implementations.conversion-functions.hfst-basic-transducer-to-tropical-ofst-fn]
     // [spec:hfst:sem:convert-tropical-weight-transducer.hfst.implementations.conversion-functions.hfst-basic-transducer-to-tropical-ofst-fn]
+    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-basic-transducer-to-tropical-ofst-fn]
+    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-basic-transducer-to-tropical-ofst-fn]
     pub fn hfst_basic_transducer_to_tropical_ofst(net: &HfstBasicTransducer) -> StdVectorFst {
         let mut t = StdVectorFst::new();
         let start_state = t.add_state(); // always zero
