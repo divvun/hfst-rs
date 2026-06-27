@@ -580,6 +580,8 @@ mod construction_io {
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.initialize-symbol-tables-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.initialize-symbol-tables-fn]
+        // [spec:hfst:def:log-weight-transducer.hfst.implementations.initialize-symbol-tables-fn]
+        // [spec:hfst:sem:log-weight-transducer.hfst.implementations.initialize-symbol-tables-fn]
         fn initialize_symbol_tables(t: &mut LogVectorFst) {
             let st = Self::create_symbol_table(String::new());
             t.set_input_symbols(Arc::new(st));

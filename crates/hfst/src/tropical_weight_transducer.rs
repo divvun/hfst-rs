@@ -104,6 +104,8 @@ pub struct TropicalWeightOutputStream {
 
 /* Maps state numbers in AT&T text format to state ids used by OpenFst. */
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.state-map]
+// [spec:hfst:def:tropical-weight-transducer.hfst.implementations.state-map]
+// [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.state-map]
 pub type StateMap = BTreeMap<i32, StateId>;
 
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer]
@@ -575,6 +577,8 @@ mod construction_io {
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.initialize-symbol-tables-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.initialize-symbol-tables-fn]
+        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.initialize-symbol-tables-fn]
+        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.initialize-symbol-tables-fn]
         fn initialize_symbol_tables(t: &mut StdVectorFst) {
             let st = Self::create_symbol_table(String::new());
             t.set_input_symbols(Arc::new(st));

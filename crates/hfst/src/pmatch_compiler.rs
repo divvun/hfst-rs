@@ -278,6 +278,8 @@ pub struct WordVector {
 // set_cache) implemented on each node struct.
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.pmatch-object-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.pmatch-object-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch-object.pmatch-object-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.pmatch-object-fn]
 pub trait PmatchObject {
     // --- base field accessors (required) -----------------------------------
     fn get_name(&self) -> &str {
@@ -933,6 +935,8 @@ pub struct PmatchCompiler {
 impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.pmatch-utility-transducers-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.pmatch-utility-transducers-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.pmatch-utility-transducers-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.pmatch-utility-transducers-fn]
     pub unsafe fn new() -> PmatchUtilityTransducers {
         let mut retval = PmatchUtilityTransducers {
             latin1_acceptor: std::ptr::null(),
@@ -1005,6 +1009,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-acceptor-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-acceptor-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-acceptor-fn]
     pub unsafe fn make_latin1_acceptor(type_: ImplementationType) -> *const HfstTransducer {
         let retval: *mut HfstTransducer = PmatchUtilityTransducers::make_latin1_alpha_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
@@ -1030,6 +1036,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
     pub unsafe fn make_latin1_alpha_acceptor(type_: ImplementationType) -> *const HfstTransducer {
         let retval: *mut HfstTransducer = PmatchUtilityTransducers::make_latin1_lowercase_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
@@ -1045,6 +1053,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
     pub unsafe fn make_latin1_lowercase_acceptor(
         type_: ImplementationType,
     ) -> *const HfstTransducer {
@@ -1060,6 +1070,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
     pub unsafe fn make_latin1_uppercase_acceptor(
         type_: ImplementationType,
     ) -> *const HfstTransducer {
@@ -1075,6 +1087,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
     pub unsafe fn make_combining_accent_acceptor(
         type_: ImplementationType,
     ) -> *const HfstTransducer {
@@ -1083,6 +1097,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
     pub unsafe fn make_latin1_numeral_acceptor(type_: ImplementationType) -> *const HfstTransducer {
         let retval: *mut HfstTransducer = Box::into_raw(Box::new(HfstTransducer::new_type(type_)));
         let num: String = "0123456789".to_string();
@@ -1095,12 +1111,16 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
     pub unsafe fn make_latin1_punct_acceptor(type_: ImplementationType) -> *const HfstTransducer {
         acceptor_from_cstr(latin1_punct, type_) as *const HfstTransducer
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
     pub unsafe fn make_latin1_whitespace_acceptor(
         type_: ImplementationType,
     ) -> *const HfstTransducer {
@@ -1109,6 +1129,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-capify-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-capify-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-capify-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-capify-fn]
     pub unsafe fn make_capify(&mut self, type_: ImplementationType) -> *const HfstTransducer {
         let retval: *mut HfstTransducer = Box::into_raw(Box::new(HfstTransducer::new_type(type_)));
         let tok: HfstTokenizer = HfstTokenizer::new();
@@ -1130,6 +1152,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-lowerfy-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-lowerfy-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-lowerfy-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-lowerfy-fn]
     pub unsafe fn make_lowerfy(&mut self, type_: ImplementationType) -> *const HfstTransducer {
         let retval: *mut HfstTransducer = Box::into_raw(Box::new(HfstTransducer::new_type(type_)));
         let tok: HfstTokenizer = HfstTokenizer::new();
@@ -1151,6 +1175,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.get-lowercase-acceptor-from-transducer-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.get-lowercase-acceptor-from-transducer-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.get-lowercase-acceptor-from-transducer-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.get-lowercase-acceptor-from-transducer-fn]
     pub fn get_lowercase_acceptor_from_transducer(
         &mut self,
         t: &mut HfstTransducer,
@@ -1172,6 +1198,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.get-uppercase-acceptor-from-transducer-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.get-uppercase-acceptor-from-transducer-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.get-uppercase-acceptor-from-transducer-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.get-uppercase-acceptor-from-transducer-fn]
     pub fn get_uppercase_acceptor_from_transducer(
         &mut self,
         t: &mut HfstTransducer,
@@ -1193,6 +1221,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.lowercaser-from-transducer-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.lowercaser-from-transducer-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.lowercaser-from-transducer-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.lowercaser-from-transducer-fn]
     pub fn lowercaser_from_transducer(&mut self, t: &mut HfstTransducer) -> HfstTransducer {
         let mut lowercase: HfstTransducer = HfstTransducer::new_type(t.get_type());
         let ss: StringSet = t.get_alphabet();
@@ -1226,6 +1256,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.uppercaser-from-transducer-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.uppercaser-from-transducer-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.uppercaser-from-transducer-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.uppercaser-from-transducer-fn]
     pub fn uppercaser_from_transducer(&mut self, t: &mut HfstTransducer) -> HfstTransducer {
         let mut uppercase: HfstTransducer = HfstTransducer::new_type(t.get_type());
         let ss: StringSet = t.get_alphabet();
@@ -1259,6 +1291,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.cap-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.cap-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.cap-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.cap-fn]
     pub unsafe fn cap(
         &mut self,
         t: &mut HfstTransducer,
@@ -1349,6 +1383,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.tolower-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.tolower-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.tolower-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.tolower-fn]
     pub unsafe fn tolower(
         &mut self,
         t: &mut HfstTransducer,
@@ -1394,6 +1430,8 @@ impl PmatchUtilityTransducers {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.toupper-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.toupper-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.toupper-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.toupper-fn]
     pub unsafe fn toupper(
         &mut self,
         t: &mut HfstTransducer,
@@ -2223,6 +2261,8 @@ pub unsafe fn get_size_info(net: *mut HfstTransducer) -> String {
 // ===== body: unary-eval =====
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.evaluate-fn]
 impl PmatchObject for PmatchUnaryOperation {
     fn get_name(&self) -> &str {
         &self.name
@@ -2604,11 +2644,15 @@ impl PmatchObject for PmatchUnaryOperation {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
     fn get_initial_symbols_from_unary_root(&mut self) -> StringSet {
         unsafe { PmatchObject_get_real_initial_symbols(&mut *self.root) }
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.is-context-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.is-context-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.is-context-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.is-context-fn]
     fn is_context(&mut self) -> bool {
         self.op == PmatchUnaryOp::LC
             || self.op == PmatchUnaryOp::NLC
@@ -2617,11 +2661,15 @@ impl PmatchObject for PmatchUnaryOperation {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.is-delimiter-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.is-delimiter-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.is-delimiter-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.is-delimiter-fn]
     fn is_delimiter(&mut self) -> bool {
         self.op == PmatchUnaryOp::AddDelimiters
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.get-initial-rc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.get-initial-rc-initial-symbols-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-rc-initial-symbols-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-rc-initial-symbols-fn]
     fn get_initial_RC_initial_symbols(&mut self) -> StringSet {
         unsafe {
             if self.op == PmatchUnaryOp::RC {
@@ -2638,6 +2686,8 @@ impl PmatchObject for PmatchUnaryOperation {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
     fn get_initial_NRC_initial_symbols(&mut self) -> StringSet {
         unsafe {
             if self.op == PmatchUnaryOp::NRC {
@@ -2657,6 +2707,8 @@ impl PmatchObject for PmatchUnaryOperation {
 // ===== body: binary-ternary-numeric-eval =====
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-numeric-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-numeric-operation.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-numeric-operation.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-numeric-operation.evaluate-fn]
 impl PmatchObject for PmatchNumericOperation {
     fn get_name(&self) -> &str {
         &self.name
@@ -2834,6 +2886,8 @@ pub unsafe fn fix_list_overlap(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.evaluate-fn]
 impl PmatchObject for PmatchBinaryOperation {
     fn get_name(&self) -> &str {
         &self.name
@@ -3068,16 +3122,22 @@ impl PmatchObject for PmatchBinaryOperation {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
     fn get_real_initial_symbols_from_right(&mut self) -> StringSet {
         unsafe { PmatchObject_get_real_initial_symbols(&mut *self.right) }
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.is-left-concatenation-with-context-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.is-left-concatenation-with-context-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.is-left-concatenation-with-context-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.is-left-concatenation-with-context-fn]
     fn is_left_concatenation_with_context(&mut self) -> bool {
         unsafe { self.op == PmatchBinaryOp::Concatenate && (*self.left).is_context() }
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.get-initial-rc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.get-initial-rc-initial-symbols-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-initial-rc-initial-symbols-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-initial-rc-initial-symbols-fn]
     fn get_initial_RC_initial_symbols(&mut self) -> StringSet {
         unsafe {
             let mut retval: StringSet = StringSet::new();
@@ -3100,6 +3160,8 @@ impl PmatchObject for PmatchBinaryOperation {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.get-initial-nrc-initial-symbols-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-initial-nrc-initial-symbols-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-initial-nrc-initial-symbols-fn]
     fn get_initial_NRC_initial_symbols(&mut self) -> StringSet {
         unsafe {
             let mut retval: StringSet = StringSet::new();
@@ -3122,6 +3184,8 @@ impl PmatchObject for PmatchBinaryOperation {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.collect-strings-into-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.collect-strings-into-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.collect-strings-into-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.collect-strings-into-fn]
     fn collect_strings_into(&mut self, strings: &mut StringVector) {
         unsafe {
             (*self.left).collect_strings_into(strings);
@@ -3130,6 +3194,8 @@ impl PmatchObject for PmatchBinaryOperation {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.as-string-pair-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.as-string-pair-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.as-string-pair-fn]
     fn as_string_pair(&mut self) -> StringPair {
         unsafe {
             if self.op == PmatchBinaryOp::CrossProduct {
@@ -3142,6 +3208,8 @@ impl PmatchObject for PmatchBinaryOperation {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.is-unweighted-disjunction-of-strings-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.is-unweighted-disjunction-of-strings-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.is-unweighted-disjunction-of-strings-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.is-unweighted-disjunction-of-strings-fn]
     fn is_unweighted_disjunction_of_strings(&mut self) -> bool {
         unsafe {
             self.weight == 0.0
@@ -3153,6 +3221,8 @@ impl PmatchObject for PmatchBinaryOperation {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-ternary-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-ternary-operation.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-ternary-operation.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-ternary-operation.evaluate-fn]
 impl PmatchObject for PmatchTernaryOperation {
     fn get_name(&self) -> &str {
         &self.name
@@ -3229,6 +3299,8 @@ impl PmatchObject for PmatchTernaryOperation {
 }
 // [spec:hfst:def:pmatch-utils.hfst.transducer-has-context-symbol-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.transducer-has-context-symbol-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.transducer-has-context-symbol-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.transducer-has-context-symbol-fn]
 pub unsafe fn transducer_has_context_symbol(t: *mut HfstTransducer) -> bool {
     unsafe {
         let ss: StringSet = (*t).get_alphabet();
@@ -3240,6 +3312,8 @@ pub unsafe fn transducer_has_context_symbol(t: *mut HfstTransducer) -> bool {
 }
 // [spec:hfst:def:pmatch-utils.hfst.warn-on-nonsubtractable-symbols-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.warn-on-nonsubtractable-symbols-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.warn-on-nonsubtractable-symbols-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.warn-on-nonsubtractable-symbols-fn]
 pub unsafe fn warn_on_nonsubtractable_symbols(t: *mut HfstTransducer) {
     unsafe {
         let alphabet: StringSet = (*t).get_alphabet();
@@ -3257,6 +3331,8 @@ pub unsafe fn warn_on_nonsubtractable_symbols(t: *mut HfstTransducer) {
 // ===== body: replace-restriction-containers =====
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-parallel-rules-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-parallel-rules-container.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.evaluate-fn]
 impl PmatchObject for PmatchParallelRulesContainer {
     fn get_name(&self) -> &str {
         &self.name
@@ -3353,6 +3429,8 @@ impl PmatchObject for PmatchParallelRulesContainer {
 impl PmatchParallelRulesContainer {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-parallel-rules-container.make-mappings-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-parallel-rules-container.make-mappings-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.make-mappings-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.make-mappings-fn]
     pub unsafe fn make_mappings(&mut self) -> Vec<Rule> {
         let mut retval: Vec<Rule> = Vec::new();
         for it in self.rules.iter() {
@@ -3364,6 +3442,8 @@ impl PmatchParallelRulesContainer {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-replace-rule-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-replace-rule-container.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.evaluate-fn]
 impl PmatchObject for PmatchReplaceRuleContainer {
     fn get_name(&self) -> &str {
         &self.name
@@ -3454,6 +3534,8 @@ impl PmatchObject for PmatchReplaceRuleContainer {
 impl PmatchReplaceRuleContainer {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-replace-rule-container.make-mapping-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-replace-rule-container.make-mapping-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.make-mapping-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.make-mapping-fn]
     pub unsafe fn make_mapping(&mut self) -> Rule {
         let mut pair_vector: HfstTransducerPairVector = Vec::new();
         for it in self.mapping.iter() {
@@ -3485,6 +3567,8 @@ impl PmatchReplaceRuleContainer {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-restriction-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-restriction-container.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-restriction-container.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-restriction-container.evaluate-fn]
 impl PmatchObject for PmatchRestrictionContainer {
     fn get_name(&self) -> &str {
         &self.name
@@ -3588,6 +3672,8 @@ impl PmatchObjectPairBase for PmatchMarkupContainer {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-markup-container.evaluate-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-markup-container.evaluate-pair-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-markup-container.evaluate-pair-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-markup-container.evaluate-pair-fn]
     unsafe fn evaluate_pair(&mut self) -> TransducerPointerPair {
         let mut retval: TransducerPointerPair;
         let loa: *mut HfstTransducer = (*self.left_of_arrow).evaluate();
@@ -3615,6 +3701,8 @@ impl PmatchObjectPairBase for PmatchMarkupContainer {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-mapping-pairs-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-mapping-pairs-container.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.evaluate-fn]
 impl PmatchObject for PmatchMappingPairsContainer {
     fn get_name(&self) -> &str {
         &self.name
@@ -3654,6 +3742,8 @@ impl PmatchObject for PmatchMappingPairsContainer {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-contexts-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-contexts-container.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-contexts-container.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-contexts-container.evaluate-fn]
 impl PmatchObject for PmatchContextsContainer {
     fn get_name(&self) -> &str {
         &self.name
@@ -3873,6 +3963,8 @@ pub unsafe fn PmatchObject_collect_initial_symbols_into(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-symbol.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-symbol.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.evaluate-fn]
 impl PmatchObject for PmatchSymbol {
     fn get_name(&self) -> &str {
         &self.name
@@ -3942,6 +4034,8 @@ impl PmatchObject for PmatchSymbol {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-symbol.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-symbol.evaluate-as-arg-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.evaluate-as-arg-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.evaluate-as-arg-fn]
     unsafe fn evaluate_as_arg(&mut self) -> *mut dyn PmatchObject {
         if symbol_in_local_context(&mut self.sym) {
             return (*symbol_from_local_context(&mut self.sym)).evaluate_as_arg();
@@ -3972,6 +4066,8 @@ impl PmatchObject for PmatchSymbol {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-symbol.collect-strings-into-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-symbol.collect-strings-into-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.collect-strings-into-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.collect-strings-into-fn]
     fn collect_strings_into(&mut self, strings: &mut StringVector) {
         unsafe {
             if symbol_in_local_context(&mut self.sym) {
@@ -3987,6 +4083,8 @@ impl PmatchObject for PmatchSymbol {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.evaluate-fn]
 impl PmatchObject for PmatchString {
     fn get_name(&self) -> &str {
         &self.name
@@ -4051,11 +4149,15 @@ impl PmatchObject for PmatchString {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.collect-strings-into-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.collect-strings-into-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.collect-strings-into-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.collect-strings-into-fn]
     fn collect_strings_into(&mut self, strings: &mut StringVector) {
         strings.push(self.string.clone());
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.evaluate-as-arg-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.evaluate-as-arg-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.evaluate-as-arg-fn]
     unsafe fn evaluate_as_arg(&mut self) -> *mut dyn PmatchObject {
         Box::into_raw(Box::new(PmatchString {
             name: self.name.clone(),
@@ -4070,6 +4172,8 @@ impl PmatchObject for PmatchString {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-question-mark.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-question-mark.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-question-mark.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-question-mark.evaluate-fn]
 impl PmatchObject for PmatchQuestionMark {
     fn get_name(&self) -> &str {
         &self.name
@@ -4118,6 +4222,8 @@ impl PmatchObject for PmatchQuestionMark {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-acceptor.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-acceptor.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-acceptor.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-acceptor.evaluate-fn]
 impl PmatchObject for PmatchAcceptor {
     fn get_name(&self) -> &str {
         &self.name
@@ -4371,6 +4477,8 @@ impl PmatchObject for PmatchTransducerContainer {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-function.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-function.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-function.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-function.evaluate-fn]
 impl PmatchObject for PmatchFunction {
     fn get_name(&self) -> &str {
         &self.name
@@ -4456,6 +4564,8 @@ impl PmatchObject for PmatchFunction {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-funcall.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-funcall.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-funcall.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-funcall.evaluate-fn]
 impl PmatchObject for PmatchFuncall {
     fn get_name(&self) -> &str {
         &self.name
@@ -4510,6 +4620,8 @@ impl PmatchObject for PmatchFuncall {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-builtin-function.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-builtin-function.evaluate-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-builtin-function.evaluate-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-builtin-function.evaluate-fn]
 impl PmatchObject for PmatchBuiltinFunction {
     fn get_name(&self) -> &str {
         &self.name
@@ -5243,6 +5355,8 @@ space-separated\n  (reading line {})\n",
 }
 // [spec:hfst:def:pmatch-utils.hfst.read-args-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.read-args-fn]
+// [spec:hfst:def:pmatch-utils.hfst.pmatch.read-args-fn]
+// [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-args-fn]
 pub unsafe fn read_args(filename: *mut c_char, argcount: u32) -> Vec<Vec<String>> {
     use std::io::Read;
     let fname: String = std::ffi::CStr::from_ptr(filename)

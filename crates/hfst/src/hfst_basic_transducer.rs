@@ -205,8 +205,12 @@ pub type HfstNumberPairSubstitutions = BTreeMap<HfstNumberPair, HfstNumberPair>;
 pub type SubstMap = BTreeMap<HfstSymbol, HfstBasicTransducer>;
 
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.state-pair]
+// [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.state-pair]
+// [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.state-pair]
 pub type StatePair = (HfstState, HfstState);
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.state-map]
+// [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.state-map]
+// [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.state-map]
 pub type StateMap = BTreeMap<StatePair, HfstState>;
 
 /* A topological sort. */

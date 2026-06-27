@@ -719,6 +719,8 @@ mod input_impl {
         Throw a TransducerHeaderException if the header data cannot be parsed. */
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.read-hfst-header-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.read-hfst-header-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.read-hfst-header-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.read-hfst-header-fn]
         fn read_hfst_header(&mut self, bytes_read: &mut i32) -> bool {
             let c = self.stream_peek();
 
@@ -754,6 +756,8 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.get-fst-type-old-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.get-fst-type-old-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.get-fst-type-old-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.get-fst-type-old-fn]
         fn get_fst_type_old(&mut self, bytes_read: &mut i32) -> ImplementationType {
             let fst_type = self.stream_getstring();
             if self.stream_eof() {
@@ -790,6 +794,8 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.read-library-header-old-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.read-library-header-old-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.read-library-header-old-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.read-library-header-old-fn]
         fn read_library_header_old(&mut self, bytes_read: &mut i32) -> bool {
             let id = b"HFST3";
 
@@ -823,6 +829,8 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.read-library-header-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.read-library-header-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.read-library-header-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.read-library-header-fn]
         fn read_library_header(&mut self, bytes_read: &mut i32) -> bool {
             let id = b"HFST";
 
@@ -855,6 +863,8 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.get-header-size-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.get-header-size-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.get-header-size-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.get-header-size-fn]
         fn get_header_size(&mut self, bytes_read: &mut i32) -> i32 {
             let mut header_size: u16 = 0;
             self.stream_get_ushort_ref(&mut header_size);
@@ -873,6 +883,8 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.get-header-data-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.get-header-data-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.get-header-data-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.get-header-data-fn]
         fn get_header_data(&mut self, header_size: i32) -> StringPairVector {
             let mut retval: StringPairVector = StringPairVector::new();
             let mut bytes_read: i32 = 0;
@@ -910,6 +922,8 @@ mod input_impl {
         /* The implementation type of the first transducer in the stream. */
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.stream-fst-type-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.stream-fst-type-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-fst-type-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.stream-fst-type-fn]
         fn stream_fst_type(&mut self) -> ImplementationType {
             let mut bytes_read: i32 = 0;
 
@@ -1050,6 +1064,8 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.close-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.close-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.close-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.close-fn]
         pub fn close(&mut self) {
             // C++ 'switch (type)' dispatches to the active backend's 'close' (for a
             // file it closes the handle). The owned reader is freed in 'Drop'; for
@@ -1058,6 +1074,8 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.is-eof-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.is-eof-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.is-eof-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.is-eof-fn]
         pub fn is_eof(&mut self) -> bool {
             // C++ dispatches to the active backend's 'is_eof', which peeks the
             // shared stream ('peek() == EOF'). The owned reader IS that stream.
@@ -1071,6 +1089,8 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.is-bad-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.is-bad-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.is-bad-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.is-bad-fn]
         pub fn is_bad(&mut self) -> bool {
             // C++ backend 'is_bad' ~ '!stream.good()'.
             self.pbr().fail
@@ -1078,6 +1098,8 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.is-good-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.is-good-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.is-good-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.is-good-fn]
         pub fn is_good(&mut self) -> bool {
             // C++ backend 'is_good': false at eof, else 'stream.good()'.
             if self.is_eof() {
@@ -1088,12 +1110,16 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.get-type-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.get-type-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.get-type-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.get-type-fn]
         pub fn get_type(&self) -> ImplementationType {
             self.type_
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.is-hfst-header-included-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.is-hfst-header-included-fn]
+        // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.is-hfst-header-included-fn]
+        // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.is-hfst-header-included-fn]
         pub fn is_hfst_header_included(&self) -> bool {
             self.has_hfst_header
         }
