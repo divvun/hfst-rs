@@ -74,7 +74,7 @@ pub struct LexcCompiler {
     pub(crate) warn_unnecessary_escapes_: bool,
     pub(crate) verbose_: bool,
     pub(crate) quiet_: bool,
-    pub(crate) first_lexicon_: bool, // folded `static bool firstLexicon`
+    pub(crate) first_lexicon_: bool, // folded 'static bool firstLexicon'
     pub parseErrors_: bool,          // public field in C++ header
 }
 // (followed by a doc-comment roster of every method + lexc-utils helper the
@@ -593,6 +593,93 @@ impl LexcCompiler {
         } else {
             eprintln!("{}", format);
         }
+    }
+
+    // [spec:hfst:def:lexc-utils.hfst.lexc.strip-percents-fn]
+    // [spec:hfst:sem:lexc-utils.hfst.lexc.strip-percents-fn]
+    //
+    // Port of the char*-returning 'hfst::lexc::strip_percents(const char *s,
+    // bool do_zeros)' (distinct from the std::string '&'-returning
+    // 'stripPercents', which is ported as the 'strip_percents_str' free fn).
+    // The C++ reached the 'lexc_' singleton for warnings; the re-entrant port
+    // takes '&mut self'. NULL becomes 'None'. The computed-but-unused 'err'
+    // ostream at the top of the C++ body is dropped with the rest of the stream
+    // plumbing (errors go to stderr).
+    fn strip_percents(&mut self, s: &str, do_zeros: bool) -> Option<String> {
+        let bytes = s.as_bytes();
+        let mut rv: Vec<u8> = Vec::new();
+        let mut c: usize = 0;
+        let mut escaping = false;
+        let mut in_at = false;
+        while c < bytes.len() && bytes[c] != b'\0' {
+            let cb = bytes[c];
+            if in_at {
+                if cb == b'@' {
+                    in_at = false;
+                }
+                rv.push(cb);
+                c += 1;
+            } else if escaping {
+                if cb != b'0' {
+                    if (cb != b':')
+                        && (cb != b'<')
+                        && (cb != b' ')
+                        && (cb != b';')
+                        && (cb != b'%')
+                        && (cb != b'"')
+                        && (cb != b'@')
+                        && (cb != b'!')
+                        && (cb != b'>')
+                        && (cb != b'#')
+                    {
+                        let errmsg = if (cb as i8) > 0 {
+                            format!("Unnecessary escape %{} [-Wunnecessary-escapes]", cb as char)
+                        } else {
+                            let rest = String::from_utf8_lossy(&bytes[c..]).into_owned();
+                            format!("Unnecessary escape %{} [-Wunnecessary-escapes]", rest)
+                        };
+                        if self.is_warning("-Wunnecessary-escapes")
+                            && self.are_warnings_treated_as_errors()
+                        {
+                            self.error_at_current_token(&errmsg);
+                            self.parseErrors_ = true;
+                        } else if self.is_warning("-Wunnecessary-escapes") {
+                            self.warning_at_current_token(&errmsg);
+                        }
+                    }
+                    rv.push(cb);
+                } else {
+                    let escaped = b"@ZERO@";
+                    for &e in escaped {
+                        rv.push(e);
+                    }
+                }
+                escaping = false;
+                c += 1;
+            } else if cb == b'%' {
+                escaping = true;
+                c += 1;
+            } else if cb == b'@' {
+                in_at = true;
+                rv.push(cb);
+                c += 1;
+            } else if do_zeros && (cb == b'0') {
+                let escaped = b"@0@";
+                for &e in escaped {
+                    rv.push(e);
+                }
+                c += 1;
+            } else {
+                rv.push(cb);
+                c += 1;
+            }
+        }
+        if escaping {
+            // fprintf(stderr, "Stray escape char %% in %s", s);
+            self.warning_at_current_token("Stray escape char %%\n");
+            return None;
+        }
+        Some(String::from_utf8_lossy(&rv).into_owned())
     }
 
     /// Port of 'LexcCompiler::unicodeCheck_'. The ICU grapheme-segmentation
