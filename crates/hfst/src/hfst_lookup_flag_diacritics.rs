@@ -6,9 +6,10 @@
 //! 'entry(...).or_default()' / '.or_insert(...)' to preserve 'operator[]''s
 //! default-insert side effect.
 //!
-//! The '#ifdef DEBUG' 'display'/'main' are dead code (they call an
-//! 'insert_number'/'define_diacritic'/'KeyVector' API that no longer exists) and
-//! are not ported.
+//! The '#ifdef DEBUG' 'main' is dead code (it calls a
+//! 'define_diacritic'/'KeyVector' API that no longer exists) and is not ported.
+//! The '#ifdef DEBUG' 'display' is ported; see its note for the 'short'-key
+//! adaptation forced by the now-'String'-keyed static maps.
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -401,6 +402,28 @@ impl FlagDiacriticTable {
             }
         }
         filtered
+    }
+
+    // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.display-fn]
+    // [spec:hfst:sem:hfst-lookup-flag-diacritics.flag-diacritic-table.display-fn]
+    //
+    // '#ifdef DEBUG' dead code: the original keyed the static maps by 'short'
+    // (an old number-based API), so the 'short' key is looked up by its decimal
+    // string in the surviving 'String'-keyed maps. 'operator[]''s default-insert
+    // is preserved via the 'op_of'/'feature_of'/'value_of' accessors, and the
+    // unscoped C++ enum streams as its integer value (mirrored with 'as i32').
+    pub fn display(diacritic: i16) {
+        let key = diacritic.to_string();
+        if !DIACRITIC_OPERATORS.lock().unwrap().contains_key(&key) {
+            println!("{} not defined.", diacritic);
+        } else {
+            println!(
+                "{} {} {}",
+                Self::op_of(&key) as i32,
+                Self::feature_of(&key),
+                Self::value_of(&key)
+            );
+        }
     }
 }
 

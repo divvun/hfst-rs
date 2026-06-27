@@ -4242,7 +4242,7 @@ impl HfstBasicTransducer {
         state_map: &mut StateMap,
         agenda: &mut BTreeSet<HfstState>,
     ) {
-        agenda.insert(state); // do not handle `state` twice
+        agenda.insert(state); // do not handle 'state' twice
         let tr1 = &graph1.state_vector[state1 as usize];
         let tr2 = &graph2.state_vector[state2 as usize];
 
@@ -4460,7 +4460,7 @@ impl HfstBasicTransducer {
         list_symbols: &BTreeMap<String, BTreeSet<String>>,
         markers_added: &mut BTreeSet<String>,
     ) {
-        agenda.insert(result_state); // do not handle `result_state` twice
+        agenda.insert(result_state); // do not handle 'result_state' twice
         let graph_transitions = &graph.state_vector[graph_state as usize];
         let merger_transitions = &merger.state_vector[merger_state as usize];
 

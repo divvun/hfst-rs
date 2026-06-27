@@ -191,7 +191,7 @@ mod ol_construction_io {
         /// 'static int is_fst(FILE * f);' — 1=unweighted, 2=weighted.
         pub fn is_fst_file(f: *mut libc::FILE) -> i32 {
             if f.is_null() {
-                return 0; // C++ `return false;`
+                return 0; // C++ 'return false;'
             }
 
             let mut buffer = [0u8; 24];

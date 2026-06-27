@@ -154,6 +154,8 @@ pub mod symbols {
         result
     }
 
+    // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.string-pair-set-to-string-pair-set-fn]
+    // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.string-pair-set-to-string-pair-set-fn]
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.to-string-pair-set-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.to-string-pair-set-fn]
     pub fn to_string_pair_set(ss: &StringSet) -> StringPairSet {
@@ -221,6 +223,8 @@ pub mod symbols {
         max_path_length as i32
     }
 
+    // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.hfst.hfst-two-level-paths-get-longest-paths-fn]
+    // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.hfst.hfst-two-level-paths-get-longest-paths-fn]
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.get-longest-paths-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.get-longest-paths-fn]
     pub fn get_longest_paths(paths: &HfstTwoLevelPaths) -> HfstTwoLevelPaths {
@@ -289,6 +293,8 @@ pub mod symbols {
         v_wo_flags
     }
 
+    // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.string-pair-vector-remove-flags-fn]
+    // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.string-pair-vector-remove-flags-fn]
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.remove-flags-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.remove-flags-fn]
     //

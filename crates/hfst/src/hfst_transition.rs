@@ -6,8 +6,9 @@
 //! id of its own), implemented for ['HfstTropicalTransducerTransitionData'].
 //!
 //! 'HfstTransition<C>::get_symbol_number' calls 'C::get_symbol_number', which
-//! 'HfstTropicalTransducerTransitionData' does not provide — it is an
-//! uninstantiable (never-compiled) template member, so it is not ported.
+//! 'HfstTropicalTransducerTransitionData' does not provide. It is ported behind
+//! the port-only ['SymbolNumberData'] bound, so it stays an uninstantiable
+//! (never-compiled) member for that data type, exactly as in C++.
 //! 'HfstFastTransition' is likewise not ported: its data type
 //! 'HfstFastTransitionData' does not exist (its include is commented out).
 
@@ -35,6 +36,15 @@ pub trait TransitionData {
     fn data_get_weight(&self) -> Self::WeightType;
     fn data_set_weight(&mut self, w: f32);
     fn data_lt(&self, other: &Self) -> bool;
+}
+
+/// The C++ template member 'HfstTransition<C>::get_symbol_number' forwards to the
+/// static 'C::get_symbol_number'. Only transition-data types that actually
+/// provide it satisfy this bound; it is a never-instantiated member for
+/// 'HfstTropicalTransducerTransitionData', which does not implement it. (A
+/// port-only construct, no spec id of its own.)
+pub trait SymbolNumberData: TransitionData {
+    fn get_symbol_number(symbol: &Self::SymbolType) -> u32;
 }
 
 impl TransitionData for HfstTropicalTransducerTransitionData {
@@ -87,6 +97,17 @@ pub struct HfstTransition<C: TransitionData> {
 }
 
 impl<C: TransitionData> HfstTransition<C> {
+    /* Get the number that represents the symbol in the transition data. */
+    // [spec:hfst:def:hfst-transition.hfst.implementations.hfst-transition.get-symbol-number-fn]
+    // [spec:hfst:sem:hfst-transition.hfst.implementations.hfst-transition.get-symbol-number-fn]
+    #[allow(dead_code)]
+    fn get_symbol_number(symbol: &C::SymbolType) -> u32
+    where
+        C: SymbolNumberData,
+    {
+        C::get_symbol_number(symbol)
+    }
+
     pub fn new() -> Self {
         HfstTransition {
             target_state: 0,
