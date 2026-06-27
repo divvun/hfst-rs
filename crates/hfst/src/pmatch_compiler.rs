@@ -547,6 +547,8 @@ pub struct PmatchTransducerContainer {
 }
 
 impl PmatchTransducerContainer {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-transducer-container.pmatch-transducer-container-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-transducer-container.pmatch-transducer-container-fn]
     pub fn new(t: *mut HfstTransducer) -> *mut PmatchTransducerContainer {
         Box::into_raw(Box::new(PmatchTransducerContainer {
             name: String::new(),
@@ -714,6 +716,334 @@ pub struct PmatchParallelRulesContainer {
     pub cache: *mut HfstTransducer,
     pub arrow: ReplaceArrow,
     pub rules: Vec<*mut PmatchReplaceRuleContainer>,
+}
+
+// ---------------------------------------------------------------------------
+// PmatchObject node constructors (literal ports of the C++ ctors; base fields
+// follow 'PmatchObject::PmatchObject()' defaults: name="", weight=0.0,
+// line_defined=0 (no lexer line counter in this port), my_timer=0, cache=NULL)
+// ---------------------------------------------------------------------------
+
+impl PmatchSymbol {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.pmatch-symbol-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.pmatch-symbol-fn]
+    pub fn new(str: String) -> *mut PmatchSymbol {
+        Box::into_raw(Box::new(PmatchSymbol {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            sym: str,
+        }))
+    }
+}
+
+impl PmatchString {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.pmatch-string-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.pmatch-string-fn]
+    pub fn new(str: String, is_multichar: bool) -> *mut PmatchString {
+        Box::into_raw(Box::new(PmatchString {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            string: str,
+            multichar: is_multichar,
+        }))
+    }
+}
+
+impl PmatchNumericOperation {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-numeric-operation.pmatch-numeric-operation-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-numeric-operation.pmatch-numeric-operation-fn]
+    pub fn new(op: PmatchNumericOp, root: *mut dyn PmatchObject) -> *mut PmatchNumericOperation {
+        Box::into_raw(Box::new(PmatchNumericOperation {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            op,
+            root,
+            values: Vec::new(),
+        }))
+    }
+}
+
+impl PmatchUnaryOperation {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.pmatch-unary-operation-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.pmatch-unary-operation-fn]
+    pub fn new(op: PmatchUnaryOp, root: *mut dyn PmatchObject) -> *mut PmatchUnaryOperation {
+        Box::into_raw(Box::new(PmatchUnaryOperation {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            op,
+            root,
+        }))
+    }
+}
+
+impl PmatchBinaryOperation {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.pmatch-binary-operation-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.pmatch-binary-operation-fn]
+    pub fn new(
+        op: PmatchBinaryOp,
+        left: *mut dyn PmatchObject,
+        right: *mut dyn PmatchObject,
+    ) -> *mut PmatchBinaryOperation {
+        Box::into_raw(Box::new(PmatchBinaryOperation {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            op,
+            left,
+            right,
+        }))
+    }
+}
+
+impl PmatchTernaryOperation {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-ternary-operation.pmatch-ternary-operation-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-ternary-operation.pmatch-ternary-operation-fn]
+    pub fn new(
+        op: PmatchTernaryOp,
+        left: *mut dyn PmatchObject,
+        middle: *mut dyn PmatchObject,
+        right: *mut dyn PmatchObject,
+    ) -> *mut PmatchTernaryOperation {
+        Box::into_raw(Box::new(PmatchTernaryOperation {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            op,
+            left,
+            middle,
+            right,
+        }))
+    }
+}
+
+impl PmatchFunction {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-function.pmatch-function-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-function.pmatch-function-fn]
+    pub fn new(
+        argument_vector: Vec<String>,
+        function_root: *mut dyn PmatchObject,
+    ) -> *mut PmatchFunction {
+        Box::into_raw(Box::new(PmatchFunction {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            args: argument_vector,
+            root: function_root,
+        }))
+    }
+}
+
+impl PmatchFuncall {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-funcall.pmatch-funcall-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-funcall.pmatch-funcall-fn]
+    pub fn new(
+        argument_vector: *mut Vec<*mut dyn PmatchObject>,
+        function: *mut PmatchFunction,
+    ) -> *mut PmatchFuncall {
+        Box::into_raw(Box::new(PmatchFuncall {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            args: argument_vector,
+            fun: function,
+        }))
+    }
+}
+
+impl PmatchBuiltinFunction {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-builtin-function.pmatch-builtin-function-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-builtin-function.pmatch-builtin-function-fn]
+    pub fn new(
+        type_: PmatchBuiltin,
+        argument_vector: *mut Vec<*mut dyn PmatchObject>,
+    ) -> *mut PmatchBuiltinFunction {
+        Box::into_raw(Box::new(PmatchBuiltinFunction {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            args: argument_vector,
+            type_,
+        }))
+    }
+}
+
+impl PmatchAcceptor {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-acceptor.pmatch-acceptor-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-acceptor.pmatch-acceptor-fn]
+    pub fn new(s: PmatchPredefined) -> *mut PmatchAcceptor {
+        Box::into_raw(Box::new(PmatchAcceptor {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            set: s,
+        }))
+    }
+}
+
+impl PmatchObjectPair {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object-pair.pmatch-object-pair-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object-pair.pmatch-object-pair-fn]
+    pub fn new(l: *mut dyn PmatchObject, r: *mut dyn PmatchObject) -> *mut PmatchObjectPair {
+        Box::into_raw(Box::new(PmatchObjectPair { left: l, right: r }))
+    }
+}
+
+impl PmatchMarkupContainer {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-markup-container.pmatch-markup-container-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-markup-container.pmatch-markup-container-fn]
+    pub fn new(
+        loa: *mut dyn PmatchObject,
+        lom: *mut dyn PmatchObject,
+        rom: *mut dyn PmatchObject,
+    ) -> *mut PmatchMarkupContainer {
+        Box::into_raw(Box::new(PmatchMarkupContainer {
+            left: lom,
+            right: rom,
+            left_of_arrow: loa,
+        }))
+    }
+}
+
+impl PmatchRestrictionContainer {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-restriction-container.pmatch-restriction-container-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-restriction-container.pmatch-restriction-container-fn]
+    pub fn new(
+        l: *mut dyn PmatchObject,
+        c: *mut MappingPairVector,
+    ) -> *mut PmatchRestrictionContainer {
+        Box::into_raw(Box::new(PmatchRestrictionContainer {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            left: l,
+            contexts: c,
+        }))
+    }
+}
+
+impl PmatchMappingPairsContainer {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.pmatch-mapping-pairs-container-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.pmatch-mapping-pairs-container-fn]
+    pub fn new(
+        a: ReplaceArrow,
+        left: *mut dyn PmatchObject,
+        right: *mut dyn PmatchObject,
+    ) -> *mut PmatchMappingPairsContainer {
+        let mut obj = Box::new(PmatchMappingPairsContainer {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            arrow: a,
+            mapping_pairs: MappingPairVector::new(),
+        });
+        obj.mapping_pairs
+            .push(PmatchObjectPair::new(left, right) as *mut dyn PmatchObjectPairBase);
+        Box::into_raw(obj)
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.push-back-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.push-back-fn]
+    pub unsafe fn push_back(&mut self, one_pair: *mut PmatchMappingPairsContainer) {
+        for it in (*one_pair).mapping_pairs.iter() {
+            self.mapping_pairs
+                .push(PmatchObjectPair::new((**it).get_left(), (**it).get_right())
+                    as *mut dyn PmatchObjectPairBase);
+        }
+    }
+}
+
+impl PmatchContextsContainer {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-contexts-container.pmatch-contexts-container-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-contexts-container.pmatch-contexts-container-fn]
+    pub unsafe fn new(
+        t: ReplaceType,
+        context: *mut PmatchContextsContainer,
+    ) -> *mut PmatchContextsContainer {
+        Box::into_raw(Box::new(PmatchContextsContainer {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            type_: t,
+            context_pairs: (*context).context_pairs.clone(),
+        }))
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-contexts-container.push-back-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-contexts-container.push-back-fn]
+    pub unsafe fn push_back(&mut self, one_context: *mut PmatchContextsContainer) {
+        for it in (*one_context).context_pairs.iter() {
+            self.context_pairs
+                .push(PmatchObjectPair::new((**it).get_left(), (**it).get_right())
+                    as *mut dyn PmatchObjectPairBase);
+        }
+    }
+}
+
+impl PmatchReplaceRuleContainer {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.pmatch-replace-rule-container-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.pmatch-replace-rule-container-fn]
+    pub fn new(
+        a: ReplaceArrow,
+        t: ReplaceType,
+        m: MappingPairVector,
+        c: MappingPairVector,
+    ) -> *mut PmatchReplaceRuleContainer {
+        Box::into_raw(Box::new(PmatchReplaceRuleContainer {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            arrow: a,
+            type_: t,
+            mapping: m,
+            context: c,
+        }))
+    }
+}
+
+impl PmatchParallelRulesContainer {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.pmatch-parallel-rules-container-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.pmatch-parallel-rules-container-fn]
+    pub unsafe fn new(rule: *mut PmatchReplaceRuleContainer) -> *mut PmatchParallelRulesContainer {
+        Box::into_raw(Box::new(PmatchParallelRulesContainer {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            my_timer: 0,
+            cache: std::ptr::null_mut(),
+            arrow: (*rule).arrow,
+            rules: vec![rule],
+        }))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -4081,6 +4411,11 @@ impl PmatchObject for PmatchSymbol {
             }
         }
     }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.as-string-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.as-string-fn]
+    fn as_string(&mut self) -> String {
+        self.sym.clone()
+    }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.evaluate-fn]
@@ -4170,6 +4505,21 @@ impl PmatchObject for PmatchString {
             multichar: self.multichar,
         })) as *mut dyn PmatchObject
     }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.as-string-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.as-string-fn]
+    fn as_string(&mut self) -> String {
+        self.string.clone()
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.as-string-pair-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.as-string-pair-fn]
+    fn as_string_pair(&mut self) -> StringPair {
+        (self.string.clone(), self.string.clone())
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.is-unweighted-disjunction-of-strings-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.is-unweighted-disjunction-of-strings-fn]
+    fn is_unweighted_disjunction_of_strings(&mut self) -> bool {
+        self.weight == 0.0 && (self.multichar || (self.string.len() < 2))
+    }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-question-mark.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-question-mark.evaluate-fn]
@@ -4219,6 +4569,17 @@ impl PmatchObject for PmatchQuestionMark {
             self.report_time(String::new());
             retval
         }
+    }
+
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-fn]
+    fn as_string(&mut self) -> String {
+        internal_unknown.to_string()
+    }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-pair-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-pair-fn]
+    fn as_string_pair(&mut self) -> StringPair {
+        (internal_identity.to_string(), internal_identity.to_string())
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-acceptor.evaluate-fn]
@@ -4426,6 +4787,12 @@ impl PmatchObject for PmatchEpsilonArc {
                 format,
             )))
         }
+    }
+
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc.as-string-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc.as-string-fn]
+    fn as_string(&mut self) -> String {
+        internal_epsilon.to_string()
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-transducer-container.evaluate-fn]
