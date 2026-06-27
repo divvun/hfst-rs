@@ -217,6 +217,46 @@ pub fn get_states_and_symbols(
 }
 
 impl ConversionFunctions {
+    /* A way to smuggle a hfst_ol backend into a HfstTransducer wrapper. */
+    // [spec:hfst:def:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn]
+    // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn]
+    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn]
+    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn]
+    pub fn hfst_ol_to_hfst_transducer(
+        t: &Transducer,
+    ) -> *mut crate::hfst_transducer::HfstTransducer {
+        use crate::hfst_data_types::ImplementationType::*;
+        let type_ = if t.is_weighted() {
+            HFST_OLW_TYPE
+        } else {
+            HFST_OL_TYPE
+        };
+        let retval = Box::into_raw(Box::new(crate::hfst_transducer::HfstTransducer::new_type(
+            type_,
+        )));
+        unsafe {
+            drop(Box::from_raw((*retval).implementation.hfst_ol));
+            (*retval).implementation.hfst_ol =
+                Box::into_raw(Box::new(Transducer::copy(t, t.is_weighted())));
+        }
+        retval
+    }
+
+    /* And the reverse: convert 't' to OL if needed and hand back its backend. */
+    // [spec:hfst:def:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-ol-fn]
+    // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-ol-fn]
+    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-ol-fn]
+    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-ol-fn]
+    pub fn hfst_transducer_to_hfst_ol(
+        t: &mut crate::hfst_transducer::HfstTransducer,
+    ) -> *mut Transducer {
+        use crate::hfst_data_types::ImplementationType::*;
+        if t.type_ != HFST_OL_TYPE && t.type_ != HFST_OLW_TYPE {
+            t.convert(HFST_OLW_TYPE, String::new());
+        }
+        unsafe { t.implementation.hfst_ol }
+    }
+
     /* Create an HfstBasicTransducer equivalent to hfst_ol::Transducer 't'. */
     // [spec:hfst:def:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
     // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]

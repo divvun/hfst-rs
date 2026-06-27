@@ -20,6 +20,7 @@ use std::collections::BTreeMap;
 use std::sync::{LazyLock, Mutex};
 
 use crate::hfst_data_types::{StringVector, size_t_to_uint};
+use crate::hfst_exception_defs::FunctionNotImplementedException;
 
 // 'fst::StdArc::StateId', i.e. 'unsigned int'. (Gated by 'HAVE_OPENFST'; the
 // OpenFST converters that use it are deferred to the rustfst backend.)
@@ -60,6 +61,53 @@ static STRING_TO_NUMBER_MAP: LazyLock<Mutex<String2NumberMap>> = LazyLock::new(|
 pub struct ConversionFunctions;
 
 impl ConversionFunctions {
+    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-basic-transducer-fn]
+    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-basic-transducer-fn]
+    //
+    // Dispatch on the backend type; the SFST/FOMA/XFSM/My arms are #if'd out.
+    // The C++ sets 'retval->name = t.get_name()' on every arm.
+    pub fn hfst_transducer_to_hfst_basic_transducer(
+        t: &crate::hfst_transducer::HfstTransducer,
+    ) -> *mut crate::hfst_basic_transducer::HfstBasicTransducer {
+        use crate::hfst_data_types::ImplementationType::*;
+        if t.type_ == TROPICAL_OPENFST_TYPE {
+            let retval = Box::into_raw(Box::new(
+                ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
+                    unsafe { &*t.implementation.tropical_ofst },
+                    true,
+                ),
+            ));
+            unsafe {
+                (*retval).name = t.get_name();
+            }
+            return retval;
+        }
+        if t.type_ == LOG_OPENFST_TYPE {
+            let retval = Box::into_raw(Box::new(
+                ConversionFunctions::log_ofst_to_hfst_basic_transducer(
+                    unsafe { &*t.implementation.log_ofst },
+                    true,
+                ),
+            ));
+            unsafe {
+                (*retval).name = t.get_name();
+            }
+            return retval;
+        }
+        if t.type_ == HFST_OL_TYPE || t.type_ == HFST_OLW_TYPE {
+            let retval = Box::into_raw(Box::new(
+                ConversionFunctions::hfst_ol_to_hfst_basic_transducer(unsafe {
+                    &*t.implementation.hfst_ol
+                }),
+            ));
+            unsafe {
+                (*retval).name = t.get_name();
+            }
+            return retval;
+        }
+        crate::HFST_THROW!(FunctionNotImplementedException)
+    }
+
     /* Get the string that is represented by 'number' in the number-to-string
     vector. If `number` is not found, return the empty string. */
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.get-string-fn]
