@@ -1,110 +1,41 @@
-# Wave-2 in-scope function/method gaps — snapshot at a17c58c4
-# Regenerate with the script in docs/wave2-remaining-plan.md (status may shift as work lands).
-# columns: STATUS  cpp_file  name  kind  manifest_id
-# STATUS: IMPL? = a 'fn <name>' exists in crates/hfst/src (likely credit); PORT = no fn (likely real port)
+# Wave-2 in-scope FUNCTION gaps — FINAL (all remaining are non-portable)
+# Generated 2026-06-28. Every genuinely portable in-scope function/method has been ported or credited.
+# The 31 entries below cannot be faithfully 1:1 translated; reason in column 1.
+# FLEX=bison/flex lexer glue (nfst replaces the parser front-end)
+# NOISE=control-flow keyword / local var mis-extracted as a function, or iterator end() boilerplate
+# TEST=helper under a TEST ifdef / dead test scaffold
+# UNDEFINED=declared in a header but never defined in any .cc (no body to translate)
+# DEADCODE=guarded by #ifdef FOO (never compiled)
+# OMITTED-GLOBAL=a C++ file-scope variable (not a function) deliberately left off the Rust struct
 
-PORT  ConvertOlTransducer      hfst_ol_to_hfst_transducer         method      convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn
-PORT  ConvertOlTransducer      hfst_transducer_to_hfst_ol         method      convert-ol-transducer.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-ol-fn
-PORT  ConvertTransducerFormat  hfst_ol_to_hfst_transducer         method      convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn
-PORT  ConvertTransducerFormat  hfst_transducer_to_hfst_basic_transducer method      convert-transducer-format.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-basic-transducer-fn
-PORT  ConvertTransducerFormat  hfst_transducer_to_hfst_ol         method      convert-transducer-format.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-ol-fn
-IMPL?  HfstBasicTransducer      end                                method      hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.end-fn
-IMPL?  HfstLookupFlagDiacritics display                            method      hfst-lookup-flag-diacritics.flag-diacritic-table.display-fn
-PORT  HfstStrings2FstTokenizer test_ps                            function    hfst-strings2-fst-tokenizer.test-ps-fn
-PORT  HfstStrings2FstTokenizer test_sp                            function    hfst-strings2-fst-tokenizer.test-sp-fn
-PORT  HfstSymbolDefs           HfstTwoLevelPaths get_longest_paths method      hfst-symbol-defs.hfst.symbols.hfst.hfst-two-level-paths-get-longest-paths-fn
-PORT  HfstSymbolDefs           StringPairSet to_string_pair_set   function    hfst-symbol-defs.hfst.symbols.string-pair-set-to-string-pair-set-fn
-PORT  HfstSymbolDefs           StringPairVector remove_flags      function    hfst-symbol-defs.hfst.symbols.string-pair-vector-remove-flags-fn
-PORT  HfstTransducer           HfstTransducer negation_fst        function    hfst-transducer.hfst.rules.hfst-transducer-negation-fst-fn
-PORT  HfstTransducer           HfstTransducer universal_fst       function    hfst-transducer.hfst.rules.hfst-transducer-universal-fst-fn
-PORT  HfstTransducer           MinimizationAlgorithm get_minimization_algorithm function    hfst-transducer.hfst.minimization-algorithm-get-minimization-algorithm-fn
-IMPL?  HfstTransducer           bracketedReplace                   method      hfst-transducer.hfst.hfst-transducer.hfst.xerox-rules.bracketed-replace-fn
-PORT  HfstTransducer           transducer_copy                    function    hfst-transducer.hfst.transducer-copy-fn
-IMPL?  HfstTransition           get_symbol_number                  method      hfst-transition.hfst.implementations.hfst-transition.get-symbol-number-fn
-PORT  HfstTransitionGraph      HfstReplacementsMap find_replacements function    hfst-transition-graph.hfst-replacements-map-find-replacements-fn
-PORT  HfstTransitionGraph      HfstTransitionGraph                function    hfst-transition-graph.hfst-transition-graph-fn
-PORT  HfstTransitionGraph      HfstTransitionGraph read_in_att_format function    hfst-transition-graph.hfst-transition-graph-read-in-att-format-fn
-PORT  HfstTransitionGraph      HfstTransitionGraph read_in_prolog_format function    hfst-transition-graph.hfst-transition-graph-read-in-prolog-format-fn
-IMPL?  HfstTransitionGraph      end                                method      hfst-transition-graph.hfst.implementations.hfst-transition-graph.end-fn
-PORT  HfstTransitionGraph      for                                method      hfst-transition-graph.hfst.implementations.hfst-transition-graph.for-fn
-PORT  HfstTransitionGraph      if                                 method      hfst-transition-graph.hfst.implementations.hfst-transition-graph.if-fn
-PORT  HfstTransitionGraph      is_lookup_infinitely_ambiguous     function    hfst-transition-graph.is-lookup-infinitely-ambiguous-fn
-IMPL?  HfstTransitionGraph      push_back                          method      hfst-transition-graph.hfst.implementations.hfst-transition-graph.push-back-fn
-PORT  HfstTransitionGraph      retval                             method      hfst-transition-graph.hfst.implementations.hfst-transition-graph.retval-fn
-PORT  HfstTransitionGraph      set<HfstState> > topsort           method      hfst-transition-graph.std.vector-std.set-hfst-state-topsort-fn
-PORT  HfstTransitionGraph      string get_stripped_line           method      hfst-transition-graph.std.string-get-stripped-line-fn
-PORT  HfstTransitionGraph      string strip_newlines              method      hfst-transition-graph.std.string-strip-newlines-fn
-PORT  HfstTransitionGraph      string weight2marker               method      hfst-transition-graph.std.string-weight2marker-fn
-PORT  HfstTransitionGraph      substitute_                        function    hfst-transition-graph.substitute-fn
-PORT  HfstTransitionGraph      vector<unsigned int> path_sizes    method      hfst-transition-graph.std.vector-unsigned-int-path-sizes-fn
-PORT  HfstTransitionGraph      void find_regexp_paths             function    hfst-transition-graph.void-find-regexp-paths-fn
-PORT  HfstTransitionGraph      write_in_att_format                function    hfst-transition-graph.write-in-att-format-fn
-IMPL?  HfstTransitionGraph      write_in_att_format_number         function    hfst-transition-graph.write-in-att-format-number-fn
-PORT  LexcCompiler             hlexclex_destroy                   function    lexc-compiler.hlexclex-destroy-fn
-PORT  LexcCompiler             hlexcparse                         function    lexc-compiler.hlexcparse-fn
-PORT  LogWeightTransducer      test_minimize                      method      log-weight-transducer.hfst.implementations.log-weight-transducer.test-minimize-fn
-PORT  PmatchCompiler           PmatchCompiler                     constructor pmatch-compiler.hfst.pmatch.pmatch-compiler.pmatch-compiler-fn
-IMPL?  PmatchCompiler           compile                            method      pmatch-compiler.hfst.pmatch.pmatch-compiler.compile-fn
-IMPL?  PmatchCompiler           define                             method      pmatch-compiler.hfst.pmatch.pmatch-compiler.define-fn
-PORT  PmatchCompiler           set_flatten                        method      pmatch-compiler.hfst.pmatch.pmatch-compiler.set-flatten-fn
-PORT  PmatchCompiler           set_include_cosine_distances       method      pmatch-compiler.hfst.pmatch.pmatch-compiler.set-include-cosine-distances-fn
-IMPL?  PmatchCompiler           set_verbose                        method      pmatch-compiler.hfst.pmatch.pmatch-compiler.set-verbose-fn
-PORT  RuleContainer            ~RuleContainer                     method      rule-container.rule-container.rule-container-fn
-IMPL?  TropicalWeightTransducer compose_intersect                  method      tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.compose-intersect-fn
-PORT  XfstCompiler             hxfst_delete_buffer                function    xfst-compiler.hxfst-delete-buffer-fn
-PORT  XfstCompiler             hxfst_scan_string                  function    xfst-compiler.hxfst-scan-string-fn
-PORT  XfstCompiler             hxfstlex                           function    xfst-compiler.hxfstlex-fn
-PORT  XfstCompiler             hxfstparse                         function    xfst-compiler.hxfstparse-fn
-PORT  XreCompiler              defined_multichar_symbols_         function    xre-compiler.hfst.xre.defined-multichar-symbols-fn
-PORT  convert                  operator()                         method      convert.hfst-ol.convert-transition-compare.operator-fn
-PORT  convert                  operator()                         method      convert.hfst-ol.convert-transition-index-compare.operator-fn
-PORT  lexc-utils               set_infile_name                    function    lexc-utils.hfst.lexc.set-infile-name-fn
-PORT  lexc-utils               strdup_token_part                  function    lexc-utils.hfst.lexc.strdup-token-part-fn
-PORT  lexc-utils               strdup_token_positions             function    lexc-utils.hfst.lexc.strdup-token-positions-fn
-IMPL?  lexc-utils               strip_percents                     function    lexc-utils.hfst.lexc.strip-percents-fn
-PORT  lexc-utils               token_reset_positions              function    lexc-utils.hfst.lexc.token-reset-positions-fn
-PORT  lexc-utils               token_update_positions             function    lexc-utils.hfst.lexc.token-update-positions-fn
-PORT  pmatch_utils             PmatchAcceptor                     constructor pmatch-utils.hfst.pmatch.pmatch-acceptor.pmatch-acceptor-fn
-PORT  pmatch_utils             PmatchBinaryOperation              constructor pmatch-utils.hfst.pmatch.pmatch-binary-operation.pmatch-binary-operation-fn
-PORT  pmatch_utils             PmatchBuiltinFunction              constructor pmatch-utils.hfst.pmatch.pmatch-builtin-function.pmatch-builtin-function-fn
-PORT  pmatch_utils             PmatchContextsContainer            constructor pmatch-utils.hfst.pmatch.pmatch-contexts-container.pmatch-contexts-container-fn
-PORT  pmatch_utils             PmatchFuncall                      constructor pmatch-utils.hfst.pmatch.pmatch-funcall.pmatch-funcall-fn
-PORT  pmatch_utils             PmatchFunction                     constructor pmatch-utils.hfst.pmatch.pmatch-function.pmatch-function-fn
-PORT  pmatch_utils             PmatchMappingPairsContainer        constructor pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.pmatch-mapping-pairs-container-fn
-PORT  pmatch_utils             PmatchMarkupContainer              constructor pmatch-utils.hfst.pmatch.pmatch-markup-container.pmatch-markup-container-fn
-PORT  pmatch_utils             PmatchNumericOperation             constructor pmatch-utils.hfst.pmatch.pmatch-numeric-operation.pmatch-numeric-operation-fn
-PORT  pmatch_utils             PmatchObjectPair                   constructor pmatch-utils.hfst.pmatch.pmatch-object-pair.pmatch-object-pair-fn
-PORT  pmatch_utils             PmatchParallelRulesContainer       constructor pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.pmatch-parallel-rules-container-fn
-PORT  pmatch_utils             PmatchReplaceRuleContainer         constructor pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.pmatch-replace-rule-container-fn
-PORT  pmatch_utils             PmatchRestrictionContainer         constructor pmatch-utils.hfst.pmatch.pmatch-restriction-container.pmatch-restriction-container-fn
-PORT  pmatch_utils             PmatchString                       constructor pmatch-utils.hfst.pmatch.pmatch-string.pmatch-string-fn
-PORT  pmatch_utils             PmatchSymbol                       constructor pmatch-utils.hfst.pmatch.pmatch-symbol.pmatch-symbol-fn
-PORT  pmatch_utils             PmatchTernaryOperation             constructor pmatch-utils.hfst.pmatch.pmatch-ternary-operation.pmatch-ternary-operation-fn
-PORT  pmatch_utils             PmatchTransducerContainer          constructor pmatch-utils.hfst.pmatch.pmatch-transducer-container.pmatch-transducer-container-fn
-PORT  pmatch_utils             PmatchUnaryOperation               constructor pmatch-utils.hfst.pmatch.pmatch-unary-operation.pmatch-unary-operation-fn
-IMPL?  pmatch_utils             as_string                          method      pmatch-utils.hfst.pmatch.pmatch-epsilon-arc.as-string-fn
-IMPL?  pmatch_utils             as_string                          method      pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-fn
-IMPL?  pmatch_utils             as_string                          method      pmatch-utils.hfst.pmatch.pmatch-string.as-string-fn
-IMPL?  pmatch_utils             as_string                          method      pmatch-utils.hfst.pmatch.pmatch-symbol.as-string-fn
-IMPL?  pmatch_utils             as_string_pair                     method      pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-pair-fn
-IMPL?  pmatch_utils             as_string_pair                     method      pmatch-utils.hfst.pmatch.pmatch-string.as-string-pair-fn
-IMPL?  pmatch_utils             is_unweighted_disjunction_of_strings method      pmatch-utils.hfst.pmatch.pmatch-string.is-unweighted-disjunction-of-strings-fn
-PORT  pmatch_utils             pmatchparse                        function    pmatch-utils.pmatchparse-fn
-IMPL?  pmatch_utils             push_back                          method      pmatch-utils.hfst.pmatch.pmatch-contexts-container.push-back-fn
-IMPL?  pmatch_utils             push_back                          method      pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.push-back-fn
-PORT  transducer               TransitionIndex                    constructor transducer.hfst-ol.transition-index.transition-index-fn
-PORT  transducer               increment_mutator                  method      transducer.hfst-ol.tree-node.increment-mutator-fn
-PORT  transducer               operator==                         method      transducer.hfst-ol.traversal-state.operator-fn
-PORT  transducer               read_property                      method      transducer.hfst-ol.transducer-header.read-property-fn
-PORT  transducer               ~OlLetterTrie                      method      transducer.hfst-ol.ol-letter-trie.ol-letter-trie-fn
-PORT  transducer               ~TransducerTablesInterface         method      transducer.hfst-ol.transducer-tables-interface.transducer-tables-interface-fn
-IMPL?  xre_utils                getinput                           function    xre-utils.hfst.xre.getinput-fn
-PORT  xre_utils                xre_delete_buffer                  function    xre-utils.xre-delete-buffer-fn
-PORT  xre_utils                xre_scan_string                    function    xre-utils.xre-scan-string-fn
-PORT  xre_utils                xreerror                           function    xre-utils.xreerror-fn
-PORT  xre_utils                xreerrstr                          function    xre-utils.xreerrstr-fn
-PORT  xre_utils                xreflush                           function    xre-utils.xreflush-fn
-PORT  xre_utils                xreget_text                        function    xre-utils.xreget-text-fn
-PORT  xre_utils                xrelex_destroy                     function    xre-utils.xrelex-destroy-fn
-PORT  xre_utils                xrelex_init                        function    xre-utils.xrelex-init-fn
-PORT  xre_utils                xreparse                           function    xre-utils.xreparse-fn
+DEADCODE       TropicalWeightTransducer compose_intersect                  implementations/TropicalWeightTransducer.h:275
+FLEX           LexcCompiler           hlexclex_destroy                   parsers/LexcCompiler.cc:72
+FLEX           LexcCompiler           hlexcparse                         parsers/LexcCompiler.cc:68
+FLEX           XfstCompiler           hxfst_delete_buffer                parsers/XfstCompiler.cc:80
+FLEX           XfstCompiler           hxfst_scan_string                  parsers/XfstCompiler.cc:77
+FLEX           XfstCompiler           hxfstlex                           parsers/XfstCompiler.cc:71
+FLEX           XfstCompiler           hxfstparse                         parsers/XfstCompiler.cc:67
+FLEX           pmatch_utils           pmatchparse                        parsers/pmatch_utils.cc:37
+FLEX           xre_utils              getinput                           parsers/xre_utils.cc:251
+FLEX           xre_utils              xre_delete_buffer                  parsers/xre_utils.cc:46
+FLEX           xre_utils              xre_scan_string                    parsers/xre_utils.cc:43
+FLEX           xre_utils              xreerror                           parsers/xre_utils.cc:110
+FLEX           xre_utils              xreerrstr                          parsers/xre_utils.cc:69
+FLEX           xre_utils              xreflush                           parsers/xre_utils.cc:77
+FLEX           xre_utils              xreget_text                        parsers/xre_utils.cc:52
+FLEX           xre_utils              xrelex_destroy                     parsers/xre_utils.cc:49
+FLEX           xre_utils              xrelex_init                        parsers/xre_utils.cc:40
+FLEX           xre_utils              xreparse                           parsers/xre_utils.cc:37
+NOISE          HfstBasicTransducer    end                                implementations/HfstBasicTransducer.cc:647
+NOISE          HfstTransducer         transducer_copy                    HfstTransducer.cc:4054
+NOISE          HfstTransitionGraph    end                                implementations/HfstTransitionGraph.h:751
+NOISE          HfstTransitionGraph    for                                implementations/HfstTransitionGraph.h:1269
+NOISE          HfstTransitionGraph    if                                 implementations/HfstTransitionGraph.h:1277
+NOISE          HfstTransitionGraph    push_back                          implementations/HfstTransitionGraph.h:1281
+NOISE          HfstTransitionGraph    retval                             implementations/HfstTransitionGraph.h:1034
+OMITTED-GLOBAL XreCompiler            defined_multichar_symbols_         parsers/XreCompiler.cc:39
+TEST           HfstStrings2FstTokenizer test_ps                            HfstStrings2FstTokenizer.cc:381
+TEST           HfstStrings2FstTokenizer test_sp                            HfstStrings2FstTokenizer.cc:405
+TEST           LogWeightTransducer    test_minimize                      implementations/LogWeightTransducer.cc:1483
+UNDEFINED      HfstTransducer         HfstTransducer negation_fst        HfstTransducer.h:1840
+UNDEFINED      HfstTransducer         HfstTransducer universal_fst       HfstTransducer.h:1836

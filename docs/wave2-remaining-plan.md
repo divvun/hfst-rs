@@ -3,10 +3,35 @@
 Pick this up cold. Goal: finish the **in-scope function/method gaps** of the
 C++ -> Rust Wave-2 port (the `literal-port` nplan node).
 
+## STATUS 2026-06-28: portable in-scope function gaps COMPLETE
+
+The 105-gap target this plan was written for is done. Coverage moved
+**2221 -> 2297 / 2593 (85.7% -> 88.6%)** across commits `bdc4a909`..`5bed7d7e`
+(transition-graph template-siblings, PmatchCompiler, pmatch_utils object classes,
+hfst-ol transducer/convert, lexc-utils, HfstSymbolDefs/Transition/FlagDiacritic,
+ConversionFunctions OL/basic bridges, plus decl/credit siblings).
+
+Every remaining in-scope function/method gap is **non-portable** and itemized in
+`docs/wave2-gap-list.txt` (31 entries): 17 flex/bison lexer glue (nfst owns the
+parser front-end), 7 extraction noise / iterator `end()` boilerplate, 3 test
+helpers under TEST ifdefs, 2 header-declared-but-never-defined functions
+(`universal_fst`/`negation_fst`), 1 `#ifdef FOO` dead code
+(`TropicalWeightTransducer::compose_intersect`), 1 deliberately-omitted file-scope
+global (`defined_multichar_symbols_`). None have a C++ body to translate 1:1.
+
+The remaining 296 wave-2-incomplete symbols are OUT of this node's scope: the
+C API (`hfst-c` crate), 37 type/typedef aliases, TWOLC iterator/container
+boilerplate, cmdline/help, and the MAIN_TEST mains. See "Explicitly OUT" below.
+The bug-fix items the ported tests surfaced live in the Wave-3 punch list below.
+
+Also note: the backtick-in-comment credit-zeroing scanner bug (memory
+`nplan-target-scan-no-backticks`) was verified FIXED as of 2026-06-28 — no longer
+a credit lever, though avoiding backticks in new comments is still cheap hygiene.
+
 ## Current state (regenerate live numbers before starting)
 
-- Last commit referenced: `a17c58c4`. Run `mcp__nplan__nplan_port_check` (wave 2)
-  or `nplan port status` for live coverage. At handoff: **2221 / 2593 ported (85.7%)**.
+- Run `mcp__nplan__nplan_port_check` (wave 2) or `nplan port status` for live
+  coverage. At this update: **2297 / 2593 ported (88.6%)**.
 - Wave-1 markup is 100%. Wave-2 translate is the open gate.
 - Build: `cargo build -p hfst`. Tests: **`cargo nextest run -p hfst`** (NOT plain
   `cargo test` — see guardrails). The fork is the `rustfst` git submodule.
