@@ -1,0 +1,668 @@
+#![allow(static_mut_refs)]
+//! Faithful 1:1 port of tools/src/hfst-fst2strings.cc — the transducer path
+//! printing command-line tool. Drives the hfst-cli foundation (globals, getopt,
+//! commandline, program-options, inc fragments).
+
+use hfst::hfst_data_types::ImplementationType;
+use hfst::hfst_data_types::{HfstTwoLevelPath, HfstTwoLevelPaths};
+use hfst::hfst_extract_strings::{ExtractStringsCb, RetVal};
+use hfst::hfst_flag_diacritics::FdOperation;
+use hfst::hfst_input_stream::HfstInputStream;
+use hfst::hfst_symbol_defs::is_epsilon;
+use hfst::hfst_transducer::HfstTransducer;
+use hfst_cli::globals;
+use hfst_cli::hfst_commandline::{
+    EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, hfst_strtoul,
+    print_more_info, print_report_bugs, verbose_printf, warning,
+};
+use hfst_cli::hfst_getopt as getopt;
+use hfst_cli::hfst_program_options::{
+    HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, hfst_getopt_common_long,
+    hfst_getopt_unary_long, print_common_program_options,
+    print_common_unary_program_parameter_instructions,
+};
+use hfst_cli::inc::{
+    CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
+    handle_unary_case,
+};
+use libc::{c_char, c_int};
+use std::ffi::{CStr, CString};
+
+unsafe fn cstr(ptr: *const c_char) -> String {
+    if ptr.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+unsafe fn fput(f: *mut libc::FILE, s: &str) {
+    let c = CString::new(s).unwrap_or_default();
+    unsafe { libc::fputs(c.as_ptr(), f) };
+}
+
+// Tool-specific globals. These mirror the file-scope statics of the C++ tool.
+// the maximum number of strings printed for each transducer
+static mut MAX_STRINGS: c_int = 0;
+static mut CYCLES: c_int = -1;
+static mut NBEST_STRINGS: c_int = -1;
+static mut MAX_RANDOM_STRINGS: c_int = -1;
+static mut MAX_WEIGHT: f32 = -1.0;
+static mut BEAM: f32 = -1.0;
+static mut DISPLAY_WEIGHTS: bool = false;
+static mut EVAL_FD: bool = false;
+static mut FILTER_FD: bool = true;
+static mut QUOTE_SPECIAL: bool = false;
+static mut PRINT_SPACES: bool = false;
+static mut MAX_INPUT_LENGTH: u32 = 0;
+static mut MAX_OUTPUT_LENGTH: u32 = 0;
+static mut INPUT_PREFIX: String = String::new();
+static mut OUTPUT_PREFIX: String = String::new();
+static mut INPUT_EXCLUDE: String = String::new();
+static mut OUTPUT_EXCLUDE: String = String::new();
+
+static mut PRINT_IN_PAIRSTRING_FORMAT: bool = false;
+static mut EPSILON_FORMAT: String = String::new();
+
+static mut PRINT_SEPARATOR_AFTER_EACH_TRANSDUCER: bool = false;
+
+// [spec:hfst:def:hfst-fst2strings.print-usage-fn]
+// [spec:hfst:sem:hfst-fst2strings.print-usage-fn]
+unsafe fn print_usage() {
+    unsafe {
+        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let program_name = cstr(globals::PROGRAM_NAME);
+        fput(
+            globals::message_out(),
+            &format!(
+                "Usage: {} [OPTIONS...] [INFILE]\nDisplay the strings recognized by a transducer\n\n",
+                program_name
+            ),
+        );
+        print_common_program_options(globals::message_out());
+        fput(
+            globals::message_out(),
+            "Fst2strings options:\n\
+             \x20 -n, --max-strings=NSTR     print at most NSTR strings\n\
+             \x20 -N, --nbest=NBEST          print at most NBEST best strings\n\
+             \x20 -r, --random=NRAND         print at most NRAND random strings\n\
+             \x20 -c, --cycles=NCYC          follow cycles at most NCYC times\n\
+             \x20 -w, --print-weights        display the weight for each string\n\
+             \x20 -S, --print-separator      print separator \"--\" after each transducer\n\
+             \x20 -e, --epsilon-format=EPS   print epsilon as EPS\n\
+             \x20 -X, --xfst=VARIABLE        toggle xfst compatibility option VARIABLE\n",
+        );
+        fput(
+            globals::message_out(),
+            "Path filters:\n\
+             \x20 -b, --beam=B               reject output string with weight more than B away from\n\
+             \x20                            the weight of the best output string\n\
+             \x20 -l, --max-in-length=MIL    reject input string longer than MIL\n\
+             \x20 -L, --max-out-length=MOL   reject output string longer than MOL\n\
+             \x20 -p, --in-prefix=OPREFIX    input string must begin with IPREFIX\n\
+             \x20 -P, --out-prefix=OPREFIX   output string must begin with OPREFIX\n\
+             \x20 -u, --in-exclude=IXSTR     input string must not contain IXSTR\n\
+             \x20 -U, --out-exclude=OXST     output string must not contain OXSTR\n",
+        );
+
+        fput(globals::message_out(), "\n");
+
+        print_common_unary_program_parameter_instructions(globals::message_out());
+        fput(
+            globals::message_out(),
+            "If all NSTR, NBEST and NCYC are omitted, \
+             all possible paths are printed:\n\
+             NSTR, NBEST and NCYC default to infinity.\n\
+             NBEST overrides NSTR and NCYC\n\
+             NRAND overrides NBEST, NSTR and NCYC\n\
+             B must be a non-negative float\n\
+             If EPS is not given, default is empty string.\n\
+             Numeric options are parsed with strtod(3).\n\
+             Xfst variables supported are { obey-flags, print-flags,\n\
+             print-pairs, print-space, quote-special }.\n",
+        );
+        fput(
+            globals::message_out(),
+            &format!(
+                "\nExamples:\n\
+                 \x20 {} lexical.hfst    generates all forms of lexical.hfst\n\
+                 \x20 {} -P \"cat<n>\" -c 0 lexical.hfst\n\
+                 \x20                    generates paradigm for cat<n> without following cycles\n\n",
+                program_name, program_name
+            ),
+        );
+
+        fput(
+            globals::message_out(),
+            "Known bugs:\n\
+             \x20 Does not work correctly for hfst optimized lookup format.\n\n",
+        );
+
+        print_report_bugs();
+        fput(globals::message_out(), "\n");
+        print_more_info();
+    }
+}
+
+// [spec:hfst:def:hfst-fst2strings.parse-options-fn]
+// [spec:hfst:sem:hfst-fst2strings.parse-options-fn]
+unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+    unsafe {
+        extend_options_getenv(&mut argc, &mut argv);
+        // use of this function requires options are settable on global scope
+        loop {
+            let mut long_options: Vec<getopt::Option> = Vec::new();
+            long_options.extend(hfst_getopt_common_long());
+            long_options.extend(hfst_getopt_unary_long());
+            // add tool-specific options here
+            let tool_long: [(&str, c_int, c_int); 16] = [
+                ("beam", 1, b'b' as c_int),
+                ("cycles", 1, b'c' as c_int),
+                ("epsilon-format", 1, b'e' as c_int),
+                ("in-exclude", 1, b'u' as c_int),
+                ("in-prefix", 1, b'p' as c_int),
+                ("max-in-length", 1, b'l' as c_int),
+                ("max-out-length", 1, b'L' as c_int),
+                ("max-strings", 1, b'n' as c_int),
+                ("nbest", 1, b'N' as c_int),
+                ("random", 1, b'r' as c_int),
+                ("print-separator", 0, b'S' as c_int),
+                ("out-exclude", 1, b'U' as c_int),
+                ("out-prefix", 1, b'P' as c_int),
+                ("print-weights", 0, b'w' as c_int),
+                ("xfst", 1, b'X' as c_int),
+                ("", 0, 0),
+            ];
+            // Keep the CStrings alive for the duration of getopt_long below.
+            let names: Vec<CString> = tool_long
+                .iter()
+                .map(|(n, _, _)| CString::new(*n).unwrap())
+                .collect();
+            for (i, (_, has_arg, val)) in tool_long.iter().enumerate() {
+                let name_ptr = if i == tool_long.len() - 1 {
+                    std::ptr::null()
+                } else {
+                    names[i].as_ptr()
+                };
+                long_options.push(getopt::Option {
+                    name: name_ptr,
+                    has_arg: *has_arg,
+                    flag: std::ptr::null_mut(),
+                    val: *val,
+                });
+            }
+            let short = CString::new(format!(
+                "{}{}Swb:c:e:u:p:l:L:n:r:N:U:P:X:",
+                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT
+            ))
+            .unwrap();
+            let mut option_index: c_int = 0;
+            let c = getopt::getopt_long(
+                argc,
+                argv,
+                short.as_ptr(),
+                long_options.as_ptr(),
+                &mut option_index,
+            );
+            if -1 == c {
+                break;
+            }
+
+            // The C switch chains the #include'd case groups in order: common
+            // cases, then unary cases, then the tool's own, then the terminal
+            // error arm.
+            match handle_common_case(c, || print_usage()) {
+                CaseResult::Return(code) => return code,
+                CaseResult::Break => continue,
+                CaseResult::NotHandled => {}
+            }
+            match handle_unary_case(c) {
+                CaseResult::Return(code) => return code,
+                CaseResult::Break => continue,
+                CaseResult::NotHandled => {}
+            }
+
+            let optarg = cstr(getopt::OPTARG);
+            match c as u8 as char {
+                'n' => {
+                    MAX_STRINGS = hfst_strtoul(&optarg, 10) as c_int;
+                }
+                'N' => {
+                    NBEST_STRINGS = hfst_strtoul(&optarg, 10) as c_int;
+                }
+                'r' => {
+                    MAX_RANDOM_STRINGS = hfst_strtoul(&optarg, 10) as c_int;
+                }
+                'b' => {
+                    BEAM = optarg.trim().parse::<f32>().unwrap_or(0.0);
+                    if BEAM < 0.0 {
+                        eprint!("Invalid argument for --beam\n");
+                        return libc::EXIT_FAILURE;
+                    }
+                }
+                'c' => {
+                    CYCLES = hfst_strtoul(&optarg, 10) as c_int;
+                }
+                'w' => {
+                    DISPLAY_WEIGHTS = true;
+                }
+                'X' => {
+                    if optarg == "obey-flags" {
+                        EVAL_FD = true;
+                    } else if optarg == "print-flags" {
+                        FILTER_FD = false;
+                    } else if optarg == "quote-special" {
+                        QUOTE_SPECIAL = true;
+                    } else if optarg == "print-pairs" {
+                        PRINT_IN_PAIRSTRING_FORMAT = true;
+                    } else if optarg == "print-space" {
+                        PRINT_SPACES = true;
+                    } else {
+                        error(
+                            0,
+                            libc::EXIT_FAILURE,
+                            "Unrecognised xfst option. available options are obey-flags, print-flags\n",
+                        );
+                    }
+                }
+                'l' => {
+                    MAX_INPUT_LENGTH = hfst_strtoul(&optarg, 10) as u32;
+                }
+                'L' => {
+                    MAX_OUTPUT_LENGTH = hfst_strtoul(&optarg, 10) as u32;
+                }
+                'p' => {
+                    INPUT_PREFIX = optarg;
+                }
+                'P' => {
+                    OUTPUT_PREFIX = optarg;
+                }
+                'u' => {
+                    INPUT_EXCLUDE = optarg;
+                }
+                'U' => {
+                    OUTPUT_EXCLUDE = optarg;
+                }
+                'S' => {
+                    PRINT_SEPARATOR_AFTER_EACH_TRANSDUCER = true;
+                }
+                'e' => {
+                    EPSILON_FORMAT = optarg;
+                }
+                _ => {
+                    return handle_error_case(c);
+                }
+            }
+        }
+
+        check_common_params();
+        check_unary_params(argc, argv);
+        EXIT_CONTINUE
+    }
+}
+
+/* Replace all strings str1 in symbol with str2. */
+// [spec:hfst:def:hfst-fst2strings.replace-all-fn]
+// [spec:hfst:sem:hfst-fst2strings.replace-all-fn]
+fn replace_all(symbol: String, str1: &str, str2: &str) -> String {
+    let mut symbol = symbol;
+    let mut pos = symbol.find(str1);
+    while let Some(p) = pos {
+        // erase str1
+        symbol.replace_range(p..p + str1.len(), "");
+        // insert str2 instead
+        symbol.insert_str(p, str2);
+        // find next str1
+        pos = symbol[p + str2.len()..]
+            .find(str1)
+            .map(|rel| rel + p + str2.len());
+    }
+    symbol
+}
+
+// [spec:hfst:def:hfst-fst2strings.get-print-format-fn]
+// [spec:hfst:sem:hfst-fst2strings.get-print-format-fn]
+unsafe fn get_print_format(s: &str) -> String {
+    unsafe {
+        // print epsilon as defined by the user or use the default
+        if is_epsilon(s) {
+            return EPSILON_FORMAT.clone();
+        }
+
+        if !QUOTE_SPECIAL {
+            return s.to_string();
+        }
+
+        // escape spaces and colons as they have a special meaning
+        replace_all(
+            replace_all(
+                replace_all(s.to_string(), " ", "@_SPACE_@"),
+                ":",
+                "@_COLON_@",
+            ),
+            "\t",
+            "@_TAB_@",
+        )
+    }
+}
+
+// Print results as they come
+// [spec:hfst:def:hfst-fst2strings.callback]
+struct Callback {
+    count: c_int,
+    max_num: c_int,
+    out_: *mut libc::FILE,
+}
+
+impl Callback {
+    // [spec:hfst:def:hfst-fst2strings.callback.callback-fn]
+    // [spec:hfst:sem:hfst-fst2strings.callback.callback-fn]
+    fn new(max: c_int, out: *mut libc::FILE) -> Self {
+        Callback {
+            count: 0,
+            max_num: max,
+            out_: out,
+        }
+    }
+}
+
+impl ExtractStringsCb for Callback {
+    // [spec:hfst:def:hfst-fst2strings.callback.operator-fn]
+    // [spec:hfst:sem:hfst-fst2strings.callback.operator-fn]
+    fn operator_call(&mut self, path: &mut HfstTwoLevelPath, final_: bool) -> RetVal {
+        unsafe {
+            let mut istring = String::new();
+            let mut ostring = String::new();
+            for it in path.second.iter() {
+                istring.push_str(&it.0);
+                ostring.push_str(&it.1);
+            }
+            let weight = path.first;
+
+            if (MAX_INPUT_LENGTH > 0) && (istring.len() as u32 > MAX_INPUT_LENGTH) {
+                // continue searching, break off this path
+                return RetVal::new(true, false);
+            }
+            if (MAX_OUTPUT_LENGTH > 0) && (ostring.len() as u32 > MAX_OUTPUT_LENGTH) {
+                return RetVal::new(true, false);
+                // continue searching, break off this path
+            }
+            if !INPUT_PREFIX.is_empty() {
+                if istring.len() < INPUT_PREFIX.len() {
+                    return RetVal::new(true, true);
+                }
+                if istring.as_bytes()[..INPUT_PREFIX.len()] != *INPUT_PREFIX.as_bytes() {
+                    return RetVal::new(true, false);
+                    // continue searching, break off this path
+                }
+            }
+            if !OUTPUT_PREFIX.is_empty() {
+                if ostring.len() < OUTPUT_PREFIX.len() {
+                    return RetVal::new(true, true);
+                }
+                if ostring.as_bytes()[..OUTPUT_PREFIX.len()] != *OUTPUT_PREFIX.as_bytes() {
+                    return RetVal::new(true, false);
+                    // continue searching, break off this path
+                }
+            }
+            if !INPUT_EXCLUDE.is_empty() && istring.contains(INPUT_EXCLUDE.as_str()) {
+                return RetVal::new(true, false);
+                // continue searching, break off this path
+            }
+            if !OUTPUT_EXCLUDE.is_empty() && ostring.contains(OUTPUT_EXCLUDE.as_str()) {
+                return RetVal::new(true, false);
+                // continue searching, break off this path
+            }
+            if MAX_WEIGHT >= 0.0 && weight > (MAX_WEIGHT + BEAM) {
+                return RetVal::new(true, false);
+                // continue searching, break off this path
+            }
+            // the path passed the checks. Print it if it is final
+            if final_ {
+                if PRINT_IN_PAIRSTRING_FORMAT {
+                    let mut first_pair = true;
+                    for it in path.second.iter() {
+                        if (!FILTER_FD) || (!FdOperation::is_diacritic(&it.0)) {
+                            if PRINT_SPACES && !first_pair {
+                                fput(self.out_, " ");
+                            }
+
+                            fput(self.out_, &get_print_format(&it.0));
+                            first_pair = false;
+                        }
+
+                        if it.0 != it.1 && ((!FILTER_FD) || (!FdOperation::is_diacritic(&it.1))) {
+                            fput(self.out_, &format!(":{}", get_print_format(&it.1)));
+                        }
+                    }
+                    if DISPLAY_WEIGHTS {
+                        fput(self.out_, &format!("\t{}", path.first));
+                    }
+                    fput(self.out_, "\n");
+                } else {
+                    let mut is_automaton = true;
+
+                    let mut first_symbol = true;
+                    for it in path.second.iter() {
+                        if (!FILTER_FD) || (!FdOperation::is_diacritic(&it.0)) {
+                            if PRINT_SPACES && !first_symbol {
+                                fput(self.out_, " ");
+                            }
+                            if it.0 != it.1 {
+                                is_automaton = false;
+                            }
+
+                            fput(self.out_, &get_print_format(&it.0));
+                        }
+                        first_symbol = false;
+                    }
+                    if PRINT_SPACES {
+                        fput(self.out_, " ");
+                    }
+
+                    if !is_automaton {
+                        fput(self.out_, ":");
+                        for it in path.second.iter() {
+                            if (!FILTER_FD) || (!FdOperation::is_diacritic(&it.1)) {
+                                if PRINT_SPACES {
+                                    fput(self.out_, " ");
+                                }
+                                fput(self.out_, &get_print_format(&it.1));
+                            }
+                        }
+                    }
+
+                    if DISPLAY_WEIGHTS {
+                        fput(self.out_, &format!("\t{}", path.first));
+                    }
+                    fput(self.out_, "\n");
+                    // std::endl flushes
+                    libc::fflush(self.out_);
+                }
+                self.count += 1;
+            }
+            // continue until we've printed max_num strings
+            RetVal::new((self.max_num < 1) || (self.count < self.max_num), true)
+        }
+    }
+}
+
+// [spec:hfst:def:hfst-fst2strings.process-stream-fn]
+// [spec:hfst:sem:hfst-fst2strings.process-stream-fn]
+unsafe fn process_stream(instream: &mut HfstInputStream, outstream: *mut libc::FILE) -> c_int {
+    unsafe {
+        let mut first_transducer = true;
+        while instream.is_good() {
+            if !first_transducer && PRINT_SEPARATOR_AFTER_EACH_TRANSDUCER {
+                fput(outstream, "--\n");
+            }
+            first_transducer = false;
+
+            let mut t = HfstTransducer::new_from_stream(instream);
+
+            /* Pairstring format is not supported on optimized lookup format. */
+            if PRINT_IN_PAIRSTRING_FORMAT
+                && (instream.get_type() == ImplementationType::HFST_OL_TYPE
+                    || instream.get_type() == ImplementationType::HFST_OLW_TYPE)
+            {
+                eprint!(
+                    "Error: option --print-in-pairstring-format not supported on \n       optimized lookup transducers, exiting program\n"
+                );
+                std::process::exit(1);
+            }
+
+            if !INPUT_PREFIX.is_empty() {
+                verbose_printf(&format!("input_prefix: '{}'\n", INPUT_PREFIX));
+            }
+
+            if BEAM >= 0.0 {
+                verbose_printf("Finding the weight of the best path...\n");
+                // (the C wraps this in try/catch on FunctionNotImplementedException
+                // and HfstFatalException; in Rust these surface as panics rather
+                // than being caught here.)
+                let mut tc = t.clone();
+                tc.n_best(1);
+                let mut best_paths: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
+                tc.extract_paths(&mut best_paths, -1, -1);
+                if best_paths.len() != 1 {
+                    error(
+                        libc::EXIT_FAILURE,
+                        0,
+                        "n_best(1) produced more than one path",
+                    );
+                }
+                MAX_WEIGHT = best_paths.iter().next().unwrap().first;
+            }
+
+            if NBEST_STRINGS > 0 {
+                verbose_printf(&format!(
+                    "Pruning transducer to {} best path(s)...\n",
+                    NBEST_STRINGS
+                ));
+                // (the C wraps this in try/catch on FunctionNotImplementedException
+                // and HfstFatalException; in Rust these surface as panics.)
+                t.n_best(NBEST_STRINGS as u32);
+            } else if MAX_RANDOM_STRINGS <= 0
+                && MAX_STRINGS <= 0
+                && MAX_INPUT_LENGTH == 0
+                && MAX_OUTPUT_LENGTH == 0
+                && CYCLES < 0
+                && t.is_cyclic()
+            {
+                error(
+                    libc::EXIT_FAILURE,
+                    0,
+                    "Transducer is cyclic. Use one or more of these options: -n, -N, -r, -l, -L, -c",
+                );
+                return libc::EXIT_FAILURE;
+            }
+
+            if MAX_STRINGS > 0 {
+                verbose_printf(&format!("Finding at most {} path(s)...\n", MAX_STRINGS));
+            } else if MAX_RANDOM_STRINGS > 0 {
+                verbose_printf(&format!(
+                    "Finding at most {} random path(s)...\n",
+                    MAX_RANDOM_STRINGS
+                ));
+            } else {
+                verbose_printf("Finding strings...\n");
+            }
+
+            /* not random strings */
+            if MAX_RANDOM_STRINGS <= 0 {
+                let mut cb = Callback::new(MAX_STRINGS, outstream);
+                if EVAL_FD {
+                    t.extract_paths_fd_cb(&mut cb, CYCLES, FILTER_FD);
+                } else {
+                    t.extract_paths_cb(&mut cb, CYCLES);
+                }
+                verbose_printf(&format!("Printed {} string(s)\n", cb.count));
+            }
+            /* random strings */
+            else {
+                let mut results: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
+                // (the C wraps this in try/catch on FunctionNotImplementedException;
+                // in Rust the not-implemented case surfaces as a panic.)
+                if EVAL_FD {
+                    t.extract_random_paths_fd(&mut results, MAX_RANDOM_STRINGS, FILTER_FD);
+                } else {
+                    t.extract_random_paths(&mut results, MAX_RANDOM_STRINGS);
+                }
+
+                let mut cb = Callback::new(MAX_RANDOM_STRINGS, outstream);
+                for it in results.iter() {
+                    let mut path: HfstTwoLevelPath = it.clone();
+                    cb.operator_call(&mut path, true /*final*/);
+                }
+                verbose_printf(&format!("Printed {} random string(s)\n", cb.count));
+            }
+        }
+
+        instream.close();
+        libc::EXIT_SUCCESS
+    }
+}
+
+// [spec:hfst:def:hfst-fst2strings.main-fn]
+// [spec:hfst:sem:hfst-fst2strings.main-fn]
+fn main() {
+    let code = unsafe { real_main() };
+    std::process::exit(code);
+}
+
+unsafe fn real_main() -> c_int {
+    unsafe {
+        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
+        // extend_options_getenv reorder/replace it in place.
+        let c_args: Vec<CString> = std::env::args()
+            .map(|a| CString::new(a).unwrap_or_default())
+            .collect();
+        let mut argv_vec: Vec<*mut c_char> =
+            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
+        argv_vec.push(std::ptr::null_mut());
+        let argc: c_int = c_args.len() as c_int;
+        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
+        let argv0 = cstr(*argv);
+
+        hfst_set_program_name(&argv0, "0.1", "HfstFst2Strings");
+        EPSILON_FORMAT = String::new();
+        let mut retval = parse_options(argc, argv);
+
+        if MAX_STRINGS > 0 && MAX_RANDOM_STRINGS > 0 && !globals::SILENT {
+            warning(0, 0, "option --max_strings ignored, --random used\n");
+            MAX_STRINGS = -1;
+        }
+
+        if retval != EXIT_CONTINUE {
+            return retval;
+        }
+        // close buffers, we use streams
+        let input_opened = !globals::INPUTFILE.is_null();
+        if input_opened {
+            libc::fclose(globals::INPUTFILE);
+        }
+        // (C closes outfile here when it is not stdout and re-opens an ofstream
+        // to outfilename inside; the foundation models the output stream as the
+        // outfile() FILE*, so it is left open and written to directly.)
+        verbose_printf(&format!(
+            "Reading from {}, writing to {}\n",
+            cstr(globals::INPUTFILENAME),
+            cstr(globals::OUTFILENAME)
+        ));
+        // here starts the buffer handling part
+        // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
+        // currently panics on a bad file rather than throwing, so the catch arm
+        // printing "%s is not a valid transducer file" is not reproduced here.)
+        let mut instream = if input_opened {
+            HfstInputStream::new_filename(&cstr(globals::INPUTFILENAME))
+        } else {
+            HfstInputStream::new()
+        };
+
+        retval = process_stream(&mut instream, globals::outfile());
+
+        retval
+    }
+}

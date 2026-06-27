@@ -1,0 +1,979 @@
+//! Faithful 1:1 port of tools/src/hfst-pair-test.cc — the twolc rule-file
+//! pair-test command-line tool. Drives the hfst-cli foundation (globals,
+//! getopt, commandline, program-options, inc fragments).
+
+use hfst::hfst_basic_transducer::HfstBasicTransducer;
+use hfst::hfst_basic_transition::HfstBasicTransition;
+use hfst::hfst_data_types::implementations::HfstState;
+use hfst::hfst_data_types::{ImplementationType, StringPairVector};
+use hfst::hfst_input_stream::HfstInputStream;
+use hfst::hfst_strings2_fst_tokenizer::{HfstStrings2FstTokenizer, UnescapedColsFound};
+use hfst::hfst_symbol_defs::{internal_epsilon, is_epsilon};
+use hfst::hfst_transducer::HfstTransducer;
+use hfst_cli::globals;
+use hfst_cli::hfst_commandline::{
+    EXIT_CONTINUE, error, extend_options_getenv, hfst_fopen, hfst_getline, hfst_set_program_name,
+    hfst_strdup, print_more_info, print_report_bugs, verbose_printf,
+};
+use hfst_cli::hfst_getopt as getopt;
+use hfst_cli::hfst_program_options::{
+    HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, hfst_getopt_common_long,
+    hfst_getopt_unary_long, print_common_program_options,
+};
+use hfst_cli::inc::{
+    CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
+    handle_unary_case,
+};
+use libc::{c_char, c_int};
+use std::collections::BTreeSet;
+use std::ffi::{CStr, CString};
+
+// [spec:hfst:def:hfst-pair-test.basic-transducer-vector]
+type BasicTransducerVector = Vec<HfstBasicTransducer>;
+// [spec:hfst:def:hfst-pair-test.string-vector]
+type StringVector = Vec<String>;
+// [spec:hfst:def:hfst-pair-test.symbol-set]
+type SymbolSet = BTreeSet<String>;
+
+// Tool-specific static state (file-scope statics in the C++ source).
+static mut PAIR_TEST_FILE_NAME: *mut c_char = std::ptr::null_mut();
+static mut PAIR_TEST_FILE: *mut libc::FILE = std::ptr::null_mut();
+static mut PAIR_TEST_GIVEN: bool = false;
+static mut POSITIVE_TEST: bool = true;
+static mut XEROX_MODE: bool = false;
+
+unsafe fn cstr(ptr: *const c_char) -> String {
+    if ptr.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+unsafe fn fput(f: *mut libc::FILE, s: &str) {
+    let c = CString::new(s).unwrap_or_default();
+    unsafe { libc::fputs(c.as_ptr(), f) };
+}
+
+// [spec:hfst:def:hfst-pair-test.print-usage-fn]
+// [spec:hfst:sem:hfst-pair-test.print-usage-fn]
+unsafe fn print_usage() {
+    unsafe {
+        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let program_name = cstr(globals::PROGRAM_NAME);
+        fput(
+            globals::message_out(),
+            &format!(
+                "Usage: {} [OPTIONS...] [INFILE]\npair test for a twolc rule file.\n\n",
+                program_name
+            ),
+        );
+
+        print_common_program_options(globals::message_out());
+        fput(
+            globals::message_out(),
+            "Input/Output options:\n\
+             \x20 -i, --input=INFILE     Read input rule file from INFILE\n\
+             \x20 -o, --output=OUTFILE   Write test output to OUTFILE\n\
+             \x20 -N  --negative-test    Test fails if any of the pair strings is\n\
+             \x20                        accepted.\n\
+             \x20 -X  --xerox-mode       In xerox mode, test cases are harvested\n\
+             \x20                        from a twolc source file.\n",
+        );
+
+        fput(
+            globals::message_out(),
+            "Pair test options:\n\
+             \x20 -I, --input-strings=SFILE        Read pair test strings from\n\
+             \x20                                  SFILE\n",
+        );
+        fput(globals::message_out(), "\n");
+        fput(
+            globals::message_out(),
+            "If SFILE is missing, the test pair strings are read from STDIN.\n\
+             If OUTFILE is missing, test output is written to STDOUT.\n",
+        );
+        fput(globals::message_out(), "\n");
+        fput(
+            globals::message_out(),
+            "The rule file is tested using correspondences given as\n\
+             pair strings, e.g. \"e a r l y:i e r\". Every pair string is\n\
+             tested using every rule and the program prints information\n\
+             about correspondences that are incorrectly allowed or\n\
+             disallowed.\n",
+        );
+        fput(globals::message_out(), "\n");
+        fput(
+            globals::message_out(),
+            "The test pair string files contain one pair string/line. Lines\n\
+             where the first non-white-space character is \"!\" are\n\
+             considered comment lines and skipped.\n",
+        );
+        fput(globals::message_out(), "\n");
+        fput(
+            globals::message_out(),
+            "There are three test modes positive, negative and Xerox mode. In\n\
+             positive mode, all of the pair strings should be allowed and in\n\
+             negative mode they should be disallowed. In Xerox mode the cases\n\
+             are read from a twolc source file and both positive and negative\n\
+             cases can occur.\n",
+        );
+        fput(globals::message_out(), "\n");
+        fput(
+            globals::message_out(),
+            "Ordinarily, positive test mode is in use. Option -N switches to\n\
+             negative test mode. The exit code for a successful test is 0. \n\
+             The exit code is 1 otherwise. A successful test will print\n\
+             \"Test passed\". A failing test prints \"Test failed\" and\n\
+             information about pair strings that are handled incorrectly.\n",
+        );
+        fput(globals::message_out(), "\n");
+        fput(
+            globals::message_out(),
+            "In positive test mode (i.e. without option -N), if a pair\n\
+             string is not accepted, the names of the rules that reject\n\
+             it are printed as well as the positions in the string where the\n\
+             rules run out of possible transitions. In negative mode, only\n\
+             the strings that are allowed are printed.\n",
+        );
+        fput(globals::message_out(), "\n");
+        fput(
+            globals::message_out(),
+            "In Xerox mode, the input should be a twolc file. Tests consist of\n\
+             two lines: an input form and an output form. The test cases are\n\
+             specialized comments prefixed with either '!!\u{20ac}' or '!!$' depeding on\n\
+             whether the pair should succeed or fail. An example of a positive\n\
+             test:\n\n\
+             !!\u{20ac} earlYer\n\
+             !!\u{20ac} earlier\n\n\
+             An example of a negative test:\n\n\
+             !!$ earlYer\n\
+             !!$ earlyer\n",
+        );
+        fput(globals::message_out(), "\n");
+        fput(
+            globals::message_out(),
+            "In silent mode (-s), the program won't print anything. Only the\n\
+             exit code tells whether the test was successful or not.\n",
+        );
+        fput(globals::message_out(), "\n");
+        print_report_bugs();
+        fput(globals::message_out(), "\n");
+        print_more_info();
+    }
+}
+
+// [spec:hfst:def:hfst-pair-test.parse-options-fn]
+// [spec:hfst:sem:hfst-pair-test.parse-options-fn]
+unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+    unsafe {
+        extend_options_getenv(&mut argc, &mut argv);
+        // use of this function requires options are settable on global scope
+        loop {
+            let mut long_options: Vec<getopt::Option> = Vec::new();
+            long_options.extend(hfst_getopt_common_long());
+            long_options.extend(hfst_getopt_unary_long());
+            // add tool-specific options here
+            long_options.push(getopt::Option {
+                name: CString::new("input-strings").unwrap().into_raw(),
+                has_arg: 1,
+                flag: std::ptr::null_mut(),
+                val: 'I' as c_int,
+            });
+            long_options.push(getopt::Option {
+                name: CString::new("negative-test").unwrap().into_raw(),
+                has_arg: 0,
+                flag: std::ptr::null_mut(),
+                val: 'N' as c_int,
+            });
+            long_options.push(getopt::Option {
+                name: CString::new("xerox-mode").unwrap().into_raw(),
+                has_arg: 0,
+                flag: std::ptr::null_mut(),
+                val: 'X' as c_int,
+            });
+            long_options.push(getopt::Option {
+                name: std::ptr::null(),
+                has_arg: 0,
+                flag: std::ptr::null_mut(),
+                val: 0,
+            });
+            let short = CString::new(format!(
+                "{}{}I:NX",
+                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT
+            ))
+            .unwrap();
+            let mut option_index: c_int = 0;
+            // add tool-specific options here
+            let c = getopt::getopt_long(
+                argc,
+                argv,
+                short.as_ptr(),
+                long_options.as_ptr(),
+                &mut option_index,
+            );
+            if -1 == c {
+                break;
+            }
+
+            match handle_common_case(c, || print_usage()) {
+                CaseResult::Return(code) => return code,
+                CaseResult::Break => continue,
+                CaseResult::NotHandled => {}
+            }
+            match handle_unary_case(c) {
+                CaseResult::Return(code) => return code,
+                CaseResult::Break => continue,
+                CaseResult::NotHandled => {}
+            }
+            // add tool-specific cases here
+            match c as u8 as char {
+                'I' => {
+                    PAIR_TEST_FILE_NAME = hfst_strdup(getopt::OPTARG);
+                    PAIR_TEST_FILE = hfst_fopen(&cstr(PAIR_TEST_FILE_NAME), "r");
+                    PAIR_TEST_GIVEN = true;
+                    continue;
+                }
+                'N' => {
+                    POSITIVE_TEST = false;
+                    continue;
+                }
+                'X' => {
+                    XEROX_MODE = true;
+                    continue;
+                }
+                _ => {}
+            }
+            return handle_error_case(c);
+        }
+
+        if !PAIR_TEST_GIVEN {
+            PAIR_TEST_FILE = stdin_file();
+            PAIR_TEST_FILE_NAME = libc::strdup(CString::new("<stdin>").unwrap().as_ptr());
+        }
+        check_common_params();
+        check_unary_params(argc, argv);
+
+        if cstr(globals::INPUTFILENAME) == "<stdin>" {
+            error(
+                libc::EXIT_FAILURE,
+                0,
+                "The rule transducer file needs to be given using option -i.",
+            );
+        }
+        EXIT_CONTINUE
+    }
+}
+
+unsafe fn stdin_file() -> *mut libc::FILE {
+    unsafe extern "C" {
+        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
+        static mut stdin: *mut libc::FILE;
+    }
+    unsafe { stdin }
+}
+
+// replace every occurrence of substr in str with repl, in place.
+fn replace_all_substr(substr: &str, repl: &str, str: &mut String) {
+    let mut pos = 0;
+    while let Some(found) = str[pos..].find(substr) {
+        let at = pos + found;
+        str.replace_range(at..at + substr.len(), repl);
+        pos = at + repl.len();
+    }
+}
+
+const PTPP: &str = "PAIR_TEST_PERC_PERC";
+const PTPC: &str = "PAIR_TEST_PERC_COL";
+
+// perc_escaped is a string where special symols are escaped using
+// %. Transform it into a string where specail symbols are escaped
+// using \.
+// [spec:hfst:def:hfst-pair-test.backslash-escape-fn]
+// [spec:hfst:sem:hfst-pair-test.backslash-escape-fn]
+fn backslash_escape(mut perc_escaped: String) -> String {
+    replace_all_substr("%%", PTPP, &mut perc_escaped);
+    replace_all_substr("%:", PTPC, &mut perc_escaped);
+    replace_all_substr("%", "", &mut perc_escaped);
+    replace_all_substr(PTPC, "\\:", &mut perc_escaped);
+    replace_all_substr(PTPP, "%", &mut perc_escaped);
+    perc_escaped
+}
+
+// [spec:hfst:def:hfst-pair-test.get-target-fn]
+// [spec:hfst:sem:hfst-pair-test.get-target-fn]
+fn get_target(
+    isymbol: &str,
+    osymbol: &str,
+    s: HfstState,
+    t: &HfstBasicTransducer,
+    known_symbols: &SymbolSet,
+) -> HfstState {
+    let mut identity_target: HfstState = u32::MAX;
+
+    for it in t.transitions(s).iter() {
+        if it.get_input_symbol() == isymbol && it.get_output_symbol() == osymbol {
+            return it.get_target_state();
+        }
+        if it.get_input_symbol() == "@_IDENTITY_SYMBOL_@"
+            && it.get_output_symbol() == "@_IDENTITY_SYMBOL_@"
+        {
+            identity_target = it.get_target_state();
+        }
+    }
+
+    if isymbol == osymbol && !known_symbols.contains(isymbol) {
+        identity_target
+    } else {
+        u32::MAX
+    }
+}
+
+// [spec:hfst:def:hfst-pair-test.is-final-state-fn]
+// [spec:hfst:sem:hfst-pair-test.is-final-state-fn]
+fn is_final_state(s: HfstState, t: &HfstBasicTransducer) -> bool {
+    t.is_final_state(s)
+}
+
+// One-rule test (overload of test). Mirrors the C++ 5-argument test().
+fn test_rule(
+    tokenized_pair_string: &StringPairVector,
+    t: &HfstBasicTransducer,
+    positive: bool,
+    _outfile: *mut libc::FILE,
+    known_symbols: &SymbolSet,
+) -> c_int {
+    let mut s: HfstState = 0;
+    for it in tokenized_pair_string.iter() {
+        s = get_target(&it.0, &it.1, s, t, known_symbols);
+        if s == u32::MAX {
+            if positive {
+                return 1;
+            } else {
+                return 0;
+            }
+        }
+    }
+
+    if is_final_state(s, t) && positive {
+        0
+    } else if positive {
+        1
+    } else if !is_final_state(s, t) {
+        0
+    } else {
+        1
+    }
+}
+
+// [spec:hfst:def:hfst-pair-test.get-transducer-fn]
+// [spec:hfst:sem:hfst-pair-test.get-transducer-fn]
+fn get_transducer(tokenized_pair_string: &StringPairVector) -> HfstTransducer {
+    let mut t = HfstBasicTransducer::new();
+    let mut s: HfstState = 0;
+    for it in tokenized_pair_string.iter() {
+        let target = t.add_state_new();
+        t.add_transition(
+            s,
+            &HfstBasicTransition::new_symbols(target, it.0.clone(), it.1.clone(), 0.0),
+            true,
+        );
+        s = target;
+    }
+    t.set_final_weight(s, &0.0);
+    HfstTransducer::new_from_basic(&t, ImplementationType::TROPICAL_OPENFST_TYPE)
+}
+
+// [spec:hfst:def:hfst-pair-test.unescape-fn]
+// [spec:hfst:sem:hfst-pair-test.unescape-fn]
+fn unescape(symbol: String) -> String {
+    if is_epsilon(&symbol) {
+        return "0".to_string();
+    }
+    if symbol == "@#@" {
+        return "#".to_string();
+    }
+    symbol
+}
+
+// [spec:hfst:def:hfst-pair-test.print-recognized-prefix-fn]
+// [spec:hfst:sem:hfst-pair-test.print-recognized-prefix-fn]
+unsafe fn print_recognized_prefix(
+    tokenized_pair_string: &StringPairVector,
+    str_transducer: &HfstBasicTransducer,
+    name: &str,
+    outfile: *mut libc::FILE,
+    known_symbols: &SymbolSet,
+) {
+    unsafe {
+        if globals::SILENT {
+            return;
+        }
+
+        fput(outfile, &format!("Rule {} fails:\n", name));
+
+        let mut s: HfstState = 0;
+        let mut idx = 0;
+        while idx < tokenized_pair_string.len() {
+            let it = &tokenized_pair_string[idx];
+            s = get_target(&it.0, &it.1, s, str_transducer, known_symbols);
+
+            if s == u32::MAX {
+                break;
+            }
+
+            if it.0 == it.1 {
+                fput(outfile, &format!("{} ", unescape(it.0.clone())));
+            } else {
+                fput(
+                    outfile,
+                    &format!("{}:{} ", unescape(it.0.clone()), unescape(it.1.clone())),
+                );
+            }
+            idx += 1;
+        }
+
+        fput(outfile, "HERE ---> ");
+
+        while idx < tokenized_pair_string.len() {
+            let it = &tokenized_pair_string[idx];
+            if it.0 == it.1 {
+                fput(outfile, &format!("{} ", unescape(it.0.clone())));
+            } else {
+                fput(
+                    outfile,
+                    &format!("{}:{} ", unescape(it.0.clone()), unescape(it.1.clone())),
+                );
+            }
+            idx += 1;
+        }
+        fput(outfile, "\n\n");
+    }
+}
+
+// [spec:hfst:def:hfst-pair-test.print-failure-info-fn]
+// [spec:hfst:sem:hfst-pair-test.print-failure-info-fn]
+unsafe fn print_failure_info(
+    tokenized_pair_string: &StringPairVector,
+    t: &HfstBasicTransducer,
+    name: &str,
+    outfile: *mut libc::FILE,
+    known_symbols: &SymbolSet,
+) {
+    unsafe {
+        let mut str_transducer = get_transducer(tokenized_pair_string);
+        let tt = HfstTransducer::new_from_basic(t, ImplementationType::TROPICAL_OPENFST_TYPE);
+        str_transducer.input_project().compose(&tt, true).minimize();
+        let basic = HfstBasicTransducer::new_from_transducer(&str_transducer);
+        print_recognized_prefix(tokenized_pair_string, &basic, name, outfile, known_symbols);
+    }
+}
+
+// [spec:hfst:def:hfst-pair-test.test-fn]
+// [spec:hfst:sem:hfst-pair-test.test-fn]
+unsafe fn test(
+    tokenized_pair_string: &StringPairVector,
+    pair_string: &str,
+    grammar: &BasicTransducerVector,
+    names: &StringVector,
+    positive: bool,
+    outfile: *mut libc::FILE,
+    known_symbols: &SymbolSet,
+) -> c_int {
+    unsafe {
+        let mut positive_exit_code: c_int = 0;
+        let mut negative_exit_code: c_int = 1;
+
+        let mut ind: usize = 0;
+
+        for it in grammar.iter() {
+            let new_exit_code =
+                test_rule(tokenized_pair_string, it, positive, outfile, known_symbols);
+
+            if positive && new_exit_code == 1 {
+                print_failure_info(
+                    tokenized_pair_string,
+                    it,
+                    &names[ind],
+                    outfile,
+                    known_symbols,
+                );
+            }
+
+            if positive && positive_exit_code == 0 {
+                positive_exit_code = new_exit_code;
+            }
+
+            if !positive && negative_exit_code == 1 {
+                negative_exit_code = new_exit_code;
+            }
+
+            ind += 1;
+        }
+
+        if positive {
+            if positive_exit_code == 1 && !globals::SILENT {
+                fput(outfile, &format!("FAIL: {} REJECTED\n\n", pair_string));
+            }
+            if positive_exit_code == 0 && globals::VERBOSE {
+                fput(outfile, &format!("{} PASSED\n\n", pair_string));
+            }
+            return positive_exit_code;
+        } else {
+            if negative_exit_code == 1 && !globals::SILENT {
+                fput(outfile, &format!("FAIL: {} PASSED\n\n", pair_string));
+            }
+            if negative_exit_code == 0 && globals::VERBOSE {
+                fput(outfile, &format!("{} REJECTED\n\n", pair_string));
+            }
+            return negative_exit_code;
+        }
+    }
+}
+
+// [spec:hfst:def:hfst-pair-test.demangle-fn]
+// [spec:hfst:sem:hfst-pair-test.demangle-fn]
+fn demangle(mut name: String) -> String {
+    let space_subst = "__HFST_TWOLC_SPACE";
+    let name_subst = "__HFST_TWOLC_RULE_NAME=";
+
+    while let Some(pos) = name.find(name_subst) {
+        name.replace_range(pos..pos + name_subst.len(), "");
+    }
+
+    while let Some(pos) = name.find(space_subst) {
+        name.replace_range(pos..pos + space_subst.len(), " ");
+    }
+
+    name
+}
+
+// [spec:hfst:def:hfst-pair-test.is-empty-or-comment-fn]
+// [spec:hfst:sem:hfst-pair-test.is-empty-or-comment-fn]
+fn is_empty_or_comment(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] == b'!' {
+        return true;
+    }
+    false
+}
+
+// [spec:hfst:def:hfst-pair-test.get-symbols-fn]
+// [spec:hfst:sem:hfst-pair-test.get-symbols-fn]
+fn get_symbols(t: &HfstBasicTransducer, known_symbols: &mut SymbolSet) {
+    for transitions in t.iter() {
+        for jt in transitions.iter() {
+            known_symbols.insert(jt.get_input_symbol());
+            known_symbols.insert(jt.get_output_symbol());
+        }
+    }
+}
+
+// [spec:hfst:def:hfst-pair-test.strip-space-fn]
+// [spec:hfst:sem:hfst-pair-test.strip-space-fn]
+fn strip_space(line: &str) -> String {
+    let first = line.find(|c: char| c != ' ' && c != '\t');
+    let first_non_white_space_pos = match first {
+        None => return String::new(),
+        Some(p) => p,
+    };
+    let last_non_white_space_pos = line.rfind(|c: char| c != ' ' && c != '\t').unwrap();
+    line[first_non_white_space_pos..=last_non_white_space_pos].to_string()
+}
+
+// [spec:hfst:def:hfst-pair-test.is-positive-test-line-fn]
+// [spec:hfst:sem:hfst-pair-test.is-positive-test-line-fn]
+fn is_positive_test_line(line: &str) -> bool {
+    let stripped = strip_space(line);
+    let marker = "!!\u{20ac}";
+    stripped.as_bytes().len() >= marker.len()
+        && &stripped.as_bytes()[..marker.len()] == marker.as_bytes()
+}
+
+// [spec:hfst:def:hfst-pair-test.is-negative-test-line-fn]
+// [spec:hfst:sem:hfst-pair-test.is-negative-test-line-fn]
+fn is_negative_test_line(line: &str) -> bool {
+    let stripped = strip_space(line);
+    let marker = "!!$";
+    stripped.as_bytes().len() >= marker.len()
+        && &stripped.as_bytes()[..marker.len()] == marker.as_bytes()
+}
+
+// substr from a byte offset, matching C++ std::string::substr semantics.
+fn substr_from_bytes(s: &str, byte_off: usize) -> String {
+    if byte_off >= s.len() {
+        String::new()
+    } else {
+        s[byte_off..].to_string()
+    }
+}
+
+// [spec:hfst:def:hfst-pair-test.process-stream-fn]
+// [spec:hfst:sem:hfst-pair-test.process-stream-fn]
+unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc::FILE) -> c_int {
+    unsafe {
+        let mut grammar: BasicTransducerVector = Vec::new();
+        let mut rule_names: StringVector = Vec::new();
+
+        // Read transducers in rule file.
+        let mut transducer_n: usize = 0;
+        while inputstream.is_good() {
+            transducer_n += 1;
+            if transducer_n == 1 {
+                verbose_printf(&format!("Reading {}...\n", cstr(globals::INPUTFILENAME)));
+            } else {
+                verbose_printf(&format!(
+                    "Reading {}...{}\n",
+                    cstr(globals::INPUTFILENAME),
+                    transducer_n
+                ));
+            }
+            let trans = HfstTransducer::new_from_stream(inputstream);
+            let basic = HfstBasicTransducer::new_from_transducer(&trans);
+            grammar.push(basic);
+            rule_names.push(demangle(trans.get_name()));
+        }
+
+        inputstream.close();
+
+        let mut known_symbols: SymbolSet = BTreeSet::new();
+        if !grammar.is_empty() {
+            verbose_printf("Defining known symbols.\n");
+            get_symbols(&grammar[0], &mut known_symbols);
+            for it in known_symbols.iter() {
+                verbose_printf(&format!("Symbol {}\n", it));
+            }
+        }
+
+        let mut line: *mut c_char = std::ptr::null_mut();
+        let mut llen: usize = 0;
+
+        let mut exit_code: c_int = 0;
+
+        if !XEROX_MODE {
+            // Define tokenizer with no multi character symbols and an
+            // empty epsilon representation.
+            let empty_v: StringVector = Vec::new();
+            let input_tokenizer = HfstStrings2FstTokenizer::new(&empty_v, "0");
+
+            while hfst_getline(&mut line, &mut llen, PAIR_TEST_FILE) != -1 {
+                // strip a trailing newline (mutate the C buffer in place)
+                let mut p = line;
+                while *p != 0 {
+                    if *p == b'\n' as c_char {
+                        *p = 0;
+                        break;
+                    }
+                    p = p.add(1);
+                }
+                let line_str = cstr(line);
+                if is_empty_or_comment(&line_str) {
+                    continue;
+                }
+                verbose_printf(&format!("Pair test on {}...\n", line_str));
+
+                let line_for_panic = line_str.clone();
+                let tok_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    input_tokenizer.tokenize_pair_string(&line_str, true)
+                }));
+
+                match tok_result {
+                    Ok(mut tokenized_pair_string) => {
+                        tokenized_pair_string
+                            .insert(0, ("@#@".to_string(), internal_epsilon.to_string()));
+                        tokenized_pair_string
+                            .push(("@#@".to_string(), internal_epsilon.to_string()));
+
+                        let new_exit_code = test(
+                            &tokenized_pair_string,
+                            &line_for_panic,
+                            &grammar,
+                            &rule_names,
+                            POSITIVE_TEST,
+                            outstream,
+                            &known_symbols,
+                        );
+
+                        if exit_code == 0 {
+                            exit_code = new_exit_code;
+                        }
+                    }
+                    Err(e) => {
+                        if e.downcast_ref::<UnescapedColsFound>().is_some() {
+                            error(
+                                libc::EXIT_FAILURE,
+                                0,
+                                &format!(
+                                    "The correspondence {} contains unquoted colon-symbols. If \
+                                     you want to input pairs where either symbol is epsilon, \
+                                     use 0 e.g. \"m a s s 0:e s\".\n",
+                                    line_for_panic
+                                ),
+                            );
+                        } else {
+                            std::panic::resume_unwind(e);
+                        }
+                    }
+                }
+            } // while lines in input
+            libc::free(line as *mut libc::c_void);
+        } else {
+            // Read test cases from a twolc source file.
+            //
+            // Positive test cases are prefixed by "!!\u{20ac}" and negative test
+            // cases by "!!$".
+            //
+            // Each test case spans two lines: the input and output cases.
+
+            let mut positive_test_cases: StringVector = Vec::new();
+            let mut negative_test_cases: StringVector = Vec::new();
+
+            let symbols: StringVector = known_symbols.iter().cloned().collect();
+
+            let input_tokenizer = HfstStrings2FstTokenizer::new(&symbols, "0");
+
+            while hfst_getline(&mut line, &mut llen, PAIR_TEST_FILE) != -1 {
+                let mut p = line;
+                while *p != 0 {
+                    if *p == b'\n' as c_char {
+                        *p = 0;
+                        break;
+                    }
+                    p = p.add(1);
+                }
+                let line_str = cstr(line);
+
+                if is_positive_test_line(&line_str) {
+                    // "!!\u{20ac} xyz" -> "xyz"
+                    let marker_len = "!!\u{20ac}".len();
+                    let test_case =
+                        strip_space(&substr_from_bytes(&strip_space(&line_str), marker_len));
+
+                    verbose_printf(&format!("Positive test case: {}...\n", test_case));
+                    positive_test_cases.push(test_case);
+                } else if is_negative_test_line(&line_str) {
+                    // "!!$ xyz" -> "xyz"
+                    let marker_len = "!!$".len();
+                    let test_case =
+                        strip_space(&substr_from_bytes(&strip_space(&line_str), marker_len));
+
+                    verbose_printf(&format!(
+                        "Negative test case: {} {}...\n",
+                        line_str, test_case
+                    ));
+                    negative_test_cases.push(test_case);
+                } else {
+                    continue;
+                }
+            } // while lines in input
+            libc::free(line as *mut libc::c_void);
+
+            if positive_test_cases.len() % 2 != 0 {
+                error(
+                    libc::EXIT_FAILURE,
+                    0,
+                    "Got an odd number of positive test cases. Every input string\n\
+                     has to have an output string.\n",
+                );
+            }
+
+            if negative_test_cases.len() % 2 != 0 {
+                error(
+                    libc::EXIT_FAILURE,
+                    0,
+                    "Got an odd number of negative test cases. Every input string\n\
+                     has to have an output string.\n",
+                );
+            }
+
+            let mut i = 0;
+            while i < positive_test_cases.len() {
+                let input_case = positive_test_cases[i].clone();
+                let output_case = positive_test_cases[i + 1].clone();
+
+                let to_tokenize = format!(
+                    "{}:{}",
+                    backslash_escape(input_case.clone()),
+                    backslash_escape(output_case.clone())
+                );
+                let tok_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    // We need to convert the %-escaped input and output
+                    // string to \-escpaed strings for input_toknizer.
+                    input_tokenizer.tokenize_string_pair(&to_tokenize, false)
+                }));
+
+                let mut test_case = match tok_result {
+                    Ok(tc) => tc,
+                    Err(e) => {
+                        if e.downcast_ref::<UnescapedColsFound>().is_some() {
+                            error(
+                                libc::EXIT_FAILURE,
+                                0,
+                                &format!(
+                                    "The correspondence {} {} contains unescaped \
+                                     colon-symbols. Escape them using %.",
+                                    input_case, output_case
+                                ),
+                            );
+                            unreachable!()
+                        } else {
+                            std::panic::resume_unwind(e);
+                        }
+                    }
+                };
+                test_case.insert(0, ("@#@".to_string(), internal_epsilon.to_string()));
+                test_case.push(("@#@".to_string(), internal_epsilon.to_string()));
+
+                let new_exit_code = test(
+                    &test_case,
+                    &format!("{} : {}", input_case, output_case),
+                    &grammar,
+                    &rule_names,
+                    true,
+                    outstream,
+                    &known_symbols,
+                );
+
+                if exit_code == 0 {
+                    exit_code = new_exit_code;
+                }
+                i += 2;
+            }
+
+            let mut i = 0;
+            while i < negative_test_cases.len() {
+                let input_case = negative_test_cases[i].clone();
+                let output_case = negative_test_cases[i + 1].clone();
+
+                let to_tokenize = format!(
+                    "{}:{}",
+                    backslash_escape(input_case.clone()),
+                    backslash_escape(output_case.clone())
+                );
+                let tok_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    // We need to convert the %-escaped input and output
+                    // string to \-escpaed strings for input_toknizer.
+                    input_tokenizer.tokenize_string_pair(&to_tokenize, false)
+                }));
+
+                let mut test_case = match tok_result {
+                    Ok(tc) => tc,
+                    Err(e) => {
+                        if e.downcast_ref::<UnescapedColsFound>().is_some() {
+                            error(
+                                libc::EXIT_FAILURE,
+                                0,
+                                &format!(
+                                    "The correspondence {} {} contains unquoted \
+                                     colon-symbols. Quote them using %.",
+                                    input_case, output_case
+                                ),
+                            );
+                            unreachable!()
+                        } else {
+                            std::panic::resume_unwind(e);
+                        }
+                    }
+                };
+                test_case.insert(0, ("@#@".to_string(), internal_epsilon.to_string()));
+                test_case.push(("@#@".to_string(), internal_epsilon.to_string()));
+
+                let new_exit_code = test(
+                    &test_case,
+                    &format!("{} : {}", input_case, output_case),
+                    &grammar,
+                    &rule_names,
+                    false,
+                    outstream,
+                    &known_symbols,
+                );
+
+                if exit_code == 0 {
+                    exit_code = new_exit_code;
+                }
+                i += 2;
+            }
+        }
+
+        exit_code
+    }
+}
+
+// [spec:hfst:def:hfst-pair-test.main-fn]
+// [spec:hfst:sem:hfst-pair-test.main-fn]
+fn main() {
+    let code = unsafe { real_main() };
+    std::process::exit(code);
+}
+
+unsafe fn real_main() -> c_int {
+    unsafe {
+        let c_args: Vec<CString> = std::env::args()
+            .map(|a| CString::new(a).unwrap_or_default())
+            .collect();
+        let mut argv_vec: Vec<*mut c_char> =
+            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
+        argv_vec.push(std::ptr::null_mut());
+        let argc: c_int = c_args.len() as c_int;
+        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
+        let argv0 = cstr(*argv);
+
+        hfst_set_program_name(&argv0, "0.6", "HfstPairTest");
+        let retval = parse_options(argc, argv);
+        if retval != EXIT_CONTINUE {
+            return retval;
+        }
+        // close buffers, we use streams
+        if globals::INPUTFILE != stdin_file() && !globals::INPUTFILE.is_null() {
+            libc::fclose(globals::INPUTFILE);
+        }
+        verbose_printf(&format!(
+            "Reading from {}, writing to {}\n",
+            cstr(globals::INPUTFILENAME),
+            cstr(globals::OUTFILENAME)
+        ));
+
+        // here starts the buffer handling part
+        let input_named = globals::INPUTFILE != stdin_file() && !globals::INPUTFILE.is_null();
+        let mut instream = if input_named {
+            HfstInputStream::new_filename(&cstr(globals::INPUTFILENAME))
+        } else {
+            HfstInputStream::new()
+        };
+        // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
+        // currently panics on a bad file rather than throwing, so the catch arm
+        // is not reproduced here.)
+
+        let exit_code = process_stream(&mut instream, globals::outfile());
+
+        if !globals::SILENT {
+            if exit_code == 0 {
+                fput(globals::outfile(), "Test passed.\n");
+            } else {
+                fput(globals::outfile(), "Test failed.\n");
+            }
+        }
+
+        if globals::outfile() != stdout_file() {
+            libc::fclose(globals::outfile());
+        }
+        libc::free(globals::INPUTFILENAME as *mut libc::c_void);
+        libc::free(globals::OUTFILENAME as *mut libc::c_void);
+
+        exit_code
+    }
+}
+
+unsafe fn stdout_file() -> *mut libc::FILE {
+    unsafe extern "C" {
+        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
+        static mut stdout: *mut libc::FILE;
+    }
+    unsafe { stdout }
+}
