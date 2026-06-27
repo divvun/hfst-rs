@@ -1,0 +1,19 @@
+//! Faithful 1:1 port of the HFST command-line tools (tools/src/*.cc).
+//!
+//! Scope: the backend-agnostic tools that operate on the ported OpenFST/OL
+//! backends. The SFST tool (sfst-main.cc), the readline lexc UI
+//! (lexc-readline-ui.cc), and the test scaffold (test.cc) are out of scope;
+//! readline-gated interactive paths in otherwise-portable tools are '#if'd out
+//! the same way the SFST backend was in the library.
+//!
+//! The CLI fidelity decision is the same as the library's: an absolute 1:1
+//! bug-for-bug translation, getopt and all. The shared command-line
+//! infrastructure (hfst-getopt, hfst-commandline, hfst-program-options,
+//! hfst-tool-metadata, hfst-file-to-mem) is ported into the modules below; each
+//! tool's main lives in src/bin/ and drives them.
+
+// Shared infrastructure modules are added here as they are ported, e.g.
+//   pub mod hfst_getopt;
+//   pub mod hfst_commandline;
+//   pub mod hfst_program_options;
+//   pub mod hfst_tool_metadata;

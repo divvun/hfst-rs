@@ -289,6 +289,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hfst-cli"
+version = "0.1.0"
+dependencies = [
+ "hfst",
+ "libc",
+]
+
+[[package]]
 name = "hfst-core"
 version = "0.1.0"
 dependencies = [
