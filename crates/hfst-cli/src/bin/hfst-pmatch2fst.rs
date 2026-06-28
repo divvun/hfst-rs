@@ -305,21 +305,19 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
             let intermediate_tmp =
                 ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&*definitions["TOP"]);
             let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
-                &*intermediate_tmp,
+                &intermediate_tmp,
                 true,                  // weighted
                 "",                    // no special options
                 Some(&*harmonizer_ol), // harmonize with this
             );
-            let output_tmp = ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp);
-            (*output_tmp).set_name("TOP");
+            let mut output_tmp = ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp);
+            output_tmp.set_name("TOP");
             for (k, v) in properties.iter() {
-                (*output_tmp).set_property(k, v);
+                output_tmp.set_property(k, v);
             }
-            outstream.redirect(&mut *output_tmp);
+            outstream.redirect(&mut output_tmp);
             drop(Box::from_raw(definitions["TOP"]));
             definitions.remove("TOP");
-            drop(Box::from_raw(intermediate_tmp));
-            drop(Box::from_raw(output_tmp));
 
             if globals::VERBOSE {
                 let duration = (clock() - TIMER) as f64 / CLOCKS_PER_SEC as f64;
@@ -339,25 +337,24 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
                     ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&*t);
                 let harmonized_tmp = if !key.contains("UNCOMPOSE") {
                     ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
-                        &*intermediate_tmp,
+                        &intermediate_tmp,
                         true,                  // weighted
                         "empty_alphabet",      // empty alphabet in RTNs, they'll use the main one
                         Some(&*harmonizer_ol), // harmonize with this
                     )
                 } else {
                     ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
-                        &*intermediate_tmp,
+                        &intermediate_tmp,
                         true,                  // weighted
                         "",                    // alphabet in UNCs,
                         Some(&*harmonizer_ol), // harmonize with this
                     )
                 };
-                let output_tmp = ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp);
-                (*output_tmp).set_name(key);
-                outstream.redirect(&mut *output_tmp);
+                let mut output_tmp =
+                    ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp);
+                output_tmp.set_name(key);
+                outstream.redirect(&mut output_tmp);
                 drop(Box::from_raw(t));
-                drop(Box::from_raw(intermediate_tmp));
-                drop(Box::from_raw(output_tmp));
                 if globals::VERBOSE {
                     let duration = (clock() - TIMER) as f64 / CLOCKS_PER_SEC as f64;
                     eprintln!("converted in {:.2} seconds", duration);

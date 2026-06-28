@@ -1723,13 +1723,19 @@ impl ConvertTransducerHeader {
 }
 
 // 'static ConvertTransducer* ConvertTransducer::constructing_transducer = NULL;'
-static mut CONSTRUCTING_TRANSDUCER: *mut ConvertTransducer = std::ptr::null_mut();
+// The static-mut-ness is gone (safe thread-local Cell); the value is still a
+// transient self-borrow into the in-construction transducer (the C++ static
+// pointer pattern), so 'constructing_transducer' stays an unsafe-deref island.
+thread_local! {
+    static CONSTRUCTING_TRANSDUCER: std::cell::Cell<*mut ConvertTransducer> =
+        const { std::cell::Cell::new(std::ptr::null_mut()) };
+}
 
 // Read-only access to the transducer currently being constructed, exactly as
 // the C++ reaches it through the 'constructing_transducer' static.
 unsafe fn constructing_transducer<'a>() -> &'a ConvertTransducer {
     unsafe {
-        let p = CONSTRUCTING_TRANSDUCER;
+        let p = CONSTRUCTING_TRANSDUCER.with(|c| c.get());
         &*p
     }
 }
@@ -1798,9 +1804,7 @@ impl ConvertTransducer {
             states: Vec::new(),
         });
 
-        unsafe {
-            CONSTRUCTING_TRANSDUCER = bx.as_mut() as *mut ConvertTransducer;
-        }
+        CONSTRUCTING_TRANSDUCER.with(|c| c.set(bx.as_mut() as *mut ConvertTransducer));
         // C++ 'id_number_map = new ConvertIdNumberMap(tr);' a second time (the
         // first allocation leaks); we simply replace it.
         bx.id_number_map = Some(Box::new(ConvertIdNumberMap::new(tr)));
@@ -1831,8 +1835,8 @@ impl ConvertTransducer {
             );
 
             (*p).id_number_map = None;
-            CONSTRUCTING_TRANSDUCER = std::ptr::null_mut();
         }
+        CONSTRUCTING_TRANSDUCER.with(|c| c.set(std::ptr::null_mut()));
         bx
     }
 

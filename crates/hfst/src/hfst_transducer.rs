@@ -3779,8 +3779,10 @@ pub fn get_flag_path_restriction(
 // -------------------- Shuffle functions --------------------
 //
 
-// A flag to indicate that there was an error during shuffle.
-static mut shuffle_failed: bool = false;
+thread_local! {
+    // A flag to indicate that there was an error during shuffle.
+    static SHUFFLE_FAILED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
 // Possible cases for function code_symbols_for_shuffle.
 // [spec:hfst:def:hfst-transducer.hfst.shuffle-coding]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -3789,8 +3791,11 @@ pub enum ShuffleCoding {
     ENCODE_SECOND_SHUFFLE_ARGUMENT,
     DECODE_AFTER_SHUFFLE,
 }
-// The current case in function code_symbols_for_shuffle.
-static mut shuffle_coding_case: ShuffleCoding = ShuffleCoding::ENCODE_FIRST_SHUFFLE_ARGUMENT;
+thread_local! {
+    // The current case in function code_symbols_for_shuffle.
+    static SHUFFLE_CODING_CASE: std::cell::Cell<ShuffleCoding> =
+        const { std::cell::Cell::new(ShuffleCoding::ENCODE_FIRST_SHUFFLE_ARGUMENT) };
+}
 
 // A function that is given as a parameter to substitute function
 // during the shuffle operation. The purpose of this function is (1)
@@ -3802,16 +3807,14 @@ static mut shuffle_coding_case: ShuffleCoding = ShuffleCoding::ENCODE_FIRST_SHUF
 pub fn code_symbols_for_shuffle(sp: &StringPair, sps: &mut StringPairSet) -> bool {
     // not automaton, shuffle fails
     if sp.0 != sp.1 {
-        unsafe {
-            shuffle_failed = true;
-        }
+        SHUFFLE_FAILED.set(true);
         return false;
     }
     // special symbols are not coded, except identities
     if is_epsilon(&sp.0) || is_unknown(&sp.0) {
         return false;
     }
-    let case = unsafe { shuffle_coding_case };
+    let case = SHUFFLE_CODING_CASE.get();
     match case {
         // substitute each symbol foo in the first argument transducer
         // with a symbol @1foo
@@ -4327,26 +4330,20 @@ impl HfstTransducer {
         let mut another_alphabet: StringSet = another_basic.get_alphabet().clone();
 
         // Encode first transducer, i.e. prefix each symbol with "@1"
-        unsafe {
-            shuffle_coding_case = ShuffleCoding::ENCODE_FIRST_SHUFFLE_ARGUMENT;
-        }
+        SHUFFLE_CODING_CASE.set(ShuffleCoding::ENCODE_FIRST_SHUFFLE_ARGUMENT);
         this_basic.substitute_with_func(code_symbols_for_shuffle);
         // also remember to remove the unprefixed symbols from the alphabet
         this_basic.remove_symbols_from_alphabet(&this_alphabet);
 
         // Encode second transducer, i.e. prefix each symbol with "@2"
-        unsafe {
-            shuffle_coding_case = ShuffleCoding::ENCODE_SECOND_SHUFFLE_ARGUMENT;
-        }
+        SHUFFLE_CODING_CASE.set(ShuffleCoding::ENCODE_SECOND_SHUFFLE_ARGUMENT);
         another_basic.substitute_with_func(code_symbols_for_shuffle);
         // also remember to remove the unprefixed symbols from the alphabet
         another_basic.remove_symbols_from_alphabet(&another_alphabet);
 
         // See if shuffle failed, i.e. either transducer is not an automaton
-        if unsafe { shuffle_failed } {
-            unsafe {
-                shuffle_failed = false;
-            }
+        if SHUFFLE_FAILED.get() {
+            SHUFFLE_FAILED.set(false);
             crate::HFST_THROW_MESSAGE!(
                 TransducersAreNotAutomataException,
                 "HfstTransducer::shuffle(const HfstTransducer&)"
@@ -4388,9 +4385,7 @@ impl HfstTransducer {
 
         // Decode the shuffled transducer, i.e. remove the prefixes
         // "@1" and "@2" from symbols
-        unsafe {
-            shuffle_coding_case = ShuffleCoding::DECODE_AFTER_SHUFFLE;
-        }
+        SHUFFLE_CODING_CASE.set(ShuffleCoding::DECODE_AFTER_SHUFFLE);
         this1_basic.substitute_with_func(code_symbols_for_shuffle);
         // also remember to remove the prefixed symbols from the alphabet
         this1_basic.remove_symbols_from_alphabet(&this_alphabet);

@@ -146,7 +146,11 @@ mod construction_io {
     static OPENFST_TROPICAL_USE_HOPCROFT: AtomicBool = AtomicBool::new(false);
 
     // 'std::ostream * TropicalWeightTransducer::warning_stream = NULL;'
-    static mut WARNING_STREAM: *mut Box<dyn std::io::Write> = std::ptr::null_mut();
+    // Non-owning warning sink; the global is now a safe thread-local Cell.
+    thread_local! {
+        static WARNING_STREAM: std::cell::Cell<*mut Box<dyn std::io::Write>> =
+            const { std::cell::Cell::new(std::ptr::null_mut()) };
+    }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.openfst-tropical-set-hopcroft-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.openfst-tropical-set-hopcroft-fn]
@@ -570,15 +574,13 @@ mod construction_io {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-warning-stream-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-warning-stream-fn]
         pub fn get_warning_stream() -> *mut Box<dyn std::io::Write> {
-            unsafe { WARNING_STREAM }
+            WARNING_STREAM.with(|w| w.get())
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.set-warning-stream-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.set-warning-stream-fn]
         pub fn set_warning_stream(os: *mut Box<dyn std::io::Write>) {
-            unsafe {
-                WARNING_STREAM = os;
-            }
+            WARNING_STREAM.with(|w| w.set(os));
         }
 
         // ---- private symbol-table helpers ----

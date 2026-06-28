@@ -1288,9 +1288,8 @@ impl PmatchContainer {
             if top.get_type() != HFST_OLW_TYPE {
                 top.convert(HFST_OLW_TYPE, String::new());
             }
-            let intermediate_tmp = unsafe {
-                Box::from_raw(ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&top))
-            };
+            let intermediate_tmp =
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&top);
             let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                 &intermediate_tmp,
                 true,                // weighted
@@ -1328,11 +1327,8 @@ impl PmatchContainer {
                 if temp.get_type() != HFST_OLW_TYPE {
                     temp.convert(HFST_OLW_TYPE, String::new());
                 }
-                let intermediate_tmp = unsafe {
-                    Box::from_raw(
-                        ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&temp),
-                    )
-                };
+                let intermediate_tmp =
+                    ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&temp);
                 let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                     &intermediate_tmp,
                     true,

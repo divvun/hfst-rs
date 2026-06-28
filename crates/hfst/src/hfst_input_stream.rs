@@ -242,26 +242,16 @@ pub struct HfstInputStream<'a> {
     /// alphabet is appended at the end. Should not occur very often, but possible
     /// when converting old transducers into version 3.0. transducers.
     hfst_version_2_weighted_transducer: bool,
-    /// The owned reader used to probe the first transducer's header (and shared,
-    /// via raw pointer, with the in-scope backend stream). Heap-pinned behind a
-    /// raw pointer; freed in 'Drop'. Mirrors C++ 'std::istream * input_stream' in
-    /// that it backs all the 'stream_*' primitives.
-    reader: *mut PushbackReader<'a>,
+    /// The owned reader used to probe the first transducer's header and back all
+    /// the 'stream_*' primitives. Mirrors C++ 'std::istream * input_stream';
+    /// owned by 'Box' (freed automatically), but the backend stream in
+    /// 'read_transducer' needs a '&'a mut' that outlives the method borrow, which
+    /// the borrow checker can't express -- see the IDIOM-STAGE-2 island there.
+    reader: Box<PushbackReader<'a>>,
     /// Mirrors C++ 'input_stream != NULL': 'true' while the first transducer's
     /// type is still being established (reads behave like the raw 'input_stream'),
     /// 'false' once 'read_transducer' has taken over.
     input_stream_active: bool,
-}
-
-impl<'a> Drop for HfstInputStream<'a> {
-    fn drop(&mut self) {
-        if !self.reader.is_null() {
-            // Frees the owned reader. The backend collaborators in
-            // 'implementation' are 'None' in this port, so no dangling borrow.
-            drop(unsafe { Box::from_raw(self.reader) });
-            self.reader = std::ptr::null_mut();
-        }
-    }
 }
 
 // ===== input_impl (workflow body) =====
@@ -280,7 +270,7 @@ mod input_impl {
         /// the 'stream_*' primitives use it (one call at a time).
         #[inline]
         fn pbr(&mut self) -> &mut PushbackReader<'a> {
-            unsafe { &mut *self.reader }
+            &mut self.reader
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.ignore-fn]
@@ -515,7 +505,12 @@ mod input_impl {
                     // Build a transient backend stream that borrows the owned
                     // reader (positioned just after the header that probing
                     // consumed), then read with has_header = false.
-                    let reader: &'a mut PushbackReader<'a> = unsafe { &mut *self.reader };
+                    // IDIOM-STAGE-2: the backend stream needs a '&'a mut' reader
+                    // that outlives this '&mut self' borrow (the C++ shares the
+                    // 'std::istream*'); the borrow checker can't express this
+                    // self-borrow, so extend the lifetime through a raw pointer.
+                    let reader: &'a mut PushbackReader<'a> =
+                        unsafe { &mut *std::ptr::addr_of_mut!(*self.reader) };
                     let is = IStream::new(reader);
                     let mut ol_in = HfstOlBackendInputStream::new_istream(is, weighted);
                     let tr = ol_in.read_transducer(false);
@@ -975,7 +970,7 @@ mod input_impl {
                 filename,
                 has_hfst_header: false,
                 hfst_version_2_weighted_transducer: false,
-                reader: Box::into_raw(Box::new(PushbackReader::new(inner))),
+                reader: Box::new(PushbackReader::new(inner)),
                 input_stream_active: true,
             };
 

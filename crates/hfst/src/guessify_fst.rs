@@ -34,13 +34,12 @@ pub const DEFAULT_PENALTY: f32 = 1.0;
 // analyzer are expected to have.
 pub const CATEGORY_SYMBOL_PREFIX: &str = "[GUESS_CATEGORY=";
 
-// 'std::string my_default = "$_DEFAULT_SYMBOL_$";' — a mutable file-global in
-// the C++ (never reassigned). Ported as a 'static mut' read through an
-// 'addr_of_mut!' accessor, per the edition-2024 port convention.
-static mut MY_DEFAULT: &str = "$_DEFAULT_SYMBOL_$";
+// 'std::string my_default = "$_DEFAULT_SYMBOL_$";' — a file-global in the C++
+// that is never reassigned, so it is a plain immutable static here.
+static MY_DEFAULT: &str = "$_DEFAULT_SYMBOL_$";
 
 fn my_default() -> &'static str {
-    unsafe { *std::ptr::addr_of_mut!(MY_DEFAULT) }
+    MY_DEFAULT
 }
 
 // [spec:hfst:def:guessify-fst.remove-flag-diacritics-fn]

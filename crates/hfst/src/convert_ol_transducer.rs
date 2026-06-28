@@ -222,23 +222,17 @@ impl ConversionFunctions {
     // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn]
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn]
-    pub fn hfst_ol_to_hfst_transducer(
-        t: &Transducer,
-    ) -> *mut crate::hfst_transducer::HfstTransducer {
+    pub fn hfst_ol_to_hfst_transducer(t: &Transducer) -> crate::hfst_transducer::HfstTransducer {
         use crate::hfst_data_types::ImplementationType::*;
         let type_ = if t.is_weighted() {
             HFST_OLW_TYPE
         } else {
             HFST_OL_TYPE
         };
-        let retval = Box::into_raw(Box::new(crate::hfst_transducer::HfstTransducer::new_type(
-            type_,
-        )));
-        unsafe {
-            (*retval).implementation = crate::hfst_transducer::TransducerImplementation::HfstOl(
-                Box::new(Transducer::copy(t, t.is_weighted())),
-            );
-        }
+        let mut retval = crate::hfst_transducer::HfstTransducer::new_type(type_);
+        retval.implementation = crate::hfst_transducer::TransducerImplementation::HfstOl(Box::new(
+            Transducer::copy(t, t.is_weighted()),
+        ));
         retval
     }
 

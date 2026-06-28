@@ -231,9 +231,7 @@ fn is_special_symbol(symbol: &str) -> bool {
 // [spec:hfst:def:hfst-compose-intersect.check-all-symbols-fn]
 // [spec:hfst:sem:hfst-compose-intersect.check-all-symbols-fn]
 fn check_all_symbols(lexicon: &HfstTransducer, rule: &HfstTransducer) -> String {
-    let rule_b = unsafe {
-        *Box::from_raw(ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule))
-    };
+    let rule_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule);
 
     let mut rule_input_symbols: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
@@ -249,9 +247,7 @@ fn check_all_symbols(lexicon: &HfstTransducer, rule: &HfstTransducer) -> String 
         return String::new();
     }
 
-    let lexicon_b = unsafe {
-        *Box::from_raw(ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon))
-    };
+    let lexicon_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon);
 
     for s in 0..=lexicon_b.get_max_state() {
         for it in lexicon_b.transitions(s).iter() {
@@ -269,12 +265,8 @@ fn check_all_symbols(lexicon: &HfstTransducer, rule: &HfstTransducer) -> String 
 // [spec:hfst:def:hfst-compose-intersect.check-multi-char-symbols-fn]
 // [spec:hfst:sem:hfst-compose-intersect.check-multi-char-symbols-fn]
 fn check_multi_char_symbols(lexicon: &HfstTransducer, rule: &HfstTransducer) -> String {
-    let lexicon_b = unsafe {
-        *Box::from_raw(ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon))
-    };
-    let rule_b = unsafe {
-        *Box::from_raw(ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule))
-    };
+    let lexicon_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon);
+    let rule_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule);
 
     let tokenizer = HfstTokenizer::new();
 

@@ -221,12 +221,11 @@ unsafe fn make_naive_tokenizer(dictionary: &mut HfstTransducer) -> PmatchContain
             );
         let tokenizer_ol =
             hfst::convert_transducer_format::ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
-                &*tokenizer_basic,
+                &tokenizer_basic,
                 true,                 // weighted
                 "",                   // no special options
                 Some(&*dict_backend), // harmonize with the dictionary
             );
-        drop(Box::from_raw(tokenizer_basic));
         let mut retval = PmatchContainer::new_from_transducer(Box::new(tokenizer_ol));
         retval.add_rtn(&*dict_backend, &dict_name);
         retval

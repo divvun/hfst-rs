@@ -297,6 +297,13 @@ children (
                         kind @note
                         text "Conversion DONE (two subagent passes + cleanup). NODE COMPLETE. pmatch_compiler.rs: static mut 49->0, *mut dyn PmatchObject (the DAG) ->0, unsafe 184->61, 0 unused-unsafe warnings.\n\n- AST DAG: *mut dyn PmatchObject -> Rc<RefCell<dyn PmatchObject>> (ObjRef); pmb_* constructors return ObjRef; as_obj cast gone (unsize coercion). cache:*mut HfstTransducer -> Option<HfstTransducer>; PmatchTransducerContainer.t -> owned.\n- 49 globals -> thread_local!: collections as RefCell<..> with with_*/snapshot helpers; scalars as Cell<..>; utils as RefCell<Option<Rc<PmatchUtilityTransducers>>> via with_utils(). DATA/STARTPTR parser buffer kept as Cell<*mut c_char> // IDIOM-STAGE-2 (the libc::strdup c-string is a deferred C-ism; static-mut-ness removed).\n- PmatchObject trait + 22 impls de-unsafe'd (unsafe fn -> fn); evaluate/evaluate_args/evaluate_pair bodies operate on owned HfstTransducer (no Box::into_raw/from_raw round-trips). Order-sensitive Merge aliasing preserved via mem::replace. PmatchUtilityTransducers 10 cached fields -> owned HfstTransducer, Drop impl deleted.\n- compile() public signature KEPT (HashMap<String,*mut HfstTransducer>) via boundary bridge (Box::into_raw at insertion) so callers + the test net stay unchanged. Rippled make_list/make_exc_list/add_pmatch_delimiters/make_latin1_* owned signatures into hfst-cli/hfst-tokenize.rs (make_naive_tokenizer).\n\nRemaining 61 unsafe = C-ism floor (Stage 2): libc, *mut c_char parser (getinput/get_*_transition/strip_percents/parse_quoted/next_utf8_to_codepoint/word-vector strtod), DATA buffer, the compile() bridge + bison-replacement AST builders (unsafe fn because they bottom out in the c_char parser). No AST/global/transducer-logic unsafety remains.\n\nSafety net: 8 test_pmatch tests (baselined pre-conversion) + 2 smokes, all green after. 121 passed/14 skipped; examples OK; workspace builds. Accepted limitation: a self-referential pmatch definition would RefCell-double-borrow-panic where the raw ptr recursed (untested; the C++ would also misbehave)."
                     }
+
+                    {
+                        at 2026-06-28T16:15:44.322893Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -348,6 +355,21 @@ children (
                 title "Remaining library — input_stream/PushbackReader, convert_*, ol, print, generate/guessify: raw-ptr → Box + static mut → safe"
                 priority 4
                 deps (idiom1.backend-enum)
+                log (
+                    {
+                        at 2026-06-28T16:20:28.600029Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-28T16:39:35.192654Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Progress (primary scope done). hfst LIBRARY now has ZERO static mut crate-wide.\n\nstatic mut -> safe (all 7 in the hfst lib):\n- guessify_fst MY_DEFAULT (never reassigned) -> plain immutable static.\n- hfst_transducer shuffle_failed/shuffle_coding_case -> thread_local Cell (validated by shuffle_log test).\n- log_weight LOG_SECONDS_IN_HARMONIZE -> thread_local Cell<f32>; WARNING_STREAM (log+tropical) -> thread_local Cell<*mut Box<dyn Write>> (non-owning sink; static-mut-ness removed).\n- convert.rs CONSTRUCTING_TRANSDUCER -> thread_local Cell<*mut ConvertTransducer> (transient self-borrow during construction stays an unsafe-deref island).\n\nOwning raw pointers -> owned:\n- hfst_input_stream reader: *mut PushbackReader -> Box<PushbackReader> (removed Drop + into_raw/from_raw; ONE // IDIOM-STAGE-2 island: the &'a mut reader the backend stream needs outlives &mut self -- borrow checker can't express).\n- ConversionFunctions::hfst_transducer_to_hfst_basic_transducer -> owned HfstBasicTransducer (9 callers updated: compose-intersect x4, pmatch2fst x2, tokenize, pmatch.rs x2).\n- ConversionFunctions::hfst_ol_to_hfst_transducer -> owned HfstTransducer (2 pmatch2fst callers).\n\n121 tests green; workspace builds.\n\nREMAINING (documented boundaries, NOT done -- need a decision):\n- Lookup-result API: ~10 fns (lookup_string_vector/lookup_string/lookup_pairs/lookup_fd_*/lookdown_*) return *mut HfstOneLevelPaths / *mut HfstTwoLevelPaths via Box::into_raw. 17+ callers incl. the hfst-c FFI (returns the ptr across the C ABI) -> a coherent FFI-coupled boundary; test-covered (test_transducer_functions). generate_model_forms (2) + xfst (2) Box::from_raw frees consume it.\n- Facade *mut-returning public APIs: read_lexc_ptr, convert_static.\n- OL const-cast island: as_hfst_ol_ptr / hfst_transducer_to_hfst_ol (returns *mut Transducer borrow).\n- print_dot/print_pckimmo/ol_transducer FILE* + libc -> Stage 2."
+                    }
+                )
             }
         )
     }
