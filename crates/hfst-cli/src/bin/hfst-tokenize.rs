@@ -132,52 +132,48 @@ unsafe fn print_usage() {
 // [spec:hfst:sem:hfst-tokenize.make-naive-tokenizer-fn]
 unsafe fn make_naive_tokenizer(dictionary: &mut HfstTransducer) -> PmatchContainer {
     unsafe {
-        let word_boundary =
+        let mut word_boundary =
             hfst::pmatch_compiler::PmatchUtilityTransducers::make_latin1_whitespace_acceptor(
                 DEFAULT_FORMAT,
-            ) as *mut HfstTransducer;
+            );
         let punctuation =
             hfst::pmatch_compiler::PmatchUtilityTransducers::make_latin1_punct_acceptor(
                 DEFAULT_FORMAT,
-            ) as *mut HfstTransducer;
-        (*word_boundary).disjunct(&*punctuation, true);
-        let others = hfst::pmatch_compiler::make_exc_list(word_boundary, DEFAULT_FORMAT);
-        (*others).repeat_plus();
+            );
+        word_boundary.disjunct(&punctuation, true);
+        let mut others = hfst::pmatch_compiler::make_exc_list(&word_boundary, DEFAULT_FORMAT);
+        others.repeat_plus();
         // make the default token less likely than any dictionary token
-        (*others).set_final_weights(f32::MAX, false);
-        let word_boundary_list = hfst::pmatch_compiler::make_list(word_boundary, DEFAULT_FORMAT);
+        others.set_final_weights(f32::MAX, false);
+        let mut word_boundary_list =
+            hfst::pmatch_compiler::make_list(&word_boundary, DEFAULT_FORMAT);
         // @BOUNDARY@ is pmatch's special input boundary marker
         let boundary = HfstTransducer::new_symbol("@BOUNDARY@", DEFAULT_FORMAT);
-        (*word_boundary_list).disjunct(&boundary, true);
-        drop(Box::from_raw(word_boundary));
-        drop(Box::from_raw(punctuation));
-        let left_context = Box::into_raw(Box::new(HfstTransducer::new_symbol_pair(
+        word_boundary_list.disjunct(&boundary, true);
+        let mut left_context = HfstTransducer::new_symbol_pair(
             hfst::hfst_symbol_defs::internal_epsilon,
             hfst::pmatch_compiler::LC_ENTRY_SYMBOL,
             DEFAULT_FORMAT,
-        )));
-        let right_context = Box::into_raw(Box::new(HfstTransducer::new_symbol_pair(
+        );
+        let mut right_context = HfstTransducer::new_symbol_pair(
             hfst::hfst_symbol_defs::internal_epsilon,
             hfst::pmatch_compiler::RC_ENTRY_SYMBOL,
             DEFAULT_FORMAT,
-        )));
-        (*left_context).concatenate(&*word_boundary_list, true);
-        (*right_context).concatenate(&*word_boundary_list, true);
-        drop(Box::from_raw(word_boundary_list));
-        let left_context_exit = Box::into_raw(Box::new(HfstTransducer::new_symbol_pair(
+        );
+        left_context.concatenate(&word_boundary_list, true);
+        right_context.concatenate(&word_boundary_list, true);
+        let left_context_exit = HfstTransducer::new_symbol_pair(
             hfst::hfst_symbol_defs::internal_epsilon,
             hfst::pmatch_compiler::LC_EXIT_SYMBOL,
             DEFAULT_FORMAT,
-        )));
-        let right_context_exit = Box::into_raw(Box::new(HfstTransducer::new_symbol_pair(
+        );
+        let right_context_exit = HfstTransducer::new_symbol_pair(
             hfst::hfst_symbol_defs::internal_epsilon,
             hfst::pmatch_compiler::RC_EXIT_SYMBOL,
             DEFAULT_FORMAT,
-        )));
-        (*left_context).concatenate(&*left_context_exit, true);
-        (*right_context).concatenate(&*right_context_exit, true);
-        drop(Box::from_raw(left_context_exit));
-        drop(Box::from_raw(right_context_exit));
+        );
+        left_context.concatenate(&left_context_exit, true);
+        right_context.concatenate(&right_context_exit, true);
         let mut dict_name = dictionary.get_name();
         if dict_name.is_empty() {
             dict_name = "unknown_pmatch_tokenized_dict".to_string();
@@ -189,21 +185,19 @@ unsafe fn make_naive_tokenizer(dictionary: &mut HfstTransducer) -> PmatchContain
             DEFAULT_FORMAT,
         );
         // We now make the center of the tokenizer
-        (*others).disjunct(&dict_ins_arc, true);
+        others.disjunct(&dict_ins_arc, true);
         // And combine it with the context conditions
-        (*left_context).concatenate(&*others, true);
-        (*left_context).concatenate(&*right_context, true);
-        drop(Box::from_raw(others));
-        drop(Box::from_raw(right_context));
+        left_context.concatenate(&others, true);
+        left_context.concatenate(&right_context, true);
         // Because there are context conditions we need delimiter markers
-        let tokenizer = hfst::pmatch_compiler::add_pmatch_delimiters(left_context);
-        (*tokenizer).set_name("TOP");
-        (*tokenizer).minimize();
+        let mut tokenizer = hfst::pmatch_compiler::add_pmatch_delimiters(&left_context);
+        tokenizer.set_name("TOP");
+        tokenizer.minimize();
         // Convert the dictionary to olw if it wasn't already
         dictionary.convert(ImplementationType::HFST_OLW_TYPE, String::new());
         // Get the alphabets
         let dict_syms = dictionary.get_alphabet();
-        let tokenizer_syms = (*tokenizer).get_alphabet();
+        let tokenizer_syms = tokenizer.get_alphabet();
         // What to add to the dictionary
         let tokenizer_minus_dict: Vec<String> =
             tokenizer_syms.difference(&dict_syms).cloned().collect();
@@ -212,7 +206,7 @@ unsafe fn make_naive_tokenizer(dictionary: &mut HfstTransducer) -> PmatchContain
         }
         let tokenizer_basic =
             hfst::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(
-                &*tokenizer,
+                &tokenizer,
             );
         // The C++ 'hfst_basic_transducer_to_hfst_ol' takes the HfstTransducer
         // dictionary directly as its harmonizer and converts it internally; the
@@ -235,7 +229,6 @@ unsafe fn make_naive_tokenizer(dictionary: &mut HfstTransducer) -> PmatchContain
         drop(Box::from_raw(tokenizer_basic));
         let mut retval = PmatchContainer::new_from_transducer(Box::new(tokenizer_ol));
         retval.add_rtn(&*dict_backend, &dict_name);
-        drop(Box::from_raw(tokenizer));
         retval
     }
 }
