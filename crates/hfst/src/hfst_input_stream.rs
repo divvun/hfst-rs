@@ -336,7 +336,14 @@ mod input_impl {
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-getstring-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.stream-getstring-fn]
         fn stream_getstring(&mut self) -> String {
-            let mut retval = String::new();
+            // The C++ stream is byte-oriented (std::string of bytes); stream_get
+            // hands back one byte per call as a 0-255 char. Collect the raw bytes
+            // up to the NUL terminator and decode once as UTF-8. Pushing each
+            // byte-valued char straight into a Rust String would re-encode every
+            // byte >= 0x80 as multi-byte UTF-8, corrupting both the value and its
+            // length (str.len() would exceed the bytes consumed, overrunning the
+            // header-length accounting in get_header_data).
+            let mut bytes: Vec<u8> = Vec::new();
             loop {
                 let c = self.stream_get();
                 if self.stream_eof() {
@@ -345,9 +352,9 @@ mod input_impl {
                 if c == '\0' {
                     break;
                 }
-                retval.push(c);
+                bytes.push(c as u8);
             }
-            retval
+            String::from_utf8_lossy(&bytes).into_owned()
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-eof-fn]
