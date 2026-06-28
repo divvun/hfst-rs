@@ -400,7 +400,7 @@ mod output_impl {
                         .tropical_ofst
                         .as_mut()
                         .unwrap()
-                        .write_transducer(unsafe { &*transducer.implementation.tropical_ofst });
+                        .write_transducer(transducer.implementation.as_tropical());
                     self
                 }
                 ImplementationType::LOG_OPENFST_TYPE => {
@@ -408,7 +408,7 @@ mod output_impl {
                         .log_ofst
                         .as_mut()
                         .unwrap()
-                        .write_transducer(unsafe { &*transducer.implementation.log_ofst });
+                        .write_transducer(transducer.implementation.as_log());
                     self
                 }
                 ImplementationType::FOMA_TYPE => {
@@ -425,7 +425,7 @@ mod output_impl {
                         .hfst_ol
                         .as_mut()
                         .unwrap()
-                        .write_transducer(unsafe { &*transducer.implementation.hfst_ol });
+                        .write_transducer(transducer.implementation.as_hfst_ol());
                     self
                 }
                 _ => {

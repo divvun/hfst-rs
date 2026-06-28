@@ -1226,7 +1226,7 @@ impl PmatchContainer {
                 );
             }
             let backend =
-                crate::transducer::Transducer::copy(unsafe { &*top.implementation.hfst_ol }, true);
+                crate::transducer::Transducer::copy(top.implementation.as_hfst_ol(), true);
             let mut c = PmatchContainer::new_from_transducer(Box::new(backend));
             // C++ sets these from transducers[0]'s properties before building; the
             // build does not depend on them, so applying them afterwards is
@@ -1280,7 +1280,7 @@ impl PmatchContainer {
             };
             // Then we convert the harmonizer...
             harmonizer.convert(HFST_OLW_TYPE, String::new());
-            let harmonizer_ol = unsafe { &*harmonizer.implementation.hfst_ol };
+            let harmonizer_ol = harmonizer.implementation.as_hfst_ol();
 
             // We take care of TOP first. Convert to OLW (mirrors C++) then to
             // an intermediate basic transducer, then harmonize into OL.

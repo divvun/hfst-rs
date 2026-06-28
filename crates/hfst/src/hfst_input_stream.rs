@@ -59,10 +59,10 @@ use crate::hfst_exception_defs::{
     TransducerHeaderException, TransducerTypeMismatchException,
 };
 use crate::hfst_ol_transducer::HfstOlInputStream as HfstOlBackendInputStream;
-use crate::hfst_transducer::HfstTransducer;
-use crate::log_weight_transducer::{LogFst, LogWeightInputStream, LogWeightTransducer};
+use crate::hfst_transducer::{HfstTransducer, TransducerImplementation};
+use crate::log_weight_transducer::{LogFst, LogWeightInputStream};
 use crate::transducer::IStream;
-use crate::tropical_weight_transducer::{TropicalWeightInputStream, TropicalWeightTransducer};
+use crate::tropical_weight_transducer::TropicalWeightInputStream;
 
 /// Unported backend input-stream collaborators. Each is a placeholder unit type:
 /// the corresponding ['StreamImplementation'] field exists for fidelity with the
@@ -454,20 +454,17 @@ mod input_impl {
                     if consumed < bytes.len() {
                         self.pbr().unget_all(&bytes[consumed..]);
                     }
-                    t.implementation.tropical_ofst = Box::into_raw(Box::new(fst));
+                    t.implementation = TransducerImplementation::Tropical(Box::new(fst));
 
                     /* If we were reading an OpenFst transducer with no HFST header,
                     round-trip it through HfstBasicTransducer to normalise its
                     symbol tables / epsilon-unknown-identity coding. */
                     if !self.has_hfst_header {
                         let net = ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
-                            unsafe { &*t.implementation.tropical_ofst },
+                            t.implementation.as_tropical(),
                             false,
                         );
-                        TropicalWeightTransducer::delete_transducer(unsafe {
-                            *Box::from_raw(t.implementation.tropical_ofst)
-                        });
-                        t.implementation.tropical_ofst = Box::into_raw(Box::new(
+                        t.implementation = TransducerImplementation::Tropical(Box::new(
                             ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(&net),
                         ));
                     }
@@ -493,17 +490,14 @@ mod input_impl {
                     if consumed < bytes.len() {
                         self.pbr().unget_all(&bytes[consumed..]);
                     }
-                    t.implementation.log_ofst = Box::into_raw(Box::new(fst));
+                    t.implementation = TransducerImplementation::Log(Box::new(fst));
 
                     if !self.has_hfst_header {
                         let net = ConversionFunctions::log_ofst_to_hfst_basic_transducer(
-                            unsafe { &*t.implementation.log_ofst },
+                            t.implementation.as_log(),
                             false,
                         );
-                        LogWeightTransducer::delete_transducer(unsafe {
-                            *Box::from_raw(t.implementation.log_ofst)
-                        });
-                        t.implementation.log_ofst = Box::into_raw(Box::new(
+                        t.implementation = TransducerImplementation::Log(Box::new(
                             ConversionFunctions::hfst_basic_transducer_to_log_ofst(&net),
                         ));
                     }
@@ -525,7 +519,7 @@ mod input_impl {
                     let is = IStream::new(reader);
                     let mut ol_in = HfstOlBackendInputStream::new_istream(is, weighted);
                     let tr = ol_in.read_transducer(false);
-                    t.implementation.hfst_ol = Box::into_raw(Box::new(tr));
+                    t.implementation = TransducerImplementation::HfstOl(Box::new(tr));
                     if t.get_type() != self.type_ {
                         // weights need to be added or removed
                         t.convert(self.type_, String::new());

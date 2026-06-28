@@ -211,7 +211,7 @@ where
     F2: ExpandedFst<W>,
     F3: MutableFst<W> + AllocableFst<W>,
 {
-    *ofst = compose::<W, F1, F2, F3, &F1, &F2>(fst1, fst2).expect("rustfst compose");
+    *ofst = compose::<W, F1, F2, F3>(fst1, fst2).expect("rustfst compose");
     // OpenFST composition: result.input := fst1.input, result.output := fst2.output.
     if let Some(symt) = fst1.input_symbols() {
         ofst.set_input_symbols(std::sync::Arc::clone(symt));
@@ -349,8 +349,7 @@ where
     F2: ExpandedFst<W>,
     F3: MutableFst<W> + AllocableFst<W>,
 {
-    *ofst =
-        compose::<W, F1, F2, F3, &F1, &F2>(fst1, fst2).expect("rustfst intersect (via compose)");
+    *ofst = compose::<W, F1, F2, F3>(fst1, fst2).expect("rustfst intersect (via compose)");
     // Intersect operands are acceptors over a shared alphabet; the result keeps
     // it. Re-attach fst1's tables (rustfst drops them when building a fresh fst)
     // so the result still carries its symbol table — HFST reads it back when

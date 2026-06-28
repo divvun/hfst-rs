@@ -73,7 +73,7 @@ impl ConversionFunctions {
         if t.type_ == TROPICAL_OPENFST_TYPE {
             let retval = Box::into_raw(Box::new(
                 ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
-                    unsafe { &*t.implementation.tropical_ofst },
+                    t.implementation.as_tropical(),
                     true,
                 ),
             ));
@@ -85,7 +85,7 @@ impl ConversionFunctions {
         if t.type_ == LOG_OPENFST_TYPE {
             let retval = Box::into_raw(Box::new(
                 ConversionFunctions::log_ofst_to_hfst_basic_transducer(
-                    unsafe { &*t.implementation.log_ofst },
+                    t.implementation.as_log(),
                     true,
                 ),
             ));
@@ -96,9 +96,9 @@ impl ConversionFunctions {
         }
         if t.type_ == HFST_OL_TYPE || t.type_ == HFST_OLW_TYPE {
             let retval = Box::into_raw(Box::new(
-                ConversionFunctions::hfst_ol_to_hfst_basic_transducer(unsafe {
-                    &*t.implementation.hfst_ol
-                }),
+                ConversionFunctions::hfst_ol_to_hfst_basic_transducer(
+                    t.implementation.as_hfst_ol(),
+                ),
             ));
             unsafe {
                 (*retval).name = t.get_name();

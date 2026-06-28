@@ -235,9 +235,9 @@ impl ConversionFunctions {
             type_,
         )));
         unsafe {
-            drop(Box::from_raw((*retval).implementation.hfst_ol));
-            (*retval).implementation.hfst_ol =
-                Box::into_raw(Box::new(Transducer::copy(t, t.is_weighted())));
+            (*retval).implementation = crate::hfst_transducer::TransducerImplementation::HfstOl(
+                Box::new(Transducer::copy(t, t.is_weighted())),
+            );
         }
         retval
     }
@@ -254,7 +254,7 @@ impl ConversionFunctions {
         if t.type_ != HFST_OL_TYPE && t.type_ != HFST_OLW_TYPE {
             t.convert(HFST_OLW_TYPE, String::new());
         }
-        unsafe { t.implementation.hfst_ol }
+        t.implementation.as_hfst_ol_ptr()
     }
 
     /* Create an HfstBasicTransducer equivalent to hfst_ol::Transducer 't'. */

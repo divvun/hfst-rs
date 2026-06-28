@@ -109,17 +109,78 @@ pub type HfstTransducerPairVector = Vec<HfstTransducerPair>;
 // The backend union.
 // -----------------------------------------------------------------------------
 
-/// The union of possible backend implementations.
-///
-/// All variants are raw owning pointers ('Copy'), so no 'ManuallyDrop' is
-/// needed. Reading a field is 'unsafe' (the active field is determined by
-/// 'HfstTransducer::type_'); writing a field is safe. The SFST / FOMA / XFSM /
-/// My* members of the C++ union are '#if''d out and not present.
+/// The backend implementation, owned. The C++ 'union' of raw backend pointers
+/// is modelled as a safe Rust enum; the active variant must agree with
+/// 'HfstTransducer::type_' (which still carries the OL/OLW and
+/// UNSPECIFIED/ERROR distinctions the variant alone cannot). The SFST / FOMA /
+/// XFSM / My* members of the C++ union are '#if''d out and not present.
+/// 'None' models the null/uninitialised backend ('UNSPECIFIED_TYPE').
 // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.transducer-implementation]
-pub union TransducerImplementation {
-    pub tropical_ofst: *mut StdVectorFst,
-    pub log_ofst: *mut LogFst,
-    pub hfst_ol: *mut Transducer,
+pub enum TransducerImplementation {
+    Tropical(Box<StdVectorFst>),
+    Log(Box<LogFst>),
+    HfstOl(Box<Transducer>),
+    None,
+}
+
+impl TransducerImplementation {
+    /// Borrow the tropical backend. Panics if the active variant disagrees with
+    /// the caller's 'type_' dispatch (the safe analogue of reading the wrong
+    /// C++ union field, which was undefined behaviour).
+    #[inline]
+    pub(crate) fn as_tropical(&self) -> &StdVectorFst {
+        match self {
+            TransducerImplementation::Tropical(b) => b,
+            _ => panic!("TransducerImplementation: active variant is not Tropical"),
+        }
+    }
+    #[inline]
+    pub(crate) fn as_tropical_mut(&mut self) -> &mut StdVectorFst {
+        match self {
+            TransducerImplementation::Tropical(b) => b,
+            _ => panic!("TransducerImplementation: active variant is not Tropical"),
+        }
+    }
+    #[inline]
+    pub(crate) fn as_log(&self) -> &LogFst {
+        match self {
+            TransducerImplementation::Log(b) => b,
+            _ => panic!("TransducerImplementation: active variant is not Log"),
+        }
+    }
+    #[inline]
+    pub(crate) fn as_log_mut(&mut self) -> &mut LogFst {
+        match self {
+            TransducerImplementation::Log(b) => b,
+            _ => panic!("TransducerImplementation: active variant is not Log"),
+        }
+    }
+    #[inline]
+    pub(crate) fn as_hfst_ol(&self) -> &Transducer {
+        match self {
+            TransducerImplementation::HfstOl(b) => b,
+            _ => panic!("TransducerImplementation: active variant is not HfstOl"),
+        }
+    }
+    #[inline]
+    pub(crate) fn as_hfst_ol_mut(&mut self) -> &mut Transducer {
+        match self {
+            TransducerImplementation::HfstOl(b) => b,
+            _ => panic!("TransducerImplementation: active variant is not HfstOl"),
+        }
+    }
+    // IDIOM-STAGE-2: the OL lookup methods take '&mut self' (they mutate internal
+    // lookup state), but HfstTransducer exposes lookup on '&self' — as C++ does on
+    // a const transducer, mutating the OL backend through a const-cast on the union
+    // pointer. Until the OL lookup path no longer needs '&mut', this const-cast is
+    // reached through a raw pointer.
+    #[inline]
+    pub(crate) fn as_hfst_ol_ptr(&self) -> *mut Transducer {
+        match self {
+            TransducerImplementation::HfstOl(b) => &**b as *const Transducer as *mut Transducer,
+            _ => panic!("TransducerImplementation: active variant is not HfstOl"),
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -160,9 +221,7 @@ impl HfstTransducer {
             is_trie: true,
             name: String::new(),
             props: BTreeMap::new(),
-            implementation: TransducerImplementation {
-                tropical_ofst: std::ptr::null_mut(),
-            },
+            implementation: TransducerImplementation::None,
         }
     }
 
@@ -180,23 +239,21 @@ impl HfstTransducer {
         }
         // SFST_TYPE / FOMA_TYPE / XFSM_TYPE arms are #if'd out.
         let implementation = match type_ {
-            TROPICAL_OPENFST_TYPE => TransducerImplementation {
-                tropical_ofst: Box::into_raw(Box::new(
-                    TropicalWeightTransducer::create_empty_transducer(),
-                )),
-            },
-            LOG_OPENFST_TYPE => TransducerImplementation {
-                log_ofst: Box::into_raw(Box::new(LogWeightTransducer::create_empty_transducer())),
-            },
-            HFST_OL_TYPE | HFST_OLW_TYPE => TransducerImplementation {
+            TROPICAL_OPENFST_TYPE => TransducerImplementation::Tropical(Box::new(
+                TropicalWeightTransducer::create_empty_transducer(),
+            )),
+            LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
+                LogWeightTransducer::create_empty_transducer(),
+            )),
+            HFST_OL_TYPE | HFST_OLW_TYPE => TransducerImplementation::HfstOl(
                 // implementation.hfst_ol =
                 //   hfst_ol_interface.create_empty_transducer(type == HFST_OLW_TYPE);
-                hfst_ol: Box::into_raw(Box::new(
+                Box::new(
                     crate::hfst_ol_transducer::HfstOlTransducer::create_empty_transducer(
                         type_ == HFST_OLW_TYPE,
                     ),
-                )),
-            },
+                ),
+            ),
             ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequiredException),
             _ => HFST_THROW!(FunctionNotImplementedException),
         };
@@ -232,14 +289,12 @@ impl HfstTransducer {
         }
         let spv = multichar_symbol_tokenizer.tokenize(utf8_str, false);
         let implementation = match type_ {
-            TROPICAL_OPENFST_TYPE => TransducerImplementation {
-                tropical_ofst: Box::into_raw(Box::new(
-                    TropicalWeightTransducer::define_transducer_spv(&spv),
-                )),
-            },
-            LOG_OPENFST_TYPE => TransducerImplementation {
-                log_ofst: Box::into_raw(Box::new(LogWeightTransducer::define_transducer_spv(&spv))),
-            },
+            TROPICAL_OPENFST_TYPE => TransducerImplementation::Tropical(Box::new(
+                TropicalWeightTransducer::define_transducer_spv(&spv),
+            )),
+            LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
+                LogWeightTransducer::define_transducer_spv(&spv),
+            )),
             ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequiredException),
             _ => HFST_THROW!(FunctionNotImplementedException),
         };
@@ -278,14 +333,12 @@ impl HfstTransducer {
         }
         let spv = multichar_symbol_tokenizer.tokenize_pair(upper_utf8_str, lower_utf8_str, false);
         let implementation = match type_ {
-            TROPICAL_OPENFST_TYPE => TransducerImplementation {
-                tropical_ofst: Box::into_raw(Box::new(
-                    TropicalWeightTransducer::define_transducer_spv(&spv),
-                )),
-            },
-            LOG_OPENFST_TYPE => TransducerImplementation {
-                log_ofst: Box::into_raw(Box::new(LogWeightTransducer::define_transducer_spv(&spv))),
-            },
+            TROPICAL_OPENFST_TYPE => TransducerImplementation::Tropical(Box::new(
+                TropicalWeightTransducer::define_transducer_spv(&spv),
+            )),
+            LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
+                LogWeightTransducer::define_transducer_spv(&spv),
+            )),
             ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequiredException),
             // C++ default here throws ImplementationTypeNotAvailableException.
             _ => std::panic::panic_any(ImplementationTypeNotAvailableException::new(
@@ -328,16 +381,12 @@ impl HfstTransducer {
             }
         }
         let implementation = match type_ {
-            TROPICAL_OPENFST_TYPE => TransducerImplementation {
-                tropical_ofst: Box::into_raw(Box::new(
-                    TropicalWeightTransducer::define_transducer_sps(sps, cyclic),
-                )),
-            },
-            LOG_OPENFST_TYPE => TransducerImplementation {
-                log_ofst: Box::into_raw(Box::new(LogWeightTransducer::define_transducer_sps(
-                    sps, cyclic,
-                ))),
-            },
+            TROPICAL_OPENFST_TYPE => TransducerImplementation::Tropical(Box::new(
+                TropicalWeightTransducer::define_transducer_sps(sps, cyclic),
+            )),
+            LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
+                LogWeightTransducer::define_transducer_sps(sps, cyclic),
+            )),
             ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequiredException),
             _ => HFST_THROW!(FunctionNotImplementedException),
         };
@@ -370,14 +419,12 @@ impl HfstTransducer {
             }
         }
         let implementation = match type_ {
-            TROPICAL_OPENFST_TYPE => TransducerImplementation {
-                tropical_ofst: Box::into_raw(Box::new(
-                    TropicalWeightTransducer::define_transducer_spv(spv),
-                )),
-            },
-            LOG_OPENFST_TYPE => TransducerImplementation {
-                log_ofst: Box::into_raw(Box::new(LogWeightTransducer::define_transducer_spv(spv))),
-            },
+            TROPICAL_OPENFST_TYPE => TransducerImplementation::Tropical(Box::new(
+                TropicalWeightTransducer::define_transducer_spv(spv),
+            )),
+            LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
+                LogWeightTransducer::define_transducer_spv(spv),
+            )),
             ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequiredException),
             _ => HFST_THROW!(FunctionNotImplementedException),
         };
@@ -407,9 +454,7 @@ impl HfstTransducer {
             is_trie: false,
             name: String::new(),
             props: BTreeMap::new(),
-            implementation: TransducerImplementation {
-                tropical_ofst: std::ptr::null_mut(),
-            },
+            implementation: TransducerImplementation::None,
         };
         let mut spv = StringPairVector::new();
         for it in sv {
@@ -442,16 +487,12 @@ impl HfstTransducer {
             }
         }
         let implementation = match type_ {
-            TROPICAL_OPENFST_TYPE => TransducerImplementation {
-                tropical_ofst: Box::into_raw(Box::new(
-                    TropicalWeightTransducer::define_transducer_spsv(spsv),
-                )),
-            },
-            LOG_OPENFST_TYPE => TransducerImplementation {
-                log_ofst: Box::into_raw(Box::new(LogWeightTransducer::define_transducer_spsv(
-                    spsv,
-                ))),
-            },
+            TROPICAL_OPENFST_TYPE => TransducerImplementation::Tropical(Box::new(
+                TropicalWeightTransducer::define_transducer_spsv(spsv),
+            )),
+            LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
+                LogWeightTransducer::define_transducer_spsv(spsv),
+            )),
             ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequiredException),
             _ => HFST_THROW!(FunctionNotImplementedException),
         };
@@ -485,28 +526,20 @@ impl HfstTransducer {
             }
         }
         let implementation = match type_ {
-            TROPICAL_OPENFST_TYPE => TransducerImplementation {
-                tropical_ofst: Box::into_raw(Box::new(TropicalWeightTransducer::copy(unsafe {
-                    &*another.implementation.tropical_ofst
-                }))),
-            },
-            LOG_OPENFST_TYPE => TransducerImplementation {
-                log_ofst: Box::into_raw(Box::new(LogWeightTransducer::copy(unsafe {
-                    &*another.implementation.log_ofst
-                }))),
-            },
-            HFST_OL_TYPE => TransducerImplementation {
-                hfst_ol: Box::into_raw(Box::new(Transducer::copy(
-                    unsafe { &*another.implementation.hfst_ol },
-                    false,
-                ))),
-            },
-            HFST_OLW_TYPE => TransducerImplementation {
-                hfst_ol: Box::into_raw(Box::new(Transducer::copy(
-                    unsafe { &*another.implementation.hfst_ol },
-                    true,
-                ))),
-            },
+            TROPICAL_OPENFST_TYPE => TransducerImplementation::Tropical(Box::new(
+                TropicalWeightTransducer::copy(another.implementation.as_tropical()),
+            )),
+            LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(LogWeightTransducer::copy(
+                another.implementation.as_log(),
+            ))),
+            HFST_OL_TYPE => TransducerImplementation::HfstOl(Box::new(Transducer::copy(
+                another.implementation.as_hfst_ol(),
+                false,
+            ))),
+            HFST_OLW_TYPE => TransducerImplementation::HfstOl(Box::new(Transducer::copy(
+                another.implementation.as_hfst_ol(),
+                true,
+            ))),
             ERROR_TYPE => HFST_THROW!(TransducerHasWrongTypeException),
             _ => HFST_THROW!(FunctionNotImplementedException),
         };
@@ -537,26 +570,18 @@ impl HfstTransducer {
         }
         // SFST_TYPE / FOMA_TYPE / XFSM_TYPE arms are #if'd out.
         let implementation = match type_ {
-            TROPICAL_OPENFST_TYPE => TransducerImplementation {
-                tropical_ofst: Box::into_raw(Box::new(
-                    ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(net),
-                )),
-            },
-            LOG_OPENFST_TYPE => TransducerImplementation {
-                log_ofst: Box::into_raw(Box::new(
-                    ConversionFunctions::hfst_basic_transducer_to_log_ofst(net),
-                )),
-            },
-            HFST_OL_TYPE => TransducerImplementation {
-                hfst_ol: Box::into_raw(Box::new(
-                    ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, false, "", None),
-                )),
-            },
-            HFST_OLW_TYPE => TransducerImplementation {
-                hfst_ol: Box::into_raw(Box::new(
-                    ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, true, "", None),
-                )),
-            },
+            TROPICAL_OPENFST_TYPE => TransducerImplementation::Tropical(Box::new(
+                ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(net),
+            )),
+            LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
+                ConversionFunctions::hfst_basic_transducer_to_log_ofst(net),
+            )),
+            HFST_OL_TYPE => TransducerImplementation::HfstOl(Box::new(
+                ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, false, "", None),
+            )),
+            HFST_OLW_TYPE => TransducerImplementation::HfstOl(Box::new(
+                ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, true, "", None),
+            )),
             ERROR_TYPE => HFST_THROW!(TransducerHasWrongTypeException),
             _ => HFST_THROW!(FunctionNotImplementedException),
         };
@@ -593,9 +618,7 @@ impl HfstTransducer {
             is_trie: false,
             name: String::new(),
             props: BTreeMap::new(),
-            implementation: TransducerImplementation {
-                tropical_ofst: std::ptr::null_mut(),
-            },
+            implementation: TransducerImplementation::None,
         };
         instream.read_transducer(&mut t);
         t
@@ -621,16 +644,12 @@ impl HfstTransducer {
             );
         }
         let implementation = match type_ {
-            TROPICAL_OPENFST_TYPE => TransducerImplementation {
-                tropical_ofst: Box::into_raw(Box::new(
-                    TropicalWeightTransducer::define_transducer_symbol(symbol),
-                )),
-            },
-            LOG_OPENFST_TYPE => TransducerImplementation {
-                log_ofst: Box::into_raw(Box::new(LogWeightTransducer::define_transducer_symbol(
-                    symbol,
-                ))),
-            },
+            TROPICAL_OPENFST_TYPE => TransducerImplementation::Tropical(Box::new(
+                TropicalWeightTransducer::define_transducer_symbol(symbol),
+            )),
+            LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
+                LogWeightTransducer::define_transducer_symbol(symbol),
+            )),
             ERROR_TYPE => HFST_THROW!(TransducerHasWrongTypeException),
             _ => HFST_THROW!(FunctionNotImplementedException),
         };
@@ -665,16 +684,12 @@ impl HfstTransducer {
             );
         }
         let implementation = match type_ {
-            TROPICAL_OPENFST_TYPE => TransducerImplementation {
-                tropical_ofst: Box::into_raw(Box::new(
-                    TropicalWeightTransducer::define_transducer_symbol_pair(isymbol, osymbol),
-                )),
-            },
-            LOG_OPENFST_TYPE => TransducerImplementation {
-                log_ofst: Box::into_raw(Box::new(
-                    LogWeightTransducer::define_transducer_symbol_pair(isymbol, osymbol),
-                )),
-            },
+            TROPICAL_OPENFST_TYPE => TransducerImplementation::Tropical(Box::new(
+                TropicalWeightTransducer::define_transducer_symbol_pair(isymbol, osymbol),
+            )),
+            LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
+                LogWeightTransducer::define_transducer_symbol_pair(isymbol, osymbol),
+            )),
             ERROR_TYPE => HFST_THROW!(TransducerHasWrongTypeException),
             _ => HFST_THROW!(FunctionNotImplementedException),
         };
@@ -721,22 +736,15 @@ impl HfstTransducer {
         let nm = another.get_name();
         self.set_name(&nm);
 
-        // Delete old transducer. (FOMA / SFST arms #if'd out.)
+        // Delete old transducer. (FOMA / SFST arms #if'd out.) The enum's owned
+        // backend is freed automatically when 'self.implementation' is
+        // reassigned below; only the C++ ERROR guard remains.
         match self.type_ {
-            TROPICAL_OPENFST_TYPE => {
-                TropicalWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.tropical_ofst)
-                });
-            }
-            LOG_OPENFST_TYPE => {
-                LogWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.log_ofst)
-                });
-            }
-            HFST_OL_TYPE | HFST_OLW_TYPE => {
-                drop(unsafe { Box::from_raw(self.implementation.hfst_ol) });
-            }
-            UNSPECIFIED_TYPE => {}
+            TROPICAL_OPENFST_TYPE
+            | LOG_OPENFST_TYPE
+            | HFST_OL_TYPE
+            | HFST_OLW_TYPE
+            | UNSPECIFIED_TYPE => {}
             // case ERROR_TYPE: default: -> TransducerHasWrongTypeException
             _ => HFST_THROW!(TransducerHasWrongTypeException),
         }
@@ -746,26 +754,24 @@ impl HfstTransducer {
         self.type_ = another.type_;
         match self.type_ {
             TROPICAL_OPENFST_TYPE => {
-                self.implementation.tropical_ofst =
-                    Box::into_raw(Box::new(TropicalWeightTransducer::copy(unsafe {
-                        &*another_1.implementation.tropical_ofst
-                    })));
+                self.implementation = TransducerImplementation::Tropical(Box::new(
+                    TropicalWeightTransducer::copy(another_1.implementation.as_tropical()),
+                ));
             }
             LOG_OPENFST_TYPE => {
-                self.implementation.log_ofst =
-                    Box::into_raw(Box::new(LogWeightTransducer::copy(unsafe {
-                        &*another_1.implementation.log_ofst
-                    })));
+                self.implementation = TransducerImplementation::Log(Box::new(
+                    LogWeightTransducer::copy(another_1.implementation.as_log()),
+                ));
             }
             HFST_OL_TYPE => {
-                self.implementation.hfst_ol = Box::into_raw(Box::new(Transducer::copy(
-                    unsafe { &*another_1.implementation.hfst_ol },
+                self.implementation = TransducerImplementation::HfstOl(Box::new(Transducer::copy(
+                    another_1.implementation.as_hfst_ol(),
                     false,
                 )));
             }
             HFST_OLW_TYPE => {
-                self.implementation.hfst_ol = Box::into_raw(Box::new(Transducer::copy(
-                    unsafe { &*another_1.implementation.hfst_ol },
+                self.implementation = TransducerImplementation::HfstOl(Box::new(Transducer::copy(
+                    another_1.implementation.as_hfst_ol(),
                     true,
                 )));
             }
@@ -917,7 +923,7 @@ impl HfstTransducer {
         if self.type_ == TROPICAL_OPENFST_TYPE {
             let net = Box::into_raw(Box::new(
                 ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
-                    unsafe { &*self.implementation.tropical_ofst },
+                    self.implementation.as_tropical(),
                     true,
                 ),
             ));
@@ -926,7 +932,7 @@ impl HfstTransducer {
         if self.type_ == LOG_OPENFST_TYPE {
             let net = Box::into_raw(Box::new(
                 ConversionFunctions::log_ofst_to_hfst_basic_transducer(
-                    unsafe { &*self.implementation.log_ofst },
+                    self.implementation.as_log(),
                     true,
                 ),
             ));
@@ -948,25 +954,22 @@ impl HfstTransducer {
         if self.type_ == TROPICAL_OPENFST_TYPE {
             let net = Box::into_raw(Box::new(
                 ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
-                    unsafe { &*self.implementation.tropical_ofst },
+                    self.implementation.as_tropical(),
                     true,
                 ),
             ));
-            TropicalWeightTransducer::delete_transducer(unsafe {
-                *Box::from_raw(self.implementation.tropical_ofst)
-            });
+            // 'delete' the old backend: moving the enum to None drops the owned Box.
+            self.implementation = TransducerImplementation::None;
             return net;
         }
         if self.type_ == LOG_OPENFST_TYPE {
             let net = Box::into_raw(Box::new(
                 ConversionFunctions::log_ofst_to_hfst_basic_transducer(
-                    unsafe { &*self.implementation.log_ofst },
+                    self.implementation.as_log(),
                     true,
                 ),
             ));
-            LogWeightTransducer::delete_transducer(unsafe {
-                *Box::from_raw(self.implementation.log_ofst)
-            });
+            self.implementation = TransducerImplementation::None;
             return net;
         }
         // FOMA arm #if'd out.
@@ -984,18 +987,18 @@ impl HfstTransducer {
     ) -> &mut HfstTransducer {
         // SFST arm #if'd out.
         if self.type_ == TROPICAL_OPENFST_TYPE {
-            self.implementation.tropical_ofst = Box::into_raw(Box::new(
+            self.implementation = TransducerImplementation::Tropical(Box::new(
                 ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(unsafe { &*t }),
             ));
-            self.name = unsafe { &*t }.name.clone();
+            self.name = unsafe { (*t).name.clone() };
             drop(unsafe { Box::from_raw(t) });
             return self;
         }
         if self.type_ == LOG_OPENFST_TYPE {
-            self.implementation.log_ofst = Box::into_raw(Box::new(
+            self.implementation = TransducerImplementation::Log(Box::new(
                 ConversionFunctions::hfst_basic_transducer_to_log_ofst(unsafe { &*t }),
             ));
-            self.name = unsafe { &*t }.name.clone();
+            self.name = unsafe { (*t).name.clone() };
             drop(unsafe { Box::from_raw(t) });
             return self;
         }
@@ -1074,33 +1077,29 @@ impl HfstTransducer {
             TROPICAL_OPENFST_TYPE => {
                 internal = Box::into_raw(Box::new(
                     ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
-                        unsafe { &*self.implementation.tropical_ofst },
+                        self.implementation.as_tropical(),
                         true,
                     ),
                 ));
                 assert!(!internal.is_null());
-                TropicalWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.tropical_ofst)
-                });
+                self.implementation = TransducerImplementation::None;
             }
             LOG_OPENFST_TYPE => {
                 internal = Box::into_raw(Box::new(
                     ConversionFunctions::log_ofst_to_hfst_basic_transducer(
-                        unsafe { &*self.implementation.log_ofst },
+                        self.implementation.as_log(),
                         true,
                     ),
                 ));
-                LogWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.log_ofst)
-                });
+                self.implementation = TransducerImplementation::None;
             }
             HFST_OL_TYPE | HFST_OLW_TYPE => {
                 internal = Box::into_raw(Box::new(
-                    ConversionFunctions::hfst_ol_to_hfst_basic_transducer(unsafe {
-                        &*self.implementation.hfst_ol
-                    }),
+                    ConversionFunctions::hfst_ol_to_hfst_basic_transducer(
+                        self.implementation.as_hfst_ol(),
+                    ),
                 ));
-                drop(unsafe { Box::from_raw(self.implementation.hfst_ol) });
+                self.implementation = TransducerImplementation::None;
             }
             // case ERROR_TYPE: default: (void)internal; throw.
             _ => {
@@ -1113,7 +1112,7 @@ impl HfstTransducer {
         // SFST / FOMA / XFSM arms #if'd out.
         match self.type_ {
             TROPICAL_OPENFST_TYPE => {
-                self.implementation.tropical_ofst = Box::into_raw(Box::new(
+                self.implementation = TransducerImplementation::Tropical(Box::new(
                     ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(unsafe {
                         &*internal
                     }),
@@ -1121,13 +1120,13 @@ impl HfstTransducer {
                 drop(unsafe { Box::from_raw(internal) });
             }
             LOG_OPENFST_TYPE => {
-                self.implementation.log_ofst = Box::into_raw(Box::new(
+                self.implementation = TransducerImplementation::Log(Box::new(
                     ConversionFunctions::hfst_basic_transducer_to_log_ofst(unsafe { &*internal }),
                 ));
                 drop(unsafe { Box::from_raw(internal) });
             }
             HFST_OL_TYPE | HFST_OLW_TYPE => {
-                self.implementation.hfst_ol = Box::into_raw(Box::new(
+                self.implementation = TransducerImplementation::HfstOl(Box::new(
                     ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                         unsafe { &*internal },
                         self.type_ == HFST_OLW_TYPE,
@@ -1146,30 +1145,25 @@ impl HfstTransducer {
     // ----- apply() (HfstApply.cc) -----
     // -------------------------------------------------------------------------
 
-    /// 'apply(... , bool dummy)' — unary backend ops.
+    /// 'apply(... , bool dummy)' — unary backend ops. The backend functs borrow
+    /// the current backend and return a fresh one; assigning the new enum value
+    /// frees the old backend automatically (the C++ 'delete_transducer').
     pub fn apply(
         &mut self,
-        tropical_ofst_funct: fn(*mut StdVectorFst) -> *mut StdVectorFst,
-        log_ofst_funct: fn(*mut LogFst) -> *mut LogFst,
+        tropical_ofst_funct: fn(&StdVectorFst) -> StdVectorFst,
+        log_ofst_funct: fn(&LogFst) -> LogFst,
         foo: bool,
     ) -> &mut HfstTransducer {
         let _ = foo;
         // SFST / FOMA / XFSM arms #if'd out.
         match self.type_ {
             TROPICAL_OPENFST_TYPE => {
-                let tropical_ofst_temp =
-                    tropical_ofst_funct(unsafe { self.implementation.tropical_ofst });
-                TropicalWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.tropical_ofst)
-                });
-                self.implementation.tropical_ofst = tropical_ofst_temp;
+                let temp = tropical_ofst_funct(self.implementation.as_tropical());
+                self.implementation = TransducerImplementation::Tropical(Box::new(temp));
             }
             LOG_OPENFST_TYPE => {
-                let log_ofst_temp = log_ofst_funct(unsafe { self.implementation.log_ofst });
-                LogWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.log_ofst)
-                });
-                self.implementation.log_ofst = log_ofst_temp;
+                let temp = log_ofst_funct(self.implementation.as_log());
+                self.implementation = TransducerImplementation::Log(Box::new(temp));
             }
             // case ERROR_TYPE: default: -> TransducerHasWrongTypeException
             _ => HFST_THROW!(TransducerHasWrongTypeException),
@@ -1180,25 +1174,18 @@ impl HfstTransducer {
     /// 'apply(... , unsigned int n)'.
     pub fn apply_n(
         &mut self,
-        tropical_ofst_funct: fn(*mut StdVectorFst, u32) -> *mut StdVectorFst,
-        log_ofst_funct: fn(*mut LogFst, u32) -> *mut LogFst,
+        tropical_ofst_funct: fn(&StdVectorFst, u32) -> StdVectorFst,
+        log_ofst_funct: fn(&LogFst, u32) -> LogFst,
         n: u32,
     ) -> &mut HfstTransducer {
         match self.type_ {
             TROPICAL_OPENFST_TYPE => {
-                let tropical_ofst_temp =
-                    tropical_ofst_funct(unsafe { self.implementation.tropical_ofst }, n);
-                TropicalWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.tropical_ofst)
-                });
-                self.implementation.tropical_ofst = tropical_ofst_temp;
+                let temp = tropical_ofst_funct(self.implementation.as_tropical(), n);
+                self.implementation = TransducerImplementation::Tropical(Box::new(temp));
             }
             LOG_OPENFST_TYPE => {
-                let log_ofst_temp = log_ofst_funct(unsafe { self.implementation.log_ofst }, n);
-                LogWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.log_ofst)
-                });
-                self.implementation.log_ofst = log_ofst_temp;
+                let temp = log_ofst_funct(self.implementation.as_log(), n);
+                self.implementation = TransducerImplementation::Log(Box::new(temp));
             }
             _ => HFST_THROW!(TransducerHasWrongTypeException),
         }
@@ -1208,26 +1195,19 @@ impl HfstTransducer {
     /// 'apply(... , String s1, String s2)'.
     pub fn apply_string_string(
         &mut self,
-        tropical_ofst_funct: fn(*mut StdVectorFst, String, String) -> *mut StdVectorFst,
-        log_ofst_funct: fn(*mut LogFst, String, String) -> *mut LogFst,
+        tropical_ofst_funct: fn(&StdVectorFst, String, String) -> StdVectorFst,
+        log_ofst_funct: fn(&LogFst, String, String) -> LogFst,
         s1: String,
         s2: String,
     ) -> &mut HfstTransducer {
         match self.type_ {
             TROPICAL_OPENFST_TYPE => {
-                let tropical_ofst_temp =
-                    tropical_ofst_funct(unsafe { self.implementation.tropical_ofst }, s1, s2);
-                TropicalWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.tropical_ofst)
-                });
-                self.implementation.tropical_ofst = tropical_ofst_temp;
+                let temp = tropical_ofst_funct(self.implementation.as_tropical(), s1, s2);
+                self.implementation = TransducerImplementation::Tropical(Box::new(temp));
             }
             LOG_OPENFST_TYPE => {
-                let log_ofst_temp = log_ofst_funct(unsafe { self.implementation.log_ofst }, s1, s2);
-                LogWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.log_ofst)
-                });
-                self.implementation.log_ofst = log_ofst_temp;
+                let temp = log_ofst_funct(self.implementation.as_log(), s1, s2);
+                self.implementation = TransducerImplementation::Log(Box::new(temp));
             }
             _ => HFST_THROW!(TransducerHasWrongTypeException),
         }
@@ -1240,8 +1220,8 @@ impl HfstTransducer {
     /// and 'harmonize_' provided by the method-group body modules.
     pub fn apply_another(
         &mut self,
-        tropical_ofst_funct: fn(*mut StdVectorFst, *mut StdVectorFst) -> *mut StdVectorFst,
-        log_ofst_funct: fn(*mut LogFst, *mut LogFst) -> *mut LogFst,
+        tropical_ofst_funct: fn(&StdVectorFst, &StdVectorFst) -> StdVectorFst,
+        log_ofst_funct: fn(&LogFst, &LogFst) -> LogFst,
         another_tr: &HfstTransducer,
         harmonize: bool,
     ) -> &mut HfstTransducer {
@@ -1262,6 +1242,7 @@ impl HfstTransducer {
         // special symbols are never harmonized
         self.insert_missing_symbols_to_alphabet_from(&another, true);
         another.insert_missing_symbols_to_alphabet_from(self, true);
+        // 'another_' stays a local owning raw pointer (Phase 2 cleanup).
         let mut another_: *mut HfstTransducer = self.harmonize_(&another);
         if another_.is_null() {
             // foma
@@ -1271,24 +1252,16 @@ impl HfstTransducer {
         // SFST / FOMA / XFSM arms #if'd out.
         match self.type_ {
             TROPICAL_OPENFST_TYPE => {
-                let tropical_ofst_temp =
-                    tropical_ofst_funct(unsafe { self.implementation.tropical_ofst }, unsafe {
-                        (*another_).implementation.tropical_ofst
-                    });
-                TropicalWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.tropical_ofst)
+                let temp = tropical_ofst_funct(self.implementation.as_tropical(), unsafe {
+                    (*another_).implementation.as_tropical()
                 });
-                self.implementation.tropical_ofst = tropical_ofst_temp;
+                self.implementation = TransducerImplementation::Tropical(Box::new(temp));
             }
             LOG_OPENFST_TYPE => {
-                let log_ofst_temp =
-                    log_ofst_funct(unsafe { self.implementation.log_ofst }, unsafe {
-                        (*another_).implementation.log_ofst
-                    });
-                LogWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.log_ofst)
+                let temp = log_ofst_funct(self.implementation.as_log(), unsafe {
+                    (*another_).implementation.as_log()
                 });
-                self.implementation.log_ofst = log_ofst_temp;
+                self.implementation = TransducerImplementation::Log(Box::new(temp));
             }
             _ => HFST_THROW!(TransducerHasWrongTypeException),
         }
@@ -1314,21 +1287,11 @@ impl Drop for HfstTransducer {
                 self.type_,
             ));
         }
-        // SFST / FOMA / XFSM arms #if'd out.
+        // SFST / FOMA / XFSM arms #if'd out. The enum's owned backend is freed
+        // automatically when this struct's fields drop after this method; only
+        // the C++ destructor's type guards remain.
         match self.type_ {
-            TROPICAL_OPENFST_TYPE => {
-                TropicalWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.tropical_ofst)
-                });
-            }
-            LOG_OPENFST_TYPE => {
-                LogWeightTransducer::delete_transducer(unsafe {
-                    *Box::from_raw(self.implementation.log_ofst)
-                });
-            }
-            HFST_OL_TYPE | HFST_OLW_TYPE => {
-                drop(unsafe { Box::from_raw(self.implementation.hfst_ol) });
-            }
+            TROPICAL_OPENFST_TYPE | LOG_OPENFST_TYPE | HFST_OL_TYPE | HFST_OLW_TYPE => {}
             // C++ 'operator=' (the assignment path that reaches Drop when a
             // default-constructed transducer is replaced) lists
             // 'case UNSPECIFIED_TYPE: break;' -- deleting a never-assigned
@@ -1383,9 +1346,9 @@ impl HfstTransducer {
         if self.type_ == ImplementationType::HFST_OL_TYPE
             || self.type_ == ImplementationType::HFST_OLW_TYPE
         {
-            unsafe {
-                (*self.implementation.hfst_ol).include_symbol_in_alphabet(symbol);
-            }
+            self.implementation
+                .as_hfst_ol_mut()
+                .include_symbol_in_alphabet(symbol);
             return;
         }
         if self.type_ != ImplementationType::XFSM_TYPE {
@@ -1477,9 +1440,9 @@ impl HfstTransducer {
     pub fn get_initial_input_symbols(&self) -> StringSet {
         match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
-                TropicalWeightTransducer::get_initial_input_symbols(unsafe {
-                    &*self.implementation.tropical_ofst
-                })
+                TropicalWeightTransducer::get_initial_input_symbols(
+                    self.implementation.as_tropical(),
+                )
             }
             _ => {
                 crate::HFST_THROW_MESSAGE!(
@@ -1495,9 +1458,7 @@ impl HfstTransducer {
     pub fn get_first_input_symbols(&self) -> StringSet {
         match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
-                TropicalWeightTransducer::get_first_input_symbols(unsafe {
-                    &*self.implementation.tropical_ofst
-                })
+                TropicalWeightTransducer::get_first_input_symbols(self.implementation.as_tropical())
             }
             ImplementationType::LOG_OPENFST_TYPE => {
                 crate::HFST_THROW_MESSAGE!(
@@ -1526,18 +1487,16 @@ impl HfstTransducer {
     pub fn get_alphabet(&self) -> StringSet {
         match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
-                TropicalWeightTransducer::get_alphabet(unsafe {
-                    &*self.implementation.tropical_ofst
-                })
+                TropicalWeightTransducer::get_alphabet(self.implementation.as_tropical())
             }
             ImplementationType::LOG_OPENFST_TYPE => {
-                LogWeightTransducer::get_alphabet(unsafe { &*self.implementation.log_ofst })
+                LogWeightTransducer::get_alphabet(self.implementation.as_log())
             }
             ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongTypeException),
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                crate::hfst_ol_transducer::HfstOlTransducer::get_alphabet(unsafe {
-                    &*self.implementation.hfst_ol
-                })
+                crate::hfst_ol_transducer::HfstOlTransducer::get_alphabet(
+                    self.implementation.as_hfst_ol(),
+                )
             }
             _ => crate::HFST_THROW_MESSAGE!(FunctionNotImplementedException, "get_alphabet"),
         }
@@ -1691,9 +1650,7 @@ impl HfstTransducer {
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.print-alphabet-fn]
     pub fn print_alphabet(&self) {
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
-            TropicalWeightTransducer::print_alphabet(unsafe {
-                &*self.implementation.tropical_ofst
-            });
+            TropicalWeightTransducer::print_alphabet(self.implementation.as_tropical());
         }
     }
 }
@@ -1723,7 +1680,11 @@ impl HfstTransducer {
         match self.type_ {
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
                 Box::into_raw(Box::new(unsafe {
-                    (*self.implementation.hfst_ol).lookup_fd_pairs_str(s, limit, time_cutoff)
+                    (*self.implementation.as_hfst_ol_ptr()).lookup_fd_pairs_str(
+                        s,
+                        limit,
+                        time_cutoff,
+                    )
                 }))
             }
             _ => crate::HFST_THROW!(FunctionNotImplementedException),
@@ -1741,7 +1702,7 @@ impl HfstTransducer {
         match self.type_ {
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
                 Box::into_raw(Box::new(unsafe {
-                    (*self.implementation.hfst_ol).lookup_fd_strvec(s, limit, time_cutoff)
+                    (*self.implementation.as_hfst_ol_ptr()).lookup_fd_strvec(s, limit, time_cutoff)
                 }))
             }
             ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongTypeException),
@@ -1758,7 +1719,7 @@ impl HfstTransducer {
         match self.type_ {
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
                 Box::into_raw(Box::new(unsafe {
-                    (*self.implementation.hfst_ol).lookup_fd_str(s, limit, time_cutoff)
+                    (*self.implementation.as_hfst_ol_ptr()).lookup_fd_str(s, limit, time_cutoff)
                 }))
             }
             ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongTypeException),
@@ -1817,7 +1778,7 @@ impl HfstTransducer {
         match self.type_ {
             /* TODO: Convert into HFST_OL(W)_TYPE, if needed. */
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => unsafe {
-                (*self.implementation.hfst_ol).is_lookup_infinitely_ambiguous_strvec(s)
+                (*self.implementation.as_hfst_ol_ptr()).is_lookup_infinitely_ambiguous_strvec(s)
             },
             _ => {
                 let _ = s;
@@ -1830,7 +1791,7 @@ impl HfstTransducer {
         match self.type_ {
             /* TODO: Convert into HFST_OL(W)_TYPE, if needed. */
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => unsafe {
-                (*self.implementation.hfst_ol).is_lookup_infinitely_ambiguous_str(s)
+                (*self.implementation.as_hfst_ol_ptr()).is_lookup_infinitely_ambiguous_str(s)
             },
             _ => {
                 let _ = s;
@@ -1851,7 +1812,7 @@ impl HfstTransducer {
     pub fn is_infinitely_ambiguous(&self) -> bool {
         match self.type_ {
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => unsafe {
-                (*self.implementation.hfst_ol).is_infinitely_ambiguous()
+                (*self.implementation.as_hfst_ol_ptr()).is_infinitely_ambiguous()
             },
             ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongTypeException),
             _ => {
@@ -1914,18 +1875,18 @@ impl HfstTransducer {
         another_copy.determinize();
 
         match one_copy.type_ {
-            ImplementationType::TROPICAL_OPENFST_TYPE => unsafe {
+            ImplementationType::TROPICAL_OPENFST_TYPE => {
                 crate::tropical_weight_transducer::TropicalWeightTransducer::are_equivalent(
-                    &*one_copy.implementation.tropical_ofst,
-                    &*another_copy.implementation.tropical_ofst,
+                    one_copy.implementation.as_tropical(),
+                    another_copy.implementation.as_tropical(),
                 )
-            },
-            ImplementationType::LOG_OPENFST_TYPE => unsafe {
+            }
+            ImplementationType::LOG_OPENFST_TYPE => {
                 crate::log_weight_transducer::LogWeightTransducer::are_equivalent(
-                    &*one_copy.implementation.log_ofst,
-                    &*another_copy.implementation.log_ofst,
+                    one_copy.implementation.as_log(),
+                    another_copy.implementation.as_log(),
                 )
-            },
+            }
             ImplementationType::ERROR_TYPE => std::panic::panic_any(
                 crate::hfst_exception_defs::TransducerHasWrongTypeException::new(
                     "TransducerHasWrongTypeException".to_string(),
@@ -1951,16 +1912,16 @@ impl HfstTransducer {
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.is-automaton-fn]
     pub fn is_automaton(&self) -> bool {
         match self.type_ {
-            ImplementationType::TROPICAL_OPENFST_TYPE => unsafe {
+            ImplementationType::TROPICAL_OPENFST_TYPE => {
                 crate::tropical_weight_transducer::TropicalWeightTransducer::is_automaton(
-                    &*self.implementation.tropical_ofst,
+                    self.implementation.as_tropical(),
                 )
-            },
-            ImplementationType::LOG_OPENFST_TYPE => unsafe {
+            }
+            ImplementationType::LOG_OPENFST_TYPE => {
                 crate::log_weight_transducer::LogWeightTransducer::is_automaton(
-                    &*self.implementation.log_ofst,
+                    self.implementation.as_log(),
                 )
-            },
+            }
             ImplementationType::ERROR_TYPE => std::panic::panic_any(
                 crate::hfst_exception_defs::TransducerHasWrongTypeException::new(
                     "TransducerHasWrongTypeException".to_string(),
@@ -1982,21 +1943,21 @@ impl HfstTransducer {
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.is-cyclic-fn]
     pub fn is_cyclic(&self) -> bool {
         match self.type_ {
-            ImplementationType::TROPICAL_OPENFST_TYPE => unsafe {
+            ImplementationType::TROPICAL_OPENFST_TYPE => {
                 crate::tropical_weight_transducer::TropicalWeightTransducer::is_cyclic(
-                    &*self.implementation.tropical_ofst,
+                    self.implementation.as_tropical(),
                 )
-            },
-            ImplementationType::LOG_OPENFST_TYPE => unsafe {
+            }
+            ImplementationType::LOG_OPENFST_TYPE => {
                 crate::log_weight_transducer::LogWeightTransducer::is_cyclic(
-                    &*self.implementation.log_ofst,
+                    self.implementation.as_log(),
                 )
-            },
-            ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => unsafe {
+            }
+            ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
                 crate::hfst_ol_transducer::HfstOlTransducer::is_cyclic(
-                    &*self.implementation.hfst_ol,
+                    self.implementation.as_hfst_ol(),
                 )
-            },
+            }
             ImplementationType::ERROR_TYPE => std::panic::panic_any(
                 crate::hfst_exception_defs::TransducerHasWrongTypeException::new(
                     "TransducerHasWrongTypeException".to_string(),
@@ -2018,9 +1979,9 @@ impl HfstTransducer {
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.number-of-states-fn]
     pub fn number_of_states(&self) -> u32 {
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
-            return unsafe {
+            return {
                 crate::tropical_weight_transducer::TropicalWeightTransducer::number_of_states(
-                    &*self.implementation.tropical_ofst,
+                    self.implementation.as_tropical(),
                 )
             };
         }
@@ -2031,9 +1992,9 @@ impl HfstTransducer {
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.number-of-arcs-fn]
     pub fn number_of_arcs(&self) -> u32 {
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
-            return unsafe {
+            return {
                 crate::tropical_weight_transducer::TropicalWeightTransducer::number_of_arcs(
-                    &*self.implementation.tropical_ofst,
+                    self.implementation.as_tropical(),
                 )
             };
         }
@@ -2125,19 +2086,11 @@ impl HfstTransducer {
     pub fn remove_epsilons(&mut self) -> &mut HfstTransducer {
         self.is_trie = false;
         self.apply(
-            |t: *mut StdVectorFst| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::remove_epsilons(
-                        unsafe { &*t },
-                    ),
-                ))
+            |t: &StdVectorFst| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::remove_epsilons(t)
             },
-            |t: *mut crate::log_weight_transducer::LogFst| -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::remove_epsilons(unsafe {
-                        &*t
-                    }),
-                ))
+            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst {
+                crate::log_weight_transducer::LogWeightTransducer::remove_epsilons(t)
             },
             false,
         )
@@ -2146,32 +2099,21 @@ impl HfstTransducer {
     pub fn prune(&mut self) -> &mut HfstTransducer {
         // slow for xfsm type...
         self.convert(ImplementationType::TROPICAL_OPENFST_TYPE, "".to_string());
-        let temp = Box::into_raw(Box::new(
-            crate::tropical_weight_transducer::TropicalWeightTransducer::prune(unsafe {
-                &*self.implementation.tropical_ofst
-            }),
-        ));
-        crate::tropical_weight_transducer::TropicalWeightTransducer::delete_transducer(unsafe {
-            *Box::from_raw(self.implementation.tropical_ofst)
-        });
-        self.implementation.tropical_ofst = temp;
+        let temp = crate::tropical_weight_transducer::TropicalWeightTransducer::prune(
+            self.implementation.as_tropical(),
+        );
+        self.implementation = TransducerImplementation::Tropical(Box::new(temp));
         self
     }
 
     pub fn determinize(&mut self) -> &mut HfstTransducer {
         self.is_trie = false;
         self.apply(
-            |t: *mut StdVectorFst| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::determinize(
-                        unsafe { &*t },
-                    ),
-                ))
+            |t: &StdVectorFst| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::determinize(t)
             },
-            |t: *mut crate::log_weight_transducer::LogFst| -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::determinize(unsafe { &*t }),
-                ))
+            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst {
+                crate::log_weight_transducer::LogWeightTransducer::determinize(t)
             },
             false,
         )
@@ -2180,17 +2122,11 @@ impl HfstTransducer {
     pub fn minimize(&mut self) -> &mut HfstTransducer {
         self.is_trie = false;
         self.apply(
-            |t: *mut StdVectorFst| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::minimize(unsafe {
-                        &*t
-                    }),
-                ))
+            |t: &StdVectorFst| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::minimize(t)
             },
-            |t: *mut crate::log_weight_transducer::LogFst| -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::minimize(unsafe { &*t }),
-                ))
+            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst {
+                crate::log_weight_transducer::LogWeightTransducer::minimize(t)
             },
             false,
         )
@@ -2213,17 +2149,11 @@ impl HfstTransducer {
     pub fn repeat_star(&mut self) -> &mut HfstTransducer {
         self.is_trie = false;
         self.apply(
-            |t: *mut StdVectorFst| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::repeat_star(
-                        unsafe { &*t },
-                    ),
-                ))
+            |t: &StdVectorFst| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::repeat_star(t)
             },
-            |t: *mut crate::log_weight_transducer::LogFst| -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::repeat_star(unsafe { &*t }),
-                ))
+            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst {
+                crate::log_weight_transducer::LogWeightTransducer::repeat_star(t)
             },
             false,
         )
@@ -2232,17 +2162,11 @@ impl HfstTransducer {
     pub fn repeat_plus(&mut self) -> &mut HfstTransducer {
         self.is_trie = false;
         self.apply(
-            |t: *mut StdVectorFst| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::repeat_plus(
-                        unsafe { &*t },
-                    ),
-                ))
+            |t: &StdVectorFst| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::repeat_plus(t)
             },
-            |t: *mut crate::log_weight_transducer::LogFst| -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::repeat_plus(unsafe { &*t }),
-                ))
+            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst {
+                crate::log_weight_transducer::LogWeightTransducer::repeat_plus(t)
             },
             false,
         )
@@ -2251,20 +2175,13 @@ impl HfstTransducer {
     pub fn repeat_n(&mut self, n: u32) -> &mut HfstTransducer {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply_n(
-            |t: *mut StdVectorFst, n: u32| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::repeat_n(
-                        unsafe { &*t },
-                        n,
-                    ),
-                ))
+            |t: &StdVectorFst, n: u32| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::repeat_n(t, n)
             },
-            |t: *mut crate::log_weight_transducer::LogFst,
+            |t: &crate::log_weight_transducer::LogFst,
              n: u32|
-             -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::repeat_n(unsafe { &*t }, n),
-                ))
+             -> crate::log_weight_transducer::LogFst {
+                crate::log_weight_transducer::LogWeightTransducer::repeat_n(t, n)
             },
             n,
         )
@@ -2280,23 +2197,13 @@ impl HfstTransducer {
     pub fn repeat_n_minus(&mut self, n: u32) -> &mut HfstTransducer {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply_n(
-            |t: *mut StdVectorFst, n: u32| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::repeat_le_n(
-                        unsafe { &*t },
-                        n,
-                    ),
-                ))
+            |t: &StdVectorFst, n: u32| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::repeat_le_n(t, n)
             },
-            |t: *mut crate::log_weight_transducer::LogFst,
+            |t: &crate::log_weight_transducer::LogFst,
              n: u32|
-             -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::repeat_le_n(
-                        unsafe { &*t },
-                        n,
-                    ),
-                ))
+             -> crate::log_weight_transducer::LogFst {
+                crate::log_weight_transducer::LogWeightTransducer::repeat_le_n(t, n)
             },
             n,
         )
@@ -2318,17 +2225,11 @@ impl HfstTransducer {
     pub fn optionalize(&mut self) -> &mut HfstTransducer {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply(
-            |t: *mut StdVectorFst| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::optionalize(
-                        unsafe { &*t },
-                    ),
-                ))
+            |t: &StdVectorFst| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::optionalize(t)
             },
-            |t: *mut crate::log_weight_transducer::LogFst| -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::optionalize(unsafe { &*t }),
-                ))
+            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst {
+                crate::log_weight_transducer::LogWeightTransducer::optionalize(t)
             },
             false,
         )
@@ -2337,17 +2238,11 @@ impl HfstTransducer {
     pub fn invert(&mut self) -> &mut HfstTransducer {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply(
-            |t: *mut StdVectorFst| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::invert(unsafe {
-                        &*t
-                    }),
-                ))
+            |t: &StdVectorFst| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::invert(t)
             },
-            |t: *mut crate::log_weight_transducer::LogFst| -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::invert(unsafe { &*t }),
-                ))
+            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst {
+                crate::log_weight_transducer::LogWeightTransducer::invert(t)
             },
             false,
         )
@@ -2356,17 +2251,11 @@ impl HfstTransducer {
     pub fn reverse(&mut self) -> &mut HfstTransducer {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply(
-            |t: *mut StdVectorFst| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::reverse(unsafe {
-                        &*t
-                    }),
-                ))
+            |t: &StdVectorFst| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::reverse(t)
             },
-            |t: *mut crate::log_weight_transducer::LogFst| -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::reverse(unsafe { &*t }),
-                ))
+            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst {
+                crate::log_weight_transducer::LogWeightTransducer::reverse(t)
             },
             false,
         )
@@ -2375,19 +2264,13 @@ impl HfstTransducer {
     pub fn input_project(&mut self) -> &mut HfstTransducer {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply(
-            |t: *mut StdVectorFst| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::extract_input_language(
-                        unsafe { &*t },
-                    ),
-                ))
+            |t: &StdVectorFst| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::extract_input_language(
+                    t,
+                )
             },
-            |t: *mut crate::log_weight_transducer::LogFst| -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::extract_input_language(
-                        unsafe { &*t },
-                    ),
-                ))
+            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst {
+                crate::log_weight_transducer::LogWeightTransducer::extract_input_language(t)
             },
             false,
         )
@@ -2396,20 +2279,12 @@ impl HfstTransducer {
     pub fn output_project(&mut self) -> &mut HfstTransducer {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply(
-            |t: *mut StdVectorFst| -> *mut StdVectorFst {
-                Box::into_raw(Box::new(
-                    crate::tropical_weight_transducer::TropicalWeightTransducer::extract_output_language(
-                        unsafe { &*t },
-                    ),
-                ))
-            },
-            |t: *mut crate::log_weight_transducer::LogFst| -> *mut crate::log_weight_transducer::LogFst {
-                Box::into_raw(Box::new(
-                    crate::log_weight_transducer::LogWeightTransducer::extract_output_language(
-                        unsafe { &*t },
-                    ),
-                ))
-            },
+            |t: &StdVectorFst| -> StdVectorFst { crate::tropical_weight_transducer::TropicalWeightTransducer::extract_output_language(
+                        t,
+                    ) },
+            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst { crate::log_weight_transducer::LogWeightTransducer::extract_output_language(
+                        t,
+                    ) },
             false,
         )
     }
@@ -2822,7 +2697,7 @@ impl HfstTransducer {
         match self.type_ {
             ImplementationType::LOG_OPENFST_TYPE => {
                 LogWeightTransducer::extract_paths(
-                    unsafe { &*self.implementation.log_ofst },
+                    self.implementation.as_log(),
                     callback,
                     cycles,
                     std::ptr::null_mut(),
@@ -2831,7 +2706,7 @@ impl HfstTransducer {
             }
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 TropicalWeightTransducer::extract_paths(
-                    unsafe { &*self.implementation.tropical_ofst },
+                    self.implementation.as_tropical(),
                     callback,
                     cycles,
                     std::ptr::null_mut(),
@@ -2841,7 +2716,7 @@ impl HfstTransducer {
             /* Add here your implementation. */
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
                 crate::hfst_ol_transducer::HfstOlTransducer::extract_paths(
-                    unsafe { &*self.implementation.hfst_ol },
+                    self.implementation.as_hfst_ol(),
                     callback,
                     cycles,
                     std::ptr::null(),
@@ -2867,12 +2742,11 @@ impl HfstTransducer {
     ) {
         match self.type_ {
             ImplementationType::LOG_OPENFST_TYPE => {
-                let t_log_ofst: *mut FdTable<i64> =
-                    Box::into_raw(Box::new(LogWeightTransducer::get_flag_diacritics(unsafe {
-                        &*self.implementation.log_ofst
-                    })));
+                let t_log_ofst: *mut FdTable<i64> = Box::into_raw(Box::new(
+                    LogWeightTransducer::get_flag_diacritics(self.implementation.as_log()),
+                ));
                 LogWeightTransducer::extract_paths(
-                    unsafe { &*self.implementation.log_ofst },
+                    self.implementation.as_log(),
                     callback,
                     cycles,
                     t_log_ofst,
@@ -2883,10 +2757,10 @@ impl HfstTransducer {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 let t_tropical_ofst: *mut FdTable<i64> =
                     Box::into_raw(Box::new(TropicalWeightTransducer::get_flag_diacritics(
-                        unsafe { &*self.implementation.tropical_ofst },
+                        self.implementation.as_tropical(),
                     )));
                 TropicalWeightTransducer::extract_paths(
-                    unsafe { &*self.implementation.tropical_ofst },
+                    self.implementation.as_tropical(),
                     callback,
                     cycles,
                     t_tropical_ofst,
@@ -2896,12 +2770,11 @@ impl HfstTransducer {
             }
             /* Add here your implementation. */
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                let t_hfst_ol =
-                    crate::hfst_ol_transducer::HfstOlTransducer::get_flag_diacritics(unsafe {
-                        &*self.implementation.hfst_ol
-                    });
+                let t_hfst_ol = crate::hfst_ol_transducer::HfstOlTransducer::get_flag_diacritics(
+                    self.implementation.as_hfst_ol(),
+                );
                 crate::hfst_ol_transducer::HfstOlTransducer::extract_paths(
-                    unsafe { &*self.implementation.hfst_ol },
+                    self.implementation.as_hfst_ol(),
                     callback,
                     cycles,
                     t_hfst_ol as *const _,
@@ -3034,14 +2907,14 @@ impl HfstTransducer {
         match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 TropicalWeightTransducer::extract_random_paths(
-                    unsafe { &*self.implementation.tropical_ofst },
+                    self.implementation.as_tropical(),
                     results,
                     max_num,
                 );
             }
             ImplementationType::LOG_OPENFST_TYPE => {
                 LogWeightTransducer::extract_random_paths(
-                    unsafe { &*self.implementation.log_ofst },
+                    self.implementation.as_log(),
                     results,
                     max_num,
                 );
@@ -3050,7 +2923,7 @@ impl HfstTransducer {
                 let mut copy = HfstTransducer::new_from_transducer(self);
                 copy.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
                 TropicalWeightTransducer::extract_random_paths(
-                    unsafe { &*copy.implementation.tropical_ofst },
+                    copy.implementation.as_tropical(),
                     results,
                     max_num,
                 );
@@ -3059,7 +2932,7 @@ impl HfstTransducer {
                 let mut copy = HfstTransducer::new_from_transducer(self);
                 copy.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
                 TropicalWeightTransducer::extract_random_paths(
-                    unsafe { &*copy.implementation.tropical_ofst },
+                    copy.implementation.as_tropical(),
                     results,
                     max_num,
                 );
@@ -3085,7 +2958,7 @@ impl HfstTransducer {
         let mut copy = HfstTransducer::new_from_transducer(self);
         copy.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
         TropicalWeightTransducer::extract_random_paths_fd(
-            unsafe { &*copy.implementation.tropical_ofst },
+            copy.implementation.as_tropical(),
             results,
             max_num,
             filter_fd,
@@ -3116,19 +2989,16 @@ impl HfstTransducer {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 let temp: *mut StdVectorFst =
                     Box::into_raw(Box::new(TropicalWeightTransducer::n_best(
-                        unsafe { &*self.implementation.tropical_ofst },
+                        self.implementation.as_tropical(),
                         n as i32 as u32,
                     )));
-                drop(unsafe { Box::from_raw(self.implementation.tropical_ofst) });
-                self.implementation.tropical_ofst = temp;
+                self.implementation =
+                    TransducerImplementation::Tropical(unsafe { Box::from_raw(temp) });
             }
             ImplementationType::LOG_OPENFST_TYPE => {
-                let temp: *mut LogFst = Box::into_raw(Box::new(LogWeightTransducer::n_best(
-                    unsafe { &*self.implementation.log_ofst },
-                    n as i32 as u32,
-                )));
-                drop(unsafe { Box::from_raw(self.implementation.log_ofst) });
-                self.implementation.log_ofst = temp;
+                let temp =
+                    LogWeightTransducer::n_best(self.implementation.as_log(), n as i32 as u32);
+                self.implementation = TransducerImplementation::Log(Box::new(temp));
             }
             ImplementationType::ERROR_TYPE => {
                 crate::HFST_THROW!(TransducerHasWrongTypeException);
@@ -3458,17 +3328,13 @@ impl HfstTransducer {
             ImplementationType::TROPICAL_OPENFST_TYPE => unsafe {
                 let net: *mut HfstBasicTransducer = Box::into_raw(Box::new(
                     ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
-                        &*self.implementation.tropical_ofst,
+                        self.implementation.as_tropical(),
                         true,
                     ),
                 ));
-                TropicalWeightTransducer::delete_transducer(*Box::from_raw(
-                    self.implementation.tropical_ofst,
-                ));
-
                 let substituting_net: *mut HfstBasicTransducer = Box::into_raw(Box::new(
                     ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
-                        &*(*tr_harmonized).implementation.tropical_ofst,
+                        (*tr_harmonized).implementation.as_tropical(),
                         true,
                     ),
                 ));
@@ -3476,7 +3342,7 @@ impl HfstTransducer {
 
                 (*net).insert_freely_graph(&*substituting_net);
                 drop(Box::from_raw(substituting_net));
-                self.implementation.tropical_ofst = Box::into_raw(Box::new(
+                self.implementation = TransducerImplementation::Tropical(Box::new(
                     ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(&*net),
                 ));
                 drop(Box::from_raw(net));
@@ -3485,17 +3351,13 @@ impl HfstTransducer {
             ImplementationType::LOG_OPENFST_TYPE => unsafe {
                 let net: *mut HfstBasicTransducer = Box::into_raw(Box::new(
                     ConversionFunctions::log_ofst_to_hfst_basic_transducer(
-                        &*self.implementation.log_ofst,
+                        self.implementation.as_log(),
                         true,
                     ),
                 ));
-                LogWeightTransducer::delete_transducer(*Box::from_raw(
-                    self.implementation.log_ofst,
-                ));
-
                 let substituting_net: *mut HfstBasicTransducer = Box::into_raw(Box::new(
                     ConversionFunctions::log_ofst_to_hfst_basic_transducer(
-                        &*(*tr_harmonized).implementation.log_ofst,
+                        (*tr_harmonized).implementation.as_log(),
                         true,
                     ),
                 ));
@@ -3503,7 +3365,7 @@ impl HfstTransducer {
 
                 (*net).insert_freely_graph(&*substituting_net);
                 drop(Box::from_raw(substituting_net));
-                self.implementation.log_ofst = Box::into_raw(Box::new(
+                self.implementation = TransducerImplementation::Log(Box::new(
                     ConversionFunctions::hfst_basic_transducer_to_log_ofst(&*net),
                 ));
                 drop(Box::from_raw(net));
@@ -3564,32 +3426,27 @@ impl HfstTransducer {
                 && input_side
                 && output_side)
         {
-            unsafe {
+            {
                 let tmp: *mut StdVectorFst =
                     Box::into_raw(Box::new(TropicalWeightTransducer::substitute_symbol(
-                        &*self.implementation.tropical_ofst,
+                        self.implementation.as_tropical(),
                         old_symbol.to_string(),
                         new_symbol.to_string(),
                     )));
-                TropicalWeightTransducer::delete_transducer(*Box::from_raw(
-                    self.implementation.tropical_ofst,
-                ));
-                self.implementation.tropical_ofst = tmp;
+                self.implementation =
+                    TransducerImplementation::Tropical(unsafe { Box::from_raw(tmp) });
             }
             return self;
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE && input_side && output_side {
-            unsafe {
+            {
                 let tmp: *mut LogFst =
                     Box::into_raw(Box::new(LogWeightTransducer::substitute_symbol(
-                        &*self.implementation.log_ofst,
+                        self.implementation.as_log(),
                         old_symbol.to_string(),
                         new_symbol.to_string(),
                     )));
-                LogWeightTransducer::delete_transducer(*Box::from_raw(
-                    self.implementation.log_ofst,
-                ));
-                self.implementation.log_ofst = tmp;
+                self.implementation = TransducerImplementation::Log(unsafe { Box::from_raw(tmp) });
             }
             return self;
         }
@@ -3789,30 +3646,24 @@ impl HfstTransducer {
 
         // (FOMA branch is #if'd out: HAVE_FOMA is not defined.)
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
-            unsafe {
+            {
                 let result = TropicalWeightTransducer::substitute_string_transducer(
-                    &*self.implementation.tropical_ofst,
+                    self.implementation.as_tropical(),
                     symbol_pair.clone(),
-                    &*transducer.implementation.tropical_ofst,
+                    transducer.implementation.as_tropical(),
                 );
-                TropicalWeightTransducer::delete_transducer(*Box::from_raw(
-                    self.implementation.tropical_ofst,
-                ));
-                self.implementation.tropical_ofst = Box::into_raw(Box::new(result));
+                self.implementation = TransducerImplementation::Tropical(Box::new(result));
             }
             return self;
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE {
-            unsafe {
+            {
                 let result = LogWeightTransducer::substitute_string_transducer(
-                    &*self.implementation.log_ofst,
+                    self.implementation.as_log(),
                     symbol_pair.clone(),
-                    &*transducer.implementation.log_ofst,
+                    transducer.implementation.as_log(),
                 );
-                LogWeightTransducer::delete_transducer(*Box::from_raw(
-                    self.implementation.log_ofst,
-                ));
-                self.implementation.log_ofst = Box::into_raw(Box::new(result));
+                self.implementation = TransducerImplementation::Log(Box::new(result));
             }
             return self;
         }
@@ -3831,20 +3682,21 @@ impl HfstTransducer {
 
     pub fn set_final_weights(&mut self, weight: f32, increment: bool) -> &mut HfstTransducer {
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
-            unsafe {
-                self.implementation.tropical_ofst =
-                    Box::into_raw(Box::new(TropicalWeightTransducer::set_final_weights(
-                        &*self.implementation.tropical_ofst,
+            {
+                self.implementation = TransducerImplementation::Tropical(Box::new(
+                    TropicalWeightTransducer::set_final_weights(
+                        self.implementation.as_tropical(),
                         weight,
                         increment,
-                    )));
+                    ),
+                ));
             }
             return self;
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE {
-            unsafe {
-                self.implementation.log_ofst = Box::into_raw(Box::new(
-                    LogWeightTransducer::set_final_weights(&*self.implementation.log_ofst, weight),
+            {
+                self.implementation = TransducerImplementation::Log(Box::new(
+                    LogWeightTransducer::set_final_weights(self.implementation.as_log(), weight),
                 ));
             }
             return self;
@@ -4094,26 +3946,18 @@ impl HfstTransducer {
         let to_initial_state = push_type == PushType::TO_INITIAL_STATE;
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
             let tmp = TropicalWeightTransducer::push_labels(
-                unsafe { &*self.implementation.tropical_ofst },
+                self.implementation.as_tropical(),
                 to_initial_state,
             );
             let tmp = Box::into_raw(Box::new(tmp));
-            unsafe {
-                drop(Box::from_raw(self.implementation.tropical_ofst));
-            }
-            self.implementation.tropical_ofst = tmp;
+            self.implementation = TransducerImplementation::Tropical(unsafe { Box::from_raw(tmp) });
             return self;
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE {
-            let tmp = LogWeightTransducer::push_labels(
-                unsafe { &*self.implementation.log_ofst },
-                to_initial_state,
-            );
+            let tmp =
+                LogWeightTransducer::push_labels(self.implementation.as_log(), to_initial_state);
             let tmp = Box::into_raw(Box::new(tmp));
-            unsafe {
-                drop(Box::from_raw(self.implementation.log_ofst));
-            }
-            self.implementation.log_ofst = tmp;
+            self.implementation = TransducerImplementation::Log(unsafe { Box::from_raw(tmp) });
             return self;
         }
         let _ = push_type;
@@ -4124,26 +3968,18 @@ impl HfstTransducer {
         let to_initial_state = push_type == PushType::TO_INITIAL_STATE;
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
             let tmp = TropicalWeightTransducer::push_weights(
-                unsafe { &*self.implementation.tropical_ofst },
+                self.implementation.as_tropical(),
                 to_initial_state,
             );
             let tmp = Box::into_raw(Box::new(tmp));
-            unsafe {
-                drop(Box::from_raw(self.implementation.tropical_ofst));
-            }
-            self.implementation.tropical_ofst = tmp;
+            self.implementation = TransducerImplementation::Tropical(unsafe { Box::from_raw(tmp) });
             return self;
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE {
-            let tmp = LogWeightTransducer::push_weights(
-                unsafe { &*self.implementation.log_ofst },
-                to_initial_state,
-            );
+            let tmp =
+                LogWeightTransducer::push_weights(self.implementation.as_log(), to_initial_state);
             let tmp = Box::into_raw(Box::new(tmp));
-            unsafe {
-                drop(Box::from_raw(self.implementation.log_ofst));
-            }
-            self.implementation.log_ofst = tmp;
+            self.implementation = TransducerImplementation::Log(unsafe { Box::from_raw(tmp) });
             return self;
         }
         let _ = push_type;
@@ -4153,19 +3989,18 @@ impl HfstTransducer {
     pub fn transform_weights(&mut self, func: fn(f32) -> f32) -> &mut HfstTransducer {
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
             // NOTE: as in the C++ facade, the old transducer is NOT deleted here.
-            self.implementation.tropical_ofst =
-                Box::into_raw(Box::new(TropicalWeightTransducer::transform_weights(
-                    unsafe { &*self.implementation.tropical_ofst },
+            self.implementation = TransducerImplementation::Tropical(Box::new(
+                TropicalWeightTransducer::transform_weights(
+                    self.implementation.as_tropical(),
                     func,
-                )));
+                ),
+            ));
             return self;
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE {
-            self.implementation.log_ofst =
-                Box::into_raw(Box::new(LogWeightTransducer::transform_weights(
-                    unsafe { &*self.implementation.log_ofst },
-                    func,
-                )));
+            self.implementation = TransducerImplementation::Log(Box::new(
+                LogWeightTransducer::transform_weights(self.implementation.as_log(), func),
+            ));
             return self;
         }
         let _ = func;
@@ -4176,9 +4011,7 @@ impl HfstTransducer {
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.has-weights-fn]
     pub fn has_weights(&self) -> bool {
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
-            return TropicalWeightTransducer::has_weights(unsafe {
-                &*self.implementation.tropical_ofst
-            });
+            return TropicalWeightTransducer::has_weights(self.implementation.as_tropical());
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE {
             crate::HFST_THROW!(FunctionNotImplementedException);
@@ -4340,26 +4173,23 @@ impl HfstTransducer {
 
         match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
-                let tropical_ofst_temp = TropicalWeightTransducer::compose(
-                    unsafe { &*self.implementation.tropical_ofst },
-                    unsafe { &*(*another_copy).implementation.tropical_ofst },
-                );
+                let tropical_ofst_temp =
+                    TropicalWeightTransducer::compose(self.implementation.as_tropical(), unsafe {
+                        (*another_copy).implementation.as_tropical()
+                    });
                 let tropical_ofst_temp = Box::into_raw(Box::new(tropical_ofst_temp));
-                unsafe {
-                    drop(Box::from_raw(self.implementation.tropical_ofst));
-                }
-                self.implementation.tropical_ofst = tropical_ofst_temp;
+                self.implementation = TransducerImplementation::Tropical(unsafe {
+                    Box::from_raw(tropical_ofst_temp)
+                });
             }
             ImplementationType::LOG_OPENFST_TYPE => {
-                let log_ofst_temp = LogWeightTransducer::compose(
-                    unsafe { &*self.implementation.log_ofst },
-                    unsafe { &*(*another_copy).implementation.log_ofst },
-                );
+                let log_ofst_temp =
+                    LogWeightTransducer::compose(self.implementation.as_log(), unsafe {
+                        (*another_copy).implementation.as_log()
+                    });
                 let log_ofst_temp = Box::into_raw(Box::new(log_ofst_temp));
-                unsafe {
-                    drop(Box::from_raw(self.implementation.log_ofst));
-                }
-                self.implementation.log_ofst = log_ofst_temp;
+                self.implementation =
+                    TransducerImplementation::Log(unsafe { Box::from_raw(log_ofst_temp) });
             }
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
                 // This is the exception the tool wants to hear
@@ -4998,12 +4828,8 @@ impl HfstTransducer {
     ) -> &mut HfstTransducer {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply_binary(
-            |t1, t2| unsafe {
-                Box::into_raw(Box::new(TropicalWeightTransducer::concatenate(&*t1, &*t2)))
-            },
-            |t1, t2| unsafe {
-                Box::into_raw(Box::new(LogWeightTransducer::concatenate(&*t1, &*t2)))
-            },
+            |t1, t2| TropicalWeightTransducer::concatenate(t1, t2),
+            |t1, t2| LogWeightTransducer::concatenate(t1, t2),
             another,
             harmonize,
         )
@@ -5012,10 +4838,7 @@ impl HfstTransducer {
     pub fn disjunct_spv(&mut self, spv: &StringPairVector) -> &mut HfstTransducer {
         match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
-                TropicalWeightTransducer::disjunct_spv(
-                    unsafe { &mut *self.implementation.tropical_ofst },
-                    spv,
-                );
+                TropicalWeightTransducer::disjunct_spv(self.implementation.as_tropical_mut(), spv);
             }
             ImplementationType::LOG_OPENFST_TYPE => {
                 crate::HFST_THROW!(FunctionNotImplementedException);
@@ -5067,10 +4890,8 @@ impl HfstTransducer {
     pub fn disjunct(&mut self, another: &HfstTransducer, harmonize: bool) -> &mut HfstTransducer {
         self.is_trie = false;
         self.apply_binary(
-            |t1, t2| unsafe {
-                Box::into_raw(Box::new(TropicalWeightTransducer::disjunct(&*t1, &*t2)))
-            },
-            |t1, t2| unsafe { Box::into_raw(Box::new(LogWeightTransducer::disjunct(&*t1, &*t2))) },
+            |t1, t2| TropicalWeightTransducer::disjunct(t1, t2),
+            |t1, t2| LogWeightTransducer::disjunct(t1, t2),
             another,
             harmonize,
         )
@@ -5079,10 +4900,8 @@ impl HfstTransducer {
     pub fn intersect(&mut self, another: &HfstTransducer, harmonize: bool) -> &mut HfstTransducer {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply_binary(
-            |t1, t2| unsafe {
-                Box::into_raw(Box::new(TropicalWeightTransducer::intersect(&*t1, &*t2)))
-            },
-            |t1, t2| unsafe { Box::into_raw(Box::new(LogWeightTransducer::intersect(&*t1, &*t2))) },
+            |t1, t2| TropicalWeightTransducer::intersect(t1, t2),
+            |t1, t2| LogWeightTransducer::intersect(t1, t2),
             another,
             harmonize,
         )
@@ -5091,10 +4910,8 @@ impl HfstTransducer {
     pub fn subtract(&mut self, another: &HfstTransducer, harmonize: bool) -> &mut HfstTransducer {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply_binary(
-            |t1, t2| unsafe {
-                Box::into_raw(Box::new(TropicalWeightTransducer::subtract(&*t1, &*t2)))
-            },
-            |t1, t2| unsafe { Box::into_raw(Box::new(LogWeightTransducer::subtract(&*t1, &*t2))) },
+            |t1, t2| TropicalWeightTransducer::subtract(t1, t2),
+            |t1, t2| LogWeightTransducer::subtract(t1, t2),
             another,
             harmonize,
         )
@@ -5793,8 +5610,8 @@ impl HfstTransducer {
     }
     pub fn apply_binary(
         &mut self,
-        tropical_ofst_funct: fn(*mut StdVectorFst, *mut StdVectorFst) -> *mut StdVectorFst,
-        log_ofst_funct: fn(*mut LogFst, *mut LogFst) -> *mut LogFst,
+        tropical_ofst_funct: fn(&StdVectorFst, &StdVectorFst) -> StdVectorFst,
+        log_ofst_funct: fn(&LogFst, &LogFst) -> LogFst,
         another_tr: &HfstTransducer,
         harmonize: bool,
     ) -> &mut HfstTransducer {

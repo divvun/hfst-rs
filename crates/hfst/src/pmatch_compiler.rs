@@ -3345,7 +3345,7 @@ impl PmatchObject for PmatchBinaryOperation {
                 PmatchBinaryOp::Shuffle => {
                     let __prev_hook = std::panic::take_hook();
                     std::panic::set_hook(Box::new(|_| {}));
-                    let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                    let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         (*lhs).shuffle(&*rhs, true);
                     }));
                     std::panic::set_hook(__prev_hook);
@@ -3396,7 +3396,7 @@ impl PmatchObject for PmatchBinaryOperation {
                     let fmt = format;
                     let __prev_hook = std::panic::take_hook();
                     std::panic::set_hook(Box::new(|_| {}));
-                    let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                    let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         // hfst::xre::merge_first_to_second(lhs, rhs)
                         let args = crate::xre::XreConstructorArguments::new(
                             BTreeMap::new(),

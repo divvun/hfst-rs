@@ -33,8 +33,7 @@
 use std::collections::BTreeSet;
 
 use crate::hfst_extract_strings::ExtractStringsCb;
-use crate::hfst_flag_diacritics::FdTable;
-use crate::transducer::{IStream, SymbolNumber, Transducer};
+use crate::transducer::IStream;
 
 /// 'typedef std::set<std::string> StringSet' (used by 'get_alphabet').
 pub type StringSet = BTreeSet<String>;

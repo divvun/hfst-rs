@@ -247,6 +247,14 @@ children (
                 title "TransducerImplementation union → enum; fold discriminant into get_type(); rewrite the 207 dispatch sites + Drop/assign/convert/apply; hfst_transducer.rs + weight-transducer raw pointers → Box/owned"
                 priority 4
                 deps (literal-port)
+                log (
+                    {
+                        at 2026-06-28T12:16:23.674271Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+                )
             }
 
             {

@@ -595,7 +595,7 @@ impl XfstCompiler {
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.open-hfst-input-stream-fn]
     // @brief Open HfstInputStream to file \a filename.
     // Print an error message and return NULL, if not succesful.
-    fn open_hfst_input_stream(&mut self, filename: &str) -> *mut HfstInputStream {
+    fn open_hfst_input_stream(&mut self, filename: &str) -> *mut HfstInputStream<'_> {
         // assert(infilename != NULL): filename is always a valid &str here.
         if !self.check_filename(filename) {
             return std::ptr::null_mut();
