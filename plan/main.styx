@@ -421,6 +421,14 @@ children (
                 title "hfst-cli (988 libc sites): extern __std*p statics → std::io::std{in,out,err}(); FILE*/char I/O → std::io; subsumes the CLI extern-FILE* static mut deferred from Stage 1; residual plain static mut → safe"
                 priority 5
                 deps (idiom2.io idiom2.cstr)
+                log (
+                    {
+                        at 2026-06-28T20:08:41.23164Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Subsumed by the librarify wave ([dec:hfst:librarify-cli]). The 59-tool audit showed the CLI FILE*->std::io conversion is entangled with a logic-lift (optimized-lookup duplicates the OL runtime; 9 tools share a binary-fold loop). The CLI std::fs I/O foundation now lives in librarify.io-foundation and the per-tool de-C-ism rides along with the Tier-2/Tier-3 lifts. This node should be retired or redefined to only the residual non-lifted bins once librarify lands."
+                    }
+                )
             }
 
             {
@@ -436,6 +444,82 @@ children (
                 author "brendan@necessary.nu"
                 kind @note
                 text "INCOMING from idiom1.core (Stage-1 residual folded here): convert these remaining hfst-lib raw pointers alongside the C-ism/drop-libc work, since they couple to the FFI/C layer: (1) the lookup-result API -- ~10 fns (lookup_string_vector/lookup_string/lookup_pairs/lookup_fd_*/lookdown_*) returning *mut Hfst{One,Two}LevelPaths via Box::into_raw, 17+ callers incl. hfst-c FFI (lib.rs:134 returns the ptr across the C ABI) + hfst-lookup/flookup + xfst_compiler(2) + generate_model_forms(2); test-covered by test_transducer_functions. (2) read_lexc_ptr + convert_static facade *mut-returning public APIs. (3) the OL const-cast island as_hfst_ol_ptr / hfst_transducer_to_hfst_ol (-> *mut Transducer borrow). (4) The hfst_input_stream IDIOM-STAGE-2 lifetime island (&'a mut reader outliving &mut self). Per [dec:hfst:idiomatize-staging] and the idiom1.core completion decision."
+            }
+        )
+    }
+
+    {
+        id librarify
+        title "Wave 4.5 — lift bespoke transducer logic out of the CLI tools into the hfst library so all 59 tools become thin (parse opts → open std::fs I/O → call lib → format); single hfst crate (crate split deferred to types/Stage 3)"
+        priority 5
+        children (
+            {
+                id librarify.ol-reuse
+                title "[Tier1] Gut hfst-optimized-lookup: delete its ~1800-line reimplementation of the OL runtime (header/alphabet/Encoder/transition tables/recursive get_analyses/flag push_state) and call crate::transducer (lookup_fd_str → HfstOneLevelPaths); removes the tool's only unsafe block"
+                priority 5
+            }
+
+            {
+                id librarify.symbols-used
+                title "[Tier1] Replace the inline \"scan all arcs, collect input+output symbols\" loop with HfstBasicTransducer::symbols_used() across 7 tools (pair-test, dump-alphabets, check-alpha, summarize, lookup, flookup, compose-intersect); add an alphabet-coverage prefilter for lookup/flookup gating"
+                priority 5
+            }
+
+            {
+                id librarify.renumber-states
+                title "[Tier1] Add HfstBasicTransducer::renumber_states()/rebuild() (state-renumbered copy) and call it from hfst-preprocess-for-optimized-lookup-format, hfst-kill-paths, hfst-reweight (replaces the hand-rolled BTreeMap rebuild ×3-4)"
+                priority 5
+            }
+
+            {
+                id librarify.label-parse
+                title "[Tier1] Add hfst_symbol_defs::label_to_stringpair (escaped-colon label parser, honoring \\: and @0@→epsilon) and call it from hfst-substitute and hfst-insert-freely (verbatim ×2)"
+                priority 5
+            }
+
+            {
+                id librarify.algo-lifts
+                title "[Tier1] Single-purpose transducer-algebra lifts: HfstTransducer::kill_paths(sym) (kill-paths), realign() (realign), substitute_by_composition() (substitute), compose_intersect_fast()+alphabet diagnostics (compose-intersect), pair-path recognizer with identity fallback (pair-test), ImplementationType::is_weighted() expose (fst2txt)"
+                priority 5
+            }
+
+            {
+                id librarify.stats-weight-lifts
+                title "[Tier1] HfstBasicTransducer::summarize()/properties() single-pass stats struct (counts/determinism/cyclicity/ambiguity) for hfst-summarize; conditional HfstTransducer::transform_weights(predicate)+Reweighter for hfst-reweight (unconditional already in tropical/log)"
+                priority 5
+            }
+
+            {
+                id librarify.guess-lifts
+                title "[Tier1] guessify_fst::affix_guessify(dir,weight,fmt)+GuessDirection (affix-guessify); generate_model_forms::compile_generator_from_guesser/is_guesser (guess); expand_equivalences()+read_tsv_extensions() new module (expand-equivalences); hfst_input_stream::strip_hfst3_headers(Read,Write) (strip-header)"
+                priority 5
+            }
+
+            {
+                id librarify.io-foundation
+                title "[Tier2] CLI std::fs I/O foundation: replace static mut OUTFILE/INPUTFILE/FIRSTFILE/SECONDFILE/MESSAGE_OUT: *mut FILE (+ hfst_fopen, extern __std*p) with std::fs::File / std stdin/stdout/stderr; tools thread &mut dyn Write/BufRead into the lib; subsumes idiom2.cli's FILE* I/O"
+                priority 5
+            }
+
+            {
+                id librarify.binary-fold
+                title "[Tier2] Shared hfst-cli binary_fold_streams(op) driver (n-ary stream loop + conversion_type resolve + harmonize-flags gate) collapsing the verbatim scaffolding of subtract, concatenate, disjunct, conjunct, compose, compose-intersect, priority-disjunct, shuffle, compare (×9)"
+                priority 5
+                deps (librarify.io-foundation)
+            }
+
+            {
+                id librarify.lookup-family
+                title "[Tier3] Lift lookup/flookup verbatim-shared logic into crates/hfst/src/hfst_lookup_format.rs: format_one_level_path (%-engine + %b/%a split), parse_lookup_line (spaced/text/Apertium), apply_cascade (union/priority/compose), + reusable hfst_extract_strings renderer (fst2strings); thin both lookup tools jointly with their stdin/stdout I/O"
+                priority 5
+                deps (librarify.io-foundation)
+            }
+
+            {
+                id librarify.pmatch-family
+                title "[Tier3] Finish crates/hfst/src/pmatch_tokenize.rs format handlers (make_naive_tokenizer, process_input/0delim/VISL, TokenizeSettings) for tokenize; pmatch_compiler write_archive + shared harmonizer for pmatch2fst; pmatch-locate formatter for pmatch; jointly with their I/O"
+                priority 5
+                deps (librarify.io-foundation)
             }
         )
     }
