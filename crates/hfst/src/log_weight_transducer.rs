@@ -424,14 +424,23 @@ mod construction_io {
             if self.is_eof() {
                 crate::HFST_THROW!(StreamIsClosedException);
             }
-            // DEFERRED: OpenFST streaming read ('FstHeader::Read' + 'LogFst::Read'
-            // from an istream) has no rustfst equivalent — rustfst exposes only
-            // 'SerializableFst::load(&[u8])', and 'IStream' cannot yield the
-            // remaining-bytes buffer (no read-to-end, framing handled elsewhere).
-            let _ = TransducerHasWrongTypeException::new(String::new(), String::new(), 0);
-            unimplemented!(
-                "deferred: read_transducer — rustfst has no streaming OpenFST Fst read (only load(&[u8]))"
-            )
+            // rustfst has no streaming istream read, so read the remaining bytes
+            // and 'load_prefix' one FST from the front (it reports how many bytes
+            // it consumed); put the unused remainder back for the next read.
+            let bytes = self.input_stream.read_to_end();
+            let (fst, consumed) = match LogVectorFst::load_prefix(&bytes) {
+                Ok(x) => x,
+                Err(_) => {
+                    crate::HFST_THROW_MESSAGE!(
+                        TransducerHasWrongTypeException,
+                        "could not read LOG_OPENFST transducer payload"
+                    )
+                }
+            };
+            for &b in bytes[consumed..].iter().rev() {
+                self.input_stream.putback(b);
+            }
+            fst
         }
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-input-stream.stream-get-fn]

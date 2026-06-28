@@ -257,6 +257,18 @@ impl<'a> IStream<'a> {
         self.putback.push(c);
     }
 
+    /// Read all remaining bytes (the put-back get-area first, then the reader to
+    /// EOF). Used by the backend 'read_transducer' (load one FST from the prefix,
+    /// then put the unused remainder back).
+    pub fn read_to_end(&mut self) -> Vec<u8> {
+        let mut buf: Vec<u8> = Vec::new();
+        while let Some(b) = self.putback.pop() {
+            buf.push(b);
+        }
+        let _ = std::io::Read::read_to_end(&mut self.inner, &mut buf);
+        buf
+    }
+
     /// 'is.read(buf, buf.len())': a short read sets the fail flag.
     pub fn read(&mut self, buf: &mut [u8]) {
         if self.fail {
