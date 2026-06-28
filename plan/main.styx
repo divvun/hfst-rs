@@ -30,34 +30,42 @@ children (
     {
         id types
         title "Port hfst-types (data types, exceptions, symbol defs, string utils)"
-        priority 0
-        deps (scaffold)
+        priority 6
+        deps (scaffold idiom2)
+        log (
+            {
+                at 2026-06-28T12:12:44.174434Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Repurposed to Stage 3 (post-idiomatization): the original per-crate breakdown (types/core/openfst/ol/facade/parsers/capi) is now the work of reviewing the monolithic hfst crate and splitting it back into coherent layered crates. Bumped P0/P1/P2 -> P6/P7/P8 and gated `types` on `idiom2` so the decomposition runs after Wave 4 Stage 1 (memory-safety) and Stage 2 (de-C-ism / drop libc). Per nplan_decisions [dec:hfst:idiomatize-staging]."
+            }
+        )
     }
 
     {
         id core
         title "Port hfst-core (tokenizer, flag diacritics, HfstBasicTransducer, transition graph, convert)"
-        priority 0
+        priority 6
         deps (types)
         children (
             {
                 id core.util
                 title "string-conversions, tokenizer, flag diacritics, epsilon handler, harmonize"
-                priority 0
+                priority 6
                 deps (types)
             }
 
             {
                 id core.basic
                 title "transition data/graph + HfstBasicTransducer (the interchange format)"
-                priority 0
+                priority 6
                 deps (core.util)
             }
 
             {
                 id core.convert
                 title "ConvertTransducerFormat (HfstBasicTransducer ↔ backend interchange)"
-                priority 0
+                priority 6
                 deps (core.basic)
             }
         )
@@ -66,27 +74,27 @@ children (
     {
         id openfst
         title "Reimplement used OpenFST subset (hfst-openfst): VectorFst, semirings, algorithms, SymbolTable, binary I/O"
-        priority 0
+        priority 6
         deps (types)
         children (
             {
                 id openfst.containers
                 title "VectorFst, Transition, tropical/log semirings, SymbolTable, state/transition iterators"
-                priority 0
+                priority 6
                 deps (types)
             }
 
             {
                 id openfst.algo
                 title "compose/determinize/minimize/shortest-path/push/encode/rm-eps/equivalent + basic ops"
-                priority 0
+                priority 6
                 deps (openfst.containers)
             }
 
             {
                 id openfst.io
                 title "OpenFST binary FST read/write + header"
-                priority 0
+                priority 6
                 deps (openfst.containers)
             }
         )
@@ -95,55 +103,55 @@ children (
     {
         id ol
         title "Port hfst-ol (optimized-lookup + HfstOlTransducer + ConvertOl)"
-        priority 1
+        priority 7
         deps (types core)
     }
 
     {
         id facade
         title "Port hfst facade (HfstTransducer, I/O streams, Tropical/Log wrappers, compose_intersect, rules, print/extract)"
-        priority 1
+        priority 7
         deps (core openfst ol)
         children (
             {
                 id facade.transducer
                 title "HfstTransducer class (backend-dispatching facade)"
-                priority 1
+                priority 7
                 deps (core openfst)
             }
 
             {
                 id facade.weight
                 title "Tropical/LogWeightTransducer + Convert* over hfst-openfst"
-                priority 1
+                priority 7
                 deps (openfst core)
             }
 
             {
                 id facade.compose-intersect
                 title "compose_intersect/* (optimized composition engine over HfstBasicTransducer)"
-                priority 1
+                priority 7
                 deps (core)
             }
 
             {
                 id facade.io
                 title "HfstInputStream / HfstOutputStream (format detection + binary I/O)"
-                priority 1
+                priority 7
                 deps (facade.transducer)
             }
 
             {
                 id facade.rules
                 title "HfstRules, HfstXeroxRules, HfstApply"
-                priority 1
+                priority 7
                 deps (facade.transducer)
             }
 
             {
                 id facade.print
                 title "PrintDot, PrintPCKimmo, ExtractStrings, Strings2FstTokenizer"
-                priority 1
+                priority 7
                 deps (facade.transducer)
             }
         )
@@ -152,48 +160,48 @@ children (
     {
         id parsers
         title "Port hfst-parsers (XRE/LEXC/PMATCH/TWOLC/XFST evaluators over nfst + AT&T I/O)"
-        priority 2
+        priority 8
         deps (facade)
         children (
             {
                 id parsers.xre
                 title "XRE evaluator (nfst-xre AST → transducer; xre_utils, XreCompiler semantics)"
-                priority 2
+                priority 8
                 deps (facade)
             }
 
             {
                 id parsers.lexc
                 title "LEXC evaluator (nfst-lexc AST → transducer; lexc-utils, LexcCompiler semantics)"
-                priority 2
+                priority 8
                 deps (facade)
             }
 
             {
                 id parsers.pmatch
                 title "PMATCH evaluator (nfst-pmatch AST → transducer; pmatch_utils, PmatchCompiler semantics)"
-                priority 2
+                priority 8
                 deps (facade)
             }
 
             {
                 id parsers.twolc
                 title "TWOLC evaluator (nfst-twolc AST → rules → transducers; rule_src/variable_src semantics)"
-                priority 2
+                priority 8
                 deps (facade)
             }
 
             {
                 id parsers.xfst
                 title "XFST evaluator (nfst-xfst AST → command/stack dispatch; xfst-utils, XfstCompiler semantics)"
-                priority 2
+                priority 8
                 deps (facade)
             }
 
             {
                 id parsers.att
                 title "AT&T format reader/writer (not covered by nfst)"
-                priority 2
+                priority 8
                 deps (facade)
             }
         )
@@ -202,7 +210,7 @@ children (
     {
         id capi
         title "Port hfst-c (C API via cbindgen)"
-        priority 2
+        priority 8
         deps (facade)
     }
 
