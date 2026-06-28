@@ -353,7 +353,7 @@ impl PmatchAlphabet {
         while (i as usize) < alpha.base.symbol_table.len() {
             let sym = alpha.base.symbol_table[i as usize].clone();
             if Self::is_special(&sym) {
-                alpha.add_special_symbol(&sym, i);
+                alpha.add_special_symbol(&sym, i, cont);
             } else if !alpha.is_flag_diacritic(i) {
                 alpha.printable_vector[i as usize] = true;
             }
@@ -641,7 +641,12 @@ impl PmatchAlphabet {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-alphabet.add-special-symbol-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-alphabet.add-special-symbol-fn]
-    pub fn add_special_symbol(&mut self, str: &str, symbol_number: SymbolNumber) {
+    pub fn add_special_symbol(
+        &mut self,
+        str: &str,
+        symbol_number: SymbolNumber,
+        container: &mut PmatchContainer,
+    ) {
         if str == "@PMATCH_ENTRY@" {
             self.special_symbols[SpecialSymbol::entry as usize] = symbol_number;
         } else if str == "@PMATCH_EXIT@" {
@@ -712,12 +717,7 @@ impl PmatchAlphabet {
         } else if Self::is_underscored_list(str) {
             self.process_underscored_symbol_list(str, symbol_number);
         } else if Self::is_list(str) {
-            // NOTE: deferred — process_symbol_list calls
-            // container->symbol_vector_from_symbols, but add_special_symbol has
-            // no container handle in this composition scheme. The C++ ctor that
-            // drives this path is itself deferred (needs the istream/facade), so
-            // this branch is unreachable from the ported ctors. See deferred.
-            unimplemented!("deferred: process_symbol_list needs &mut PmatchContainer")
+            self.process_symbol_list(str, symbol_number, container);
         } else if Self::is_counter(str) {
             self.process_counter(str.to_string(), symbol_number);
         } else {
