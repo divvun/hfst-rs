@@ -2823,13 +2823,12 @@ impl TwolcCompiler {
     // AST-walk: set the transducer type, register the alphabet / diacritics /
     // sets / definitions, build the grammar, drive every rule (expanding
     // 'where'-variables and evaluating centers + contexts), and return the
-    // intersected result transducer as an owned raw pointer (the same
-    // 'Box::into_raw' convention as 'XreCompiler::compile'). A parse failure
-    // yields a null pointer.
-    pub fn compile(&mut self, input: &str) -> *mut HfstTransducer {
+    // intersected result transducer (the same Option contract as
+    // 'XreCompiler::compile'). A parse failure yields None.
+    pub fn compile(&mut self, input: &str) -> Option<HfstTransducer> {
         let file = match nfst_twolc::parse(input) {
             Ok(f) => f,
-            Err(_) => return std::ptr::null_mut(),
+            Err(_) => return None,
         };
         let twolc_file = &file.value;
 
@@ -2852,7 +2851,7 @@ impl TwolcCompiler {
         }
 
         let result = grammar.compile_and_store();
-        Box::into_raw(Box::new(result))
+        Some(result)
     }
 
     /// Register the 'Alphabet' section: collect the declared symbol pairs and

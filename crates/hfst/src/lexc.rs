@@ -1205,9 +1205,9 @@ impl LexcCompiler {
     /// PUBLIC entry point: parse a single 'lexc_source' into 'self', then run
     /// 'compileLexical'. This is the AST-walk port of the Flex/Bison driver where
     /// tools called 'parse(...)' followed by 'compileLexical()'; it is exactly
-    /// that pairing for the single-source case. Returns a raw owning pointer
-    /// (null on parse error), matching the C++ 'compileLexical' contract.
-    pub fn compile(&mut self, lexc_source: &str) -> *mut HfstTransducer {
+    /// that pairing for the single-source case. Returns None on parse error
+    /// (the C++ 'compileLexical' null contract expressed as an Option).
+    pub fn compile(&mut self, lexc_source: &str) -> Option<HfstTransducer> {
         self.parse(lexc_source);
         self.compile_lexical()
     }
@@ -1279,10 +1279,10 @@ impl LexcCompiler {
     // 'COLOUR_*' '#define's are inlined as literal ANSI escapes to avoid a
     // duplicate module-scope definition with the lexc-utils body (which owns
     // 'should_colourise').
-    pub fn compile_lexical(&mut self) -> *mut HfstTransducer {
+    pub fn compile_lexical(&mut self) -> Option<HfstTransducer> {
         if self.parseErrors_ {
             eprintln!("compilation aborted due to previous errors");
-            return std::ptr::null_mut();
+            return None;
         }
         let mut warnings_generated = false;
         self.print_connectedness(&mut warnings_generated);
@@ -1291,7 +1291,7 @@ impl LexcCompiler {
                 eprint!("\u{1b}[31m*** ERROR: \u{1b}[0m");
             }
             eprintln!("missing or unused LEXICONs (see above) and -Werror has been enabled");
-            return std::ptr::null_mut();
+            return None;
         }
 
         let mut lexicons = HfstTransducer::new_from_basic(&self.stringsTrie_, self.format_);
@@ -1548,7 +1548,7 @@ impl LexcCompiler {
             eprintln!();
         }
 
-        Box::into_raw(Box::new(rv))
+        Some(rv)
     }
 
     // Port of 'LexcCompiler::printConnectedness(bool &warnings_generated)'

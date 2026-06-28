@@ -5084,7 +5084,10 @@ impl HfstTransducer {
                 let mut compiler = crate::lexc::LexcCompiler::new(type_);
                 compiler.set_verbosity(verbose as u32);
                 let source = std::fs::read_to_string(filename).unwrap();
-                compiler.compile(&source)
+                // read_lexc_ptr is a facade *mut API (idiom1.core); bridge the Option.
+                compiler
+                    .compile(&source)
+                    .map_or(std::ptr::null_mut(), |t| Box::into_raw(Box::new(t)))
             }
             ImplementationType::ERROR_TYPE => {
                 HFST_THROW!(TransducerHasWrongTypeException);

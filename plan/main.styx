@@ -297,6 +297,13 @@ children (
                         kind @note
                         text "Slice 1 (xre loop-closer) done. XreCompiler::compile / compile_first now return Option<HfstTransducer> instead of *mut (compile_impl already returned Option). All workspace callers updated: xre.rs intra (define/get_positions/Regex), keystone hfst_transducer.rs (get_flag_filter->Option, new_filter->owned, eliminate_flag(s) if-let, length_tr/worsener owned -- these were the residuals deferred from backend-enum, now CLOSED), lexc.rs xre usage (2 sites), pmatch_compiler.rs (1 bridge -> *mut, pmatch is idiom1.pmatch), xfst_compiler.rs (contains_regexps/contains_regexp_markers_on_one_side -> owned returns, is_well_formed brackets owned, cr caller owned; 3 bridges back to *mut where they feed the xfst stack_/definitions_/latest_regex_compiled raw graph = this node's Task 12), CLI hfst-regexp2fst (2 loops -> if-let/let-else) + hfst-grep, examples xre_smoke + xre_readfile_smoke.\n\nUnsafe: xre.rs 5->2 (remaining 2 = fopen/fclose Stage-2 C-ism), hfst_transducer.rs 51->32, lexc.rs 3->1, xfst_compiler.rs 171->160. 110 tests green.\n\nRemaining in node: Task 11 lexc.rs (LexcCompiler::compile + read_lexc_ptr still *mut; twolc.rs 2 into/from_raw); Task 12 xfst_compiler.rs stack_/definitions_/top()/define_transducer raw-pointer graph (55 *mut) + 1 static mut -- removes the 3 bridges added here."
                     }
+
+                    {
+                        at 2026-06-28T13:43:38.093405Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Slice 2 (lexc + twolc) done = Task 11. LexcCompiler::compile + compile_lexical and TwolcCompiler::compile now return Option<HfstTransducer> instead of *mut. lexc.rs and twolc.rs are now FULLY free of raw owning pointers (0 into_raw/from_raw/*mut HfstTransducer each); lexc.rs's only remaining unsafe is libc::isatty (Stage-2 C-ism). Callers updated: hfst_transducer.rs read_lexc_ptr arm bridged back to *mut (read_lexc_ptr is a facade *mut API -> idiom1.core), xfst read_lexc_from_file -> let-else + stack bridge (Task 12), CLI hfst-lexc-compiler let-else, test_lexc + lexc_smoke + twolc_smoke. 110 tests green.\n\nNode remaining: Task 12 only -- xfst_compiler.rs stack_/definitions_/top()/define_transducer raw-pointer graph (~55 *mut, 160 unsafe) + 1 static mut (HAS_LEXC_BEEN_READ_). Completing Task 12 removes the bridges added in slices 1+2 (latest_regex_compiled, define, substituted, read_lexc_from_file stack push)."
+                    }
                 )
             }
 

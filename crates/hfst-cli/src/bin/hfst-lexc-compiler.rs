@@ -422,9 +422,7 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
             }
         }
         verbose_printf("Compiling... ");
-        let res = lexc.compile_lexical();
-
-        if res.is_null() {
+        let Some(mut res) = lexc.compile_lexical() else {
             if LEXCCOUNT == 1 {
                 error(
                     libc::EXIT_FAILURE,
@@ -445,15 +443,13 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
                 );
             }
             return libc::EXIT_FAILURE;
-        }
-        let res_ref = &mut *res;
-        hfst_set_name(res_ref, &lexcfilenames[0], "lexc");
-        hfst_set_formula(res_ref, &lexcfilenames[0], "L");
+        };
+        hfst_set_name(&mut res, &lexcfilenames[0], "lexc");
+        hfst_set_formula(&mut res, &lexcfilenames[0], "L");
         verbose_printf("\nWriting... ");
-        outstream.redirect(res_ref);
+        outstream.redirect(&mut res);
         verbose_printf("done\n");
-        // C++ 'delete res' — take ownership of the raw owning pointer and drop.
-        drop(Box::from_raw(res));
+        // C++ 'delete res' — owned value drops at end of scope.
         outstream.close();
 
         if ENCODE_WEIGHTS {

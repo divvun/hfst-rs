@@ -77,12 +77,7 @@ fn parse_and_compile(filename: &str, type_: ImplementationType) -> Option<HfstTr
         // compileLexical() returns 0.
         Err(_) => return None,
     };
-    let ptr = compiler.compile(&source);
-    if ptr.is_null() {
-        None
-    } else {
-        Some(unsafe { *Box::from_raw(ptr) })
-    }
+    compiler.compile(&source)
 }
 
 // (1) A file in valid lexc format: parse + compileLexical, then compare.

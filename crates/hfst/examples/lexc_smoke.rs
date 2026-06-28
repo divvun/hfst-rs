@@ -17,9 +17,7 @@ LEXICON N
 
 fn main() {
     let mut c = LexcCompiler::new(TROPICAL_OPENFST_TYPE);
-    let p = c.compile(SRC);
-    assert!(!p.is_null(), "lexc compile returned null");
-    let t = unsafe { *Box::from_raw(p) };
+    let t = c.compile(SRC).expect("lexc compile returned null");
 
     let states = t.number_of_states();
     assert!(states >= 1, "expected a non-empty lexicon transducer");

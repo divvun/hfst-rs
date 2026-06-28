@@ -5664,7 +5664,6 @@ impl XfstCompiler {
         if !self.check_filename(filename) {
             return self;
         }
-        let t: *mut HfstTransducer;
 
         if self.variables_["lexc-with-flags"] == "ON" {
             self.lexc_.set_with_flags(true);
@@ -5696,19 +5695,16 @@ impl XfstCompiler {
             }
         }
 
-        t = self.lexc_.compile(&indata);
-
-        if t.is_null() {
+        let Some(mut t) = self.lexc_.compile(&indata) else {
             eprintln!("error compiling file in lexc format");
             self.xfst_fail();
             self.prompt();
             return self;
-        }
+        };
 
-        unsafe {
-            (*t).optimize();
-        }
-        self.stack_.push(t);
+        t.optimize();
+        // idiom1.parsers Task 12: xfst stack_ still holds raw pointers.
+        self.stack_.push(Box::into_raw(Box::new(t)));
         self.print_transducer_info();
         self.prompt();
         self
