@@ -3519,7 +3519,11 @@ impl XfstCompiler {
         }
 
         if !self.latest_regex_compiled.is_null() {
-            let compiled = self.xre_.compile(xre);
+            // idiom1.parsers Task 12: xfst define_transducer still owns via raw ptr.
+            let compiled = self
+                .xre_
+                .compile(xre)
+                .map_or(std::ptr::null_mut(), |t| Box::into_raw(Box::new(t)));
             if compiled.is_null() {
                 eprintln!("Could not define variable '{}'", name);
                 self.xfst_fail();
@@ -3802,7 +3806,11 @@ impl XfstCompiler {
             }
             self.latest_regex_compiled = std::ptr::null_mut();
         }
-        self.latest_regex_compiled = self.xre_.compile_first(indata, chars_read); // XRE
+        // idiom1.parsers Task 12: xfst's latest_regex_compiled field is still raw.
+        self.latest_regex_compiled = self
+            .xre_
+            .compile_first(indata, chars_read)
+            .map_or(std::ptr::null_mut(), |t| Box::into_raw(Box::new(t))); // XRE
         self
     }
 
@@ -4589,24 +4597,19 @@ impl XfstCompiler {
                             cross_product_regexp.push_str(" ]");
                         }
 
-                        let replacement = unsafe { (*xre_ptr).compile(&cross_product_regexp) };
-                        if replacement.is_null() {
+                        let Some(mut replacement) =
+                            (unsafe { (*xre_ptr).compile(&cross_product_regexp) })
+                        else {
                             eprintln!(
                                 "Could not compile regular expression in compile-replace: {}.",
                                 cross_product_regexp
                             );
                             early_return = true;
                             return;
-                        }
+                        };
 
-                        unsafe {
-                            (*replacement).optimize();
-                        }
-                        let repl =
-                            HfstBasicTransducer::new_from_transducer(unsafe { &*replacement });
-                        unsafe {
-                            drop(Box::from_raw(replacement));
-                        }
+                        replacement.optimize();
+                        let repl = HfstBasicTransducer::new_from_transducer(&replacement);
                         fsm.insert_transducer(*start_state, *end_state, &repl);
                     }
                 }
@@ -4636,19 +4639,14 @@ impl XfstCompiler {
         )));
 
         // filter out regexps
-        let cr = Self::contains_regexp_markers_on_one_side(&mut self.xre_, level_is_upper);
-        unsafe {
-            (*cr).optimize();
-        }
+        let mut cr = Self::contains_regexp_markers_on_one_side(&mut self.xre_, level_is_upper);
+        cr.optimize();
 
         unsafe {
-            (*result).subtract(&*cr, true).optimize();
+            (*result).subtract(&cr, true).optimize();
         }
         unsafe {
             (*result).substitute("@EPSILON_MARKER@", "@_EPSILON_SYMBOL_@", true, true);
-        }
-        unsafe {
-            drop(Box::from_raw(cr));
         }
         self.stack_.pop();
         unsafe {
@@ -4835,17 +4833,16 @@ impl XfstCompiler {
     // Returns an automaton that contains one ore more "^[" "^]" expressions.
     // [spec:hfst:def:xfst-compiler.hfst.xfst.contains-regexps-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.contains-regexps-fn]
-    fn contains_regexps(xre_: &mut XreCompiler) -> *mut HfstTransducer {
-        let not_bracket_star = xre_.compile("[? - \"^[\" - \"^]\"]* ;"); // XRE
-        xre_.define_transducer("TempNotBracketStar", unsafe { &*not_bracket_star }); // XRE
+    fn contains_regexps(xre_: &mut XreCompiler) -> HfstTransducer {
+        let not_bracket_star = xre_.compile("[? - \"^[\" - \"^]\"]* ;").unwrap(); // XRE
+        xre_.define_transducer("TempNotBracketStar", &not_bracket_star); // XRE
         // all paths that contain one or more well-formed ^[ ^] expressions
-        let well_formed = xre_.compile(
-            "TempNotBracketStar \"^[\" TempNotBracketStar  [ \"^]\" TempNotBracketStar \"^[\"  TempNotBracketStar ]*  \"^]\" TempNotBracketStar ;",
-        );
+        let well_formed = xre_
+            .compile(
+                "TempNotBracketStar \"^[\" TempNotBracketStar  [ \"^]\" TempNotBracketStar \"^[\"  TempNotBracketStar ]*  \"^]\" TempNotBracketStar ;",
+            )
+            .unwrap();
         xre_.undefine("TempNotBracketStar");
-        unsafe {
-            drop(Box::from_raw(not_bracket_star));
-        }
         well_formed
     }
 
@@ -4855,20 +4852,18 @@ impl XfstCompiler {
     fn contains_regexp_markers_on_one_side(
         xre_: &mut XreCompiler,
         input_side: bool,
-    ) -> *mut HfstTransducer {
-        let retval: *mut HfstTransducer;
+    ) -> HfstTransducer {
         if input_side {
-            retval = xre_.compile(
+            xre_.compile(
                 "[?:?|0:?|?:0]* [\"^[\":? | \"^]\":? | \"^[\":0 | \"^]\":0] [?:?|0:?|?:0]*",
-            );
+            )
         } else {
             // output side
-            retval = xre_.compile(
+            xre_.compile(
                 "[?:?|0:?|?:0]* [?:\"^[\" | ?:\"^]\" | 0:\"^[\" | 0:\"^]\"] [?:?|0:?|?:0]*",
-            );
+            )
         }
-        assert!(!retval.is_null());
-        retval
+        .unwrap()
     }
 
     // @pre \a t must be an automaton  XRE
@@ -4881,18 +4876,12 @@ impl XfstCompiler {
         let well_formed = Self::contains_regexps(xre_);
         // subtract those paths from copy of t
         let mut tc = HfstTransducer::new_copy(unsafe { &*t });
-        tc.subtract(unsafe { &*well_formed }, true);
-        unsafe {
-            drop(Box::from_raw(well_formed));
-        }
+        tc.subtract(&well_formed, true);
         // all paths that contain one or more ^[ or ^]
-        let brackets = xre_.compile("$[ \"^[\" | \"^]\" ] ;");
+        let brackets = xre_.compile("$[ \"^[\" | \"^]\" ] ;").unwrap();
 
         // test if the result is empty
-        tc.intersect(unsafe { &*brackets }, true);
-        unsafe {
-            drop(Box::from_raw(brackets));
-        }
+        tc.intersect(&brackets, true);
         let empty = HfstTransducer::new_type(tc.get_type());
         let value = empty.compare(&tc, false);
         value
@@ -6067,7 +6056,11 @@ impl XfstCompiler {
             .define_transducer("TempXfstTransducerName", unsafe { &*top }); // XRE
         let mut subst_regex = String::from("`[ [TempXfstTransducerName] , ");
         subst_regex.push_str(&format!("\"{}\" , {} ]", target, liststr));
-        let substituted: *mut HfstTransducer = self.xre_.compile(&subst_regex); // XRE
+        // idiom1.parsers Task 12: xfst stack_ still holds raw pointers.
+        let substituted: *mut HfstTransducer = self
+            .xre_
+            .compile(&subst_regex)
+            .map_or(std::ptr::null_mut(), |t| Box::into_raw(Box::new(t))); // XRE
         self.xre_.undefine("TempXfstTransducerName"); // XRE
         unsafe {
             let _ = Box::from_raw(top);

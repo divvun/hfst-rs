@@ -1959,16 +1959,15 @@ impl HfstTransducer {
         let flags = basic.get_flags();
         let filter = get_flag_filter(self, &flags, "");
 
-        if !filter.is_null() {
-            let mut filter_copy = HfstTransducer::new_from(unsafe { &*filter });
+        if let Some(filter) = filter {
+            let mut filter_copy = HfstTransducer::new_from(&filter);
             {
                 let self_copy = HfstTransducer::new_from(self);
-                let filter_deref = HfstTransducer::new_from(unsafe { &*filter });
+                let filter_deref = HfstTransducer::new_from(&filter);
                 filter_copy
                     .compose(&self_copy, true)
                     .compose(&filter_deref, true);
             }
-            drop(unsafe { Box::from_raw(filter) });
             flag_purge(&mut filter_copy, "");
             *self = filter_copy;
         } else {
@@ -2011,16 +2010,15 @@ impl HfstTransducer {
         }
 
         let filter = get_flag_filter(self, &flags, flag);
-        if !filter.is_null() {
-            let mut filter_copy = HfstTransducer::new_from(unsafe { &*filter });
+        if let Some(filter) = filter {
+            let mut filter_copy = HfstTransducer::new_from(&filter);
             {
                 let self_copy = HfstTransducer::new_from(self);
-                let filter_deref = HfstTransducer::new_from(unsafe { &*filter });
+                let filter_deref = HfstTransducer::new_from(&filter);
                 filter_copy
                     .compose(&self_copy, true)
                     .compose(&filter_deref, true);
             }
-            drop(unsafe { Box::from_raw(filter) });
             flag_purge(&mut filter_copy, flag);
             *self = filter_copy;
         } else {
@@ -2273,25 +2271,24 @@ fn new_filter(
     succeed_flags: &HfstTransducer,
     self_: &HfstTransducer,
     required: bool,
-) -> *mut HfstTransducer {
+) -> HfstTransducer {
     let type_ = fail_flags.get_type();
     let mut comp = crate::xre::XreCompiler::new(type_);
     comp.set_expand_definitions(true);
     comp.define_transducer("Fail", fail_flags);
     comp.define_transducer("Succeed", succeed_flags);
     comp.define_transducer("Self", self_);
-    let result: *mut HfstTransducer = if required {
+    let mut result: HfstTransducer = if required {
         comp.compile("~[(?* Fail) ~$Succeed Self ?*]")
     } else {
         comp.compile("~[?* Fail ~$Succeed Self ?*]")
-    };
+    }
+    .unwrap();
 
     // Should the xre compiler do this?
-    unsafe {
-        (*result).remove_from_alphabet("Fail");
-        (*result).remove_from_alphabet("Succeed");
-        (*result).remove_from_alphabet("Self");
-    }
+    result.remove_from_alphabet("Fail");
+    result.remove_from_alphabet("Succeed");
+    result.remove_from_alphabet("Self");
 
     result
 }
@@ -2491,10 +2488,10 @@ fn get_flag_filter(
     transducer: &HfstTransducer,
     flags: &crate::hfst_symbol_defs::StringSet,
     flag: &str,
-) -> *mut HfstTransducer {
+) -> Option<HfstTransducer> {
     let type_ = transducer.get_type();
     let mut flag_found = false;
-    let mut filter: *mut HfstTransducer = std::ptr::null_mut();
+    let mut filter: Option<HfstTransducer> = None;
 
     for f in flags.iter() {
         let self_ = HfstTransducer::new_from_symbol(&format!("_{}", f), type_); // escape flags
@@ -2535,19 +2532,19 @@ fn get_flag_filter(
             );
 
             // intersect filter with newfilter
-            if filter.is_null() {
-                filter = newfilter;
-            } else {
-                unsafe { (*filter).intersect(&*newfilter, true) };
-                drop(unsafe { Box::from_raw(newfilter) });
+            match filter.as_mut() {
+                None => filter = Some(newfilter),
+                Some(filt) => {
+                    filt.intersect(&newfilter, true);
+                }
             }
         }
         flag_found = false;
     }
 
-    if !filter.is_null() {
-        substitute_escaped_flags(unsafe { &mut *filter }); // unescape the flags
-        unsafe { (*filter).optimize() };
+    if let Some(filt) = filter.as_mut() {
+        substitute_escaped_flags(filt); // unescape the flags
+        filt.optimize();
     }
 
     filter
@@ -2782,17 +2779,16 @@ impl HfstTransducer {
             let match_length = match_any_n_times(path_length, &flags);
 
             let mut xre = crate::xre::XreCompiler::new(self.get_type());
-            let length_tr: *mut HfstTransducer = xre.compile(match_length.as_str());
+            let mut length_tr = xre.compile(match_length.as_str()).unwrap();
 
             // filter out the paths of current length and extract them
-            unsafe { &mut *length_tr }.compose(self, true);
-            unsafe { &mut *length_tr }.optimize();
+            length_tr.compose(self, true);
+            length_tr.optimize();
             if obey_flags {
-                unsafe { &*length_tr }.extract_paths_fd(results, -1, -1, true);
+                length_tr.extract_paths_fd(results, -1, -1, true);
             } else {
-                unsafe { &*length_tr }.extract_paths(results, -1, -1);
+                length_tr.extract_paths(results, -1, -1);
             }
-            drop(unsafe { Box::from_raw(length_tr) });
 
             // if paths were found
             if results.len() > 0 {
@@ -3961,20 +3957,12 @@ impl HfstTransducer {
                 s = symbol
             );
 
-            let worsener: *mut HfstTransducer = xre_.compile(&worsener_string);
-            assert!(!worsener.is_null());
-            unsafe {
-                (*worsener).optimize();
-            }
+            let mut worsener = xre_.compile(&worsener_string).unwrap();
+            worsener.optimize();
             // [spec:hfst:def:hfst-transducer.hfst.cp-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.cp-fn]
             let mut cp = initial_merge.clone();
-            cp.compose(unsafe { &*worsener }, true)
-                .output_project()
-                .optimize();
-            unsafe {
-                drop(Box::from_raw(worsener));
-            }
+            cp.compose(&worsener, true).output_project().optimize();
 
             initial_merge.subtract(&cp, true).optimize();
             initial_merge.substitute_symbol(&marker, internal_epsilon, true, true);

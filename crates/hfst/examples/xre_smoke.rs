@@ -5,9 +5,8 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst::xre::XreCompiler;
 
 fn compile(c: &mut XreCompiler, src: &str) -> HfstTransducer {
-    let p = c.compile(src);
-    assert!(!p.is_null(), "compile returned null for {src:?}");
-    unsafe { *Box::from_raw(p) }
+    c.compile(src)
+        .unwrap_or_else(|| panic!("compile returned null for {src:?}"))
 }
 
 fn main() {

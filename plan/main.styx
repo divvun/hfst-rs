@@ -261,6 +261,13 @@ children (
                         kind @note
                         text "Phase 2 (locals cleanup) done. hfst_transducer.rs unsafe 125->51. Eliminated: union->enum (e08cab91); the entire HfstBasicTransducer conversion machinery (get_basic_transducer/convert_to_basic_transducer now return owned, convert_to_hfst_transducer takes owned) clearing every *mut HfstBasicTransducer local (net/internal/this_basic/another_basic/substituting_net); harmonize_ -> Option<HfstTransducer>; another_/another_copy/tr_harmonized/harmonized_lexicon -> owned; all op-method into_raw/from_raw round-trips; weight-transducer extract_paths fd param *mut FdTable -> Option<&FdTable> (both Tropical+Log); two as_bytes_mut flag-rewrites -> format!. Rippled 6 CLI call sites + 2 hfst print modules to the owned signatures (mechanical, not CLI idiomatization). 110 tests green.\n\nRemaining unsafe in hfst_transducer.rs roots in OTHER nodes' producers, not backend-enum's to convert: (a) XreCompiler::compile() -> *mut [get_flag_filter/new_filter/length_tr/worsener] = idiom1.parsers; (b) read_lexc_ptr/convert_static public *mut-returning APIs = later; (c) the OL lookup const-cast island (as_hfst_ol_ptr, IDIOM-STAGE-2); (d) Stage-2 C-isms (FILE*/libc/2x static mut shuffle_*).\n\nDECISION: #![deny(unsafe_code)] deferred. Crate/file-wide deny is premature — pmatch(238 raw ptr)/parsers/core are uncleaned sibling nodes, so it would need a large allow-list. Intended end-state gate: add it once the allow-list is empty, i.e. at close of idiom1 or as the Stage-2 drop-libc gate."
                     }
+
+                    {
+                        at 2026-06-28T13:20:51.755641Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -276,6 +283,21 @@ children (
                 title "xfst_compiler / xre / lexc / twolc evaluators: raw-ptr → owned + their static mut → safe"
                 priority 4
                 deps (idiom1.backend-enum)
+                log (
+                    {
+                        at 2026-06-28T13:21:54.146459Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-28T13:36:42.896204Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Slice 1 (xre loop-closer) done. XreCompiler::compile / compile_first now return Option<HfstTransducer> instead of *mut (compile_impl already returned Option). All workspace callers updated: xre.rs intra (define/get_positions/Regex), keystone hfst_transducer.rs (get_flag_filter->Option, new_filter->owned, eliminate_flag(s) if-let, length_tr/worsener owned -- these were the residuals deferred from backend-enum, now CLOSED), lexc.rs xre usage (2 sites), pmatch_compiler.rs (1 bridge -> *mut, pmatch is idiom1.pmatch), xfst_compiler.rs (contains_regexps/contains_regexp_markers_on_one_side -> owned returns, is_well_formed brackets owned, cr caller owned; 3 bridges back to *mut where they feed the xfst stack_/definitions_/latest_regex_compiled raw graph = this node's Task 12), CLI hfst-regexp2fst (2 loops -> if-let/let-else) + hfst-grep, examples xre_smoke + xre_readfile_smoke.\n\nUnsafe: xre.rs 5->2 (remaining 2 = fopen/fclose Stage-2 C-ism), hfst_transducer.rs 51->32, lexc.rs 3->1, xfst_compiler.rs 171->160. 110 tests green.\n\nRemaining in node: Task 11 lexc.rs (LexcCompiler::compile + read_lexc_ptr still *mut; twolc.rs 2 into/from_raw); Task 12 xfst_compiler.rs stack_/definitions_/top()/define_transducer raw-pointer graph (55 *mut) + 1 static mut -- removes the 3 bridges added here."
+                    }
+                )
             }
 
             {

@@ -516,8 +516,8 @@ unsafe fn read_matcher(expression: &str) {
                 "parsing {} as Xerox style regular expression...\n",
                 expression
             ));
-            let trans = comp.compile(expression);
-            (*MATCHER).disjunct((*trans).input_project(), true);
+            let mut trans = comp.compile(expression).unwrap();
+            (*MATCHER).disjunct(trans.input_project(), true);
         } else if DIALECT_FIXED_STRINGS {
             verbose_printf(&format!(
                 "parsing {} as fixed string of UTF-8 symbols...\n",

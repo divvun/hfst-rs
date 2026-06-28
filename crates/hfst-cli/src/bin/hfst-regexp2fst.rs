@@ -313,7 +313,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
                 // (the C wraps compile_first in try/catch on HfstException; the
                 // Rust path currently panics rather than throwing, so the catch
                 // arm that calls hfst_error is not reproduced here.)
-                if compiled.is_null() {
+                if compiled.is_none() {
                     if comp.contained_only_comments() {
                         if transducer_n == 1 {
                             error(
@@ -344,15 +344,14 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
                 for _ in 0..chars_read {
                     filebuf_ = filebuf_.add(1);
                 }
-                if !compiled.is_null() {
+                if let Some(mut compiled) = compiled {
                     if DISJUNCT_EXPRESSIONS {
-                        disjunction.disjunct(&*compiled, HARMONIZE);
+                        disjunction.disjunct(&compiled, HARMONIZE);
                     } else {
-                        hfst_set_name(&mut *compiled, "?", "xre");
-                        outstream.redirect(&mut *compiled);
+                        hfst_set_name(&mut compiled, "?", "xre");
+                        outstream.redirect(&mut compiled);
                     }
-                    // C: delete compiled;
-                    drop(Box::from_raw(compiled));
+                    // C: delete compiled; -> owned, drops here.
                 }
                 if *filebuf_ == 0 {
                     break;
@@ -393,7 +392,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
                 // (the C wraps compile in try/catch on HfstException calling
                 // hfst_error_at_line; the Rust path panics rather than throwing,
                 // so the catch arm is not reproduced here.)
-                if compiled.is_null() {
+                let Some(mut compiled) = compiled else {
                     if !comp.contained_only_comments() {
                         hfst_error_at_line(
                             libc::EXIT_FAILURE,
@@ -404,17 +403,16 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
                         );
                     }
                     continue;
-                }
+                };
                 input_contains_only_whitespace_or_comments = false;
 
                 if DISJUNCT_EXPRESSIONS {
-                    disjunction.disjunct(&*compiled, HARMONIZE);
+                    disjunction.disjunct(&compiled, HARMONIZE);
                 } else {
-                    hfst_set_name(&mut *compiled, "?", "xre");
-                    outstream.redirect(&mut *compiled);
+                    hfst_set_name(&mut compiled, "?", "xre");
+                    outstream.redirect(&mut compiled);
                 }
-                // C: delete compiled;
-                drop(Box::from_raw(compiled));
+                // C: delete compiled; -> owned, drops here.
             }
         }
 

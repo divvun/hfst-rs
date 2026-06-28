@@ -1020,14 +1020,11 @@ impl LexcCompiler {
         };
         self.tokenizer_.add_multichar_symbol(&encoded_cont);
 
-        let new_paths_ptr = self.xre_.compile(regexp);
-        if new_paths_ptr.is_null() {
+        let Some(mut new_paths) = self.xre_.compile(regexp) else {
             self.error_at_current_token("Unable to parse regular expression");
             self.parseErrors_ = true;
             return self;
-        }
-
-        let mut new_paths = unsafe { *Box::from_raw(new_paths_ptr) };
+        };
         new_paths.optimize();
         let new_alphabets = new_paths.get_alphabet();
         for new_alpha in &new_alphabets {
@@ -1527,8 +1524,7 @@ impl LexcCompiler {
 
             let mut xre_comp = XreCompiler::new(self.format_);
 
-            let flag_filter_ptr = xre_comp.compile(&flag_remover_regexp);
-            let mut flag_filter = unsafe { *Box::from_raw(flag_filter_ptr) };
+            let mut flag_filter = xre_comp.compile(&flag_remover_regexp).unwrap();
             flag_filter.optimize();
             let mut inverted_flag_filter = flag_filter.clone();
             inverted_flag_filter.invert().optimize();

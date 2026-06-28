@@ -156,9 +156,9 @@ pub struct XreCompiler {
 //   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.remove-defined-multichar-symbols-fn]
 //   fn remove_defined_multichar_symbols(&mut self)
 //   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.compile-fn]
-//   fn compile(&mut self, xre: &str) -> *mut HfstTransducer    // facade expects raw ptr
+//   fn compile(&mut self, xre: &str) -> Option<HfstTransducer>
 //   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.compile-first-fn]
-//   fn compile_first(&mut self, xre: &str, chars_read: &mut u32) -> *mut HfstTransducer
+//   fn compile_first(&mut self, xre: &str, chars_read: &mut u32) -> Option<HfstTransducer>
 //   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.contained-only-comments-fn]
 //   fn contained_only_comments(&self) -> bool
 //   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.get-positions-of-symbol-in-xre-fn]
@@ -445,19 +445,11 @@ impl XreCompiler {
         // (nfst replaces it), so here we can only validate that the xre
         // compiles; the position set stays empty.
         positions.clear();
-        let compiled = self.compile(xre);
-        if compiled.is_null() {
-            return false;
-        }
-        unsafe {
-            drop(Box::from_raw(compiled));
-        }
-        true
+        self.compile(xre).is_some()
     }
 
     pub fn define(&mut self, name: &str, xre: &str) -> bool {
-        let compiled = self.compile(xre);
-        if compiled.is_null() {
+        let Some(tr) = self.compile(xre) else {
             if self.verbose_ {
                 eprintln!(
                     "error: could not parse '{}', leaving '{}' undefined",
@@ -465,9 +457,8 @@ impl XreCompiler {
                 );
             }
             return false;
-        }
+        };
         self.undefine(name);
-        let tr = *unsafe { Box::from_raw(compiled) };
         self.definitions_.insert(name.to_string(), tr);
         true
     }
@@ -514,14 +505,10 @@ impl XreCompiler {
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.compile-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.compile-fn]
-    // Returns a raw owning pointer (Box::into_raw) on success, or null on parse
-    // failure / comments-only — matching the C++ 'HfstTransducer*' contract the
-    // facade frees via Box::from_raw.
-    pub fn compile(&mut self, expression: &str) -> *mut HfstTransducer {
-        match self.compile_impl(expression) {
-            Some(t) => Box::into_raw(Box::new(t)),
-            None => std::ptr::null_mut(),
-        }
+    // Returns the compiled transducer, or None on parse failure / comments-only
+    // (the C++ 'HfstTransducer*' null contract expressed as an Option).
+    pub fn compile(&mut self, expression: &str) -> Option<HfstTransducer> {
+        self.compile_impl(expression)
     }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.compile-first-fn]
@@ -535,7 +522,11 @@ impl XreCompiler {
     // behaviour without the flex/bison position counters.
     // [spec:hfst:def:xre-utils.hfst.xre.compile-first-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.compile-first-fn]
-    pub fn compile_first(&mut self, expression: &str, chars_read: &mut u32) -> *mut HfstTransducer {
+    pub fn compile_first(
+        &mut self,
+        expression: &str,
+        chars_read: &mut u32,
+    ) -> Option<HfstTransducer> {
         CONTAINS_ONLY_COMMENTS.with(|c| c.set(false));
         match parse_all(expression) {
             Ok(exprs) if !exprs.is_empty() => {
@@ -543,16 +534,16 @@ impl XreCompiler {
                 *chars_read = first.span.end() as u32;
                 let mut t = self.eval(first);
                 t.optimize();
-                Box::into_raw(Box::new(t))
+                Some(t)
             }
             Ok(_) => {
                 CONTAINS_ONLY_COMMENTS.with(|c| c.set(true));
                 *chars_read = 0;
-                std::ptr::null_mut()
+                None
             }
             Err(_) => {
                 *chars_read = 0;
-                std::ptr::null_mut()
+                None
             }
         }
     }
@@ -2434,8 +2425,7 @@ impl XreCompiler {
             ReadKind::Regex => {
                 let contents = std::fs::read_to_string(path)
                     .unwrap_or_else(|_| panic!("File cannot be opened."));
-                let ptr = self.compile(&contents);
-                *unsafe { Box::from_raw(ptr) }
+                self.compile(&contents).unwrap()
             }
         }
     }

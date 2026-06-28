@@ -6718,7 +6718,11 @@ unsafe fn build_read_file(kind: nfst_pmatch::ReadKind, path: &str) -> *mut dyn P
                 eprintln!("Failed to read regex from {}.", filepath);
             }
             let mut xre_compiler = crate::xre::XreCompiler::new(format);
-            as_obj(pmb_tc(xre_compiler.compile(&regex)))
+            // pmb_tc still owns via raw pointer (idiom1.pmatch); bridge the Option.
+            let compiled = xre_compiler
+                .compile(&regex)
+                .map_or(std::ptr::null_mut(), |t| Box::into_raw(Box::new(t)));
+            as_obj(pmb_tc(compiled))
         }
     }
 }
