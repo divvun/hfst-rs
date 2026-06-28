@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use icu::segmenter::GraphemeClusterSegmenter;
 
-use crate::hfst_exception_defs::HfstException;
+use crate::hfst_exception_defs::{HfstException, TransducerHeaderException};
 use crate::hfst_flag_diacritics::{FdState, FdTable};
 use crate::transducer::{
     DoubleTape, Encoder, NO_COUNTER, NO_SYMBOL_NUMBER, SymbolNumber, SymbolNumberVector,
@@ -304,11 +304,16 @@ impl PmatchAlphabet {
     // and touches hfst::FdOperation::get_feature/get_value plus fd_table mutation,
     // which is part of the istream-reading facade path.
     pub fn new_from_stream(
-        _inputstream: &mut crate::transducer::IStream,
-        _symbol_count: SymbolNumber,
-        _cont: &mut PmatchContainer,
+        inputstream: &mut crate::transducer::IStream,
+        symbol_count: SymbolNumber,
+        cont: &mut PmatchContainer,
     ) -> PmatchAlphabet {
-        unimplemented!("deferred: needs HfstTransducer facade")
+        // C++ 'PmatchAlphabet(istream, n, cont)' derives from
+        // 'TransducerAlphabet(istream, n, true)' then builds the pmatch symbol
+        // maps; read the base alphabet from the stream and reuse the same
+        // map-building done by 'new_from_alphabet'.
+        let base = TransducerAlphabet::new_istream(inputstream, symbol_count, true);
+        Self::new_from_alphabet(&base, cont)
     }
 
     // ctor from existing alphabet: PmatchAlphabet(TransducerAlphabet const&, PmatchContainer*)
@@ -1065,11 +1070,108 @@ impl PmatchAlphabet {
 #[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 impl PmatchContainer {
-    // explicit PmatchContainer(std::istream &)
-    // Deferred: parse_hfst3_header + Transducer(inputstream) + HfstTransducer
-    // facade (set_xerox_composition / uncompose reading) are needed.
-    pub fn new_from_stream(_is: &mut crate::transducer::IStream) -> PmatchContainer {
-        unimplemented!("deferred: needs HfstTransducer facade")
+    // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
+    // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
+    // explicit PmatchContainer(std::istream &) — reads a binary pmatch archive:
+    // the TOP transducer followed by any UNCOMPOSE L/R nets and RTN sub-nets.
+    pub fn new_from_stream(is: &mut crate::transducer::IStream) -> PmatchContainer {
+        use crate::transducer::{Encoder, TransducerAlphabet, TransducerHeader};
+        let mut c = PmatchContainer::new();
+        c.set_properties();
+        c.reset_recursion();
+        let mut properties = Self::parse_hfst3_header(is);
+        let transducer_name: String;
+        if !properties.contains_key("name") {
+            eprintln!("pmatch: warning: TOP not defined in archive, using first as TOP");
+            transducer_name = "TOP".to_string();
+        } else {
+            transducer_name = properties["name"].clone();
+            if transducer_name != "TOP" {
+                eprintln!("pmatch: warning: TOP not defined in archive, using first as TOP");
+            }
+        }
+        let _ = transducer_name;
+        if !properties.contains_key("type") {
+            eprintln!("pmatch: warning: type information missing from archive");
+        } else if properties["type"] != "HFST_OLW" {
+            eprintln!(
+                "pmatch: warning: archive type isn't weighted optimized-lookup according to header"
+            );
+        }
+        c.set_properties_map(&properties);
+        crate::hfst_transducer::set_xerox_composition(c.xerox_composition);
+        let header = TransducerHeader::new_istream(is);
+        c.alphabet = PmatchAlphabet::new_from_stream(is, header.symbol_count(), &mut c);
+        c.orig_symbol_count = c.alphabet.get_orig_symbol_count();
+        c.symbol_count = c.alphabet.get_orig_symbol_count();
+        c.global_flag_state = FdState::new(c.alphabet.get_fd_table());
+        c.encoder = Some(Encoder::new(
+            c.alphabet.get_symbol_table(),
+            c.orig_symbol_count,
+        ));
+        if properties.get("initial-symbols").is_some() {
+            let initial = properties["initial-symbols"].clone();
+            c.collect_first_symbols(&initial);
+        }
+        let top = PmatchTransducer::new_from_stream(
+            is,
+            header.index_table_size(),
+            header.target_table_size(),
+            &c.alphabet,
+            "TOP".to_string(),
+        );
+        c.toplevel = Some(Box::new(top));
+        // C++ loops 'while (inputstream.good())' reading further archive members,
+        // breaking when parse_hfst3_header throws TransducerHeaderException. A
+        // well-formed archive ends in a clean EOF right after the last member, so
+        // peek for end-of-stream (now possible via get/putback) instead of
+        // catching the throw.
+        loop {
+            if !is.good() {
+                break;
+            }
+            let probe = is.get();
+            if probe < 0 {
+                break;
+            }
+            is.putback(probe as u8);
+            properties = Self::parse_hfst3_header(is);
+            let transducer_name = properties.get("name").cloned().unwrap_or_default();
+            if transducer_name.starts_with("UNCOMPOSE LEFT") {
+                if c.verbose {
+                    eprint!("Reading uncomposer L... ");
+                }
+                c.uncompose_left = Some(Box::new(crate::transducer::Transducer::new_istream(is)));
+                if c.verbose {
+                    eprintln!("{} done", transducer_name);
+                }
+                c.uncomposable = true;
+            } else if transducer_name.starts_with("UNCOMPOSE RIGHT") {
+                if c.verbose {
+                    eprint!("Reading uncomposer R... ");
+                }
+                c.uncompose_right = Some(Box::new(crate::transducer::Transducer::new_istream(is)));
+                if c.verbose {
+                    eprintln!("{} done", transducer_name);
+                }
+                c.uncomposable = true;
+            } else {
+                let rtn_header = TransducerHeader::new_istream(is);
+                let _dummy = TransducerAlphabet::new_istream(is, rtn_header.symbol_count(), true);
+                let rtn = PmatchTransducer::new_from_stream(
+                    is,
+                    rtn_header.index_table_size(),
+                    rtn_header.target_table_size(),
+                    &c.alphabet,
+                    transducer_name.clone(),
+                );
+                if !c.alphabet.has_rtn(&transducer_name) {
+                    c.alphabet.add_rtn(Box::new(rtn), &transducer_name);
+                }
+                // else: C++ 'delete rtn' — Rust drops it here.
+            }
+        }
+        c
     }
 
     // PmatchContainer(Transducer *t)
@@ -1757,8 +1859,64 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.parse-hfst3-header-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.parse-hfst3-header-fn]
-    pub fn parse_hfst3_header(_f: &mut crate::transducer::IStream) -> BTreeMap<String, String> {
-        unimplemented!("deferred: needs HfstTransducer facade")
+    pub fn parse_hfst3_header(f: &mut crate::transducer::IStream) -> BTreeMap<String, String> {
+        let mut properties: BTreeMap<String, String> = BTreeMap::new();
+        let header1 = b"HFST";
+        let total = header1.len() + 1; // 'HFST' plus the C-string NUL = 5
+        // how much of the header has been found
+        let mut matched: Vec<u8> = Vec::new();
+        let mut mismatch: i32 = -2; // sentinel for 'no mismatch char read'
+        let mut header_loc = 0usize;
+        while header_loc < total {
+            let c = f.get();
+            let expected: i32 = if header_loc < header1.len() {
+                header1[header_loc] as i32
+            } else {
+                0 // header1[4] is the terminating '\0'
+            };
+            if c != expected {
+                mismatch = c;
+                break;
+            }
+            matched.push(c as u8);
+            header_loc += 1;
+        }
+        if header_loc == total {
+            let mut len_bytes = [0u8; 2];
+            f.read(&mut len_bytes);
+            let remaining_header_len = u16::from_ne_bytes(len_bytes) as usize;
+            if f.get() != 0 {
+                crate::HFST_THROW!(TransducerHeaderException);
+            }
+            let mut headervalue = vec![0u8; remaining_header_len];
+            f.read(&mut headervalue);
+            if remaining_header_len == 0 || headervalue[remaining_header_len - 1] != 0 {
+                crate::HFST_THROW!(TransducerHeaderException);
+            }
+            let cstrlen = |s: &[u8]| -> usize { s.iter().position(|&b| b == 0).unwrap_or(s.len()) };
+            let mut i = 0usize;
+            while i < remaining_header_len {
+                let length = cstrlen(&headervalue[i..]);
+                let property = String::from_utf8_lossy(&headervalue[i..i + length]).into_owned();
+                i += length + 1;
+                let length = cstrlen(&headervalue[i..]);
+                let value = String::from_utf8_lossy(&headervalue[i..i + length]).into_owned();
+                properties.insert(property, value);
+                i += length + 1;
+            }
+            properties
+        } else {
+            // nope. put back what we've taken: the non-matching character first,
+            // then the characters that did match, so the next read sees them in
+            // their original order.
+            if mismatch >= 0 {
+                f.putback(mismatch as u8);
+            }
+            for &b in matched.iter().rev() {
+                f.putback(b);
+            }
+            crate::HFST_THROW!(TransducerHeaderException);
+        }
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.set-verbose-fn]

@@ -187,6 +187,9 @@ pub struct IStream<'a> {
     inner: &'a mut dyn std::io::Read,
     fail: bool,
     eof: bool,
+    // Bytes pushed back via 'putback'/'unget' (std::istream's get-area), LIFO:
+    // the last pushed byte is the next one returned by get()/read()/getline().
+    putback: Vec<u8>,
 }
 
 impl<'a> IStream<'a> {
@@ -195,12 +198,42 @@ impl<'a> IStream<'a> {
             inner,
             fail: false,
             eof: false,
+            putback: Vec::new(),
         }
     }
 
     /// '!is' — true when the stream is in a good (non-failed) state.
     pub fn good(&self) -> bool {
         !self.fail
+    }
+
+    /// 'is.get()': read and return the next byte, or -1 at end of stream
+    /// (mirrors std::istream::get()'s int return).
+    pub fn get(&mut self) -> i32 {
+        if let Some(b) = self.putback.pop() {
+            return b as i32;
+        }
+        if self.fail {
+            return -1;
+        }
+        let mut b = [0u8; 1];
+        match self.inner.read(&mut b) {
+            Ok(0) => {
+                self.eof = true;
+                -1
+            }
+            Ok(_) => b[0] as i32,
+            Err(_) => {
+                self.fail = true;
+                -1
+            }
+        }
+    }
+
+    /// 'is.putback(c)' / 'is.unget()': return a byte to the get-area so the
+    /// next read sees it again.
+    pub fn putback(&mut self, c: u8) {
+        self.putback.push(c);
     }
 
     /// 'is.read(buf, buf.len())': a short read sets the fail flag.
@@ -210,6 +243,11 @@ impl<'a> IStream<'a> {
         }
         let mut got = 0;
         while got < buf.len() {
+            if let Some(b) = self.putback.pop() {
+                buf[got] = b;
+                got += 1;
+                continue;
+            }
             let mut b = [0u8; 1];
             match self.inner.read(&mut b) {
                 Ok(0) => {
@@ -235,6 +273,14 @@ impl<'a> IStream<'a> {
         let mut bytes: Vec<u8> = Vec::new();
         let mut got_any = false;
         loop {
+            if let Some(b) = self.putback.pop() {
+                got_any = true;
+                if b == delim {
+                    break;
+                }
+                bytes.push(b);
+                continue;
+            }
             let mut b = [0u8; 1];
             match self.inner.read(&mut b) {
                 Ok(0) => {
