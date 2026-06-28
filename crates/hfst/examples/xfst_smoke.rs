@@ -17,10 +17,7 @@ fn main() {
 
     let stack = c.get_stack();
     assert!(!stack.is_empty(), "xfst script left an empty stack");
-    let top = *stack.last().unwrap();
-    assert!(!top.is_null(), "top of stack is null");
-    let t = unsafe { &*top };
-    let states = t.number_of_states();
+    let states = stack.last().unwrap().borrow().number_of_states();
     assert!(states >= 1, "expected a non-empty transducer on the stack");
 
     println!(

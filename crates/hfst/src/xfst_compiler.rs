@@ -5,16 +5,18 @@
 //! Beesley and Karttunen.
 //!
 //! This is a literal 1:1 port of HFST's hfst::xfst::XfstCompiler. It keeps a
-//! STACK of HfstTransducer raw pointers plus definitions/variables/lists/aliases
+//! STACK of HfstTransducer handles plus definitions/variables/lists/aliases
 //! maps; each command method mutates them. Where the original bison actions
 //! dispatched to xfst_->method(args), we instead walk nfst-xfst's XfstCommand
 //! AST (the sanctioned structural deviation) and call the same ported command
 //! methods 1:1.
 //!
-//! Raw pointers (mirroring C++ HfstTransducer*) and unsafe are expected here:
-//! we mirror the C++ std::stack, the manual new/delete ownership and the
-//! pointer-based definitions/names maps rather than redesigning to safe Rust
-//! ownership.
+//! The C++ source held raw 'HfstTransducer*' that it freely aliased (the stack,
+//! 'names_'/'definitions_' and 'print_name's pointer-identity check). The port
+//! expresses that shared ownership with 'NetRef = Rc<RefCell<HfstTransducer>>'
+//! and pointer identity with 'Rc::ptr_eq'. The only remaining 'unsafe' wraps C
+//! FFI (libc / hfst_fopen / HfstInputStream) and ownership recovery from
+//! pointer-returning HFST APIs.
 #![allow(dead_code)]
 #![allow(unused_variables)]
 #![allow(unused_mut)]
@@ -23,7 +25,9 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
 
 use crate::hfst_basic_transducer::{HfstBasicTransducer, HfstBasicTransitions};
 use crate::hfst_data_types::{HfstOneLevelPaths, HfstTwoLevelPaths, ImplementationType};
@@ -103,6 +107,13 @@ pub enum TestOperation {
 // [spec:hfst:def:xfst-compiler.hfst.xfst.string-map]
 pub type StringMap = BTreeMap<String, String>;
 
+// A shared, mutable handle to a stack/definition transducer. The C++ xfst
+// compiler holds raw 'HfstTransducer*' that it freely aliases (e.g. 'name'
+// records the stack top in 'names_' while it stays on the stack, and
+// 'print_name' matches by pointer identity). 'Rc<RefCell<..>>' is the safe
+// expression of that shared ownership; pointer identity becomes 'Rc::ptr_eq'.
+pub type NetRef = Rc<RefCell<HfstTransducer>>;
+
 // @brief Xfst compiler contains all the methods and variables a session of
 // XFST script parser needs.
 // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler]
@@ -118,13 +129,13 @@ pub struct XfstCompiler {
     /* The lexc compiler. */
     pub lexc_: LexcCompiler,
     pub original_definitions_: BTreeMap<String, String>,
-    pub definitions_: BTreeMap<String, *mut HfstTransducer>,
+    pub definitions_: BTreeMap<String, NetRef>,
     pub original_function_definitions_: BTreeMap<String, String>,
     pub function_definitions_: BTreeMap<String, String>,
     pub function_arguments_: BTreeMap<String, u32>,
     // std::stack mirror: top = last element; pop = pop_back, push = push_back.
-    pub stack_: Vec<*mut HfstTransducer>,
-    pub names_: BTreeMap<String, *mut HfstTransducer>,
+    pub stack_: Vec<NetRef>,
+    pub names_: BTreeMap<String, NetRef>,
     pub aliases_: BTreeMap<String, String>,
     pub variables_: BTreeMap<String, String>,
     pub properties_: BTreeMap<String, String>,
@@ -136,7 +147,7 @@ pub struct XfstCompiler {
     called. The xfst lexer often needs to parse regexps in order to determine
     where they end before giving them to the actual parser. By storing the result
     in this variable, there is no need to parse a regexp again on the parse level. */
-    pub latest_regex_compiled: *mut HfstTransducer,
+    pub latest_regex_compiled: Option<NetRef>,
     // Whether the script has encountered the quit command ('quit', 'exit', etc.).
     // Needed in interactive mode, where user input is read line by line.
     pub quit_requested_: bool,
@@ -178,7 +189,7 @@ impl XfstCompiler {
             format_: impl_,
             verbose_: false,
             verbose_prompt_: false,
-            latest_regex_compiled: std::ptr::null_mut(),
+            latest_regex_compiled: None,
             quit_requested_: false,
             fail_flag_: false,
             restricted_mode_: false,
@@ -553,41 +564,40 @@ impl XfstCompiler {
     // @brief Convert format of \a t read from file \a filename to common
     // format used by this xfst compiler and print a warning message
     // about loss of information during conversion, if needed.
-    fn convert_to_common_format(&mut self, t: *mut HfstTransducer, filename: Option<&str>) {
+    fn convert_to_common_format(&mut self, t: &NetRef, filename: Option<&str>) {
         // CHECK_FILENAME equivalent: if (!check_filename(filename)) return;
         if !self.check_filename(filename.unwrap_or("")) {
             return;
         }
 
-        unsafe {
-            if (*t).get_type() != self.format_ {
-                if (*t).get_type() == ImplementationType::HFST_OL_TYPE
-                    || (*t).get_type() == ImplementationType::HFST_OLW_TYPE
-                {
-                    if self.verbose_ {
-                        eprintln!(
-                            "warning: transducer is in optimized lookup format, 'apply up' is the only operation it supports"
-                        );
-                    }
-                    return;
-                }
-
+        let t_type = t.borrow().get_type();
+        if t_type != self.format_ {
+            if t_type == ImplementationType::HFST_OL_TYPE
+                || t_type == ImplementationType::HFST_OLW_TYPE
+            {
                 if self.verbose_ {
-                    eprint!(
-                        "warning: converting transducer type from {} to {}",
-                        crate::hfst_data_types::implementation_type_to_format((*t).get_type()),
-                        crate::hfst_data_types::implementation_type_to_format(self.format_)
+                    eprintln!(
+                        "warning: transducer is in optimized lookup format, 'apply up' is the only operation it supports"
                     );
-                    if filename.is_some() {
-                        eprint!(" when reading from file '{}'", to_filename(filename));
-                    }
-                    if !HfstTransducer::is_safe_conversion((*t).get_type(), self.format_) {
-                        eprint!(" (loss of information is possible)");
-                    }
-                    eprintln!();
                 }
-                (*t).convert(self.format_, String::new());
+                return;
             }
+
+            if self.verbose_ {
+                eprint!(
+                    "warning: converting transducer type from {} to {}",
+                    crate::hfst_data_types::implementation_type_to_format(t_type),
+                    crate::hfst_data_types::implementation_type_to_format(self.format_)
+                );
+                if filename.is_some() {
+                    eprint!(" when reading from file '{}'", to_filename(filename));
+                }
+                if !HfstTransducer::is_safe_conversion(t_type, self.format_) {
+                    eprint!(" (loss of information is possible)");
+                }
+                eprintln!();
+            }
+            t.borrow_mut().convert(self.format_, String::new());
         }
     }
 
@@ -680,20 +690,18 @@ impl XfstCompiler {
 
     // @brief Add a transducer definition with name given by 't.get_name()'
     // and value \a t.
-    fn add_loaded_definition(&mut self, t: *mut HfstTransducer) -> &mut Self {
-        let def_name = unsafe { (*t).get_name() };
+    fn add_loaded_definition(&mut self, t: NetRef) -> &mut Self {
+        let def_name = t.borrow().get_name();
         if def_name.is_empty() {
             eprintln!("warning: loaded transducer definition has no name, skipping it");
             return self;
         }
-        if let Some(&existing) = self.definitions_.get(&def_name) {
+        if self.definitions_.contains_key(&def_name) {
             eprintln!(
                 "warning: a definition named '{}' already exists, overwriting it",
                 def_name
             );
-            unsafe {
-                drop(Box::from_raw(existing));
-            }
+            // overwriting drops the previous Rc.
             self.definitions_.remove(&def_name);
         }
         self.definitions_.insert(def_name, t);
@@ -802,27 +810,28 @@ impl XfstCompiler {
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.top-fn]
     // @brief The topmost transducer in the stack.
     // If empty, print a warning message and return NULL.
-    fn top(&mut self) -> *mut HfstTransducer {
-        if self.stack_.len() < 1 {
+    fn top(&mut self) -> Option<NetRef> {
+        if self.stack_.is_empty() {
             // EMPTY_STACK
             eprintln!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
-            return std::ptr::null_mut();
+            return None;
         }
-        let retval = *self.stack_.last().unwrap();
-        unsafe {
-            if (*retval).get_type() == ImplementationType::HFST_OL_TYPE
-                || (*retval).get_type() == ImplementationType::HFST_OLW_TYPE
+        let retval = self.stack_.last().unwrap().clone();
+        {
+            let t = retval.borrow();
+            if t.get_type() == ImplementationType::HFST_OL_TYPE
+                || t.get_type() == ImplementationType::HFST_OLW_TYPE
             {
                 eprintln!(
                     "Operation not supported for optimized lookup format. Consider 'remove-optimization' to convert into ordinary format."
                 );
                 self.prompt();
-                return std::ptr::null_mut();
+                return None;
             }
         }
-        return retval;
+        Some(retval)
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
@@ -892,15 +901,16 @@ impl XfstCompiler {
 
     fn print_transducer_info(&mut self) -> &mut Self {
         if self.verbose_ && !self.stack_.is_empty() {
-            let top = *self.stack_.last().unwrap();
-            unsafe {
-                if (*top).get_type() != self.format_ {
+            let top = self.stack_.last().unwrap().clone();
+            {
+                let t = top.borrow();
+                if t.get_type() != self.format_ {
                     return self;
                 }
                 println!(
                     "? bytes. {} states, {} arcs, ? paths",
-                    (*top).number_of_states(),
-                    (*top).number_of_arcs()
+                    t.number_of_states(),
+                    t.number_of_arcs()
                 );
             }
             let print_sigma_on =
@@ -973,14 +983,11 @@ impl XfstCompiler {
             XfstCommand::Regex(xre) => {
                 // compile_regex stored the freshly compiled regex into
                 // latest_regex_compiled, then read_regex pushed a copy of it.
-                if !self.latest_regex_compiled.is_null() {
-                    unsafe {
-                        let _ = Box::from_raw(self.latest_regex_compiled);
-                    }
-                    self.latest_regex_compiled = std::ptr::null_mut();
+                if self.latest_regex_compiled.is_some() {
+                    self.latest_regex_compiled = None;
                 }
                 let compiled = self.compile_spanned_xre(xre);
-                self.latest_regex_compiled = compiled;
+                self.latest_regex_compiled = Some(compiled);
                 self.read_regex("");
             }
             XfstCommand::Define { name, body } => {
@@ -1399,11 +1406,11 @@ impl XfstCompiler {
     // it with self.xre_. Mirrors the regex-compile path the bison actions used.
     // The XreCompiler::compile string entry point parses then walks the tree;
     // here the tree is already parsed, so we walk it directly and optimize,
-    // returning a raw owning pointer (Box::into_raw) just like xre_.compile.
-    fn compile_spanned_xre(&mut self, xre: &nfst_xre::SpannedXre) -> *mut HfstTransducer {
+    // returning a shared handle just like xre_.compile.
+    fn compile_spanned_xre(&mut self, xre: &nfst_xre::SpannedXre) -> NetRef {
         let mut t = self.xre_.eval(xre);
         t.optimize();
-        Box::into_raw(Box::new(t))
+        Rc::new(RefCell::new(t))
     }
 
     // @brief Dispatch a parsed PrintCmd to the corresponding print_* method,
@@ -1874,10 +1881,10 @@ impl XfstCompiler {
     pub fn print_labels_tr(
         &mut self,
         oss: &mut dyn std::io::Write,
-        tr: *mut HfstTransducer,
+        tr: &HfstTransducer,
     ) -> &mut Self {
         let mut label_set: BTreeSet<(String, String)> = BTreeSet::new();
-        let fsm = HfstBasicTransducer::new_from_transducer(unsafe { &*tr });
+        let fsm = HfstBasicTransducer::new_from_transducer(tr);
 
         for it in fsm.iter() {
             for tr_it in it.iter() {
@@ -1906,12 +1913,12 @@ impl XfstCompiler {
 
     // @brief Print labels in network @a name
     pub fn print_labels_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
-        match self.definitions_.get(name) {
+        match self.definitions_.get(name).cloned() {
             None => {
                 let _ = write!(oss, "no such definition '{}'\n", name);
             }
-            Some(&tr) => {
-                return self.print_labels_tr(oss, tr);
+            Some(tr) => {
+                return self.print_labels_tr(oss, &tr.borrow());
             }
         }
         self.flush();
@@ -1921,24 +1928,22 @@ impl XfstCompiler {
 
     // @brief Print labels
     pub fn print_labels(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let topmost = self.top();
-        if topmost.is_null() {
+        let Some(topmost) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        return self.print_labels_tr(oss, topmost);
+        };
+        return self.print_labels_tr(oss, &topmost.borrow());
     }
 
     // @brief Print label count
     pub fn print_label_count(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let topmost = self.top();
-        if topmost.is_null() {
+        let Some(topmost) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
 
         let mut label_map: BTreeMap<(String, String), u32> = BTreeMap::new();
-        let fsm = HfstBasicTransducer::new_from_transducer(unsafe { &*topmost });
+        let fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
 
         for it in fsm.iter() {
             for tr_it in it.iter() {
@@ -2018,23 +2023,22 @@ impl XfstCompiler {
 
     pub fn shortest_string(
         &mut self,
-        transducer: *const HfstTransducer,
+        transducer: &HfstTransducer,
         paths: &mut HfstTwoLevelPaths,
     ) -> &mut Self {
-        unsafe { &*transducer }.extract_shortest_paths(paths);
+        transducer.extract_shortest_paths(paths);
         return self;
     }
 
     // @brief Print shortest string of network
     pub fn print_shortest_string(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let topmost = self.top();
-        if topmost.is_null() {
+        let Some(topmost) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
 
         let mut paths = HfstTwoLevelPaths::new();
-        self.shortest_string(topmost, &mut paths);
+        self.shortest_string(&topmost.borrow(), &mut paths);
 
         if paths.len() == 0 {
             print!("transducer is empty\n");
@@ -2048,14 +2052,13 @@ impl XfstCompiler {
 
     // @brief Print length of shortest string
     pub fn print_shortest_string_size(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let topmost = self.top();
-        if topmost.is_null() {
+        let Some(topmost) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
 
         let mut paths = HfstTwoLevelPaths::new();
-        self.shortest_string(topmost, &mut paths);
+        self.shortest_string(&topmost.borrow(), &mut paths);
 
         if paths.len() == 0 {
             print!("transducer is empty\n");
@@ -2104,21 +2107,20 @@ impl XfstCompiler {
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.tmp-fn]
         let mut tmp = HfstTransducer::new_type(self.format_);
         if name.is_empty() {
-            let temp = self.top();
-            if temp.is_null() {
+            let Some(temp) = self.top() else {
                 return self;
-            }
-            tmp = HfstTransducer::new_from_transducer(unsafe { &*temp });
+            };
+            tmp = HfstTransducer::new_from_transducer(&temp.borrow());
         } else {
-            match self.definitions_.get(name) {
+            match self.definitions_.get(name).cloned() {
                 None => {
                     let _ = write!(oss, "no such definition '{}'\n", name);
                     self.flush();
                     self.prompt();
                     return self;
                 }
-                Some(&it) => {
-                    tmp = HfstTransducer::new_from_transducer(unsafe { &*it });
+                Some(it) => {
+                    tmp = HfstTransducer::new_from_transducer(&it.borrow());
                 }
             }
         }
@@ -2152,21 +2154,20 @@ impl XfstCompiler {
 
         let mut tmp = HfstTransducer::new_type(self.format_);
         if name.is_empty() {
-            let temp = self.top();
-            if temp.is_null() {
+            let Some(temp) = self.top() else {
                 return self;
-            }
-            tmp = HfstTransducer::new_from_transducer(unsafe { &*temp });
+            };
+            tmp = HfstTransducer::new_from_transducer(&temp.borrow());
         } else {
-            match self.definitions_.get(name) {
+            match self.definitions_.get(name).cloned() {
                 None => {
                     let _ = write!(oss, "no such definition '{}\n", name);
                     self.flush();
                     self.prompt();
                     return self;
                 }
-                Some(&it) => {
-                    tmp = HfstTransducer::new_from_transducer(unsafe { &*it });
+                Some(it) => {
+                    tmp = HfstTransducer::new_from_transducer(&it.borrow());
                 }
             }
         }
@@ -2196,28 +2197,28 @@ impl XfstCompiler {
         number: u32,
         oss: &mut dyn std::io::Write,
     ) -> &mut Self {
-        let tmp: *const HfstTransducer;
+        let tmp: NetRef;
         if name.is_empty() {
-            tmp = self.top();
-            if tmp.is_null() {
+            let Some(t) = self.top() else {
                 return self;
-            }
+            };
+            tmp = t;
         } else {
-            match self.definitions_.get(name) {
+            match self.definitions_.get(name).cloned() {
                 None => {
                     let _ = write!(oss, "no such definition '{}'\n", name);
                     self.flush();
                     self.prompt();
                     return self;
                 }
-                Some(&it) => {
-                    tmp = it as *const HfstTransducer;
+                Some(it) => {
+                    tmp = it;
                 }
             }
         }
 
         let mut paths = HfstTwoLevelPaths::new();
-        unsafe { &*tmp }.extract_random_paths(&mut paths, number as i32);
+        tmp.borrow().extract_random_paths(&mut paths, number as i32);
         self.print_paths_two(&paths, oss, -1);
         self.flush();
         self.prompt();
@@ -2226,16 +2227,18 @@ impl XfstCompiler {
 
     // @brief Print name of top network
     pub fn print_name(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let tmp = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
 
-        let entries: Vec<(String, *mut HfstTransducer)> =
-            self.names_.iter().map(|(k, &v)| (k.clone(), v)).collect();
+        let entries: Vec<(String, NetRef)> = self
+            .names_
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
         for (first, second) in entries.iter() {
-            if tmp == *second {
+            if Rc::ptr_eq(&tmp, second) {
                 let _ = write!(oss, "Name {}\n", first);
                 self.flush();
                 self.prompt();
@@ -2251,11 +2254,10 @@ impl XfstCompiler {
 
     // @brief View top network
     pub fn view_net(&mut self) -> &mut Self {
-        let tmp = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
         let dotfilename = format!(
             "{}/hfst_view_dot_{}",
             std::env::temp_dir().to_string_lossy(),
@@ -2280,7 +2282,7 @@ impl XfstCompiler {
                     return self;
                 }
             };
-            crate::hfst_print_dot::print_dot_os(&mut dotfile, unsafe { &mut *tmp });
+            crate::hfst_print_dot::print_dot_os(&mut dotfile, &mut *tmp.borrow_mut());
         }
         if false || self.verbose_ {
             eprint!("Wrote net, closing file and converting into png format.\n");
@@ -2307,12 +2309,11 @@ impl XfstCompiler {
         if self.variables_["print-sigma"] == "ON" {
             self.print_sigma(oss, false /*do not prompt*/);
         }
-        let tmp = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        let basic = HfstBasicTransducer::new_from_transducer(unsafe { &*tmp });
+        };
+        let basic = HfstBasicTransducer::new_from_transducer(&tmp.borrow());
         basic.write_in_xfst_format(oss, self.variables_["print-weight"] == "ON");
         self.flush();
         self.prompt();
@@ -2321,7 +2322,7 @@ impl XfstCompiler {
 
     // @brief Print network named @a name
     pub fn print_net_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
-        match self.definitions_.get(name).copied() {
+        match self.definitions_.get(name).cloned() {
             None => {
                 eprint!("no such defined network: '{}'\n", name);
                 self.prompt();
@@ -2329,11 +2330,11 @@ impl XfstCompiler {
             }
             Some(it) => {
                 if self.variables_["print-sigma"] == "ON" {
-                    self.stack_.push(it);
+                    self.stack_.push(it.clone());
                     self.print_sigma(oss, false /*do not prompt*/);
                     self.stack_.pop();
                 }
-                let basic = HfstBasicTransducer::new_from_transducer(unsafe { &*it });
+                let basic = HfstBasicTransducer::new_from_transducer(&it.borrow());
                 basic.write_in_xfst_format(oss, self.variables_["print-weight"] == "ON");
                 self.flush();
                 self.prompt();
@@ -2344,17 +2345,16 @@ impl XfstCompiler {
 
     // @brief Print all symbols of network
     pub fn print_sigma(&mut self, oss: &mut dyn std::io::Write, prompt: bool) -> &mut Self {
-        let t = self.top();
-        if t.is_null() {
+        let Some(t) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        let alpha = unsafe { &*t }.get_alphabet();
+        };
+        let alpha = t.borrow().get_alphabet();
 
         // find out whether unknown or identity is used in transitions
         let mut unknown = false;
         let mut identity = false;
-        let _ = is_unknown_or_identity_used_in_transducer(t, &mut unknown, &mut identity);
+        let _ = is_unknown_or_identity_used_in_transducer(&t.borrow(), &mut unknown, &mut identity);
 
         self.print_alphabet(&alpha, unknown, identity, oss);
         if prompt {
@@ -2374,7 +2374,7 @@ impl XfstCompiler {
 
     // @brief Print all networks in stack
     pub fn print_stack(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let mut tmp: Vec<*mut HfstTransducer> = Vec::new();
+        let mut tmp: Vec<NetRef> = Vec::new();
         let mut i = 0;
         while !self.stack_.is_empty() {
             let _ = write!(
@@ -2383,12 +2383,12 @@ impl XfstCompiler {
                 format!("{}: ? bytes. ? states, ? arcs, ? paths.", i)
             );
             let _ = write!(oss, "\n");
-            tmp.push(*self.stack_.last().unwrap());
+            tmp.push(self.stack_.last().unwrap().clone());
             self.stack_.pop();
             i += 1;
         }
         while !tmp.is_empty() {
-            self.stack_.push(*tmp.last().unwrap());
+            self.stack_.push(tmp.last().unwrap().clone());
             tmp.pop();
         }
         self.flush();
@@ -2398,12 +2398,11 @@ impl XfstCompiler {
 
     // @brief Write top transducer in att format to @a outfile
     pub fn write_att(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let tmp = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        let fsm = HfstBasicTransducer::new_from_transducer(unsafe { &*tmp });
+        };
+        let fsm = HfstBasicTransducer::new_from_transducer(&tmp.borrow());
         fsm.write_in_att_format_os(oss, self.variables_["print-weight"] == "ON");
         self.flush();
         self.prompt();
@@ -2449,8 +2448,8 @@ impl XfstCompiler {
             self.xfst_lesser_fail();
             return self;
         }
-        let t = *self.stack_.last().unwrap();
-        unsafe { &mut *t }.set_name(name);
+        let t = self.stack_.last().unwrap().clone();
+        t.borrow_mut().set_name(name);
         self.names_.insert(name.to_string(), t);
         self.print_transducer_info();
         self.prompt();
@@ -2465,7 +2464,7 @@ impl XfstCompiler {
     }
 
     // @brief Get current stack of compiler
-    pub fn get_stack(&self) -> &Vec<*mut HfstTransducer> {
+    pub fn get_stack(&self) -> &Vec<NetRef> {
         return &self.stack_;
     }
 
@@ -2792,15 +2791,14 @@ impl XfstCompiler {
         oss: &mut dyn std::io::Write,
         print_size: bool,
     ) -> &mut Self {
-        let topmost = self.top();
-        if topmost.is_null() {
+        let Some(topmost) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
 
         // Variables needed to find out some properties about the transducer
-        let mut tmp_lower = HfstTransducer::new_from_transducer(unsafe { &*topmost });
-        let mut tmp_upper = HfstTransducer::new_from_transducer(unsafe { &*topmost });
+        let mut tmp_lower = HfstTransducer::new_from_transducer(&topmost.borrow());
+        let mut tmp_upper = HfstTransducer::new_from_transducer(&topmost.borrow());
         tmp_lower.output_project().remove_epsilons();
         tmp_upper.input_project().remove_epsilons();
 
@@ -2903,21 +2901,20 @@ impl XfstCompiler {
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.temp-fn]
         let mut temp = HfstTransducer::new_type(self.format_);
         if name.is_empty() {
-            let tmp = self.top();
-            if tmp.is_null() {
+            let Some(tmp) = self.top() else {
                 return self;
-            }
-            temp = HfstTransducer::new_from_transducer(unsafe { &*tmp });
+            };
+            temp = HfstTransducer::new_from_transducer(&tmp.borrow());
         } else {
-            match self.definitions_.get(name) {
+            match self.definitions_.get(name).cloned() {
                 None => {
                     let _ = write!(oss, "no such definition '{}'\n", name);
                     self.flush();
                     self.prompt();
                     return self;
                 }
-                Some(&it) => {
-                    temp = HfstTransducer::new_from_transducer(unsafe { &*it });
+                Some(it) => {
+                    temp = HfstTransducer::new_from_transducer(&it.borrow());
                 }
             }
         }
@@ -3039,14 +3036,14 @@ fn is_special_symbol(s: &str) -> bool {
 // [spec:hfst:def:xfst-compiler.hfst.xfst.is-unknown-or-identity-used-in-transducer-fn]
 // [spec:hfst:sem:xfst-compiler.hfst.xfst.is-unknown-or-identity-used-in-transducer-fn]
 fn is_unknown_or_identity_used_in_transducer(
-    t: *mut HfstTransducer,
+    t: &HfstTransducer,
     unknown: &mut bool,
     identity: &mut bool,
 ) -> bool {
     *unknown = false;
     *identity = false;
 
-    let fsm = HfstBasicTransducer::new_from_transducer(unsafe { &*t });
+    let fsm = HfstBasicTransducer::new_from_transducer(t);
     for it in fsm.iter() {
         for tr_it in it.iter() {
             let istr = tr_it.get_input_symbol();
@@ -3278,7 +3275,8 @@ impl Default for XfstCompiler {
 }
 
 // whether we need to reset the lexc parser before reading lexc
-static mut HAS_LEXC_BEEN_READ_: bool = false;
+static HAS_LEXC_BEEN_READ_: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 const WEIGHT_PRECISION: &str = "5";
 const LOOKUP_CYCLE_CUTOFF: &str = "5";
@@ -3518,19 +3516,18 @@ impl XfstCompiler {
             return self;
         }
 
-        if !self.latest_regex_compiled.is_null() {
-            // idiom1.parsers Task 12: xfst define_transducer still owns via raw ptr.
-            let compiled = self
-                .xre_
-                .compile(xre)
-                .map_or(std::ptr::null_mut(), |t| Box::into_raw(Box::new(t)));
-            if compiled.is_null() {
-                eprintln!("Could not define variable '{}'", name);
-                self.xfst_fail();
+        if self.latest_regex_compiled.is_some() {
+            match self.xre_.compile(xre).map(|t| Rc::new(RefCell::new(t))) {
+                Some(compiled) => {
+                    self.define_transducer(name, compiled);
+                    self.original_definitions_
+                        .insert(name.to_string(), xre.to_string());
+                }
+                None => {
+                    eprintln!("Could not define variable '{}'", name);
+                    self.xfst_fail();
+                }
             }
-            self.define_transducer(name, compiled);
-            self.original_definitions_
-                .insert(name.to_string(), xre.to_string());
         } else {
             eprintln!("Could not define variable '{}'", name);
             self.xfst_fail();
@@ -3542,11 +3539,10 @@ impl XfstCompiler {
     // @brief Define regex macro
     pub fn define(&mut self, name: &str) -> &mut Self {
         // GET_TOP(top)
-        let top: *mut HfstTransducer = self.top();
-        if top.is_null() {
+        let Some(top) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
         self.stack_.pop();
         self.define_transducer(name, top);
 
@@ -3559,19 +3555,14 @@ impl XfstCompiler {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.define-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.define-fn]
     // @brief Define transducer
-    pub fn define_transducer(&mut self, name: &str, transducer: *mut HfstTransducer) {
+    pub fn define_transducer(&mut self, name: &str, transducer: NetRef) {
         let was_defined = self.xre_.is_definition(name);
-        self.xre_.define_transducer(name, unsafe { &*transducer });
+        self.xre_.define_transducer(name, &transducer.borrow());
         if self.variables_["name-nets"] == "ON" {
-            unsafe {
-                (*transducer).set_name(name);
-            }
+            transducer.borrow_mut().set_name(name);
         }
-        if let Some(old) = self.definitions_.remove(name) {
-            unsafe {
-                drop(Box::from_raw(old));
-            }
-        }
+        // overwriting drops the previous Rc.
+        self.definitions_.remove(name);
         self.definitions_.insert(name.to_string(), transducer);
 
         if self.verbose_ {
@@ -3661,10 +3652,7 @@ impl XfstCompiler {
             if name.is_empty() {
                 continue;
             }
-            if let Some(old) = self.definitions_.remove(name) {
-                unsafe {
-                    drop(Box::from_raw(old));
-                }
+            if self.definitions_.remove(name).is_some() {
                 self.xre_.undefine(name); // XRE
             }
         }
@@ -3695,16 +3683,10 @@ impl XfstCompiler {
     // @brief Clear stack
     pub fn clear(&mut self) -> &mut Self {
         while !self.stack_.is_empty() {
-            let t = self.stack_.pop().unwrap();
-            unsafe {
-                drop(Box::from_raw(t));
-            }
+            self.stack_.pop();
         }
-        if !self.latest_regex_compiled.is_null() {
-            unsafe {
-                drop(Box::from_raw(self.latest_regex_compiled));
-            }
-            self.latest_regex_compiled = std::ptr::null_mut();
+        if self.latest_regex_compiled.is_some() {
+            self.latest_regex_compiled = None;
         }
         self.prompt();
         self
@@ -3715,10 +3697,7 @@ impl XfstCompiler {
         if self.stack_.is_empty() {
             println!("Stack is empty.");
         } else {
-            let t = self.stack_.pop().unwrap();
-            unsafe {
-                drop(Box::from_raw(t));
-            }
+            self.stack_.pop();
         }
         self.prompt();
         self
@@ -3732,8 +3711,8 @@ impl XfstCompiler {
             return self;
         }
 
-        let def = self.definitions_[name];
-        let t = Box::into_raw(Box::new(HfstTransducer::new_copy(unsafe { &*def })));
+        let def = self.definitions_[name].clone();
+        let t = Rc::new(RefCell::new(HfstTransducer::new_copy(&def.borrow())));
         self.stack_.push(t);
         // PRINT_INFO_PROMPT_AND_RETURN_THIS
         self.print_transducer_info();
@@ -3743,9 +3722,9 @@ impl XfstCompiler {
 
     // @brief Push last definition on stack
     pub fn push_latest(&mut self) -> &mut Self {
-        let defs: Vec<*mut HfstTransducer> = self.definitions_.values().copied().collect();
+        let defs: Vec<NetRef> = self.definitions_.values().cloned().collect();
         for def in defs {
-            let t = Box::into_raw(Box::new(HfstTransducer::new_copy(unsafe { &*def })));
+            let t = Rc::new(RefCell::new(HfstTransducer::new_copy(&def.borrow())));
             self.stack_.push(t);
         }
 
@@ -3757,8 +3736,7 @@ impl XfstCompiler {
 
     // @brief Reverse stack
     pub fn turn(&mut self) -> &mut Self {
-        let mut tmp: std::collections::VecDeque<*mut HfstTransducer> =
-            std::collections::VecDeque::new();
+        let mut tmp: std::collections::VecDeque<NetRef> = std::collections::VecDeque::new();
         while !self.stack_.is_empty() {
             tmp.push_back(self.stack_.pop().unwrap());
         }
@@ -3778,7 +3756,7 @@ impl XfstCompiler {
             return self;
         }
 
-        let mut tmp: Vec<*mut HfstTransducer> = Vec::new();
+        let mut tmp: Vec<NetRef> = Vec::new();
         while !self.stack_.is_empty() {
             tmp.push(self.stack_.pop().unwrap());
         }
@@ -3800,17 +3778,13 @@ impl XfstCompiler {
     }
 
     pub fn compile_regex(&mut self, indata: &str, chars_read: &mut u32) -> &mut Self {
-        if !self.latest_regex_compiled.is_null() {
-            unsafe {
-                drop(Box::from_raw(self.latest_regex_compiled));
-            }
-            self.latest_regex_compiled = std::ptr::null_mut();
+        if self.latest_regex_compiled.is_some() {
+            self.latest_regex_compiled = None;
         }
-        // idiom1.parsers Task 12: xfst's latest_regex_compiled field is still raw.
         self.latest_regex_compiled = self
             .xre_
             .compile_first(indata, chars_read)
-            .map_or(std::ptr::null_mut(), |t| Box::into_raw(Box::new(t))); // XRE
+            .map(|t| Rc::new(RefCell::new(t))); // XRE
         self
     }
 
@@ -3985,23 +3959,24 @@ impl XfstCompiler {
             self.xfst_lesser_fail();
             return self;
         }
-        let result = *self.stack_.last().unwrap();
+        let result = self.stack_.last().unwrap().clone();
         self.stack_.pop();
-        let another = *self.stack_.last().unwrap();
+        let another = self.stack_.last().unwrap().clone();
         self.stack_.pop();
+        let another_inner = another.borrow().clone();
 
         match operation {
-            BinaryOperation::IGNORE_NET => unsafe {
-                (*result).insert_freely(&*another, true);
-            },
-            BinaryOperation::MINUS_NET => unsafe {
-                (*result).subtract(&*another, true);
-            },
+            BinaryOperation::IGNORE_NET => {
+                result.borrow_mut().insert_freely(&another_inner, true);
+            }
+            BinaryOperation::MINUS_NET => {
+                result.borrow_mut().subtract(&another_inner, true);
+            }
             BinaryOperation::CROSSPRODUCT_NET => {
                 let __prev_hook = std::panic::take_hook();
                 std::panic::set_hook(Box::new(|_| {}));
-                let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                    (*result).cross_product(&*another, true);
+                let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    result.borrow_mut().cross_product(&another_inner, true);
                 }));
                 std::panic::set_hook(__prev_hook);
                 if let Err(e) = __res {
@@ -4027,12 +4002,7 @@ impl XfstCompiler {
             }
         }
 
-        unsafe {
-            (*result).optimize();
-        }
-        unsafe {
-            let _ = Box::from_raw(another);
-        }
+        result.borrow_mut().optimize();
         self.stack_.push(result);
         self.print_transducer_info();
         self.prompt();
@@ -4052,13 +4022,15 @@ impl XfstCompiler {
             self.xfst_lesser_fail();
             return self;
         }
-        let result = *self.stack_.last().unwrap();
+        let result = self.stack_.last().unwrap().clone();
 
         self.stack_.pop();
         while !self.stack_.is_empty() {
-            let t = *self.stack_.last().unwrap();
+            let t = self.stack_.last().unwrap().clone();
 
-            if unsafe { (*t).get_type() != (*result).get_type() } {
+            let t_type = t.borrow().get_type();
+            let result_type = result.borrow().get_type();
+            if t_type != result_type {
                 self.error_message("Stack contains transducers whose type differs.");
                 self.flush();
                 self.xfst_lesser_fail();
@@ -4066,14 +4038,16 @@ impl XfstCompiler {
             }
 
             match operation {
-                BinaryOperation::INTERSECT_NET => unsafe {
-                    (*result).intersect(&*t, true);
-                },
-                BinaryOperation::IGNORE_NET => unsafe {
-                    (*result).insert_freely(&*t, true);
-                },
+                BinaryOperation::INTERSECT_NET => {
+                    result.borrow_mut().intersect(&t.borrow(), true);
+                }
+                BinaryOperation::IGNORE_NET => {
+                    result.borrow_mut().insert_freely(&t.borrow(), true);
+                }
                 BinaryOperation::COMPOSE_NET => {
-                    if unsafe { (*result).has_flag_diacritics() && (*t).has_flag_diacritics() } {
+                    let both_have_flags =
+                        result.borrow().has_flag_diacritics() && t.borrow().has_flag_diacritics();
+                    if both_have_flags {
                         if self.variables_["harmonize-flags"] == "OFF" {
                             if self.verbose_ {
                                 self.error_message(
@@ -4084,16 +4058,16 @@ impl XfstCompiler {
                                 self.flush();
                             }
                         } else {
-                            unsafe {
-                                (*result).harmonize_flag_diacritics(&mut *t, true);
-                            }
+                            let mut rb = result.borrow_mut();
+                            let mut tb = t.borrow_mut();
+                            rb.harmonize_flag_diacritics(&mut tb, true);
                         }
                     }
 
                     let __prev_hook = std::panic::take_hook();
                     std::panic::set_hook(Box::new(|_| {}));
-                    let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                        (*result).compose(&*t, true);
+                    let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        result.borrow_mut().compose(&t.borrow(), true);
                     }));
                     std::panic::set_hook(__prev_hook);
                     if let Err(e) = __res {
@@ -4117,28 +4091,23 @@ impl XfstCompiler {
                         }
                     }
                 }
-                BinaryOperation::CONCATENATE_NET => unsafe {
-                    (*result).concatenate(&*t, true);
-                },
-                BinaryOperation::UNION_NET => unsafe {
-                    (*result).disjunct(&*t, true);
-                },
-                BinaryOperation::SHUFFLE_NET => unsafe {
-                    (*result).shuffle(&*t, true);
-                },
+                BinaryOperation::CONCATENATE_NET => {
+                    result.borrow_mut().concatenate(&t.borrow(), true);
+                }
+                BinaryOperation::UNION_NET => {
+                    result.borrow_mut().disjunct(&t.borrow(), true);
+                }
+                BinaryOperation::SHUFFLE_NET => {
+                    result.borrow_mut().shuffle(&t.borrow(), true);
+                }
                 _ => {
                     self.error_message("ERROR: unknown binary operation");
                     self.flush();
                 }
             }
             self.stack_.pop();
-            unsafe {
-                let _ = Box::from_raw(t);
-            }
         }
-        unsafe {
-            (*result).optimize();
-        }
+        result.borrow_mut().optimize();
         self.stack_.push(result);
         self.print_transducer_info();
         self.prompt();
@@ -4148,14 +4117,11 @@ impl XfstCompiler {
     // @brief Remove unnecessary symbols using ?
     // @todo HFST does not support ?
     pub fn compact_sigma(&mut self) -> &mut Self {
-        let top = self.top();
-        if top.is_null() {
+        let Some(top) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        unsafe {
-            (*top).prune_alphabet(true);
-        }
+        };
+        top.borrow_mut().prune_alphabet(true);
         self.prompt();
         self
     }
@@ -4163,18 +4129,17 @@ impl XfstCompiler {
     // @brief Eliminate flag diacritic
     // @todo unimplemented yet
     pub fn eliminate_flag(&mut self, name: &str) -> &mut Self {
-        let tmp = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
         // [spec:hfst:def:xfst-compiler.hfst.xfst.name-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.name-fn]
         let name_ = name.to_string();
         let __prev_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {}));
-        let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || unsafe {
-            (*tmp).eliminate_flag(name);
+        let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            tmp.borrow_mut().eliminate_flag(name);
         }));
         std::panic::set_hook(__prev_hook);
         if let Err(__e) = __res {
@@ -4195,27 +4160,21 @@ impl XfstCompiler {
     // @brief Eliminate all flag diacritics
     // @todo unimplemented yet
     pub fn eliminate_flags(&mut self) -> &mut Self {
-        let tmp = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        unsafe {
-            (*tmp).eliminate_flags();
-        }
+        };
+        tmp.borrow_mut().eliminate_flags();
         self.prompt();
         self
     }
 
     pub fn twosided_flags(&mut self) -> &mut Self {
-        let tmp = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        unsafe {
-            (*tmp).twosided_flag_diacritics();
-        }
+        };
+        tmp.borrow_mut().twosided_flag_diacritics();
         self.prompt();
         self
     }
@@ -4237,24 +4196,19 @@ impl XfstCompiler {
     // @brief Make transducer functional
     // @todo unimplemented
     pub fn complete_net(&mut self) -> &mut Self {
-        let topmost = self.top();
-        if topmost.is_null() {
+        let Some(topmost) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        let mut fsm = HfstBasicTransducer::new_from_transducer(unsafe { &*topmost });
+        };
+        let mut fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
         fsm.complete();
-        let result = Box::into_raw(Box::new(HfstTransducer::from_basic_transducer(
+        let topmost_type = topmost.borrow().get_type();
+        let result = Rc::new(RefCell::new(HfstTransducer::from_basic_transducer(
             &fsm,
-            unsafe { (*topmost).get_type() },
+            topmost_type,
         )));
         self.stack_.pop();
-        unsafe {
-            drop(Box::from_raw(topmost));
-        }
-        unsafe {
-            (*result).optimize();
-        }
+        result.borrow_mut().optimize();
         self.stack_.push(result);
         self.print_transducer_info();
         self.prompt();
@@ -4279,35 +4233,26 @@ impl XfstCompiler {
     // @brief Make top of stack label network
     // @todo Find out wtf this is
     pub fn label_net(&mut self) -> &mut Self {
-        let topmost = self.top();
-        if topmost.is_null() {
+        let Some(topmost) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        let result = Box::into_raw(Box::new(HfstTransducer::new_type(unsafe {
-            (*topmost).get_type()
-        })));
+        };
+        let topmost_type = topmost.borrow().get_type();
+        let result = Rc::new(RefCell::new(HfstTransducer::new_type(topmost_type)));
         let mut label_set: BTreeSet<(String, String)> = BTreeSet::new();
-        let fsm = HfstBasicTransducer::new_from_transducer(unsafe { &*topmost });
+        let fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
         for it in fsm.iter() {
             for tr_it in it.iter() {
                 label_set.insert((tr_it.get_input_symbol(), tr_it.get_output_symbol()));
             }
         }
+        let result_type = result.borrow().get_type();
         for it in label_set.iter() {
-            let label_tr =
-                HfstTransducer::new_symbol_pair(&it.0, &it.1, unsafe { (*result).get_type() });
-            unsafe {
-                (*result).disjunct(&label_tr, true);
-            }
+            let label_tr = HfstTransducer::new_symbol_pair(&it.0, &it.1, result_type);
+            result.borrow_mut().disjunct(&label_tr, true);
         }
-        unsafe {
-            (*result).minimize();
-        }
+        result.borrow_mut().minimize();
         self.stack_.pop();
-        unsafe {
-            drop(Box::from_raw(topmost));
-        }
         self.stack_.push(result);
         self.print_transducer_info();
         self.prompt();
@@ -4337,12 +4282,13 @@ impl XfstCompiler {
             return self;
         }
 
-        let t = *self.stack_.last().unwrap();
+        let t = self.stack_.last().unwrap().clone();
+        let t_op = t.clone();
 
         let __prev_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {}));
-        let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || unsafe {
-            (*t).negate();
+        let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            t_op.borrow_mut().negate();
         }));
         std::panic::set_hook(__prev_hook);
         if let Err(__e) = __res {
@@ -4361,9 +4307,7 @@ impl XfstCompiler {
             }
         }
 
-        unsafe {
-            (*t).optimize();
-        }
+        t.borrow_mut().optimize();
         self.print_transducer_info();
         self.prompt();
         self
@@ -4393,24 +4337,21 @@ impl XfstCompiler {
     // @brief Sigma top network of stack
     // @todo Find out wtf this is
     pub fn sigma_net(&mut self) -> &mut Self {
-        let tmp = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        let mut alpha: StringSet = unsafe { (*tmp).get_alphabet() };
+        };
+        let mut alpha: StringSet = tmp.borrow().get_alphabet();
         alpha.remove("@_UNKNOWN_SYMBOL_@");
         alpha.remove("@_IDENTITY_SYMBOL_@");
         alpha.remove("@_EPSILON_SYMBOL_@");
         let alpha_ = crate::hfst_symbol_defs::symbols::to_string_pair_set(&alpha);
-        let sigma = Box::into_raw(Box::new(HfstTransducer::new_string_pair_set(
+        let sigma = Rc::new(RefCell::new(HfstTransducer::new_string_pair_set(
             &alpha_,
             self.format_,
             false,
         )));
-        unsafe {
-            (*sigma).optimize();
-        }
+        sigma.borrow_mut().optimize();
         self.stack_.push(sigma);
         self.print_transducer_info();
         self.prompt();
@@ -4419,13 +4360,12 @@ impl XfstCompiler {
 
     // @brief Interactive network traversal tool
     pub fn inspect_net(&mut self) -> &mut Self {
-        let t = self.top();
-        if t.is_null() {
+        let Some(t) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
 
-        let net = HfstBasicTransducer::new_from_transducer(unsafe { &*t });
+        let net = HfstBasicTransducer::new_from_transducer(&t.borrow());
 
         const INSPECT_NET_HELP_MSG: &str =
             "'N' transits arc N, '-N' returns to level N, '<' to previous level, '0' quits.\n";
@@ -4539,12 +4479,11 @@ impl XfstCompiler {
     pub fn compile_replace_net(&mut self, level: Level) -> &mut Self {
         assert!(level != Level::BOTH_LEVELS);
 
-        let tmp = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        let mut tmp_cp = HfstTransducer::new_copy(unsafe { &*tmp });
+        };
+        let mut tmp_cp = HfstTransducer::new_copy(&tmp.borrow());
 
         if level == Level::UPPER_LEVEL {
             tmp_cp.input_project();
@@ -4570,7 +4509,7 @@ impl XfstCompiler {
         let level_not_upper = level != Level::UPPER_LEVEL;
         let retokenize_on = self.variables_["retokenize"] == "ON";
 
-        let mut fsm = HfstBasicTransducer::new_from_transducer(unsafe { &*tmp });
+        let mut fsm = HfstBasicTransducer::new_from_transducer(&tmp.borrow());
         let mut early_return = false;
         {
             let xre_ptr: *mut XreCompiler = &mut self.xre_;
@@ -4633,7 +4572,7 @@ impl XfstCompiler {
             return self;
         }
 
-        let result = Box::into_raw(Box::new(HfstTransducer::from_basic_transducer(
+        let result = Rc::new(RefCell::new(HfstTransducer::from_basic_transducer(
             &fsm,
             self.format_,
         )));
@@ -4642,16 +4581,11 @@ impl XfstCompiler {
         let mut cr = Self::contains_regexp_markers_on_one_side(&mut self.xre_, level_is_upper);
         cr.optimize();
 
-        unsafe {
-            (*result).subtract(&cr, true).optimize();
-        }
-        unsafe {
-            (*result).substitute("@EPSILON_MARKER@", "@_EPSILON_SYMBOL_@", true, true);
-        }
+        result.borrow_mut().subtract(&cr, true).optimize();
+        result
+            .borrow_mut()
+            .substitute("@EPSILON_MARKER@", "@_EPSILON_SYMBOL_@", true, true);
         self.stack_.pop();
-        unsafe {
-            drop(Box::from_raw(tmp));
-        }
         self.stack_.push(result);
 
         self.prompt();
@@ -4671,60 +4605,58 @@ impl XfstCompiler {
     // @brief Apply \a operation on top transducer in the stack.
     // If the stack is empty, print a warning.
     fn apply_unary_operation(&mut self, operation: UnaryOperation) -> &mut Self {
-        let result = self.top();
-        if result.is_null() {
+        let Some(result) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
         self.stack_.pop();
+        let result_op = result.clone();
 
         let __prev_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {}));
         let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
             match operation {
-                UnaryOperation::DETERMINIZE_NET => unsafe {
-                    (*result).determinize();
-                },
-                UnaryOperation::EPSILON_REMOVE_NET => unsafe {
-                    (*result).remove_epsilons();
-                },
-                UnaryOperation::INVERT_NET => unsafe {
-                    (*result).invert();
-                },
-                UnaryOperation::LOWER_SIDE_NET => unsafe {
-                    (*result).output_project();
-                },
-                UnaryOperation::UPPER_SIDE_NET => unsafe {
-                    (*result).input_project();
-                },
-                UnaryOperation::ZERO_PLUS_NET => unsafe {
-                    (*result).repeat_star();
-                },
-                UnaryOperation::ONE_PLUS_NET => unsafe {
-                    (*result).repeat_plus();
-                },
-                UnaryOperation::OPTIONAL_NET => unsafe {
-                    (*result).optionalize();
-                },
-                UnaryOperation::REVERSE_NET => unsafe {
-                    (*result).reverse();
-                },
-                UnaryOperation::MINIMIZE_NET => unsafe {
+                UnaryOperation::DETERMINIZE_NET => {
+                    result_op.borrow_mut().determinize();
+                }
+                UnaryOperation::EPSILON_REMOVE_NET => {
+                    result_op.borrow_mut().remove_epsilons();
+                }
+                UnaryOperation::INVERT_NET => {
+                    result_op.borrow_mut().invert();
+                }
+                UnaryOperation::LOWER_SIDE_NET => {
+                    result_op.borrow_mut().output_project();
+                }
+                UnaryOperation::UPPER_SIDE_NET => {
+                    result_op.borrow_mut().input_project();
+                }
+                UnaryOperation::ZERO_PLUS_NET => {
+                    result_op.borrow_mut().repeat_star();
+                }
+                UnaryOperation::ONE_PLUS_NET => {
+                    result_op.borrow_mut().repeat_plus();
+                }
+                UnaryOperation::OPTIONAL_NET => {
+                    result_op.borrow_mut().optionalize();
+                }
+                UnaryOperation::REVERSE_NET => {
+                    result_op.borrow_mut().reverse();
+                }
+                UnaryOperation::MINIMIZE_NET => {
                     // implicit minimization requested, do not use optimize()
-                    (*result).minimize();
-                },
-                UnaryOperation::PRUNE_NET_ => unsafe {
-                    (*result).prune();
-                },
+                    result_op.borrow_mut().minimize();
+                }
+                UnaryOperation::PRUNE_NET_ => {
+                    result_op.borrow_mut().prune();
+                }
             }
 
             if operation != UnaryOperation::MINIMIZE_NET
                 && operation != UnaryOperation::DETERMINIZE_NET
                 && operation != UnaryOperation::EPSILON_REMOVE_NET
             {
-                unsafe {
-                    (*result).optimize();
-                }
+                result_op.borrow_mut().optimize();
             }
         }));
         std::panic::set_hook(__prev_hook);
@@ -4869,13 +4801,10 @@ impl XfstCompiler {
     // @pre \a t must be an automaton  XRE
     // [spec:hfst:def:xfst-compiler.hfst.xfst.is-well-formed-for-compile-replace-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.is-well-formed-for-compile-replace-fn]
-    fn is_well_formed_for_compile_replace(
-        t: *const HfstTransducer,
-        xre_: &mut XreCompiler,
-    ) -> bool {
+    fn is_well_formed_for_compile_replace(t: &HfstTransducer, xre_: &mut XreCompiler) -> bool {
         let well_formed = Self::contains_regexps(xre_);
         // subtract those paths from copy of t
-        let mut tc = HfstTransducer::new_copy(unsafe { &*t });
+        let mut tc = HfstTransducer::new_copy(t);
         tc.subtract(&well_formed, true);
         // all paths that contain one or more ^[ or ^]
         let brackets = xre_.compile("$[ \"^[\" | \"^]\" ] ;").unwrap();
@@ -4983,43 +4912,41 @@ impl XfstCompiler {
             return self;
         }
 
-        let t: *mut HfstTransducer = *self.stack_.last().unwrap();
+        let t = self.stack_.last().unwrap().clone();
+        let t_type = t.borrow().get_type();
 
         let to_format: ImplementationType;
-        unsafe {
-            if (*t).get_type() == ImplementationType::HFST_OL_TYPE
-                || (*t).get_type() == ImplementationType::HFST_OLW_TYPE
-            {
-                eprintln!("Network is already optimized for lookup.");
-                self.prompt();
-                return self;
-            } else if (*t).get_type() == ImplementationType::TROPICAL_OPENFST_TYPE
-                || (*t).get_type() == ImplementationType::LOG_OPENFST_TYPE
-            {
-                to_format = ImplementationType::HFST_OLW_TYPE;
-            } else {
-                to_format = ImplementationType::HFST_OL_TYPE;
-            }
+        if t_type == ImplementationType::HFST_OL_TYPE || t_type == ImplementationType::HFST_OLW_TYPE
+        {
+            eprintln!("Network is already optimized for lookup.");
+            self.prompt();
+            return self;
+        } else if t_type == ImplementationType::TROPICAL_OPENFST_TYPE
+            || t_type == ImplementationType::LOG_OPENFST_TYPE
+        {
+            to_format = ImplementationType::HFST_OLW_TYPE;
+        } else {
+            to_format = ImplementationType::HFST_OL_TYPE;
+        }
 
-            if self.verbose_ {
-                eprintln!(
-                    "converting transducer type from {} to {}, this might take a while...",
-                    crate::hfst_data_types::implementation_type_to_format((*t).get_type()),
-                    crate::hfst_data_types::implementation_type_to_format(to_format)
-                );
-            }
+        if self.verbose_ {
+            eprintln!(
+                "converting transducer type from {} to {}, this might take a while...",
+                crate::hfst_data_types::implementation_type_to_format(t_type),
+                crate::hfst_data_types::implementation_type_to_format(to_format)
+            );
+        }
 
-            let mut temp: Vec<*mut HfstTransducer> = Vec::new();
-            while !self.stack_.is_empty() {
-                let top = *self.stack_.last().unwrap();
-                (*top).convert(to_format, String::new());
-                temp.push(top);
-                self.stack_.pop();
-            }
-            while !temp.is_empty() {
-                self.stack_.push(*temp.last().unwrap());
-                temp.pop();
-            }
+        let mut temp: Vec<NetRef> = Vec::new();
+        while !self.stack_.is_empty() {
+            let top = self.stack_.last().unwrap().clone();
+            top.borrow_mut().convert(to_format, String::new());
+            temp.push(top);
+            self.stack_.pop();
+        }
+        while !temp.is_empty() {
+            self.stack_.push(temp.last().unwrap().clone());
+            temp.pop();
         }
 
         self.prompt();
@@ -5034,41 +4961,39 @@ impl XfstCompiler {
             self.prompt();
             return self;
         }
-        let t: *mut HfstTransducer = *self.stack_.last().unwrap();
+        let t = self.stack_.last().unwrap().clone();
+        let t_type = t.borrow().get_type();
 
-        unsafe {
-            if (*t).get_type() != ImplementationType::HFST_OL_TYPE
-                && (*t).get_type() != ImplementationType::HFST_OLW_TYPE
-            {
-                eprintln!("Network is already in ordinary format.");
-                self.prompt();
-                return self;
-            }
+        if t_type != ImplementationType::HFST_OL_TYPE && t_type != ImplementationType::HFST_OLW_TYPE
+        {
+            eprintln!("Network is already in ordinary format.");
+            self.prompt();
+            return self;
+        }
 
-            if self.verbose_ {
+        if self.verbose_ {
+            eprintln!(
+                "converting transducer type from {} to {}, this might take a while...",
+                crate::hfst_data_types::implementation_type_to_format(t_type),
+                crate::hfst_data_types::implementation_type_to_format(self.format_)
+            );
+            if !HfstTransducer::is_safe_conversion(t_type, self.format_) {
                 eprintln!(
-                    "converting transducer type from {} to {}, this might take a while...",
-                    crate::hfst_data_types::implementation_type_to_format((*t).get_type()),
-                    crate::hfst_data_types::implementation_type_to_format(self.format_)
+                    "warning: converting from weighted to unweighted format, loss of information is possible"
                 );
-                if !HfstTransducer::is_safe_conversion((*t).get_type(), self.format_) {
-                    eprintln!(
-                        "warning: converting from weighted to unweighted format, loss of information is possible"
-                    );
-                }
             }
+        }
 
-            let mut temp: Vec<*mut HfstTransducer> = Vec::new();
-            while !self.stack_.is_empty() {
-                let top = *self.stack_.last().unwrap();
-                (*top).convert(self.format_, String::new());
-                temp.push(top);
-                self.stack_.pop();
-            }
-            while !temp.is_empty() {
-                self.stack_.push(*temp.last().unwrap());
-                temp.pop();
-            }
+        let mut temp: Vec<NetRef> = Vec::new();
+        while !self.stack_.is_empty() {
+            let top = self.stack_.last().unwrap().clone();
+            top.borrow_mut().convert(self.format_, String::new());
+            temp.push(top);
+            self.stack_.pop();
+        }
+        while !temp.is_empty() {
+            self.stack_.push(temp.last().unwrap().clone());
+            temp.pop();
         }
 
         self.prompt();
@@ -5106,57 +5031,72 @@ impl XfstCompiler {
             self.prompt();
             return self;
         }
-        let mut t: *mut HfstTransducer = *self.stack_.last().unwrap();
+        let top = self.stack_.last().unwrap().clone();
         // number of cycles needs to be limited for an infinitely ambiguous ol
         // transducer because it doesn't support
         // is_lookup_infinitely_ambiguous(const string &)
         let mut ol_cutoff: usize = string_to_size_t(&self.variables_["lookup-cycle-cutoff"]);
 
-        let mut fsm: *mut HfstBasicTransducer = std::ptr::null_mut();
+        // Owned inverted copy for apply-up; None means operate on the shared top.
+        let mut owned_t: Option<HfstTransducer> = None;
+        // Basic transducer used for ordinary (non-OL) lookups.
+        let mut fsm: Option<HfstBasicTransducer> = None;
 
-        unsafe {
-            if direction == ApplyDirection::APPLY_UP_DIRECTION {
-                if (*t).get_type() == ImplementationType::HFST_OL_TYPE
-                    || (*t).get_type() == ImplementationType::HFST_OLW_TYPE
-                {
-                    eprintln!(
-                        "Operation not supported for optimized lookup format. Consider 'remove-optimization' to convert into ordinary format."
-                    );
-                    self.prompt();
-                    return self;
-                }
-
-                // lookdown not yet implemented in HFST
-                if self.verbose_ {
-                    eprintln!(
-                        "warning: apply up not implemented, inverting transducer and performing apply down"
-                    );
-                    eprintln!(
-                        "for faster performance, invert and minimize top network and do apply down instead"
-                    );
-                    eprintln!();
-                }
-                t = Box::into_raw(Box::new(HfstTransducer::new_copy(&*t)));
-                // the user has been warned for possible slow performance
-                (*t).invert().minimize();
+        if direction == ApplyDirection::APPLY_UP_DIRECTION {
+            let ty = top.borrow().get_type();
+            if ty == ImplementationType::HFST_OL_TYPE || ty == ImplementationType::HFST_OLW_TYPE {
+                eprintln!(
+                    "Operation not supported for optimized lookup format. Consider 'remove-optimization' to convert into ordinary format."
+                );
+                self.prompt();
+                return self;
             }
 
-            if (*t).get_type() != ImplementationType::HFST_OL_TYPE
-                && (*t).get_type() != ImplementationType::HFST_OLW_TYPE
-            {
-                fsm = Box::into_raw(Box::new(HfstBasicTransducer::new_from_transducer(&*t)));
-            } else {
-                // this gets ignored by ol transducer's
-                // is_lookup_infinitely_ambiguous
-                let foo: Vec<String> = Vec::new();
-                if (*t).is_lookup_infinitely_ambiguous_string_vector(&foo) {
-                    ol_cutoff = string_to_size_t(&self.variables_["lookup-cycle-cutoff"]);
-                    if self.verbose_ {
-                        eprintln!(
-                            "warning: transducer is infinitely ambiguous, limiting number of cycles to {}",
-                            ol_cutoff
-                        );
-                    }
+            // lookdown not yet implemented in HFST
+            if self.verbose_ {
+                eprintln!(
+                    "warning: apply up not implemented, inverting transducer and performing apply down"
+                );
+                eprintln!(
+                    "for faster performance, invert and minimize top network and do apply down instead"
+                );
+                eprintln!();
+            }
+            let mut c = HfstTransducer::new_copy(&top.borrow());
+            // the user has been warned for possible slow performance
+            c.invert().minimize();
+            owned_t = Some(c);
+        }
+
+        let work_type = match &owned_t {
+            Some(c) => c.get_type(),
+            None => top.borrow().get_type(),
+        };
+
+        if work_type != ImplementationType::HFST_OL_TYPE
+            && work_type != ImplementationType::HFST_OLW_TYPE
+        {
+            fsm = Some(match &owned_t {
+                Some(c) => HfstBasicTransducer::new_from_transducer(c),
+                None => HfstBasicTransducer::new_from_transducer(&top.borrow()),
+            });
+        } else {
+            // this gets ignored by ol transducer's
+            // is_lookup_infinitely_ambiguous
+            let foo: Vec<String> = Vec::new();
+            let inf = match &owned_t {
+                Some(c) => c.is_lookup_infinitely_ambiguous_string_vector(&foo),
+                None => top
+                    .borrow()
+                    .is_lookup_infinitely_ambiguous_string_vector(&foo),
+            };
+            if inf {
+                ol_cutoff = string_to_size_t(&self.variables_["lookup-cycle-cutoff"]);
+                if self.verbose_ {
+                    eprintln!(
+                        "warning: transducer is infinitely ambiguous, limiting number of cycles to {}",
+                        ol_cutoff
+                    );
                 }
             }
         }
@@ -5187,10 +5127,18 @@ impl XfstCompiler {
                         break;
                     }
                     // perform lookup/lookdown
-                    if !fsm.is_null() {
-                        self.lookup_basic(&line, fsm);
+                    if let Some(fsm_ref) = fsm.as_ref() {
+                        self.lookup_basic(&line, fsm_ref);
                     } else {
-                        self.lookup(&line, t, ol_cutoff);
+                        match &owned_t {
+                            Some(c) => {
+                                self.lookup(&line, c, ol_cutoff);
+                            }
+                            None => {
+                                let tref = top.borrow();
+                                self.lookup(&line, &tref, ol_cutoff);
+                            }
+                        }
                     }
                 }
             }
@@ -5199,104 +5147,88 @@ impl XfstCompiler {
         // ignore all readline history given to the apply command
         self.ignore_history_after_index(ind);
 
-        unsafe {
-            if direction == ApplyDirection::APPLY_UP_DIRECTION {
-                drop(Box::from_raw(t));
-            }
-            if !fsm.is_null() {
-                drop(Box::from_raw(fsm));
-            }
-        }
-
         self.prompt();
         self
     }
 
-    fn lookup(&mut self, line: &str, t: *const HfstTransducer, cutoff: usize) -> &mut Self {
+    fn lookup(&mut self, line: &str, t: &HfstTransducer, cutoff: usize) -> &mut Self {
         let token = strstrip(line);
 
-        unsafe {
-            let paths: *mut HfstOneLevelPaths;
-            if self.variables_["obey-flags"] == "ON" {
-                paths = (*t).lookup_fd_string(&token, cutoff as isize, 0.0);
-            } else {
-                paths = (*t).lookup_string(&token, cutoff as isize, 0.0);
-            }
+        let paths = if self.variables_["obey-flags"] == "ON" {
+            unsafe { Box::from_raw(t.lookup_fd_string(&token, cutoff as isize, 0.0)) }
+        } else {
+            unsafe { Box::from_raw(t.lookup_string(&token, cutoff as isize, 0.0)) }
+        };
 
-            let mut out = std::io::stdout();
-            let printed = self.print_paths_one(&*paths, &mut out, -1);
-            if !printed {
-                println!("???");
-            }
-
-            drop(Box::from_raw(paths));
+        let mut out = std::io::stdout();
+        let printed = self.print_paths_one(&paths, &mut out, -1);
+        if !printed {
+            println!("???");
         }
         self
     }
 
-    fn lookup_basic(&mut self, line: &str, t: *mut HfstBasicTransducer) -> &mut Self {
+    fn lookup_basic(&mut self, line: &str, t: &HfstBasicTransducer) -> &mut Self {
         let token = strstrip(line);
 
-        unsafe {
-            let alpha = (*t).get_input_symbols();
-            let mut tok = crate::hfst_tokenizer::HfstTokenizer::new();
-            for it in alpha.iter() {
-                tok.add_multichar_symbol(it);
-            }
-            // XXX: seting for splitc-chars ?
-            let lookup_path: Vec<String> = tok.tokenize_one_level(&token, false);
+        let alpha = t.get_input_symbols();
+        let mut tok = crate::hfst_tokenizer::HfstTokenizer::new();
+        for it in alpha.iter() {
+            tok.add_multichar_symbol(it);
+        }
+        // XXX: seting for splitc-chars ?
+        let lookup_path: Vec<String> = tok.tokenize_one_level(&token, false);
 
-            let mut cutoff: usize = usize::MAX; // (size_t)-1
-            if (*t).is_lookup_infinitely_ambiguous_string_vector(
+        let mut cutoff: usize = usize::MAX; // (size_t)-1
+        if t.is_lookup_infinitely_ambiguous_string_vector(
+            &lookup_path,
+            self.variables_["obey-flags"] == "ON",
+        ) {
+            cutoff = string_to_size_t(&self.variables_["lookup-cycle-cutoff"]);
+            if self.verbose_ {
+                eprintln!(
+                    "warning: lookup is infinitely ambiguous, limiting the number of cycles to {}",
+                    cutoff
+                );
+            }
+        }
+
+        let mut results: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
+
+        if self.variables_["maximum-weight"] == "OFF" {
+            t.lookup(
                 &lookup_path,
+                &mut results,
+                Some(cutoff),
+                None,
+                -1, /*max_number*/
                 self.variables_["obey-flags"] == "ON",
-            ) {
-                cutoff = string_to_size_t(&self.variables_["lookup-cycle-cutoff"]);
-                if self.verbose_ {
-                    eprintln!(
-                        "warning: lookup is infinitely ambiguous, limiting the number of cycles to {}",
-                        cutoff
-                    );
-                }
-            }
+            );
+        } else {
+            let max_weight: f32 = string_to_float(&self.variables_["maximum-weight"]);
+            t.lookup(
+                &lookup_path,
+                &mut results,
+                Some(cutoff),
+                Some(&max_weight),
+                -1, /*max_number*/
+                self.variables_["obey-flags"] == "ON",
+            );
+        }
 
-            let mut results: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
+        let mut printed = false; // if anything was printed
 
-            if self.variables_["maximum-weight"] == "OFF" {
-                (*t).lookup(
-                    &lookup_path,
-                    &mut results,
-                    Some(cutoff),
-                    None,
-                    -1, /*max_number*/
-                    self.variables_["obey-flags"] == "ON",
-                );
-            } else {
-                let max_weight: f32 = string_to_float(&self.variables_["maximum-weight"]);
-                (*t).lookup(
-                    &lookup_path,
-                    &mut results,
-                    Some(cutoff),
-                    Some(&max_weight),
-                    -1, /*max_number*/
-                    self.variables_["obey-flags"] == "ON",
-                );
-            }
+        if self.variables_["print-pairs"] == "OFF" {
+            let paths = extract_output_paths(&results);
+            let mut out = std::io::stdout();
+            printed = self.print_paths_one(&paths, &mut out, -1);
+        } else {
+            let mut out = std::io::stdout();
+            printed = self.print_paths_two(&results, &mut out, -1);
+        }
 
-            let mut printed = false; // if anything was printed
-
-            if self.variables_["print-pairs"] == "OFF" {
-                let paths = extract_output_paths(&results);
-                let mut out = std::io::stdout();
-                printed = self.print_paths_one(&paths, &mut out, -1);
-            } else {
-                let mut out = std::io::stdout();
-                printed = self.print_paths_two(&results, &mut out, -1);
-            }
-
-            if !printed {
-                println!("???");
-            }
+        if !printed {
+            println!("???");
         }
         self
     }
@@ -5304,11 +5236,10 @@ impl XfstCompiler {
     // apply_down_line -> apply_up_line
     fn apply_up_line(&mut self, line: &str) -> &mut Self {
         // GET_TOP(t)
-        let t = self.top();
-        if t.is_null() {
+        let Some(t) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
         // lookdown not yet implemented in HFST
         if self.verbose_ {
             eprintln!(
@@ -5319,15 +5250,11 @@ impl XfstCompiler {
             );
             eprintln!();
         }
-        let t: *mut HfstTransducer =
-            Box::into_raw(Box::new(HfstTransducer::new_copy(unsafe { &*t })));
-        unsafe {
-            // the user has been warned for possible slow performance
-            (*t).invert().minimize();
-            let mut fsm = HfstBasicTransducer::new_from_transducer(&*t);
-            self.lookup_basic(line, &mut fsm);
-            drop(Box::from_raw(t));
-        }
+        let mut copy = HfstTransducer::new_copy(&t.borrow());
+        // the user has been warned for possible slow performance
+        copy.invert().minimize();
+        let fsm = HfstBasicTransducer::new_from_transducer(&copy);
+        self.lookup_basic(line, &fsm);
         self
     }
 
@@ -5340,34 +5267,32 @@ impl XfstCompiler {
             self.prompt();
             return self;
         }
-        let t: *mut HfstTransducer = *self.stack_.last().unwrap();
-        unsafe {
-            if (*t).get_type() != ImplementationType::HFST_OL_TYPE
-                && (*t).get_type() != ImplementationType::HFST_OLW_TYPE
-            {
-                // hfst_fprintf(warnstream_, "lookup might be slow, consider
-                // 'convert net'\n");
-                let mut fsm = HfstBasicTransducer::new_from_transducer(&*t);
-                return self.lookup_basic(line, &mut fsm);
-            }
+        let t = self.stack_.last().unwrap().clone();
+        let t_type = t.borrow().get_type();
+        if t_type != ImplementationType::HFST_OL_TYPE && t_type != ImplementationType::HFST_OLW_TYPE
+        {
+            // hfst_fprintf(warnstream_, "lookup might be slow, consider
+            // 'convert net'\n");
+            let fsm = HfstBasicTransducer::new_from_transducer(&t.borrow());
+            return self.lookup_basic(line, &fsm);
         }
 
         let mut ol_cutoff: usize = string_to_size_t(&self.variables_["lookup-cycle-cutoff"]); // -1; fix this
         // this gets ignored by ol transducer's is_lookup_infinitely_ambiguous
         let foo: Vec<String> = Vec::new();
-        unsafe {
-            if (*t).is_lookup_infinitely_ambiguous_string_vector(&foo) {
-                ol_cutoff = string_to_size_t(&self.variables_["lookup-cycle-cutoff"]);
-                if self.verbose_ {
-                    eprintln!(
-                        "warning: transducer is infinitely ambiguous, limiting number of cycles to {}",
-                        ol_cutoff
-                    );
-                }
+        if t.borrow()
+            .is_lookup_infinitely_ambiguous_string_vector(&foo)
+        {
+            ol_cutoff = string_to_size_t(&self.variables_["lookup-cycle-cutoff"]);
+            if self.verbose_ {
+                eprintln!(
+                    "warning: transducer is infinitely ambiguous, limiting number of cycles to {}",
+                    ol_cutoff
+                );
             }
         }
 
-        self.lookup(line, t, ol_cutoff)
+        self.lookup(line, &t.borrow(), ol_cutoff)
     }
 
     fn apply_med_line(&mut self, line: &str) -> &mut Self {
@@ -5404,14 +5329,11 @@ impl XfstCompiler {
                 return self;
             }
         };
-        let tmp = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        unsafe {
-            crate::hfst_print_dot::print_dot_os(&mut outfile, &mut *tmp);
-        }
+        };
+        crate::hfst_print_dot::print_dot_os(&mut outfile, &mut *tmp.borrow_mut());
         self.prompt();
         self
     }
@@ -5424,14 +5346,11 @@ impl XfstCompiler {
             self.prompt();
             return self;
         }
-        let tmp = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
-        unsafe {
-            crate::hfst_print_dot::print_dot_os(oss, &mut *tmp);
-        }
+        };
+        crate::hfst_print_dot::print_dot_os(oss, &mut *tmp.borrow_mut());
         let _ = oss.flush();
         self.prompt();
         self
@@ -5445,14 +5364,14 @@ impl XfstCompiler {
             self.prompt();
             return self;
         }
-        let mut reverse_stack: Vec<*mut HfstTransducer> = Vec::new();
+        let mut reverse_stack: Vec<NetRef> = Vec::new();
         while self.stack_.len() != 0 {
-            let tr = *self.stack_.last().unwrap();
-            let mut name = unsafe { (*tr).get_name() };
+            let tr = self.stack_.last().unwrap().clone();
+            let mut name = tr.borrow().get_name();
             if name.is_empty() {
                 name = "NO_NAME".to_string();
             }
-            let fsm = HfstBasicTransducer::new_from_transducer(unsafe { &*tr });
+            let fsm = HfstBasicTransducer::new_from_transducer(&tr.borrow());
             let write_weights = self.variables_["print-weight"] == "ON";
             fsm.write_in_prolog_format_os(oss, &name, write_weights);
             if self.stack_.len() != 1 {
@@ -5463,7 +5382,7 @@ impl XfstCompiler {
             self.stack_.pop();
         }
         while reverse_stack.len() != 0 {
-            self.stack_.push(*reverse_stack.last().unwrap());
+            self.stack_.push(reverse_stack.last().unwrap().clone());
             reverse_stack.pop();
         }
         let _ = oss.flush();
@@ -5513,8 +5432,8 @@ impl XfstCompiler {
         } else {
             HfstOutputStream::new(self.format_, true)
         };
-        let def_ptr = self.definitions_[name];
-        let mut tmp = HfstTransducer::new_copy(unsafe { &*def_ptr });
+        let def_ptr = self.definitions_[name].clone();
+        let mut tmp = HfstTransducer::new_copy(&def_ptr.borrow());
         if self.variables_["name-nets"] == "ON" {
             tmp.set_name(name);
         }
@@ -5539,7 +5458,7 @@ impl XfstCompiler {
             HfstOutputStream::new(self.format_, true)
         };
         for (name, def) in self.definitions_.iter() {
-            let mut tmp = HfstTransducer::new_copy(unsafe { &**def });
+            let mut tmp = HfstTransducer::new_copy(&def.borrow());
             tmp.set_name(name);
             outstream.operator_shl(&mut tmp);
         }
@@ -5560,20 +5479,20 @@ impl XfstCompiler {
             return self;
         }
 
-        let top_type = unsafe { (**self.stack_.last().unwrap()).get_type() };
+        let top_type = self.stack_.last().unwrap().borrow().get_type();
         let mut outstream = if !outfilename.is_empty() {
             HfstOutputStream::new_filename(outfilename, top_type, true)
         } else {
             HfstOutputStream::new(top_type, true)
         };
-        let mut tmp: Vec<*mut HfstTransducer> = Vec::new();
+        let mut tmp: Vec<NetRef> = Vec::new();
         while !self.stack_.is_empty() {
-            tmp.push(*self.stack_.last().unwrap());
+            tmp.push(self.stack_.last().unwrap().clone());
             self.stack_.pop();
         }
         while !tmp.is_empty() {
-            let t = *tmp.last().unwrap();
-            outstream.operator_shl(unsafe { &mut *t });
+            let t = tmp.last().unwrap().clone();
+            outstream.operator_shl(&mut *t.borrow_mut());
             self.stack_.push(t);
             tmp.pop();
         }
@@ -5600,13 +5519,11 @@ impl XfstCompiler {
         // When calling this function, the regex \a indata should already have
         // been compiled into a transducer which should have been stored to
         // the variable latest_regex_compiled.
-        let compiled = self.latest_regex_compiled;
-        if !compiled.is_null() {
-            let t = Box::into_raw(Box::new(HfstTransducer::new_copy(unsafe { &*compiled })));
+        let compiled = self.latest_regex_compiled.clone();
+        if let Some(compiled) = compiled {
+            let t = Rc::new(RefCell::new(HfstTransducer::new_copy(&compiled.borrow())));
+            t.borrow_mut().optimize();
             self.stack_.push(t);
-            unsafe {
-                (*t).optimize();
-            }
             self.print_transducer_info();
         } else {
             eprintln!("Error reading regex '{}'.", indata);
@@ -5687,12 +5604,10 @@ impl XfstCompiler {
             }
         };
 
-        if unsafe { HAS_LEXC_BEEN_READ_ } {
+        if HAS_LEXC_BEEN_READ_.load(std::sync::atomic::Ordering::Relaxed) {
             self.lexc_.reset();
         } else {
-            unsafe {
-                HAS_LEXC_BEEN_READ_ = true;
-            }
+            HAS_LEXC_BEEN_READ_.store(true, std::sync::atomic::Ordering::Relaxed);
         }
 
         let Some(mut t) = self.lexc_.compile(&indata) else {
@@ -5703,8 +5618,7 @@ impl XfstCompiler {
         };
 
         t.optimize();
-        // idiom1.parsers Task 12: xfst stack_ still holds raw pointers.
-        self.stack_.push(Box::into_raw(Box::new(t)));
+        self.stack_.push(Rc::new(RefCell::new(t)));
         self.print_transducer_info();
         self.prompt();
         self
@@ -5730,30 +5644,28 @@ impl XfstCompiler {
         let att_eps_default = att_eps == "@0@ | @_EPSILON_SYMBOL_@";
         let fmt = self.format_;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-            let tmp: *mut HfstTransducer = if att_eps_default {
-                let r: &mut HfstTransducer = unsafe {
+            let r: &mut HfstTransducer = if att_eps_default {
+                unsafe {
                     HfstTransducer::read_in_att_format_file(
                         infile,
                         fmt,
                         crate::hfst_symbol_defs::internal_epsilon,
                         false,
                     )
-                };
-                r as *mut HfstTransducer
+                }
             } else {
-                let r: &mut HfstTransducer = unsafe {
+                unsafe {
                     HfstTransducer::read_in_att_format_file(infile, fmt, &att_eps, false) // XXX
-                };
-                r as *mut HfstTransducer
+                }
             };
-            tmp
+            // recover ownership of the heap transducer the reader leaked (Box::leak)
+            unsafe { *Box::from_raw(std::ptr::from_mut(r)) }
         }));
         match result {
             Ok(tmp) => {
-                unsafe {
-                    (*tmp).optimize();
-                }
-                self.stack_.push(tmp);
+                let net = Rc::new(RefCell::new(tmp));
+                net.borrow_mut().optimize();
+                self.stack_.push(net);
                 self.print_transducer_info();
             }
             Err(_e) => {
@@ -5809,7 +5721,7 @@ impl XfstCompiler {
             }
         };
 
-        let tmp = Box::into_raw(Box::new(HfstTransducer::new_type(self.format_)));
+        let tmp = Rc::new(RefCell::new(HfstTransducer::new_type(self.format_)));
         let mcs: Vec<String> = Vec::new(); // no multichar symbols
         // [spec:hfst:def:xfst-compiler.hfst.xfst.tok-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.tok-fn]
@@ -5831,16 +5743,12 @@ impl XfstCompiler {
             // [spec:hfst:def:xfst-compiler.hfst.xfst.line-tr-fn]
             // [spec:hfst:sem:xfst-compiler.hfst.xfst.line-tr-fn]
             let line_tr = HfstTransducer::new_string_pair_vector(&spv, self.format_);
-            unsafe {
-                (*tmp).disjunct(&line_tr, true);
-            }
+            tmp.borrow_mut().disjunct(&line_tr, true);
         }
 
         // The file is closed when 'reader' is dropped.
 
-        unsafe {
-            (*tmp).minimize(); // a trie should be easily minimizable
-        }
+        tmp.borrow_mut().minimize(); // a trie should be easily minimizable
         self.stack_.push(tmp);
         self.print_transducer_info();
         self.prompt();
@@ -5849,11 +5757,10 @@ impl XfstCompiler {
 
     pub fn substitute_named(&mut self, variable: &str, label: &str) -> &mut Self {
         // GET_TOP(top)
-        let top: *mut HfstTransducer = self.top();
-        if top.is_null() {
+        let Some(top) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
 
         if !self.definitions_.contains_key(variable) {
             eprintln!("no such definition '{}', cannot substitute", variable);
@@ -5864,7 +5771,7 @@ impl XfstCompiler {
             self.prompt();
             return self;
         }
-        let def_ptr: *mut HfstTransducer = self.definitions_[variable];
+        let def_ptr = self.definitions_[variable].clone();
 
         // [spec:hfst:def:xfst-compiler.hfst.xfst.labelstr-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.labelstr-fn]
@@ -5876,7 +5783,7 @@ impl XfstCompiler {
             labelstr = String::from("@_EPSILON_SYMBOL_@");
         }
 
-        let mut alpha = unsafe { (*top).get_alphabet() };
+        let mut alpha = top.borrow().get_alphabet();
         if !alpha.contains(&labelstr) {
             eprintln!("no occurrences of label '{}', cannot substitute", label);
             // MAYBE_QUIT
@@ -5887,7 +5794,7 @@ impl XfstCompiler {
             return self;
         }
 
-        let fsm = HfstBasicTransducer::new_from_transducer(unsafe { &*top });
+        let fsm = HfstBasicTransducer::new_from_transducer(&top.borrow());
 
         for it in fsm.iter() {
             for tr_it in it {
@@ -5911,24 +5818,22 @@ impl XfstCompiler {
         // [spec:hfst:def:xfst-compiler.hfst.xfst.labelpair-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.labelpair-fn]
         let labelpair: StringPair = (labelstr.clone(), labelstr.clone());
-        alpha = unsafe { (*def_ptr).get_alphabet() };
-        unsafe {
-            (*top).substitute_pair_with_transducer(&labelpair, &mut *def_ptr, false);
-        }
+        alpha = def_ptr.borrow().get_alphabet();
+        top.borrow_mut().substitute_pair_with_transducer(
+            &labelpair,
+            &mut *def_ptr.borrow_mut(),
+            false,
+        );
 
         if labelstr != "@_EPSILON_SYMBOL_@"
             && labelstr != "@_IDENTITY_SYMBOL_@"
             && !alpha.contains(&labelstr)
         {
-            unsafe {
-                (*top).remove_from_alphabet_string(&labelstr);
-            }
+            top.borrow_mut().remove_from_alphabet_string(&labelstr);
         }
 
         // MAYBE_MINIMIZE(top)
-        unsafe {
-            (*top).optimize();
-        }
+        top.borrow_mut().optimize();
         self.prompt();
         self
     }
@@ -5936,11 +5841,10 @@ impl XfstCompiler {
     // @brief Substitute all labels @a list by @a target.
     pub fn substitute_label(&mut self, list: &str, target: &str) -> &mut Self {
         // GET_TOP(top)
-        let top: *mut HfstTransducer = self.top();
-        if top.is_null() {
+        let Some(top) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
 
         // tokenize list into labels
         let mut symbol_pairs: StringPairSet = StringPairSet::new();
@@ -5971,7 +5875,7 @@ impl XfstCompiler {
         let target_vector = Self::tokenize_string(target, ':');
         match Self::catch_symbol_vector_to_symbol_pair(&target_vector) {
             Some(target_label) => {
-                let fsm = HfstBasicTransducer::new_from_transducer(unsafe { &*top });
+                let fsm = HfstBasicTransducer::new_from_transducer(&top.borrow());
                 let mut target_label_found = false;
 
                 for it in fsm.iter() {
@@ -5996,9 +5900,8 @@ impl XfstCompiler {
                     return self;
                 }
 
-                unsafe {
-                    (*top).substitute_symbol_pair_with_set(&target_label, &symbol_pairs);
-                }
+                top.borrow_mut()
+                    .substitute_symbol_pair_with_set(&target_label, &symbol_pairs);
             }
             None => {
                 eprintln!("error: could not substitute '{}'", target);
@@ -6010,9 +5913,7 @@ impl XfstCompiler {
         }
 
         // MAYBE_MINIMIZE(top)
-        unsafe {
-            (*top).optimize();
-        }
+        top.borrow_mut().optimize();
         self.prompt();
         self
     }
@@ -6020,13 +5921,12 @@ impl XfstCompiler {
     // @brief Substitute all symbols in @a list by @a target.
     pub fn substitute_symbol(&mut self, list: &str, target: &str) -> &mut Self {
         // GET_TOP(top)
-        let top: *mut HfstTransducer = self.top();
-        if top.is_null() {
+        let Some(top) = self.top() else {
             self.xfst_lesser_fail();
             return self;
-        }
+        };
 
-        let alpha = unsafe { (*top).get_alphabet() };
+        let alpha = top.borrow().get_alphabet();
         if !alpha.contains(target) {
             eprintln!("no occurrences of symbol '{}', cannot substitute", target);
             // MAYBE_QUIT
@@ -6049,24 +5949,19 @@ impl XfstCompiler {
 
         // use regex parser to build the substitution: [ [TR] , "s" , L ]
         self.xre_
-            .define_transducer("TempXfstTransducerName", unsafe { &*top }); // XRE
+            .define_transducer("TempXfstTransducerName", &top.borrow()); // XRE
         let mut subst_regex = String::from("`[ [TempXfstTransducerName] , ");
         subst_regex.push_str(&format!("\"{}\" , {} ]", target, liststr));
-        // idiom1.parsers Task 12: xfst stack_ still holds raw pointers.
-        let substituted: *mut HfstTransducer = self
+        let substituted = self
             .xre_
             .compile(&subst_regex)
-            .map_or(std::ptr::null_mut(), |t| Box::into_raw(Box::new(t))); // XRE
+            .map(|t| Rc::new(RefCell::new(t))); // XRE
         self.xre_.undefine("TempXfstTransducerName"); // XRE
-        unsafe {
-            let _ = Box::from_raw(top);
-        }
+        drop(top);
 
-        if !substituted.is_null() {
+        if let Some(substituted) = substituted {
             // MAYBE_MINIMIZE(substituted)
-            unsafe {
-                (*substituted).optimize();
-            }
+            substituted.borrow_mut().optimize();
             self.stack_.push(substituted);
             self.print_transducer_info();
         } else {
@@ -6086,11 +5981,11 @@ impl XfstCompiler {
             self.xfst_lesser_fail();
             return self;
         }
-        let first: *mut HfstTransducer = *self.stack_.last().unwrap();
+        let first = self.stack_.last().unwrap().clone();
         self.stack_.pop();
-        let second: *mut HfstTransducer = *self.stack_.last().unwrap();
+        let second = self.stack_.last().unwrap().clone();
         self.stack_.pop();
-        let result = unsafe { (*first).compare(&*second, false) };
+        let result = first.borrow().compare(&second.borrow(), false);
         self.print_bool(result);
         self.stack_.push(second);
         self.stack_.push(first);
@@ -6116,14 +6011,13 @@ impl XfstCompiler {
     // @brief Test top transducer in stack for identity
     // @todo tests are not implemented
     pub fn test_id(&mut self, assertion: bool) -> &mut Self {
-        let tmp: *mut HfstTransducer = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             return self;
-        }
+        };
 
-        let mut tmp_input = HfstTransducer::new_from_transducer(unsafe { &*tmp });
+        let mut tmp_input = HfstTransducer::new_from_transducer(&tmp.borrow());
         tmp_input.input_project();
-        let mut tmp_output = HfstTransducer::new_from_transducer(unsafe { &*tmp });
+        let mut tmp_output = HfstTransducer::new_from_transducer(&tmp.borrow());
         tmp_output.output_project();
 
         let result = tmp_input.compare(&tmp_output, false);
@@ -6142,12 +6036,11 @@ impl XfstCompiler {
     // @brief Test top transducer in stack for upper language boundedness
     // @todo tests are not implemented
     pub fn test_upper_bounded(&mut self, assertion: bool) -> &mut Self {
-        let temp: *mut HfstTransducer = self.top();
-        if temp.is_null() {
+        let Some(temp) = self.top() else {
             return self;
-        }
+        };
 
-        let mut tmp = HfstTransducer::new_from_transducer(unsafe { &*temp });
+        let mut tmp = HfstTransducer::new_from_transducer(&temp.borrow());
         tmp.output_project();
         tmp.remove_epsilons(); // needed for testing cyclicity
 
@@ -6165,12 +6058,11 @@ impl XfstCompiler {
     }
 
     pub fn test_uni(&mut self, level: Level, assertion: bool) -> &mut Self {
-        let temp: *mut HfstTransducer = self.top();
-        if temp.is_null() {
+        let Some(temp) = self.top() else {
             return self;
-        }
+        };
 
-        let mut tmp = HfstTransducer::new_from_transducer(unsafe { &*temp });
+        let mut tmp = HfstTransducer::new_from_transducer(&temp.borrow());
         tmp.input_project();
         let id = HfstTransducer::new_symbol(internal_identity, tmp.get_type());
         let mut value = false;
@@ -6203,12 +6095,11 @@ impl XfstCompiler {
     // @brief Test top transducer in stack for lower language boundedness
     // @todo tests are not implemented
     pub fn test_lower_bounded(&mut self, assertion: bool) -> &mut Self {
-        let temp: *mut HfstTransducer = self.top();
-        if temp.is_null() {
+        let Some(temp) = self.top() else {
             return self;
-        }
+        };
 
-        let mut tmp = HfstTransducer::new_from_transducer(unsafe { &*temp });
+        let mut tmp = HfstTransducer::new_from_transducer(&temp.borrow());
         tmp.input_project();
         tmp.remove_epsilons(); // needed for testing cyclicity
 
@@ -6242,13 +6133,12 @@ impl XfstCompiler {
     // (so that 'test_nonnull' can be implemented with the same function).
     // @todo tests are not implemented
     pub fn test_null(&mut self, invert_test_result: bool, assertion: bool) -> &mut Self {
-        let tmp: *mut HfstTransducer = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             return self;
-        }
+        };
 
-        let empty = HfstTransducer::new_type(unsafe { (*tmp).get_type() });
-        let mut value = empty.compare(unsafe { &*tmp }, false);
+        let empty = HfstTransducer::new_type(tmp.borrow().get_type());
+        let mut value = empty.compare(&tmp.borrow(), false);
         if invert_test_result {
             value = !value;
         }
@@ -6275,17 +6165,17 @@ impl XfstCompiler {
         }
         // [spec:hfst:def:xfst-compiler.hfst.xfst.copied-stack-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.copied-stack-fn]
-        let mut copied_stack: Vec<*mut HfstTransducer> = self.stack_.clone();
+        let mut copied_stack: Vec<NetRef> = self.stack_.clone();
 
         let mut topmost_transducer =
-            HfstTransducer::new_from_transducer(unsafe { &**copied_stack.last().unwrap() });
+            HfstTransducer::new_from_transducer(&copied_stack.last().unwrap().borrow());
         copied_stack.pop();
 
         let empty = HfstTransducer::new_type(topmost_transducer.get_type());
 
         while !copied_stack.is_empty() {
             let next_transducer =
-                HfstTransducer::new_from_transducer(unsafe { &**copied_stack.last().unwrap() });
+                HfstTransducer::new_from_transducer(&copied_stack.last().unwrap().borrow());
             copied_stack.pop();
 
             match operation {
@@ -6362,11 +6252,10 @@ impl XfstCompiler {
     }
 
     pub fn test_infinitely_ambiguous(&mut self, assertion: bool) -> &mut Self {
-        let tmp: *mut HfstTransducer = self.top();
-        if tmp.is_null() {
+        let Some(tmp) = self.top() else {
             return self;
-        }
-        let value = unsafe { (*tmp).is_infinitely_ambiguous() };
+        };
+        let value = tmp.borrow().is_infinitely_ambiguous();
         self.print_bool(value);
         // MAYBE_ASSERT(assertion, value)
         if !value
