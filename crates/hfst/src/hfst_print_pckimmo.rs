@@ -69,8 +69,8 @@ pub unsafe fn print_pckimmo(out: *mut libc::FILE, t: &crate::hfst_transducer::Hf
     unsafe {
         // C++: 'HfstBasicTransducer mutt {t};' — build the interchange graph from
         // the facade. get_basic_transducer is the HfstBasicTransducer(const
-        // HfstTransducer&) conversion (heap-allocated like the C++ temporary).
-        let mutt: HfstBasicTransducer = *Box::from_raw(t.get_basic_transducer());
+        // HfstTransducer&) conversion.
+        let mutt: HfstBasicTransducer = t.get_basic_transducer();
         let mut s: HfstState = 0;
         let mut last: HfstState = 0;
         let mut pairs: BTreeSet<(String, String)> = BTreeSet::new();

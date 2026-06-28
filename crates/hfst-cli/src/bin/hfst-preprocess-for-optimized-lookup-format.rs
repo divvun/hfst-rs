@@ -155,7 +155,7 @@ unsafe fn process_stream(
             }
             // C++: HfstBasicTransducer original(trans); — the
             // HfstBasicTransducer(const HfstTransducer&) conversion constructor.
-            let original: HfstBasicTransducer = *Box::from_raw(trans.get_basic_transducer());
+            let original: HfstBasicTransducer = trans.get_basic_transducer();
             let mut replication = HfstBasicTransducer::new();
             let mut state_count: HfstState = 1;
             let mut rebuilt: BTreeMap<HfstState, HfstState> = BTreeMap::new();

@@ -159,7 +159,7 @@ unsafe fn process_stream(
             }
             // read first alphas
             let first = HfstTransducer::new_from_stream(firststream);
-            let mutt: Box<HfstBasicTransducer> = Box::from_raw(first.get_basic_transducer());
+            let mutt: HfstBasicTransducer = first.get_basic_transducer();
             let mut first_transducer_alphabet: StringSet = StringSet::new();
             #[allow(unused_assignments)]
             let mut transducer_knows_alphabet = false;
@@ -188,7 +188,7 @@ unsafe fn process_stream(
             }
             // read second alphas
             let second = HfstTransducer::new_from_stream(secondstream);
-            let secondmutt: Box<HfstBasicTransducer> = Box::from_raw(second.get_basic_transducer());
+            let secondmutt: HfstBasicTransducer = second.get_basic_transducer();
             let mut second_transducer_alphabet: StringSet = StringSet::new();
             transducer_knows_alphabet = false;
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| second.get_alphabet())) {

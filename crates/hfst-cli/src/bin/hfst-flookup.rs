@@ -1258,8 +1258,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
             {
                 // [spec:hfst:def:hfst-flookup.basic-fn]
                 // [spec:hfst:sem:hfst-flookup.basic-fn]
-                let basic_ptr = trans.get_basic_transducer();
-                let basic = *Box::from_raw(basic_ptr);
+                let basic = trans.get_basic_transducer();
                 for it in basic.iter() {
                     for tr_it in it.iter() {
                         let mcs = tr_it.get_input_symbol();

@@ -245,7 +245,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                 trans_name = cstr(globals::INPUTFILENAME);
             }
             // HfstBasicTransducer walkable(trans);
-            let walkable = *Box::from_raw(trans.get_basic_transducer());
+            let walkable = trans.get_basic_transducer();
             if CAVE_MODE {
                 fput(
                     globals::message_out(),

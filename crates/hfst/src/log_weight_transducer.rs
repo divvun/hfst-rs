@@ -2414,7 +2414,7 @@ mod lookup_extract_misc {
             t: &LogVectorFst,
             callback: &mut dyn ExtractStringsCb,
             cycles: i32,
-            fd: *mut FdTable<i64>,
+            fd: Option<&FdTable<i64>>,
             filter_fd: bool,
         ) {
             if t.start().is_none() {
@@ -2423,11 +2423,7 @@ mod lookup_extract_misc {
 
             let all_visitations: BTreeMap<StateId, u16> = BTreeMap::new();
             let path_visitations: BTreeMap<StateId, u16> = BTreeMap::new();
-            let mut fd_state_stack: Option<Vec<FdState<i64>>> = if fd.is_null() {
-                None
-            } else {
-                Some(vec![FdState::new(unsafe { &*fd })])
-            };
+            let mut fd_state_stack: Option<Vec<FdState<i64>>> = fd.map(|fd| vec![FdState::new(fd)]);
 
             let start = t.start().unwrap();
             let mut spv = StringPairVector::new();

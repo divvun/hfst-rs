@@ -254,6 +254,13 @@ children (
                         kind @status
                         text "Todo → Doing (nplan_start)"
                     }
+
+                    {
+                        at 2026-06-28T13:19:21.255103Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Phase 2 (locals cleanup) done. hfst_transducer.rs unsafe 125->51. Eliminated: union->enum (e08cab91); the entire HfstBasicTransducer conversion machinery (get_basic_transducer/convert_to_basic_transducer now return owned, convert_to_hfst_transducer takes owned) clearing every *mut HfstBasicTransducer local (net/internal/this_basic/another_basic/substituting_net); harmonize_ -> Option<HfstTransducer>; another_/another_copy/tr_harmonized/harmonized_lexicon -> owned; all op-method into_raw/from_raw round-trips; weight-transducer extract_paths fd param *mut FdTable -> Option<&FdTable> (both Tropical+Log); two as_bytes_mut flag-rewrites -> format!. Rippled 6 CLI call sites + 2 hfst print modules to the owned signatures (mechanical, not CLI idiomatization). 110 tests green.\n\nRemaining unsafe in hfst_transducer.rs roots in OTHER nodes' producers, not backend-enum's to convert: (a) XreCompiler::compile() -> *mut [get_flag_filter/new_filter/length_tr/worsener] = idiom1.parsers; (b) read_lexc_ptr/convert_static public *mut-returning APIs = later; (c) the OL lookup const-cast island (as_hfst_ol_ptr, IDIOM-STAGE-2); (d) Stage-2 C-isms (FILE*/libc/2x static mut shuffle_*).\n\nDECISION: #![deny(unsafe_code)] deferred. Crate/file-wide deny is premature — pmatch(238 raw ptr)/parsers/core are uncleaned sibling nodes, so it would need a large allow-list. Intended end-state gate: add it once the allow-list is empty, i.e. at close of idiom1 or as the Stage-2 drop-libc gate."
+                    }
                 )
             }
 

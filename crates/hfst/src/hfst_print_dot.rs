@@ -38,10 +38,9 @@ unsafe fn c_fputs(file: *mut libc::FILE, s: &str) {
 
 // C++ 'HfstBasicTransducer mutt {t};' invokes the
 // 'HfstBasicTransducer(const HfstTransducer&)' conversion constructor. The facade
-// exposes it as 'HfstTransducer::get_basic_transducer' (heap-allocated, like the
-// C++ stack temporary); move the value out of the box and free it.
+// exposes it as 'HfstTransducer::get_basic_transducer'.
 fn hfst_transducer_to_basic(t: &HfstTransducer) -> HfstBasicTransducer {
-    *unsafe { Box::from_raw(t.get_basic_transducer()) }
+    t.get_basic_transducer()
 }
 
 // [spec:hfst:def:hfst-print-dot.hfst.trim-to-valid-utf8-fn]
