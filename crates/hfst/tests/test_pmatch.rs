@@ -1,0 +1,106 @@
+// Behavioral coverage for the PMATCH compiler and its PmatchObject AST /
+// global-definition-table model. pmatch_compiler.rs is otherwise untested
+// (only examples/pmatch_smoke.rs and pmatch_container_smoke.rs exercise it);
+// these tests lock the compile + match + definition-reference (DAG) paths
+// across the major node types so the static-mut / raw-pointer -> safe
+// conversion (idiom1.pmatch) is validated rather than blind. The grammar
+// constructs (predefined acceptors, repetition, references, EndTag) mirror
+// scripts/windows_tests/test.pmatch.
+use hfst::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
+use hfst::pmatch::PmatchContainer;
+use hfst::pmatch_compiler::PmatchCompiler;
+
+// States of the named definition produced by compiling `src`.
+fn def_states(src: &str, name: &str) -> u32 {
+    let mut c = PmatchCompiler::new(TROPICAL_OPENFST_TYPE);
+    let defs = c.compile(src);
+    let d = *defs
+        .get(name)
+        .unwrap_or_else(|| panic!("no {name} in pmatch result"));
+    assert!(!d.is_null(), "{name} transducer is null");
+    unsafe { &*d }.number_of_states()
+}
+
+fn top_states(src: &str) -> u32 {
+    def_states(src, "TOP")
+}
+
+// Compile `src` to TOP, build a runtime container, and return the match output.
+fn compile_and_match(src: &str, input: &str) -> String {
+    let mut compiler = PmatchCompiler::new(TROPICAL_OPENFST_TYPE);
+    let defs = compiler.compile(src);
+    let top = *defs.get("TOP").expect("no TOP in pmatch result");
+    assert!(!top.is_null());
+    let top_owned = unsafe { (*top).clone() };
+    let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_owned]);
+    container.match_(input, 0.0, 0.0)
+}
+
+#[test]
+fn compile_simple_union() {
+    assert!(top_states("Define TOP [{cat} | {dog}] ;\n") >= 1);
+}
+
+#[test]
+fn compile_concatenation() {
+    // juxtaposition concatenates.
+    assert!(top_states("Define TOP {ab} {cd} ;\n") >= 1);
+}
+
+#[test]
+fn compile_optional_and_union() {
+    assert!(top_states("Define TOP [{a} | {b}] ({c}) ;\n") >= 1);
+}
+
+#[test]
+fn compile_predefined_acceptors_and_repetition() {
+    // UppercaseAlpha / Alpha predefined sets with * and +, behind a reference.
+    let src = "Define CapWord UppercaseAlpha Alpha* ;\nDefine TOP CapWord+ EndTag(word) ;\n";
+    assert!(top_states(src) >= 1);
+}
+
+#[test]
+fn compile_definition_reference() {
+    // A definition referenced by name from TOP exercises the DEFINITIONS table
+    // and AST cross-references (the DAG path the conversion touches).
+    let src = "Define Animal [{cat} | {dog}] ;\nDefine TOP Animal ;\n";
+    assert!(top_states(src) >= 1);
+}
+
+#[test]
+fn compile_deep_dag_french_streets() {
+    // The test.pmatch grammar: a multi-level DAG (TOP -> StreetFr -> StreetWordFr
+    // / DeFr / CapWord), predefined acceptors, repetition, optional, EndTag.
+    let src = "\
+Define CapWord UppercaseAlpha Alpha* ;
+Define StreetWordFr [{avenue} | {boulevard} | {rue}] ;
+Define DeFr [ [{de} | {du} | {des}] Whitespace ] | [{d'} | {l'}] ;
+Define StreetFr StreetWordFr (Whitespace DeFr) CapWord+ ;
+Define TOP StreetFr EndTag(PseudoFrenchStreetName) ;
+";
+    assert!(top_states(src) >= 1);
+}
+
+#[test]
+fn match_endtag_runtime() {
+    let out = compile_and_match("Define TOP [{cat} | {dog}] EndTag(animal) ;\n", "cat");
+    assert!(
+        out.contains("cat"),
+        "expected 'cat' in match output, got {out:?}"
+    );
+    let out2 = compile_and_match("Define TOP [{cat} | {dog}] EndTag(animal) ;\n", "dog");
+    assert!(
+        out2.contains("dog"),
+        "expected 'dog' in match output, got {out2:?}"
+    );
+}
+
+#[test]
+fn match_numerals_runtime() {
+    // Numeral+ predefined acceptor with a tag, matched against digits.
+    let out = compile_and_match("Define TOP Numeral+ EndTag(num) ;\n", "123");
+    assert!(
+        out.contains("123"),
+        "expected '123' in match output, got {out:?}"
+    );
+}

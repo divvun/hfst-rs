@@ -276,6 +276,21 @@ children (
                 title "pmatch_compiler.rs: 49 static mut → safe + 238 raw-ptr → Box/owned (largest single cluster)"
                 priority 4
                 deps (idiom1.backend-enum)
+                log (
+                    {
+                        at 2026-06-28T14:41:39.672Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-28T14:54:39.671317Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Approach: user chose \"expand tests, then full convert\". Step 1 (test net) DONE. Added tests/test_pmatch.rs: 8 tests covering union/concat/optional/predefined-acceptors(*,+)/definition-reference(DAG)/deep-multilevel-DAG(test.pmatch french streets)/EndTag-runtime-match/Numeral-runtime-match. Baselined green on the raw-pointer code. Note: compile() only returns TOP in the result map (intermediate defs referenced internally), so tests assert on TOP only.\n\nSurvey findings (Explore agent) driving the conversion:\n- AST is a DAG not a tree: symbol_from_global_context returns the SAME *mut dyn PmatchObject stored in DEFINITIONS, also referenced from expression trees + CALL_STACK. -> safe repr = Rc<RefCell<dyn PmatchObject>> (NOT Box). Rc<RefCell<dyn T>> IS constructible via unsize coercion through RefCell/UnsafeCell.\n- Current code LEAKS (157 into_raw vs 82 from_raw; init_globals clears maps without freeing) -> no free discipline to preserve; Rc is strictly better.\n- 49 static mut: scalar flags (verbose/flatten/format/len/timer/counters), C-string buffers (data/startptr *mut c_char via libc::strdup, never freed), 3 AST-pointer collections (DEFINITIONS/DEF_INSED_EXPRESSIONS/CALL_STACK), ~12 plain collections, utils:*mut PmatchUtilityTransducers. Accessor pattern: `fn definitions() -> &'static mut BTreeMap<..>` via addr_of_mut!. Rc is !Send so globals MUST become thread_local! (not Mutex) -> &'static mut accessors must move to closure-based with_borrow_mut at ~50+ sites.\n- Single-threaded. RefCell re-entrancy hazard: a self-referential (recursive) pmatch definition would panic (double borrow) where raw ptr just recursed -- not covered by tests; acceptable, note it.\n- compile() -> HashMap<String, *mut HfstTransducer> (result transducers, caller-owned). PmatchTransducerContainer wraps *mut HfstTransducer as a PmatchObject. evaluate(&mut self) -> *mut HfstTransducer is the hot trait method (22 impls).\n\nNext: full thread_local + Rc<RefCell> conversion (subagent-driven, gated by build + 8 test_pmatch + 2 smokes + 121 suite)."
+                    }
+                )
             }
 
             {
@@ -310,6 +325,13 @@ children (
                         author "brendan@necessary.nu"
                         kind @note
                         text "Slice 3 (xfst stack/definitions graph) done = Task 12. NODE COMPLETE. Converted the entire xfst raw-pointer graph to NetRef = Rc<RefCell<HfstTransducer>>: stack_/names_/definitions_/latest_regex_compiled fields, top()/compile_spanned_xre/define_transducer/convert_to_common_format/add_loaded_definition/get_stack signatures, and all ~180 deref sites. Pointer identity (print_name vs names_) preserved via Rc::ptr_eq; name_net registers the actual stack-top Rc. static mut HAS_LEXC_BEEN_READ_ -> AtomicBool. The slice-1/2 bridges (latest_regex_compiled, define, read_lexc_from_file stack push) are now removed/native.\n\nResult: xfst_compiler.rs *mut HfstTransducer 44->0, static mut 1->0, unsafe 150->25 (all 25 are C-isms/irreducible externals: hfst_fopen/libc::{fclose,system,glob}, HfstInputStream, lookup *mut HfstOneLevelPaths results, att-reader Box::leak recovery, the *mut XreCompiler closure workaround).\n\nSafety net: added tests/test_xfst.rs (3 tests: regex+union stack, name+print_name IDENTITY path, define+reference) -- baselined green on raw-ptr code BEFORE conversion, still green after. Full: cargo nextest -p hfst = 113 passed (110 + 3 xfst) / 14 skipped; xfst_smoke runs; workspace+examples build.\n\nTwo faithful deviations (documented in commit): define_xre null path now skips define+original_definitions_ insert instead of define_transducer(NULL) (avoids null-deref UB); att-reader recovers its Box::leak'd &mut via from_mut. Binary-op operands borrowed as distinct cells (push deep-copies definitions via new_copy -> stack entries pairwise-distinct; only name_net shares a cell, never a binary-op operand).\n\nCross-node bridges still standing (correctly): hfst_transducer.rs read_lexc_ptr (facade *mut API -> idiom1.core); pmatch_compiler.rs read_lexc_ptr/xre.compile (idiom1.pmatch)."
+                    }
+
+                    {
+                        at 2026-06-28T14:38:04.130403Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
                     }
                 )
             }

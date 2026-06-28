@@ -4,5 +4,6 @@ assertions (
     {id scaffold, kind @complete, author "brendan@necessary.nu", at 2026-06-24T17:12:44.389107Z}
     {id literal-port, kind @complete, author "brendan@necessary.nu", at 2026-06-28T12:00:14.477746Z}
     {id idiom1.backend-enum, kind @complete, author "brendan@necessary.nu", at 2026-06-28T13:20:51.755641Z}
-    {id idiom1.parsers, kind @doing, author "brendan@necessary.nu", at 2026-06-28T13:21:54.146459Z}
+    {id idiom1.parsers, kind @complete, author "brendan@necessary.nu", at 2026-06-28T14:38:04.130403Z}
+    {id idiom1.pmatch, kind @doing, author "brendan@necessary.nu", at 2026-06-28T14:41:39.672Z}
 )
