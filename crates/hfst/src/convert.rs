@@ -482,8 +482,8 @@ type PlaceHolderVector = Vec<place_holder>;
 // [spec:hfst:sem:convert.hfst-ol.check-finality-fn]
 // 'tr->Final(s) != fst::TropicalWeight::Zero()' — rustfst's 'is_final' is
 // exactly this test.
-pub fn check_finality(tr: *const StdVectorFst, s: StateId) -> bool {
-    unsafe { (*tr).is_final(s).unwrap() }
+pub fn check_finality(tr: &StdVectorFst, s: StateId) -> bool {
+    tr.is_final(s).unwrap()
 }
 
 /*
@@ -501,7 +501,7 @@ pub struct ConvertIdNumberMap {
 impl ConvertIdNumberMap {
     // [spec:hfst:def:convert.hfst-ol.convert-id-number-map.convert-id-number-map-fn]
     // [spec:hfst:sem:convert.hfst-ol.convert-id-number-map.convert-id-number-map-fn]
-    pub fn new(t: *const StdVectorFst) -> Self {
+    pub fn new(t: &StdVectorFst) -> Self {
         let mut m = ConvertIdNumberMap {
             id_to_node: BTreeMap::new(),
             node_to_id: BTreeMap::new(),
@@ -513,12 +513,12 @@ impl ConvertIdNumberMap {
 
     // [spec:hfst:def:convert.hfst-ol.convert-id-number-map.add-node-fn]
     // [spec:hfst:sem:convert.hfst-ol.convert-id-number-map.add-node-fn]
-    fn add_node(&mut self, n: StateId, tr: *const StdVectorFst) {
+    fn add_node(&mut self, n: StateId, tr: &StdVectorFst) {
         if !self.node_to_id.contains_key(&n) {
             self.node_to_id.insert(n, self.node_counter);
             self.id_to_node.insert(self.node_counter, n);
             self.node_counter += 1;
-            let trs = unsafe { (*tr).get_trs(n).unwrap() };
+            let trs = tr.get_trs(n).unwrap();
             for a in trs.trs().iter() {
                 self.add_node(a.nextstate, tr);
             }
@@ -527,8 +527,8 @@ impl ConvertIdNumberMap {
 
     // [spec:hfst:def:convert.hfst-ol.convert-id-number-map.set-node-maps-fn]
     // [spec:hfst:sem:convert.hfst-ol.convert-id-number-map.set-node-maps-fn]
-    fn set_node_maps(&mut self, t: *const StdVectorFst) {
-        let n = unsafe { (*t).start() }.unwrap();
+    fn set_node_maps(&mut self, t: &StdVectorFst) {
+        let n = t.start().unwrap();
         self.add_node(n, t);
     }
 
@@ -561,7 +561,6 @@ impl ConvertIdNumberMap {
 pub struct ConvertTransducerAlphabet {
     symbol_table: SymbolTable,
 
-    transducer: *const StdVectorFst,
     // input and output symbol tables together
     ofst_symbol_table: OfstSymbolTable,
 
@@ -572,17 +571,15 @@ pub struct ConvertTransducerAlphabet {
 impl ConvertTransducerAlphabet {
     // [spec:hfst:def:convert.hfst-ol.convert-transducer-alphabet.convert-transducer-alphabet-fn]
     // [spec:hfst:sem:convert.hfst-ol.convert-transducer-alphabet.convert-transducer-alphabet-fn]
-    pub fn new(t: *const StdVectorFst) -> Self {
+    pub fn new(t: &StdVectorFst) -> Self {
         // add an epsilon symbol here??
-        let mut ofst_symbol_table: OfstSymbolTable =
-            unsafe { (**(*t).input_symbols().unwrap()).clone() };
-        if let Some(osym) = unsafe { (*t).output_symbols() } {
+        let mut ofst_symbol_table: OfstSymbolTable = (**t.input_symbols().unwrap()).clone();
+        if let Some(osym) = t.output_symbols() {
             ofst_symbol_table.add_table(&**osym);
         }
 
         let mut alpha = ConvertTransducerAlphabet {
             symbol_table: SymbolTable::new(),
-            transducer: t,
             ofst_symbol_table,
             input_symbols_map: BTreeMap::new(),
             output_symbols_map: BTreeMap::new(),
@@ -591,9 +588,9 @@ impl ConvertTransducerAlphabet {
         let mut symbol_count_map = OfstSymbolCountMap::new();
         let mut all_symbol_set = SymbolSet::new();
 
-        alpha.get_symbol_info(&mut symbol_count_map, &mut all_symbol_set);
+        alpha.get_symbol_info(t, &mut symbol_count_map, &mut all_symbol_set);
         alpha.populate_symbol_table(&symbol_count_map, &all_symbol_set);
-        alpha.set_maps();
+        alpha.set_maps(t);
 
         // 'delete ofst_symbol_table;' — the merged table is only needed during
         // construction; drop it now.
@@ -605,6 +602,7 @@ impl ConvertTransducerAlphabet {
     // [spec:hfst:sem:convert.hfst-ol.convert-transducer-alphabet.inspect-node-fn]
     fn inspect_node(
         &self,
+        t: &StdVectorFst,
         n: StateId,
         visited_nodes: &mut StateIdSet,
         symbol_count_map: &mut OfstSymbolCountMap,
@@ -616,9 +614,9 @@ impl ConvertTransducerAlphabet {
         visited_nodes.insert(n);
 
         let mut input_symbols: BTreeSet<String> = BTreeSet::new();
-        let isym = unsafe { (*self.transducer).input_symbols().unwrap().clone() };
-        let osym = unsafe { (*self.transducer).output_symbols().cloned() };
-        let trs = unsafe { (*self.transducer).get_trs(n).unwrap() };
+        let isym = t.input_symbols().unwrap().clone();
+        let osym = t.output_symbols().cloned();
+        let trs = t.get_trs(n).unwrap();
         for arc in trs.trs().iter() {
             let input_symbol_string = isym.get_symbol(arc.ilabel).unwrap_or("").to_string();
 
@@ -633,6 +631,7 @@ impl ConvertTransducerAlphabet {
             }
 
             self.inspect_node(
+                t,
                 arc.nextstate,
                 visited_nodes,
                 symbol_count_map,
@@ -654,13 +653,20 @@ impl ConvertTransducerAlphabet {
     // [spec:hfst:sem:convert.hfst-ol.convert-transducer-alphabet.get-symbol-info-fn]
     fn get_symbol_info(
         &self,
+        t: &StdVectorFst,
         symbol_count_map: &mut OfstSymbolCountMap,
         all_symbol_set: &mut SymbolSet,
     ) {
         symbol_count_map.insert(0, 1);
         let mut visited_nodes = StateIdSet::new();
-        let start = unsafe { (*self.transducer).start() }.unwrap();
-        self.inspect_node(start, &mut visited_nodes, symbol_count_map, all_symbol_set);
+        let start = t.start().unwrap();
+        self.inspect_node(
+            t,
+            start,
+            &mut visited_nodes,
+            symbol_count_map,
+            all_symbol_set,
+        );
     }
 
     // [spec:hfst:def:convert.hfst-ol.convert-transducer-alphabet.populate-symbol-table-fn]
@@ -724,8 +730,8 @@ impl ConvertTransducerAlphabet {
 
     // [spec:hfst:def:convert.hfst-ol.convert-transducer-alphabet.set-maps-fn]
     // [spec:hfst:sem:convert.hfst-ol.convert-transducer-alphabet.set-maps-fn]
-    fn set_maps(&mut self) {
-        let isym = unsafe { (*self.transducer).input_symbols().unwrap().clone() };
+    fn set_maps(&mut self, t: &StdVectorFst) {
+        let isym = t.input_symbols().unwrap().clone();
         for (label, sym) in isym.iter() {
             for i in 0..self.symbol_table.len() {
                 if self.symbol_table[i] == sym {
@@ -736,7 +742,7 @@ impl ConvertTransducerAlphabet {
             }
         }
 
-        let osym = unsafe { (*self.transducer).output_symbols().cloned() };
+        let osym = t.output_symbols().cloned();
         if let Some(osym) = osym {
             for (label, sym) in osym.iter() {
                 for i in 0..self.symbol_table.len() {
@@ -754,14 +760,14 @@ impl ConvertTransducerAlphabet {
 
     // [spec:hfst:def:convert.hfst-ol.convert-transducer-alphabet.display-fn]
     // [spec:hfst:sem:convert.hfst-ol.convert-transducer-alphabet.display-fn]
-    pub fn display(&self) {
+    pub fn display(&self, t: &StdVectorFst) {
         println!("Final reordered symbol table:");
         for i in 0..self.symbol_table.len() {
             println!("{}: {}", i, self.symbol_table[i]);
         }
 
         println!("Initial input symbols (old/new: string):");
-        let isym = unsafe { (*self.transducer).input_symbols().unwrap().clone() };
+        let isym = t.input_symbols().unwrap().clone();
         for (label, sym) in isym.iter() {
             println!(
                 "{}/{}: {}",
@@ -771,7 +777,7 @@ impl ConvertTransducerAlphabet {
             );
         }
         println!("Initial output symbols: (old/new: string)");
-        if unsafe { (*self.transducer).output_symbols() }.is_some() {
+        if t.output_symbols().is_some() {
             for (label, sym) in isym.iter() {
                 println!(
                     "{}/{}: {}",
@@ -1118,7 +1124,7 @@ pub struct ConvertFstState {
 impl ConvertFstState {
     // [spec:hfst:def:convert.hfst-ol.convert-fst-state.convert-fst-state-fn]
     // [spec:hfst:sem:convert.hfst-ol.convert-fst-state.convert-fst-state-fn]
-    fn new(n: StateId, tr: *const StdVectorFst) -> ConvertFstState {
+    fn new(n: StateId, tr: &StdVectorFst) -> ConvertFstState {
         let mut state = ConvertFstState {
             transitions: Vec::new(),
             transition_indices: Vec::new(),
@@ -1134,7 +1140,7 @@ impl ConvertFstState {
         state.set_transition_indices();
         if state.final_ {
             if unsafe { constructing_transducer() }.is_weighted() {
-                state.weight = *unsafe { (*tr).final_weight(n) }.unwrap().unwrap().value();
+                state.weight = *tr.final_weight(n).unwrap().unwrap().value();
             } else {
                 let finality: TransitionTableIndex = 1;
                 state.weight = f32::from_bits(finality);
@@ -1189,8 +1195,8 @@ impl ConvertFstState {
 
     // [spec:hfst:def:convert.hfst-ol.convert-fst-state.set-transitions-fn]
     // [spec:hfst:sem:convert.hfst-ol.convert-fst-state.set-transitions-fn]
-    fn set_transitions(&mut self, n: StateId, tr: *const StdVectorFst) {
-        let trs = unsafe { (*tr).get_trs(n).unwrap() };
+    fn set_transitions(&mut self, n: StateId, tr: &StdVectorFst) {
+        let trs = tr.get_trs(n).unwrap();
         for a in trs.trs().iter() {
             let t = Box::new(ConvertTransition::new(a));
             Self::insert_transition(&mut self.transitions, t);
@@ -1552,7 +1558,7 @@ impl ConvertTransducerHeader {
     // [spec:hfst:sem:convert.hfst-ol.convert-transducer-header.full-traversal-fn]
     fn full_traversal(
         h: &mut TransducerHeader,
-        tr: *const StdVectorFst,
+        tr: &StdVectorFst,
         n: StateId,
         visited_nodes: &mut StateIdSet,
         nodes_in_path: &mut StateIdSet,
@@ -1576,8 +1582,8 @@ impl ConvertTransducerHeader {
         let mut node_input_symbols: OfstSymbolSet = OfstSymbolSet::new();
         let mut transition_labels: LabelSet = LabelSet::new();
 
-        let isym = unsafe { (*tr).input_symbols().unwrap().clone() };
-        let trs = unsafe { (*tr).get_trs(n).unwrap() };
+        let isym = tr.input_symbols().unwrap().clone();
+        let trs = tr.get_trs(n).unwrap();
         for a in trs.trs().iter() {
             let l = transition_label {
                 input_symbol: a.ilabel as i64,
@@ -1633,11 +1639,11 @@ impl ConvertTransducerHeader {
         start: StateId,
         epsilon_targets: &mut StateIdSet,
         unweighted_only: bool,
-        tr: *const StdVectorFst,
+        tr: &StdVectorFst,
         h: &mut TransducerHeader,
     ) {
-        let isym = unsafe { (*tr).input_symbols().unwrap().clone() };
-        let trs = unsafe { (*tr).get_trs(n).unwrap() };
+        let isym = tr.input_symbols().unwrap().clone();
+        let trs = tr.get_trs(n).unwrap();
         for a in trs.trs().iter() {
             let sym = isym.get_symbol(a.ilabel).unwrap_or("").to_string();
             if a.ilabel != 0 || FdOperation::is_diacritic(&sym) {
@@ -1677,7 +1683,7 @@ impl ConvertTransducerHeader {
     // [spec:hfst:sem:convert.hfst-ol.convert-transducer-header.compute-header-fn]
     pub fn compute_header(
         header: &mut TransducerHeader,
-        t: *const StdVectorFst,
+        t: &StdVectorFst,
         symbol_count: SymbolNumber,
         number_of_index_table_entries: TransitionTableIndex,
         number_of_target_table_entries: TransitionTableIndex,
@@ -1704,7 +1710,7 @@ impl ConvertTransducerHeader {
         let mut nodes_in_path = StateIdSet::new();
         let mut input_symbols: OfstSymbolSet = OfstSymbolSet::new();
         input_symbols.insert(0);
-        let start = unsafe { (*t).start() }.unwrap();
+        let start = t.start().unwrap();
         Self::full_traversal(
             header,
             t,
@@ -1743,12 +1749,12 @@ unsafe fn constructing_transducer<'a>() -> &'a ConvertTransducer {
 // [spec:hfst:def:convert.hfst-ol.convert-transducer.add-input-symbols-fn]
 // [spec:hfst:sem:convert.hfst-ol.convert-transducer.add-input-symbols-fn]
 fn convert_transducer_add_input_symbols(
-    fst: *const StdVectorFst,
+    fst: &StdVectorFst,
     n: StateId,
     input_symbols: &mut SymbolNumberSet,
     visited_nodes: &mut StateIdSet,
 ) {
-    let trs = unsafe { (*fst).get_trs(n).unwrap() };
+    let trs = fst.get_trs(n).unwrap();
     for a in trs.trs().iter() {
         input_symbols.insert(a.ilabel as SymbolNumber);
         if !visited_nodes.contains(&a.nextstate) {
@@ -1760,11 +1766,11 @@ fn convert_transducer_add_input_symbols(
 
 // [spec:hfst:def:convert.hfst-ol.convert-transducer.number-of-input-symbols-fn]
 // [spec:hfst:sem:convert.hfst-ol.convert-transducer.number-of-input-symbols-fn]
-fn convert_transducer_number_of_input_symbols(fst: *const StdVectorFst) -> SymbolNumber {
+fn convert_transducer_number_of_input_symbols(fst: &StdVectorFst) -> SymbolNumber {
     let mut input_symbol_set = SymbolNumberSet::new();
     input_symbol_set.insert(0);
     let mut visited_nodes = StateIdSet::new();
-    let start = unsafe { (*fst).start() }.unwrap();
+    let start = fst.start().unwrap();
     convert_transducer_add_input_symbols(fst, start, &mut input_symbol_set, &mut visited_nodes);
     input_symbol_set.len() as SymbolNumber
 }
@@ -1785,14 +1791,20 @@ impl ConvertTransducer {
     // [spec:hfst:def:convert.hfst-ol.convert-transducer.convert-transducer-fn]
     // [spec:hfst:sem:convert.hfst-ol.convert-transducer.convert-transducer-fn]
     pub fn new(tr: *const StdVectorFst, weighted: bool) -> Box<ConvertTransducer> {
+        // IDIOM-STAGE-2: the fst is reached via a raw pointer here because it is
+        // stored in 'self.fst' and republished through the CONSTRUCTING_TRANSDUCER
+        // thread-local for the read-back callbacks (the C++ file-static pattern);
+        // a borrow can't outlive that. The fst-reading helpers below all take
+        // '&StdVectorFst', so dereference once at this boundary.
+        let tr_ref: &StdVectorFst = unsafe { &*tr };
         // C++ member-initialiser order: fst, id_number_map, fst_indices, header,
         // alphabet.
-        let id_number_map = Box::new(ConvertIdNumberMap::new(tr));
+        let id_number_map = Box::new(ConvertIdNumberMap::new(tr_ref));
         let fst_indices = Box::new(ConvertTransitionTableIndices::new(
-            convert_transducer_number_of_input_symbols(tr),
+            convert_transducer_number_of_input_symbols(tr_ref),
         ));
         let header = TransducerHeader::new_weighted(weighted);
-        let alphabet = ConvertTransducerAlphabet::new(tr);
+        let alphabet = ConvertTransducerAlphabet::new(tr_ref);
 
         let mut bx = Box::new(ConvertTransducer {
             fst: tr,
@@ -1807,7 +1819,7 @@ impl ConvertTransducer {
         CONSTRUCTING_TRANSDUCER.with(|c| c.set(bx.as_mut() as *mut ConvertTransducer));
         // C++ 'id_number_map = new ConvertIdNumberMap(tr);' a second time (the
         // first allocation leaks); we simply replace it.
-        bx.id_number_map = Some(Box::new(ConvertIdNumberMap::new(tr)));
+        bx.id_number_map = Some(Box::new(ConvertIdNumberMap::new(tr_ref)));
 
         let p: *mut ConvertTransducer = bx.as_mut();
         unsafe {
@@ -1827,7 +1839,7 @@ impl ConvertTransducer {
             let index_table_size = (*p).index_table_size as TransitionTableIndex;
             ConvertTransducerHeader::compute_header(
                 &mut (*p).header,
-                tr,
+                tr_ref,
                 symbol_count,
                 index_table_size,
                 target_table_entries,
@@ -1861,7 +1873,8 @@ impl ConvertTransducer {
         let number_of_nodes = self.id_number_map.as_ref().unwrap().get_number_of_nodes();
         for id in 0..number_of_nodes {
             let n = self.id_number_map.as_ref().unwrap().get_id_node(id);
-            let state = ConvertFstState::new(n, self.fst);
+            // self.fst is the IDIOM-STAGE-2 island raw pointer (see new()).
+            let state = ConvertFstState::new(n, unsafe { &*self.fst });
             self.states.push(Box::new(state));
         }
     }

@@ -369,6 +369,20 @@ children (
                         kind @note
                         text "Progress (primary scope done). hfst LIBRARY now has ZERO static mut crate-wide.\n\nstatic mut -> safe (all 7 in the hfst lib):\n- guessify_fst MY_DEFAULT (never reassigned) -> plain immutable static.\n- hfst_transducer shuffle_failed/shuffle_coding_case -> thread_local Cell (validated by shuffle_log test).\n- log_weight LOG_SECONDS_IN_HARMONIZE -> thread_local Cell<f32>; WARNING_STREAM (log+tropical) -> thread_local Cell<*mut Box<dyn Write>> (non-owning sink; static-mut-ness removed).\n- convert.rs CONSTRUCTING_TRANSDUCER -> thread_local Cell<*mut ConvertTransducer> (transient self-borrow during construction stays an unsafe-deref island).\n\nOwning raw pointers -> owned:\n- hfst_input_stream reader: *mut PushbackReader -> Box<PushbackReader> (removed Drop + into_raw/from_raw; ONE // IDIOM-STAGE-2 island: the &'a mut reader the backend stream needs outlives &mut self -- borrow checker can't express).\n- ConversionFunctions::hfst_transducer_to_hfst_basic_transducer -> owned HfstBasicTransducer (9 callers updated: compose-intersect x4, pmatch2fst x2, tokenize, pmatch.rs x2).\n- ConversionFunctions::hfst_ol_to_hfst_transducer -> owned HfstTransducer (2 pmatch2fst callers).\n\n121 tests green; workspace builds.\n\nREMAINING (documented boundaries, NOT done -- need a decision):\n- Lookup-result API: ~10 fns (lookup_string_vector/lookup_string/lookup_pairs/lookup_fd_*/lookdown_*) return *mut HfstOneLevelPaths / *mut HfstTwoLevelPaths via Box::into_raw. 17+ callers incl. the hfst-c FFI (returns the ptr across the C ABI) -> a coherent FFI-coupled boundary; test-covered (test_transducer_functions). generate_model_forms (2) + xfst (2) Box::from_raw frees consume it.\n- Facade *mut-returning public APIs: read_lexc_ptr, convert_static.\n- OL const-cast island: as_hfst_ol_ptr / hfst_transducer_to_hfst_ol (returns *mut Transducer borrow).\n- print_dot/print_pckimmo/ol_transducer FILE* + libc -> Stage 2."
                     }
+
+                    {
+                        at 2026-06-28T17:16:00.120763Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "COMPLETE. Operator decision: idiom1.core's scope (static mut -> safe + the input_stream/convert owning raw pointers) is done; the hfst library has ZERO static mut and the union/DAG/stack/global-mutability unsafety is gone across all of Stage 1. The residual raw pointers are reassigned to Stage 2 (idiom2) as documented boundaries because they intertwine with the C-ism/FFI layer Stage 2 addresses: (1) the lookup-result API (~10 fns returning *mut Hfst{One,Two}LevelPaths) is coupled to the hfst-c FFI which returns those pointers across the C ABI -- best converted alongside the FFI/C-ism work, not in isolation; (2) read_lexc_ptr / convert_static facade *mut returns; (3) the OL const-cast island as_hfst_ol_ptr / hfst_transducer_to_hfst_ol; (4) print_dot/print_pckimmo FILE*/libc C-isms (already Stage 2). This closes Stage 1 (memory-safety of the hfst library)."
+                    }
+
+                    {
+                        at 2026-06-28T17:16:23.203852Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
         )
@@ -406,6 +420,14 @@ children (
                 title "Remove libc from hfst/hfst-cli/hfst-c Cargo.toml; hfst-c keeps core::ffi types only; workspace builds + tests green with zero libc dep (the closing gate)"
                 priority 5
                 deps (idiom2.io idiom2.cstr idiom2.cli)
+            }
+        )
+        log (
+            {
+                at 2026-06-28T17:16:13.278652Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "INCOMING from idiom1.core (Stage-1 residual folded here): convert these remaining hfst-lib raw pointers alongside the C-ism/drop-libc work, since they couple to the FFI/C layer: (1) the lookup-result API -- ~10 fns (lookup_string_vector/lookup_string/lookup_pairs/lookup_fd_*/lookdown_*) returning *mut Hfst{One,Two}LevelPaths via Box::into_raw, 17+ callers incl. hfst-c FFI (lib.rs:134 returns the ptr across the C ABI) + hfst-lookup/flookup + xfst_compiler(2) + generate_model_forms(2); test-covered by test_transducer_functions. (2) read_lexc_ptr + convert_static facade *mut-returning public APIs. (3) the OL const-cast island as_hfst_ol_ptr / hfst_transducer_to_hfst_ol (-> *mut Transducer borrow). (4) The hfst_input_stream IDIOM-STAGE-2 lifetime island (&'a mut reader outliving &mut self). Per [dec:hfst:idiomatize-staging] and the idiom1.core completion decision."
             }
         )
     }
