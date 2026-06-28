@@ -319,22 +319,28 @@ mod construction_io {
     impl<'a> TropicalWeightInputStream<'a> {
         /// 'TropicalWeightInputStream(void)' — reads from stdin.
         pub fn new() -> Self {
-            // DEFERRED: 'IStream' borrows its reader ('&'a mut dyn Read'); it cannot
-            // own a 'std::cin'-backed stream. The skeleton struct holds
-            // 'input_stream: IStream' by value, which has no source here.
-            unimplemented!(
-                "deferred: TropicalWeightInputStream::new — IStream cannot own a stdin reader (lifetime)"
-            )
+            // C++ reads from std::cin; own a stdin reader.
+            TropicalWeightInputStream {
+                filename: String::new(),
+                input_stream: IStream::new_owned(std::io::stdin()),
+            }
         }
 
         /// 'TropicalWeightInputStream(const std::string &filename)'.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.tropical-weight-input-stream-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.tropical-weight-input-stream-fn]
-        pub fn new_filename(_filename: &str) -> Self {
-            // DEFERRED: same lifetime problem — 'IStream' cannot own an 'ifstream'.
-            unimplemented!(
-                "deferred: TropicalWeightInputStream::new_filename — IStream cannot own a file reader (lifetime)"
-            )
+        pub fn new_filename(filename: &str) -> Self {
+            // C++ opens an ifstream in binary mode; own the opened file. A failed
+            // open yields an empty reader, leaving the stream in the not-good
+            // state the C++ would also be in.
+            let reader: Box<dyn std::io::Read> = match std::fs::File::open(filename) {
+                Ok(f) => Box::new(f),
+                Err(_) => Box::new(std::io::empty()),
+            };
+            TropicalWeightInputStream {
+                filename: filename.to_string(),
+                input_stream: IStream::new_owned(reader),
+            }
         }
 
         /// 'TropicalWeightInputStream(std::istream &is)'.
@@ -390,9 +396,9 @@ mod construction_io {
             self.input_stream.good()
         }
 
-        pub fn is_fst(&self) -> bool {
-            // DEFERRED: routes to is_fst(istream) which needs a peek (unavailable).
-            unimplemented!("deferred: TropicalWeightInputStream::is_fst — IStream has no peek")
+        pub fn is_fst(&mut self) -> bool {
+            // C++ 'is_fst()' routes to the static 'is_fst(input_stream)'.
+            Self::is_fst_istream(&mut self.input_stream)
         }
 
         /// 'bool operator() (void) const;' — stream-good predicate.
@@ -443,9 +449,8 @@ mod construction_io {
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.stream-unget-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.stream-unget-fn]
-        pub fn stream_unget(&mut self, _c: char) {
-            // DEFERRED: 'IStream' has no putback/unget.
-            unimplemented!("deferred: stream_unget — IStream has no putback/unget")
+        pub fn stream_unget(&mut self, c: char) {
+            self.input_stream.putback(c as u8);
         }
 
         /// 'static bool is_fst(FILE * f);'
@@ -463,9 +468,16 @@ mod construction_io {
         }
 
         /// 'static bool is_fst(std::istream &s);'
-        pub fn is_fst_istream(_s: &mut IStream) -> bool {
-            // DEFERRED: 's.good() && s.peek() == 0xd6' — IStream has no peek.
-            unimplemented!("deferred: is_fst(istream) — IStream has no peek")
+        pub fn is_fst_istream(s: &mut IStream) -> bool {
+            // C++ 's.good() && s.peek() == 0xd6'. peek = get then put the byte back.
+            if !s.good() {
+                return false;
+            }
+            let c = s.get();
+            if c >= 0 {
+                s.putback(c as u8);
+            }
+            c == 0xd6
         }
     }
 

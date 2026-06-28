@@ -81,22 +81,29 @@ mod ol_construction_io {
     #[allow(dead_code)]
     impl<'a> HfstOlInputStream<'a> {
         /// 'HfstOlInputStream(bool weighted)' — reads from 'std::cin'.
-        pub fn new(_weighted: bool) -> Self {
-            // DEFERRED: the skeleton holds 'input_stream: IStream<'a>' by value, which
-            // borrows its reader ('&'a mut dyn Read'); it cannot own a 'std::cin'-backed
-            // stream (lifetime). Mirrors TropicalWeightInputStream::new.
-            unimplemented!(
-                "deferred: HfstOlInputStream::new — IStream cannot own a std::cin reader (lifetime)"
-            )
+        pub fn new(weighted: bool) -> Self {
+            // C++ reads from std::cin; own a stdin reader.
+            HfstOlInputStream {
+                filename: String::new(),
+                input_stream: IStream::new_owned(std::io::stdin()),
+                weighted,
+            }
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.hfst-ol-input-stream-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.hfst-ol-input-stream-fn]
-        pub fn new_filename(_filename: &str, _weighted: bool) -> Self {
-            // DEFERRED: same lifetime problem — 'IStream' cannot own an 'ifstream'.
-            unimplemented!(
-                "deferred: HfstOlInputStream::new_filename — IStream cannot own an ifstream (lifetime)"
-            )
+        pub fn new_filename(filename: &str, weighted: bool) -> Self {
+            // C++ opens an ifstream in binary mode; own the opened file (a failed
+            // open leaves the stream in the not-good state the C++ would have).
+            let reader: Box<dyn std::io::Read> = match std::fs::File::open(filename) {
+                Ok(f) => Box::new(f),
+                Err(_) => Box::new(std::io::empty()),
+            };
+            HfstOlInputStream {
+                filename: filename.to_string(),
+                input_stream: IStream::new_owned(reader),
+                weighted,
+            }
         }
 
         /// 'HfstOlInputStream(std::istream &is, bool weighted)'.
@@ -182,10 +189,9 @@ mod ol_construction_io {
         }
 
         /// 'bool is_fst(void) const;' — routes to the static 'is_fst(istream&)'.
-        pub fn is_fst_self(&self) -> bool {
-            // DEFERRED: routes to is_fst(istream) which reads 24 bytes and puts them
-            // back; 'IStream' has no putback, and '&self' cannot lend '&mut input_stream'.
-            unimplemented!("deferred: HfstOlInputStream::is_fst — IStream has no putback")
+        pub fn is_fst_self(&mut self) -> bool {
+            // C++ 'is_fst(void) const' -> 'is_fst(input_stream) != 0'.
+            Self::is_fst_istream(&mut self.input_stream) != 0
         }
 
         /// 'static int is_fst(FILE * f);' — 1=unweighted, 2=weighted.
@@ -235,11 +241,44 @@ mod ol_construction_io {
         /// 'static int is_fst(std::istream &s);'
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-fst-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-fst-fn]
-        pub fn is_fst_istream(_s: &mut IStream) -> i32 {
-            // DEFERRED: needs 'gcount'/'putback'/'clear' (unavailable on 'IStream').
-            unimplemented!(
-                "deferred: HfstOlInputStream::is_fst(istream) — IStream has no gcount/putback/clear"
-            )
+        pub fn is_fst_istream(s: &mut IStream) -> i32 {
+            // C++ reads 24 bytes, inspects buffer[20..24] for the weighted flag,
+            // then puts every read byte back. gcount = bytes actually read.
+            if !s.good() {
+                return 0;
+            }
+            let mut buffer = [0u8; 24];
+            let mut num_read = 0usize;
+            while num_read < 24 {
+                let c = s.get();
+                if c < 0 {
+                    break;
+                }
+                buffer[num_read] = c as u8;
+                num_read += 1;
+            }
+            let weighted: u32 =
+                i32::from_ne_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]) as u32;
+            let res: i32 = if num_read != 24 {
+                0
+            } else if weighted == 0 {
+                1
+            } else if weighted == 1 {
+                2
+            } else {
+                0
+            };
+            if num_read > 0 {
+                let mut i = num_read as isize - 1;
+                while i >= 0 {
+                    s.putback(buffer[i as usize]);
+                    i -= 1;
+                }
+            }
+            if num_read != 24 {
+                s.clear();
+            }
+            res
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.stream-get-fn]
@@ -260,9 +299,8 @@ mod ol_construction_io {
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.stream-unget-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.stream-unget-fn]
-        pub fn stream_unget(&mut self, _c: char) {
-            // DEFERRED: 'IStream' has no putback/unget.
-            unimplemented!("deferred: stream_unget — IStream has no putback")
+        pub fn stream_unget(&mut self, c: char) {
+            self.input_stream.putback(c as u8);
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.ignore-fn]

@@ -184,7 +184,10 @@ pub fn indexes_transition_index_table(i: TransitionTableIndex) -> bool {
 /// 'std::istream' modelled with a fail flag, so the C++ 'if(!is)' checks port
 /// straight across. Reads are native-endian to mirror 'reinterpret_cast'.
 pub struct IStream<'a> {
-    inner: &'a mut dyn std::io::Read,
+    // Boxed so the stream can either BORROW a reader ('new') or OWN one
+    // ('new_owned', for the stdin/file-backed *InputStream constructors that the
+    // C++ builds around an ifstream/cin).
+    inner: Box<dyn std::io::Read + 'a>,
     fail: bool,
     eof: bool,
     // Bytes pushed back via 'putback'/'unget' (std::istream's get-area), LIFO:
@@ -195,7 +198,18 @@ pub struct IStream<'a> {
 impl<'a> IStream<'a> {
     pub fn new(inner: &'a mut dyn std::io::Read) -> Self {
         IStream {
-            inner,
+            inner: Box::new(inner),
+            fail: false,
+            eof: false,
+            putback: Vec::new(),
+        }
+    }
+
+    /// Construct an IStream that OWNS its reader (e.g. an opened file or stdin),
+    /// for the backend '*InputStream::new'/'new_filename' constructors.
+    pub fn new_owned(inner: impl std::io::Read + 'a) -> Self {
+        IStream {
+            inner: Box::new(inner),
             fail: false,
             eof: false,
             putback: Vec::new(),
@@ -205,6 +219,13 @@ impl<'a> IStream<'a> {
     /// '!is' — true when the stream is in a good (non-failed) state.
     pub fn good(&self) -> bool {
         !self.fail
+    }
+
+    /// 'is.clear()': reset the fail/eof state (e.g. after a short read while
+    /// peeking).
+    pub fn clear(&mut self) {
+        self.fail = false;
+        self.eof = false;
     }
 
     /// 'is.get()': read and return the next byte, or -1 at end of stream
