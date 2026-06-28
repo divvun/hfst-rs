@@ -115,22 +115,34 @@ import-path/`libc::getc`->`fgetc`/`clock` portability fixes.
   reads a `TOP` archive and `match_("a")` returns `"b"`. Unblocks
   `hfst-tokenize`/`hfst-pmatch` TOP path.
 
-## Still UNFINISHED Wave-2 (not deferred — real translation gaps)
+## Input-stream / format-detection layer — DONE
 
-24 in-scope `unimplemented!` remain in the LIBRARY (not the tools; tools build and
-their main paths work). The bulk is the per-backend **input-stream
-format-detection layer**, now partly unblocked by the new `IStream`
-`get`/`putback`:
-- tropical/log/ol `*InputStream`: `is_fst` / `is_fst(istream)` / `stream_unget` /
-  `new` / `new_istream` (~17 across `tropical_weight_transducer.rs`,
-  `log_weight_transducer.rs`, `hfst_ol_transducer.rs`, `hfst_input_stream.rs`).
-  These detect a stream's transducer format and read OL/OpenFST backends through
-  `HfstInputStream`. `HfstInputStream::new_istream` is the one structural snag (an
-  owned-reader port adopting a borrowed `IStream`).
-- `pmatch.rs`: `process_symbol_list` (needs `&mut PmatchContainer`) + 2 others.
-- `twolc.rs` (1), `compose_intersect_lexicon.rs` (1).
-The genuinely out-of-scope `unimplemented!`s (SFST/foma/xfsm backends) are not
-counted here.
+The 24-stub `unimplemented!` cluster has been worked down to **4 genuine remainders
++ 2 non-gaps**. Cleared (`2bc7e52c`, `8f3252dc`, `6a0eac0`): `IStream` gained
+`new_owned`/`clear`/`read_to_end`; tropical/log/ol `*InputStream`
+`new`/`new_filename`/`is_fst`/`is_fst(istream)`/`stream_unget` (14); tropical/log
+`read_transducer` via `read_to_end`+`load_prefix` (2); pmatch `process_symbol_list`
+threaded with `&mut PmatchContainer` (1). All build; lib tests green.
+
+### Still open (real, but each a distinct focused piece — NOT a quick stub)
+- `pmatch.rs` `uncompose` (`pmatch.cc:2756`): a ~60-line lookup-driven port
+  (`uncompose_left->lookup_fd` + midform reconstruction). Reachable only for
+  archives that carry UNCOMPOSE nets.
+- `pmatch.rs:1242` multi-archive harmonization: `PmatchContainer` from >1
+  transducer (shared-alphabet harmonizer). A larger sub-feature; single-archive
+  works.
+- `hfst_input_stream.rs` `new_istream`: dead overload (no callers); the
+  owned-reader model can't adopt a borrowed `IStream` without making
+  `HfstInputStream`/`PushbackReader` lifetime-generic.
+- `twolc.rs:3391` `mixed` where-clause variable expansion: a niche TWOLC
+  where-block feature in the rule-variable iterator.
+
+### Correctly NOT gaps (left intentionally)
+- `compose_intersect_lexicon.rs` `identity_compose`: declared in a header but
+  never defined in C++ (like `universal_fst`/`negation_fst`) — `unimplemented!`
+  IS the faithful port (calling it would be a link error in C++).
+- `hfst_input_stream.rs:479` HFST version-2 weighted transducer with an appended
+  **SFST** alphabet: the SFST format is out of scope (dropped backend).
 
 ## Guardrails
 
