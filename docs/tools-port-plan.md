@@ -99,15 +99,38 @@ import-path/`libc::getc`->`fgetc`/`clock` portability fixes.
   this when the first **binary** linked. Applied across globals/getopt/commandline/
   file-to-mem/inc.
 
-## Known Wave-3 LIBRARY bug surfaced by hfst-invert (do not fix here)
+## FINISHED follow-ups (no longer deferred)
 
-Reading back a binary transducer whose header carries a **multi-byte UTF-8
-property** panics in `crates/hfst/src/hfst_input_stream.rs:901`
-(`get_header_data`: "more bytes read than the header contains"). Reproduced with
-the library alone (write `[a:b]` + `set_property("formula", "⁻¹")`, read
-back) — it is NOT a tool defect. hfst-invert sets the formula property to the
-inverse sign, so its output round-trips only once this lib header byte-accounting
-bug (writer vs reader length measure for multi-byte values) is fixed in Wave 3.
+- **Multi-byte header bug — FIXED** (`a5ab4f3a`): `stream_getstring` re-encoded
+  bytes >= 0x80 as UTF-8, corrupting multi-byte header properties and overrunning
+  the header length. Now decodes raw bytes once; `hfst-invert` round-trips
+  `a:b`->`b:a`.
+- **3 previously-deferred tools — DONE** (`038564aa`): ported the missing lib
+  pieces `generate_model_forms`, `guessify_fst`, and incremental
+  `LexcCompiler::parse`, and re-added `hfst-guess` / `hfst-guessify` /
+  `hfst-lexc-compiler` (build + `--help`).
+- **pmatch binary-archive reader — DONE** (`533341cd`): `IStream` gained
+  `get()`/`putback()`; `parse_hfst3_header`, `PmatchAlphabet::new_from_stream`,
+  and `PmatchContainer::new_from_stream` ported (were `unimplemented!`). Verified:
+  reads a `TOP` archive and `match_("a")` returns `"b"`. Unblocks
+  `hfst-tokenize`/`hfst-pmatch` TOP path.
+
+## Still UNFINISHED Wave-2 (not deferred — real translation gaps)
+
+24 in-scope `unimplemented!` remain in the LIBRARY (not the tools; tools build and
+their main paths work). The bulk is the per-backend **input-stream
+format-detection layer**, now partly unblocked by the new `IStream`
+`get`/`putback`:
+- tropical/log/ol `*InputStream`: `is_fst` / `is_fst(istream)` / `stream_unget` /
+  `new` / `new_istream` (~17 across `tropical_weight_transducer.rs`,
+  `log_weight_transducer.rs`, `hfst_ol_transducer.rs`, `hfst_input_stream.rs`).
+  These detect a stream's transducer format and read OL/OpenFST backends through
+  `HfstInputStream`. `HfstInputStream::new_istream` is the one structural snag (an
+  owned-reader port adopting a borrowed `IStream`).
+- `pmatch.rs`: `process_symbol_list` (needs `&mut PmatchContainer`) + 2 others.
+- `twolc.rs` (1), `compose_intersect_lexicon.rs` (1).
+The genuinely out-of-scope `unimplemented!`s (SFST/foma/xfsm backends) are not
+counted here.
 
 ## Guardrails
 
