@@ -890,7 +890,6 @@ fn compose_log() {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: shuffle on LOG_OPENFST_TYPE panics inside rustfst compose (used by intersect): 'Properties are not known: O_LABEL_SORTED' for the LOG semiring"]
 fn shuffle_log() {
     let _g = serialized();
     function_shuffle(LOG_OPENFST_TYPE);
@@ -942,7 +941,6 @@ fn alphabets_log() {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: the intersect sub-block on LOG_OPENFST_TYPE panics inside rustfst compose: 'Properties are not known: O_LABEL_SORTED' for the LOG semiring"]
 fn binary_operations_log() {
     let _g = serialized();
     function_binary_operations(LOG_OPENFST_TYPE);

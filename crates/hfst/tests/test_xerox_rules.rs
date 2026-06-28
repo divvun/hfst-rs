@@ -77,7 +77,7 @@ fn test8(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: empty-language mapping replace -- the symbol-table panic is fixed, but the replace result for (identity-a, empty-language) mapping does not compare equal to the C++ expected 'mba'; a deeper xerox replace-semantics divergence for empty-language mappings"]
+#[ignore = "PORT DISCREPANCY: the (identity-a, HfstTransducer(type)) mapping cross-products to the EMPTY mapping in both C++ and Rust (second element is the empty language), so the Rust replace yields the identity transducer and 'maa' -> 'maa'. The C++ test asserts 'maa' -> 'mba', which cannot follow from this rule (no 'b' appears anywhere; the mapping is empty) -- a degenerate/quirky upstream test like after_test1. Matching C++ would require replicating a C++-specific empty-mapping replace artifact; needs a live C++ HFST to diff against."]
 fn test8_tropical() {
     let _g = serialized();
     test8(TROPICAL_OPENFST_TYPE);

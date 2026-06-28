@@ -102,7 +102,6 @@ fn two_level_rules_tropical() {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: building two_level_if_and_only_if for LOG_OPENFST panics in hfst-openfst intersect-via-compose with the rustfst assertion 'Properties are not known: O_LABEL_SORTED | NOT_O_LABEL_SORTED'; C++ intersects the LOG transducers without error"]
 fn two_level_rules_log() {
     run_two_level_rules(LOG_OPENFST_TYPE);
 }
@@ -146,7 +145,7 @@ fn replace_down_karttunen_tropical() {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: replace_down_karttunen for LOG_OPENFST panics in hfst-openfst intersect-via-compose with the rustfst assertion 'Properties are not known: O_LABEL_SORTED | NOT_O_LABEL_SORTED'; C++ runs the same LOG rule construction without error"]
+#[ignore = "PORT DISCREPANCY: replace_down_karttunen for LOG_OPENFST throws EmptyStringException -- the faithfully-ported LOG log->basic conversion (source_state hardcoded to 0) emits an empty-symbol transition; LOG was commented out of the C++ types array so this path is never exercised upstream"]
 fn replace_down_karttunen_log() {
     run_replace_down_karttunen(LOG_OPENFST_TYPE);
 }
