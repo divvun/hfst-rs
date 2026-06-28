@@ -457,6 +457,21 @@ children (
                 id librarify.ol-reuse
                 title "[Tier1] Gut hfst-optimized-lookup: delete its ~1800-line reimplementation of the OL runtime (header/alphabet/Encoder/transition tables/recursive get_analyses/flag push_state) and call crate::transducer (lookup_fd_str → HfstOneLevelPaths); removes the tool's only unsafe block"
                 priority 5
+                log (
+                    {
+                        at 2026-06-28T20:14:25.195139Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-28T20:20:23.804753Z
+                        author "brendan@necessary.nu"
+                        kind @blocker
+                        text "Verification-blocked. hfst-optimized-lookup has zero test coverage and there are no OL fixtures in the repo. Attempting to generate one via the CLI (strings2fst | fst2fst -O) panics: HfstInputStream::read_transducer hits the `_ =>` fallthrough at hfst_input_stream.rs:1008-1014 and throws NotTransducerStreamException (\"transducer type not recognised\") — the binary round-trip (write transducer -> read back) does not recognize the written type. The lib engine IS confirmed sufficient (transducer.rs initialize_input + lookup_fd_cstr cover tokenization, the +? unknown-symbol case, weighting, flag diacritics, limit/time_cutoff; the 8 tool Variants collapse to one lookup_fd_str call; HfstInputStream already builds HFST_OL/OLW). But gutting ~1800 lines of a user-facing tool with no smoke test is unsafe. Prerequisite: fix the binary round-trip / type-detection so an OL fixture + golden-output smoke test can be built, THEN gut. Unblock candidates: investigate the header type byte written by HfstOutputStream vs the type detected on read."
+                    }
+                )
             }
 
             {
