@@ -1329,8 +1329,17 @@ impl Drop for HfstTransducer {
             HFST_OL_TYPE | HFST_OLW_TYPE => {
                 drop(unsafe { Box::from_raw(self.implementation.hfst_ol) });
             }
+            // C++ 'operator=' (the assignment path that reaches Drop when a
+            // default-constructed transducer is replaced) lists
+            // 'case UNSPECIFIED_TYPE: break;' -- deleting a never-assigned
+            // transducer is a no-op. The C++ *destructor* lacks that case and
+            // would throw, but in faithful code an UNSPECIFIED transducer is
+            // always reassigned (operator=), never scope-dropped; Rust's Drop
+            // serves the operator= role here, so it mirrors the no-op (the
+            // implementation pointer is null, so nothing leaks).
+            UNSPECIFIED_TYPE => {}
             ERROR_TYPE => HFST_THROW!(TransducerHasWrongTypeException),
-            // default (incl. UNSPECIFIED_TYPE) -> FunctionNotImplementedException
+            // default -> FunctionNotImplementedException
             _ => HFST_THROW!(FunctionNotImplementedException),
         }
     }

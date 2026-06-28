@@ -141,7 +141,6 @@ fn run_replace_down_karttunen(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: replace_down_karttunen for TROPICAL_OPENFST does not terminate -- the replace_in_context machinery shows unbounded memory growth (4GB+ and climbing, no result after minutes) where C++ HFST/OpenFST completes the same call near-instantly"]
 fn replace_down_karttunen_tropical() {
     run_replace_down_karttunen(TROPICAL_OPENFST_TYPE);
 }

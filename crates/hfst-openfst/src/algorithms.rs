@@ -351,6 +351,12 @@ where
 {
     *ofst =
         compose::<W, F1, F2, F3, &F1, &F2>(fst1, fst2).expect("rustfst intersect (via compose)");
+    // Intersect operands are acceptors over a shared alphabet; the result keeps
+    // it. Re-attach fst1's tables (rustfst drops them when building a fresh fst)
+    // so the result still carries its symbol table — HFST reads it back when
+    // converting to a HfstBasicTransducer, and an empty result with no table
+    // would otherwise throw MissingOpenFstInputSymbolTableException.
+    propagate_symbols(fst1, ofst);
 }
 
 // [fst::Prune] — in-place prune of paths worse than 'threshold'

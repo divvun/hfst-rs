@@ -77,7 +77,7 @@ fn test8(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: empty-language mapping in bracketedReplace panics in convert_tropical_weight_transducer handle_symbol_tables (convert_tropical_weight_transducer.rs:44) where C++ HFST handles the empty mapping without error"]
+#[ignore = "PORT DISCREPANCY: empty-language mapping replace -- the symbol-table panic is fixed, but the replace result for (identity-a, empty-language) mapping does not compare equal to the C++ expected 'mba'; a deeper xerox replace-semantics divergence for empty-language mappings"]
 fn test8_tropical() {
     let _g = serialized();
     test8(TROPICAL_OPENFST_TYPE);
@@ -172,7 +172,6 @@ fn restriction_test1(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test1_tropical() {
     let _g = serialized();
     restriction_test1(TROPICAL_OPENFST_TYPE);
@@ -209,7 +208,6 @@ fn restriction_test1a(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test1a_tropical() {
     let _g = serialized();
     restriction_test1a(TROPICAL_OPENFST_TYPE);
@@ -246,7 +244,6 @@ fn restriction_test1b(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test1b_tropical() {
     let _g = serialized();
     restriction_test1b(TROPICAL_OPENFST_TYPE);
@@ -283,7 +280,6 @@ fn restriction_test2(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test2_tropical() {
     let _g = serialized();
     restriction_test2(TROPICAL_OPENFST_TYPE);
@@ -320,7 +316,6 @@ fn restriction_test3(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test3_tropical() {
     let _g = serialized();
     restriction_test3(TROPICAL_OPENFST_TYPE);
@@ -355,7 +350,6 @@ fn restriction_test3a(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test3a_tropical() {
     let _g = serialized();
     restriction_test3a(TROPICAL_OPENFST_TYPE);
@@ -390,7 +384,6 @@ fn restriction_test3b(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test3b_tropical() {
     let _g = serialized();
     restriction_test3b(TROPICAL_OPENFST_TYPE);
@@ -425,7 +418,6 @@ fn restriction_test3c(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test3c_tropical() {
     let _g = serialized();
     restriction_test3c(TROPICAL_OPENFST_TYPE);
@@ -470,7 +462,6 @@ fn restriction_test4(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test4_tropical() {
     let _g = serialized();
     restriction_test4(TROPICAL_OPENFST_TYPE);
@@ -513,7 +504,6 @@ fn restriction_test5(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test5_tropical() {
     let _g = serialized();
     restriction_test5(TROPICAL_OPENFST_TYPE);
@@ -555,7 +545,6 @@ fn restriction_test5a(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test5a_tropical() {
     let _g = serialized();
     restriction_test5a(TROPICAL_OPENFST_TYPE);
@@ -595,7 +584,6 @@ fn restriction_test6(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test6_tropical() {
     let _g = serialized();
     restriction_test6(TROPICAL_OPENFST_TYPE);
@@ -653,7 +641,6 @@ fn restriction_test7(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test7_tropical() {
     let _g = serialized();
     restriction_test7(TROPICAL_OPENFST_TYPE);
@@ -697,7 +684,6 @@ fn restriction_test8(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: restriction() panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the restriction transducer without error"]
 fn restriction_test8_tropical() {
     let _g = serialized();
     restriction_test8(TROPICAL_OPENFST_TYPE);
@@ -730,7 +716,6 @@ fn test10a(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: empty-language mapping in bracketedReplace panics in convert_tropical_weight_transducer handle_symbol_tables (convert_tropical_weight_transducer.rs:44) where C++ HFST handles the empty mapping without error"]
 fn test10a_tropical() {
     let _g = serialized();
     test10a(TROPICAL_OPENFST_TYPE);
@@ -762,7 +747,6 @@ fn test10b(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: empty-language mapping in bracketedReplace panics in convert_tropical_weight_transducer handle_symbol_tables (convert_tropical_weight_transducer.rs:44) where C++ HFST handles the empty mapping without error"]
 fn test10b_tropical() {
     let _g = serialized();
     test10b(TROPICAL_OPENFST_TYPE);
@@ -849,7 +833,6 @@ fn test9b(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: replace_left_rule_vector (via parallelBracketedReplace) panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the parallel-rule transducer without error"]
 fn test9b_tropical() {
     let _g = serialized();
     test9b(TROPICAL_OPENFST_TYPE);
@@ -1972,7 +1955,6 @@ fn test7a(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: parallel replace (replace_rule_vector / parallelBracketedReplace) panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the parallel-rule transducer without error"]
 fn test7a_tropical() {
     let _g = serialized();
     test7a(TROPICAL_OPENFST_TYPE);
@@ -2019,7 +2001,6 @@ fn test7b(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: parallel replace (replace_rule_vector / parallelBracketedReplace) panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the parallel-rule transducer without error"]
 fn test7b_tropical() {
     let _g = serialized();
     test7b(TROPICAL_OPENFST_TYPE);
@@ -2138,7 +2119,6 @@ fn test7c(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: parallel replace (replace_rule_vector / parallelBracketedReplace) panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the parallel-rule transducer without error"]
 fn test7c_tropical() {
     let _g = serialized();
     test7c(TROPICAL_OPENFST_TYPE);
@@ -2200,7 +2180,6 @@ fn test7d(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: parallel replace (replace_rule_vector / parallelBracketedReplace) panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the parallel-rule transducer without error"]
 fn test7d_tropical() {
     let _g = serialized();
     test7d(TROPICAL_OPENFST_TYPE);
@@ -2245,7 +2224,6 @@ fn test7e(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: parallel replace (replace_rule_vector / parallelBracketedReplace) panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the parallel-rule transducer without error"]
 fn test7e_tropical() {
     let _g = serialized();
     test7e(TROPICAL_OPENFST_TYPE);
@@ -2287,7 +2265,6 @@ fn test7f(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: parallel replace (replace_rule_vector / parallelBracketedReplace) panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the parallel-rule transducer without error"]
 fn test7f_tropical() {
     let _g = serialized();
     test7f(TROPICAL_OPENFST_TYPE);
@@ -2331,7 +2308,6 @@ fn test7g(type_: ImplementationType) {
 }
 
 #[test]
-#[ignore = "PORT DISCREPANCY: parallel replace (replace_rule_vector / parallelBracketedReplace) panics inside the Rust port (Drop of an unavailable-type transducer at hfst_transducer.rs:1334) where C++ HFST builds the parallel-rule transducer without error"]
 fn test7g_tropical() {
     let _g = serialized();
     test7g(TROPICAL_OPENFST_TYPE);
