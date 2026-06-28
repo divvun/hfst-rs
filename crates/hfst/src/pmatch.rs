@@ -185,8 +185,7 @@ impl ContextMatchedTrap {
 }
 
 // [spec:hfst:def:pmatch.hfst-ol.pmatch-container]
-// uncompose_left/right + weight_limit are read only by the deferred (facade-
-// dependent) uncompose path; allowed dead until that lands.
+// weight_limit is currently read only on paths not yet exercised by a test.
 #[allow(dead_code)]
 pub struct PmatchContainer {
     pub(crate) alphabet: PmatchAlphabet,
@@ -198,8 +197,8 @@ pub struct PmatchContainer {
     // This tracks the ENTRY and EXIT tags
     pub(crate) entry_stack: Vec<u32>,
     pub(crate) rtn_stacks: RtnCallStacks,
-    // C++ raw 'hfst_ol::Transducer *'; deferred until the OL Transducer facade
-    // path is wired (uncompose). Owned box, optional.
+    // C++ raw 'hfst_ol::Transducer *'; the two uncomposer nets read by
+    // 'uncompose' via 'lookup_fd'. Owned box, optional.
     pub(crate) uncompose_left: Option<Box<crate::transducer::Transducer>>,
     pub(crate) uncompose_right: Option<Box<crate::transducer::Transducer>>,
     pub(crate) tape: DoubleTape,
@@ -1235,13 +1234,123 @@ impl PmatchContainer {
             c.set_properties_map(transducers[0].get_properties());
             c
         } else {
-            // The C++ 'difficult case': multiple optimized-lookup archives are
-            // harmonized into one shared alphabet (collect every symbol into a
-            // harmonizer transducer, reconvert each member through it, locate the
-            // 'TOP' member). Distinct, larger sub-feature; not yet ported.
-            unimplemented!(
-                "PmatchContainer from multiple transducers (the C++ multi-archive harmonization case) is not yet ported"
-            )
+            // This is the difficult case where we have to make sure multiple
+            // optimized-lookup transducers are harmonized with each other.
+            use crate::convert_transducer_format::ConversionFunctions;
+            use crate::hfst_data_types::ImplementationType::HFST_OLW_TYPE;
+
+            let mut c = PmatchContainer::new();
+            c.set_properties();
+            c.reset_recursion();
+            c.set_properties_map(transducers[0].get_properties());
+
+            // A dummy transducer with an alphabet with all the symbols
+            let mut harmonizer = crate::hfst_transducer::HfstTransducer::new_type(
+                crate::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE,
+            );
+            // First we need to collect a unified alphabet from all the
+            // transducers.
+            let mut symbols_seen: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            // The TOP member: the last transducer named "TOP" (NULL == none).
+            let mut top_index: Option<usize> = None;
+            // We collect all the symbols and also locate the TOP member.
+            for i in 0..transducers.len() {
+                let string_set = transducers[i].get_alphabet();
+                for sym in string_set.iter() {
+                    if !symbols_seen.contains(sym) {
+                        let ht = crate::hfst_transducer::HfstTransducer::new_symbol(
+                            sym,
+                            harmonizer.get_type(),
+                        );
+                        harmonizer.disjunct(&ht, true);
+                        symbols_seen.insert(sym.clone());
+                    }
+                }
+                if transducers[i].get_name() == "TOP" {
+                    top_index = Some(i);
+                }
+            }
+            let top_index = match top_index {
+                Some(i) => i,
+                None => {
+                    eprintln!("pmatch: warning: TOP not defined in archive, using first as TOP");
+                    0
+                }
+            };
+            // Then we convert the harmonizer...
+            harmonizer.convert(HFST_OLW_TYPE, String::new());
+            let harmonizer_ol = unsafe { &*harmonizer.implementation.hfst_ol };
+
+            // We take care of TOP first. Convert to OLW (mirrors C++) then to
+            // an intermediate basic transducer, then harmonize into OL.
+            let mut top = transducers[top_index].clone();
+            if top.get_type() != HFST_OLW_TYPE {
+                top.convert(HFST_OLW_TYPE, String::new());
+            }
+            let intermediate_tmp = unsafe {
+                Box::from_raw(ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&top))
+            };
+            let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
+                &intermediate_tmp,
+                true,                // weighted
+                "",                  // no special options
+                Some(harmonizer_ol), // harmonize with this
+            );
+            // this will be the alphabet of the entire container
+            c.alphabet = PmatchAlphabet::new_from_alphabet(harmonized_tmp.get_alphabet(), &mut c);
+            c.orig_symbol_count = c.alphabet.get_orig_symbol_count();
+            c.symbol_count = c.alphabet.get_orig_symbol_count();
+            c.global_flag_state = FdState::new(c.alphabet.get_fd_table());
+            c.encoder = Some(Encoder::new(
+                c.alphabet.get_symbol_table(),
+                c.orig_symbol_count,
+            ));
+            let transitions = harmonized_tmp.copy_transitionw_table();
+            let indices = harmonized_tmp.copy_windex_table();
+            let top_pt = PmatchTransducer::new_from_vectors(
+                transitions.get_vector().clone(),
+                indices.get_vector().clone(),
+                &c.alphabet,
+                "TOP".to_string(),
+            );
+            c.toplevel = Some(Box::new(top_pt));
+            // Then we do the same for the other transducers except without
+            // alphabets or encoders because those should be identical. Members
+            // named "TOP" left a NULL slot in the C++ 'temporaries' vector and
+            // are skipped here.
+            for i in 0..transducers.len() {
+                if transducers[i].get_name() == "TOP" {
+                    // there's a NULL where TOP should be
+                    continue;
+                }
+                let mut temp = transducers[i].clone();
+                if temp.get_type() != HFST_OLW_TYPE {
+                    temp.convert(HFST_OLW_TYPE, String::new());
+                }
+                let intermediate_tmp = unsafe {
+                    Box::from_raw(
+                        ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&temp),
+                    )
+                };
+                let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
+                    &intermediate_tmp,
+                    true,
+                    "",
+                    Some(harmonizer_ol),
+                );
+                let transitions = harmonized_tmp.copy_transitionw_table();
+                let indices = harmonized_tmp.copy_windex_table();
+                let name = transducers[i].get_name();
+                let rtn = PmatchTransducer::new_from_vectors(
+                    transitions.get_vector().clone(),
+                    indices.get_vector().clone(),
+                    &c.alphabet,
+                    name.clone(),
+                );
+                c.alphabet.add_rtn(Box::new(rtn), &name);
+            }
+            c
         }
     }
 
@@ -2085,8 +2194,77 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.uncompose-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.uncompose-fn]
-    pub fn uncompose(&mut self, _loc: &mut Location) {
-        unimplemented!("deferred: needs HfstTransducer facade")
+    pub fn uncompose(&mut self, loc: &mut Location) {
+        let verbose = self.verbose;
+        if !self.uncomposable {
+            if verbose {
+                eprintln!("uncompose disabled");
+            }
+            return;
+        }
+        if verbose {
+            eprintln!("uncomposing left {}", loc.input);
+        }
+        let middle_left = self
+            .uncompose_left
+            .as_mut()
+            .unwrap()
+            .lookup_fd_str(&loc.input, -1, 0.0);
+        if middle_left.is_empty() {
+            if verbose {
+                eprintln!("empty midleft compose");
+            }
+            // ambig problems
+            return;
+        }
+        let mut midforms: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for lpath in &middle_left {
+            let mut mids = String::new();
+            for symbol in &lpath.second {
+                if !crate::hfst_flag_diacritics::FdOperation::is_diacritic(symbol) {
+                    mids.push_str(symbol);
+                }
+            }
+            if verbose {
+                eprintln!("midleft composed {}", mids);
+            }
+            let middle_right = self
+                .uncompose_right
+                .as_mut()
+                .unwrap()
+                .lookup_fd_str(&mids, -1, 0.0);
+            if middle_right.is_empty() {
+                if verbose {
+                    eprintln!("empty midright compose");
+                }
+                continue;
+            }
+            for rpath in &middle_right {
+                let mut lows = String::new();
+                for rsym in &rpath.second {
+                    if !crate::hfst_flag_diacritics::FdOperation::is_diacritic(rsym) {
+                        lows.push_str(rsym);
+                    }
+                }
+                if verbose {
+                    eprintln!("midright composed {}", lows);
+                }
+                if lows == loc.output {
+                    if verbose {
+                        eprintln!("matched {}", loc.output);
+                    }
+                    midforms.insert(mids.clone());
+                } else if verbose {
+                    eprintln!("no match {}", loc.output);
+                }
+            }
+        }
+        if midforms.len() > 1 {
+            // ambig problems
+        }
+        for form in &midforms {
+            loc.middle = form.clone();
+        }
     }
 }
 

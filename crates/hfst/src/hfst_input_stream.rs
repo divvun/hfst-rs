@@ -78,8 +78,8 @@ pub struct XfsmInputStream;
 /// header probing requires (the borrowing ['IStream'] cannot). It also implements
 /// ['Read'] (draining the unget stack first) so a backend ['IStream'] can keep
 /// reading the same source after the header.
-pub struct PushbackReader {
-    inner: Box<dyn Read>,
+pub struct PushbackReader<'a> {
+    inner: Box<dyn Read + 'a>,
     /// Unget stack: bytes are pushed by 'unget' and popped LIFO. The probing code
     /// ungets in reverse order, so popping restores the original order.
     pushback: Vec<u8>,
@@ -89,8 +89,8 @@ pub struct PushbackReader {
     fail: bool,
 }
 
-impl PushbackReader {
-    fn new(inner: Box<dyn Read>) -> Self {
+impl<'a> PushbackReader<'a> {
+    fn new(inner: Box<dyn Read + 'a>) -> Self {
         PushbackReader {
             inner,
             pushback: Vec::new(),
@@ -149,7 +149,7 @@ impl PushbackReader {
     }
 }
 
-impl Read for PushbackReader {
+impl<'a> Read for PushbackReader<'a> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut n = 0;
         while n < buf.len() {
@@ -246,7 +246,7 @@ pub struct HfstInputStream<'a> {
     /// via raw pointer, with the in-scope backend stream). Heap-pinned behind a
     /// raw pointer; freed in 'Drop'. Mirrors C++ 'std::istream * input_stream' in
     /// that it backs all the 'stream_*' primitives.
-    reader: *mut PushbackReader,
+    reader: *mut PushbackReader<'a>,
     /// Mirrors C++ 'input_stream != NULL': 'true' while the first transducer's
     /// type is still being established (reads behave like the raw 'input_stream'),
     /// 'false' once 'read_transducer' has taken over.
@@ -279,7 +279,7 @@ mod input_impl {
         /// Borrow the owned reader. Sound for the single-threaded, non-aliasing way
         /// the 'stream_*' primitives use it (one call at a time).
         #[inline]
-        fn pbr(&mut self) -> &mut PushbackReader {
+        fn pbr(&mut self) -> &mut PushbackReader<'a> {
             unsafe { &mut *self.reader }
         }
 
@@ -521,7 +521,7 @@ mod input_impl {
                     // Build a transient backend stream that borrows the owned
                     // reader (positioned just after the header that probing
                     // consumed), then read with has_header = false.
-                    let reader: &'a mut PushbackReader = unsafe { &mut *self.reader };
+                    let reader: &'a mut PushbackReader<'a> = unsafe { &mut *self.reader };
                     let is = IStream::new(reader);
                     let mut ol_in = HfstOlBackendInputStream::new_istream(is, weighted);
                     let tr = ol_in.read_transducer(false);
@@ -971,7 +971,7 @@ mod input_impl {
         /// type. (The C++ constructors differ only in how 'input_stream' is seeded
         /// and in re-constructing a per-type backend stream, which this port builds
         /// transiently at read time.)
-        fn new_with_reader(inner: Box<dyn Read>, filename: String) -> Self {
+        fn new_with_reader(inner: Box<dyn Read + 'a>, filename: String) -> Self {
             let mut this = HfstInputStream {
                 implementation: StreamImplementation::default(),
                 type_: ImplementationType::ERROR_TYPE,
@@ -1058,15 +1058,13 @@ mod input_impl {
         }
 
         // HfstInputStream(std::istream &is)
-        pub fn new_istream(_is: IStream<'a>) -> Self {
-            // The C++ probes 'is' then constructs a backend stream from the SAME
-            // borrowed 'is'. This owned-reader port cannot adopt a borrowed
-            // 'IStream' as its owned source (it would have to move the borrowed
-            // reader in), so this overload stays deferred; use 'new'/'new_filename'
-            // (which own a 'Box<dyn Read>') instead.
-            unimplemented!(
-                "deferred: HfstInputStream::new_istream — owned-reader port cannot adopt a borrowed IStream"
-            )
+        pub fn new_istream(is: IStream<'a>) -> Self {
+            // C++ 'input_stream = &is;' — adopt the (possibly borrowed) stream as
+            // this 'HfstInputStream's source, then probe its first transducer's
+            // header in 'new_with_reader' exactly like the other constructors. The
+            // 'PushbackReader'/'HfstInputStream' lifetime parameter lets a borrowed
+            // 'IStream<'a>' back the stream for 'a.
+            Self::new_with_reader(is.into_reader(), String::new())
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.close-fn]

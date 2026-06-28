@@ -117,25 +117,32 @@ import-path/`libc::getc`->`fgetc`/`clock` portability fixes.
 
 ## Input-stream / format-detection layer — DONE
 
-The 24-stub `unimplemented!` cluster has been worked down to **4 genuine remainders
-+ 2 non-gaps**. Cleared (`2bc7e52c`, `8f3252dc`, `6a0eac0`): `IStream` gained
-`new_owned`/`clear`/`read_to_end`; tropical/log/ol `*InputStream`
+The 24-stub `unimplemented!` cluster has been worked down to **0 in-scope
+remainders + 2 non-gaps**. Cleared (`2bc7e52c`, `8f3252dc`, `6a0eac0`): `IStream`
+gained `new_owned`/`clear`/`read_to_end`; tropical/log/ol `*InputStream`
 `new`/`new_filename`/`is_fst`/`is_fst(istream)`/`stream_unget` (14); tropical/log
 `read_transducer` via `read_to_end`+`load_prefix` (2); pmatch `process_symbol_list`
 threaded with `&mut PmatchContainer` (1). All build; lib tests green.
 
-### Still open (real, but each a distinct focused piece — NOT a quick stub)
-- `pmatch.rs` `uncompose` (`pmatch.cc:2756`): a ~60-line lookup-driven port
-  (`uncompose_left->lookup_fd` + midform reconstruction). Reachable only for
-  archives that carry UNCOMPOSE nets.
-- `pmatch.rs:1242` multi-archive harmonization: `PmatchContainer` from >1
-  transducer (shared-alphabet harmonizer). A larger sub-feature; single-archive
-  works.
-- `hfst_input_stream.rs` `new_istream`: dead overload (no callers); the
-  owned-reader model can't adopt a borrowed `IStream` without making
-  `HfstInputStream`/`PushbackReader` lifetime-generic.
-- `twolc.rs:3391` `mixed` where-clause variable expansion: a niche TWOLC
-  where-block feature in the rule-variable iterator.
+### Final 4 — DONE
+- `pmatch.rs` `uncompose` (`pmatch.cc:2756`): ported via `uncompose_left`/`_right`
+  `lookup_fd` + midform reconstruction (the "needs HfstTransducer facade" label
+  was wrong — it uses the optimized-lookup `Transducer::lookup_fd`, already ported
+  as `lookup_fd_str`).
+- `pmatch.rs` multi-archive harmonization (`PmatchContainer(std::vector<HfstTransducer>)`
+  else-branch): ported the shared-alphabet harmonizer — build a TROPICAL
+  harmonizer over every member's symbols, convert to OLW, re-route TOP and each
+  RTN through `hfst_transducer_to_hfst_basic_transducer` +
+  `hfst_basic_transducer_to_hfst_ol(..., harmonizer_ol)`. Bug-for-bug: members
+  named "TOP" leave a NULL temporaries slot; no-TOP fallback re-adds member 0 as
+  both TOP and an RTN.
+- `hfst_input_stream.rs` `new_istream`: made `PushbackReader<'a>` /
+  `HfstInputStream<'a>` lifetime-generic so a borrowed `IStream<'a>` can back the
+  stream; `IStream::into_reader` adopts it (replays LIFO putback via a
+  `Cursor.chain`).
+- `twolc.rs` `mixed` where-clause: ported `MixedConstContainerIterator` as a
+  precomputed combos list on `VarDim` — the block's value-position cross-product
+  filtered to pairwise-distinct positions (the C++ `equal_indices` skip).
 
 ### Correctly NOT gaps (left intentionally)
 - `compose_intersect_lexicon.rs` `identity_compose`: declared in a header but

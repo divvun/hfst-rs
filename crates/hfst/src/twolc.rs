@@ -3323,7 +3323,9 @@ impl RuleVariables {
 // ===== integration: variable_src/ where-clause expansion (body[3] re-port) =====
 // Ports libhfst/src/parsers/variable_src/{RuleVariables,RuleVariablesConstIterator,
 // RuleSymbolVector}. The 'freely' matcher is a full cross-product; 'matched' is a
-// lockstep diagonal over a block's variables (equal-size sets). 'mixed' is deferred.
+// lockstep diagonal over a block's variables (equal-size sets); 'mixed' is the
+// cross-product filtered to combinations whose per-variable value POSITIONS are
+// pairwise distinct (the MixedConstContainerIterator 'equal_indices' skip).
 impl RuleVariables {
     // [spec:hfst:def:rule-variables.rule-variables.set-variable-fn]
     pub fn set_variable(&mut self, var: &str) {
@@ -3372,10 +3374,15 @@ impl RuleVariables {
 // One odometer dimension: a list of (variable, its values) that advance together
 // (length 1 => an independent 'freely' variable; length >1 => a 'matched' block,
 // lockstep over equal-size value sets). 'size' is the number of positions.
+//
+// For a 'mixed' block, 'combos' is non-empty: each position is a full tuple of
+// per-variable value POSITIONS (pairwise distinct). For freely/matched 'combos'
+// is empty and the shared position index is the value index for every variable.
 #[derive(Clone)]
 pub(crate) struct VarDim {
     pub(crate) vars: Vec<VariableValues>,
     pub(crate) size: usize,
+    pub(crate) combos: Vec<Vec<usize>>,
 }
 
 // [spec:hfst:def:rule-variables-const-iterator.rule-variables-const-iterator]
@@ -3387,9 +3394,6 @@ pub struct RuleVariablesConstIterator {
 
 impl RuleVariablesConstIterator {
     fn new(rv: &RuleVariables, end: bool) -> Self {
-        if !rv.mixed_blocks.is_empty() {
-            unimplemented!("deferred: `mixed` where-clause variable expansion");
-        }
         let mut dims: Vec<VarDim> = Vec::new();
         // freely: every variable is its own independent dimension.
         for block in &rv.freely_blocks {
@@ -3397,6 +3401,7 @@ impl RuleVariablesConstIterator {
                 dims.push(VarDim {
                     size: vv.values.len(),
                     vars: vec![vv.clone()],
+                    combos: Vec::new(),
                 });
             }
         }
@@ -3411,6 +3416,52 @@ impl RuleVariablesConstIterator {
             dims.push(VarDim {
                 size,
                 vars: block.clone(),
+                combos: Vec::new(),
+            });
+        }
+        // mixed: one dimension whose positions are the cross-product of the
+        // block's per-variable value POSITIONS, keeping only the tuples whose
+        // positions are pairwise distinct (the C++ 'equal_indices' skip). The
+        // odometer below advances position 0 fastest, mirroring
+        // ConstContainerIterator::operator++.
+        for block in &rv.mixed_blocks {
+            let lens: Vec<usize> = block.iter().map(|vv| vv.values.len()).collect();
+            let n = lens.len();
+            let mut combos: Vec<Vec<usize>> = Vec::new();
+            if n != 0 && lens.iter().all(|&l| l != 0) {
+                let mut idx = vec![0usize; n];
+                loop {
+                    let mut seen: std::collections::BTreeSet<usize> =
+                        std::collections::BTreeSet::new();
+                    let mut distinct = true;
+                    for &k in &idx {
+                        if !seen.insert(k) {
+                            distinct = false;
+                            break;
+                        }
+                    }
+                    if distinct {
+                        combos.push(idx.clone());
+                    }
+                    // advance the mixed-radix odometer (position 0 fastest)
+                    let mut i = 0;
+                    while i < n {
+                        idx[i] += 1;
+                        if idx[i] < lens[i] {
+                            break;
+                        }
+                        idx[i] = 0;
+                        i += 1;
+                    }
+                    if i == n {
+                        break;
+                    }
+                }
+            }
+            dims.push(VarDim {
+                size: combos.len(),
+                vars: block.clone(),
+                combos,
             });
         }
         let any_empty = dims.iter().any(|d| d.size == 0);
@@ -3425,8 +3476,17 @@ impl RuleVariablesConstIterator {
     // [spec:hfst:def:rule-variables-const-iterator.rule-variables-const-iterator.set-values-fn]
     pub fn set_values(&self, vvm: &mut VariableValueMap) {
         for (dim, &idx) in self.dims.iter().zip(self.indices.iter()) {
-            for vv in &dim.vars {
-                vvm.insert(vv.variable.clone(), vv.values[idx].clone());
+            if dim.combos.is_empty() {
+                // freely / matched: every variable shares the position index.
+                for vv in &dim.vars {
+                    vvm.insert(vv.variable.clone(), vv.values[idx].clone());
+                }
+            } else {
+                // mixed: each variable takes its own position from the tuple.
+                let combo = &dim.combos[idx];
+                for (k, vv) in dim.vars.iter().enumerate() {
+                    vvm.insert(vv.variable.clone(), vv.values[combo[k]].clone());
+                }
             }
         }
     }

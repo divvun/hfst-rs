@@ -216,6 +216,22 @@ impl<'a> IStream<'a> {
         }
     }
 
+    /// Consume the stream into a single 'Read' that first yields any remaining
+    /// put-back bytes (LIFO order) and then the rest of the underlying reader.
+    /// Used by 'HfstInputStream(std::istream&)' to adopt a borrowed stream as its
+    /// owned source.
+    pub fn into_reader(self) -> Box<dyn std::io::Read + 'a> {
+        if self.putback.is_empty() {
+            return self.inner;
+        }
+        // 'putback' is LIFO (last pushed is read first); reverse it so a Cursor
+        // replays the bytes in read order ahead of the underlying reader.
+        use std::io::Read as _;
+        let mut pending = self.putback;
+        pending.reverse();
+        Box::new(std::io::Cursor::new(pending).chain(self.inner))
+    }
+
     /// '!is' — true when the stream is in a good (non-failed) state.
     pub fn good(&self) -> bool {
         !self.fail
