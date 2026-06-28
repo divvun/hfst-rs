@@ -119,7 +119,7 @@ mod construction_io {
     // AREA: construction_io  (bodies for LogWeightTransducer.{h,cc})
     //
     // Extra imports needed beyond the skeleton header (integrator: merge/dedupe):
-    use std::io::Write;
+    use std::io::{BufRead, Read, Write};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -174,23 +174,9 @@ mod construction_io {
     // Private module helpers (introduced for the port; not in the C++ header).
     // ---------------------------------------------------------------------------
 
-    /// 'std::ostream'-style sink wrapping a C 'FILE *' (used by the 'FILE *'
-    /// AT&T writers and 'print_att_number').
-    struct CFileWriter(*mut libc::FILE);
-
-    impl std::io::Write for CFileWriter {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            let n =
-                unsafe { libc::fwrite(buf.as_ptr() as *const libc::c_void, 1, buf.len(), self.0) };
-            Ok(n)
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    /// '%f' (FILE* 'fprintf') prints 6 decimals; 'operator<<' (ostream) uses the
-    /// default float formatting. We approximate the latter with 'Display'.
+    /// A weight written with 6 decimals matches the C++ '%f' formatting;
+    /// 'operator<<' (ostream) uses the default float formatting, which we
+    /// approximate with 'Display'.
     fn fmt_w(w: f32, c_style: bool) -> String {
         if c_style {
             format!("{:.6}", w)
@@ -295,21 +281,20 @@ mod construction_io {
     // [spec:hfst:def:log-weight-transducer.hfst.implementations.print-att-number-fn]
     // [spec:hfst:sem:log-weight-transducer.hfst.implementations.print-att-number-fn]
     #[allow(dead_code)]
-    pub fn print_att_number(t: &LogVectorFst, ofile: *mut libc::FILE) {
-        let mut w = CFileWriter(ofile);
+    pub fn print_att_number(t: &LogVectorFst, os: &mut dyn std::io::Write) {
         let _ = write!(
-            w,
+            os,
             "initial state: {}\n",
             t.start().map(|s| s as i64).unwrap_or(-1)
         );
         for s in t.states_iter() {
             if t.is_final(s).unwrap() {
                 let fw = *t.final_weight(s).unwrap().unwrap().value();
-                let _ = write!(w, "{}\t{:.6}\n", s, fw);
+                let _ = write!(os, "{}\t{:.6}\n", s, fw);
             }
             for arc in t.get_trs(s).unwrap().trs() {
                 let _ = write!(
-                    w,
+                    os,
                     "{}\t{}\t{}\t{}\t{:.6}\n",
                     s,
                     arc.nextstate,
@@ -472,18 +457,11 @@ mod construction_io {
             self.input_stream.putback(c as u8);
         }
 
-        /// 'static bool is_fst(FILE * f);'
+        /// 'static bool is_fst(...)' — peek the reader's first byte without consuming it.
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-input-stream.is-fst-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-input-stream.is-fst-fn]
-        pub fn is_fst_file(f: *mut libc::FILE) -> bool {
-            if f.is_null() {
-                return false;
-            }
-            let c = unsafe { libc::fgetc(f) };
-            unsafe {
-                libc::ungetc(c, f);
-            }
-            c == 0xd6
+        pub fn is_fst_file(is: &mut dyn std::io::BufRead) -> bool {
+            is.fill_buf().ok().and_then(|b| b.first().copied()) == Some(0xd6)
         }
 
         /// 'static bool is_fst(std::istream &s);'
@@ -942,18 +920,6 @@ mod construction_io {
 
         // ---- AT&T write ----
 
-        /// 'write_in_att_format(LogFst*, FILE *ofile)'.
-        pub fn write_in_att_format_file(t: &LogVectorFst, ofile: *mut libc::FILE) {
-            let mut w = CFileWriter(ofile);
-            write_in_att_format_core(t, &mut w, false, true);
-        }
-
-        /// 'write_in_att_format_number(LogFst*, FILE *ofile)'.
-        pub fn write_in_att_format_number_file(t: &LogVectorFst, ofile: *mut libc::FILE) {
-            let mut w = CFileWriter(ofile);
-            write_in_att_format_core(t, &mut w, true, true);
-        }
-
         /// 'write_in_att_format(LogFst*, std::ostream &os)'.
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.write-in-att-format-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.write-in-att-format-fn]
@@ -989,13 +955,10 @@ mod construction_io {
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.read-in-att-format-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.read-in-att-format-fn]
-        pub fn read_in_att_format(ifile: *mut libc::FILE) -> LogVectorFst {
-            use std::ffi::CStr;
-
+        pub fn read_in_att_format(ifile: &mut dyn std::io::BufRead) -> LogVectorFst {
             let mut t = LogVectorFst::new();
             let mut st = Self::create_symbol_table(String::new());
 
-            let mut line = [0 as libc::c_char; 255];
             let mut state_map: StateMap = StateMap::new();
 
             // Add initial state that is numbered as zero.
@@ -1003,11 +966,25 @@ mod construction_io {
             t.set_start(initial_state).unwrap();
 
             loop {
-                let r = unsafe { libc::fgets(line.as_mut_ptr(), 255, ifile) };
-                if r.is_null() {
+                // C 'fgets'-equivalent line read: take up to 254 bytes, stopping
+                // after a newline (which is kept); 0 bytes read at EOF ends the loop.
+                let mut buf: Vec<u8> = Vec::new();
+                let mut byte = [0u8; 1];
+                while buf.len() < 254 {
+                    match ifile.read(&mut byte) {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {
+                            buf.push(byte[0]);
+                            if byte[0] == b'\n' {
+                                break;
+                            }
+                        }
+                    }
+                }
+                if buf.is_empty() {
                     break;
                 }
-                let line_str = unsafe { CStr::from_ptr(line.as_ptr()) }.to_string_lossy();
+                let line_str = String::from_utf8_lossy(&buf);
                 let bytes = line_str.as_bytes();
 
                 if !bytes.is_empty() && bytes[0] == b'-' {

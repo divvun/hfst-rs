@@ -7,4 +7,5 @@ assertions (
     {id idiom1.parsers, kind @complete, author "brendan@necessary.nu", at 2026-06-28T14:38:04.130403Z}
     {id idiom1.pmatch, kind @complete, author "brendan@necessary.nu", at 2026-06-28T16:15:44.322893Z}
     {id idiom1.core, kind @complete, author "brendan@necessary.nu", at 2026-06-28T17:16:23.203852Z}
+    {id idiom2.io, kind @doing, author "brendan@necessary.nu", at 2026-06-28T18:27:26.173045Z}
 )

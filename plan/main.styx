@@ -399,6 +399,14 @@ children (
                 title "FILE* I/O → std::io (Read/Write/BufReader/BufWriter); getc/fputc/fopen/fclose → Rust reads; printf/fprintf → write!; clock → std::time (att writers, print_dot/pckimmo)"
                 priority 5
                 deps (idiom1)
+                log (
+                    {
+                        at 2026-06-28T18:27:26.173045Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+                )
             }
 
             {
