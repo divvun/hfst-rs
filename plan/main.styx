@@ -220,4 +220,76 @@ children (
             }
         )
     }
+
+    {
+        id idiom1
+        title "Wave 4 Stage 1 — make the hfst library memory-safe (union→enum, raw-ptr→Box, no static mut); no naming/structural change beyond what safety requires"
+        priority 4
+        deps (literal-port)
+        children (
+            {
+                id idiom1.backend-enum
+                title "TransducerImplementation union → enum; fold discriminant into get_type(); rewrite the 207 dispatch sites + Drop/assign/convert/apply; hfst_transducer.rs + weight-transducer raw pointers → Box/owned"
+                priority 4
+                deps (literal-port)
+            }
+
+            {
+                id idiom1.pmatch
+                title "pmatch_compiler.rs: 49 static mut → safe + 238 raw-ptr → Box/owned (largest single cluster)"
+                priority 4
+                deps (idiom1.backend-enum)
+            }
+
+            {
+                id idiom1.parsers
+                title "xfst_compiler / xre / lexc / twolc evaluators: raw-ptr → owned + their static mut → safe"
+                priority 4
+                deps (idiom1.backend-enum)
+            }
+
+            {
+                id idiom1.core
+                title "Remaining library — input_stream/PushbackReader, convert_*, ol, print, generate/guessify: raw-ptr → Box + static mut → safe"
+                priority 4
+                deps (idiom1.backend-enum)
+            }
+        )
+    }
+
+    {
+        id idiom2
+        title "Wave 4 Stage 2 — remove all C-isms; drop the libc crate dependency"
+        priority 5
+        deps (idiom1)
+        children (
+            {
+                id idiom2.io
+                title "FILE* I/O → std::io (Read/Write/BufReader/BufWriter); getc/fputc/fopen/fclose → Rust reads; printf/fprintf → write!; clock → std::time (att writers, print_dot/pckimmo)"
+                priority 5
+                deps (idiom1)
+            }
+
+            {
+                id idiom2.cstr
+                title "c_char/c_int/c_void buffers & signatures → core::ffi; libc str*/mem* → slice/str ops; keep CString/CStr at the FFI boundary"
+                priority 5
+                deps (idiom1)
+            }
+
+            {
+                id idiom2.cli
+                title "hfst-cli (988 libc sites): extern __std*p statics → std::io::std{in,out,err}(); FILE*/char I/O → std::io; subsumes the CLI extern-FILE* static mut deferred from Stage 1; residual plain static mut → safe"
+                priority 5
+                deps (idiom2.io idiom2.cstr)
+            }
+
+            {
+                id idiom2.drop-libc
+                title "Remove libc from hfst/hfst-cli/hfst-c Cargo.toml; hfst-c keeps core::ffi types only; workspace builds + tests green with zero libc dep (the closing gate)"
+                priority 5
+                deps (idiom2.io idiom2.cstr idiom2.cli)
+            }
+        )
+    }
 )

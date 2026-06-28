@@ -1,0 +1,30 @@
+elements (
+    {
+        id [arch:hfst:backend-dispatch]
+        name "HfstTransducer backend dispatch"
+        kind @module
+        lifecycle @active
+        owns ()
+        exposes ("crates/hfst/src/hfst_transducer.rs")
+        depends_on ()
+        composed_of ()
+        decisions ([dec:hfst:idiomatize-staging])
+        log (
+            {at "2026-06-28T11:53:36Z", kind @established, by "[dec:hfst:idiomatize-staging]"}
+        )
+    }
+    {
+        id [arch:hfst:symbol-coding]
+        name "Symbol-number coding registry"
+        kind @subsystem
+        lifecycle @active
+        owns ()
+        exposes ("crates/hfst/src/convert_transducer_format.rs" "crates/hfst/src/hfst_tropical_transducer_transition_data.rs")
+        depends_on ()
+        composed_of ()
+        decisions ([dec:hfst:idiomatize-staging])
+        log (
+            {at "2026-06-28T11:53:36Z", kind @established, by "[dec:hfst:idiomatize-staging]"}
+        )
+    }
+)
