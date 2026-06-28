@@ -132,7 +132,7 @@ fn generate_word_forms(
 
     let mut best_weight: f32 = -1.0;
 
-    for path in unsafe { &*word_forms } {
+    for path in &word_forms {
         if num > max_generated_forms {
             break;
         }
@@ -156,10 +156,6 @@ fn generate_word_forms(
         result_set.insert(word_form.iter().rev().cloned().collect());
 
         num += 1;
-    }
-
-    unsafe {
-        drop(Box::from_raw(word_forms));
     }
 
     let mut results: StringVector = StringVector::new();
@@ -288,16 +284,12 @@ pub fn get_guesses(
 
     let mut results: StringVectorVector = StringVectorVector::new();
 
-    for path in unsafe { &*paths } {
+    for path in &paths {
         if num > number_of_guesses {
             break;
         }
         results.push(path.second.clone());
         num += 1;
-    }
-
-    unsafe {
-        drop(Box::from_raw(paths));
     }
 
     results

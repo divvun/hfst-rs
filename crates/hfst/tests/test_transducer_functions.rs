@@ -159,11 +159,6 @@ fn modify_transitions(sp: &StringPair, sps: &mut StringPairSet) -> bool {
     false
 }
 
-// Reclaim and own the heap HfstOneLevelPaths the facade lookup returns.
-fn take_one_level_paths(ptr: *mut HfstOneLevelPaths) -> HfstOneLevelPaths {
-    unsafe { *Box::from_raw(ptr) }
-}
-
 // The in-scope type list used by the convert cycle (C++ used {SFST, TROPICAL,
 // FOMA}; here the two available OpenFST backends).
 const IN_SCOPE_TYPES: [ImplementationType; 2] = [TROPICAL_OPENFST_TYPE, LOG_OPENFST_TYPE];
@@ -356,14 +351,10 @@ fn function_extract_paths_lookup_nbest(type_: ImplementationType) {
     assert!(!animals_ol.is_lookup_infinitely_ambiguous_string_vector(&lookup_mouse));
     assert!(!animals_ol.is_lookup_infinitely_ambiguous_string_vector(&lookup_hippopotamus));
 
-    let results_cat =
-        take_one_level_paths(animals_ol.lookup_string_vector(&lookup_cat, limit, 0.0));
-    let results_dog =
-        take_one_level_paths(animals_ol.lookup_string_vector(&lookup_dog, limit, 0.0));
-    let results_mouse =
-        take_one_level_paths(animals_ol.lookup_string_vector(&lookup_mouse, limit, 0.0));
-    let results_hippopotamus =
-        take_one_level_paths(animals_ol.lookup_string_vector(&lookup_hippopotamus, limit, 0.0));
+    let results_cat = animals_ol.lookup_string_vector(&lookup_cat, limit, 0.0);
+    let results_dog = animals_ol.lookup_string_vector(&lookup_dog, limit, 0.0);
+    let results_mouse = animals_ol.lookup_string_vector(&lookup_mouse, limit, 0.0);
+    let results_hippopotamus = animals_ol.lookup_string_vector(&lookup_hippopotamus, limit, 0.0);
 
     assert_eq!(results_cat.len(), 1);
     assert_eq!(results_dog.len(), 1);

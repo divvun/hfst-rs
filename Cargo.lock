@@ -281,14 +281,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hfst-c"
-version = "0.1.0"
-dependencies = [
- "hfst",
- "libc",
-]
-
-[[package]]
 name = "hfst-cli"
 version = "0.1.0"
 dependencies = [

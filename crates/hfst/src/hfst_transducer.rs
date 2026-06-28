@@ -1617,27 +1617,21 @@ impl HfstTransducer {
         s: &StringVector,
         limit: isize,
         time_cutoff: f64,
-    ) -> *mut HfstOneLevelPaths {
+    ) -> HfstOneLevelPaths {
         self.lookup_fd_string_vector(s, limit, time_cutoff)
     }
 
-    pub fn lookup_string(&self, s: &str, limit: isize, time_cutoff: f64) -> *mut HfstOneLevelPaths {
+    pub fn lookup_string(&self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths {
         self.lookup_fd_string(s, limit, time_cutoff)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.lookup-pairs-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.lookup-pairs-fn]
-    pub fn lookup_pairs(&self, s: &str, limit: isize, time_cutoff: f64) -> *mut HfstTwoLevelPaths {
+    pub fn lookup_pairs(&self, s: &str, limit: isize, time_cutoff: f64) -> HfstTwoLevelPaths {
         match self.type_ {
-            ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                Box::into_raw(Box::new(unsafe {
-                    (*self.implementation.as_hfst_ol_ptr()).lookup_fd_pairs_str(
-                        s,
-                        limit,
-                        time_cutoff,
-                    )
-                }))
-            }
+            ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => unsafe {
+                (*self.implementation.as_hfst_ol_ptr()).lookup_fd_pairs_str(s, limit, time_cutoff)
+            },
             _ => crate::HFST_THROW!(FunctionNotImplementedException),
         }
     }
@@ -1649,30 +1643,21 @@ impl HfstTransducer {
         s: &StringVector,
         limit: isize,
         time_cutoff: f64,
-    ) -> *mut HfstOneLevelPaths {
+    ) -> HfstOneLevelPaths {
         match self.type_ {
-            ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                Box::into_raw(Box::new(unsafe {
-                    (*self.implementation.as_hfst_ol_ptr()).lookup_fd_strvec(s, limit, time_cutoff)
-                }))
-            }
+            ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => unsafe {
+                (*self.implementation.as_hfst_ol_ptr()).lookup_fd_strvec(s, limit, time_cutoff)
+            },
             ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongTypeException),
             _ => crate::HFST_THROW!(FunctionNotImplementedException),
         }
     }
 
-    pub fn lookup_fd_string(
-        &self,
-        s: &str,
-        limit: isize,
-        time_cutoff: f64,
-    ) -> *mut HfstOneLevelPaths {
+    pub fn lookup_fd_string(&self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths {
         match self.type_ {
-            ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                Box::into_raw(Box::new(unsafe {
-                    (*self.implementation.as_hfst_ol_ptr()).lookup_fd_str(s, limit, time_cutoff)
-                }))
-            }
+            ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => unsafe {
+                (*self.implementation.as_hfst_ol_ptr()).lookup_fd_str(s, limit, time_cutoff)
+            },
             ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongTypeException),
             _ => crate::HFST_THROW!(FunctionNotImplementedException),
         }
@@ -1686,14 +1671,14 @@ impl HfstTransducer {
         s: &str,
         limit: isize,
         time_cutoff: f64,
-    ) -> *mut HfstOneLevelPaths {
+    ) -> HfstOneLevelPaths {
         let sv: StringVector = tok.tokenize_one_level(s, false);
         self.lookup_string_vector(&sv, limit, time_cutoff)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.lookdown-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.lookdown-fn]
-    pub fn lookdown_string_vector(&self, s: &StringVector, limit: isize) -> *mut HfstOneLevelPaths {
+    pub fn lookdown_string_vector(&self, s: &StringVector, limit: isize) -> HfstOneLevelPaths {
         let _ = s;
         let _ = limit;
         crate::HFST_THROW!(FunctionNotImplementedException)
@@ -1705,19 +1690,19 @@ impl HfstTransducer {
         &self,
         s: &mut StringVector,
         limit: isize,
-    ) -> *mut HfstOneLevelPaths {
+    ) -> HfstOneLevelPaths {
         let _ = s;
         let _ = limit;
         crate::HFST_THROW!(FunctionNotImplementedException)
     }
 
-    pub fn lookdown_string(&self, s: &str, limit: isize) -> *mut HfstOneLevelPaths {
+    pub fn lookdown_string(&self, s: &str, limit: isize) -> HfstOneLevelPaths {
         let _ = s;
         let _ = limit;
         crate::HFST_THROW!(FunctionNotImplementedException)
     }
 
-    pub fn lookdown_fd_string(&self, s: &str, limit: isize) -> *mut HfstOneLevelPaths {
+    pub fn lookdown_fd_string(&self, s: &str, limit: isize) -> HfstOneLevelPaths {
         let _ = s;
         let _ = limit;
         crate::HFST_THROW!(FunctionNotImplementedException)

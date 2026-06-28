@@ -960,8 +960,7 @@ unsafe fn lookup_fd_and_print(
             for it in s.second.iter() {
                 lookup_str += it;
             }
-            let htlp = big_t.lookup_pairs(&lookup_str, limit.unwrap_or(-1), TIME_CUTOFF);
-            results_spv = *Box::from_raw(htlp);
+            results_spv = big_t.lookup_pairs(&lookup_str, limit.unwrap_or(-1), TIME_CUTOFF);
         }
 
         if print_pairs_at_this_point && PRINT_PAIRS {
@@ -1093,8 +1092,7 @@ unsafe fn lookup_simple_ol(
                     no_newline,
                 );
             } else {
-                let raw = t.lookup_fd_string_vector(&s.second, maxnum, TIME_CUTOFF);
-                results = *Box::from_raw(raw);
+                results = t.lookup_fd_string_vector(&s.second, maxnum, TIME_CUTOFF);
             }
             *infinity = true;
         } else if PRINT_PAIRS {
@@ -1110,8 +1108,7 @@ unsafe fn lookup_simple_ol(
                 no_newline,
             );
         } else {
-            let raw = t.lookup_fd_string_vector(&s.second, MAX_NUMBER, TIME_CUTOFF);
-            results = *Box::from_raw(raw);
+            results = t.lookup_fd_string_vector(&s.second, MAX_NUMBER, TIME_CUTOFF);
         }
 
         if results.is_empty() {

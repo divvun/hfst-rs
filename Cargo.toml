@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# hfst-c (the C FFI) is out of scope: incomplete, unused, and headed for a
+# redesigned API, so it is excluded from the build and must not constrain the
+# library's public signatures. See [dec:hfst:hfst-c-out-of-scope]. Revisit as a
+# dedicated effort.
+exclude = ["crates/hfst-c"]
 
 [workspace.package]
 version = "0.1.0"

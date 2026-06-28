@@ -5155,9 +5155,9 @@ impl XfstCompiler {
         let token = strstrip(line);
 
         let paths = if self.variables_["obey-flags"] == "ON" {
-            unsafe { Box::from_raw(t.lookup_fd_string(&token, cutoff as isize, 0.0)) }
+            t.lookup_fd_string(&token, cutoff as isize, 0.0)
         } else {
-            unsafe { Box::from_raw(t.lookup_string(&token, cutoff as isize, 0.0)) }
+            t.lookup_string(&token, cutoff as isize, 0.0)
         };
 
         let mut out = std::io::stdout();

@@ -1005,12 +1005,10 @@ unsafe fn lookup_simple_ol(
                     ),
                 );
             }
-            let raw = t.lookup_fd_string_vector(&s.second, INFINITE_CUTOFF as isize, TIME_CUTOFF);
-            results = *Box::from_raw(raw);
+            results = t.lookup_fd_string_vector(&s.second, INFINITE_CUTOFF as isize, TIME_CUTOFF);
             *infinity = true;
         } else {
-            let raw = t.lookup_fd_string_vector(&s.second, -1, TIME_CUTOFF);
-            results = *Box::from_raw(raw);
+            results = t.lookup_fd_string_vector(&s.second, -1, TIME_CUTOFF);
         }
 
         if results.is_empty() {
