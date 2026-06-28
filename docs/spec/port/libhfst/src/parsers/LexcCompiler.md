@@ -274,6 +274,42 @@
 > Finally, delete every `HfstTransducer*` value held in `regexps_` and then
 > clear the `regexps_` map. Returns void.
 
+> [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.parse-fn]
+> LexcCompiler &parse(FILE *infile);
+> LexcCompiler &parse(const char *filename);
+
+> [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.parse-fn]
+> Incremental, accumulating parse of one lexc source into the current compiler;
+> it does NOT build the final transducer (that is `compileLexical`). The C++
+> has two overloads. `parse(FILE *infile)`: set the global singleton
+> `lexc_ = this`; set the scanner infile name to `<stdin>` when `infile` is
+> `stdin` else `<unnamed>`; call `hlexclex_destroy()` to reset the scanner;
+> point `hlexcin` at `infile`; run `hlexcparse()` (the bison parser, which fires
+> the semantic actions that call `setCurrentLexiconName`, `addStringEntry`,
+> `addStringPairEntry`, `addXreEntry`, `addXreDefinition`, etc., all
+> accumulating into `stringsTrie_`/`regexps_`/`lexiconNames_`); then call
+> `xre_.remove_defined_multichar_symbols()`; finally, if `hlexcnerrs > 0`, set
+> `parseErrors_ = true`. Returns `*this`. `parse(const char *filename)`: same as
+> the FILE overload except it sets `lexc_ = this`, calls `hlexclex_destroy()`,
+> sets the scanner infile name to `filename`, and opens the file with
+> `hfst::hfst_fopen(filename, "r")` into `hlexcin`; if the open fails it prints
+> "could not open <filename> for reading" (colourised "Error:" prefix when
+> `should_colourise()`) to the error stream, sets `parseErrors_ = true`, and
+> returns `*this` early without parsing; otherwise it runs `hlexcparse()`,
+> `xre_.remove_defined_multichar_symbols()`, and the `hlexcnerrs > 0` ->
+> `parseErrors_` check as above. Both overloads return `*this` so callers can
+> parse multiple files into one compiler before a single `compileLexical()`.
+> RESTRUCTURED in the port: the Flex/Bison driver (`hlexcparse`, `hlexcin`,
+> `hlexclex_destroy`, `hlexcnerrs`, the singleton `lexc_`, the FILE/filename
+> stream plumbing) is replaced by an `nfst_lexc::parse(&str)` AST walk. The
+> Rust `parse(&mut self, &str)` parses the source, on success walks the typed
+> AST via `compile_file` (the accumulation equivalent of the bison semantic
+> actions) and then calls `xre_.remove_defined_multichar_symbols()`, and on a
+> parse error sets `parseErrors_ = true` (the AST-walk analogue of
+> `hlexcnerrs > 0`). It returns `&mut self`. A separate `compile_lexical()` call
+> finishes compilation, so several sources can be `parse`d into one compiler
+> before a single `compile_lexical`.
+
 > [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.set-error-stream-fn]
 > void
 

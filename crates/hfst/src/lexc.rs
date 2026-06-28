@@ -1177,24 +1177,42 @@ impl LexcCompiler {
 
     // ----- AST-walk driver (replaces parse(FILE*) / parse(filename)) -----
 
-    /// PUBLIC entry point: parse 'lexc_source' via 'nfst_lexc::parse', walk the
-    /// typed AST through the registration API, then run 'compileLexical'. This
-    /// replaces the Flex/Bison 'parse(FILE*)' / 'parse(const char*)' paths.
-    /// Returns a raw owning pointer (null on parse error), matching the C++
-    /// 'compileLexical' contract.
-    pub fn compile(&mut self, lexc_source: &str) -> *mut HfstTransducer {
+    // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.parse-fn]
+    // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.parse-fn]
+    /// INCREMENTAL entry point: parse 'lexc_source' via 'nfst_lexc::parse' and
+    /// walk the typed AST through the registration API, accumulating its
+    /// lexicons/entries into 'self' (the trie 'stringsTrie_', 'regexps_',
+    /// 'lexiconNames_', etc.). This is the AST-walk port of the Flex/Bison
+    /// 'parse(FILE*)' / 'parse(const char*)': both '.cc' overloads ran
+    /// 'hlexcparse()' (accumulating into the singleton) then
+    /// 'xre_.remove_defined_multichar_symbols()' and set 'parseErrors_' on
+    /// failure. It does NOT run 'compileLexical': call 'compile_lexical' once
+    /// after every source has been parsed. Multi-file flow: call 'parse' on each
+    /// source into one compiler, then 'compile_lexical' once. Returns '&mut self'
+    /// to mirror the C++ 'LexcCompiler &' chaining return.
+    pub fn parse(&mut self, lexc_source: &str) -> &mut Self {
         match nfst_lexc::parse(lexc_source) {
             Ok(ast) => {
                 self.compile_file(&ast.value);
                 // mirrors 'xre_.remove_defined_multichar_symbols()' in parse()
                 self.xre_.remove_defined_multichar_symbols();
-                self.compile_lexical()
             }
             Err(_e) => {
+                // mirrors the 'hlexcnerrs > 0' branch setting parseErrors_
                 self.parseErrors_ = true;
-                std::ptr::null_mut()
             }
         }
+        self
+    }
+
+    /// PUBLIC entry point: parse a single 'lexc_source' into 'self', then run
+    /// 'compileLexical'. This is the AST-walk port of the Flex/Bison driver where
+    /// tools called 'parse(...)' followed by 'compileLexical()'; it is exactly
+    /// that pairing for the single-source case. Returns a raw owning pointer
+    /// (null on parse error), matching the C++ 'compileLexical' contract.
+    pub fn compile(&mut self, lexc_source: &str) -> *mut HfstTransducer {
+        self.parse(lexc_source);
+        self.compile_lexical()
     }
 
     /// Walk the typed AST, dispatching each section/entry to the matching
