@@ -825,6 +825,39 @@ children (
                 id librarify.guess-lifts
                 title "[Tier1] guessify_fst::affix_guessify(dir,weight,fmt)+GuessDirection (affix-guessify); generate_model_forms::compile_generator_from_guesser/is_guesser (guess); expand_equivalences()+read_tsv_extensions() new module (expand-equivalences); hfst_input_stream::strip_hfst3_headers(Read,Write) (strip-header)"
                 priority 5
+                children (
+                    {
+                        id affix-guessify
+                        title "[Tier1] Lift hfst-affix-guessify's guessify transform into guessify_fst::affix_guessify(direction, default_weight, format) + a GuessDirection enum; thin the tool to one call."
+                        priority 5
+                    }
+
+                    {
+                        id guess-generator
+                        title "[Tier1] Lift hfst-guess's generator compilation into generate_model_forms::compile_generator_from_guesser + is_guesser; thin the tool."
+                        priority 5
+                    }
+
+                    {
+                        id expand-equivalences
+                        title "[Tier1] Lift hfst-expand-equivalences's add_extension/expand loop + the TSV extension reader into a library expand_equivalences() + read_tsv_extensions (new module); thin the tool."
+                        priority 5
+                    }
+
+                    {
+                        id strip-header
+                        title "[Tier1] Lift hfst-strip-header's HFST3-header stripping into hfst_input_stream::strip_hfst3_headers(impl Read, impl Write) (de-C-ify the FILE* byte loop); thin the tool. Smallest of the four."
+                        priority 5
+                    }
+                )
+                log (
+                    {
+                        at 2026-06-29T14:51:24.428152Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Decomposed into 4 per-tool sub-nodes (affix-guessify, guess-generator, expand-equivalences, strip-header). Rationale: the node bundles four independent lifts across four tools (363/467/493/203 LOC). Each is its own transducer/library concern: affix-guessify's guessify transform + GuessDirection; hfst-guess's generator-from-guesser compilation; hfst-expand-equivalences's add_extension/expand loop + TSV reader; hfst-strip-header's HFST3-header byte-stripping (also a de-C-ism). Splitting matches algo-lifts/stats-weight-lifts: one lift = one verified commit. Independent (no deps between them). Per [dec:hfst:librarify-cli]."
+                    }
+                )
             }
 
             {
