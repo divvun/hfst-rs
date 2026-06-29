@@ -660,6 +660,28 @@ children (
                         id substitute-by-composition
                         title "[Tier1] Lift hfst-substitute's substitute-by-composition branch into HfstTransducer::substitute_by_composition() (build the relabel transducer + compose), thinning that path of the tool. Keep the in-place per-arc substitute branch as-is (that one is already a thin lib call)."
                         priority 5
+                        log (
+                            {
+                                at 2026-06-29T13:52:58.281872Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T13:58:11.283798Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Scope landed: added HfstTransducer::substitute_by_composition(&mut self, substitutions: &HfstTransducer) — verbatim lift of hfst-substitute's perform_delayed algorithm: build (substitutions ∪ (identity − input(substitutions)))*, compose on the right, minimize, invert, compose on the left, copy back, minimize. The tool's perform_delayed collapses from ~30 lines of static-mut SUBSTITUTION_TRANS manipulation to one call (the SUBSTITUTION_TRANS accumulation stays in do_substitute — it's tied to the -f/-t option loop). Removed the now-unused internal_identity import from the tool.\n\nVerified two ways: test_transducer_functions::substitute_by_composition_matches_direct (compose path == direct substitute on \"cat\" a->b) AND a CLI smoke (substitute -f a -t b vs -f a -t b -9 both yield \"cbt\", now possible thanks to fix-sparse-symt). 136 lib tests + OL golden green.\n\nBehavior note: the lifted method runs the whole algorithm atomically, so the intermediate per-step verbose -v messages (\"Composing on right/left\", \"Minimising\") are no longer printed individually (only the outer \"Finalising substitution transducer...\"). Verbose-only/diagnostic; functional output is byte-identical."
+                            }
+
+                            {
+                                at 2026-06-29T13:58:21.308055Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {

@@ -3988,6 +3988,39 @@ impl HfstTransducer {
         self
     }
 
+    /// Apply a set of label substitutions by composition — the `--compose` path
+    /// of hfst-substitute. `substitutions` is the disjunction of the from:to
+    /// symbol pairs to apply. Builds `(substitutions ∪ (identity − input(
+    /// substitutions)))*` — the substitutions plus a pass-through identity for
+    /// every symbol they do not rewrite — then composes it onto the right of
+    /// `self`, minimises, and composes the inverse onto the left. Lifted verbatim
+    /// from hfst-substitute's perform_delayed.
+    pub fn substitute_by_composition(
+        &mut self,
+        substitutions: &HfstTransducer,
+    ) -> &mut HfstTransducer {
+        let mut subs = substitutions.clone();
+        let mut sigma_minus_subs = HfstTransducer::new_symbol_pair(
+            crate::hfst_symbol_defs::internal_identity,
+            crate::hfst_symbol_defs::internal_identity,
+            self.type_,
+        );
+        let mut subs_in = substitutions.clone();
+        subs_in.input_project();
+        sigma_minus_subs.subtract(&subs_in, true);
+        subs.disjunct(&sigma_minus_subs, true);
+        subs.repeat_star();
+        // Compose on the right, minimise, then compose the inverse on the left
+        // (C++: trans = substitution_trans->compose(trans)).
+        self.compose(&subs, true);
+        self.minimize();
+        subs.invert();
+        subs.compose(&*self, true);
+        *self = subs;
+        self.minimize();
+        self
+    }
+
     pub fn compose(&mut self, another: &HfstTransducer, harmonize: bool) -> &mut HfstTransducer {
         self.is_trie = false;
 

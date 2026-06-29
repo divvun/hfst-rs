@@ -10,7 +10,7 @@ use hfst::hfst_data_types::{ImplementationType, StringPair};
 use hfst::hfst_exception_defs::FunctionNotImplementedException;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_symbol_defs::{internal_epsilon, internal_identity, label_to_stringpair};
+use hfst::hfst_symbol_defs::{internal_epsilon, label_to_stringpair};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -465,34 +465,7 @@ unsafe fn do_substitute(trans: &mut HfstTransducer, transducer_n: usize) {
 unsafe fn perform_delayed(trans: &mut HfstTransducer) {
     unsafe {
         verbose_printf("Finalising substitution transducer...\n");
-        let mut sigma_minus_subs =
-            HfstTransducer::new_symbol_pair(internal_identity, internal_identity, trans.get_type());
-        let mut subs_in = (*(&raw const SUBSTITUTION_TRANS)).as_ref().unwrap().clone();
-        subs_in.input_project();
-        sigma_minus_subs.subtract(&subs_in, true);
-        (*(&raw mut SUBSTITUTION_TRANS))
-            .as_mut()
-            .unwrap()
-            .disjunct(&sigma_minus_subs, true);
-        (*(&raw mut SUBSTITUTION_TRANS))
-            .as_mut()
-            .unwrap()
-            .repeat_star();
-        verbose_printf("Composing delayed substitutions on right...\n");
-        trans.compose((*(&raw const SUBSTITUTION_TRANS)).as_ref().unwrap(), true);
-        verbose_printf("Minimising...\n");
-        trans.minimize();
-        (*(&raw mut SUBSTITUTION_TRANS)).as_mut().unwrap().invert();
-        verbose_printf("Composing delayed substitutions on left...\n");
-        // C: 'trans = substitution_trans->compose(trans)' — composes in place on
-        // the substitution net, then copies the result into 'trans'.
-        (*(&raw mut SUBSTITUTION_TRANS))
-            .as_mut()
-            .unwrap()
-            .compose(&*trans, true);
-        *trans = (*(&raw const SUBSTITUTION_TRANS)).as_ref().unwrap().clone();
-        verbose_printf("Minimising...\n");
-        trans.minimize();
+        trans.substitute_by_composition((*(&raw const SUBSTITUTION_TRANS)).as_ref().unwrap());
     }
 }
 

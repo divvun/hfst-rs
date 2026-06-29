@@ -996,3 +996,33 @@ fn realign_matches_manual_sequence() {
         "realign() must equal invert/push/invert/push"
     );
 }
+
+// librarify regression: HfstTransducer::substitute_by_composition (the --compose
+// path of hfst-substitute) must produce the same relabeling as a direct
+// substitute. Relabel 'a' -> 'b' in the "cat" acceptor both ways and compare.
+#[test]
+fn substitute_by_composition_matches_direct() {
+    let _g = serialized();
+    let build = || {
+        let mut c = HfstTransducer::new_symbol("c", TROPICAL_OPENFST_TYPE);
+        let a = HfstTransducer::new_symbol("a", TROPICAL_OPENFST_TYPE);
+        let t = HfstTransducer::new_symbol("t", TROPICAL_OPENFST_TYPE);
+        c.concatenate(&a, true);
+        c.concatenate(&t, true);
+        c.minimize();
+        c
+    };
+
+    let mut direct = build();
+    direct.substitute("a", "b", true, true);
+    direct.minimize();
+
+    let mut composed = build();
+    let subs = HfstTransducer::new_symbol_pair("a", "b", TROPICAL_OPENFST_TYPE);
+    composed.substitute_by_composition(&subs);
+
+    assert!(
+        composed.compare_default(&direct),
+        "compose substitution must match direct substitution"
+    );
+}
