@@ -618,6 +618,13 @@ children (
                                 kind @note
                                 text "Scope landed: added HfstBasicTransducer::kill_paths(&self, symbol) (discovery-order rebuild that skips arcs whose input OR output == symbol, with state-0 final-weight seeding — the renumber_states skeleton + a per-arc filter) and a thin HfstTransducer::kill_paths facade (get_basic_transducer -> kill_paths -> from_basic_transducer, preserving type). hfst-kill-paths do_killing collapses from ~48 lines to `*trans = trans.kill_paths(&symbol)`; removed its HfstBasicTransducer/HfstBasicTransition/HfstState/BTreeMap imports. The remaining `unsafe` in do_killing is only the SYMBOL static-mut read (io-foundation's job to remove, not this node).\n\nTests: tests/test_hfst_basic_transducer.rs::kill_paths_drops_matching_arcs (basic method: two-path graph, kill one symbol, surviving branch kept + no killed symbol anywhere) and tests/test_transducer_functions.rs::kill_paths_facade_tropical (facade: disjunct {a,x} -> kill x -> convert back, a survives, no x). 132 lib tests + OL golden green.\n\nCLI smoke note: hfst-kill-paths runs (exit 0) but reading the result back via fst2txt/fst2strings panics at hfst_input_stream.rs:439 — the PRE-EXISTING binary save/load round-trip bug (layout-dependent; also hit hfst-substitute output last session), NOT a kill_paths defect. The facade lib test exercises the full convert->kill->convert path with zero file I/O, so correctness is proven independently of that bug."
                             }
+
+                            {
+                                at 2026-06-29T13:13:25.58945Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
                         )
                     }
 

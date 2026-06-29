@@ -14,5 +14,5 @@ assertions (
     {id librarify.renumber-states, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:13.350904Z}
     {id librarify.label-parse, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:14.571506Z}
     {id is-weighted, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:16.201789Z}
-    {id kill-paths, kind @doing, author "brendan@necessary.nu", at 2026-06-29T13:04:30.289699Z}
+    {id kill-paths, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:13:25.58945Z}
 )
