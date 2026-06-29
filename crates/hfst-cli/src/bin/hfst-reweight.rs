@@ -13,8 +13,8 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_error, hfst_error_at_line, hfst_fopen, hfst_getline,
-    hfst_set_program_name, hfst_strdup, hfst_strndup, hfst_strtoweight, hfst_warning,
+    EXIT_CONTINUE, error, extend_options_getenv, hfst_error, hfst_error_at_line,
+    hfst_set_program_name, hfst_strdup, hfst_strtoweight, hfst_warning,
     is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
@@ -30,6 +30,7 @@ use hfst_cli::inc::{
 };
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
@@ -41,9 +42,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // add tools-specific variables here
@@ -66,26 +66,27 @@ static mut SYMBOL: *mut c_char = std::ptr::null_mut();
 static mut ENDS_ONLY: bool = false;
 static mut ARCS_ONLY: bool = false;
 static mut TSV_FILE_NAME: *mut c_char = std::ptr::null_mut();
-static mut TSV_FILE: *mut libc::FILE = std::ptr::null_mut();
+static mut TSV_FILE: Option<std::fs::File> = None;
 
 // [spec:hfst:def:hfst-reweight.print-usage-fn]
 // [spec:hfst:sem:hfst-reweight.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         // Usage line
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nReweight transducer weights simply\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Reweighting options:\n\
   -a, --addition=AVAL        add AVAL to matching weights\n\
   -b, --multiplier=BVAL      multiply matching weights by BVAL\n\
@@ -100,10 +101,10 @@ unsafe fn print_usage() {
   -T, --tsv-file=TFILE       read reweighting rules from TFILE\n\
 \n",
         );
-        fput(globals::message_out(), "\n");
-        print_common_unary_program_parameter_instructions(globals::message_out());
+        fput(&mut *msg, "\n");
+        print_common_unary_program_parameter_instructions(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If AVAL, BVAL or FNAME are omitted, they default to neutral \
 elements of addition, multiplication or identity function.\n\
 If LVAL or UVAL are omitted, they default to minimum and maximum \
@@ -128,9 +129,9 @@ Comment lines starting with # and empty lines are ignored.\n\n\
 Weights are by default modified for all arcs and end states,\n\
 unless option --end-states-only or --arcs-only is used.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -328,7 +329,14 @@ never apply",
             );
         }
         if !TSV_FILE_NAME.is_null() {
-            TSV_FILE = hfst_fopen(&cstr(TSV_FILE_NAME), "r");
+            let name = cstr(TSV_FILE_NAME);
+            match std::fs::File::open(&name) {
+                Ok(f) => TSV_FILE = Some(f),
+                Err(_) => {
+                    error(libc::EXIT_FAILURE, 0, &format!("Could not open '{}'", name));
+                    return libc::EXIT_FAILURE;
+                }
+            }
         }
         EXIT_CONTINUE
     }
@@ -415,30 +423,37 @@ weights will be discarded",
             } else {
                 verbose_printf(&format!("Reweighting {}...{}\n", inputname, transducer_n));
             }
-            if TSV_FILE.is_null() {
+            if TSV_FILE.is_none() {
                 do_reweight(&mut trans);
                 let src = trans.clone();
                 hfst_set_name_unary(&mut trans, &src, "reweight");
                 hfst_set_formula_unary(&mut trans, &src, "W");
             } else {
-                libc::rewind(TSV_FILE);
+                // C: rewind(tsv_file) — seek the std file back to the start.
+                let tsv_file = TSV_FILE.as_mut().unwrap();
+                let _ = tsv_file.seek(SeekFrom::Start(0));
                 libc::free(SYMBOL as *mut libc::c_void);
                 SYMBOL = std::ptr::null_mut();
                 ADDITION = 0.0;
                 MULTIPLIER = 1.0;
-                let mut line: *mut c_char = std::ptr::null_mut();
-                let mut len: libc::size_t = 0;
                 let mut linen: usize = 0;
                 verbose_printf(&format!("Reading reweights from {}\n", cstr(TSV_FILE_NAME)));
-                while hfst_getline(&mut line, &mut len, TSV_FILE) != -1 && !line.is_null() {
+                let mut reader = BufReader::new(tsv_file);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                        break;
+                    }
                     linen += 1;
-                    if *line == b'\n' as c_char {
+                    let line_str = line.as_bytes();
+                    if line_str.first() == Some(&b'\n') {
                         continue;
                     }
-                    if *line == b'#' as c_char {
+                    if line_str.first() == Some(&b'#') {
                         continue;
                     }
-                    let line_str = CStr::from_ptr(line).to_bytes();
                     let tab_pos = line_str.iter().position(|&b| b == b'\t');
                     let tab = match tab_pos {
                         None => {
@@ -458,14 +473,16 @@ weights will be discarded",
                     while endstr < line_str.len() && line_str[endstr] != b'\n' {
                         endstr += 1;
                     }
-                    SYMBOL = hfst_strndup(line, tab);
-                    let weightspec = hfst_strndup(line.add(tab + 1), endstr - tab - 1);
-                    if *weightspec == b'+' as c_char {
-                        ADDITION = hfst_strtoweight(&cstr(weightspec.add(1)));
+                    // SYMBOL = strndup(line, tab); kept as a C string for cstr()/free.
+                    let sym = String::from_utf8_lossy(&line_str[..tab]).into_owned();
+                    SYMBOL = hfst_strdup(CString::new(sym).unwrap_or_default().as_ptr());
+                    let weightspec =
+                        String::from_utf8_lossy(&line_str[tab + 1..endstr]).into_owned();
+                    if weightspec.as_bytes().first() == Some(&b'+') {
+                        ADDITION = hfst_strtoweight(&weightspec[1..]);
                     } else {
-                        MULTIPLIER = hfst_strtoweight(&cstr(weightspec));
+                        MULTIPLIER = hfst_strtoweight(&weightspec);
                     }
-                    libc::free(weightspec as *mut libc::c_void);
                     verbose_printf(&format!(
                         "Modifying weights {} < w < {} as {} * {}(w) + {} for symbol {}\n",
                         LOWER_BOUND,
@@ -477,7 +494,6 @@ weights will be discarded",
                     ));
                     do_reweight(&mut trans);
                 } // getline
-                libc::free(line as *mut libc::c_void);
                 let src = trans.clone();
                 hfst_set_name_unary(&mut trans, &src, "reweight");
                 hfst_set_formula_unary(&mut trans, &src, "W");
@@ -517,14 +533,8 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = !globals::INPUTFILE.is_null();
-        let output_opened = !globals::OUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
+        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),

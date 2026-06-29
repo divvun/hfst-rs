@@ -41,28 +41,6 @@ pub enum CaseResult {
 // 'stdout' / 'stderr' macros and the 'hfst_strdup' wrapper directly)
 // ---------------------------------------------------------------------------
 
-fn stdin_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-        static mut stdin: *mut libc::FILE;
-    }
-    unsafe { stdin }
-}
-fn stdout_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
-        static mut stdout: *mut libc::FILE;
-    }
-    unsafe { stdout }
-}
-fn stderr_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stderrp")]
-        static mut stderr: *mut libc::FILE;
-    }
-    unsafe { stderr }
-}
-
 // 'hfst_strdup("literal")': duplicate a Rust string into a fresh C buffer.
 fn strdup_str(s: &str) -> *mut c_char {
     let cs = std::ffi::CString::new(s).unwrap();
@@ -108,13 +86,13 @@ pub unsafe fn handle_common_case(c: c_int, print_usage: impl FnOnce()) -> CaseRe
         } else if c == b'o' as c_int {
             globals::OUTFILENAME = hfst_commandline::hfst_strdup(hfst_getopt::OPTARG);
             let name = cstr_to_string(globals::OUTFILENAME);
-            globals::OUTFILE = hfst_commandline::hfst_fopen(&name, "w");
-            if globals::OUTFILE == stdout_file() {
+            // A "-" output name means stdout; messages then go to stderr so they
+            // do not corrupt the data stream. output_writer() opens the real file
+            // (or stdout, for the "<stdout>" sentinel) on demand.
+            if name == "-" {
                 libc::free(globals::OUTFILENAME as *mut libc::c_void);
                 globals::OUTFILENAME = strdup_str("<stdout>");
-                globals::MESSAGE_OUT = stderr_file();
-                // Don't keep stdout as OUTFILE — see check_common_params.
-                globals::OUTFILE = std::ptr::null_mut();
+                globals::MESSAGE_TO_STDERR = true;
             }
             globals::OUTPUT_NAMED = true;
             CaseResult::Break
@@ -155,8 +133,7 @@ pub unsafe fn handle_unary_case(c: c_int) -> CaseResult {
         if c == b'i' as c_int {
             globals::INPUTFILENAME = hfst_commandline::hfst_strdup(hfst_getopt::OPTARG);
             let name = cstr_to_string(globals::INPUTFILENAME);
-            globals::INPUTFILE = hfst_commandline::hfst_fopen(&name, "r");
-            if globals::INPUTFILE == stdin_file() {
+            if name == "-" {
                 libc::free(globals::INPUTFILENAME as *mut libc::c_void);
                 globals::INPUTFILENAME = strdup_str("<stdin>");
             }
@@ -179,8 +156,7 @@ pub unsafe fn handle_binary_case(c: c_int) -> CaseResult {
         if c == b'1' as c_int {
             globals::FIRSTFILENAME = hfst_commandline::hfst_strdup(hfst_getopt::OPTARG);
             let name = cstr_to_string(globals::FIRSTFILENAME);
-            globals::FIRSTFILE = hfst_commandline::hfst_fopen(&name, "r");
-            if globals::FIRSTFILE == stdin_file() {
+            if name == "-" {
                 libc::free(globals::FIRSTFILENAME as *mut libc::c_void);
                 globals::FIRSTFILENAME = strdup_str("<stdin>");
                 globals::IS_INPUT_STDIN = true;
@@ -190,8 +166,7 @@ pub unsafe fn handle_binary_case(c: c_int) -> CaseResult {
         } else if c == b'2' as c_int {
             globals::SECONDFILENAME = hfst_commandline::hfst_strdup(hfst_getopt::OPTARG);
             let name = cstr_to_string(globals::SECONDFILENAME);
-            globals::SECONDFILE = hfst_commandline::hfst_fopen(&name, "r");
-            if globals::SECONDFILE == stdin_file() {
+            if name == "-" {
                 libc::free(globals::SECONDFILENAME as *mut libc::c_void);
                 globals::SECONDFILENAME = strdup_str("<stdin>");
                 globals::IS_INPUT_STDIN = true;
@@ -271,11 +246,9 @@ pub unsafe fn check_common_params() {
     unsafe {
         if !globals::OUTPUT_NAMED {
             globals::OUTFILENAME = strdup_str("<stdout>");
-            // Leave OUTFILE null for stdout: it is NOT a libc FILE* the tool should
-            // fclose (that would close fd 1). 'outfile()' falls back to stdout when
-            // null, and 'output_opened = !OUTFILE.is_null()' is then correctly false.
-            globals::OUTFILE = std::ptr::null_mut();
-            globals::MESSAGE_OUT = stderr_file();
+            // Default data output is stdout, so messages go to stderr (the tool
+            // opens stdout on demand via output_writer()).
+            globals::MESSAGE_TO_STDERR = true;
         }
     }
 }
@@ -294,11 +267,9 @@ pub unsafe fn check_unary_params(argc: c_int, argv: *mut *mut c_char) {
                 globals::INPUTFILENAME =
                     hfst_commandline::hfst_strdup(*argv.offset(optind as isize));
                 let name = cstr_to_string(globals::INPUTFILENAME);
-                globals::INPUTFILE = hfst_commandline::hfst_fopen(&name, "r");
-                if globals::INPUTFILE == stdin_file() {
+                if name == "-" {
                     libc::free(globals::INPUTFILENAME as *mut libc::c_void);
                     globals::INPUTFILENAME = strdup_str("<stdin>");
-                    globals::INPUTFILE = std::ptr::null_mut();
                 }
             } else if (argc - optind) > 1 {
                 hfst_commandline::error(
@@ -307,9 +278,6 @@ pub unsafe fn check_unary_params(argc: c_int, argv: *mut *mut c_char) {
                     "no more than one transducer file may be given",
                 );
             } else {
-                // Leave INPUTFILE null for stdin (do not fclose fd 0); inputfile()
-                // falls back to stdin when null.
-                globals::INPUTFILE = std::ptr::null_mut();
                 globals::INPUTFILENAME = strdup_str("<stdin>");
             }
         } else if (argc - optind) > 0 {
@@ -346,21 +314,14 @@ pub unsafe fn check_binary_params(argc: c_int, argv: *mut *mut c_char) {
                 // hfst-tool file1 file2
                 globals::FIRSTFILENAME =
                     hfst_commandline::hfst_strdup(*argv.offset(optind as isize));
-                let fname = cstr_to_string(globals::FIRSTFILENAME);
-                globals::FIRSTFILE = hfst_commandline::hfst_fopen(&fname, "r");
                 globals::SECONDFILENAME =
                     hfst_commandline::hfst_strdup(*argv.offset((optind + 1) as isize));
-                let sname = cstr_to_string(globals::SECONDFILENAME);
-                globals::SECONDFILE = hfst_commandline::hfst_fopen(&sname, "r");
                 globals::IS_INPUT_STDIN = false;
             } else if (argc - optind) == 1 {
                 // hfst-tool file2 < file1
                 globals::SECONDFILENAME =
                     hfst_commandline::hfst_strdup(*argv.offset(optind as isize));
-                let sname = cstr_to_string(globals::SECONDFILENAME);
-                globals::SECONDFILE = hfst_commandline::hfst_fopen(&sname, "r");
                 globals::FIRSTFILENAME = strdup_str("<stdin>");
-                globals::FIRSTFILE = stdin_file();
                 globals::IS_INPUT_STDIN = true;
             } else if (argc - optind) > 2 {
                 hfst_commandline::error(
@@ -381,13 +342,10 @@ pub unsafe fn check_binary_params(argc: c_int, argv: *mut *mut c_char) {
                 // hfst-tool file1 -2 file2
                 globals::FIRSTFILENAME =
                     hfst_commandline::hfst_strdup(*argv.offset(optind as isize));
-                let fname = cstr_to_string(globals::FIRSTFILENAME);
-                globals::FIRSTFILE = hfst_commandline::hfst_fopen(&fname, "r");
                 globals::IS_INPUT_STDIN = false;
             } else if (argc - optind) == 0 {
                 // hfst-tool -2 file2 < file1
                 globals::FIRSTFILENAME = strdup_str("<stdin>");
-                globals::FIRSTFILE = stdin_file();
                 globals::IS_INPUT_STDIN = true;
             } else {
                 // hfst-tool -2 file2 file1 file3
@@ -402,13 +360,10 @@ pub unsafe fn check_binary_params(argc: c_int, argv: *mut *mut c_char) {
                 // hfst-tool file2 -1 file1
                 globals::SECONDFILENAME =
                     hfst_commandline::hfst_strdup(*argv.offset(optind as isize));
-                let sname = cstr_to_string(globals::SECONDFILENAME);
-                globals::SECONDFILE = hfst_commandline::hfst_fopen(&sname, "r");
                 globals::IS_INPUT_STDIN = false;
             } else if (argc - optind) == 0 {
                 // hfst-tool -1 file1 < file2
                 globals::SECONDFILENAME = strdup_str("<stdin>");
-                globals::SECONDFILE = stdin_file();
                 globals::IS_INPUT_STDIN = true;
             } else {
                 // hfst-tool -1 file1 file2 file3

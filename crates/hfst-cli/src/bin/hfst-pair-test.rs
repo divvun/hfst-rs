@@ -12,8 +12,8 @@ use hfst::hfst_symbol_defs::{internal_epsilon, is_epsilon};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_getenv, hfst_fopen, hfst_getline, hfst_set_program_name,
-    hfst_strdup, print_more_info, print_report_bugs, verbose_printf,
+    EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, hfst_strdup,
+    print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -27,6 +27,7 @@ use hfst_cli::inc::{
 use libc::{c_char, c_int};
 use std::collections::BTreeSet;
 use std::ffi::{CStr, CString};
+use std::io::BufRead;
 
 // [spec:hfst:def:hfst-pair-test.basic-transducer-vector]
 type BasicTransducerVector = Vec<HfstBasicTransducer>;
@@ -35,9 +36,10 @@ type StringVector = Vec<String>;
 // [spec:hfst:def:hfst-pair-test.symbol-set]
 type SymbolSet = BTreeSet<String>;
 
-// Tool-specific static state (file-scope statics in the C++ source).
+// Tool-specific static state (file-scope statics in the C++ source). The C++
+// PAIR_TEST_FILE FILE* is replaced by opening PAIR_TEST_FILE_NAME as a std
+// BufRead in process_stream (the "<stdin>" sentinel selects stdin).
 static mut PAIR_TEST_FILE_NAME: *mut c_char = std::ptr::null_mut();
-static mut PAIR_TEST_FILE: *mut libc::FILE = std::ptr::null_mut();
 static mut PAIR_TEST_GIVEN: bool = false;
 static mut POSITIVE_TEST: bool = true;
 static mut XEROX_MODE: bool = false;
@@ -52,9 +54,21 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
+}
+
+// Open the pair-test strings file (PAIR_TEST_FILE_NAME) as a buffered reader;
+// the "<stdin>"/"-"/unset name selects stdin. The std counterpart of the old
+// PAIR_TEST_FILE FILE* opened with hfst_fopen.
+fn pair_test_reader(name: &str) -> std::io::Result<Box<dyn BufRead>> {
+    if name == "<stdin>" || name == "-" || name.is_empty() {
+        Ok(Box::new(std::io::BufReader::new(std::io::stdin())))
+    } else {
+        Ok(Box::new(std::io::BufReader::new(std::fs::File::open(
+            name,
+        )?)))
+    }
 }
 
 // [spec:hfst:def:hfst-pair-test.print-usage-fn]
@@ -62,18 +76,19 @@ unsafe fn fput(f: *mut libc::FILE, s: &str) {
 unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\npair test for a twolc rule file.\n\n",
                 program_name
             ),
         );
 
-        print_common_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Input/Output options:\n\
              \x20 -i, --input=INFILE     Read input rule file from INFILE\n\
              \x20 -o, --output=OUTFILE   Write test output to OUTFILE\n\
@@ -84,63 +99,63 @@ unsafe fn print_usage() {
         );
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Pair test options:\n\
              \x20 -I, --input-strings=SFILE        Read pair test strings from\n\
              \x20                                  SFILE\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If SFILE is missing, the test pair strings are read from STDIN.\n\
              If OUTFILE is missing, test output is written to STDOUT.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "The rule file is tested using correspondences given as\n\
              pair strings, e.g. \"e a r l y:i e r\". Every pair string is\n\
              tested using every rule and the program prints information\n\
              about correspondences that are incorrectly allowed or\n\
              disallowed.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "The test pair string files contain one pair string/line. Lines\n\
              where the first non-white-space character is \"!\" are\n\
              considered comment lines and skipped.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "There are three test modes positive, negative and Xerox mode. In\n\
              positive mode, all of the pair strings should be allowed and in\n\
              negative mode they should be disallowed. In Xerox mode the cases\n\
              are read from a twolc source file and both positive and negative\n\
              cases can occur.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Ordinarily, positive test mode is in use. Option -N switches to\n\
              negative test mode. The exit code for a successful test is 0. \n\
              The exit code is 1 otherwise. A successful test will print\n\
              \"Test passed\". A failing test prints \"Test failed\" and\n\
              information about pair strings that are handled incorrectly.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "In positive test mode (i.e. without option -N), if a pair\n\
              string is not accepted, the names of the rules that reject\n\
              it are printed as well as the positions in the string where the\n\
              rules run out of possible transitions. In negative mode, only\n\
              the strings that are allowed are printed.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "In Xerox mode, the input should be a twolc file. Tests consist of\n\
              two lines: an input form and an output form. The test cases are\n\
              specialized comments prefixed with either '!!\u{20ac}' or '!!$' depeding on\n\
@@ -152,15 +167,15 @@ unsafe fn print_usage() {
              !!$ earlYer\n\
              !!$ earlyer\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "In silent mode (-s), the program won't print anything. Only the\n\
              exit code tells whether the test was successful or not.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -232,7 +247,6 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             match c as u8 as char {
                 'I' => {
                     PAIR_TEST_FILE_NAME = hfst_strdup(getopt::OPTARG);
-                    PAIR_TEST_FILE = hfst_fopen(&cstr(PAIR_TEST_FILE_NAME), "r");
                     PAIR_TEST_GIVEN = true;
                     continue;
                 }
@@ -250,7 +264,6 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
 
         if !PAIR_TEST_GIVEN {
-            PAIR_TEST_FILE = stdin_file();
             PAIR_TEST_FILE_NAME = libc::strdup(CString::new("<stdin>").unwrap().as_ptr());
         }
         check_common_params();
@@ -265,14 +278,6 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
         EXIT_CONTINUE
     }
-}
-
-unsafe fn stdin_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-        static mut stdin: *mut libc::FILE;
-    }
-    unsafe { stdin }
 }
 
 // replace every occurrence of substr in str with repl, in place.
@@ -326,7 +331,7 @@ fn test_rule(
     tokenized_pair_string: &StringPairVector,
     t: &HfstBasicTransducer,
     positive: bool,
-    _outfile: *mut libc::FILE,
+    _outfile: &mut dyn std::io::Write,
     known_symbols: &SymbolSet,
 ) -> c_int {
     let mut s: HfstState = 0;
@@ -388,7 +393,7 @@ unsafe fn print_recognized_prefix(
     tokenized_pair_string: &StringPairVector,
     str_transducer: &HfstBasicTransducer,
     name: &str,
-    outfile: *mut libc::FILE,
+    outfile: &mut dyn std::io::Write,
     known_symbols: &SymbolSet,
 ) {
     unsafe {
@@ -443,7 +448,7 @@ unsafe fn print_failure_info(
     tokenized_pair_string: &StringPairVector,
     t: &HfstBasicTransducer,
     name: &str,
-    outfile: *mut libc::FILE,
+    outfile: &mut dyn std::io::Write,
     known_symbols: &SymbolSet,
 ) {
     unsafe {
@@ -463,7 +468,7 @@ unsafe fn test(
     grammar: &BasicTransducerVector,
     names: &StringVector,
     positive: bool,
-    outfile: *mut libc::FILE,
+    outfile: &mut dyn std::io::Write,
     known_symbols: &SymbolSet,
 ) -> c_int {
     unsafe {
@@ -473,15 +478,20 @@ unsafe fn test(
         let mut ind: usize = 0;
 
         for it in grammar.iter() {
-            let new_exit_code =
-                test_rule(tokenized_pair_string, it, positive, outfile, known_symbols);
+            let new_exit_code = test_rule(
+                tokenized_pair_string,
+                it,
+                positive,
+                &mut *outfile,
+                known_symbols,
+            );
 
             if positive && new_exit_code == 1 {
                 print_failure_info(
                     tokenized_pair_string,
                     it,
                     &names[ind],
-                    outfile,
+                    &mut *outfile,
                     known_symbols,
                 );
             }
@@ -595,7 +605,10 @@ fn substr_from_bytes(s: &str, byte_off: usize) -> String {
 
 // [spec:hfst:def:hfst-pair-test.process-stream-fn]
 // [spec:hfst:sem:hfst-pair-test.process-stream-fn]
-unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc::FILE) -> c_int {
+unsafe fn process_stream(
+    inputstream: &mut HfstInputStream,
+    outstream: &mut dyn std::io::Write,
+) -> c_int {
     unsafe {
         let mut grammar: BasicTransducerVector = Vec::new();
         let mut rule_names: StringVector = Vec::new();
@@ -630,8 +643,16 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
             }
         }
 
-        let mut line: *mut c_char = std::ptr::null_mut();
-        let mut llen: usize = 0;
+        // Open the pair-test strings file (the std counterpart of the C++
+        // PAIR_TEST_FILE FILE* read with hfst_getline). The "<stdin>" sentinel
+        // selects stdin.
+        let mut pair_reader = match pair_test_reader(&cstr(PAIR_TEST_FILE_NAME)) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("hfst-pair-test: cannot open pair-test strings file: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
 
         let mut exit_code: c_int = 0;
 
@@ -641,17 +662,19 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
             let empty_v: StringVector = Vec::new();
             let input_tokenizer = HfstStrings2FstTokenizer::new(&empty_v, "0");
 
-            while hfst_getline(&mut line, &mut llen, PAIR_TEST_FILE) != -1 {
-                // strip a trailing newline (mutate the C buffer in place)
-                let mut p = line;
-                while *p != 0 {
-                    if *p == b'\n' as c_char {
-                        *p = 0;
-                        break;
-                    }
-                    p = p.add(1);
+            let mut raw_line = String::new();
+            loop {
+                raw_line.clear();
+                // getline returns -1 at EOF; read_line returns Ok(0) at EOF.
+                if pair_reader.read_line(&mut raw_line).unwrap_or(0) == 0 {
+                    break;
                 }
-                let line_str = cstr(line);
+                // strip a trailing newline (the C truncated the buffer at the
+                // first '\n').
+                let line_str = match raw_line.find('\n') {
+                    Some(p) => raw_line[..p].to_string(),
+                    None => raw_line.clone(),
+                };
                 if is_empty_or_comment(&line_str) {
                     continue;
                 }
@@ -675,7 +698,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
                             &grammar,
                             &rule_names,
                             POSITIVE_TEST,
-                            outstream,
+                            &mut *outstream,
                             &known_symbols,
                         );
 
@@ -701,7 +724,6 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
                     }
                 }
             } // while lines in input
-            libc::free(line as *mut libc::c_void);
         } else {
             // Read test cases from a twolc source file.
             //
@@ -717,16 +739,16 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
 
             let input_tokenizer = HfstStrings2FstTokenizer::new(&symbols, "0");
 
-            while hfst_getline(&mut line, &mut llen, PAIR_TEST_FILE) != -1 {
-                let mut p = line;
-                while *p != 0 {
-                    if *p == b'\n' as c_char {
-                        *p = 0;
-                        break;
-                    }
-                    p = p.add(1);
+            let mut raw_line = String::new();
+            loop {
+                raw_line.clear();
+                if pair_reader.read_line(&mut raw_line).unwrap_or(0) == 0 {
+                    break;
                 }
-                let line_str = cstr(line);
+                let line_str = match raw_line.find('\n') {
+                    Some(p) => raw_line[..p].to_string(),
+                    None => raw_line.clone(),
+                };
 
                 if is_positive_test_line(&line_str) {
                     // "!!\u{20ac} xyz" -> "xyz"
@@ -751,8 +773,6 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
                     continue;
                 }
             } // while lines in input
-            libc::free(line as *mut libc::c_void);
-
             if positive_test_cases.len() % 2 != 0 {
                 error(
                     libc::EXIT_FAILURE,
@@ -815,7 +835,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
                     &grammar,
                     &rule_names,
                     true,
-                    outstream,
+                    &mut *outstream,
                     &known_symbols,
                 );
 
@@ -869,7 +889,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
                     &grammar,
                     &rule_names,
                     false,
-                    outstream,
+                    &mut *outstream,
                     &known_symbols,
                 );
 
@@ -909,9 +929,6 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        if globals::INPUTFILE != stdin_file() && !globals::INPUTFILE.is_null() {
-            libc::fclose(globals::INPUTFILE);
-        }
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),
@@ -919,7 +936,7 @@ unsafe fn real_main() -> c_int {
         ));
 
         // here starts the buffer handling part
-        let input_named = globals::INPUTFILE != stdin_file() && !globals::INPUTFILE.is_null();
+        let input_named = cstr(globals::INPUTFILENAME) != "<stdin>";
         let mut instream = if input_named {
             HfstInputStream::new_filename(&cstr(globals::INPUTFILENAME))
         } else {
@@ -929,30 +946,27 @@ unsafe fn real_main() -> c_int {
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
 
-        let exit_code = process_stream(&mut instream, globals::outfile());
+        let mut out = match globals::output_writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("hfst-pair-test: cannot open output: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
+
+        let exit_code = process_stream(&mut instream, &mut *out);
 
         if !globals::SILENT {
             if exit_code == 0 {
-                fput(globals::outfile(), "Test passed.\n");
+                fput(&mut *out, "Test passed.\n");
             } else {
-                fput(globals::outfile(), "Test failed.\n");
+                fput(&mut *out, "Test failed.\n");
             }
         }
 
-        if globals::outfile() != stdout_file() {
-            libc::fclose(globals::outfile());
-        }
         libc::free(globals::INPUTFILENAME as *mut libc::c_void);
         libc::free(globals::OUTFILENAME as *mut libc::c_void);
 
         exit_code
     }
-}
-
-unsafe fn stdout_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
-        static mut stdout: *mut libc::FILE;
-    }
-    unsafe { stdout }
 }

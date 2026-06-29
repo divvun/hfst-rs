@@ -25,7 +25,8 @@
 //! reader, hence the ''a' lifetime (mirroring 'TropicalWeightInputStream<'a>').
 //! 'HfstOlOutputStream' holds 'std::ofstream o_stream' + 'std::ostream
 //! &output_stream' aliasing it or 'std::cout'; modelled as a single owned
-//! writer. 'FILE*' -> '*mut libc::FILE' (used by 'is_fst(FILE*)').
+//! writer. The C 'FILE*' overload of 'is_fst' is ported over '&mut dyn
+//! std::io::BufRead' so no raw C file handle is needed.
 
 #![allow(non_snake_case)]
 #![allow(dead_code)] // many ported ops are only reached once the facade lands
@@ -68,7 +69,6 @@ pub struct HfstOlTransducer;
 mod ol_construction_io {
     #![allow(unused_imports)]
     use super::*;
-    use crate::hfst_data_types::size_t_to_int;
     use crate::hfst_exception_defs::StreamIsClosedException;
     use crate::hfst_flag_diacritics::FdTable;
     use crate::hfst_symbol_defs::StringSet;
@@ -194,45 +194,38 @@ mod ol_construction_io {
         }
 
         /// 'static int is_fst(FILE * f);' — 1=unweighted, 2=weighted.
-        pub fn is_fst_file(f: *mut libc::FILE) -> i32 {
-            if f.is_null() {
-                return 0; // C++ 'return false;'
-            }
-
+        ///
+        /// Ported from the C 'FILE*' overload to '&mut dyn BufRead'. The C
+        /// 'ungetc'-everything-back behaviour is reproduced by *peeking* (no bytes
+        /// are consumed from 'f').
+        pub fn is_fst_file(f: &mut dyn std::io::BufRead) -> i32 {
             let mut buffer = [0u8; 24];
             // NOTE (preserved C++ bug): 'fread(buffer, 24, 1, f)' reads 1 element of
             // size 24, so 'num_read' is the element count (0 or 1), never 24. The
             // 'num_read != 24' test below is therefore always true, so this function
             // always returns 0 (and reads 'buffer+20' whether or not it was filled).
-            let num_read =
-                unsafe { libc::fread(buffer.as_mut_ptr() as *mut libc::c_void, 24, 1, f) };
+            // We peek without consuming so nothing is removed from the stream.
+            let num_read: usize = match f.fill_buf() {
+                Ok(buf) => {
+                    let n = std::cmp::min(buf.len(), 24);
+                    buffer[..n].copy_from_slice(&buf[..n]);
+                    // element count of size-24 reads: 1 if a full 24 bytes are
+                    // available, else 0 — matching 'fread(_, 24, 1, _)'.
+                    if n == 24 { 1 } else { 0 }
+                }
+                Err(_) => 0,
+            };
             let weighted: u32 =
                 i32::from_ne_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]) as u32;
-            let res: i32;
-            if num_read != 24 {
-                res = 0;
+            let res: i32 = if num_read != 24 {
+                0
             } else if weighted == 0 {
-                res = 1;
+                1
             } else if weighted == 1 {
-                res = 2;
+                2
             } else {
-                res = 0;
-            }
-
-            if num_read > 0 {
-                let mut i = size_t_to_int(num_read - 1);
-                while i >= 0 {
-                    unsafe {
-                        libc::ungetc(buffer[i as usize] as i8 as libc::c_int, f);
-                    }
-                    i -= 1;
-                }
-            }
-            if num_read != 24 {
-                unsafe {
-                    libc::clearerr(f);
-                }
-            }
+                0
+            };
 
             res
         }

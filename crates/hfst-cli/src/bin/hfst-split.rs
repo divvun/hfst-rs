@@ -7,8 +7,8 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_fopen, hfst_set_program_name, hfst_strdup,
-    print_more_info, print_report_bugs, verbose_printf,
+    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, hfst_strdup, print_more_info,
+    print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -23,24 +23,6 @@ use std::ffi::{CStr, CString};
 // add tools-specific variables here
 static mut PREFIX: *mut c_char = std::ptr::null_mut();
 static mut EXTENSION: *mut c_char = std::ptr::null_mut();
-
-// 'stdout'/'stdin' as FILE* (same shape as the foundation's private helpers,
-// used here to mirror the C 'inputfile != stdin' / 'outfile != stdout' checks).
-fn stdout_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
-        static mut stdout: *mut libc::FILE;
-    }
-    unsafe { stdout }
-}
-
-fn stdin_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-        static mut stdin: *mut libc::FILE;
-    }
-    unsafe { stdin }
-}
 
 unsafe fn cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
@@ -57,9 +39,8 @@ unsafe fn dup(s: &str) -> *mut c_char {
     unsafe { libc::strdup(c.as_ptr()) }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-split.print-usage-fn]
@@ -67,27 +48,28 @@ unsafe fn fput(f: *mut libc::FILE, s: &str) {
 unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nExtract transducers from archive with systematic file names\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Input/Output options:\n  -i, --input=INFILE    Read input transducer from INFILE\n  -p, --prefix=PRE      Use the prefix PRE in naming output files\n  -e, --extension=EXT   Use the extension EXT in naming output files\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If INFILE is omitted or -, stdin is used.\nIf PRE is omitted, no prefix is used.\nIf EXT is omitted, .hfst is used.\nThe extracted files are named \"PRE\" + N + \"EXT\",\nwhere N is the number of the transducer in the archive.\n\nAn example:\n   cat transducer_a transducer_b | hfst-split -p \"rule\" -e \".tr\"\n\nThis command creates files \"rule1.tr\" (equivalent to transducer_a)\nand \"rule2.tr\" (equivalent to transducer_b). \n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -152,10 +134,19 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             match c {
                 c if c == b'i' as c_int => {
                     globals::INPUTFILENAME = hfst_strdup(getopt::OPTARG);
-                    globals::INPUTFILE = hfst_fopen(&cstr(globals::INPUTFILENAME), "r");
-                    if globals::INPUTFILE == stdin_file() {
+                    // C: inputfile = hfst_fopen(inputfilename, "r"); if it resolves
+                    // to stdin ("-"), reset the name to "<stdin>". Otherwise the C
+                    // opened the file eagerly to validate it; mirror that by trying
+                    // to open it and erroring through the same path on failure.
+                    if cstr(globals::INPUTFILENAME) == "-" {
                         libc::free(globals::INPUTFILENAME as *mut libc::c_void);
                         globals::INPUTFILENAME = dup("<stdin>");
+                    } else if let Err(_e) = std::fs::File::open(&cstr(globals::INPUTFILENAME)) {
+                        hfst_cli::hfst_commandline::error(
+                            libc::EXIT_FAILURE,
+                            0,
+                            &format!("Could not open '{}'. ", cstr(globals::INPUTFILENAME)),
+                        );
                     }
                     globals::INPUT_NAMED = true;
                     continue;
@@ -237,12 +228,6 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        if globals::INPUTFILE != stdin_file() && !globals::INPUTFILE.is_null() {
-            libc::fclose(globals::INPUTFILE);
-        }
-        if globals::OUTFILE != stdout_file() && !globals::OUTFILE.is_null() {
-            libc::fclose(globals::OUTFILE);
-        }
         verbose_printf(&format!(
             "Reading from {}, writing to {}...{}\n",
             cstr(globals::INPUTFILENAME),
@@ -253,7 +238,7 @@ unsafe fn real_main() -> c_int {
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced faithfully here.)
-        let mut instream = if globals::INPUTFILE != stdin_file() && !globals::INPUTFILE.is_null() {
+        let mut instream = if cstr(globals::INPUTFILENAME) != "<stdin>" {
             HfstInputStream::new_filename(&cstr(globals::INPUTFILENAME))
         } else {
             HfstInputStream::new()

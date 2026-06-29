@@ -38,9 +38,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // Tool-specific globals. These mirror the file-scope statics of the C++ tool.
@@ -73,17 +72,18 @@ static mut PRINT_SEPARATOR_AFTER_EACH_TRANSDUCER: bool = false;
 unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nDisplay the strings recognized by a transducer\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Fst2strings options:\n\
              \x20 -n, --max-strings=NSTR     print at most NSTR strings\n\
              \x20 -N, --nbest=NBEST          print at most NBEST best strings\n\
@@ -95,7 +95,7 @@ unsafe fn print_usage() {
              \x20 -X, --xfst=VARIABLE        toggle xfst compatibility option VARIABLE\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Path filters:\n\
              \x20 -b, --beam=B               reject output string with weight more than B away from\n\
              \x20                            the weight of the best output string\n\
@@ -107,11 +107,11 @@ unsafe fn print_usage() {
              \x20 -U, --out-exclude=OXST     output string must not contain OXSTR\n",
         );
 
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
 
-        print_common_unary_program_parameter_instructions(globals::message_out());
+        print_common_unary_program_parameter_instructions(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If all NSTR, NBEST and NCYC are omitted, \
              all possible paths are printed:\n\
              NSTR, NBEST and NCYC default to infinity.\n\
@@ -124,7 +124,7 @@ unsafe fn print_usage() {
              print-pairs, print-space, quote-special }.\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "\nExamples:\n\
                  \x20 {} lexical.hfst    generates all forms of lexical.hfst\n\
@@ -135,13 +135,13 @@ unsafe fn print_usage() {
         );
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Known bugs:\n\
              \x20 Does not work correctly for hfst optimized lookup format.\n\n",
         );
 
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -350,16 +350,16 @@ unsafe fn get_print_format(s: &str) -> String {
 
 // Print results as they come
 // [spec:hfst:def:hfst-fst2strings.callback]
-struct Callback {
+struct Callback<'a> {
     count: c_int,
     max_num: c_int,
-    out_: *mut libc::FILE,
+    out_: &'a mut dyn std::io::Write,
 }
 
-impl Callback {
+impl<'a> Callback<'a> {
     // [spec:hfst:def:hfst-fst2strings.callback.callback-fn]
     // [spec:hfst:sem:hfst-fst2strings.callback.callback-fn]
-    fn new(max: c_int, out: *mut libc::FILE) -> Self {
+    fn new(max: c_int, out: &'a mut dyn std::io::Write) -> Self {
         Callback {
             count: 0,
             max_num: max,
@@ -368,7 +368,7 @@ impl Callback {
     }
 }
 
-impl ExtractStringsCb for Callback {
+impl ExtractStringsCb for Callback<'_> {
     // [spec:hfst:def:hfst-fst2strings.callback.operator-fn]
     // [spec:hfst:sem:hfst-fst2strings.callback.operator-fn]
     fn operator_call(&mut self, path: &mut HfstTwoLevelPath, final_: bool) -> RetVal {
@@ -479,7 +479,7 @@ impl ExtractStringsCb for Callback {
                     }
                     fput(self.out_, "\n");
                     // std::endl flushes
-                    libc::fflush(self.out_);
+                    let _ = self.out_.flush();
                 }
                 self.count += 1;
             }
@@ -491,7 +491,10 @@ impl ExtractStringsCb for Callback {
 
 // [spec:hfst:def:hfst-fst2strings.process-stream-fn]
 // [spec:hfst:sem:hfst-fst2strings.process-stream-fn]
-unsafe fn process_stream(instream: &mut HfstInputStream, outstream: *mut libc::FILE) -> c_int {
+unsafe fn process_stream(
+    instream: &mut HfstInputStream,
+    outstream: &mut dyn std::io::Write,
+) -> c_int {
     unsafe {
         let mut first_transducer = true;
         while instream.is_good() {
@@ -572,7 +575,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: *mut libc::F
 
             /* not random strings */
             if MAX_RANDOM_STRINGS <= 0 {
-                let mut cb = Callback::new(MAX_STRINGS, outstream);
+                let mut cb = Callback::new(MAX_STRINGS, &mut *outstream);
                 if EVAL_FD {
                     t.extract_paths_fd_cb(&mut cb, CYCLES, FILTER_FD);
                 } else {
@@ -591,7 +594,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: *mut libc::F
                     t.extract_random_paths(&mut results, MAX_RANDOM_STRINGS);
                 }
 
-                let mut cb = Callback::new(MAX_RANDOM_STRINGS, outstream);
+                let mut cb = Callback::new(MAX_RANDOM_STRINGS, &mut *outstream);
                 for it in results.iter() {
                     let mut path: HfstTwoLevelPath = it.clone();
                     cb.operator_call(&mut path, true /*final*/);
@@ -639,13 +642,10 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = !globals::INPUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
+        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
         // (C closes outfile here when it is not stdout and re-opens an ofstream
-        // to outfilename inside; the foundation models the output stream as the
-        // outfile() FILE*, so it is left open and written to directly.)
+        // to outfilename inside; the foundation now models the output as a std
+        // writer opened from OUTFILENAME, written to directly.)
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),
@@ -661,7 +661,14 @@ unsafe fn real_main() -> c_int {
             HfstInputStream::new()
         };
 
-        retval = process_stream(&mut instream, globals::outfile());
+        let mut out = match globals::output_writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("hfst-fst2strings: cannot open output: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
+        retval = process_stream(&mut instream, &mut *out);
 
         retval
     }

@@ -1,17 +1,16 @@
-//! Faithful 1:1 port of the shared tool-state globals from
-//! tools/src/inc/globals-common.h + globals-unary.h + globals-binary.h.
+//! Shared tool-state globals, ported from tools/src/inc/globals-common.h +
+//! globals-unary.h + globals-binary.h.
 //!
-//! In C these fragments are '#include'd once per tool .cc (the unary/binary
-//! variants even mark the symbols 'static', i.e. per-translation-unit). In Rust
-//! they live once here and every 'src/bin/<tool>.rs' references
-//! 'hfst_cli::globals::*'. These are pure file-scope data definitions with no
-//! manifest symbols, so they carry no '[spec]' annotations.
+//! In C these fragments are '#include'd once per tool .cc; in Rust they live
+//! once here and every 'src/bin/<tool>.rs' references 'hfst_cli::globals::*'.
 //!
-//! The 'static mut' + 'addr_of_mut!' accessor convention matches the rest of
-//! the crate (see 'hfst_getopt.rs'): scalars and pointers are read and written
-//! by value (no reference needed); std-stream defaults that cannot be
-//! const-initialised are stored as 'null_mut()' and substituted through an
-//! accessor fn (same shape as getopt's 'stderr_file()').
+//! The C kept open `FILE*` handles (message_out / outfile / inputfile /
+//! firstfile / secondfile). After the io-foundation de-C-ism those `FILE*`
+//! statics are gone: only the *FILENAME strings + the "named" flags survive, and
+//! a tool opens its streams on demand as Rust `std::io` values through the
+//! accessors below (`input_reader`/`output_writer`/`first_reader`/
+//! `second_reader`/`message_writer`). The "<stdin>"/"<stdout>" sentinels (or "-",
+//! or an unset name) select the standard streams.
 
 use std::ffi::CStr;
 use std::io::{BufRead, BufReader, Write};
@@ -35,94 +34,30 @@ pub static mut SILENT: bool = false;
 pub static mut DEBUG: bool = false;
 pub static mut COLOUR: ColourTristate = ColourTristate::COLOUR_AUTO;
 
-// C: 'FILE *message_out = stdout;' — cannot const-init to stdout, so store null
-// and substitute through 'message_out()'.
-pub static mut MESSAGE_OUT: *mut libc::FILE = std::ptr::null_mut();
+// C: 'FILE *message_out = stdout;' — diagnostic/help output goes to stdout,
+// EXCEPT when the tool's data output is itself stdout, in which case messages go
+// to stderr so they do not corrupt the data stream. inc.rs sets this flag (the C
+// did `message_out = stderr`).
+pub static mut MESSAGE_TO_STDERR: bool = false;
 pub static mut PROGRAM_NAME: *const c_char = std::ptr::null();
 pub static mut HFST_TOOL_VERSION: *const c_char = std::ptr::null();
 pub static mut HFST_TOOL_WIKINAME: *const c_char = std::ptr::null();
 pub static mut OUTFILENAME: *mut c_char = std::ptr::null_mut();
-pub static mut OUTFILE: *mut libc::FILE = std::ptr::null_mut();
 pub static mut OUTPUT_NAMED: bool = false;
 
 // --- unary (globals-unary.h); C marks these 'static' per-tool ---
 
 pub static mut INPUTFILENAME: *mut c_char = std::ptr::null_mut();
-// C: 'static FILE *inputfile = stdin;' — substituted through 'inputfile()'.
-pub static mut INPUTFILE: *mut libc::FILE = std::ptr::null_mut();
 pub static mut INPUT_NAMED: bool = false;
 
 // --- binary (globals-binary.h) ---
 
 pub static mut FIRSTFILENAME: *mut c_char = std::ptr::null_mut();
-// C: 'FILE *firstfile = stdin;' — substituted through 'firstfile()'.
-pub static mut FIRSTFILE: *mut libc::FILE = std::ptr::null_mut();
 pub static mut FIRST_NAMED: bool = false;
 pub static mut SECONDFILENAME: *mut c_char = std::ptr::null_mut();
-// C: 'FILE *secondfile = stdin;' — substituted through 'secondfile()'.
-pub static mut SECONDFILE: *mut libc::FILE = std::ptr::null_mut();
 pub static mut SECOND_NAMED: bool = false;
 pub static mut IS_INPUT_STDIN: bool = true;
 pub static mut ALLOW_TRANSDUCER_CONVERSION: bool = true;
-
-// Stream accessors substituting the std stream when the static is null. All
-// message/printf output goes through 'message_out()'. Same shape as getopt's
-// 'stderr_file()'.
-
-/// MESSAGE_OUT, else libc 'stdout'.
-pub fn message_out() -> *mut libc::FILE {
-    let f = unsafe { MESSAGE_OUT };
-    if f.is_null() { stdout_file() } else { f }
-}
-
-/// OUTFILE, else libc 'stdout'.
-pub fn outfile() -> *mut libc::FILE {
-    let f = unsafe { OUTFILE };
-    if f.is_null() { stdout_file() } else { f }
-}
-
-/// INPUTFILE, else libc 'stdin'.
-pub fn inputfile() -> *mut libc::FILE {
-    let f = unsafe { INPUTFILE };
-    if f.is_null() { stdin_file() } else { f }
-}
-
-/// FIRSTFILE, else libc 'stdin'.
-pub fn firstfile() -> *mut libc::FILE {
-    let f = unsafe { FIRSTFILE };
-    if f.is_null() { stdin_file() } else { f }
-}
-
-/// SECONDFILE, else libc 'stdin'.
-pub fn secondfile() -> *mut libc::FILE {
-    let f = unsafe { SECONDFILE };
-    if f.is_null() { stdin_file() } else { f }
-}
-
-// 'stdout'/'stdin' as FILE* (same shape as getopt's 'stderr_file()').
-fn stdout_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
-        static mut stdout: *mut libc::FILE;
-    }
-    unsafe { stdout }
-}
-
-fn stdin_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-        static mut stdin: *mut libc::FILE;
-    }
-    unsafe { stdin }
-}
-
-// std-stream counterparts of the libc FILE* accessors above. The io-foundation
-// migration moves each tool's primary text I/O off the `*mut FILE` statics and
-// onto these: a tool opens its input/output as Rust std streams (resolved from
-// the INPUTFILENAME/OUTFILENAME globals, with the "<stdin>"/"<stdout>" sentinels
-// — or an unset name — selecting the standard stream) and threads the
-// `Box<dyn BufRead>`/`Box<dyn Write>` into the library, rather than reading or
-// writing a `*mut FILE` through libc.
 
 // Resolve one of the *FILENAME `*mut c_char` globals to an owned String.
 fn filename_of(ptr: *mut c_char) -> String {
@@ -135,26 +70,51 @@ fn filename_of(ptr: *mut c_char) -> String {
     }
 }
 
-/// Primary text input as a buffered reader: stdin for the "<stdin>" sentinel (or
-/// an unset name), else the named file (INPUTFILENAME). The std counterpart of
-/// `inputfile()`.
-pub fn input_reader() -> std::io::Result<Box<dyn BufRead>> {
-    let name = filename_of(unsafe { INPUTFILENAME });
-    if name == "<stdin>" || name.is_empty() {
+// Open a named text input as a buffered reader; the "<stdin>"/"-"/unset names
+// select stdin.
+fn reader_for(name: String) -> std::io::Result<Box<dyn BufRead>> {
+    if name == "<stdin>" || name == "-" || name.is_empty() {
         Ok(Box::new(BufReader::new(std::io::stdin())))
     } else {
         Ok(Box::new(BufReader::new(std::fs::File::open(&name)?)))
     }
 }
 
-/// Primary text output as a writer: stdout for the "<stdout>" sentinel (or an
-/// unset name), else the named file (OUTFILENAME). The std counterpart of
-/// `outfile()`.
+/// Primary text input (INPUTFILENAME). The std counterpart of the old
+/// `inputfile()` FILE*.
+pub fn input_reader() -> std::io::Result<Box<dyn BufRead>> {
+    reader_for(filename_of(unsafe { INPUTFILENAME }))
+}
+
+/// First binary-tool input (FIRSTFILENAME). The std counterpart of `firstfile()`.
+pub fn first_reader() -> std::io::Result<Box<dyn BufRead>> {
+    reader_for(filename_of(unsafe { FIRSTFILENAME }))
+}
+
+/// Second binary-tool input (SECONDFILENAME). The std counterpart of
+/// `secondfile()`.
+pub fn second_reader() -> std::io::Result<Box<dyn BufRead>> {
+    reader_for(filename_of(unsafe { SECONDFILENAME }))
+}
+
+/// Primary text output (OUTFILENAME): stdout for the "<stdout>"/"-"/unset name,
+/// else the named file. The std counterpart of the old `outfile()` FILE*.
 pub fn output_writer() -> std::io::Result<Box<dyn Write>> {
     let name = filename_of(unsafe { OUTFILENAME });
-    if name == "<stdout>" || name.is_empty() {
+    if name == "<stdout>" || name == "-" || name.is_empty() {
         Ok(Box::new(std::io::stdout()))
     } else {
         Ok(Box::new(std::fs::File::create(&name)?))
+    }
+}
+
+/// Diagnostic/help output: stderr when the tool's data output is stdout (so the
+/// streams don't mix), otherwise stdout. The std counterpart of the old
+/// `message_out()` FILE*.
+pub fn message_writer() -> Box<dyn Write> {
+    if unsafe { MESSAGE_TO_STDERR } {
+        Box::new(std::io::stderr())
+    } else {
+        Box::new(std::io::stdout())
     }
 }

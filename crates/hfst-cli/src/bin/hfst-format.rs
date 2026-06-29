@@ -38,9 +38,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // fprintf(stdout, ...): write to file descriptor 1.
@@ -63,30 +62,31 @@ unsafe fn print_usage() {
     unsafe {
         // c.f.
         // http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\ndetermine HFST transducer format\n\n",
                 program_name
             ),
         );
 
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Tool-specific options:\n  -l, --list-formats     List available transducer formats\n                         and print them to standard output\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             "  -t, --test-format FMT  Whether the format FMT is available,\n                         exits with 0 if it is, else with 1\n",
         );
-        fput(globals::message_out(), "\n");
-        print_common_unary_program_parameter_instructions(globals::message_out());
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
+        print_common_unary_program_parameter_instructions(&mut *msg);
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }

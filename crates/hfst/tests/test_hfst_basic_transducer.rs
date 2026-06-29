@@ -151,15 +151,13 @@ fn exceptions() {
     let path = std::env::temp_dir().join("test_hfst_basic_transducer.att");
     std::fs::write(&path, "0\n0\t1\ta\tb\n1\t2\tb\n2\n").unwrap();
 
-    let path_c = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
-    let mode_c = std::ffi::CString::new("rb").unwrap();
-    let ifile = unsafe { libc::fopen(path_c.as_ptr(), mode_c.as_ptr()) };
-    assert!(!ifile.is_null());
+    let bytes = std::fs::read(&path).unwrap();
 
     let payload = expect_hfst_exception(|| {
+        let mut reader = std::io::Cursor::new(bytes.clone());
         let mut linecount: u32 = 0;
         let _foo =
-            HfstBasicTransducer::read_in_att_format_file(ifile, "@0@", &mut linecount, false);
+            HfstBasicTransducer::read_in_att_format_file(&mut reader, "@0@", &mut linecount, false);
     });
     assert!(
         payload
@@ -168,9 +166,6 @@ fn exceptions() {
         "expected NotValidAttFormatException"
     );
 
-    unsafe {
-        libc::fclose(ifile);
-    }
     let _ = std::fs::remove_file(&path);
 }
 

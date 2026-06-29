@@ -27,13 +27,11 @@ const DOT_MAX_LABEL_SIZE: usize = 64;
 // [spec:hfst:def:hfst-print-dot.hfst.c99-snprintf-fn]
 // [spec:hfst:sem:hfst-print-dot.hfst.c99-snprintf-fn]
 
-// C 'fputs'-of-bytes helper mirroring 'fprintf' of a pre-formatted string: the
-// raw bytes are written with 'libc::fwrite', so 'std::string''s non-UTF-8-checked
-// byte semantics are preserved.
-unsafe fn c_fputs(file: *mut libc::FILE, s: &str) {
-    unsafe {
-        libc::fwrite(s.as_ptr() as *const libc::c_void, 1, s.len(), file);
-    }
+// 'fputs'-of-bytes helper mirroring 'fprintf' of a pre-formatted string: the raw
+// bytes are written verbatim, so 'std::string''s non-UTF-8-checked byte semantics
+// are preserved. Write errors are ignored, as the original 'fwrite' path did.
+fn w_fputs(file: &mut dyn Write, s: &str) {
+    let _ = file.write_all(s.as_bytes());
 }
 
 // C++ 'HfstBasicTransducer mutt {t};' invokes the
@@ -140,62 +138,60 @@ fn arc_label(old_label: &str, arc: &HfstBasicTransition) -> String {
 
 // [spec:hfst:def:hfst-print-dot.hfst.print-dot-fn]
 // [spec:hfst:sem:hfst-print-dot.hfst.print-dot-fn]
-pub unsafe fn print_dot_file(out: *mut libc::FILE, t: &mut HfstTransducer) {
-    unsafe {
-        //fprintf(out, "// This graph generated with hfst-fst2txt\n");
-        if t.get_name() != "" {
-            c_fputs(out, &format!("digraph \"{}\" {{\n", t.get_name()));
-        } else {
-            c_fputs(out, "digraph H {\n");
-        }
-        c_fputs(out, "charset = UTF8;\n");
-        c_fputs(out, "rankdir = LR;\n");
-        c_fputs(out, "node [shape=circle,style=filled,fillcolor=yellow]\n");
-        let mutt: HfstBasicTransducer = hfst_transducer_to_basic(t);
-        let mut s: HfstState = 0;
-        // for some reason, dot works nicer if I first have all nodes, then arcs
-        for _state in mutt.iter() {
-            if mutt.is_final_state(s) {
-                if mutt.get_final_weight(s) > 0.0 {
-                    c_fputs(
-                        out,
-                        &format!(
-                            "q{} [shape=doublecircle,label=\"q{}/\\n{:.2}\"] \n",
-                            s,
-                            s,
-                            mutt.get_final_weight(s)
-                        ),
-                    );
-                } else {
-                    c_fputs(
-                        out,
-                        &format!("q{} [shape=doublecircle,label=\"q{}\"] \n", s, s),
-                    );
-                }
-            } else {
-                c_fputs(out, &format!("q{} [label=\"q{}\"] \n", s, s));
-            }
-            s += 1;
-        } // each state
-        s = 0;
-        for state in mutt.iter() {
-            let mut target_labels: BTreeMap<HfstState, String> = BTreeMap::new();
-            for arc in state {
-                let old_label = target_labels
-                    .entry(arc.get_target_state())
-                    .or_default()
-                    .clone();
-                let sl = arc_label(&old_label, arc);
-                target_labels.insert(arc.get_target_state(), sl);
-            } // each arc
-            for (key, value) in &target_labels {
-                c_fputs(out, &format!("q{} -> q{} ", s, key));
-                c_fputs(out, &format!("[label=\"{} \"];\n", value));
-            }
-            s += 1;
-        } // each state
-        c_fputs(out, "}\n");
+pub fn print_dot_file(out: &mut dyn Write, t: &mut HfstTransducer) {
+    //fprintf(out, "// This graph generated with hfst-fst2txt\n");
+    if t.get_name() != "" {
+        w_fputs(out, &format!("digraph \"{}\" {{\n", t.get_name()));
+    } else {
+        w_fputs(out, "digraph H {\n");
     }
+    w_fputs(out, "charset = UTF8;\n");
+    w_fputs(out, "rankdir = LR;\n");
+    w_fputs(out, "node [shape=circle,style=filled,fillcolor=yellow]\n");
+    let mutt: HfstBasicTransducer = hfst_transducer_to_basic(t);
+    let mut s: HfstState = 0;
+    // for some reason, dot works nicer if I first have all nodes, then arcs
+    for _state in mutt.iter() {
+        if mutt.is_final_state(s) {
+            if mutt.get_final_weight(s) > 0.0 {
+                w_fputs(
+                    out,
+                    &format!(
+                        "q{} [shape=doublecircle,label=\"q{}/\\n{:.2}\"] \n",
+                        s,
+                        s,
+                        mutt.get_final_weight(s)
+                    ),
+                );
+            } else {
+                w_fputs(
+                    out,
+                    &format!("q{} [shape=doublecircle,label=\"q{}\"] \n", s, s),
+                );
+            }
+        } else {
+            w_fputs(out, &format!("q{} [label=\"q{}\"] \n", s, s));
+        }
+        s += 1;
+    } // each state
+    s = 0;
+    for state in mutt.iter() {
+        let mut target_labels: BTreeMap<HfstState, String> = BTreeMap::new();
+        for arc in state {
+            let old_label = target_labels
+                .entry(arc.get_target_state())
+                .or_default()
+                .clone();
+            let sl = arc_label(&old_label, arc);
+            target_labels.insert(arc.get_target_state(), sl);
+        } // each arc
+        for (key, value) in &target_labels {
+            w_fputs(out, &format!("q{} -> q{} ", s, key));
+            w_fputs(out, &format!("[label=\"{} \"];\n", value));
+        }
+        s += 1;
+    } // each state
+    w_fputs(out, "}\n");
 }
 
 pub fn print_dot_os(out: &mut dyn Write, t: &mut HfstTransducer) {

@@ -24,6 +24,7 @@ use hfst_cli::inc::{
 use libc::{c_char, c_int};
 use std::collections::VecDeque;
 use std::ffi::{CStr, CString};
+use std::io::Write;
 
 unsafe fn cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
@@ -35,9 +36,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // add tools-specific variables here
@@ -49,29 +49,30 @@ unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         // Usage line
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nGet first transducers from an archive\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Archive options:\n  -n, --n-first=[-]K   print the first K transducers;\n                       with the leading `-', print all but last K transducers\n",
         );
-        fput(globals::message_out(), "\n");
-        print_common_unary_program_parameter_instructions(globals::message_out());
+        fput(&mut *msg, "\n");
+        print_common_unary_program_parameter_instructions(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "K must be an integer, as parsed by strtoul base 10, and not 0.\nIf K is omitted default is 1.",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -234,14 +235,8 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = !globals::INPUTFILE.is_null();
-        let output_opened = !globals::OUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
+        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),

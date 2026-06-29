@@ -6697,26 +6697,24 @@ unsafe fn build_read_file(kind: nfst_pmatch::ReadKind, path: &str) -> ObjRef {
             filepath,
             ImplementationType::TROPICAL_OPENFST_TYPE,
         )))),
-        RK::Prolog => {
-            let cs = std::ffi::CString::new(filepath.clone()).unwrap_or_default();
-            let mode = std::ffi::CString::new("r").unwrap();
-            let f = libc::fopen(cs.as_ptr(), mode.as_ptr());
-            if f.is_null() {
+        RK::Prolog => match std::fs::File::open(&filepath) {
+            Err(_) => {
                 eprintln!("File cannot be opened.");
                 as_obj(pmb_tc(HfstTransducer::new_type(format())))
-            } else {
+            }
+            Ok(f) => {
+                let mut reader = std::io::BufReader::new(f);
                 let mut linecount: u32 = 0;
                 let tmp =
                     crate::hfst_basic_transducer::HfstBasicTransducer::read_in_prolog_format_file(
-                        f,
+                        &mut reader,
                         &mut linecount,
                     );
-                libc::fclose(f);
                 let mut t = Box::new(HfstTransducer::new_from_basic_transducer(&tmp, format()));
                 t.minimize();
                 as_obj(pmb_tc(*t))
             }
-        }
+        },
         RK::Regex => {
             let mut regex = String::new();
             if let Ok(contents) = std::fs::read_to_string(&filepath) {

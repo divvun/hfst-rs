@@ -38,9 +38,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // The C arclabel readline-completion helpers (arclabel_generator /
@@ -65,9 +64,10 @@ unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         // Usage line
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nWalk through the transducer arc by arc\n\n",
                 program_name
@@ -75,13 +75,13 @@ unsafe fn print_usage() {
         );
 
         // options, grouped
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
-        fput(globals::message_out(), "\n");
-        print_common_unary_program_parameter_instructions(globals::message_out());
-        fput(globals::message_out(), "\n");
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
+        fput(&mut *msg, "\n");
+        print_common_unary_program_parameter_instructions(&mut *msg);
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -157,7 +157,8 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 // [spec:hfst:sem:hfst-traverse.main-loop-fn]
 unsafe fn main_loop(trans: &HfstBasicTransducer) -> c_int {
     unsafe {
-        fput(globals::message_out(), "Enter labels to seek all paths\n");
+        let mut msg = globals::message_writer();
+        fput(&mut *msg, "Enter labels to seek all paths\n");
         // record current paths with their end states. The C++ uses a
         // multimap<string, HfstState>; a BTreeMap<(String, usize), HfstState>
         // (keyed on an insertion counter to permit duplicate path strings)
@@ -172,19 +173,16 @@ unsafe fn main_loop(trans: &HfstBasicTransducer) -> c_int {
             // print available paths
             for ((path_str, _), state) in paths.iter() {
                 fput(
-                    globals::message_out(),
+                    &mut *msg,
                     &format!("On path `{}' are continuations:\n", path_str),
                 );
                 let transitions = trans.index(*state);
                 if transitions.is_empty() {
-                    fput(
-                        globals::message_out(),
-                        "<Nothing, you've hit a dead end here>\n",
-                    );
+                    fput(&mut *msg, "<Nothing, you've hit a dead end here>\n");
                 }
                 for arc in transitions.iter() {
                     fput(
-                        globals::message_out(),
+                        &mut *msg,
                         &format!("{}\t{}\n", arc.get_input_symbol(), arc.get_output_symbol()),
                     );
                 }
@@ -211,17 +209,11 @@ unsafe fn main_loop(trans: &HfstBasicTransducer) -> c_int {
             }
             if new_paths.is_empty() {
                 if label == "quit" || label.is_empty() {
-                    fput(
-                        globals::message_out(),
-                        "Use EOF (Ctrl-D or similar) to quit\n",
-                    );
+                    fput(&mut *msg, "Use EOF (Ctrl-D or similar) to quit\n");
                 } else if label == "XYZZY" {
-                    fput(globals::message_out(), "Nothing happens\n");
+                    fput(&mut *msg, "Nothing happens\n");
                 }
-                fput(
-                    globals::message_out(),
-                    &format!("could not advance with {}\n", label),
-                );
+                fput(&mut *msg, &format!("could not advance with {}\n", label));
             } else {
                 paths = new_paths;
             }
@@ -235,6 +227,7 @@ unsafe fn main_loop(trans: &HfstBasicTransducer) -> c_int {
 // [spec:hfst:sem:hfst-traverse.process-stream-fn]
 unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
     unsafe {
+        let mut msg = globals::message_writer();
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
@@ -248,14 +241,14 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             let walkable = trans.get_basic_transducer();
             if CAVE_MODE {
                 fput(
-                    globals::message_out(),
+                    &mut *msg,
                     "WELCOME TO ADVENTURE!! WOULD YOU LIKE INSTRUCTIONS?\n\n",
                 );
                 let yesno_ptr = hfst_readline("");
                 let yesno = cstr(yesno_ptr);
                 if yesno == "YES" || yesno == "yes" {
                     fput(
-                        globals::message_out(),
+                        &mut *msg,
                         "SOMEWHERE NEARBY IS COLOSSAL CAVE \
                          WHERE OTHERS HAVE FOUND\n\
                          FORTUNES IN TREASURES AND GOLD, \
@@ -273,7 +266,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                     libc::free(yesno_ptr as *mut libc::c_void);
                 }
                 fput(
-                    globals::message_out(),
+                    &mut *msg,
                     "YOU ARE STANDING AT THE END OF A ROAD BEFORE A \
                      SMALL FINITE\n\
                      STATE AUTOMATON . AROUND YOU IS A FOREST. A SMALL\n\
@@ -282,12 +275,12 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                 );
             } else {
                 fput(
-                    globals::message_out(),
+                    &mut *msg,
                     &format!("Traversing automaton {}\n\n", trans_name),
                 );
             }
             if walkable.state_vector.is_empty() {
-                fput(globals::message_out(), "Nowhere to go\n");
+                fput(&mut *msg, "Nowhere to go\n");
                 return libc::EXIT_SUCCESS;
             }
             return main_loop(&walkable);
@@ -324,14 +317,8 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = !globals::INPUTFILE.is_null();
-        let output_opened = !globals::OUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
+        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),

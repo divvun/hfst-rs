@@ -2404,18 +2404,14 @@ impl XreCompiler {
             }
             // READ_PROLOG: read_in_prolog_format then build of the compiler format.
             ReadKind::Prolog => {
-                let c_path = std::ffi::CString::new(path).unwrap();
-                let mode = std::ffi::CString::new("r").unwrap();
-                let f =
-                    unsafe { crate::hfst_data_types::hfst_fopen(c_path.as_ptr(), mode.as_ptr()) };
-                if f.is_null() {
-                    panic!("File cannot be opened.");
-                }
+                let f = match std::fs::File::open(path) {
+                    Ok(f) => f,
+                    Err(_) => panic!("File cannot be opened."),
+                };
+                let mut reader = std::io::BufReader::new(f);
                 let mut linecount: u32 = 0;
-                let tmp = HfstBasicTransducer::read_in_prolog_format_file(f, &mut linecount);
-                unsafe {
-                    libc::fclose(f);
-                }
+                let tmp =
+                    HfstBasicTransducer::read_in_prolog_format_file(&mut reader, &mut linecount);
                 let mut retval = HfstTransducer::new_from_basic(&tmp, self.format_);
                 retval.optimize();
                 retval

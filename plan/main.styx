@@ -952,6 +952,13 @@ children (
                         kind @note
                         text "Scope survey (2026-06-29) + migration plan.\n\nFINDING: the libc FILE* globals are for TEXT I/O only — transducer I/O already goes through HfstInputStream/HfstOutputStream::new_filename (filename-based). So despite 976 libc:: sites in hfst-cli (182 FILE*, 112 fclose, 60 fputs), the actual FILE*-stream surface is bounded by accessor usage:\n- outfile()    -> 13 tools (text output): lookup, fst2strings, compare, fst2txt, check-alpha, pair-test, edit-metadata, compose-intersect, dump-alphabets, summarize, flookup, guess, grep\n- inputfile()  -> 5 tools (text input): regexp2fst, txt2fst, tokenize, strings2fst, pmatch2fst\n- firstfile()/secondfile() -> 2 tools (binary text input): compare, compose-intersect\n- message_out() -> 58 tools, but almost entirely the shared print_usage / program-options SCAFFOLDING (hfst_program_options.rs printers), not per-tool data output.\n\nOPENING happens in inc.rs (check_unary/binary_params) via hfst_commandline::hfst_fopen -> *mut FILE, assigned to the globals; stdin/stdout come from the extern __stdinp/__stdoutp statics (globals.rs stdin_file/stdout_file).\n\nAPPROACH (per-tool std streams, matches the lifted strip-header/expand-equivalences pattern; avoids one atomic 600-edit commit): tools open their own std streams from the *FILENAME globals and thread Box<dyn BufRead>/Box<dyn Write> into the lib; the FILE* statics + accessors + hfst_fopen + extern __std*p are removed in a final chunk once unused. Each tool's input loop is its OWN de-C-ism (regexp2fst uses hfst_getdelim; txt2fst uses libc::feof loops; strings2fst uses hfst_getline) — not a uniform sweep.\n\nCHUNKS (accumulate as progress commits):\n1. DONE this commit: add globals::input_reader()->Box<dyn BufRead> / output_writer()->Box<dyn Write> (resolve INPUTFILENAME/OUTFILENAME with \"<stdin>\"/\"<stdout>\" sentinels); route strip-header through them (removed its inline File-opening).\n2. message_out() / print_usage scaffolding -> a message writer (the 58-tool path; mostly mechanical, touches each print_usage + the program-options printers).\n3. output tools (13): fput(outfile(),..) -> write!(output_writer(),..).\n4. input tools (5) + binary (2): per-tool getline/getdelim/feof loops -> BufRead.\n5. drop-file-libc: remove FILE* statics/accessors/hfst_fopen/extern __std*p; gate = zero libc::FILE in hfst-cli foundation. Subsumes idiom2.cli's FILE* I/O."
                     }
+
+                    {
+                        at 2026-06-29T17:15:13.930502Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 

@@ -511,18 +511,16 @@ impl XfstCompiler {
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fopen-fn]
     /* A wrapper around file open function. */
     pub fn xfst_fopen(&mut self, path: &str, mode: &str) {
-        let c_path = std::ffi::CString::new(path).unwrap();
-        let c_mode = std::ffi::CString::new(mode).unwrap();
-        let f = unsafe { crate::hfst_data_types::hfst_fopen(c_path.as_ptr(), c_mode.as_ptr()) };
-        if f.is_null() {
-            eprintln!("could not open file {}", path);
-            self.flush();
-            self.xfst_fail();
-        } else {
-            // The redesigned signature returns no handle, so the freshly opened
-            // file is closed again here.
-            unsafe {
-                libc::fclose(f);
+        match crate::hfst_data_types::hfst_fopen(path, mode) {
+            Err(_) => {
+                eprintln!("could not open file {}", path);
+                self.flush();
+                self.xfst_fail();
+            }
+            Ok(f) => {
+                // The redesigned signature returns no handle, so the freshly
+                // opened file is closed again here (dropped).
+                drop(f);
             }
         }
     }
@@ -611,21 +609,18 @@ impl XfstCompiler {
             return std::ptr::null_mut();
         }
 
-        let c_filename = std::ffi::CString::new(filename).unwrap();
-        let mode = std::ffi::CString::new("r").unwrap();
-        let infile =
-            unsafe { crate::hfst_data_types::hfst_fopen(c_filename.as_ptr(), mode.as_ptr()) };
-        if infile.is_null() {
-            eprintln!("Could not open file {}", filename);
-            self.flush();
-            self.xfst_fail();
-            return std::ptr::null_mut();
-        }
-        if unsafe { libc::fclose(infile) } != 0 {
-            eprintln!("Could not close file {}", filename);
-            self.flush();
-            self.xfst_fail();
-            return std::ptr::null_mut();
+        match crate::hfst_data_types::hfst_fopen(filename, "r") {
+            Err(_) => {
+                eprintln!("Could not open file {}", filename);
+                self.flush();
+                self.xfst_fail();
+                return std::ptr::null_mut();
+            }
+            Ok(infile) => {
+                // close the probe handle (the real read goes through
+                // HfstInputStream below); dropping cannot fail.
+                drop(infile);
+            }
         }
 
         // try { new HfstInputStream(infilename) } catch (NotTransducerStreamException)
@@ -5629,34 +5624,30 @@ impl XfstCompiler {
         if !self.check_filename(filename) {
             return self;
         }
-        let c_filename = std::ffi::CString::new(filename).unwrap();
-        let mode = std::ffi::CString::new("r").unwrap();
-        let infile =
-            unsafe { crate::hfst_data_types::hfst_fopen(c_filename.as_ptr(), mode.as_ptr()) };
-        if infile.is_null() {
-            eprintln!("could not read att file {}", filename);
-            self.xfst_fail();
-            self.prompt();
-            return self;
-        }
+        let infile = match std::fs::File::open(filename) {
+            Ok(f) => f,
+            Err(_) => {
+                eprintln!("could not read att file {}", filename);
+                self.xfst_fail();
+                self.prompt();
+                return self;
+            }
+        };
+        let mut reader = std::io::BufReader::new(infile);
 
         let att_eps = self.variables_["att-epsilon"].clone();
         let att_eps_default = att_eps == "@0@ | @_EPSILON_SYMBOL_@";
         let fmt = self.format_;
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let r: &mut HfstTransducer = if att_eps_default {
-                unsafe {
-                    HfstTransducer::read_in_att_format_file(
-                        infile,
-                        fmt,
-                        crate::hfst_symbol_defs::internal_epsilon,
-                        false,
-                    )
-                }
+                HfstTransducer::read_in_att_format_file(
+                    &mut reader,
+                    fmt,
+                    crate::hfst_symbol_defs::internal_epsilon,
+                    false,
+                )
             } else {
-                unsafe {
-                    HfstTransducer::read_in_att_format_file(infile, fmt, &att_eps, false) // XXX
-                }
+                HfstTransducer::read_in_att_format_file(&mut reader, fmt, &att_eps, false) // XXX
             };
             // recover ownership of the heap transducer the reader leaked (Box::leak)
             unsafe { *Box::from_raw(std::ptr::from_mut(r)) }
@@ -5669,17 +5660,9 @@ impl XfstCompiler {
                 self.print_transducer_info();
             }
             Err(_e) => {
-                if unsafe { libc::fclose(infile) } != 0 {
-                    eprintln!("Could not close file {}", filename);
-                }
-
                 eprintln!("error reading in att format");
                 self.xfst_fail();
             }
-        }
-        if unsafe { libc::fclose(infile) } != 0 {
-            eprintln!("could not close att file {}", filename);
-            self.xfst_fail();
         }
         self.prompt();
         self

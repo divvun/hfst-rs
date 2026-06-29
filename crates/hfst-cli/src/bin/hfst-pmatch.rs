@@ -13,8 +13,8 @@ use hfst::pmatch::PmatchContainer;
 use hfst::transducer::{INFINITE_WEIGHT, IStream, Weight};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_fopen, hfst_getline, hfst_set_program_name,
-    hfst_setlocale, hfst_strdup, print_more_info, print_report_bugs,
+    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, hfst_setlocale, hfst_strdup,
+    print_more_info, print_report_bugs,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -24,6 +24,7 @@ use hfst_cli::hfst_program_options::{
 use hfst_cli::inc::{CaseResult, handle_common_case, handle_error_case, handle_unary_case};
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::io::{BufRead, Write};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
@@ -35,26 +36,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
-}
-
-// 'std::cout' as a FILE* (the C tool passes std::cout as the output stream).
-fn stdout_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
-        static mut stdout: *mut libc::FILE;
-    }
-    unsafe { stdout }
-}
-
-fn stdin_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-        static mut stdin: *mut libc::FILE;
-    }
-    unsafe { stdin }
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 static mut BLANKLINE_SEPARATED: bool = true;
@@ -94,18 +77,19 @@ static mut PROFILE: bool = false;
 unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] TRANSDUCER\nperform matching/lookup on text streams\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Pmatch options:\n\
              \x20 -n  --newline           Newline as input separator (default is blank line)\n\
              \x20 -x  --extract-patterns  Only print tagged parts in output\n\
@@ -120,15 +104,12 @@ unsafe fn print_usage() {
              \x20 -t, --time-cutoff=S     Limit search after having used S seconds per input\n\
              \x20 -p  --profile           Produce profiling data\n",
         );
-        fput(
-            globals::message_out(),
-            "Use standard streams for input and output.\n\n",
-        );
+        fput(&mut *msg, "Use standard streams for input and output.\n\n");
 
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
     }
 }
 
@@ -136,7 +117,7 @@ unsafe fn print_usage() {
 // [spec:hfst:sem:hfst-pmatch.match-and-print-fn]
 unsafe fn match_and_print(
     container: &mut PmatchContainer,
-    outstream: *mut libc::FILE,
+    outstream: &mut dyn Write,
     input_text: &mut String,
 ) {
     unsafe {
@@ -146,12 +127,12 @@ unsafe fn match_and_print(
         }
         if !container.is_in_locate_mode() {
             fput(
-                outstream,
+                &mut *outstream,
                 &container.match_(input_text, TIME_CUTOFF, WEIGHT_CUTOFF),
             );
-            fput(outstream, "\n");
+            fput(&mut *outstream, "\n");
             if BLANKLINE_SEPARATED {
-                fput(outstream, "\n");
+                fput(&mut *outstream, "\n");
             }
         } else {
             let locations = container.locate(input_text, TIME_CUTOFF, WEIGHT_CUTOFF);
@@ -160,7 +141,7 @@ unsafe fn match_and_print(
                 if it[0].output != "@_NONMATCHING_@" {
                     printed_something = true;
                     fput(
-                        outstream,
+                        &mut *outstream,
                         &format!(
                             "{}|{}|{}|{}",
                             it[0].start, it[0].length, it[0].output, it[0].tag
@@ -170,13 +151,13 @@ unsafe fn match_and_print(
                     // so 'on' (discriminant 0) is false and only off/not_defined
                     // are truthy.
                     if (PRINT_WEIGHTS as i32) != 0 {
-                        fput(outstream, &format!("|{}", it[0].weight));
+                        fput(&mut *outstream, &format!("|{}", it[0].weight));
                     }
-                    fput(outstream, "\n");
+                    fput(&mut *outstream, "\n");
                 }
             }
             if printed_something {
-                fput(outstream, "\n");
+                fput(&mut *outstream, "\n");
             }
         }
     }
@@ -184,47 +165,50 @@ unsafe fn match_and_print(
 
 // [spec:hfst:def:hfst-pmatch.process-input-fn]
 // [spec:hfst:sem:hfst-pmatch.process-input-fn]
-unsafe fn process_input(container: &mut PmatchContainer, outstream: *mut libc::FILE) -> c_int {
+unsafe fn process_input(container: &mut PmatchContainer, outstream: &mut dyn Write) -> c_int {
     unsafe {
         let mut input_text = String::new();
-        let mut line: *mut c_char = std::ptr::null_mut();
-        let mut len: usize = 0;
+        let stdin = std::io::stdin();
+        let mut input = stdin.lock();
         loop {
             // The HAVE_READLINE/isatty branch is compiled out in this build; the
-            // active path reads with hfst_getline from stdin.
-            if !(hfst_getline(&mut line, &mut len, stdin_file()) > 0) {
+            // active path reads with hfst_getline from stdin. read_until(b'\n')
+            // mirrors getline's byte semantics; cstr did a lossy UTF-8 conversion.
+            let mut raw_bytes: Vec<u8> = Vec::new();
+            let read = match input.read_until(b'\n', &mut raw_bytes) {
+                Ok(n) => n,
+                Err(_) => 0,
+            };
+            if !(read > 0) {
                 break;
             }
 
-            let line_str = cstr(line);
+            let line_str = String::from_utf8_lossy(&raw_bytes).into_owned();
             let line_bytes = line_str.as_bytes();
             if !BLANKLINE_SEPARATED {
                 // newline separated
                 input_text = line_str.clone();
-                match_and_print(container, outstream, &mut input_text);
+                match_and_print(container, &mut *outstream, &mut input_text);
             } else if line_bytes.is_empty() || line_bytes[0] == b'\n' {
-                match_and_print(container, outstream, &mut input_text);
+                match_and_print(container, &mut *outstream, &mut input_text);
                 input_text.clear();
             } else {
                 input_text.push_str(&line_str);
             }
-
-            libc::free(line as *mut libc::c_void);
-            line = std::ptr::null_mut();
         }
 
         if BLANKLINE_SEPARATED && !input_text.is_empty() {
-            match_and_print(container, outstream, &mut input_text);
+            match_and_print(container, &mut *outstream, &mut input_text);
         }
         if COUNT_PATTERNS == VarVal::On {
             fput(
-                outstream,
+                &mut *outstream,
                 &format!("\n{}\n", container.get_pattern_count_info()),
             );
         }
         if PROFILE {
             fput(
-                outstream,
+                &mut *outstream,
                 &format!("\n{}\n", container.get_profiling_info()),
             );
         }
@@ -365,8 +349,10 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 libc::EXIT_FAILURE
             } else {
                 globals::INPUTFILENAME = hfst_strdup(*argv.offset(getopt::OPTIND as isize));
-                globals::INPUTFILE = hfst_fopen(&cstr(globals::INPUTFILENAME), "r");
-                if globals::INPUTFILE == stdin_file() {
+                // C: inputfile = hfst_fopen(inputfilename, "r"); if it resolves to
+                // stdin ("-"), reset the name to "<stdin>". The actual archive is
+                // (re)opened in real_main, so only the "-" detection is kept.
+                if cstr(globals::INPUTFILENAME) == "-" {
                     libc::free(globals::INPUTFILENAME as *mut libc::c_void);
                     let stdin_name = CString::new("<stdin>").unwrap();
                     globals::INPUTFILENAME = hfst_strdup(stdin_name.as_ptr());
@@ -450,6 +436,17 @@ unsafe fn real_main() -> c_int {
             container.set_max_recursion(MAX_RECURSION as usize);
         }
         container.set_profile(PROFILE);
-        process_input(&mut container, stdout_file())
+        // The C passes std::cout as the output stream; the foundation's
+        // output_writer() maps OUTFILENAME (defaulting to "<stdout>") to stdout.
+        let mut out = match globals::output_writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("hfst-pmatch: cannot open output: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
+        let rv = process_input(&mut container, &mut *out);
+        let _ = out.flush();
+        rv
     }
 }

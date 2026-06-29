@@ -11,8 +11,8 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_fopen, hfst_set_program_name,
-    hfst_strdup, is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
+    EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_set_program_name, hfst_strdup,
+    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -29,7 +29,10 @@ use std::ffi::{CStr, CString};
 static mut ONLY_FROM_LABEL: *mut c_char = std::ptr::null_mut();
 static mut ONLY_TO_LABEL: *mut c_char = std::ptr::null_mut();
 static mut ACX_FILE_NAME: *mut c_char = std::ptr::null_mut();
-static mut ACX_FILE: *mut libc::FILE = std::ptr::null_mut();
+// C: ACX_FILE was a 'FILE*' opened by hfst_fopen and only ever tested for
+// non-null (the libxml ACX-parsing body compiles to nothing without libxml).
+// Here it is just an "opened" flag.
+static mut ACX_FILE_OPENED: bool = false;
 static mut TSV_FILE_NAME: *mut c_char = std::ptr::null_mut();
 
 // FsaLevel, the TSV reader, and the extension/compose loop now live in
@@ -48,27 +51,27 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-expand-equivalences.print-usage-fn]
 // [spec:hfst:sem:hfst-expand-equivalences.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nExtend transducer arcs for equivalence classes\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Eqv. class extension options:\n\
              \x20 -f, --from=ISYM     convert single symbol ISYM to allow OSYM\n\
              \x20 -t, --to=OSYM       convert to OSYM\n\
@@ -76,16 +79,16 @@ unsafe fn print_usage() {
              \x20 -T, --tsv=TSVFILE   read extensions in tsv format from TSVFILE\n\
              \x20 -l, --level=LEVEL   perform extensions on LEVEL of fsa\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Either ACXFILE, TSVFILE or both ISYM and OSYM must be specified.\n\
              LEVEL should be either {upper, first, 1, input, surface}, \
              {lower, second, 2, output, analysis} or both.\n\
              If LEVEL is omitted, default is first.\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Examples:\n\
                  \x20 {} -o rox.hfst -a romanian.acx ro.hfst  extend romanian char\
@@ -259,7 +262,13 @@ unsafe fn check_options(_argc: c_int, _argv: *mut *mut c_char) {
             // is reported there (slightly later than the C++, which fopen'd it at
             // this point) with the same fatal error.
         } else if !ACX_FILE_NAME.is_null() {
-            ACX_FILE = hfst_fopen(&cstr(ACX_FILE_NAME), "r");
+            let name = cstr(ACX_FILE_NAME);
+            match std::fs::File::open(&name) {
+                Ok(_f) => ACX_FILE_OPENED = true,
+                Err(_) => {
+                    error(libc::EXIT_FAILURE, 0, &format!("Could not open '{}'", name));
+                }
+            }
         } else {
             error(libc::EXIT_FAILURE, 0, "Logic error again!");
         }
@@ -310,7 +319,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                         return;
                     }
                 }
-            } else if !ACX_FILE.is_null() {
+            } else if ACX_FILE_OPENED {
                 verbose_printf(&format!("Reading ACX from {}...\n", cstr(ACX_FILE_NAME)));
                 // The libxml ACX-parsing body is gated behind #if HAVE_LIBXML_TREE_H
                 // in the C++ source; without libxml it compiles to nothing, which
@@ -353,14 +362,8 @@ unsafe fn real_main() -> c_int {
         check_options(argc, argv);
 
         // close buffers, we use streams
-        let input_opened = !globals::INPUTFILE.is_null();
-        let output_opened = !globals::OUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
+        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),

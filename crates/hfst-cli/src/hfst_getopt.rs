@@ -131,11 +131,8 @@ pub unsafe fn getopt_long(
                 if (*longopts).has_arg == NO_ARGUMENT {
                     // argument given for an option that does not take one
                     if eq_used {
-                        libc::fprintf(
-                            stderr_file(),
-                            c"warning: argument ignored for option '--%s'\n".as_ptr(),
-                            (*longopts).name,
-                        );
+                        let name = std::ffi::CStr::from_ptr((*longopts).name).to_string_lossy();
+                        eprint!("warning: argument ignored for option '--{}'\n", name);
                     }
                     return (*longopts).val;
                 }
@@ -187,13 +184,4 @@ pub unsafe fn getopt_long(
         }
         b'?' as c_int
     }
-}
-
-// 'stderr' as a FILE* for the faithful fprintf above.
-fn stderr_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stderrp")]
-        static mut stderr: *mut libc::FILE;
-    }
-    unsafe { stderr }
 }

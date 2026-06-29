@@ -8,18 +8,15 @@
 use crate::hfst_commandline::GETOPT_COLOUR;
 use crate::hfst_getopt::{NO_ARGUMENT, OPTIONAL_ARGUMENT, Option, REQUIRED_ARGUMENT};
 use libc::c_int;
+use std::io::Write;
 
 // All programs
 // [spec:hfst:def:hfst-program-options.print-common-program-options-fn]
 // [spec:hfst:sem:hfst-program-options.print-common-program-options-fn]
-pub unsafe fn print_common_program_options(file: *mut libc::FILE) {
-    unsafe {
-        libc::fprintf(
-            file,
-            c"Common options:\n  -h, --help             Print help message\n  -V, --version          Print version info\n  -v, --verbose          Print verbosely while processing\n  -q, --quiet            Only print fatal erros and requested output\n  -s, --silent           Alias of --quiet\n      --colour[=WHEN]    Print in colour WHEN:\n      --color[=WHEN]     always, never, auto (default)\n"
-                .as_ptr(),
-        );
-    }
+pub fn print_common_program_options(file: &mut dyn Write) {
+    let _ = file.write_all(
+        b"Common options:\n  -h, --help             Print help message\n  -V, --version          Print version info\n  -v, --verbose          Print verbosely while processing\n  -q, --quiet            Only print fatal erros and requested output\n  -s, --silent           Alias of --quiet\n      --colour[=WHEN]    Print in colour WHEN:\n      --color[=WHEN]     always, never, auto (default)\n",
+    );
 }
 
 // One transducer to one transducer:
@@ -39,26 +36,18 @@ pub unsafe fn print_common_program_options(file: *mut libc::FILE) {
 //   weighted2unweighted
 // [spec:hfst:def:hfst-program-options.print-common-unary-program-options-fn]
 // [spec:hfst:sem:hfst-program-options.print-common-unary-program-options-fn]
-pub unsafe fn print_common_unary_program_options(file: *mut libc::FILE) {
-    unsafe {
-        libc::fprintf(
-            file,
-            c"Input/Output options:\n  -i, --input=INFILE     Read input transducer from INFILE\n  -o, --output=OUTFILE   Write output transducer to OUTFILE\n"
-                .as_ptr(),
-        );
-    }
+pub fn print_common_unary_program_options(file: &mut dyn Write) {
+    let _ = file.write_all(
+        b"Input/Output options:\n  -i, --input=INFILE     Read input transducer from INFILE\n  -o, --output=OUTFILE   Write output transducer to OUTFILE\n",
+    );
 }
 
 // [spec:hfst:def:hfst-program-options.print-common-unary-program-parameter-instructions-fn]
 // [spec:hfst:sem:hfst-program-options.print-common-unary-program-parameter-instructions-fn]
-pub unsafe fn print_common_unary_program_parameter_instructions(file: *mut libc::FILE) {
-    unsafe {
-        libc::fprintf(
-            file,
-            c"If OUTFILE or INFILE is missing or -, standard streams will be used.\nFormat of result depends on format of INFILE\n"
-                .as_ptr(),
-        );
-    }
+pub fn print_common_unary_program_parameter_instructions(file: &mut dyn Write) {
+    let _ = file.write_all(
+        b"If OUTFILE or INFILE is missing or -, standard streams will be used.\nFormat of result depends on format of INFILE\n",
+    );
 }
 
 // One transducer to text:
@@ -69,7 +58,7 @@ pub unsafe fn print_common_unary_program_parameter_instructions(file: *mut libc:
 //
 // Declared in hfst-program-options.h but never defined in the C sources; ported
 // as an empty-body stub for the same absent semantics (nothing is printed).
-pub unsafe fn print_common_unary_string_program_options(_file: *mut libc::FILE) {}
+pub fn print_common_unary_string_program_options(_file: &mut dyn Write) {}
 
 // Two transducers to one transducer
 //   compose
@@ -78,32 +67,21 @@ pub unsafe fn print_common_unary_string_program_options(_file: *mut libc::FILE) 
 //   disjunct,
 // [spec:hfst:def:hfst-program-options.print-common-binary-program-options-fn]
 // [spec:hfst:sem:hfst-program-options.print-common-binary-program-options-fn]
-pub unsafe fn print_common_binary_program_options(file: *mut libc::FILE) {
-    unsafe {
-        libc::fprintf(
-            file,
-            c"Input/Output options:\n  -1, --input1=INFILE1   Read first input transducer from INFILE1\n  -2, --input2=INFILE2   Read second input transducer from INFILE2\n  -C, --do-not-convert   Do not allow transducers to be converted into the same type\n  -o, --output=OUTFILE   Write results to OUTFILE\n"
-                .as_ptr(),
-        );
-    }
+pub fn print_common_binary_program_options(file: &mut dyn Write) {
+    let _ = file.write_all(
+        b"Input/Output options:\n  -1, --input1=INFILE1   Read first input transducer from INFILE1\n  -2, --input2=INFILE2   Read second input transducer from INFILE2\n  -C, --do-not-convert   Do not allow transducers to be converted into the same type\n  -o, --output=OUTFILE   Write results to OUTFILE\n",
+    );
 }
 
 // [spec:hfst:def:hfst-program-options.print-common-binary-program-parameter-instructions-fn]
 // [spec:hfst:sem:hfst-program-options.print-common-binary-program-parameter-instructions-fn]
-pub unsafe fn print_common_binary_program_parameter_instructions(file: *mut libc::FILE) {
-    unsafe {
-        libc::fprintf(
-            file,
-            c"If OUTFILE, or either INFILE1 or INFILE2 is missing or -,\nstandard streams will be used.\nINFILE1, INFILE2, or both, must be specified.\nFormat of result depends on format of INFILE1 and INFILE2;\nboth should have the same format.\n"
-                .as_ptr(),
-        );
-
-        libc::fprintf(
-            file,
-            c"\nThe operation is applied pairwise for INFILE1 and INFILE2\nthat must have the same number of transducers.\nIf INFILE2 has only one transducer, the operation is applied for\neach transducer in INFILE1 keeping the second transducer constant.\n"
-                .as_ptr(),
-        );
-    }
+pub fn print_common_binary_program_parameter_instructions(file: &mut dyn Write) {
+    let _ = file.write_all(
+        b"If OUTFILE, or either INFILE1 or INFILE2 is missing or -,\nstandard streams will be used.\nINFILE1, INFILE2, or both, must be specified.\nFormat of result depends on format of INFILE1 and INFILE2;\nboth should have the same format.\n",
+    );
+    let _ = file.write_all(
+        b"\nThe operation is applied pairwise for INFILE1 and INFILE2\nthat must have the same number of transducers.\nIf INFILE2 has only one transducer, the operation is applied for\neach transducer in INFILE1 keeping the second transducer constant.\n",
+    );
 }
 
 // ----------------------------------------------------------------------------

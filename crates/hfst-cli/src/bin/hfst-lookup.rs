@@ -38,13 +38,22 @@ use hfst_cli::inc::{
 };
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::io::{BufRead, Write};
 
 // ---------------------------------------------------------------------------
 // tools-specific global state (the C++ file's static variables)
 // ---------------------------------------------------------------------------
 
 static mut LOOKUP_FILE_NAME: *mut c_char = std::ptr::null_mut();
-static mut LOOKUP_FILE: *mut libc::FILE = std::ptr::null_mut();
+// The lookup-strings input. In the C this was a FILE* (a named file from -I, or
+// stdin); after the io-foundation de-C-ism it is a std::io::BufRead. LOOKUP_GIVEN
+// records whether -I named a file (so the seekable file-size progress bar and the
+// interactive prompt know which mode they are in).
+static mut LOOKUP_READER: Option<Box<dyn BufRead>> = None;
+
+fn lookup_reader() -> &'static mut Option<Box<dyn BufRead>> {
+    unsafe { &mut *std::ptr::addr_of_mut!(LOOKUP_READER) }
+}
 static mut PIPE_INPUT: bool = false;
 static mut PIPE_OUTPUT: bool = false;
 static mut LINEN: usize = 0;
@@ -188,25 +197,8 @@ unsafe fn strdup_str(s: &str) -> *mut c_char {
     unsafe { libc::strdup(c.as_ptr()) }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
-}
-
-unsafe fn stdin_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-        static mut stdin: *mut libc::FILE;
-    }
-    unsafe { stdin }
-}
-
-unsafe fn stdout_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
-        static mut stdout: *mut libc::FILE;
-    }
-    unsafe { stdout }
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-lookup.print-usage-fn]
@@ -214,9 +206,10 @@ unsafe fn stdout_file() -> *mut libc::FILE {
 unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\n\
                  perform transducer lookup (apply)\n\
@@ -228,9 +221,9 @@ unsafe fn print_usage() {
             ),
         );
 
-        print_common_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Input/Output options:\n\
              \x20 -i, --input=INFILE       Read input transducer from INFILE\n\
              \x20 -o, --output=OUTFILE     Write output to OUTFILE\n\
@@ -238,7 +231,7 @@ unsafe fn print_usage() {
         );
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Lookup options:\n\
              \x20 -I, --input-strings=SFILE        Read lookup strings from SFILE\n\
              \x20 -O, --output-format=OFORMAT      Use OFORMAT printing results sets\n\
@@ -257,10 +250,10 @@ unsafe fn print_usage() {
              \x20 -C, --cascade=CASCADE            How multiple transducers in input are handled\n\
              \x20 -P, --progress                   Show neat progress bar if possible\n",
         );
-        fput(globals::message_out(), "\n");
-        print_common_unary_program_parameter_instructions(globals::message_out());
+        fput(&mut *msg, "\n");
+        print_common_unary_program_parameter_instructions(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "OFORMAT is one of {xerox,cg,apertium}, xerox being default\n\
              IFORMAT is one of {text,spaced,apertium}, default being text,\n\
              unless OFORMAT is apertium\n\
@@ -273,41 +266,41 @@ unsafe fn print_usage() {
              If the input contains several transducers, a set containing\n\
              results from all transducers is printed for each input string.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             "CASCADE must be one of { union, priority-union, composition }.\n\
              If not specified, defaults to {union}.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             "STREAM can be { input, output, both }. If not given, defaults to {both}.\n\
              If input file is not specified with -I, input is read interactively line by\n\
              line from the user. If you redirect input from a file, use --pipe-mode=input.\n\
              --pipe-mode=output is ignored on non-windows platforms.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Todo:\n\
              \x20 Support --xfst=obey-flags for optimized lookup format.\n\
              \x20 Support --cycles for optimized lookup format.\n",
         );
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             "\n\
              Known bugs:\n\
              \x20 'quote-special' quotes spaces that come from 'print-space'\n",
         );
 
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -385,8 +378,12 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             match c as u8 {
                 b'I' => {
                     LOOKUP_FILE_NAME = strdup_str(&optarg);
-                    let mode = CString::new("r").unwrap();
-                    LOOKUP_FILE = libc::fopen(LOOKUP_FILE_NAME, mode.as_ptr());
+                    // C: lookup_file = fopen(lookup_file_name, "r"); open the named
+                    // file as a buffered std reader instead.
+                    match std::fs::File::open(&optarg) {
+                        Ok(f) => *lookup_reader() = Some(Box::new(std::io::BufReader::new(f))),
+                        Err(_) => *lookup_reader() = None,
+                    }
                     LOOKUP_GIVEN = true;
                 }
                 b'O' => {
@@ -575,7 +572,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
 
         if !LOOKUP_GIVEN {
-            LOOKUP_FILE = stdin_file();
+            *lookup_reader() = Some(Box::new(std::io::BufReader::new(std::io::stdin())));
             LOOKUP_FILE_NAME = strdup_str("<stdin>");
         }
         check_common_params();
@@ -601,7 +598,7 @@ unsafe fn lookup_printf(
     input: Option<&HfstOneLevelPath>,
     result: Option<&HfstOneLevelPath>,
     markup: Option<&str>,
-    ofile: *mut libc::FILE,
+    ofile: &mut dyn Write,
 ) -> c_int {
     unsafe {
         let epsilon_format = cstr(EPSILON_FORMAT);
@@ -882,10 +879,10 @@ unsafe fn get_print_format(s: &str) -> String {
 
 // [spec:hfst:def:hfst-lookup.print-lookup-string-fn]
 // [spec:hfst:sem:hfst-lookup.print-lookup-string-fn]
-unsafe fn print_lookup_string(s: &StringVector) {
+unsafe fn print_lookup_string(s: &StringVector, out: &mut dyn Write) {
     unsafe {
         for it in s.iter() {
-            fput(globals::outfile(), &get_print_format(it));
+            fput(&mut *out, &get_print_format(it));
         }
     }
 }
@@ -933,6 +930,7 @@ unsafe fn lookup_fd_and_print(
     print_fail: bool,
     input_to_print: Option<&HfstOneLevelPath>,
     no_newline: bool,
+    out: &mut dyn Write,
 ) {
     unsafe {
         // If we want a StringPairVector representation
@@ -968,11 +966,8 @@ unsafe fn lookup_fd_and_print(
             if results_spv.is_empty() {
                 if print_fail {
                     let input = get_lookup_string(&s.second);
-                    fput(
-                        globals::outfile(),
-                        &format!("{}\t{}+?\tinf\n\n", input, input),
-                    );
-                    libc::fflush(globals::outfile());
+                    fput(&mut *out, &format!("{}\t{}+?\tinf\n\n", input, input));
+                    let _ = out.flush();
                 }
             } else {
                 let mut lowest_weight: f32 = -1.0;
@@ -985,20 +980,20 @@ unsafe fn lookup_fd_and_print(
                     if BEAM < 0.0 || it.first <= (lowest_weight + BEAM) {
                         // print the lookup string
                         if let Some(itp) = input_to_print {
-                            print_lookup_string(&itp.second);
+                            print_lookup_string(&itp.second, &mut *out);
                         } else {
-                            print_lookup_string(&s.second);
+                            print_lookup_string(&s.second, &mut *out);
                         }
-                        fput(globals::outfile(), "\t");
+                        fput(&mut *out, "\t");
                         // and the path that yielded the result string
                         let mut first_pair = true;
                         for it2 in it.second.iter() {
                             if SHOW_FLAGS || !FdOperation::is_diacritic(&it2.1) {
                                 if PRINT_SPACE && !first_pair {
-                                    fput(globals::outfile(), " ");
+                                    fput(&mut *out, " ");
                                 }
                                 fput(
-                                    globals::outfile(),
+                                    &mut *out,
                                     &format!(
                                         "{}:{}",
                                         get_print_format(&it2.0),
@@ -1009,17 +1004,14 @@ unsafe fn lookup_fd_and_print(
                             }
                         }
                         // and the weight of that path (add the weight of input)
-                        fput(
-                            globals::outfile(),
-                            &format!("\t{:.6}\n", it.first + s.first),
-                        );
+                        fput(&mut *out, &format!("\t{:.6}\n", it.first + s.first));
                     }
                 }
                 if !no_newline {
-                    fput(globals::outfile(), "\n");
+                    fput(&mut *out, "\n");
                 }
             }
-            libc::fflush(globals::outfile());
+            let _ = out.flush();
         }
 
         // Convert HfstTwoLevelPaths into HfstOneLevelPaths
@@ -1048,6 +1040,7 @@ unsafe fn lookup_simple_ol(
     print_fail: bool,
     input_to_print: Option<&HfstOneLevelPath>,
     no_newline: bool,
+    out: &mut dyn Write,
 ) -> HfstOneLevelPaths {
     unsafe {
         let mut results: HfstOneLevelPaths = HfstOneLevelPaths::new();
@@ -1090,6 +1083,7 @@ unsafe fn lookup_simple_ol(
                     print_fail,
                     input_to_print,
                     no_newline,
+                    &mut *out,
                 );
             } else {
                 results = t.lookup_fd_string_vector(&s.second, maxnum, TIME_CUTOFF);
@@ -1106,6 +1100,7 @@ unsafe fn lookup_simple_ol(
                 print_fail,
                 input_to_print,
                 no_newline,
+                &mut *out,
             );
         } else {
             results = t.lookup_fd_string_vector(&s.second, MAX_NUMBER, TIME_CUTOFF);
@@ -1128,6 +1123,7 @@ unsafe fn lookup_simple_basic(
     print_fail: bool,
     input_to_print: Option<&HfstOneLevelPath>,
     no_newline: bool,
+    out: &mut dyn Write,
 ) -> HfstOneLevelPaths {
     unsafe {
         let mut results: HfstOneLevelPaths = HfstOneLevelPaths::new();
@@ -1159,6 +1155,7 @@ unsafe fn lookup_simple_basic(
                 print_fail,
                 input_to_print,
                 no_newline,
+                &mut *out,
             );
             *infinity = true;
         } else {
@@ -1172,6 +1169,7 @@ unsafe fn lookup_simple_basic(
                 print_fail,
                 input_to_print,
                 no_newline,
+                &mut *out,
             );
         }
 
@@ -1187,6 +1185,7 @@ unsafe fn lookup_cascading_ol(
     s: &HfstOneLevelPath,
     cascade: &[HfstTransducer],
     infinity: &mut bool,
+    out: &mut dyn Write,
 ) -> HfstOneLevelPaths {
     unsafe {
         let mut results: HfstOneLevelPaths = HfstOneLevelPaths::new();
@@ -1208,6 +1207,7 @@ unsafe fn lookup_cascading_ol(
                         false,
                         Some(s),
                         true,
+                        &mut *out,
                     );
                     for inner in one_result.iter() {
                         // add the weights
@@ -1227,18 +1227,24 @@ unsafe fn lookup_cascading_ol(
                         for it in s.second.iter() {
                             input += it;
                         }
-                        fput(
-                            globals::outfile(),
-                            &format!("{}\t{}+?\tinf\n\n", input, input),
-                        );
+                        fput(&mut *out, &format!("{}\t{}+?\tinf\n\n", input, input));
                     } else {
-                        fput(globals::outfile(), "\n");
+                        fput(&mut *out, "\n");
                     }
-                    libc::fflush(globals::outfile());
+                    let _ = out.flush();
                 }
                 result = composed;
             } else {
-                result = lookup_simple_ol(s, &cascade[i], infinity, false, false, None, false);
+                result = lookup_simple_ol(
+                    s,
+                    &cascade[i],
+                    infinity,
+                    false,
+                    false,
+                    None,
+                    false,
+                    &mut *out,
+                );
             }
 
             // (C++ tests 'if (infinity)' on the pointer — always true here.)
@@ -1266,6 +1272,7 @@ unsafe fn lookup_cascading_basic(
     s: &HfstOneLevelPath,
     cascade: &[HfstBasicTransducer],
     infinity: &mut bool,
+    out: &mut dyn Write,
 ) -> HfstOneLevelPaths {
     unsafe {
         let mut results: HfstOneLevelPaths = HfstOneLevelPaths::new();
@@ -1290,6 +1297,7 @@ unsafe fn lookup_cascading_basic(
                         false,
                         Some(s),
                         true,
+                        &mut *out,
                     );
                     for inner in one_result.iter() {
                         // add the weights
@@ -1309,14 +1317,11 @@ unsafe fn lookup_cascading_basic(
                         for it in s.second.iter() {
                             input += it;
                         }
-                        fput(
-                            globals::outfile(),
-                            &format!("{}\t{}+?\tinf\n\n", input, input),
-                        );
+                        fput(&mut *out, &format!("{}\t{}+?\tinf\n\n", input, input));
                     } else {
-                        fput(globals::outfile(), "\n");
+                        fput(&mut *out, "\n");
                     }
-                    libc::fflush(globals::outfile());
+                    let _ = out.flush();
                 }
                 result = composed;
             } else {
@@ -1328,6 +1333,7 @@ unsafe fn lookup_cascading_basic(
                     false,
                     None,
                     false,
+                    &mut *out,
                 );
             }
 
@@ -1359,24 +1365,24 @@ unsafe fn print_lookups(
     markup: Option<&str>,
     outside_sigma: bool,
     inf: bool,
-    ofile: *mut libc::FILE,
+    ofile: &mut dyn Write,
 ) {
     unsafe {
         let mut lowest_weight: f32 = -1.0;
 
         if outside_sigma {
-            lookup_printf(UNKNOWN_BEGIN_SETF, Some(kv), None, markup, ofile);
-            lookup_printf(UNKNOWN_LOOKUPF, Some(kv), None, markup, ofile);
-            lookup_printf(UNKNOWN_END_SETF, Some(kv), None, markup, ofile);
+            lookup_printf(UNKNOWN_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(UNKNOWN_LOOKUPF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(UNKNOWN_END_SETF, Some(kv), None, markup, &mut *ofile);
             NO_ANALYSES += 1;
         } else if kvs.is_empty() {
-            lookup_printf(EMPTY_BEGIN_SETF, Some(kv), None, markup, ofile);
-            lookup_printf(EMPTY_LOOKUPF, Some(kv), None, markup, ofile);
-            lookup_printf(EMPTY_END_SETF, Some(kv), None, markup, ofile);
+            lookup_printf(EMPTY_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(EMPTY_LOOKUPF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(EMPTY_END_SETF, Some(kv), None, markup, &mut *ofile);
             NO_ANALYSES += 1;
         } else if inf {
             ANALYSED += 1;
-            lookup_printf(INFINITE_BEGIN_SETF, Some(kv), None, markup, ofile);
+            lookup_printf(INFINITE_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
             let mut first = true;
             for lkv in kvs.iter() {
                 if first {
@@ -1384,14 +1390,14 @@ unsafe fn print_lookups(
                 }
                 first = false;
                 if BEAM < 0.0 || lkv.first <= (lowest_weight + BEAM) {
-                    lookup_printf(INFINITE_LOOKUPF, Some(kv), Some(lkv), markup, ofile);
+                    lookup_printf(INFINITE_LOOKUPF, Some(kv), Some(lkv), markup, &mut *ofile);
                     ANALYSES += 1;
                 }
             }
-            lookup_printf(INFINITE_END_SETF, Some(kv), None, markup, ofile);
+            lookup_printf(INFINITE_END_SETF, Some(kv), None, markup, &mut *ofile);
         } else {
             ANALYSED += 1;
-            lookup_printf(BEGIN_SETF, Some(kv), None, markup, ofile);
+            lookup_printf(BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
             let mut first = true;
             for lkv in kvs.iter() {
                 if first {
@@ -1399,11 +1405,11 @@ unsafe fn print_lookups(
                 }
                 first = false;
                 if BEAM < 0.0 || lkv.first <= (lowest_weight + BEAM) {
-                    lookup_printf(LOOKUPF, Some(kv), Some(lkv), markup, ofile);
+                    lookup_printf(LOOKUPF, Some(kv), Some(lkv), markup, &mut *ofile);
                     ANALYSES += 1;
                 }
             }
-            lookup_printf(END_SETF, Some(kv), None, markup, ofile);
+            lookup_printf(END_SETF, Some(kv), None, markup, &mut *ofile);
         }
     }
 }
@@ -1413,13 +1419,23 @@ unsafe fn perform_lookups_ol(
     cascade: &[HfstTransducer],
     unknown: bool,
     infinite: &mut bool,
+    out: &mut dyn Write,
 ) -> HfstOneLevelPaths {
     unsafe {
         if !unknown {
             if cascade.len() == 1 {
-                lookup_simple_ol(origin, &cascade[0], infinite, true, true, None, false)
+                lookup_simple_ol(
+                    origin,
+                    &cascade[0],
+                    infinite,
+                    true,
+                    true,
+                    None,
+                    false,
+                    &mut *out,
+                )
             } else {
-                lookup_cascading_ol(origin, cascade, infinite)
+                lookup_cascading_ol(origin, cascade, infinite, &mut *out)
             }
         } else {
             HfstOneLevelPaths::new()
@@ -1434,13 +1450,23 @@ unsafe fn perform_lookups_basic(
     cascade: &[HfstBasicTransducer],
     unknown: bool,
     infinite: &mut bool,
+    out: &mut dyn Write,
 ) -> HfstOneLevelPaths {
     unsafe {
         if !unknown {
             if cascade.len() == 1 {
-                lookup_simple_basic(origin, &cascade[0], infinite, true, true, None, false)
+                lookup_simple_basic(
+                    origin,
+                    &cascade[0],
+                    infinite,
+                    true,
+                    true,
+                    None,
+                    false,
+                    &mut *out,
+                )
             } else {
-                lookup_cascading_basic(origin, cascade, infinite)
+                lookup_cascading_basic(origin, cascade, infinite, &mut *out)
             }
         } else {
             HfstOneLevelPaths::new()
@@ -1448,7 +1474,7 @@ unsafe fn perform_lookups_basic(
     }
 }
 
-unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc::FILE) -> c_int {
+unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn Write) -> c_int {
     unsafe {
         let mut cascade: Vec<HfstTransducer> = Vec::new();
         let mut cascade_mut: Vec<HfstBasicTransducer> = Vec::new();
@@ -1551,22 +1577,35 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
         let mut filesize: i64 = -1;
         if SHOW_PROGRESS_BAR {
             eprint!("Counting file size...\n");
-            libc::fseek(LOOKUP_FILE, 0, libc::SEEK_END);
-            filesize = libc::ftell(LOOKUP_FILE) as i64;
+            // C: fseek(END)/ftell to measure, then rewind. The std reader is read
+            // from the start, so the file's metadata length is the equivalent size
+            // and no rewind is needed.
+            if LOOKUP_GIVEN {
+                if let Ok(md) = std::fs::metadata(&cstr(LOOKUP_FILE_NAME)) {
+                    filesize = md.len() as i64;
+                }
+            }
             eprint!("{}... rewinding\n", filesize);
-            libc::rewind(LOOKUP_FILE);
         }
         print_prompt();
-        let mut filepos: i64 = libc::ftell(LOOKUP_FILE) as i64;
+        // C tracked the read position with ftell(LOOKUP_FILE); the std reader has no
+        // tell, so accumulate the bytes consumed by read_until (the same cumulative
+        // byte count getline+ftell would report).
+        let mut filepos: i64 = 0;
         loop {
-            let mut raw_line: *mut c_char = std::ptr::null_mut();
-            let mut llen: libc::size_t = 0;
-            if libc::getline(&mut raw_line, &mut llen, LOOKUP_FILE) == -1 {
-                libc::free(raw_line as *mut libc::c_void);
-                break;
+            // C: getline reads a raw line (bytes) then cstr does a lossy UTF-8
+            // conversion. read_until(b'\n') mirrors getline's byte semantics.
+            let mut raw_bytes: Vec<u8> = Vec::new();
+            match lookup_reader()
+                .as_mut()
+                .unwrap()
+                .read_until(b'\n', &mut raw_bytes)
+            {
+                Ok(0) => break,
+                Ok(n) => filepos += n as i64,
+                Err(_) => break,
             }
-            line = cstr(raw_line);
-            libc::free(raw_line as *mut libc::c_void);
+            line = String::from_utf8_lossy(&raw_bytes).into_owned();
 
             LINEN += 1;
 
@@ -1575,7 +1614,6 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
                 line.truncate(pos);
             }
             verbose_printf(&format!("Looking up {}...\n", line));
-            filepos = libc::ftell(LOOKUP_FILE) as i64;
             if SHOW_PROGRESS_BAR {
                 if filesize != -1 {
                     eprint!("{} / {}...\r", filepos, filesize);
@@ -1605,9 +1643,9 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
             }
 
             let kvs = if only_optimized_lookup {
-                perform_lookups_ol(&kv, &cascade, unknown, &mut infinite)
+                perform_lookups_ol(&kv, &cascade, unknown, &mut infinite, &mut *outstream)
             } else {
-                perform_lookups_basic(&kv, &cascade_mut, unknown, &mut infinite)
+                perform_lookups_basic(&kv, &cascade_mut, unknown, &mut infinite, &mut *outstream)
             };
 
             if !PRINT_PAIRS {
@@ -1617,8 +1655,8 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
                 } else {
                     Some(markup.as_str())
                 };
-                print_lookups(&kvs, &kv, markup_opt, unknown, infinite, outstream);
-                libc::fflush(outstream);
+                print_lookups(&kvs, &kv, markup_opt, unknown, infinite, &mut *outstream);
+                let _ = outstream.flush();
             }
 
             print_prompt();
@@ -1630,14 +1668,14 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: *mut libc
 
         if PRINT_STATISTICS {
             fput(
-                outstream,
+                &mut *outstream,
                 &format!(
                     "Strings\tFound\tMissing\tResults\n{}\t{}\t{}\t{}\n",
                     INPUTS, ANALYSED, NO_ANALYSES, ANALYSES
                 ),
             );
             fput(
-                outstream,
+                &mut *outstream,
                 &format!(
                     "Coverage\tAmbiguity\n{:.6}\t{:.6}\n",
                     ANALYSED as f32 / INPUTS as f32,
@@ -1682,9 +1720,6 @@ unsafe fn real_main() -> c_int {
         }
 
         // close buffers, we use streams
-        if globals::INPUTFILE != stdin_file() {
-            libc::fclose(globals::INPUTFILE);
-        }
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),
@@ -1718,17 +1753,22 @@ unsafe fn real_main() -> c_int {
         // (C++ wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // emitting "%s is not a valid transducer file" is not reproduced here.)
-        let mut instream = if globals::INPUTFILE != stdin_file() {
+        let mut instream = if cstr(globals::INPUTFILENAME) != "<stdin>" {
             HfstInputStream::new_filename(&cstr(globals::INPUTFILENAME))
         } else {
             HfstInputStream::new()
         };
 
-        process_stream(&mut instream, globals::outfile());
+        let mut out = match globals::output_writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("hfst-lookup: cannot open output: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
+        process_stream(&mut instream, &mut *out);
+        let _ = out.flush();
 
-        if globals::OUTFILE != stdout_file() {
-            libc::fclose(globals::OUTFILE);
-        }
         // (free(inputfilename)/free(outfilename) in C++ are no-ops here.)
         libc::EXIT_SUCCESS
     }

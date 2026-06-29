@@ -42,20 +42,6 @@ static mut ENCODE_WEIGHTS: bool = false;
 static mut FAST_CI: bool = false;
 static mut HARMONIZE: bool = false;
 
-unsafe extern "C" {
-    #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-    static mut stdin_ptr: *mut libc::FILE;
-    #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
-    static mut stdout_ptr: *mut libc::FILE;
-}
-
-fn stdin_file() -> *mut libc::FILE {
-    unsafe { stdin_ptr }
-}
-fn stdout_file() -> *mut libc::FILE {
-    unsafe { stdout_ptr }
-}
-
 unsafe fn cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
         String::new()
@@ -66,29 +52,29 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-compose-intersect.print-usage-fn]
 // [spec:hfst:sem:hfst-compose-intersect.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\n\
                  Compose a lexicon with one or more rule transducers.\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_binary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_binary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Composition options:\n\
              \x20 -I, --invert                 Compose the intersection of the\n\
              \x20                              rules with the lexicon instead\n\
@@ -102,7 +88,7 @@ unsafe fn print_usage() {
         );
         // print_common_binary_program_parameter_instructions(message_out);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "\nIf OUTFILE, or either INFILE1 or INFILE2 is missing or -, standard\n\
              streams will be used. INFILE1, INFILE2, or both, must be specified\n\
              The format of INFILE1 and INFILE2 must be the same; the result will\n\
@@ -111,7 +97,7 @@ unsafe fn print_usage() {
              INFILE2 (rule file) may contain several transducers.\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "\nExamples:\n\
                  \x20 {} -o analyzer.hfst lexicon.hfst rules.hfst\n\
@@ -120,7 +106,7 @@ unsafe fn print_usage() {
             ),
         );
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -346,7 +332,7 @@ unsafe fn compose_streams(
             output_type = type1;
         }
 
-        let mut outstream = if globals::outfile() != stdout_file() {
+        let mut outstream = if cstr(globals::OUTFILENAME) != "<stdout>" {
             HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), output_type, true)
         } else {
             HfstOutputStream::new(output_type, true)
@@ -505,15 +491,6 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        if globals::firstfile() != stdin_file() {
-            libc::fclose(globals::firstfile());
-        }
-        if globals::secondfile() != stdin_file() {
-            libc::fclose(globals::secondfile());
-        }
-        if globals::outfile() != stdout_file() {
-            libc::fclose(globals::outfile());
-        }
         verbose_printf(&format!(
             "Reading from {} and {}, writing to {}\n",
             cstr(globals::FIRSTFILENAME),
@@ -524,12 +501,12 @@ unsafe fn real_main() -> c_int {
         // (the C wraps the ctors in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
-        let mut firststream = if globals::firstfile() != stdin_file() {
+        let mut firststream = if cstr(globals::FIRSTFILENAME) != "<stdin>" {
             HfstInputStream::new_filename(&cstr(globals::FIRSTFILENAME))
         } else {
             HfstInputStream::new()
         };
-        let mut secondstream = if globals::secondfile() != stdin_file() {
+        let mut secondstream = if cstr(globals::SECONDFILENAME) != "<stdin>" {
             HfstInputStream::new_filename(&cstr(globals::SECONDFILENAME))
         } else {
             HfstInputStream::new()

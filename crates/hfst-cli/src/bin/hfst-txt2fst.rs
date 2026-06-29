@@ -25,6 +25,7 @@ use hfst_cli::inc::{
 };
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::io::BufRead;
 
 // ---------------------------------------------------------------------------
 // Tool-global state. C: file-scope static variables.
@@ -55,42 +56,51 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
+}
+
+// Equivalent of the C++ 'feof(inputfile)': no bytes remain on the buffered
+// reader (the readers' own EndOfStreamException paths panic_any internally).
+fn is_eof(input: &mut dyn BufRead) -> bool {
+    match input.fill_buf() {
+        Ok(b) => b.is_empty(),
+        Err(_) => true,
+    }
 }
 
 // [spec:hfst:def:hfst-txt2fst.print-usage-fn]
 // [spec:hfst:sem:hfst-txt2fst.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nConvert AT&T or prolog format into a binary transducer\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Text and format options:\n  -f, --format=FMT    Write result using FMT as backend format\n  -e, --epsilon=EPS   Interpret string EPS as epsilon in att format\n  -p, --prolog        Read prolog format instead of att\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Other options:\n  -C, --check-negative-epsilon-cycles  Issue a warning if there are epsilon cycles\n                                       with a negative weight in the transducer\n  -j, --disjunct                       Disjunct transducers\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If OUTFILE or INFILE is missing or -, standard streams will be used.\nIf FMT is not given, OpenFst's tropical format will be used.\nThe possible values for FMT are { foma, openfst-tropical, openfst-log,\nsfst, optimized-lookup-weighted, optimized-lookup-unweighted }.\nIf EPS is not given, @0@ will be used.\n\nSpace in transition symbols must be escaped as '@_SPACE_@' when using\natt format.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -276,17 +286,16 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
 // [spec:hfst:def:hfst-txt2fst.process-stream-fn]
 // [spec:hfst:sem:hfst-txt2fst.process-stream-fn]
-unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
+unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> c_int {
     unsafe {
         let mut transducer_n: usize = 0;
         let mut linecount: u32 = 0;
 
-        let inputfile = globals::inputfile();
         let inputfilename = cstr(globals::INPUTFILENAME);
         let epsilonname = cstr(EPSILONNAME);
 
         // outstream.open();
-        while libc::feof(inputfile) == 0 {
+        while !is_eof(input) {
             transducer_n += 1;
             if transducer_n < 2 {
                 verbose_printf("Reading transducer table...\n");
@@ -308,8 +317,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
 
                 // C: catches NotValidPrologFormatException; the Rust readers
                 // panic_any rather than throw, so the catch arm is not reproduced.
-                let fsm =
-                    HfstBasicTransducer::read_in_prolog_format_file(inputfile, &mut linecount);
+                let fsm = HfstBasicTransducer::read_in_prolog_format_file(input, &mut linecount);
 
                 if CHECK_NEGATIVE_EPSILON_CYCLES {
                     verbose_printf(
@@ -337,11 +345,11 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
                 // C: catches NotValidAttFormatException and prints an error; the
                 // Rust readers panic_any rather than throw, so the catch arm is
                 // not reproduced here.
-                while libc::feof(inputfile) == 0 {
+                while !is_eof(input) {
                     // C: HfstTransducer(inputfile, type, epsilon, warn) — read the
                     // basic graph from the AT&T file then build the typed transducer.
                     let net = HfstBasicTransducer::read_in_att_format_file(
-                        inputfile,
+                        input,
                         &epsilonname,
                         &mut linecount,
                         WARN_NEGATIVE_WEIGHTS,
@@ -361,7 +369,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
                 // rather than throw, so the catch arm is not reproduced here.
                 // C: HfstTransducer(inputfile, type, epsilon, linecount, warn).
                 let net = HfstBasicTransducer::read_in_att_format_file(
-                    inputfile,
+                    input,
                     &epsilonname,
                     &mut linecount,
                     WARN_NEGATIVE_WEIGHTS,
@@ -422,10 +430,7 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let output_opened = !globals::OUTFILE.is_null();
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),
@@ -497,11 +502,14 @@ unsafe fn real_main() -> c_int {
         } else {
             HfstOutputStream::new(OUTPUT_FORMAT, true)
         };
-        process_stream(&mut outstream);
-        let input_opened = !globals::INPUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
+        let mut input = match globals::input_reader() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("hfst-txt2fst: cannot open input: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
+        process_stream(&mut outstream, &mut *input);
         libc::free(globals::INPUTFILENAME as *mut libc::c_void);
         libc::free(globals::OUTFILENAME as *mut libc::c_void);
         libc::EXIT_SUCCESS

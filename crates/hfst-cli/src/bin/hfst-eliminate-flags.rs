@@ -38,9 +38,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-eliminate-flags.print-usage-fn]
@@ -49,26 +48,27 @@ unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         // Usage line
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nEliminate flags from a transducer\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
-        fput(globals::message_out(), "Command-specific options:\n");
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
+        fput(&mut *msg, "Command-specific options:\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "  -F, --flag=FLAG        Only eliminate flag FLAG\n\n",
         );
-        fput(globals::message_out(), "\n");
-        print_common_unary_program_parameter_instructions(globals::message_out());
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
+        print_common_unary_program_parameter_instructions(&mut *msg);
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -239,14 +239,8 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = !globals::INPUTFILE.is_null();
-        let output_opened = !globals::OUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
+        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),

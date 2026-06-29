@@ -48,15 +48,11 @@ fn main() {
     assert_eq!(trs[0].get_target_state(), 1);
     println!("prolog round-trip (manual parse) OK");
 
-    // Exercise the FILE* reader (catch_unwind EOF handling) via a tmpfile.
-    unsafe {
-        let f = libc::tmpfile();
-        assert!(!f.is_null(), "tmpfile");
-        libc::fwrite(text.as_ptr() as *const libc::c_void, 1, text.len(), f);
-        libc::rewind(f);
+    // Exercise the reader (catch_unwind EOF handling) via an in-memory BufRead.
+    {
+        let mut reader = std::io::Cursor::new(text.into_bytes());
         let mut lc: u32 = 0;
-        let g3 = HfstBasicTransducer::read_in_prolog_format_file(f, &mut lc);
-        libc::fclose(f);
+        let g3 = HfstBasicTransducer::read_in_prolog_format_file(&mut reader, &mut lc);
 
         assert_eq!(g3.name, "foo");
         assert_eq!(g3.get_max_state(), 1);

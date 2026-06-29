@@ -38,61 +38,42 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
-}
-
-// libc 'stdin'/'stdout' as FILE*, used to reproduce the C's 'firstfile != stdin'
-// / 'outfile != stdout' guards exactly (the binary globals are set to the libc
-// stdin pointer when reading from stdin, so a null-check would not suffice).
-fn stdin_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-        static mut stdin: *mut libc::FILE;
-    }
-    unsafe { stdin }
-}
-
-fn stdout_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
-        static mut stdout: *mut libc::FILE;
-    }
-    unsafe { stdout }
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-compare.print-usage-fn]
 // [spec:hfst:sem:hfst-compare.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nCompare two transducers\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_binary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_binary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Harmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -e, --eliminate-flags  Eliminate flag diacritics.\n",
         );
-        fput(globals::message_out(), "\n");
-        print_common_binary_program_parameter_instructions(globals::message_out());
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
+        print_common_binary_program_parameter_instructions(&mut *msg);
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "\nExamples:\n  $ {0} cat.hfst dog.hfst\n  cat.hfst[1] != dog.hfst[1]\n  $ {0} cat.hfst cat.hfst\n  cat.hfst[1] == cat.hfst[1]\n\n",
                 program_name
             ),
         );
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -183,6 +164,13 @@ unsafe fn compare_streams(
     secondstream: &mut HfstInputStream,
 ) -> c_int {
     unsafe {
+        let mut out = match globals::output_writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("hfst-compare: cannot open output: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
         let mut continue_reading = firststream.is_good() && secondstream.is_good();
         let mut transducer_n_first: usize = 0; // transducers read from first input
         let mut transducer_n_second: usize = 0; // transducers read from second input
@@ -234,14 +222,11 @@ unsafe fn compare_streams(
                     if equal {
                         if transducer_n_first == 1 {
                             if !globals::SILENT {
-                                fput(
-                                    globals::outfile(),
-                                    &format!("{} == {}\n", firstname, secondname),
-                                );
+                                fput(&mut *out, &format!("{} == {}\n", firstname, secondname));
                             }
                         } else if !globals::SILENT {
                             fput(
-                                globals::outfile(),
+                                &mut *out,
                                 &format!(
                                     "{}[{}] == {}[{}]\n",
                                     firstname, transducer_n_first, secondname, transducer_n_second
@@ -251,14 +236,11 @@ unsafe fn compare_streams(
                     } else {
                         if transducer_n_first == 1 {
                             if !globals::SILENT {
-                                fput(
-                                    globals::outfile(),
-                                    &format!("{} != {}\n", firstname, secondname),
-                                );
+                                fput(&mut *out, &format!("{} != {}\n", firstname, secondname));
                             }
                         } else if !globals::SILENT {
                             fput(
-                                globals::outfile(),
+                                &mut *out,
                                 &format!(
                                     "{}[{}] != {}[{}]\n",
                                     firstname, transducer_n_first, secondname, transducer_n_second
@@ -319,7 +301,7 @@ unsafe fn compare_streams(
         }
         firststream.close();
         secondstream.close();
-        libc::fclose(globals::outfile());
+        let _ = out.flush();
         if mismatches == 0 {
             verbose_printf(&format!("All {} transducers matched\n", transducer_n_first));
             libc::EXIT_SUCCESS
@@ -360,14 +342,8 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let first_is_stdin = globals::firstfile() == stdin_file();
-        let second_is_stdin = globals::secondfile() == stdin_file();
-        if !first_is_stdin {
-            libc::fclose(globals::firstfile());
-        }
-        if !second_is_stdin {
-            libc::fclose(globals::secondfile());
-        }
+        let first_is_stdin = cstr(globals::FIRSTFILENAME) == "<stdin>";
+        let second_is_stdin = cstr(globals::SECONDFILENAME) == "<stdin>";
         verbose_printf(&format!(
             "Reading from {} and {}, writing log to {}\n",
             cstr(globals::FIRSTFILENAME),
@@ -395,10 +371,6 @@ unsafe fn real_main() -> c_int {
             return libc::EXIT_FAILURE;
         }
 
-        let retval = compare_streams(&mut firststream, &mut secondstream);
-        if globals::outfile() != stdout_file() {
-            libc::fclose(globals::outfile());
-        }
-        retval
+        compare_streams(&mut firststream, &mut secondstream)
     }
 }

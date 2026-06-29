@@ -27,7 +27,7 @@ use hfst_cli::inc::{
 };
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 
 // add tools-specific variables here
 static mut GENERATE_MODEL_FORMS: bool = false;
@@ -52,9 +52,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 unsafe fn optarg() -> String {
@@ -101,9 +100,10 @@ fn get_float(str: &str) -> f32 {
 unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\n\
                  Use a guesser (and generator) to guess analyses or inflectional\n\
@@ -113,10 +113,10 @@ unsafe fn print_usage() {
             ),
         );
 
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Guesser options:\n\
              \u{0020} -f, --model-form-filename       Inflectional information for\n\
              \u{0020}                                 generated model forms is read\n\
@@ -130,30 +130,30 @@ unsafe fn print_usage() {
              \u{0020}                                 of the best form plus this threshold.\n\
              \u{0020}                                 (50 by default).",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "The guesser and generator should be constructed using the tool\n\
              hfst-guessify, which can compile a guesser and generator from a\n\
              morphological analyzer. hfst-guessify packages the guesser and\n\
              generator in the same fst-file.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If option -f is used, but a generator has not been compiled\n\
              with the guesser, a generator will be compiled, which will\n\
              increase load time.\n",
         );
-        fput(globals::message_out(), "\n");
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If OUTFILE or INFILE is missing or -, standard streams will be used.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -332,10 +332,7 @@ unsafe fn real_main() -> c_int {
         }
 
         // close buffers, we use streams
-        let input_opened = !globals::INPUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
+        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
 
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
@@ -355,8 +352,15 @@ unsafe fn real_main() -> c_int {
         };
 
         // The C opens an ofstream on outfilename or uses std::cout; the
-        // foundation's 'outfile()' already maps OUTFILE-or-stdout to a FILE*.
-        let out = globals::outfile();
+        // foundation's 'output_writer()' already maps OUTFILE-or-stdout to a
+        // std::io::Write.
+        let mut out = match globals::output_writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("hfst-guess: cannot open output: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
 
         // (the C wraps the HfstTransducer ctor in try/catch reporting "Error
         // when reading guesser from file <inputfilename>"; the Rust ctor panics
@@ -436,22 +440,24 @@ unsafe fn real_main() -> c_int {
                 );
 
                 for it in &paradigms {
-                    fput(out, &format!("{}\n", string_vector_to_string(it)));
+                    fput(&mut *out, &format!("{}\n", string_vector_to_string(it)));
                 }
             } else {
                 for it in guesses.iter_mut() {
                     it.reverse();
 
-                    fput(out, &format!("{}\t{}\n", line, string_vector_to_string(it)));
+                    fput(
+                        &mut *out,
+                        &format!("{}\t{}\n", line, string_vector_to_string(it)),
+                    );
                 }
             }
-            fput(out, "\n");
+            fput(&mut *out, "\n");
         }
 
-        // The C deletes/flushes the output ofstream when it is a file; the
-        // foundation owns the OUTFILE handle, so a flush is the faithful
-        // equivalent.
-        libc::fflush(out);
+        // The C deletes/flushes the output ofstream when it is a file; flush the
+        // std::io::Write to mirror it.
+        let _ = out.flush();
 
         // free(inputfilename); free(outfilename); delete guesser; delete
         // generator — handled by the foundation/Drop in Rust.

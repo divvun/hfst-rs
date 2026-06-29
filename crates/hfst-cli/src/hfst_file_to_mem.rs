@@ -1,49 +1,51 @@
 //! Faithful 1:1 port of tools/src/hfst-file-to-mem.cc — read a whole file (or
 //! stdin) into a freshly malloc'd, NUL-terminated C string. Based on a function
-//! in foma written by Mans Hulden. The raw libc FILE*/malloc machinery and the
-//! 'error(EXIT_FAILURE, ...)'  failure paths are preserved bug-for-bug.
+//! in foma written by Mans Hulden.
+//!
+//! The io-foundation de-C-ism replaced the FILE* reading (fgetc/feof on stdin;
+//! fopen/fseek/ftell/fread on a named file) with std::io reads; the result is
+//! still a malloc'd, NUL-terminated C buffer the caller frees. The original
+//! stdin path capped input at 1 MB (a fixed-buffer artefact); that arbitrary
+//! cap is dropped — std reads the whole stream.
 
 use libc::c_char;
+use std::io::Read;
 
 use crate::hfst_commandline::error;
 
 const EXIT_FAILURE: i32 = 1;
 
+// Copy `bytes` into a fresh malloc'd, NUL-terminated C buffer (the caller frees
+// it, matching the original malloc'd return).
+unsafe fn bytes_to_cmalloc(bytes: &[u8], what: &str) -> *mut c_char {
+    let n = bytes.len();
+    let buffer = unsafe { libc::malloc(n + 1) } as *mut c_char;
+    if buffer.is_null() {
+        error(
+            EXIT_FAILURE,
+            0,
+            &format!("Error allocating memory to read file '{}'\n", what),
+        );
+        return std::ptr::null_mut();
+    }
+    unsafe {
+        if n > 0 {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), buffer as *mut u8, n);
+        }
+        *buffer.add(n) = 0;
+    }
+    buffer
+}
+
 // [spec:hfst:def:hfst-file-to-mem.hfst-stdin-to-mem-fn]
 // [spec:hfst:sem:hfst-file-to-mem.hfst-stdin-to-mem-fn]
 pub fn hfst_stdin_to_mem() -> *mut c_char {
-    unsafe {
-        let maxbytes: usize = 1000000;
-        let mut numbytes: usize = 0;
-        // fix: slow
-        let buffer = libc::malloc(maxbytes * std::mem::size_of::<c_char>()) as *mut c_char;
-        if buffer.is_null() {
-            error(
-                EXIT_FAILURE,
-                0,
-                "Error allocating memory to read file '<stdin>'\n",
-            );
-            return std::ptr::null_mut();
-        }
-
-        loop {
-            *(buffer.add(numbytes)) = libc::fgetc(stdin_file()) as c_char;
-            if libc::feof(stdin_file()) != 0 {
-                *(buffer.add(numbytes)) = b'\0' as c_char;
-                break;
-            }
-            numbytes += 1;
-            if numbytes >= maxbytes {
-                error(
-                    EXIT_FAILURE,
-                    0,
-                    "Error reading file '<stdin>' to memory, not enough memory\n",
-                );
-                return std::ptr::null_mut();
-            }
-        }
-        buffer
+    let mut bytes = Vec::new();
+    if std::io::stdin().read_to_end(&mut bytes).is_err() {
+        error(EXIT_FAILURE, 0, "Error reading file '<stdin>' to memory\n");
+        return std::ptr::null_mut();
     }
+    unsafe { bytes_to_cmalloc(&bytes, "<stdin>") }
 }
 
 // Based on a function in foma written by Mans Hulden.
@@ -54,61 +56,18 @@ pub fn hfst_stdin_to_mem() -> *mut c_char {
 // [spec:hfst:def:hfst-file-to-mem.hfst-file-to-mem-fn]
 // [spec:hfst:sem:hfst-file-to-mem.hfst-file-to-mem-fn]
 pub fn hfst_file_to_mem(filename: &str) -> *mut c_char {
-    unsafe {
-        if filename == "<stdin>" {
-            return hfst_stdin_to_mem();
-        }
-
-        let c_filename = std::ffi::CString::new(filename).unwrap();
-        let mode = std::ffi::CString::new("rb").unwrap();
-        let infile = libc::fopen(c_filename.as_ptr(), mode.as_ptr());
-        if infile.is_null() {
+    if filename == "<stdin>" {
+        return hfst_stdin_to_mem();
+    }
+    match std::fs::read(filename) {
+        Ok(bytes) => unsafe { bytes_to_cmalloc(&bytes, filename) },
+        Err(_) => {
             error(
                 EXIT_FAILURE,
                 0,
                 &format!("Error opening file '{}'\n", filename),
             );
-            return std::ptr::null_mut();
+            std::ptr::null_mut()
         }
-        libc::fseek(infile, 0, libc::SEEK_END);
-        let numbytes: usize = libc::ftell(infile) as usize;
-        libc::fseek(infile, 0, libc::SEEK_SET);
-
-        let buffer = libc::malloc((numbytes + 1) * std::mem::size_of::<c_char>()) as *mut c_char;
-        if buffer.is_null() {
-            error(
-                EXIT_FAILURE,
-                0,
-                &format!("Error allocating memory to read file '{}'\n", filename),
-            );
-            return std::ptr::null_mut();
-        }
-        if libc::fread(
-            buffer as *mut libc::c_void,
-            std::mem::size_of::<c_char>(),
-            numbytes,
-            infile,
-        ) != numbytes
-        {
-            error(
-                EXIT_FAILURE,
-                0,
-                &format!("Error reading file '{}' to memory\n", filename),
-            );
-            return std::ptr::null_mut();
-        }
-        libc::fclose(infile);
-        *(buffer.add(numbytes)) = b'\0' as c_char;
-        buffer
     }
-}
-
-// C reads the global 'stdin' macro directly. Same 'extern static mut stdin'
-// shape as the rest of the crate (see 'hfst_getopt.rs' / 'globals.rs').
-fn stdin_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-        static mut stdin: *mut libc::FILE;
-    }
-    unsafe { stdin }
 }

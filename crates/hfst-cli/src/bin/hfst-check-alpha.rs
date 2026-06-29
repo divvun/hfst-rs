@@ -36,9 +36,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-check-alpha.print-usage-fn]
@@ -46,39 +45,38 @@ unsafe fn fput(f: *mut libc::FILE, s: &str) {
 unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILEs]\nCompare the compatibility of alphabets between INFILEs\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_binary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_binary_program_options(&mut *msg);
         // (tool-specific options and short descriptions)
-        fput(globals::message_out(), "Check alpha options:\n");
-        fput(globals::message_out(), "\n");
-        print_common_binary_program_parameter_instructions(globals::message_out());
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "Check alpha options:\n");
+        fput(&mut *msg, "\n");
+        print_common_binary_program_parameter_instructions(&mut *msg);
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
 
 // [spec:hfst:def:hfst-check-alpha.fprint-stringset-fn]
 // [spec:hfst:sem:hfst-check-alpha.fprint-stringset-fn]
-unsafe fn fprint_stringset(outfile: *mut libc::FILE, strings: &StringSet) {
-    unsafe {
-        let mut first = true;
-        for s in strings {
-            if !first {
-                fput(outfile, ", ");
-            }
-            fput(outfile, s);
-            first = false;
+fn fprint_stringset(outfile: &mut dyn std::io::Write, strings: &StringSet) {
+    let mut first = true;
+    for s in strings {
+        if !first {
+            fput(outfile, ", ");
         }
+        fput(outfile, s);
+        first = false;
     }
 }
 
@@ -146,6 +144,13 @@ unsafe fn process_stream(
     secondstream: &mut HfstInputStream,
 ) -> c_int {
     unsafe {
+        let mut out = match globals::output_writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("hfst-check-alpha: cannot open output: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
         let mut continue_reading = firststream.is_good() && secondstream.is_good();
         let mut transducer_n: usize = 0;
         let mut mismatch = libc::EXIT_SUCCESS;
@@ -201,7 +206,7 @@ unsafe fn process_stream(
             }
             let second_found_alphabet: StringSet = secondmutt.symbols_used();
             // match
-            fput(globals::outfile(), "Actual alphabet differences:\n");
+            fput(&mut *out, "Actual alphabet differences:\n");
             let first_minus_second: StringSet = first_found_alphabet
                 .difference(&second_found_alphabet)
                 .cloned()
@@ -209,17 +214,17 @@ unsafe fn process_stream(
             if !first_minus_second.is_empty() {
                 mismatch = libc::EXIT_FAILURE;
                 fput(
-                    globals::outfile(),
+                    &mut *out,
                     &format!(
                         "In first {} but not in second {}:",
                         first.get_name(),
                         second.get_name()
                     ),
                 );
-                fprint_stringset(globals::outfile(), &first_minus_second);
+                fprint_stringset(&mut *out, &first_minus_second);
             } else {
                 fput(
-                    globals::outfile(),
+                    &mut *out,
                     &format!(
                         "First {} alpha is superset of second {}.",
                         first.get_name(),
@@ -227,7 +232,7 @@ unsafe fn process_stream(
                     ),
                 );
             }
-            fput(globals::outfile(), "\n");
+            fput(&mut *out, "\n");
             let second_minus_first: StringSet = second_found_alphabet
                 .difference(&first_found_alphabet)
                 .cloned()
@@ -235,17 +240,17 @@ unsafe fn process_stream(
             if !second_minus_first.is_empty() {
                 mismatch = libc::EXIT_FAILURE;
                 fput(
-                    globals::outfile(),
+                    &mut *out,
                     &format!(
                         "In second {} but not in first {}:",
                         second.get_name(),
                         second.get_name()
                     ),
                 );
-                fprint_stringset(globals::outfile(), &second_minus_first);
+                fprint_stringset(&mut *out, &second_minus_first);
             } else {
                 fput(
-                    globals::outfile(),
+                    &mut *out,
                     &format!(
                         "Second {} alpha is superset of second {}.",
                         second.get_name(),
@@ -253,23 +258,17 @@ unsafe fn process_stream(
                     ),
                 );
             }
-            fput(globals::outfile(), "\n");
+            fput(&mut *out, "\n");
             if globals::VERBOSE {
-                fput(
-                    globals::outfile(),
-                    &format!("{} alphabet:", first.get_name()),
-                );
-                fprint_stringset(globals::outfile(), &first_found_alphabet);
-                fput(globals::outfile(), "\n");
-                fput(
-                    globals::outfile(),
-                    &format!("{} alphabet:", second.get_name()),
-                );
-                fprint_stringset(globals::outfile(), &second_found_alphabet);
-                fput(globals::outfile(), "\n");
+                fput(&mut *out, &format!("{} alphabet:", first.get_name()));
+                fprint_stringset(&mut *out, &first_found_alphabet);
+                fput(&mut *out, "\n");
+                fput(&mut *out, &format!("{} alphabet:", second.get_name()));
+                fprint_stringset(&mut *out, &second_found_alphabet);
+                fput(&mut *out, "\n");
             }
             if transducer_knows_alphabet {
-                fput(globals::outfile(), "sigma set difference:\n");
+                fput(&mut *out, "sigma set difference:\n");
                 let first_minus_second: StringSet = first_transducer_alphabet
                     .difference(&second_transducer_alphabet)
                     .cloned()
@@ -281,17 +280,17 @@ unsafe fn process_stream(
                 if !first_minus_second.is_empty() {
                     mismatch = libc::EXIT_FAILURE;
                     fput(
-                        globals::outfile(),
+                        &mut *out,
                         &format!(
                             "First {} has but second {} does not: ",
                             first.get_name(),
                             second.get_name()
                         ),
                     );
-                    fprint_stringset(globals::outfile(), &first_minus_second);
+                    fprint_stringset(&mut *out, &first_minus_second);
                 } else {
                     fput(
-                        globals::outfile(),
+                        &mut *out,
                         &format!(
                             "First {} alpha is superset of second {}.",
                             first.get_name(),
@@ -299,21 +298,21 @@ unsafe fn process_stream(
                         ),
                     );
                 }
-                fput(globals::outfile(), "\n");
+                fput(&mut *out, "\n");
                 if !second_minus_first.is_empty() {
                     mismatch = libc::EXIT_FAILURE;
                     fput(
-                        globals::outfile(),
+                        &mut *out,
                         &format!(
                             "Second {} has but first {} does not: ",
                             second.get_name(),
                             first.get_name()
                         ),
                     );
-                    fprint_stringset(globals::outfile(), &second_minus_first);
+                    fprint_stringset(&mut *out, &second_minus_first);
                 } else {
                     fput(
-                        globals::outfile(),
+                        &mut *out,
                         &format!(
                             "Second {} alpha is superset of first {}.",
                             second.get_name(),
@@ -321,24 +320,18 @@ unsafe fn process_stream(
                         ),
                     );
                 }
-                fput(globals::outfile(), "\n");
+                fput(&mut *out, "\n");
                 if globals::VERBOSE {
-                    fput(
-                        globals::outfile(),
-                        &format!("First ({}):", first.get_name()),
-                    );
-                    fprint_stringset(globals::outfile(), &first_transducer_alphabet);
-                    fput(globals::outfile(), "\n");
-                    fput(
-                        globals::outfile(),
-                        &format!("Second ({}):", second.get_name()),
-                    );
-                    fprint_stringset(globals::outfile(), &second_transducer_alphabet);
-                    fput(globals::outfile(), "\n");
+                    fput(&mut *out, &format!("First ({}):", first.get_name()));
+                    fprint_stringset(&mut *out, &first_transducer_alphabet);
+                    fput(&mut *out, "\n");
+                    fput(&mut *out, &format!("Second ({}):", second.get_name()));
+                    fprint_stringset(&mut *out, &second_transducer_alphabet);
+                    fput(&mut *out, "\n");
                 }
             } else {
                 fput(
-                    globals::outfile(),
+                    &mut *out,
                     "No internal alphabets to compare in this format\n",
                 );
             } // FSTs know their alphas
@@ -346,7 +339,7 @@ unsafe fn process_stream(
         }
 
         fput(
-            globals::outfile(),
+            &mut *out,
             &format!("\nRead {} transducers in total.\n", transducer_n),
         );
         mismatch
@@ -380,14 +373,8 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let first_opened = !globals::FIRSTFILE.is_null();
-        let second_opened = !globals::SECONDFILE.is_null();
-        if first_opened {
-            libc::fclose(globals::FIRSTFILE);
-        }
-        if second_opened {
-            libc::fclose(globals::SECONDFILE);
-        }
+        let first_opened = cstr(globals::FIRSTFILENAME) != "<stdin>";
+        let second_opened = cstr(globals::SECONDFILENAME) != "<stdin>";
         verbose_printf(&format!(
             "Reading from {} and {}, writing to {}\n",
             cstr(globals::FIRSTFILENAME),
@@ -466,9 +453,6 @@ unsafe fn real_main() -> c_int {
 
         let _retval = process_stream(&mut firststream, &mut secondstream);
 
-        if !globals::OUTFILE.is_null() {
-            libc::fclose(globals::OUTFILE);
-        }
         libc::free(globals::FIRSTFILENAME as *mut libc::c_void);
         libc::free(globals::SECONDFILENAME as *mut libc::c_void);
         libc::free(globals::OUTFILENAME as *mut libc::c_void);

@@ -4820,27 +4820,24 @@ use crate::hfst_exception_defs::StreamCannotBeWrittenException;
 impl HfstTransducer {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.write-in-att-format-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.write-in-att-format-fn]
-    pub unsafe fn write_in_att_format_filename(&self, filename: &str, print_weights: bool) {
-        unsafe {
-            let c_filename = std::ffi::CString::new(filename).unwrap();
-            let mode = std::ffi::CString::new("wb").unwrap();
-            let ofile = crate::hfst_data_types::hfst_fopen(c_filename.as_ptr(), mode.as_ptr());
-            if ofile.is_null() {
+    pub fn write_in_att_format_filename(&self, filename: &str, print_weights: bool) {
+        let file = match std::fs::File::create(filename) {
+            Ok(f) => f,
+            Err(_) => {
                 let message = filename.to_string();
                 crate::HFST_THROW_MESSAGE!(StreamCannotBeWrittenException, message);
             }
-            self.write_in_att_format_file(ofile, print_weights);
-            libc::fclose(ofile);
-        }
+        };
+        let mut ofile = std::io::BufWriter::new(file);
+        self.write_in_att_format_file(&mut ofile, print_weights);
+        let _ = std::io::Write::flush(&mut ofile);
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.write-in-att-format-number-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.write-in-att-format-number-fn]
-    pub unsafe fn write_in_att_format_number(&self, ofile: *mut libc::FILE, print_weights: bool) {
+    pub fn write_in_att_format_number(&self, ofile: &mut dyn std::io::Write, print_weights: bool) {
         let net = HfstBasicTransducer::new_from_hfst_transducer(self);
-        unsafe {
-            net.write_in_att_format_number_file(ofile, print_weights);
-        }
+        net.write_in_att_format_number_file(ofile, print_weights);
     }
 
     pub unsafe fn write_in_att_format_ptr(&self, buffer: *mut libc::c_char, print_weights: bool) {
@@ -4850,12 +4847,10 @@ impl HfstTransducer {
         }
     }
 
-    pub unsafe fn write_in_att_format_file(&self, ofile: *mut libc::FILE, print_weights: bool) {
+    pub fn write_in_att_format_file(&self, ofile: &mut dyn std::io::Write, print_weights: bool) {
         // Implemented only for internal transducer format.
         let net = HfstBasicTransducer::new_from_hfst_transducer(self);
-        unsafe {
-            net.write_in_att_format_file(ofile, print_weights);
-        }
+        net.write_in_att_format_file(ofile, print_weights);
     }
 
     /* Implemented only for XFSM_TYPE. */
@@ -4880,9 +4875,9 @@ impl HfstTransducer {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.write-in-prolog-format-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.write-in-prolog-format-fn]
-    pub unsafe fn write_in_prolog_format(
+    pub fn write_in_prolog_format(
         &mut self,
-        file: *mut libc::FILE,
+        file: &mut dyn std::io::Write,
         name: &str,
         write_weights: bool,
     ) {
@@ -4891,9 +4886,7 @@ impl HfstTransducer {
             crate::HFST_THROW!(FunctionNotImplementedException);
         }
         let fsm = HfstBasicTransducer::new_from_hfst_transducer(self);
-        unsafe {
-            fsm.write_in_prolog_format_file(file, name, write_weights);
-        }
+        fsm.write_in_prolog_format_file(file, name, write_weights);
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.prolog-file-to-xfsm-transducer-fn]
@@ -4914,29 +4907,24 @@ impl HfstTransducer {
         if type_ == XFSM_TYPE {
             HFST_THROW!(FunctionNotImplementedException);
         }
-        let c_filename = std::ffi::CString::new(filename).unwrap();
-        let mode = std::ffi::CString::new("rb").unwrap();
-        let ifile =
-            unsafe { crate::hfst_data_types::hfst_fopen(c_filename.as_ptr(), mode.as_ptr()) };
-        if ifile.is_null() {
-            // [spec:hfst:def:hfst-transducer.hfst.message-fn]
-            // [spec:hfst:sem:hfst-transducer.hfst.message-fn]
-            HFST_THROW_MESSAGE!(StreamNotReadableException, filename);
-        }
+        let ifile = match std::fs::File::open(filename) {
+            Ok(f) => f,
+            Err(_) => {
+                // [spec:hfst:def:hfst-transducer.hfst.message-fn]
+                // [spec:hfst:sem:hfst-transducer.hfst.message-fn]
+                HFST_THROW_MESSAGE!(StreamNotReadableException, filename);
+            }
+        };
         HfstTokenizer::check_utf8_correctness(epsilon_symbol);
 
-        let retval =
-            unsafe { Self::read_in_att_format_file(ifile, type_, epsilon_symbol, warn_negs) };
-        unsafe {
-            libc::fclose(ifile);
-        }
-        retval
+        let mut reader = std::io::BufReader::new(ifile);
+        Self::read_in_att_format_file(&mut reader, type_, epsilon_symbol, warn_negs)
     }
 
     /// 'HfstTransducer &read_in_att_format(FILE *ifile, type,
     ///  const std::string &epsilon_symbol, bool warn_negs)'.
-    pub unsafe fn read_in_att_format_file<'a>(
-        ifile: *mut libc::FILE,
+    pub fn read_in_att_format_file<'a>(
+        ifile: &mut dyn std::io::BufRead,
         type_: ImplementationType,
         epsilon_symbol: &str,
         warn_negs: bool,

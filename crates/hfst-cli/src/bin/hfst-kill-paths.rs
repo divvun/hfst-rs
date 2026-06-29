@@ -10,7 +10,7 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_getenv, hfst_fopen, hfst_getline, hfst_set_program_name,
+    EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name,
     is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
@@ -26,11 +26,12 @@ use hfst_cli::inc::{
 };
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 
 // add tools-specific variables here
 static mut SYMBOL: Option<String> = None;
 static mut TSV_FILE_NAME: Option<String> = None;
-static mut TSV_FILE: *mut libc::FILE = std::ptr::null_mut();
+static mut TSV_FILE: Option<std::fs::File> = None;
 
 unsafe fn cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
@@ -42,40 +43,40 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-kill-paths.print-usage-fn]
 // [spec:hfst:sem:hfst-kill-paths.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         // Usage line
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nKill all paths with specific symbols\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Reweighting options:\n  -S, --symbol=SYM           remove arcs with input or output symbol SYM or both\n  -T, --tsv-file=TFILE       read kill rules from TFILE\n\n",
         );
-        fput(globals::message_out(), "\n");
-        print_common_unary_program_parameter_instructions(globals::message_out());
+        fput(&mut *msg, "\n");
+        print_common_unary_program_parameter_instructions(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "TFILE should contain lines with tab-separated pairs of SYM and Comment lines starting with # and empty lines are ignored.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -165,7 +166,13 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         check_common_params();
         check_unary_params(argc, argv);
         if let Some(name) = &TSV_FILE_NAME {
-            TSV_FILE = hfst_fopen(name, "r");
+            match std::fs::File::open(name) {
+                Ok(f) => TSV_FILE = Some(f),
+                Err(_) => {
+                    error(libc::EXIT_FAILURE, 0, &format!("Could not open '{}'", name));
+                    return libc::EXIT_FAILURE;
+                }
+            }
         }
         EXIT_CONTINUE
     }
@@ -197,7 +204,7 @@ unsafe fn process_stream(
             } else {
                 verbose_printf(&format!("Path killing {}...{}\n", inputname, transducer_n));
             }
-            if TSV_FILE.is_null() {
+            if TSV_FILE.is_none() {
                 do_killing(&mut trans);
                 // C: hfst_set_name(trans, trans, "pathkill"); dest and src are the
                 // same object, which Rust cannot alias mut+const, so the read side
@@ -206,18 +213,25 @@ unsafe fn process_stream(
                 hfst_set_name_unary(&mut trans, &src, "pathkill");
                 hfst_set_formula_unary(&mut trans, &src, "PK");
             } else {
-                libc::rewind(TSV_FILE);
+                // C: rewind(tsv_file) — seek the std file back to the start.
+                let tsv_file = TSV_FILE.as_mut().unwrap();
+                let _ = tsv_file.seek(SeekFrom::Start(0));
                 SYMBOL = None;
                 let mut _linen: usize = 0;
                 verbose_printf(&format!(
                     "Reading reweights from {}\n",
                     TSV_FILE_NAME.clone().unwrap_or_default()
                 ));
-                let mut line: *mut c_char = std::ptr::null_mut();
-                let mut len: usize = 0;
-                while hfst_getline(&mut line, &mut len, TSV_FILE) != -1 {
+                let mut reader = BufReader::new(tsv_file);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                        break;
+                    }
                     _linen += 1;
-                    let bytes = CStr::from_ptr(line).to_bytes();
+                    let bytes = line.as_bytes();
                     if bytes.first() == Some(&b'\n') {
                         continue;
                     }
@@ -234,9 +248,6 @@ unsafe fn process_stream(
                     verbose_printf(&format!("Killing patsh with symbol {}\n", sym));
                     do_killing(&mut trans);
                 } // getline
-                if !line.is_null() {
-                    libc::free(line as *mut libc::c_void);
-                }
                 let src = trans.clone();
                 hfst_set_name_unary(&mut trans, &src, "pathkill");
                 hfst_set_formula_unary(&mut trans, &src, "PK");
@@ -276,14 +287,8 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = !globals::INPUTFILE.is_null();
-        let output_opened = !globals::OUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
+        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),

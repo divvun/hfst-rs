@@ -21,6 +21,8 @@ use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use libc::{c_char, c_int};
+use std::ffi::CStr;
+use std::io::Write;
 
 // ---------------------------------------------------------------------------
 // constants (header #defines / constexpr)
@@ -51,44 +53,18 @@ const PACKAGE_BUGREPORT: &str = "";
 // internal helpers (no C counterpart; the C used fprintf/vfprintf directly)
 // ---------------------------------------------------------------------------
 
-// 'stderr', 'stdin', 'stdout' as FILE* for the faithful fprintf calls below.
-fn stderr_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stderrp")]
-        static mut stderr: *mut libc::FILE;
-    }
-    unsafe { stderr }
-}
-fn stdin_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-        static mut stdin: *mut libc::FILE;
-    }
-    unsafe { stdin }
-}
-fn stdout_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
-        static mut stdout: *mut libc::FILE;
-    }
-    unsafe { stdout }
-}
-
-// Write a Rust string slice to a FILE* verbatim (the C did fprintf(f, "%s", s)
+// Write a Rust string slice to a writer verbatim (the C did fprintf(f, "%s", s)
 // or fputs); keeps arbitrary bytes including ANSI escapes intact.
-unsafe fn fput_str(f: *mut libc::FILE, s: &str) {
-    unsafe {
-        libc::fwrite(s.as_ptr() as *const libc::c_void, 1, s.len(), f);
-    }
+fn fput_str(f: &mut dyn Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
-// Write a NUL-terminated C string pointer to a FILE* (the C printed globals such
+// Write a NUL-terminated C string pointer to a writer (the C printed globals such
 // as program_name with fprintf(f, "%s", p)).
-unsafe fn fput_cstr(f: *mut libc::FILE, p: *const c_char) {
+fn fput_cstr(f: &mut dyn Write, p: *const c_char) {
     if !p.is_null() {
-        unsafe {
-            libc::fputs(p, f);
-        }
+        let s = unsafe { CStr::from_ptr(p) }.to_string_lossy();
+        let _ = f.write_all(s.as_bytes());
     }
 }
 
@@ -97,22 +73,9 @@ fn errno() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
 
-// Mutable errno slot, so it can be cleared before a libc call whose -1 return is
-// ambiguous between EOF and error (e.g. getline).
-#[cfg(target_os = "macos")]
-unsafe fn errno_location() -> *mut libc::c_int {
-    unsafe { libc::__error() }
-}
-#[cfg(not(target_os = "macos"))]
-unsafe fn errno_location() -> *mut libc::c_int {
-    unsafe { libc::__errno_location() }
-}
-
 // strerror(errnum) appended to a FILE* (C: fprintf(stderr, "%s", strerror(e))).
-unsafe fn fput_strerror(f: *mut libc::FILE, errnum: i32) {
-    unsafe {
-        fput_cstr(f, libc::strerror(errnum));
-    }
+fn fput_strerror(f: &mut dyn Write, errnum: i32) {
+    fput_cstr(f, unsafe { libc::strerror(errnum) });
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +85,7 @@ unsafe fn fput_strerror(f: *mut libc::FILE, errnum: i32) {
 // [spec:hfst:def:hfst-commandline.error-at-line-fn]
 // [spec:hfst:sem:hfst-commandline.error-at-line-fn]
 pub fn error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg: &str) {
-    let f = stderr_file();
+    let f = &mut std::io::stderr();
     unsafe {
         fput_str(f, &format!("{}.{}: ", filename, linenum));
         fput_str(f, msg);
@@ -139,7 +102,7 @@ pub fn error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg
 // [spec:hfst:def:hfst-commandline.hfst-error-at-line-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-error-at-line-fn]
 pub fn hfst_error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg: &str) {
-    let f = stderr_file();
+    let f = &mut std::io::stderr();
     unsafe {
         maybe_print_colour(f, COLOUR_BOLD);
         fput_str(f, &format!("{}.{}: ", filename, linenum));
@@ -161,7 +124,7 @@ pub fn hfst_error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32
 // [spec:hfst:def:hfst-commandline.hfst-warning-at-line-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-warning-at-line-fn]
 pub fn hfst_warning_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg: &str) {
-    let f = stderr_file();
+    let f = &mut std::io::stderr();
     unsafe {
         maybe_print_colour(f, COLOUR_BOLD);
         fput_str(f, &format!("{}.{}: ", filename, linenum));
@@ -183,7 +146,7 @@ pub fn hfst_warning_at_line(status: i32, errnum: i32, filename: &str, linenum: u
 // [spec:hfst:def:hfst-commandline.error-fn]
 // [spec:hfst:sem:hfst-commandline.error-fn]
 pub fn error(status: i32, errnum: i32, msg: &str) {
-    let f = stderr_file();
+    let f = &mut std::io::stderr();
     unsafe {
         fput_cstr(f, globals::PROGRAM_NAME);
         fput_str(f, ": ");
@@ -201,7 +164,7 @@ pub fn error(status: i32, errnum: i32, msg: &str) {
 // [spec:hfst:def:hfst-commandline.hfst-error-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-error-fn]
 pub fn hfst_error(status: i32, errnum: i32, msg: &str) {
-    let f = stderr_file();
+    let f = &mut std::io::stderr();
     unsafe {
         maybe_print_colour(f, COLOUR_BOLD);
         fput_cstr(f, globals::PROGRAM_NAME);
@@ -225,7 +188,7 @@ pub fn hfst_error(status: i32, errnum: i32, msg: &str) {
 // [spec:hfst:def:hfst-commandline.warning-fn]
 // [spec:hfst:sem:hfst-commandline.warning-fn]
 pub fn warning(status: i32, errnum: i32, msg: &str) {
-    let f = stderr_file();
+    let f = &mut std::io::stderr();
     unsafe {
         fput_cstr(f, globals::PROGRAM_NAME);
         fput_str(f, ": warning: ");
@@ -243,7 +206,7 @@ pub fn warning(status: i32, errnum: i32, msg: &str) {
 // [spec:hfst:def:hfst-commandline.hfst-warning-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-warning-fn]
 pub fn hfst_warning(status: i32, errnum: i32, msg: &str) {
-    let f = stderr_file();
+    let f = &mut std::io::stderr();
     unsafe {
         maybe_print_colour(f, COLOUR_BOLD);
         fput_cstr(f, globals::PROGRAM_NAME);
@@ -299,7 +262,7 @@ pub fn debug_save_transducer(t: &HfstTransducer, name: &str) {
 // [spec:hfst:sem:hfst-commandline.debug-printf-fn]
 pub fn debug_printf(msg: &str) {
     if unsafe { globals::DEBUG } {
-        let f = stderr_file();
+        let f = &mut std::io::stderr();
         unsafe {
             fput_str(f, "\nDEBUG: ");
             fput_str(f, msg);
@@ -312,9 +275,7 @@ pub fn debug_printf(msg: &str) {
 // [spec:hfst:sem:hfst-commandline.verbose-printf-fn]
 pub fn verbose_printf(msg: &str) {
     if unsafe { globals::VERBOSE } {
-        unsafe {
-            fput_str(globals::message_out(), msg);
-        }
+        fput_str(&mut *globals::message_writer(), msg);
     }
 }
 
@@ -390,15 +351,13 @@ pub fn is_input_stream_in_ol_format(is: &HfstInputStream, program: &str) -> bool
     if is.get_type() == ImplementationType::HFST_OL_TYPE
         || is.get_type() == ImplementationType::HFST_OLW_TYPE
     {
-        unsafe {
-            fput_str(
-                stderr_file(),
-                &format!(
-                    "Error: {} cannot process transducers that are in optimized lookup format.\n",
-                    program
-                ),
-            );
-        }
+        fput_str(
+            &mut std::io::stderr(),
+            &format!(
+                "Error: {} cannot process transducers that are in optimized lookup format.\n",
+                program
+            ),
+        );
         return true;
     }
     false
@@ -557,93 +516,13 @@ pub fn hfst_strformat(format: ImplementationType) -> &'static str {
 }
 
 // ---------------------------------------------------------------------------
-// file functions (FILE*)
+// file functions
 // ---------------------------------------------------------------------------
-
-// [spec:hfst:def:hfst-commandline.hfst-fopen-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-fopen-fn]
-pub fn hfst_fopen(filename: &str, mode: &str) -> *mut libc::FILE {
-    if filename == "-" {
-        if mode == "r" {
-            return stdin_file();
-        } else if mode == "w" {
-            return stdout_file();
-        }
-    }
-    let path = std::ffi::CString::new(filename).unwrap();
-    let cmode = std::ffi::CString::new(mode).unwrap();
-    let f = unsafe { libc::fopen(path.as_ptr(), cmode.as_ptr()) };
-    if !f.is_null() {
-        f
-    } else {
-        hfst_error(
-            libc::EXIT_FAILURE,
-            errno(),
-            &format!("Could not open '{}'. ", filename),
-        );
-        std::ptr::null_mut()
-    }
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-fseek-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-fseek-fn]
-pub unsafe fn hfst_fseek(stream: *mut libc::FILE, offset: i64, whence: i32) {
-    if unsafe { libc::fseek(stream, offset as libc::c_long, whence) } != 0 {
-        hfst_error(libc::EXIT_FAILURE, errno(), "fseek failed");
-    }
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-ftell-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-ftell-fn]
-pub unsafe fn hfst_ftell(stream: *mut libc::FILE) -> u64 {
-    let offset = unsafe { libc::ftell(stream) };
-    if -1 != offset {
-        offset as u64
-    } else {
-        hfst_error(libc::EXIT_FAILURE, errno(), "ftell failed");
-        u64::MAX
-    }
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-fread-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-fread-fn]
-pub unsafe fn hfst_fread(
-    ptr: *mut libc::c_void,
-    size: usize,
-    nmemb: usize,
-    stream: *mut libc::FILE,
-) -> usize {
-    let rv = unsafe { libc::fread(ptr, size, nmemb, stream) };
-    if (rv < nmemb) && (unsafe { libc::ferror(stream) } != 0) {
-        hfst_error(libc::EXIT_FAILURE, errno(), "fread failed");
-    }
-    rv
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-fwrite-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-fwrite-fn]
-pub unsafe fn hfst_fwrite(
-    ptr: *const libc::c_void,
-    size: usize,
-    nmemb: usize,
-    stream: *mut libc::FILE,
-) -> usize {
-    let rv = unsafe { libc::fwrite(ptr, size, nmemb, stream) };
-    if (rv < nmemb) || (unsafe { libc::ferror(stream) } != 0) {
-        hfst_error(libc::EXIT_FAILURE, errno(), "fwrite failed");
-    }
-    rv
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-tmpfile-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-tmpfile-fn]
-pub fn hfst_tmpfile() -> *mut libc::FILE {
-    let rv = unsafe { libc::tmpfile() };
-    if rv.is_null() {
-        hfst_error(libc::EXIT_FAILURE, errno(), "tmpfile failed");
-    }
-    rv
-}
+//
+// The FILE*-based helpers (hfst_fopen / hfst_fseek / hfst_ftell / hfst_fread /
+// hfst_fwrite / hfst_tmpfile) were removed in the io-foundation de-C-ism: tools
+// open their I/O as std streams (globals::input_reader / output_writer / first_
+// reader / second_reader, or std::fs::File) and use std::io::{Read, Write, Seek}.
 
 // [spec:hfst:def:hfst-commandline.hfst-close-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-close-fn]
@@ -742,68 +621,36 @@ pub unsafe fn hfst_strndup(s: *const c_char, n: usize) -> *mut c_char {
     rv
 }
 
-// [spec:hfst:def:hfst-commandline.hfst-getdelim-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-getdelim-fn]
-pub unsafe fn hfst_getdelim(
-    lineptr: *mut *mut c_char,
-    n: *mut usize,
-    delim: i32,
-    stream: *mut libc::FILE,
-) -> isize {
-    // libc (this version) has no getdelim binding; declare the POSIX symbol.
-    unsafe extern "C" {
-        fn getdelim(
-            lineptr: *mut *mut c_char,
-            n: *mut libc::size_t,
-            delim: c_int,
-            stream: *mut libc::FILE,
-        ) -> libc::ssize_t;
-    }
-    let rv = unsafe { getdelim(lineptr, n, delim, stream) };
-    if (rv < 0) && errno() != 0 {
-        hfst_error(libc::EXIT_FAILURE, errno(), "getdelim failed");
-    }
-    rv
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-getline-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-getline-fn]
-pub unsafe fn hfst_getline(
-    lineptr: *mut *mut c_char,
-    n: *mut usize,
-    stream: *mut libc::FILE,
-) -> isize {
-    // Clear errno first: getline leaves it untouched at EOF, so a stale errno from
-    // an earlier libc/std call would otherwise be misread as a read failure when
-    // getline returns -1 at end of input.
-    unsafe { *errno_location() = 0 };
-    let rv = unsafe { libc::getline(lineptr, n, stream) };
-    if (rv < 0) && errno() != 0 {
-        hfst_error(libc::EXIT_FAILURE, errno(), "getline failed");
-    }
-    rv
-}
+// hfst_getdelim / hfst_getline (the FILE*-based line readers) were removed in the
+// io-foundation de-C-ism: tools read from globals::input_reader() (a BufRead) via
+// read_line / read_until / lines().
 
 // [spec:hfst:def:hfst-commandline.readline-fn]
 // [spec:hfst:sem:hfst-commandline.readline-fn]
 // The non-readline fallback. The real readline-library path is #if'd out, so
 // this is the active implementation.
-unsafe fn readline(prompt: &str) -> *mut c_char {
-    unsafe {
-        fput_str(globals::message_out(), prompt);
+fn readline(prompt: &str) -> *mut c_char {
+    {
+        let mut mw = globals::message_writer();
+        fput_str(&mut *mw, prompt);
+        let _ = mw.flush();
     }
-    let mut line: *mut c_char = std::ptr::null_mut();
-    let mut len: usize = 0;
-    if unsafe { hfst_getline(&mut line, &mut len, stdin_file()) } == -1 {
-        return std::ptr::null_mut();
+    let mut line = String::new();
+    match std::io::stdin().read_line(&mut line) {
+        Ok(0) | Err(_) => std::ptr::null_mut(),
+        Ok(_) => {
+            // Hand the caller a malloc'd C string (matching getline's buffer, which
+            // the caller frees). read_line keeps the trailing '\n', as getline did.
+            let c = std::ffi::CString::new(line).unwrap_or_default();
+            unsafe { libc::strdup(c.as_ptr()) }
+        }
     }
-    line
 }
 
 // [spec:hfst:def:hfst-commandline.hfst-readline-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-readline-fn]
 pub fn hfst_readline(prompt: &str) -> *mut c_char {
-    unsafe { readline(prompt) }
+    readline(prompt)
 }
 
 // [spec:hfst:def:hfst-commandline.hfst-setlocale-fn]
@@ -907,7 +754,8 @@ pub fn hfst_set_program_name(argv0: &str, version_vector: &str, wikiname: &str) 
 // [spec:hfst:sem:hfst-commandline.print-short-help-fn]
 pub fn print_short_help() {
     // C printed a one-line pointer to --help via message_out (see literal below).
-    let f = globals::message_out();
+    let mut mw = globals::message_writer();
+    let f = &mut *mw;
     unsafe {
         fput_str(f, "Try ``");
         fput_cstr(f, globals::PROGRAM_NAME);
@@ -919,7 +767,8 @@ pub fn print_short_help() {
 // [spec:hfst:def:hfst-commandline.print-more-info-fn]
 // [spec:hfst:sem:hfst-commandline.print-more-info-fn]
 pub fn print_more_info() {
-    let f = globals::message_out();
+    let mut mw = globals::message_writer();
+    let f = &mut *mw;
     unsafe {
         fput_cstr(f, globals::PROGRAM_NAME);
         fput_str(f, " home page: \n<");
@@ -937,7 +786,8 @@ pub fn print_more_info() {
 // [spec:hfst:def:hfst-commandline.print-version-fn]
 // [spec:hfst:sem:hfst-commandline.print-version-fn]
 pub fn print_version() {
-    let f = globals::message_out();
+    let mut mw = globals::message_writer();
+    let f = &mut *mw;
     unsafe {
         fput_cstr(f, globals::PROGRAM_NAME);
         fput_str(f, " ");
@@ -956,7 +806,8 @@ pub fn print_version() {
 // [spec:hfst:def:hfst-commandline.print-report-bugs-fn]
 // [spec:hfst:sem:hfst-commandline.print-report-bugs-fn]
 pub fn print_report_bugs() {
-    let f = globals::message_out();
+    let mut mw = globals::message_writer();
+    let f = &mut *mw;
     unsafe {
         fput_str(
             f,
@@ -1029,11 +880,9 @@ pub fn should_colourise() -> bool {
 
 // [spec:hfst:def:hfst-commandline.maybe-print-colour-fn]
 // [spec:hfst:sem:hfst-commandline.maybe-print-colour-fn]
-pub unsafe fn maybe_print_colour(f: *mut libc::FILE, colour: &str) {
+pub fn maybe_print_colour(f: &mut dyn Write, colour: &str) {
     if should_colourise() {
-        unsafe {
-            fput_str(f, colour);
-        }
+        fput_str(f, colour);
     }
 }
 

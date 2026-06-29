@@ -35,9 +35,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // add tools-specific variables here
@@ -61,28 +60,29 @@ static mut FORMAT: FstTextFormat = FstTextFormat::AttText;
 unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nPrint transducer in AT&T, dot, prolog or pckimmo format\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Text format options:\n  -w, --print-weights          If weights are printed in all cases\n  -D, --do-not-print-weights   If weights are not printed in any case\n  -f, --format=TFMT            Print output in TFMT format [default=att]\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If OUTFILE or INFILE is missing or -, standard streams will be used.\nUnless explicitly requested with option -w or -D, weights are printed\nif and only if the transducer is in weighted format.\nTFMT is one of {att, dot, prolog, pckimmo}.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -216,7 +216,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
 // [spec:hfst:def:hfst-fst2txt.process-stream-fn]
 // [spec:hfst:sem:hfst-fst2txt.process-stream-fn]
-unsafe fn process_stream(instream: &mut HfstInputStream, outf: *mut libc::FILE) -> c_int {
+unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io::Write) -> c_int {
     unsafe {
         let mut transducer_n: usize = 0;
         while instream.is_good() {
@@ -300,21 +300,15 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: *mut libc::FILE) 
                         let alt_namestr = format!("NO_NAME_{}", transducer_n);
                         let namestr = if namestr.is_empty() {
                             if !globals::SILENT {
-                                fput(
-                                    stderr_file(),
-                                    &format!(
-                                        "Transducer has no name, giving it a name '{}'...\n",
-                                        alt_namestr
-                                    ),
+                                eprint!(
+                                    "Transducer has no name, giving it a name '{}'...\n",
+                                    alt_namestr
                                 );
                             }
                             alt_namestr
                         } else {
                             if !globals::SILENT {
-                                fput(
-                                    stderr_file(),
-                                    &format!("Renaming transducer into '{}'...\n", alt_namestr),
-                                );
+                                eprint!("Renaming transducer into '{}'...\n", alt_namestr);
                             }
                             alt_namestr
                         };
@@ -325,29 +319,8 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: *mut libc::FILE) 
             // C: delete t; (Rust drops at end of loop iteration).
         }
         instream.close();
-        if outf != stdout_file() {
-            libc::fclose(outf);
-        }
         libc::EXIT_SUCCESS
     }
-}
-
-// libc stdout FILE* helper (the C compares 'outf != stdout').
-fn stdout_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
-        static mut stdout: *mut libc::FILE;
-    }
-    unsafe { stdout }
-}
-
-// libc stderr FILE* helper (the C writes diagnostics with 'fprintf(stderr, ...)').
-fn stderr_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stderrp")]
-        static mut stderr: *mut libc::FILE;
-    }
-    unsafe { stderr }
 }
 
 // [spec:hfst:def:hfst-fst2txt.main-fn]
@@ -377,10 +350,7 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = !globals::INPUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
+        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
 
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
@@ -448,7 +418,14 @@ unsafe fn real_main() -> c_int {
             }
         }
 
-        let retval = process_stream(&mut instream, globals::outfile());
+        let mut out = match globals::output_writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("hfst-fst2txt: cannot open output: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
+        let retval = process_stream(&mut instream, &mut *out);
 
         // C: free(inputfilename); free(outfilename); (the foundation owns these
         // allocations; not freed here).

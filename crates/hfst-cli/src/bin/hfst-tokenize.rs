@@ -19,8 +19,8 @@ use hfst::pmatch_tokenize::{
 };
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_getdelim, hfst_getline, hfst_set_program_name,
-    hfst_setlocale, print_more_info, print_report_bugs, verbose_printf,
+    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, hfst_setlocale, print_more_info,
+    print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -29,7 +29,7 @@ use hfst_cli::hfst_program_options::{
 use hfst_cli::inc::{CaseResult, handle_common_case, handle_error_case};
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
-use std::io::Write;
+use std::io::{BufRead, Write};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
@@ -41,14 +41,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
-}
-
-// 'inputfile' as it is reached through the globals-unary.h include.
-fn inputfile() -> *mut libc::FILE {
-    globals::inputfile()
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // File-scope tool state (the C++ file-scope statics).
@@ -80,18 +74,19 @@ fn settings() -> &'static mut TokenizeSettings {
 // [spec:hfst:sem:hfst-tokenize.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [--segment | --xerox | --cg | --giella-cg] [OPTIONS...] RULESET\nperform matching/lookup on text streams\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "  -n, --newline            Newline as input separator (default is blank line)\n\
              \x20 -a, --print-all          Print nonmatching text\n\
              \x20 -w, --print-weight       Print weights (overrides earlier -W option)\n\
@@ -117,14 +112,14 @@ unsafe fn print_usage() {
              \x20 -L, --visl               VISL input and output (implies -W, handles <s> as blocks and <STYLE> inline)\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Use standard streams for input and output (for now).\n\n",
         );
 
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
     }
 }
 
@@ -247,6 +242,14 @@ fn process_input_0delim_print(
     cur.clear();
 }
 
+// Equivalent of the C++ 'feof(inputfile)': no bytes remain on the reader.
+fn is_eof(input: &mut dyn BufRead) -> bool {
+    match input.fill_buf() {
+        Ok(b) => b.is_empty(),
+        Err(_) => true,
+    }
+}
+
 // [spec:hfst:def:hfst-tokenize.trim-fn]
 // [spec:hfst:sem:hfst-tokenize.trim-fn]
 fn trim(s: &mut String) {
@@ -270,18 +273,21 @@ fn trim(s: &mut String) {
 
 // [spec:hfst:def:hfst-tokenize.process-input-visl-fn]
 // [spec:hfst:sem:hfst-tokenize.process-input-visl-fn]
-unsafe fn process_input_visl(container: &mut PmatchContainer, outstream: &mut dyn Write) -> c_int {
+unsafe fn process_input_visl(
+    container: &mut PmatchContainer,
+    outstream: &mut dyn Write,
+    input: &mut dyn BufRead,
+) -> c_int {
     unsafe {
-        let mut bufsize: usize = 0;
-        let mut buffer: *mut c_char = std::ptr::null_mut();
-
-        let mut len: isize;
+        let mut buf: Vec<u8> = Vec::new();
         loop {
-            len = hfst_getline(&mut buffer, &mut bufsize, inputfile());
-            if !(len > 0) {
+            buf.clear();
+            // C: hfst_getline keeps the trailing newline; Ok(0) at EOF == len<=0.
+            let n = input.read_until(b'\n', &mut buf).unwrap_or(0);
+            if !(n > 0) {
                 break;
             }
-            let mut line = bytes_to_string(buffer, len as usize);
+            let mut line = String::from_utf8_lossy(&buf).into_owned();
             trim(&mut line);
             if !line.is_empty() {
                 if line.as_bytes()[0] == b'<' && *line.as_bytes().last().unwrap() == b'>' {
@@ -294,42 +300,17 @@ unsafe fn process_input_visl(container: &mut PmatchContainer, outstream: &mut dy
             }
             let _ = outstream.flush();
 
-            *buffer = 0;
-            len = 0;
-
-            if libc::feof(inputfile()) != 0 {
+            // C: *buffer = 0; len = 0; — the post-loop tail then handles an empty
+            // line, which trims to nothing and is a no-op. Mirrored by stopping at
+            // EOF here without a separate tail block.
+            if is_eof(input) {
                 break;
-            }
-        }
-
-        if len < 0 {
-            len = 0;
-        }
-
-        let mut line = bytes_to_string(buffer, len as usize);
-        trim(&mut line);
-        if !line.is_empty() {
-            if line.as_bytes()[0] == b'<' && *line.as_bytes().last().unwrap() == b'>' {
-                print_nonmatching_sequence(&line, outstream, settings());
-            } else {
-                match_and_print(container, outstream, &line, settings());
             }
         }
         let _ = outstream.flush();
 
-        libc::free(buffer as *mut libc::c_void);
         libc::EXIT_SUCCESS
     }
-}
-
-// Build a Rust String from the first 'len' bytes of a C buffer (mirrors
-// std::string::assign(buffer, buffer + len)).
-unsafe fn bytes_to_string(buffer: *const c_char, len: usize) -> String {
-    if buffer.is_null() || len == 0 {
-        return String::new();
-    }
-    let slice = unsafe { std::slice::from_raw_parts(buffer as *const u8, len) };
-    String::from_utf8_lossy(slice).into_owned()
 }
 
 // 'template <bool do_superblank>'
@@ -339,18 +320,20 @@ unsafe fn process_input_0delim(
     container: &mut PmatchContainer,
     outstream: &mut dyn Write,
     do_superblank: bool,
+    input: &mut dyn BufRead,
 ) -> c_int {
     unsafe {
-        let mut line: *mut c_char = std::ptr::null_mut();
-        let mut bufsize: usize = 0;
+        let mut buf: Vec<u8> = Vec::new();
         let mut in_blank = false;
         let mut cur = String::new();
         loop {
-            let len = hfst_getdelim(&mut line, &mut bufsize, b'\0' as c_int, inputfile());
+            buf.clear();
+            // C: hfst_getdelim keeps the trailing '\0'; Ok(0) at EOF == len<=0.
+            let len = input.read_until(b'\0', &mut buf).unwrap_or(0) as isize;
             if !(len > 0) {
                 break;
             }
-            let bytes = std::slice::from_raw_parts(line as *const u8, len as usize);
+            let bytes: &[u8] = &buf;
             let mut escaped = false; // beginning of line is necessarily unescaped
             let mut i: isize = 0;
             while i < len {
@@ -396,9 +379,7 @@ unsafe fn process_input_0delim(
                 escaped = ch == b'\\';
                 i += 1;
             }
-            libc::free(line as *mut libc::c_void);
-            line = std::ptr::null_mut();
-            if libc::feof(inputfile()) != 0 {
+            if is_eof(input) {
                 break;
             }
         }
@@ -427,7 +408,11 @@ fn maybe_erase_newline(input_text: &mut String) {
 
 // [spec:hfst:def:hfst-tokenize.process-input-fn]
 // [spec:hfst:sem:hfst-tokenize.process-input-fn]
-unsafe fn process_input(container: &mut PmatchContainer, outstream: &mut dyn Write) -> c_int {
+unsafe fn process_input(
+    container: &mut PmatchContainer,
+    outstream: &mut dyn Write,
+    input: &mut dyn BufRead,
+) -> c_int {
     unsafe {
         // (The C++ sets std::fixed/setprecision(10) on the stream for cg/giellacg/
         // visl; the library print functions format weights themselves, so there is
@@ -435,31 +420,33 @@ unsafe fn process_input(container: &mut PmatchContainer, outstream: &mut dyn Wri
         if settings().output_format == OutputFormat::giellacg || SUPERBLANKS {
             if SUPERBLANKS {
                 verbose_printf("Processign giellacg with superblanks\n");
-                return process_input_0delim(container, outstream, true);
+                return process_input_0delim(container, outstream, true, input);
             } else {
                 verbose_printf("Processign giellacg without superblanks\n");
-                return process_input_0delim(container, outstream, false);
+                return process_input_0delim(container, outstream, false, input);
             }
         }
         if settings().output_format == OutputFormat::visl {
             verbose_printf("Processign VISL CG 3\n");
-            return process_input_visl(container, outstream);
+            return process_input_visl(container, outstream, input);
         }
         let mut input_text = String::new();
-        let mut line: *mut c_char = std::ptr::null_mut();
-        let mut bufsize: usize = 0;
+        let mut line = String::new();
         if BLANKLINE_SEPARATED {
             verbose_printf("Processing blankline separated input\n");
-            while hfst_getline(&mut line, &mut bufsize, inputfile()) > 0 {
-                if *(line as *const u8) == b'\n' {
+            loop {
+                line.clear();
+                // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
+                if input.read_line(&mut line).unwrap_or(0) == 0 {
+                    break;
+                }
+                if line.as_bytes().first() == Some(&b'\n') {
                     maybe_erase_newline(&mut input_text);
                     match_and_print(container, outstream, &input_text, settings());
                     input_text.clear();
                 } else {
-                    input_text.push_str(&cstr(line));
+                    input_text.push_str(&line);
                 }
-                libc::free(line as *mut libc::c_void);
-                line = std::ptr::null_mut();
             }
             if !input_text.is_empty() {
                 maybe_erase_newline(&mut input_text);
@@ -468,12 +455,14 @@ unsafe fn process_input(container: &mut PmatchContainer, outstream: &mut dyn Wri
         } else {
             // newline or non-separated
             verbose_printf("Processing non-separated input\n");
-            while hfst_getline(&mut line, &mut bufsize, inputfile()) > 0 {
-                input_text = cstr(line);
+            loop {
+                line.clear();
+                if input.read_line(&mut line).unwrap_or(0) == 0 {
+                    break;
+                }
+                input_text = line.clone();
                 maybe_erase_newline(&mut input_text);
                 match_and_print(container, outstream, &input_text, settings());
-                libc::free(line as *mut libc::c_void);
-                line = std::ptr::null_mut();
             }
         }
 
@@ -709,6 +698,14 @@ unsafe fn real_main() -> c_int {
         let _ = file.seek(std::io::SeekFrom::Start(0));
 
         let mut stdout = std::io::stdout();
+        // Text input is read from the standard input stream (C: 'inputfile()').
+        let mut input = match globals::input_reader() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("hfst-tokenize: cannot open input: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
         if first_header_attributes.get("name").map(|s| s.as_str()) != Some("TOP") {
             verbose_printf("No TOP automaton found, using naive tokeniser?\n");
             let mut is = HfstInputStream::new_filename(&tokenizer_filename);
@@ -716,14 +713,14 @@ unsafe fn real_main() -> c_int {
             let mut container = make_naive_tokenizer(&mut dictionary);
             container.set_verbose(globals::VERBOSE);
             container.set_single_codepoint_tokenization(!settings().tokenize_multichar);
-            process_input(&mut container, &mut stdout)
+            process_input(&mut container, &mut stdout, &mut *input)
         } else {
             verbose_printf("TOP automaton seen, treating as pmatch script...\n");
             let mut is = hfst::transducer::IStream::new(&mut file as &mut dyn std::io::Read);
             let mut container = PmatchContainer::new_from_stream(&mut is);
             container.set_verbose(globals::VERBOSE);
             container.set_single_codepoint_tokenization(!settings().tokenize_multichar);
-            process_input(&mut container, &mut stdout)
+            process_input(&mut container, &mut stdout, &mut *input)
         }
     }
 }

@@ -41,42 +41,42 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-priority-disjunct.print-usage-fn]
 // [spec:hfst:sem:hfst-priority-disjunct.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nDisjunct (union, OR) two transducers\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_binary_program_options(globals::message_out());
-        fput(globals::message_out(), "\n");
-        print_common_binary_program_parameter_instructions(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_binary_program_options(&mut *msg);
+        fput(&mut *msg, "\n");
+        print_common_binary_program_parameter_instructions(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Harmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "\nExamples:\n  {} -o cat_or_dog.hfst cat.hfst dog.hfst\n\n",
                 program_name
             ),
         );
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -203,7 +203,7 @@ unsafe fn priority_disjunct_streams(
             output_type = type1;
         }
 
-        let output_named = !globals::OUTFILE.is_null();
+        let output_named = cstr(globals::OUTFILENAME) != "<stdout>";
         let mut outstream = if output_named {
             HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), output_type, true)
         } else {
@@ -352,18 +352,8 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let first_opened = !globals::FIRSTFILE.is_null();
-        let second_opened = !globals::SECONDFILE.is_null();
-        let output_opened = !globals::OUTFILE.is_null();
-        if first_opened {
-            libc::fclose(globals::FIRSTFILE);
-        }
-        if second_opened {
-            libc::fclose(globals::SECONDFILE);
-        }
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let first_opened = cstr(globals::FIRSTFILENAME) != "<stdin>";
+        let second_opened = cstr(globals::SECONDFILENAME) != "<stdin>";
         verbose_printf(&format!(
             "Reading from {} and {}, writing to {}\n",
             cstr(globals::FIRSTFILENAME),

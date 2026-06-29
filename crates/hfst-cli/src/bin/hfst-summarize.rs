@@ -40,9 +40,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-summarize.print-usage-fn]
@@ -50,36 +49,37 @@ unsafe fn fput(f: *mut libc::FILE, s: &str) {
 unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nCalculate the properties of a transducer\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         // (tool-specific options and short descriptions)
-        fput(globals::message_out(), "Summarize options:\n");
+        fput(&mut *msg, "Summarize options:\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "  -S, --print-symbol-pair-statistics=N  Print info about symbol pairs that occur\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             "                                        at most N times (default is infinity)\n",
         );
-        fput(globals::message_out(), "\n");
-        print_common_unary_program_parameter_instructions(globals::message_out());
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
+        print_common_unary_program_parameter_instructions(&mut *msg);
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "The parameter --verbose gives more extensive information on\nthe properties of a transducer.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -182,7 +182,13 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 // [spec:hfst:sem:hfst-summarize.process-stream-fn]
 unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
     unsafe {
-        let outfile = globals::outfile();
+        let mut out = match globals::output_writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("hfst-summarize: cannot open output: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
@@ -290,42 +296,42 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                 (average_arcs_per_state) / (found_alphabet.len() as f32) as f64;
 
             if transducer_n > 1 {
-                fput(outfile, &format!("-- \nTransducer #{}:\n", transducer_n));
+                fput(&mut *out, &format!("-- \nTransducer #{}:\n", transducer_n));
             }
-            fput(outfile, &format!("name: \"{}\"\n", trans.get_name()));
+            fput(&mut *out, &format!("name: \"{}\"\n", trans.get_name()));
             // next is printed as in OpenFST's fstinfo
             // do not modify for compatibility
             match trans.get_type() {
                 ImplementationType::SFST_TYPE => {
-                    fput(outfile, "fst type: SFST\narc type: SFST\n");
+                    fput(&mut *out, "fst type: SFST\narc type: SFST\n");
                 }
                 ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    fput(outfile, "fst type: OpenFST\narc type: tropical\n");
+                    fput(&mut *out, "fst type: OpenFST\narc type: tropical\n");
                 }
                 ImplementationType::LOG_OPENFST_TYPE => {
-                    fput(outfile, "fst type: OpenFST\narc type: log\n");
+                    fput(&mut *out, "fst type: OpenFST\narc type: log\n");
                 }
                 ImplementationType::FOMA_TYPE => {
-                    fput(outfile, "fst type: foma\narc type: foma\n");
+                    fput(&mut *out, "fst type: foma\narc type: foma\n");
                 }
                 ImplementationType::HFST_OL_TYPE => {
                     fput(
-                        outfile,
+                        &mut *out,
                         "fst type: HFST optimized lookup\narc type: unweighted\n",
                     );
                 }
                 ImplementationType::HFST_OLW_TYPE => {
                     fput(
-                        outfile,
+                        &mut *out,
                         "fst type: HFST optimized lookup\narc type: weighted\n",
                     );
                 }
                 _ => {
-                    fput(outfile, "fst type: ???\narc type: ???\n");
+                    fput(&mut *out, "fst type: ???\narc type: ???\n");
                 }
             }
             fput(
-                outfile,
+                &mut *out,
                 &format!(
                     "input symbol table: yes\n\
                      output symbol table: yes\n\
@@ -351,7 +357,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             );
             // other names from properties...
             fput(
-                outfile,
+                &mut *out,
                 &format!(
                     "expanded: ???\n\
                      mutable: {}\n\
@@ -380,7 +386,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             if globals::VERBOSE {
                 // our extensions for nice statistics maybe
                 fput(
-                    outfile,
+                    &mut *out,
                     &format!(
                         "number of arcs in sparsest state: {}\n\
                          number of arcs in densest state: {}\n\
@@ -411,31 +417,31 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                     ),
                 );
                 // alphabets
-                fput(outfile, "sigma set:\n");
+                fput(&mut *out, "sigma set:\n");
                 if transducer_knows_alphabet {
                     let mut first = true;
                     for s in transducer_alphabet.iter() {
                         if !first {
-                            fput(outfile, ", ");
+                            fput(&mut *out, ", ");
                         }
-                        fput(outfile, s);
+                        fput(&mut *out, s);
                         first = false;
                     }
-                    fput(outfile, "\n");
+                    fput(&mut *out, "\n");
                 } else {
-                    fput(outfile, "<Unknown in used transducer format>\n");
+                    fput(&mut *out, "<Unknown in used transducer format>\n");
                 }
-                fput(outfile, "arc symbols actually seen in transducer:\n");
+                fput(&mut *out, "arc symbols actually seen in transducer:\n");
                 let mut first = true;
                 for s in found_alphabet.iter() {
                     if !first {
-                        fput(outfile, ", ");
+                        fput(&mut *out, ", ");
                     }
-                    fput(outfile, s);
+                    fput(&mut *out, s);
                     first = false;
                 }
-                fput(outfile, "\n");
-                fput(outfile, "sigma symbols missing from transducer:\n");
+                fput(&mut *out, "\n");
+                fput(&mut *out, "sigma symbols missing from transducer:\n");
                 if transducer_knows_alphabet {
                     let transducer_minus_set: StringSet = transducer_alphabet
                         .difference(&found_alphabet)
@@ -445,28 +451,28 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                     first = true;
                     for s in transducer_minus_set.iter() {
                         if !first {
-                            fput(outfile, ", ");
+                            fput(&mut *out, ", ");
                         }
-                        fput(outfile, s);
+                        fput(&mut *out, s);
                         first = false;
                     }
-                    fput(outfile, "\n");
+                    fput(&mut *out, "\n");
                 } else {
-                    fput(outfile, "<Unknown in used transducer format>\n");
+                    fput(&mut *out, "<Unknown in used transducer format>\n");
                 }
                 // ADDED
                 if trans.get_type() == ImplementationType::TROPICAL_OPENFST_TYPE {
                     let ss = trans.get_first_input_symbols();
-                    fput(outfile, "first input symbols:\n");
+                    fput(&mut *out, "first input symbols:\n");
                     first = true;
                     for s in ss.iter() {
                         if !first {
-                            fput(outfile, ", ");
+                            fput(&mut *out, ", ");
                         }
-                        fput(outfile, s);
+                        fput(&mut *out, s);
                         first = false;
                     }
-                    fput(outfile, "\n");
+                    fput(&mut *out, "\n");
                 }
             } // if verbose
 
@@ -474,14 +480,14 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             if PRINT_SYMBOL_PAIR_STATISTICS {
                 if SYMBOL_PAIR_THRESHOLD > -1 {
                     fput(
-                        outfile,
+                        &mut *out,
                         &format!(
                             "symbol pairs that occur at most {} times:\n",
                             SYMBOL_PAIR_THRESHOLD as u32
                         ),
                     );
                 } else {
-                    fput(outfile, "symbol pairs:\n");
+                    fput(&mut *out, "symbol pairs:\n");
                 }
                 for (key, value) in symbol_pairs.iter() {
                     // C: 'it->second <= symbol_pair_threshold' compares unsigned
@@ -489,15 +495,15 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                     // wraps to UINT_MAX so every pair passes. Mirror with the same
                     // unsigned comparison.
                     if *value <= (SYMBOL_PAIR_THRESHOLD as u32) {
-                        fput(outfile, &format!("{}:{}\t{}\n", key.0, key.1, value));
+                        fput(&mut *out, &format!("{}:{}\t{}\n", key.0, key.1, value));
                     }
                 }
-                fput(outfile, "\n");
+                fput(&mut *out, "\n");
             }
         }
 
         fput(
-            outfile,
+            &mut *out,
             &format!("\nRead {} transducers in total.\n", transducer_n),
         );
 
@@ -532,10 +538,7 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = !globals::INPUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
+        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),
@@ -552,10 +555,6 @@ unsafe fn real_main() -> c_int {
         };
         let retval = process_stream(&mut instream);
 
-        let output_opened = !globals::OUTFILE.is_null();
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
         if !globals::INPUTFILENAME.is_null() {
             libc::free(globals::INPUTFILENAME as *mut libc::c_void);
         }

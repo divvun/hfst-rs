@@ -19,9 +19,9 @@ use hfst::xre::XreCompiler;
 use hfst_cli::globals;
 use hfst_cli::globals::ColourTristate;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_fopen, hfst_getline,
-    hfst_parse_format_name, hfst_set_program_name, hfst_setlocale, hfst_strdup, hfst_strndup,
-    hfst_strtoul, print_more_info, print_report_bugs, print_short_help, verbose_printf, warning,
+    EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_parse_format_name,
+    hfst_set_program_name, hfst_setlocale, hfst_strdup, hfst_strndup, hfst_strtoul,
+    print_more_info, print_report_bugs, print_short_help, verbose_printf, warning,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -31,6 +31,7 @@ use hfst_cli::hfst_program_options::{
 use hfst_cli::inc::{CaseResult, check_common_params, handle_common_case, handle_error_case};
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::io::{BufRead, Write};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
@@ -42,19 +43,28 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // add tools-specific variables here
 static mut INFILENAMES: *mut *mut c_char = std::ptr::null_mut();
-static mut INFILES: *mut *mut libc::FILE = std::ptr::null_mut();
+// In the C the per-file inputs were a FILE** array (each from hfst_fopen, or
+// stdin); after the io-foundation de-C-ism they are std::io::BufRead readers,
+// parallel to INFILENAMES.
+static mut INFILE_READERS: Vec<Box<dyn BufRead>> = Vec::new();
+
+fn infile_readers() -> &'static mut Vec<Box<dyn BufRead>> {
+    unsafe { &mut *std::ptr::addr_of_mut!(INFILE_READERS) }
+}
 static mut INFILE_N: libc::c_uint = 0;
 static mut INPUTFILENAME: *mut c_char = std::ptr::null_mut();
 static mut LINEN: libc::c_ulong = 0;
 static mut REGEXP: *mut c_char = std::ptr::null_mut();
-static mut EXPFILE: *mut libc::FILE = std::ptr::null_mut();
+// C: 'FILE *expfile = 0;' — opened by -f but its content is never read (the tool
+// keeps a TODO); only its NULL-ness (whether -f was given) is observed. Modelled
+// as a bool so the same "was -f given" check survives the FILE* removal.
+static mut EXPFILE_GIVEN: bool = false;
 #[allow(dead_code)]
 static mut EXPFILENAME: *mut c_char = std::ptr::null_mut();
 static mut DIALECT_XEROX: bool = false;
@@ -97,9 +107,10 @@ unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         // Usage line
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] PATTERN [FILE...]\n\
                  Search for PATTERN in each FILE or standard input.\n\
@@ -111,14 +122,14 @@ unsafe fn print_usage() {
         );
 
         // options, grouped
-        print_common_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "  -9, --format=TYPE       compile expressions to TYPE automata\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Regexp selection and interpretation:\n\
              \x20 -E, --extended-regexp     PATTERN is an extended regular expression (ERE)\n\
              \x20 -F, --fixed-strings       PATTERN is a set of newline-separated fixed strings\n\
@@ -133,14 +144,14 @@ unsafe fn print_usage() {
              \x20 -z, --null-data           a data line ends in 0 byte, not newline\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Miscellaneous options:\n\
              \x20     --no-messages         suppress error messages\n\
              \x20     --invert-match        select non-matching lines\n\
              \n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Output control:\n\
              \x20 -m, --max-count=NUM       stop after NUM matches\\n\
              \x20 -b, --byte-offset         print the byte offset with output lines\n\
@@ -170,7 +181,7 @@ unsafe fn print_usage() {
              \n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Context control:\n\
              \x20 -B, --before-context=NUM  print NUM lines of leading context\n\
              \x20 -A, --after-context=NUM   print NUM lines of trailing context\n\
@@ -184,7 +195,7 @@ unsafe fn print_usage() {
         );
 
         // parameter details
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         // bug report address
         print_report_bugs();
         // external docs
@@ -316,7 +327,18 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             } else if c == b'e' as c_int {
                 REGEXP = hfst_strdup(getopt::OPTARG);
             } else if c == b'f' as c_int {
-                EXPFILE = hfst_fopen(&cstr(getopt::OPTARG), "r");
+                // C: expfile = hfst_fopen(optarg, "r"); the handle is never read,
+                // but hfst_fopen validates the file (erroring on failure) — mirror
+                // that and record that -f was given.
+                let fname = cstr(getopt::OPTARG);
+                if fname != "-" && std::fs::File::open(&fname).is_err() {
+                    error(
+                        libc::EXIT_FAILURE,
+                        0,
+                        &format!("Could not open '{}'. ", fname),
+                    );
+                }
+                EXPFILE_GIVEN = true;
             } else if c == b'I' as c_int {
                 error(libc::EXIT_FAILURE, 0, "Ignore case not supported");
             } else if c == b'w' as c_int {
@@ -392,7 +414,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         if FORMAT == ImplementationType::UNSPECIFIED_TYPE {
             FORMAT = ImplementationType::TROPICAL_OPENFST_TYPE;
         }
-        if REGEXP.is_null() && EXPFILE.is_null() {
+        if REGEXP.is_null() && !EXPFILE_GIVEN {
             if (argc - getopt::OPTIND) <= 0 {
                 print_usage();
                 print_short_help();
@@ -404,36 +426,41 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
         if (argc - getopt::OPTIND) == 0 {
             INFILENAMES = libc::malloc(std::mem::size_of::<*mut c_char>()) as *mut *mut c_char;
-            INFILES = libc::malloc(std::mem::size_of::<*mut libc::FILE>()) as *mut *mut libc::FILE;
             INFILE_N = 1;
             let stdin_name = CString::new("<stdin>").unwrap();
             *INFILENAMES.offset(0) = libc::strdup(stdin_name.as_ptr());
-            *INFILES.offset(0) = stdin_handle();
+            infile_readers().push(Box::new(std::io::BufReader::new(std::io::stdin())));
         } else {
             let count = (argc - getopt::OPTIND) as usize;
             INFILENAMES =
                 libc::malloc(std::mem::size_of::<*mut c_char>() * count) as *mut *mut c_char;
-            INFILES = libc::malloc(std::mem::size_of::<*mut libc::FILE>() * count)
-                as *mut *mut libc::FILE;
             INFILE_N = (argc - getopt::OPTIND) as libc::c_uint;
             for i in 0..(argc - getopt::OPTIND) {
                 *INFILENAMES.offset(i as isize) =
                     libc::strdup(*argv.offset((getopt::OPTIND + i) as isize));
-                *INFILES.offset(i as isize) =
-                    hfst_fopen(&cstr(*INFILENAMES.offset(i as isize)), "r");
+                // C: infiles[i] = hfst_fopen(infilenames[i], "r"); open the named
+                // file as a buffered std reader, mapping "-" to stdin and erroring
+                // on a failed open through the same path.
+                let name = cstr(*INFILENAMES.offset(i as isize));
+                if name == "-" {
+                    infile_readers().push(Box::new(std::io::BufReader::new(std::io::stdin())));
+                } else {
+                    match std::fs::File::open(&name) {
+                        Ok(f) => infile_readers().push(Box::new(std::io::BufReader::new(f))),
+                        Err(_) => {
+                            error(
+                                libc::EXIT_FAILURE,
+                                0,
+                                &format!("Could not open '{}'. ", name),
+                            );
+                        }
+                    }
+                }
             }
         }
         check_common_params();
         EXIT_CONTINUE
     }
-}
-
-unsafe fn stdin_handle() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-        static mut stdin: *mut libc::FILE;
-    }
-    unsafe { stdin }
 }
 
 // [spec:hfst:def:hfst-grep.string-to-utf8-fn]
@@ -594,38 +621,32 @@ unsafe fn extend_matcher_with_options() {
 // [spec:hfst:def:hfst-grep.print-match-line-fn]
 // [spec:hfst:sem:hfst-grep.print-match-line-fn]
 #[allow(dead_code)]
-unsafe fn print_match_line(path: &HfstOneLevelPath) {
+unsafe fn print_match_line(path: &HfstOneLevelPath, out: &mut dyn Write) {
     unsafe {
         if PRINT_ONLY_MATCHING_FILENAMES || PRINT_ONLY_UNMATCHING_FILENAMES {
             return;
         }
         if PRINT_FILENAMES {
-            fput(globals::outfile(), &cstr(INPUTFILENAME));
+            fput(&mut *out, &cstr(INPUTFILENAME));
             if PRINT_FILENAME_NULL {
-                let zero: u8 = 0;
-                libc::fwrite(
-                    &zero as *const u8 as *const libc::c_void,
-                    1,
-                    1,
-                    globals::outfile(),
-                );
+                let _ = out.write_all(&[0u8]);
             } else {
-                fput(globals::outfile(), ": ");
+                fput(&mut *out, ": ");
             }
         }
         if PRINT_LINENUMBERS {
-            fput(globals::outfile(), &format!("{}: ", LINEN));
+            fput(&mut *out, &format!("{}: ", LINEN));
         }
         for s in &path.second {
-            fput(globals::outfile(), s);
+            fput(&mut *out, s);
         }
-        fput(globals::outfile(), "\n");
+        fput(&mut *out, "\n");
     }
 }
 
 // [spec:hfst:def:hfst-grep.print-match-transducer-fn]
 // [spec:hfst:sem:hfst-grep.print-match-transducer-fn]
-unsafe fn print_match_transducer(path: &HfstTransducer) {
+unsafe fn print_match_transducer(path: &HfstTransducer, out: &mut dyn Write) {
     unsafe {
         let mut p: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
         path.extract_paths(&mut p, 1, -1);
@@ -633,61 +654,62 @@ unsafe fn print_match_transducer(path: &HfstTransducer) {
             return;
         }
         if PRINT_FILENAMES {
-            fput(globals::outfile(), &cstr(INPUTFILENAME));
+            fput(&mut *out, &cstr(INPUTFILENAME));
             if PRINT_FILENAME_NULL {
-                let zero: u8 = 0;
-                libc::fwrite(
-                    &zero as *const u8 as *const libc::c_void,
-                    1,
-                    1,
-                    globals::outfile(),
-                );
+                let _ = out.write_all(&[0u8]);
             } else {
-                fput(globals::outfile(), ": ");
+                fput(&mut *out, ": ");
             }
         }
         if PRINT_LINENUMBERS {
-            fput(globals::outfile(), &format!("{}: ", LINEN));
+            fput(&mut *out, &format!("{}: ", LINEN));
         }
         if let Some(first) = p.iter().next() {
             for s in &first.second {
                 if !is_epsilon(&s.0) {
-                    fput(globals::outfile(), &s.0);
+                    fput(&mut *out, &s.0);
                 }
             }
         }
-        fput(globals::outfile(), "\n");
+        fput(&mut *out, "\n");
     }
 }
 
 /// @return true if matches in @a infile
 // [spec:hfst:def:hfst-grep.match-lines-fn]
 // [spec:hfst:sem:hfst-grep.match-lines-fn]
-unsafe fn match_lines(infile: *mut libc::FILE, infilename: *mut c_char) -> bool {
+unsafe fn match_lines(
+    infile: &mut dyn BufRead,
+    infilename: *mut c_char,
+    out: &mut dyn Write,
+) -> bool {
     unsafe {
-        let mut line: *mut c_char = std::ptr::null_mut();
-        let mut len: usize = 0;
         verbose_printf(&format!("matching against {}...\n", cstr(infilename)));
         let mut matched = false;
         let mut matches_n: usize = 0;
         // #ifndef HFST_OPTIMISED_LOOKUP_CAN_IDENTITY
         let tokeniser = HfstTokenizer::new();
-        while hfst_getline(&mut line, &mut len, infile) != -1 {
-            LINEN += 1;
-            let mut p = line;
-            while *p != b'\0' as c_char {
-                if *p == b'\n' as c_char {
-                    *p = b'\0' as c_char;
-                    break;
-                }
-                p = p.offset(1);
+        loop {
+            // C: hfst_getline reads a raw line (bytes); cstr does a lossy UTF-8
+            // conversion. read_until(b'\n') mirrors getline's byte semantics.
+            let mut raw_bytes: Vec<u8> = Vec::new();
+            match infile.read_until(b'\n', &mut raw_bytes) {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(_) => break,
             }
-            verbose_printf(&format!("matching {}...\n", cstr(line)));
+            LINEN += 1;
+            let mut line = String::from_utf8_lossy(&raw_bytes).into_owned();
+            // C: scan to the first '\n' and replace it with '\0' (truncate there).
+            if let Some(pos) = line.find('\n') {
+                line.truncate(pos);
+            }
+            verbose_printf(&format!("matching {}...\n", line));
             // #else branch (active: HFST_OPTIMISED_LOOKUP_CAN_IDENTITY undefined)
-            if *line == b'\0' as c_char {
+            if line.is_empty() {
                 continue;
             }
-            let line_str = cstr(line);
+            let line_str = line;
             let mut line_trans =
                 HfstTransducer::new_tokenized_pair(&line_str, &line_str, &tokeniser, FORMAT);
             verbose_printf("composing...\n");
@@ -698,19 +720,19 @@ unsafe fn match_lines(infile: *mut libc::FILE, infilename: *mut c_char) -> bool 
             if results_t.compare_default(&empty) {
                 verbose_printf("no matches\n");
                 if INVERT_MATCHES {
-                    print_match_transducer(&line_trans);
+                    print_match_transducer(&line_trans, &mut *out);
                 }
             } else {
                 verbose_printf("matches\n");
                 if !INVERT_MATCHES {
-                    print_match_transducer(&results_t);
+                    print_match_transducer(&results_t, &mut *out);
                 }
                 matched = true;
                 matches_n += 1;
             }
             let _ = &mut line_trans;
             if FLUSH_NEWLINES {
-                libc::fflush(globals::outfile());
+                let _ = out.flush();
             }
             if (MAX_COUNT > 0) && (matches_n as libc::c_ulong >= MAX_COUNT) {
                 break;
@@ -759,12 +781,22 @@ unsafe fn real_main() -> c_int {
         verbose_printf(&format!("Writing to {}\n", cstr(globals::OUTFILENAME)));
         read_matcher(&cstr(REGEXP));
         extend_matcher_with_options();
+        let mut out = match globals::output_writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("hfst-grep: cannot open output: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
         // #if HFST_OPTIMISED_LOOKUP_CAN_IDENTITY_SYMBOL: optimise_matcher();
         for i in 0..INFILE_N {
             INPUTFILENAME = *INFILENAMES.offset(i as isize);
             LINEN = 0;
-            match_lines(*INFILES.offset(i as isize), *INFILENAMES.offset(i as isize));
+            let name = *INFILENAMES.offset(i as isize);
+            let reader = &mut infile_readers()[i as usize];
+            match_lines(reader.as_mut(), name, &mut *out);
         }
+        let _ = out.flush();
 
         libc::free(globals::OUTFILENAME as *mut libc::c_void);
         retval

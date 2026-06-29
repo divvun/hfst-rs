@@ -14,8 +14,8 @@ use hfst::hfst_symbol_defs::{internal_epsilon, label_to_stringpair};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, conversion_type, extend_options_getenv, hfst_error, hfst_error_at_line,
-    hfst_fopen, hfst_set_program_name, hfst_strformat, hfst_warning, is_input_stream_in_ol_format,
+    EXIT_CONTINUE, conversion_type, error, extend_options_getenv, hfst_error, hfst_error_at_line,
+    hfst_set_program_name, hfst_strformat, hfst_warning, is_input_stream_in_ol_format,
     print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
@@ -32,6 +32,7 @@ use hfst_cli::inc::{
 use libc::{c_char, c_int};
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
+use std::io::{BufRead, BufReader};
 
 // [spec:hfst:def:hfst-substitute.hfst-symbol-substitutions]
 type HfstSymbolSubstitutions = BTreeMap<String, String>;
@@ -42,7 +43,7 @@ type HfstSymbolPairSubstitutions = BTreeMap<StringPair, StringPair>;
 static mut FROM_LABEL: Option<String> = None;
 static mut FROM_PAIR: Option<StringPair> = None;
 static mut FROM_FILE_NAME: Option<String> = None;
-static mut FROM_FILE: *mut libc::FILE = std::ptr::null_mut();
+static mut FROM_FILE: Option<BufReader<std::fs::File>> = None;
 static mut TO_LABEL: Option<String> = None;
 static mut TO_PAIR: Option<StringPair> = None;
 static mut TO_TRANSDUCER_FILENAME: Option<String> = None;
@@ -65,28 +66,18 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
-// Reads one line from a C 'FILE*' the way 'hfst_getline' does: the returned
-// string keeps its trailing newline; 'None' marks end of input.
-unsafe fn read_line(f: *mut libc::FILE) -> Option<String> {
-    unsafe {
-        let mut line: *mut c_char = std::ptr::null_mut();
-        let mut len: libc::size_t = 0;
-        let n = libc::getline(&mut line, &mut len, f);
-        if n == -1 {
-            if !line.is_null() {
-                libc::free(line as *mut libc::c_void);
-            }
-            None
-        } else {
-            let s = CStr::from_ptr(line).to_string_lossy().into_owned();
-            libc::free(line as *mut libc::c_void);
-            Some(s)
-        }
+// Reads one line from a buffered reader the way 'hfst_getline' does: the
+// returned string keeps its trailing newline; 'None' marks end of input.
+fn read_line(f: &mut dyn BufRead) -> Option<String> {
+    let mut s = String::new();
+    match f.read_line(&mut s) {
+        Ok(0) => None,
+        Ok(_) => Some(s),
+        Err(_) => None,
     }
 }
 
@@ -94,19 +85,20 @@ unsafe fn read_line(f: *mut libc::FILE) -> Option<String> {
 // [spec:hfst:sem:hfst-substitute.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nRelabel transducer arcs\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Relabeling options:\n\
              \x20 -f, --from-label=FLABEL      replace FLABEL\n\
              \x20 -t, --to-label=TLABEL        replace with TLABEL\n\
@@ -120,10 +112,10 @@ unsafe fn print_usage() {
              Transient optimisation schemes:\n\
              \x20 -9, --compose                compose substitutions when possible\n",
         );
-        fput(globals::message_out(), "\n");
-        print_common_unary_program_parameter_instructions(globals::message_out());
+        fput(&mut *msg, "\n");
+        print_common_unary_program_parameter_instructions(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "LABEL must be a symbol name in single arc in transducer,\n\
              or colon separated pair defining an arc.\n\
              If TFILE is specified, FLABEL must be a pair.\n\
@@ -131,7 +123,7 @@ unsafe fn print_usage() {
              and col 2 gives TLABEL specifications.\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "\nExamples:\n\
                  \x20 {pn} -i tr.hfst -o tr_relabeled.hfst -f 'a' -t 'A'\n\
@@ -144,7 +136,7 @@ unsafe fn print_usage() {
             ),
         );
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -234,11 +226,19 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 FROM_LABEL = Some(fl);
             } else if c == b'F' as c_int {
                 let fname = cstr(getopt::OPTARG);
-                FROM_FILE = hfst_fopen(&fname, "r");
-                FROM_FILE_NAME = Some(fname);
-                if FROM_FILE.is_null() {
-                    return libc::EXIT_FAILURE;
+                match std::fs::File::open(&fname) {
+                    Ok(f) => FROM_FILE = Some(BufReader::new(f)),
+                    Err(_) => {
+                        error(
+                            libc::EXIT_FAILURE,
+                            0,
+                            &format!("Could not open '{}'", fname),
+                        );
+                        FROM_FILE_NAME = Some(fname);
+                        return libc::EXIT_FAILURE;
+                    }
                 }
+                FROM_FILE_NAME = Some(fname);
             } else if c == b't' as c_int {
                 let mut tl = cstr(getopt::OPTARG);
                 if tl == "@0@" {
@@ -259,12 +259,21 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 TO_LABEL = Some(tl);
             } else if c == b'T' as c_int {
                 let fname = cstr(getopt::OPTARG);
-                let f = hfst_fopen(&fname, "r");
-                TO_TRANSDUCER_FILENAME = Some(fname);
-                if f.is_null() {
-                    return libc::EXIT_FAILURE;
+                // C: probe the file with hfst_fopen then immediately fclose; here
+                // we just check it opens (the std File drops/closes at scope end).
+                match std::fs::File::open(&fname) {
+                    Ok(_f) => {}
+                    Err(_) => {
+                        error(
+                            libc::EXIT_FAILURE,
+                            0,
+                            &format!("Could not open '{}'", fname),
+                        );
+                        TO_TRANSDUCER_FILENAME = Some(fname);
+                        return libc::EXIT_FAILURE;
+                    }
                 }
-                libc::fclose(f);
+                TO_TRANSDUCER_FILENAME = Some(fname);
             } else if c == b'R' as c_int {
                 IN_ORDER = true;
             } else if c == b'9' as c_int {
@@ -541,7 +550,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             output_type = instream.get_type();
         }
 
-        let output_named = !globals::OUTFILE.is_null();
+        let output_named = cstr(globals::OUTFILENAME) != "<stdout>";
         let mut outstream = if output_named {
             HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), output_type, true)
         } else {
@@ -573,14 +582,14 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             }
             // initialize delayed substitutor automaton
             SUBSTITUTION_TRANS = Some(HfstTransducer::new_type(trans.get_type()));
-            if !FROM_FILE.is_null() {
+            if (*(&raw const FROM_FILE)).is_some() {
                 let from_file_name = (*(&raw const FROM_FILE_NAME)).clone().unwrap();
                 let mut line_n: u32 = 0;
                 verbose_printf(&format!(
                     "reading substitutions from {}...\n",
                     from_file_name
                 ));
-                while let Some(line) = read_line(FROM_FILE) {
+                while let Some(line) = read_line((*(&raw mut FROM_FILE)).as_mut().unwrap()) {
                     line_n += 1;
                     if line.starts_with('\n') {
                         continue;
@@ -745,7 +754,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             } else if DELAYED {
                 perform_delayed(&mut trans);
             }
-            if !FROM_FILE.is_null() {
+            if (*(&raw const FROM_FILE)).is_some() {
                 let from_file_name = (*(&raw const FROM_FILE_NAME)).clone().unwrap();
                 let src = trans.clone();
                 hfst_set_name_unary(
@@ -817,21 +826,14 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = !globals::INPUTFILE.is_null();
-        let output_opened = !globals::OUTFILE.is_null();
-        if input_opened {
-            libc::fclose(globals::INPUTFILE);
-        }
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),
             cstr(globals::OUTFILENAME)
         ));
 
-        if !FROM_FILE.is_null() {
+        if (*(&raw const FROM_FILE)).is_some() {
             LABEL_SUBSTITUTION_MAP = Some(HfstSymbolSubstitutions::new());
             PAIR_SUBSTITUTION_MAP = Some(HfstSymbolPairSubstitutions::new());
         }

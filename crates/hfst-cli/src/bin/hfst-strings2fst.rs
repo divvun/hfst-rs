@@ -14,8 +14,8 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_error, hfst_error_at_line,
-    hfst_getline, hfst_parse_format_name, hfst_set_program_name, hfst_strtoweight,
-    hfst_warning_at_line, print_more_info, print_report_bugs, verbose_printf,
+    hfst_parse_format_name, hfst_set_program_name, hfst_strtoweight, hfst_warning_at_line,
+    print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -29,6 +29,7 @@ use hfst_cli::inc::{
 };
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::io::BufRead;
 
 // ---------------------------------------------------------------------------
 // Tool-global state. C: file-scope static variables.
@@ -61,9 +62,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-strings2fst.divide-by-sum-of-weights-fn]
@@ -137,42 +137,43 @@ fn set_errno(v: i32) {
 // [spec:hfst:sem:hfst-strings2fst.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nCompile string pairs and pair-strings into transducer(s)\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Input/Output options:\n  -i, --input=INFILE     Read input strings from INFILE\n  -o, --output=OUTFILE   Write output transducer to OUTFILE\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             "String and format options:\n  -f, --format=FMT          Write result in FMT format\n  -j, --disjunct-strings    Disjunct all strings instead of transforming\n                            each string into a separate transducer\n      --norm                Divide each weight by sum of all weights\n                            (with option -j)\n      --log                 Take negative natural logarithm of each weight\n      --log10               Take negative 10-based logarithm of each weight\n  -p, --pairstrings         Input is in pairstring format\n  -S, --has-spaces          Input has spaces between symbols/symbol pairs\n  -e, --epsilon=EPS         Interpret string EPS as epsilon.\n  -m, --multichar-symbols=FILE   Strings that must be tokenized as one symbol.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If OUTFILE or INFILE is missing or -, standard streams will be used.\nFMT can be { foma, openfst-tropical, openfst-log, sfst, \noptimized-lookup-weighted, optimized-lookup-unweighted }.\nIf EPS is not defined, the default representation of @0@ is used.\nOption --norm precedes option --log.\nThe FILE of option -m lists all multichar-symbols, each symbol\non its own line.\nBackslash '\\' may be used to escape ':', tab and itself. For any\nother symbol x '\\x' means x literally, i.e. is the same as 'x'.\nThe weight of a string can be given after the string separated\nby a tabulator. The weight cannot be zero.\n\n",
         );
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Examples:\n  echo \"cat:dog\" | {}            create cat:dog fst\n  echo \"c:da:ot:g\" | {} -p       same as pairstring\n  echo \"c:d a:o t:g\" | {} -p -S  same as pairstring with spaces\n  echo \"c a t:d o g\" | {} -S     same with spaces\n\n",
                 program_name, program_name, program_name, program_name
             ),
         );
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
     }
 }
 
@@ -374,11 +375,9 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
 // [spec:hfst:def:hfst-strings2fst.process-stream-fn]
 // [spec:hfst:sem:hfst-strings2fst.process-stream-fn]
-unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
+unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> c_int {
     unsafe {
         let mut transducer_n: usize = 0;
-        let mut line: *mut c_char = std::ptr::null_mut();
-        let mut len: usize = 0;
         let mut disjunction = HfstBasicTransducer::new();
         let mut line_n: usize = 0;
 
@@ -389,13 +388,20 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
 
         let inputfilename = cstr(globals::INPUTFILENAME);
 
-        while hfst_getline(&mut line, &mut len, globals::inputfile()) != -1 {
+        let mut line = String::new();
+        loop {
+            line.clear();
+            // C: hfst_getline keeps the trailing newline; Ok(0) at EOF == getline's -1.
+            if input.read_line(&mut line).unwrap_or(0) == 0 {
+                break;
+            }
             transducer_n += 1;
             line_n += 1;
             verbose_printf(&format!("Parsing line {}...\n", line_n));
 
-            // parse line end and weight; mutate the C buffer in place.
-            let line_bytes = CStr::from_ptr(line).to_bytes();
+            // parse line end and weight (the C++ mutated the buffer in place,
+            // writing '\0' at the tab/newline; here we slice instead).
+            let line_bytes = line.as_bytes();
             let tab_pos = line_bytes.iter().position(|&b| b == b'\t');
             let mut weight: f64 = 0.0;
             let mut weighted = false;
@@ -410,15 +416,13 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
                 string_end_idx = se;
             } else {
                 let tab = tab_pos.unwrap();
-                // change trailing '\n'/'\r' (from tab onward) to '\0'
-                let mut p = tab;
-                while p < line_bytes.len() {
-                    if line_bytes[p] == b'\n' || line_bytes[p] == b'\r' {
-                        *line.add(p) = 0;
-                    }
-                    p += 1;
+                // weight string is from tab+1 to the first '\n'/'\r' (the C++
+                // inserted a '\0' there).
+                let mut we = tab + 1;
+                while we < line_bytes.len() && line_bytes[we] != b'\n' && line_bytes[we] != b'\r' {
+                    we += 1;
                 }
-                let weight_str = cstr(line.add(tab + 1));
+                let weight_str = String::from_utf8_lossy(&line_bytes[tab + 1..we]).into_owned();
                 weight = hfst_strtoweight(&weight_str) as f64;
                 weighted = true;
                 let errm = format!(
@@ -440,10 +444,9 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
                 }
                 string_end_idx = tab;
             }
-            *line.add(string_end_idx) = 0;
 
-            // Parse the string
-            let parse_line = cstr(line);
+            // Parse the string (C: cstr(line) up to the inserted '\0').
+            let parse_line = String::from_utf8_lossy(&line_bytes[..string_end_idx]).into_owned();
             let pairstrings = PAIRSTRINGS;
             let has_spaces = HAS_SPACES;
             let tok_ref = &multichar_symbol_tokenizer;
@@ -527,9 +530,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
                 disjunction.disjunct_path(&spv, path_weight);
             }
         }
-        if !line.is_null() {
-            libc::free(line as *mut libc::c_void);
-        }
+        // C: free(line); -> owned String, drops at scope end.
         if DISJUNCT_STRINGS {
             let mut res = HfstTransducer::new_from_basic(&disjunction, OUTPUT_FORMAT);
 
@@ -606,10 +607,7 @@ unsafe fn real_main() -> c_int {
         }
 
         // close output buffers, we use output streams
-        let output_opened = !globals::OUTFILE.is_null();
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),
@@ -621,7 +619,14 @@ unsafe fn real_main() -> c_int {
         } else {
             HfstOutputStream::new(OUTPUT_FORMAT, true)
         };
-        process_stream(&mut outstream);
+        let mut input = match globals::input_reader() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("hfst-strings2fst: cannot open input: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
+        process_stream(&mut outstream, &mut *input);
         libc::EXIT_SUCCESS
     }
 }

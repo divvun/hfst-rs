@@ -25,6 +25,7 @@ use hfst_cli::inc::{
 };
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::io::Read;
 
 unsafe fn cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
@@ -36,9 +37,8 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // C: static char *epsilonname = NULL;
@@ -58,39 +58,40 @@ const COMPILATION_FORMAT: ImplementationType = ImplementationType::TROPICAL_OPEN
 // [spec:hfst:sem:hfst-pmatch2fst.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\nCompile regular expressions into transducer(s)\n (Experimental version)\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "String and format options:\n  -e, --epsilon=EPS         Map EPS as zero\n      --flatten             Compile in all RTNs\n      --cosine-distances    When compiling Like() operations, include cosine distance info\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If OUTFILE or INFILE is missing or -, standard streams will be used.\nIf EPS is not defined, the default representation of 0 is used\nWeights are currently not implemented.\n\n",
         );
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Examples:\n  echo \"Define TOP  UppercaseAlpha Alpha* LC({{professor}}) EndTag(ProfName);\" | {} \n  create matcher that tags \"professor Chomsky\" as \"professor <ProfName>Chomsky</ProfName>\"\n\n",
                 program_name
             ),
         );
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
     }
 }
 
@@ -197,7 +198,7 @@ unsafe fn get_current_dir_name() -> String {
 
 // [spec:hfst:def:hfst-pmatch2fst.process-stream-fn]
 // [spec:hfst:sem:hfst-pmatch2fst.process-stream-fn]
-unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
+unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read) -> c_int {
     unsafe {
         let mut comp = PmatchCompiler::new(COMPILATION_FORMAT);
         comp.set_verbose(globals::VERBOSE);
@@ -207,13 +208,11 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
         let mut definitions: std::collections::HashMap<String, *mut HfstTransducer> =
             std::collections::HashMap::new();
 
-        let inputfile = globals::inputfile();
-
         let mut includedir = String::new();
         let inputfilename_str = cstr(globals::INPUTFILENAME);
-        // C: 'inputfile != stdin'. In the foundation, INPUTFILE is non-null only
-        // when a real input file was opened (else stdin is used).
-        if !globals::INPUTFILE.is_null() && !inputfilename_str.is_empty() {
+        // C: 'inputfile != stdin'. A real input file is in use only when the
+        // input filename is a real name (not the "<stdin>" sentinel).
+        if inputfilename_str != "<stdin>" && !inputfilename_str.is_empty() {
             if inputfilename_str.starts_with('/') {
                 // absolute path
                 includedir = inputfilename_str.clone();
@@ -233,14 +232,8 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
         }
         comp.set_include_path(includedir);
 
-        loop {
-            let c = libc::fgetc(inputfile);
-            if c == libc::EOF {
-                break;
-            }
-            // C: std::string::push_back(c) — accumulate raw bytes.
-            file_bytes.push(c as u8);
-        }
+        // C: fgetc loop reading the whole input; read_to_end is the equivalent.
+        let _ = input.read_to_end(&mut file_bytes);
         // C: std::string holds bytes; reinterpret the collected bytes as UTF-8.
         let file_contents = String::from_utf8_lossy(&file_bytes).into_owned();
         if file_contents.len() > 1 {
@@ -399,10 +392,7 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let output_opened = !globals::OUTFILE.is_null();
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),
@@ -418,7 +408,14 @@ unsafe fn real_main() -> c_int {
         } else {
             HfstOutputStream::new(ImplementationType::HFST_OLW_TYPE, true)
         };
-        process_stream(&mut outstream);
+        let mut input = match globals::input_reader() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("hfst-pmatch2fst: cannot open input: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
+        process_stream(&mut outstream, &mut *input);
         libc::EXIT_SUCCESS
     }
 }

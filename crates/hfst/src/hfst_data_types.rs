@@ -207,12 +207,14 @@ pub fn double_to_float(value: f64) -> f32 {
 // [spec:hfst:sem:hfst-data-types.hfst.hfst-fopen-fn]
 //
 // Thin portability wrapper around the platform's file-open call. On MSVC the
-// C++ uses 'fopen_s'; on all other platforms it is 'fopen'. Mirrors the raw
-// 'FILE *' C surface, so the signature is over raw C pointers and the call is
-// 'unsafe'.
-pub unsafe fn hfst_fopen(
-    filename: *const libc::c_char,
-    mode: *const libc::c_char,
-) -> *mut libc::FILE {
-    unsafe { libc::fopen(filename, mode) }
+// C++ uses 'fopen_s'; on all other platforms it is 'fopen'. Ported to Rust
+// 'std::fs', returning an owned handle in place of the raw 'FILE *'. 'mode'
+// distinguishes read access from write/create (the only distinction the callers
+// rely on); a 'w'/'a' anywhere in the mode selects the write path.
+pub fn hfst_fopen(filename: &str, mode: &str) -> std::io::Result<std::fs::File> {
+    if mode.contains('w') || mode.contains('a') {
+        std::fs::File::create(filename)
+    } else {
+        std::fs::File::open(filename)
+    }
 }

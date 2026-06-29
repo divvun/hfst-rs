@@ -12,9 +12,8 @@ use hfst::hfst_transducer::{
 use hfst::xre::XreCompiler;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_getenv, hfst_error_at_line, hfst_getdelim,
-    hfst_parse_format_name, hfst_set_program_name, hfst_strdup, print_more_info, print_report_bugs,
-    verbose_printf,
+    EXIT_CONTINUE, error, extend_options_getenv, hfst_error_at_line, hfst_parse_format_name,
+    hfst_set_program_name, hfst_strdup, print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_file_to_mem::hfst_file_to_mem;
 use hfst_cli::hfst_getopt as getopt;
@@ -29,6 +28,7 @@ use hfst_cli::inc::{
 };
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::io::BufRead;
 
 // File-scope tool state, mirroring the static globals in the C++ source.
 static mut EPSILONNAME: *mut c_char = std::ptr::null_mut();
@@ -50,29 +50,29 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-regexp2fst.print-usage-fn]
 // [spec:hfst:sem:hfst-regexp2fst.print-usage-fn]
 unsafe fn print_usage() {
     unsafe {
+        let mut msg = globals::message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE]\n\
                  Compile (weighted) regular expressions into transducer(s)\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
-        print_common_unary_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
+        print_common_unary_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "String and format options:\n\
              \x20 -f, --format=FMT          Write result in FMT format\n\
              \x20 -j, --disjunct            Disjunct all regexps instead of transforming\n\
@@ -89,10 +89,10 @@ unsafe fn print_usage() {
              \x20 -E, --encode-weights      Encode weights when minimizing (default is false).\n\
              \x20 -M, --do-not-minimize     Determinize result instead of minimizing it.\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
 
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If OUTFILE or INFILE is missing or -, standard streams will be used.\n\
              FMT must be one of the following: \
              {foma, sfst, openfst-tropical, openfst-log}.\n\
@@ -104,7 +104,7 @@ unsafe fn print_usage() {
 
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Examples:\n\
                  \x20 echo \" {{cat}}:{{dog}} \" | {0}       create transducer {{cat}}:{{dog}}\n\
@@ -118,9 +118,9 @@ unsafe fn print_usage() {
             ),
         );
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
     }
 }
 
@@ -283,11 +283,9 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
 // [spec:hfst:def:hfst-regexp2fst.process-stream-fn]
 // [spec:hfst:sem:hfst-regexp2fst.process-stream-fn]
-unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
+unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> c_int {
     unsafe {
         let mut transducer_n: usize = 0;
-        let mut line: *mut c_char = std::ptr::null_mut();
-        let mut len: usize = 0;
         let mut line_count: u32 = 0;
         let mut comp = XreCompiler::new(OUTPUT_FORMAT);
         comp.set_verbosity(globals::VERBOSE);
@@ -297,8 +295,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
         set_minimization(MINIMIZE_RESULT);
         let mut disjunction = HfstTransducer::new_type(OUTPUT_FORMAT);
 
-        let delim: c_char = if LINE_SEPARATED { b'\n' } else { b';' } as c_char;
-        let mut first_line: *mut c_char = std::ptr::null_mut();
+        let mut first_line: Option<String> = None;
 
         if !LINE_SEPARATED {
             let mut filebuf_ = hfst_file_to_mem(&cstr(globals::INPUTFILENAME));
@@ -359,8 +356,10 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
             }
         } else {
             let mut input_contains_only_whitespace_or_comments = true;
+            let mut line = String::new();
             loop {
-                if hfst_getdelim(&mut line, &mut len, delim as i32, globals::inputfile()) == -1 {
+                line.clear();
+                if input.read_line(&mut line).unwrap_or(0) == 0 {
                     if input_contains_only_whitespace_or_comments {
                         error(
                             libc::EXIT_FAILURE,
@@ -374,21 +373,19 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
                     }
                     break;
                 }
-                if first_line.is_null() {
-                    first_line = libc::strdup(line);
+                if first_line.is_none() {
+                    first_line = Some(line.clone());
                 }
-                let mut exp = line;
-                while *exp == b'\n' as c_char || *exp == b'\r' as c_char || *exp == b' ' as c_char {
-                    exp = exp.add(1);
-                }
+                // Skip leading '\n', '\r' and ' ' (C: pointer-walk over exp).
+                let exp = line.trim_start_matches(['\n', '\r', ' ']).to_string();
                 line_count += 1;
-                if *exp == 0 {
+                if exp.is_empty() {
                     verbose_printf(&format!("Skipping whitespace expression #{}", line_count));
                     continue;
                 }
                 transducer_n += 1;
                 verbose_printf(&format!("Compiling expression {}\n", line_count));
-                let compiled = comp.compile(&cstr(exp));
+                let compiled = comp.compile(&exp);
                 // (the C wraps compile in try/catch on HfstException calling
                 // hfst_error_at_line; the Rust path panics rather than throwing,
                 // so the catch arm is not reproduced here.)
@@ -421,8 +418,8 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream) -> c_int {
             hfst_set_name(&mut disjunction, "?", "xre");
             outstream.redirect(&mut disjunction);
         }
-        libc::free(line as *mut libc::c_void);
-        libc::free(first_line as *mut libc::c_void);
+        // C: free(line); free(first_line); -> owned String/Option, drop here.
+        drop(first_line);
         libc::EXIT_SUCCESS
     }
 }
@@ -463,10 +460,7 @@ unsafe fn real_main() -> c_int {
         }
 
         // close buffers, we use streams
-        let output_opened = !globals::OUTFILE.is_null();
-        if output_opened {
-            libc::fclose(globals::OUTFILE);
-        }
+        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             cstr(globals::INPUTFILENAME),
@@ -478,7 +472,14 @@ unsafe fn real_main() -> c_int {
         } else {
             HfstOutputStream::new(OUTPUT_FORMAT, true)
         };
-        process_stream(&mut outstream);
+        let mut input = match globals::input_reader() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("hfst-regexp2fst: cannot open input: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
+        process_stream(&mut outstream, &mut *input);
 
         if ENCODE_WEIGHTS {
             set_encode_weights(enc);

@@ -25,6 +25,7 @@ use hfst_cli::hfst_tool_metadata::{hfst_set_formula, hfst_set_name};
 use hfst_cli::inc::{CaseResult, check_common_params, handle_common_case, handle_error_case};
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::io::Write;
 
 // ---------------------------------------------------------------------------
 // Tool-global state. C: file-scope static variables (#include globals-common.h
@@ -32,7 +33,11 @@ use std::ffi::{CStr, CString};
 // ---------------------------------------------------------------------------
 
 static mut LEXCFILENAMES: Vec<String> = Vec::new();
-static mut LEXCFILES: Vec<*mut libc::FILE> = Vec::new();
+// The C kept a parallel FILE* array (LEXCFILES) of fopen'd lexc inputs; but the
+// file content is read by filename via std::fs::read_to_string in lexc_streams,
+// and the only thing the FILE* was used for was the stdin sentinel. After the
+// io-foundation de-C-ism that array is gone — the "<stdin>" filename serves as the
+// sentinel directly.
 static mut LEXCCOUNT: u32 = 0;
 static mut IS_INPUT_STDIN: bool = true;
 static mut FORMAT: ImplementationType = ImplementationType::UNSPECIFIED_TYPE;
@@ -64,22 +69,12 @@ unsafe fn cstr(ptr: *const c_char) -> String {
     }
 }
 
-unsafe fn fput(f: *mut libc::FILE, s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), f) };
+fn fput(f: &mut dyn std::io::Write, s: &str) {
+    let _ = f.write_all(s.as_bytes());
 }
 
-unsafe fn eput(s: &str) {
-    let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::fputs(c.as_ptr(), stderr_file()) };
-}
-
-fn stderr_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stderrp")]
-        static mut stderr: *mut libc::FILE;
-    }
-    unsafe { stderr }
+fn eput(s: &str) {
+    let _ = std::io::stderr().write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-lexc-compiler.print-usage-fn]
@@ -87,37 +82,38 @@ fn stderr_file() -> *mut libc::FILE {
 unsafe fn print_usage() {
     unsafe {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+        let mut msg = globals::message_writer();
         let program_name = cstr(globals::PROGRAM_NAME);
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "Usage: {} [OPTIONS...] [INFILE1...]]\nCompile lexc files into transducer\n\n",
                 program_name
             ),
         );
-        print_common_program_options(globals::message_out());
+        print_common_program_options(&mut *msg);
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Input/Output options:\n  -f, --format=FORMAT     compile into FORMAT transducer\n  -o, --output=OUTFILE    write result into OUTFILE\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             "Lexc options:\n  -A, --alignStrings      align characters in input and output strings\n  -E, --encode-weights    encode weights when minimizing (default is false)\n  -F, --withFlags         use flags to hyperminimize result\n  -M, --minimizeFlags     if --withFlags is used, minimize the number of flags\n  -R, --renameFlags       if --withFlags and --minimizeFlags are used, rename\n                          flags (for testing)\n  -x,\n  --xerox-composition=BOOL   Whether flag diacritics are treated as ordinary\n                             symbols in composition (default is true).\n  -X, --xfst=VARIABLE     toggle xfst compatibility option VARIABLE.\n   --split-characters     disable unicode character parsing for multichars\n   -Wall                  enable all warnings:\n   -Wone-sided-flags      warn about one sided flag diacritics\n   -Wrepeated-lexicons    warn about repeat lexicon names\n   -Wmissing-lexicons     warn about lexicons used but missing\n   -Wunused-lexicons      warn about lexicons defined but unused\n   -Wmissing-alphabets    warn about implicit alphabets\n   -Wunnecessary-escapes  warn about unneeded %-escapes\n   -Werror                treat warnings as errors\n",
         );
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         fput(
-            globals::message_out(),
+            &mut *msg,
             "If INFILE or OUTFILE are omitted or -, standard streams will be used\nThe possible values for FORMAT are { sfst, openfst-tropical, openfst-log,\nfoma, optimized-lookup-unweighted, optimized-lookup-weighted }.\nBOOL is one of {true,ON,yes} or {false,OFF,no}.\nXfst variables are {flag-is-epsilon (default OFF)}.\n",
         );
         fput(
-            globals::message_out(),
+            &mut *msg,
             &format!(
                 "\nExamples:\n  {} -o cat.hfst cat.lexc               Compile single-file lexicon\n  {} -o L.hfst Root.lexc 2.lexc 3.lexc  Compile multi-file lexicon\n\nUsing weights:\n  LEXICON Root\n  cat # \"weight: 2\" ;    Define weight for a word\n  <[dog::1]+> # ;        Use weights in regular expressions\n\nUsing weights has an effect only if FORMAT is weighted, i.e.\n{{ openfst-tropical, openfst-log, optimized-lookup-weighted }}.\n\n",
                 program_name, program_name
             ),
         );
         print_report_bugs();
-        fput(globals::message_out(), "\n");
+        fput(&mut *msg, "\n");
         print_more_info();
     }
 }
@@ -373,16 +369,28 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             while getopt::OPTIND < argc {
                 let arg = *argv.offset(getopt::OPTIND as isize);
                 let name = cstr(arg);
-                (*std::ptr::addr_of_mut!(LEXCFILENAMES)).push(name.clone());
-                let file = hfst_cli::hfst_commandline::hfst_fopen(&name, "r");
-                (*std::ptr::addr_of_mut!(LEXCFILES)).push(file);
+                // C: lexcfiles.push(hfst_fopen(name, "r")); a "-" resolved to stdin,
+                // otherwise the named file was opened (erroring on failure). The
+                // content is read by filename later, so only validate openability and
+                // record "<stdin>" for "-".
+                if name == "-" {
+                    (*std::ptr::addr_of_mut!(LEXCFILENAMES)).push("<stdin>".to_string());
+                } else {
+                    if std::fs::File::open(&name).is_err() {
+                        error(
+                            libc::EXIT_FAILURE,
+                            0,
+                            &format!("Could not open '{}'. ", name),
+                        );
+                    }
+                    (*std::ptr::addr_of_mut!(LEXCFILENAMES)).push(name.clone());
+                }
                 LEXCCOUNT += 1;
                 getopt::OPTIND += 1;
             }
             IS_INPUT_STDIN = false;
         } else {
             (*std::ptr::addr_of_mut!(LEXCFILENAMES)).push("<stdin>".to_string());
-            (*std::ptr::addr_of_mut!(LEXCFILES)).push(stdin_file());
             IS_INPUT_STDIN = true;
             LEXCCOUNT += 1;
         }
@@ -390,23 +398,14 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
     }
 }
 
-fn stdin_file() -> *mut libc::FILE {
-    unsafe extern "C" {
-        #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
-        static mut stdin: *mut libc::FILE;
-    }
-    unsafe { stdin }
-}
-
 // [spec:hfst:def:hfst-lexc-compiler.lexc-streams-fn]
 // [spec:hfst:sem:hfst-lexc-compiler.lexc-streams-fn]
 unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream) -> c_int {
     unsafe {
         let lexcfilenames = &*std::ptr::addr_of!(LEXCFILENAMES);
-        let lexcfiles = &*std::ptr::addr_of!(LEXCFILES);
         for i in 0..(LEXCCOUNT as usize) {
             verbose_printf(&format!("Parsing lexc file {}\n", lexcfilenames[i]));
-            if lexcfiles[i] == stdin_file() {
+            if lexcfilenames[i] == "<stdin>" {
                 // The new Rust LexcCompiler::parse takes the source text, so we
                 // read the whole of standard input into a string (mirroring the
                 // C++ 'lexc.parse(stdin)').
@@ -488,16 +487,6 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let lexcfiles = &*std::ptr::addr_of!(LEXCFILES);
-        for i in 0..(LEXCCOUNT as usize) {
-            if lexcfiles[i] != stdin_file() {
-                libc::fclose(lexcfiles[i]);
-            }
-        }
-        if !globals::OUTFILE.is_null() {
-            libc::fclose(globals::OUTFILE);
-        }
-
         ENC = get_encode_weights();
         if ENCODE_WEIGHTS {
             set_encode_weights(true);
@@ -510,7 +499,7 @@ unsafe fn real_main() -> c_int {
         }
         verbose_printf(&format!("writing to {}\n", cstr(globals::OUTFILENAME)));
         // here starts the buffer handling part
-        let output_opened = !globals::OUTFILE.is_null();
+        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
         let mut outstream = if output_opened {
             HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), FORMAT, true)
         } else {

@@ -22,18 +22,6 @@ use hfst::hfst_data_types::ImplementationType::{self, LOG_OPENFST_TYPE, TROPICAL
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
-use std::ffi::{CString, c_char, c_int, c_void};
-
-// libc is a private dependency of the hfst crate and is NOT reachable from this
-// integration-test crate, and Cargo.toml may not be edited. The AT&T-reading
-// section needs a FILE* that persists across several one-block reads (the C++
-// uses fopen/feof/fclose directly), so the three C stdio symbols are declared
-// here; they always resolve against the libc that the test binary links.
-unsafe extern "C" {
-    fn fopen(path: *const c_char, mode: *const c_char) -> *mut c_void;
-    fn feof(stream: *mut c_void) -> c_int;
-    fn fclose(stream: *mut c_void) -> c_int;
-}
 
 // The tropical/log transition-data symbol coding lives in process-global statics
 // guarded by their own Mutexes; concurrent get_number / reverse-harmonization
@@ -78,30 +66,29 @@ fn temp_path(stem: &str) -> String {
 //     assert(transducers_read == 4);
 //   }
 //
-// The FILE*+linecount constructor reads one AT&T block (up to the "--"
-// separator) per call and throws EndOfStreamException once feof is hit. The
-// facade equivalent is HfstTransducer::read_in_att_format_file, which Box::leaks
-// the heap transducer the caller owns (reclaimed and dropped here, mirroring the
-// stack object the C++ destroys each iteration).
+// The reader reads one AT&T block (up to the "--" separator) per call and throws
+// EndOfStreamException once the stream is at EOF. The facade equivalent is
+// HfstTransducer::read_in_att_format_file, which Box::leaks the heap transducer
+// the caller owns (reclaimed and dropped here, mirroring the stack object the
+// C++ destroys each iteration). A single BufReader is reused across calls so the
+// read position persists, mirroring the C++ FILE* loop.
 //
 // Faithful structure note: the assertion lives in the catch handler, so (exactly
-// like the C++) it is only checked if a read actually throws. Whether the final
-// trailing read throws or quietly returns an empty transducer depends on libc
-// feof/fgets timing; either way this mirrors the C++ behaviour.
+// like the C++) it is only checked if a read actually throws. The loop continues
+// while the BufReader still has bytes buffered/available (the BufRead analogue of
+// 'not feof'); either way this mirrors the C++ behaviour.
 fn construction_from_att_format(type_: ImplementationType) {
+    use std::io::BufRead;
+
     verbose_print("Construction from AT&T format", type_);
 
-    let path = CString::new(fixture_path("test_transducers.att")).unwrap();
-    let mode = CString::new("rb").unwrap();
-    let file = unsafe { fopen(path.as_ptr(), mode.as_ptr()) };
-    assert!(!file.is_null());
+    let bytes = std::fs::read(fixture_path("test_transducers.att")).unwrap();
+    let mut reader = std::io::BufReader::new(std::io::Cursor::new(bytes));
 
     let transducers_read = std::cell::Cell::new(0u32);
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        while unsafe { feof(file) } == 0 {
-            let t = unsafe {
-                HfstTransducer::read_in_att_format_file(file as *mut _, type_, "<eps>", false)
-            };
+        while !reader.fill_buf().map(|b| b.is_empty()).unwrap_or(true) {
+            let t = HfstTransducer::read_in_att_format_file(&mut reader, type_, "<eps>", false);
             // Reclaim the Box::leak-ed heap transducer and drop it (the C++ stack
             // object t is destroyed at the end of each loop iteration).
             drop(unsafe { Box::from_raw(t as *mut HfstTransducer) });
@@ -111,10 +98,6 @@ fn construction_from_att_format(type_: ImplementationType) {
 
     if result.is_err() {
         assert_eq!(transducers_read.get(), 4);
-    }
-
-    unsafe {
-        fclose(file);
     }
 }
 
