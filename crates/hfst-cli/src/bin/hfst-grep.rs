@@ -10,6 +10,7 @@
 //! match_lines, print_match_line) are still ported faithfully but are never
 //! reached at runtime.
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::{HfstOneLevelPath, HfstTwoLevelPaths, ImplementationType};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::is_epsilon;
@@ -29,7 +30,6 @@ use hfst_cli::hfst_program_options::{
     hfst_getopt_unary_long, print_common_program_options,
 };
 use hfst_cli::inc::{CaseResult, check_common_params, handle_common_case, handle_error_case};
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::{BufRead, Write};
 
@@ -57,9 +57,9 @@ static mut INFILE_READERS: Vec<Box<dyn BufRead>> = Vec::new();
 fn infile_readers() -> &'static mut Vec<Box<dyn BufRead>> {
     unsafe { &mut *std::ptr::addr_of_mut!(INFILE_READERS) }
 }
-static mut INFILE_N: libc::c_uint = 0;
+static mut INFILE_N: core::ffi::c_uint = 0;
 static mut INPUTFILENAME: *mut c_char = std::ptr::null_mut();
-static mut LINEN: libc::c_ulong = 0;
+static mut LINEN: core::ffi::c_ulong = 0;
 static mut REGEXP: *mut c_char = std::ptr::null_mut();
 // C: 'FILE *expfile = 0;' — opened by -f but its content is never read (the tool
 // keeps a TODO); only its NULL-ness (whether -f was given) is observed. Modelled
@@ -78,7 +78,7 @@ static mut LINESEP: c_char = b'\n' as c_char;
 #[allow(dead_code)]
 static mut VERY_QUIET: bool = false;
 static mut INVERT_MATCHES: bool = false;
-static mut MAX_COUNT: libc::c_ulong = u64::MAX as libc::c_ulong;
+static mut MAX_COUNT: core::ffi::c_ulong = u64::MAX as core::ffi::c_ulong;
 #[allow(dead_code)]
 static mut MAX_INFINITE: bool = true;
 static mut PRINT_OFFSET: bool = false;
@@ -91,10 +91,10 @@ static mut PRINT_ONLY_UNMATCHING_FILENAMES: bool = false;
 static mut PRINT_ONLY_COUNT: bool = false;
 static mut COUNT_MATCHES: bool = false;
 static mut PRINT_FILENAME_NULL: bool = false;
-static mut BEFORE_CONTEXT: libc::c_ulong = 0;
-static mut AFTER_CONTEXT: libc::c_ulong = 0;
+static mut BEFORE_CONTEXT: core::ffi::c_ulong = 0;
+static mut AFTER_CONTEXT: core::ffi::c_ulong = 0;
 #[allow(dead_code)]
-static mut MATCHES: libc::c_ulong = 0;
+static mut MATCHES: core::ffi::c_ulong = 0;
 static mut MATCHER: *mut HfstTransducer = std::ptr::null_mut();
 #[allow(dead_code)]
 static mut OPTIMISED_MATCHER: *mut HfstTransducer = std::ptr::null_mut();
@@ -312,15 +312,15 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             if c == b'9' as c_int {
                 FORMAT = hfst_parse_format_name(&cstr(getopt::OPTARG));
             } else if c == b'E' as c_int {
-                error(libc::EXIT_FAILURE, 0, "POSIX ERE syntax not yet supported");
+                error(1, 0, "POSIX ERE syntax not yet supported");
                 DIALECT_POSIX_ERE = true;
             } else if c == b'F' as c_int {
                 DIALECT_FIXED_STRINGS = true;
             } else if c == b'G' as c_int {
-                error(libc::EXIT_FAILURE, 0, "POSIX BRE syntax not yet supported");
+                error(1, 0, "POSIX BRE syntax not yet supported");
                 DIALECT_POSIX_BRE = true;
             } else if c == b'P' as c_int {
-                error(libc::EXIT_FAILURE, 0, "Perl syntax not yet supported");
+                error(1, 0, "Perl syntax not yet supported");
                 DIALECT_PERL = true;
             } else if c == b'X' as c_int {
                 DIALECT_XEROX = true;
@@ -332,15 +332,11 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 // that and record that -f was given.
                 let fname = cstr(getopt::OPTARG);
                 if fname != "-" && std::fs::File::open(&fname).is_err() {
-                    error(
-                        libc::EXIT_FAILURE,
-                        0,
-                        &format!("Could not open '{}'. ", fname),
-                    );
+                    error(1, 0, &format!("Could not open '{}'. ", fname));
                 }
                 EXPFILE_GIVEN = true;
             } else if c == b'I' as c_int {
-                error(libc::EXIT_FAILURE, 0, "Ignore case not supported");
+                error(1, 0, "Ignore case not supported");
             } else if c == b'w' as c_int {
                 MATCH_WORD = true;
             } else if c == b'x' as c_int {
@@ -350,7 +346,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             } else if c == INVERT_OPT {
                 INVERT_MATCHES = true;
             } else if c == b'm' as c_int {
-                MAX_COUNT = hfst_strtoul(&cstr(getopt::OPTARG), 10) as libc::c_ulong;
+                MAX_COUNT = hfst_strtoul(&cstr(getopt::OPTARG), 10) as core::ffi::c_ulong;
                 COUNT_MATCHES = true;
             } else if c == b'b' as c_int {
                 PRINT_OFFSET = true;
@@ -363,19 +359,19 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             } else if c == b'O' as c_int {
                 PRINT_ONLY_MATCHES = true;
             } else if c == BINARYFILES_OPT {
-                error(libc::EXIT_FAILURE, 0, "No binary handling implemented");
+                error(1, 0, "No binary handling implemented");
             } else if c == b'a' as c_int {
                 warning(0, 0, "All files are always handled as text");
             } else if c == b'D' as c_int {
-                error(libc::EXIT_FAILURE, 0, "No directory handling implemented");
+                error(1, 0, "No directory handling implemented");
             } else if c == b'r' as c_int {
-                error(libc::EXIT_FAILURE, 0, "No directory handling implemented");
+                error(1, 0, "No directory handling implemented");
             } else if c == INCLUDE_OPT
                 || c == EXCLUDE_OPT
                 || c == INCLUDEFROM_OPT
                 || c == EXCLUDEFROM_OPT
             {
-                error(libc::EXIT_FAILURE, 0, "No directory/globbing implemented");
+                error(1, 0, "No directory/globbing implemented");
             } else if c == b'L' as c_int {
                 PRINT_ONLY_UNMATCHING_FILENAMES = true;
             } else if c == b'l' as c_int {
@@ -386,15 +382,15 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             } else if c == b'Z' as c_int {
                 PRINT_FILENAME_NULL = true;
             } else if c == b'A' as c_int {
-                BEFORE_CONTEXT = hfst_strtoul(&cstr(getopt::OPTARG), 10) as libc::c_ulong;
+                BEFORE_CONTEXT = hfst_strtoul(&cstr(getopt::OPTARG), 10) as core::ffi::c_ulong;
             } else if c == b'B' as c_int {
-                AFTER_CONTEXT = hfst_strtoul(&cstr(getopt::OPTARG), 10) as libc::c_ulong;
+                AFTER_CONTEXT = hfst_strtoul(&cstr(getopt::OPTARG), 10) as core::ffi::c_ulong;
             } else if c == b'C' as c_int {
-                BEFORE_CONTEXT = hfst_strtoul(&cstr(getopt::OPTARG), 10) as libc::c_ulong;
-                AFTER_CONTEXT = hfst_strtoul(&cstr(getopt::OPTARG), 10) as libc::c_ulong;
+                BEFORE_CONTEXT = hfst_strtoul(&cstr(getopt::OPTARG), 10) as core::ffi::c_ulong;
+                AFTER_CONTEXT = hfst_strtoul(&cstr(getopt::OPTARG), 10) as core::ffi::c_ulong;
             } else if c == b'u' as c_int || c == b'U' as c_int {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     "MSDOS binary format not supported; use fromdos or dos2unix",
                 );
@@ -418,26 +414,27 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             if (argc - getopt::OPTIND) <= 0 {
                 print_usage();
                 print_short_help();
-                return libc::EXIT_FAILURE;
+                return 1;
             } else {
-                REGEXP = libc::strdup(*argv.offset(getopt::OPTIND as isize));
+                REGEXP = hfst_strdup(*argv.offset(getopt::OPTIND as isize));
                 getopt::OPTIND += 1;
             }
         }
         if (argc - getopt::OPTIND) == 0 {
-            INFILENAMES = libc::malloc(std::mem::size_of::<*mut c_char>()) as *mut *mut c_char;
+            INFILENAMES =
+                Box::leak(vec![std::ptr::null_mut::<c_char>(); 1].into_boxed_slice()).as_mut_ptr();
             INFILE_N = 1;
             let stdin_name = CString::new("<stdin>").unwrap();
-            *INFILENAMES.offset(0) = libc::strdup(stdin_name.as_ptr());
+            *INFILENAMES.offset(0) = hfst_strdup(stdin_name.as_ptr());
             infile_readers().push(Box::new(std::io::BufReader::new(std::io::stdin())));
         } else {
             let count = (argc - getopt::OPTIND) as usize;
-            INFILENAMES =
-                libc::malloc(std::mem::size_of::<*mut c_char>() * count) as *mut *mut c_char;
-            INFILE_N = (argc - getopt::OPTIND) as libc::c_uint;
+            INFILENAMES = Box::leak(vec![std::ptr::null_mut::<c_char>(); count].into_boxed_slice())
+                .as_mut_ptr();
+            INFILE_N = (argc - getopt::OPTIND) as core::ffi::c_uint;
             for i in 0..(argc - getopt::OPTIND) {
                 *INFILENAMES.offset(i as isize) =
-                    libc::strdup(*argv.offset((getopt::OPTIND + i) as isize));
+                    hfst_strdup(*argv.offset((getopt::OPTIND + i) as isize));
                 // C: infiles[i] = hfst_fopen(infilenames[i], "r"); open the named
                 // file as a buffered std reader, mapping "-" to stdin and erroring
                 // on a failed open through the same path.
@@ -448,11 +445,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     match std::fs::File::open(&name) {
                         Ok(f) => infile_readers().push(Box::new(std::io::BufReader::new(f))),
                         Err(_) => {
-                            error(
-                                libc::EXIT_FAILURE,
-                                0,
-                                &format!("Could not open '{}'. ", name),
-                            );
+                            error(1, 0, &format!("Could not open '{}'. ", name));
                         }
                     }
                 }
@@ -482,7 +475,7 @@ unsafe fn string_to_utf8(p: *mut c_char) -> Vec<String> {
                 u8len = 2;
             } else {
                 error_at_line(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     &cstr(INPUTFILENAME),
                     LINEN as u32,
@@ -492,7 +485,7 @@ unsafe fn string_to_utf8(p: *mut c_char) -> Vec<String> {
             let nextu8 = hfst_strndup(p, u8len as usize);
             path.push(cstr(nextu8));
             p = p.offset(u8len as isize);
-            libc::free(nextu8 as *mut libc::c_void);
+            hfst_cli::hfst_commandline::hfst_free(nextu8 as *mut c_char);
         }
         path
     }
@@ -508,10 +501,11 @@ unsafe fn read_matcher_stream(instream: &mut HfstInputStream) -> c_int {
         while instream.is_good() {
             transducer_n += 1;
             let mut trans = HfstTransducer::new_from_stream(instream);
-            let mut inputname =
-                libc::strdup(CString::new(trans.get_name()).unwrap_or_default().as_ptr());
-            if libc::strlen(inputname) == 0 {
-                inputname = libc::strdup(INPUTFILENAME);
+            let mut inputname = CString::new(trans.get_name())
+                .unwrap_or_default()
+                .into_raw();
+            if std::ffi::CStr::from_ptr(inputname).to_bytes().is_empty() {
+                inputname = hfst_strdup(INPUTFILENAME);
             }
             if transducer_n == 1 {
                 verbose_printf(&format!("Reading matcher {}...\n", cstr(inputname)));
@@ -530,7 +524,7 @@ unsafe fn read_matcher_stream(instream: &mut HfstInputStream) -> c_int {
         verbose_printf("minimising matchers...\n");
         (*MATCHER).minimize();
         instream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -554,7 +548,7 @@ unsafe fn read_matcher(expression: &str) {
             let trans = HfstTransducer::new_tokenized_pair(expression, expression, &t, FORMAT);
             (*MATCHER).disjunct(&trans, true);
         } else {
-            error(libc::EXIT_FAILURE, 0, "dialect unsupported");
+            error(1, 0, "dialect unsupported");
         }
         verbose_printf("minimizing...\n");
         (*MATCHER).minimize();
@@ -734,7 +728,7 @@ unsafe fn match_lines(
             if FLUSH_NEWLINES {
                 let _ = out.flush();
             }
-            if (MAX_COUNT > 0) && (matches_n as libc::c_ulong >= MAX_COUNT) {
+            if (MAX_COUNT > 0) && (matches_n as core::ffi::c_ulong >= MAX_COUNT) {
                 break;
             }
         }
@@ -785,7 +779,7 @@ unsafe fn real_main() -> c_int {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-grep: cannot open output: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         // #if HFST_OPTIMISED_LOOKUP_CAN_IDENTITY_SYMBOL: optimise_matcher();
@@ -798,7 +792,7 @@ unsafe fn real_main() -> c_int {
         }
         let _ = out.flush();
 
-        libc::free(globals::OUTFILENAME as *mut libc::c_void);
+        hfst_cli::hfst_commandline::hfst_free(globals::OUTFILENAME as *mut c_char);
         retval
     }
 }

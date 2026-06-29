@@ -3,6 +3,7 @@
 //! pckimmo text format. Drives the hfst-cli foundation (globals, getopt,
 //! commandline, program-options, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_print_dot::print_dot_file;
@@ -22,7 +23,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
@@ -193,7 +193,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         FORMAT = FstTextFormat::PrologText;
                     } else {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "Cannot parse {} as text format; Use one of att, pckimmo, dot, prolog",
@@ -234,11 +234,11 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
             } else {
                 if instream.get_type() == ImplementationType::XFSM_TYPE {
                     error(
-                        libc::EXIT_FAILURE,
+                        1,
                         0,
                         "Writing more than one transducer in text format to file not supported for xfsm transducers,\nuse [hfst-head|hfst-tail|hfst-split] to extract individual transducers from input",
                     );
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
                 verbose_printf(&format!("Converting {}...{}\n", inputname, transducer_n));
             }
@@ -319,7 +319,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
             // C: delete t; (Rust drops at end of loop iteration).
         }
         instream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -370,51 +370,51 @@ unsafe fn real_main() -> c_int {
         if instream.get_type() == ImplementationType::XFSM_TYPE {
             if FORMAT == FstTextFormat::DotText {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     "Output format 'dot' not supported for xfsm transducers, use 'prolog'",
                 );
-                return libc::EXIT_FAILURE;
+                return 1;
             }
             if FORMAT == FstTextFormat::PckimmoText {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     "Output format 'pckimmo' not supported for xfsm transducers, use 'prolog'",
                 );
-                return libc::EXIT_FAILURE;
+                return 1;
             }
             if FORMAT == FstTextFormat::AttText {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     "Output format 'att' not supported for xfsm transducers, use 'prolog'",
                 );
-                return libc::EXIT_FAILURE;
+                return 1;
             }
             if USE_NUMBERS {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     "Option '--use-numbers' not supported for xfsm transducers",
                 );
-                return libc::EXIT_FAILURE;
+                return 1;
             }
             if cstr(globals::INPUTFILENAME) == "<stdin>" {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     "Reading from standard input not supported for xfsm transducers,\nuse 'hfst-fst2txt [--input|-i] INFILE' instead",
                 );
-                return libc::EXIT_FAILURE;
+                return 1;
             }
             if cstr(globals::OUTFILENAME) == "<stdout>" {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     "Writing to standard output not supported for xfsm transducers,\nuse 'hfst-fst2txt [--output|-o] OUTFILE' instead",
                 );
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         }
 
@@ -422,7 +422,7 @@ unsafe fn real_main() -> c_int {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-fst2txt: cannot open output: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         let retval = process_stream(&mut instream, &mut *out);

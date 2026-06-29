@@ -2,6 +2,7 @@
 //! tool that walks through a transducer arc by arc. Drives the hfst-cli
 //! foundation (globals, getopt, commandline, program-options, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -21,7 +22,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 
@@ -189,7 +189,7 @@ unsafe fn main_loop(trans: &HfstBasicTransducer) -> c_int {
             }
             let label_ptr = hfst_readline("traverse> ");
             if label_ptr.is_null() {
-                return libc::EXIT_SUCCESS;
+                return 0;
             }
             let label = cstr(label_ptr);
             let mut new_paths: BTreeMap<(String, usize), u32> = BTreeMap::new();
@@ -218,7 +218,7 @@ unsafe fn main_loop(trans: &HfstBasicTransducer) -> c_int {
                 paths = new_paths;
             }
             // (add_history is readline-only; omitted — see note above.)
-            libc::free(label_ptr as *mut libc::c_void);
+            hfst_cli::hfst_commandline::hfst_free(label_ptr as *mut c_char);
         } // while paths not empty
     }
 }
@@ -263,7 +263,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                     );
                 }
                 if !yesno_ptr.is_null() {
-                    libc::free(yesno_ptr as *mut libc::c_void);
+                    hfst_cli::hfst_commandline::hfst_free(yesno_ptr as *mut c_char);
                 }
                 fput(
                     &mut *msg,
@@ -281,12 +281,12 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             }
             if walkable.state_vector.is_empty() {
                 fput(&mut *msg, "Nowhere to go\n");
-                return libc::EXIT_SUCCESS;
+                return 0;
             }
             return main_loop(&walkable);
         }
         instream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 

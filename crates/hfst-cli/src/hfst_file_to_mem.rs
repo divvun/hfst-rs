@@ -8,33 +8,27 @@
 //! stdin path capped input at 1 MB (a fixed-buffer artefact); that arbitrary
 //! cap is dropped — std reads the whole stream.
 
-use libc::c_char;
+use core::ffi::c_char;
 use std::io::Read;
 
 use crate::hfst_commandline::error;
 
 const EXIT_FAILURE: i32 = 1;
 
-// Copy `bytes` into a fresh malloc'd, NUL-terminated C buffer (the caller frees
-// it, matching the original malloc'd return).
-unsafe fn bytes_to_cmalloc(bytes: &[u8], what: &str) -> *mut c_char {
-    let n = bytes.len();
-    let buffer = unsafe { libc::malloc(n + 1) } as *mut c_char;
-    if buffer.is_null() {
-        error(
-            EXIT_FAILURE,
-            0,
-            &format!("Error allocating memory to read file '{}'\n", what),
-        );
-        return std::ptr::null_mut();
-    }
-    unsafe {
-        if n > 0 {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), buffer as *mut u8, n);
+// Copy `bytes` into a fresh owned, NUL-terminated C buffer (the caller reclaims
+// it with hfst_free, matching the original malloc'd return). The buffer is a
+// `CString` (`into_raw`), so the data is taken up to the first NUL — the C-string
+// view a `char*` consumer would see — keeping the alloc/free path on the Rust
+// allocator with no libc.
+fn bytes_to_cmalloc(bytes: &[u8]) -> *mut c_char {
+    let cs = match std::ffi::CString::new(bytes) {
+        Ok(cs) => cs,
+        Err(e) => {
+            let pos = e.nul_position();
+            std::ffi::CString::new(&bytes[..pos]).unwrap()
         }
-        *buffer.add(n) = 0;
-    }
-    buffer
+    };
+    cs.into_raw()
 }
 
 // [spec:hfst:def:hfst-file-to-mem.hfst-stdin-to-mem-fn]
@@ -45,7 +39,7 @@ pub fn hfst_stdin_to_mem() -> *mut c_char {
         error(EXIT_FAILURE, 0, "Error reading file '<stdin>' to memory\n");
         return std::ptr::null_mut();
     }
-    unsafe { bytes_to_cmalloc(&bytes, "<stdin>") }
+    bytes_to_cmalloc(&bytes)
 }
 
 // Based on a function in foma written by Mans Hulden.
@@ -60,7 +54,7 @@ pub fn hfst_file_to_mem(filename: &str) -> *mut c_char {
         return hfst_stdin_to_mem();
     }
     match std::fs::read(filename) {
-        Ok(bytes) => unsafe { bytes_to_cmalloc(&bytes, filename) },
+        Ok(bytes) => bytes_to_cmalloc(&bytes),
         Err(_) => {
             error(
                 EXIT_FAILURE,

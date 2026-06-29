@@ -2,6 +2,7 @@
 //! exploding tool. Drives the hfst-cli foundation (globals, getopt,
 //! commandline, program-options, tool-metadata, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -17,7 +18,6 @@ use hfst_cli::hfst_program_options::{
 use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 // add tools-specific variables here
@@ -36,7 +36,7 @@ unsafe fn cstr(ptr: *const c_char) -> String {
 
 unsafe fn dup(s: &str) -> *mut c_char {
     let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::strdup(c.as_ptr()) }
+    c.into_raw()
 }
 
 fn fput(f: &mut dyn std::io::Write, s: &str) {
@@ -139,11 +139,13 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     // opened the file eagerly to validate it; mirror that by trying
                     // to open it and erroring through the same path on failure.
                     if cstr(globals::INPUTFILENAME) == "-" {
-                        libc::free(globals::INPUTFILENAME as *mut libc::c_void);
+                        hfst_cli::hfst_commandline::hfst_free(
+                            globals::INPUTFILENAME as *mut c_char,
+                        );
                         globals::INPUTFILENAME = dup("<stdin>");
                     } else if let Err(_e) = std::fs::File::open(&cstr(globals::INPUTFILENAME)) {
                         hfst_cli::hfst_commandline::error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!("Could not open '{}'. ", cstr(globals::INPUTFILENAME)),
                         );
@@ -152,12 +154,12 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     continue;
                 }
                 c if c == b'p' as c_int => {
-                    libc::free(PREFIX as *mut libc::c_void);
+                    hfst_cli::hfst_commandline::hfst_free(PREFIX as *mut c_char);
                     PREFIX = dup(&cstr(getopt::OPTARG));
                     continue;
                 }
                 c if c == b'e' as c_int => {
-                    libc::free(EXTENSION as *mut libc::c_void);
+                    hfst_cli::hfst_commandline::hfst_free(EXTENSION as *mut c_char);
                     EXTENSION = dup(&cstr(getopt::OPTARG));
                     continue;
                 }
@@ -193,11 +195,11 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             outstream.redirect(&mut trans);
             outstream.flush();
             outstream.close();
-            libc::free(globals::OUTFILENAME as *mut libc::c_void);
+            hfst_cli::hfst_commandline::hfst_free(globals::OUTFILENAME as *mut c_char);
             globals::OUTFILENAME = std::ptr::null_mut();
         }
         instream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -245,7 +247,7 @@ unsafe fn real_main() -> c_int {
         };
 
         let retval = process_stream(&mut instream);
-        libc::free(globals::INPUTFILENAME as *mut libc::c_void);
+        hfst_cli::hfst_commandline::hfst_free(globals::INPUTFILENAME as *mut c_char);
         retval
     }
 }

@@ -3,6 +3,7 @@
 //! foundation (globals, getopt, commandline, program-options, tool-metadata,
 //! inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::expand_equivalences::{
     FsaLevel, TsvExtensionError, expand_equivalences, read_tsv_extensions,
 };
@@ -22,7 +23,6 @@ use hfst_cli::hfst_program_options::{
 use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 // Tool-specific static-mut option state, mirroring the C++ file-scope statics.
@@ -208,7 +208,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         LEVEL = FsaLevel::Both;
                     } else {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             "The option for level parameter must be one of:\n\
                              upper, first, input; second, lower, output; both, \
@@ -234,28 +234,20 @@ unsafe fn check_options(_argc: c_int, _argv: *mut *mut c_char) {
     unsafe {
         if (!ONLY_FROM_LABEL.is_null()) || (!ONLY_TO_LABEL.is_null()) {
             if (!TSV_FILE_NAME.is_null()) || (!ACX_FILE_NAME.is_null()) {
-                error(
-                    libc::EXIT_FAILURE,
-                    0,
-                    "Only one of -a, -T or -f and -t may be given",
-                );
+                error(1, 0, "Only one of -a, -T or -f and -t may be given");
             } else if ONLY_FROM_LABEL.is_null() {
-                error(libc::EXIT_FAILURE, 0, "option -t requires -f");
+                error(1, 0, "option -t requires -f");
             } else if ONLY_TO_LABEL.is_null() {
-                error(libc::EXIT_FAILURE, 0, "option -f requires -t");
+                error(1, 0, "option -f requires -t");
             }
         } else if TSV_FILE_NAME.is_null() && ACX_FILE_NAME.is_null() {
             error(
-                libc::EXIT_FAILURE,
+                1,
                 0,
                 "Must give extension specification file with either -a or -t.",
             );
         } else if (!TSV_FILE_NAME.is_null()) && (!ACX_FILE_NAME.is_null()) {
-            error(
-                libc::EXIT_FAILURE,
-                0,
-                "Only one of parameters -a, -t, must be used.",
-            );
+            error(1, 0, "Only one of parameters -a, -t, must be used.");
         } else if !TSV_FILE_NAME.is_null() {
             // TSV is opened as a std stream and parsed in process_stream via
             // read_tsv_extensions; no libc handle is opened here. A missing file
@@ -266,11 +258,11 @@ unsafe fn check_options(_argc: c_int, _argv: *mut *mut c_char) {
             match std::fs::File::open(&name) {
                 Ok(_f) => ACX_FILE_OPENED = true,
                 Err(_) => {
-                    error(libc::EXIT_FAILURE, 0, &format!("Could not open '{}'", name));
+                    error(1, 0, &format!("Could not open '{}'", name));
                 }
             }
         } else {
-            error(libc::EXIT_FAILURE, 0, "Logic error again!");
+            error(1, 0, "Logic error again!");
         }
     }
 }
@@ -304,18 +296,14 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 let file = match std::fs::File::open(&tsv_name) {
                     Ok(f) => f,
                     Err(e) => {
-                        error(
-                            libc::EXIT_FAILURE,
-                            0,
-                            &format!("cannot open {}: {}", tsv_name, e),
-                        );
+                        error(1, 0, &format!("cannot open {}: {}", tsv_name, e));
                         return;
                     }
                 };
                 match read_tsv_extensions(std::io::BufReader::new(file)) {
                     Ok(p) => pairs = p,
                     Err(TsvExtensionError { line, message }) => {
-                        error_at_line(libc::EXIT_FAILURE, 0, &tsv_name, line, &message);
+                        error_at_line(1, 0, &tsv_name, line, &message);
                         return;
                     }
                 }
@@ -325,7 +313,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 // in the C++ source; without libxml it compiles to nothing, which
                 // is the path reproduced here (no extensions added).
             } else {
-                error(libc::EXIT_FAILURE, 0, "DANGER TERROR HORROR !!!!!!");
+                error(1, 0, "DANGER TERROR HORROR !!!!!!");
                 return;
             }
 
@@ -388,12 +376,12 @@ unsafe fn real_main() -> c_int {
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-expand-equivalences") {
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         process_stream(&mut instream, &mut outstream);
         instream.close();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }

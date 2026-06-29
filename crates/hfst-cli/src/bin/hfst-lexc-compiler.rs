@@ -5,6 +5,7 @@
 //!
 //! Compile lexc files into a transducer.
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::{
@@ -23,7 +24,6 @@ use hfst_cli::hfst_program_options::{
 };
 use hfst_cli::hfst_tool_metadata::{hfst_set_formula, hfst_set_name};
 use hfst_cli::inc::{CaseResult, check_common_params, handle_common_case, handle_error_case};
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::Write;
 
@@ -276,7 +276,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                             "Error: unknown option to --xerox-composition: '{}'\n",
                             cstr(getopt::OPTARG)
                         ));
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                     continue;
                 }
@@ -289,7 +289,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                             "Error: unknown option to --xfst: '{}'\n",
                             cstr(getopt::OPTARG)
                         ));
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                     continue;
                 }
@@ -344,7 +344,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         WARN_UNNECESSARY_ESCAPES = false;
                     } else {
                         eput(&format!("Unknown warning option {}\n", optarg));
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                     continue;
                 }
@@ -377,11 +377,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     (*std::ptr::addr_of_mut!(LEXCFILENAMES)).push("<stdin>".to_string());
                 } else {
                     if std::fs::File::open(&name).is_err() {
-                        error(
-                            libc::EXIT_FAILURE,
-                            0,
-                            &format!("Could not open '{}'. ", name),
-                        );
+                        error(1, 0, &format!("Could not open '{}'. ", name));
                     }
                     (*std::ptr::addr_of_mut!(LEXCFILENAMES)).push(name.clone());
                 }
@@ -424,7 +420,7 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
         let Some(mut res) = lexc.compile_lexical() else {
             if LEXCCOUNT == 1 {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     &format!(
                         "The file {} did not compile cleanly.\n(if there are no error messages above, try -v or -d to get more info)",
@@ -433,7 +429,7 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
                 );
             } else {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     &format!(
                         "The files {}... did not compile cleanly.\n(if there are no error messages above, try -v or -d to get more info)",
@@ -441,7 +437,7 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
                     ),
                 );
             }
-            return libc::EXIT_FAILURE;
+            return 1;
         };
         hfst_set_name(&mut res, &lexcfilenames[0], "lexc");
         hfst_set_formula(&mut res, &lexcfilenames[0], "L");
@@ -455,7 +451,7 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
             set_encode_weights(ENC);
         }
 
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -548,8 +544,7 @@ unsafe fn real_main() -> c_int {
                 line.push_str(" -Wunnecessary-escapes");
             }
             line.push('\n');
-            let c = CString::new(line).unwrap_or_default();
-            libc::printf(c"%s".as_ptr(), c.as_ptr());
+            print!("{}", line);
         }
         if SPLIT_CHARACTERS {
             eput("Warningn: Disabling unicode character tokenisation\n");

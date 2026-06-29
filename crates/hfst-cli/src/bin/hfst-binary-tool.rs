@@ -2,6 +2,7 @@
 //! TOOL TEMPLATE command-line tool. Drives the hfst-cli foundation (globals,
 //! getopt, commandline, program-options, tool-metadata, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -20,7 +21,6 @@ use hfst_cli::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
@@ -196,7 +196,7 @@ unsafe fn binaryoperate_streams(
         firststream.close();
         secondstream.close();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 

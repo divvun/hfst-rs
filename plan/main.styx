@@ -413,6 +413,13 @@ children (
                         kind @decision
                         text "Parked (unclaimed) behind the librarify wave. idiom2.io de-C-ifies the hfst library's FILE*/getc/fputc/printf I/O (40 sites remain: print_dot, print_pckimmo, ol_transducer, basic_transducer, att writers; libc still in Cargo.toml). The librarify wave (Wave 4.5) is concurrently lifting CLI bespoke logic INTO the hfst library, and each lift lands already de-C-ified (std::io Read/Write, e.g. strip_hfst3_headers). Finishing librarify first lets idiom2.io sweep the whole library's remaining FILE* sites in ONE pass rather than de-C-ifying lifted logic twice. Partial progress (tropical/log weight transducers, 0 libc) is committed at 4576874d. Resume idiom2.io after the librarify Tier-1 lifts land."
                     }
+
+                    {
+                        at 2026-06-29T17:19:06.714162Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -421,6 +428,28 @@ children (
                 title "c_char/c_int/c_void buffers & signatures → core::ffi; libc str*/mem* → slice/str ops; keep CString/CStr at the FFI boundary"
                 priority 5
                 deps (idiom1)
+                log (
+                    {
+                        at 2026-06-29T18:25:03.278497Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T18:57:40.539175Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Idiomatisation: deleted 9 vestigial char*-based pmatch_compiler.rs utilities that were dead (zero call-sites) AND C-ridden: parse_quoted, strip_percents, add_percents, get_n_to_k, strip_newline, get_escaped_delimited, get_escaped_delimited_lr, unescape_delimited, get_weight(*const c_char). They were 1:1-port artifacts of the bison/flex C lexer; the live pmatch path runs through nfst-pmatch + the data()/getinput() glue, and xre.rs/lexc.rs carry their own &str reimplementations. Their [spec:def]/[spec:sem] manifest entries are now intentionally unported (idiomatisation drops vestigial specced C-isms). Reachable siblings (get_delimited/get_delimited_lr/parse_range/should_colourise/compile data-buffer/word-vector parsing) were de-libc'd in place (CString::into_raw/from_raw alloc model, c_strtol/c_strtod_str helpers, IsTerminal)."
+                    }
+
+                    {
+                        at 2026-06-29T18:57:46.174762Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -435,6 +464,20 @@ children (
                         kind @decision
                         text "Subsumed by the librarify wave ([dec:hfst:librarify-cli]). The 59-tool audit showed the CLI FILE*->std::io conversion is entangled with a logic-lift (optimized-lookup duplicates the OL runtime; 9 tools share a binary-fold loop). The CLI std::fs I/O foundation now lives in librarify.io-foundation and the per-tool de-C-ism rides along with the Tier-2/Tier-3 lifts. This node should be retired or redefined to only the residual non-lifted bins once librarify lands."
                     }
+
+                    {
+                        at 2026-06-29T18:57:56.617399Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T18:58:01.785472Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -443,6 +486,28 @@ children (
                 title "Remove libc from hfst/hfst-cli/hfst-c Cargo.toml; hfst-c keeps core::ffi types only; workspace builds + tests green with zero libc dep (the closing gate)"
                 priority 5
                 deps (idiom2.io idiom2.cstr idiom2.cli)
+                log (
+                    {
+                        at 2026-06-29T18:58:07.852204Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T18:58:18.846663Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Gate met for in-scope crates: zero `libc::` in crates/hfst/src + crates/hfst-cli/src; no `libc` dep in hfst/hfst-cli Cargo.toml. Added `glob = \"0.3\"` to hfst (replaces libc::glob in xfst_compiler print_dir); xfst system()→std::process::Command; isatty→IsTerminal; getenv/strtok→env::var/split; setlocale→no-op; strerror→std::io::Error; strtod/strtol/strtoul→Rust parse; strdup/free/malloc model→CString::into_raw/from_raw (hfst_strdup/hfst_free). hfst-c keeps libc (excluded from workspace build; FFI boundary returns C-owned malloc buffers — out of scope per [dec:hfst:hfst-c-out-of-scope]). Residual libc in `cargo tree` is purely transitive (errno/getrandom via rustfst/proptest/icu). 151 hfst tests pass; CLI smokes green."
+                    }
+
+                    {
+                        at 2026-06-29T18:58:23.868042Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
         )
         log (

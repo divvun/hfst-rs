@@ -1069,11 +1069,10 @@ pub struct PmatchUtilityTransducers {
 // ---------------------------------------------------------------------------
 
 // --- Scalar / pointer globals (thread-local; single-threaded compiler) -------
-// The C-string parser input buffer ('data'/'startptr'/'len'). The 'libc::strdup'
-// '*c_char' buffer is a C-ism deferred to Stage 2; this representation only
-// removes the 'static mut'-ness.
+// The C-string parser input buffer ('data'/'startptr'/'len'): an owned CString
+// buffer (CString::into_raw in 'compile', reclaimed with c_free), kept as a
+// '*mut c_char' because the lexer glue ('getinput') indexes it as a C string.
 thread_local! {
-    // IDIOM-STAGE-2: '*mut c_char' parser input buffer (libc strdup) retained.
     static DATA: Cell<*mut c_char> = const { Cell::new(std::ptr::null_mut()) };
     static STARTPTR: Cell<*mut c_char> = const { Cell::new(std::ptr::null_mut()) };
     static LEN: Cell<usize> = const { Cell::new(0) };
@@ -2043,10 +2042,55 @@ impl PmatchUtilityTransducers {
 // (name="", weight=0.0, line_defined=pmatchlineno, my_timer uninitialised,
 // cache=NULL). There is no lexer line counter in this port, so line_defined=0.
 
+// ---- libc-free C-string helpers for the surviving char*-based pmatch utils ----
+
+// free() replacement for a buffer obtained from CString::into_raw.
+unsafe fn c_free(p: *mut c_char) {
+    if !p.is_null() {
+        drop(unsafe { std::ffi::CString::from_raw(p) });
+    }
+}
+
+// strtol over a C string: skip leading spaces/tabs, an optional sign, then
+// base-`base` digits; returns the value (the callers that used an endptr were
+// all removed with the dead utils, so only the value is needed).
+unsafe fn c_strtol(mut p: *const c_char, base: u32) -> i64 {
+    unsafe {
+        while *p == b' ' as c_char || *p == b'\t' as c_char {
+            p = p.add(1);
+        }
+        let mut neg = false;
+        if *p == b'+' as c_char {
+            p = p.add(1);
+        } else if *p == b'-' as c_char {
+            neg = true;
+            p = p.add(1);
+        }
+        let mut val: i64 = 0;
+        while let Some(d) = (*p as u8 as char).to_digit(base) {
+            val = val * base as i64 + d as i64;
+            p = p.add(1);
+        }
+        if neg { -val } else { val }
+    }
+}
+
+// strtod over a &str: the value of the longest leading prefix that parses as an
+// f64 (0.0 if none), mirroring C strtod's lenient leading-number parse.
+fn c_strtod_str(s: &str) -> f64 {
+    let mut best = 0.0f64;
+    for (i, _) in s.char_indices() {
+        if let Ok(v) = s[..=i].parse::<f64>() {
+            best = v;
+        }
+    }
+    best
+}
+
 // [spec:hfst:def:pmatch-utils.should-colourise-fn]
 // [spec:hfst:sem:pmatch-utils.should-colourise-fn]
 pub fn should_colourise() -> bool {
-    unsafe { if libc::isatty(1) != 0 { true } else { false } }
+    std::io::IsTerminal::is_terminal(&std::io::stdout())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.warn-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.warn-fn]
@@ -2151,101 +2195,6 @@ pub fn is_special(symbol: &String) -> bool {
         return false;
     }
     symbol.find('@') == Some(0) && symbol.rfind('@') == Some(symbol.len() - 1)
-}
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.get-n-to-k-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-n-to-k-fn]
-pub unsafe fn get_n_to_k(s: *const c_char) -> *mut i32 {
-    let rv = libc::malloc(std::mem::size_of::<i32>() * 2) as *mut i32;
-    let mut endptr: *mut c_char = std::ptr::null_mut();
-    let mut finalptr: *mut c_char = std::ptr::null_mut();
-    if *(s.add(1)) == b'{' as c_char {
-        *rv.add(0) = libc::strtol(s.add(2), &mut endptr, 10) as i32;
-        *rv.add(1) = libc::strtol(endptr.add(1), &mut finalptr, 10) as i32;
-        assert!(*finalptr == b'}' as c_char);
-    } else {
-        *rv.add(0) = libc::strtol(s.add(1), &mut endptr, 10) as i32;
-        *rv.add(1) = libc::strtol(endptr.add(1), &mut finalptr, 10) as i32;
-        assert!(*finalptr == b'\0' as c_char);
-    }
-    rv
-}
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.strip-percents-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.strip-percents-fn]
-pub unsafe fn strip_percents(s: *const c_char) -> *mut c_char {
-    let mut c = s;
-    let stripped = libc::calloc(std::mem::size_of::<c_char>(), libc::strlen(s) + 1) as *mut c_char;
-    let mut i: usize = 0;
-    while *c != b'\0' as c_char {
-        if *c == b'%' as c_char {
-            if *(c.add(1)) == b'\0' as c_char {
-                break;
-            } else {
-                *stripped.add(i) = *(c.add(1));
-                i += 1;
-                c = c.add(2);
-            }
-        } else {
-            *stripped.add(i) = *c;
-            i += 1;
-            c = c.add(1);
-        }
-    }
-    *stripped.add(i) = b'\0' as c_char;
-    stripped
-}
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.add-percents-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.add-percents-fn]
-pub unsafe fn add_percents(s: *const c_char) -> *mut c_char {
-    let ns = libc::malloc(std::mem::size_of::<c_char>() * libc::strlen(s) * 2 + 1) as *mut c_char;
-    let mut p = ns;
-    let mut s = s;
-    while *s != b'\0' as c_char {
-        let ch = *s;
-        if (ch == b'@' as c_char)
-            || (ch == b'-' as c_char)
-            || (ch == b' ' as c_char)
-            || (ch == b'|' as c_char)
-            || (ch == b'!' as c_char)
-            || (ch == b':' as c_char)
-            || (ch == b';' as c_char)
-            || (ch == b'0' as c_char)
-            || (ch == b'\\' as c_char)
-            || (ch == b'&' as c_char)
-            || (ch == b'?' as c_char)
-            || (ch == b'$' as c_char)
-            || (ch == b'+' as c_char)
-            || (ch == b'*' as c_char)
-            || (ch == b'/' as c_char)
-            || (ch == b'/' as c_char)
-            || (ch == b'_' as c_char)
-            || (ch == b'(' as c_char)
-            || (ch == b')' as c_char)
-            || (ch == b'{' as c_char)
-            || (ch == b'}' as c_char)
-            || (ch == b'[' as c_char)
-            || (ch == b']' as c_char)
-        {
-            *p = b'%' as c_char;
-            p = p.add(1);
-        }
-        *p = *s;
-        p = p.add(1);
-        s = s.add(1);
-    }
-    *p = b'\0' as c_char;
-    ns
-}
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.strip-newline-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.strip-newline-fn]
-pub unsafe fn strip_newline(s: *mut c_char) -> *mut c_char {
-    let mut pos: usize = 0;
-    while *s.add(pos) != b'\0' as c_char {
-        if *s.add(pos) == b'\n' as c_char || *s.add(pos) == b'\r' as c_char {
-            *s.add(pos) = b'\0' as c_char;
-        }
-        pos += 1;
-    }
-    s
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.get-ins-transition-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-ins-transition-fn]
@@ -2423,190 +2372,34 @@ pub unsafe fn get_delimited_lr(
     delim_left: c_char,
     delim_right: c_char,
 ) -> *mut c_char {
-    let qstart = libc::strchr(s, delim_left as i32).add(1) as *const c_char;
-    let qend = libc::strrchr(s, delim_right as i32) as *const c_char;
-    let qpart = libc::strdup(qstart);
-    *(qpart.add((qend as usize).wrapping_sub(qstart as usize))) = b'\0' as c_char;
-    qpart
+    unsafe {
+        // strchr: first delim_left, then the char after it
+        let mut lp = s;
+        while *lp != delim_left && *lp != b'\0' as c_char {
+            lp = lp.add(1);
+        }
+        let qstart = lp.add(1) as *const c_char;
+        // strrchr: last delim_right
+        let mut rp = s;
+        let mut qend = std::ptr::null::<c_char>();
+        while *rp != b'\0' as c_char {
+            if *rp == delim_right {
+                qend = rp;
+            }
+            rp = rp.add(1);
+        }
+        // strdup(qstart) truncated at the right delimiter (an owned CString, so it
+        // round-trips with c_free, matching the C free of the strdup'd buffer).
+        let len = (qend as usize).wrapping_sub(qstart as usize);
+        let bytes = std::ffi::CStr::from_ptr(qstart).to_bytes();
+        let cut = bytes.len().min(len);
+        std::ffi::CString::new(&bytes[..cut]).unwrap().into_raw()
+    }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.get-delimited-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-delimited-fn]
 pub unsafe fn get_delimited(s: *const c_char, delim: c_char) -> *mut c_char {
     get_delimited_lr(s, delim, delim)
-}
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.get-escaped-delimited-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-escaped-delimited-fn]
-pub unsafe fn get_escaped_delimited_lr(
-    s: *const c_char,
-    delim_left: c_char,
-    delim_right: c_char,
-) -> *mut c_char {
-    unescape_delimited(get_delimited_lr(s, delim_left, delim_right), delim_right)
-}
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.get-escaped-delimited-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-escaped-delimited-fn]
-pub unsafe fn get_escaped_delimited(s: *const c_char, delim: c_char) -> *mut c_char {
-    unescape_delimited(get_delimited_lr(s, delim, delim), delim)
-}
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.unescape-delimited-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.unescape-delimited-fn]
-pub unsafe fn unescape_delimited(s: *mut c_char, delim: c_char) -> *mut c_char {
-    let mut read = s;
-    let mut write = s;
-    while *read != b'\0' as c_char {
-        if *read == b'\\' as c_char
-            && (*(read.add(1)) == delim || *(read.add(1)) == b'\\' as c_char)
-        {
-            *write = *(read.add(1));
-            read = read.add(2);
-            write = write.add(1);
-        } else {
-            *write = *read;
-            read = read.add(1);
-            write = write.add(1);
-        }
-    }
-    *write = b'\0' as c_char;
-    s
-}
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.parse-quoted-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.parse-quoted-fn]
-pub unsafe fn parse_quoted(s: *const c_char) -> *mut c_char {
-    let quoted = get_delimited(s, b'"' as c_char);
-    // Mysteriously, when the quoted string is 24 + n * 16 bytes in length, an
-    // extra byte is needed for rv.
-    let rv =
-        libc::malloc(std::mem::size_of::<c_char>() * (libc::strlen(quoted) + 1)) as *mut c_char;
-    let mut p = quoted;
-    let mut r = rv;
-    while *p != b'\0' as c_char {
-        if *p != b'\\' as c_char {
-            *r = *p;
-            r = r.add(1);
-            p = p.add(1);
-        } else if *p == b'\\' as c_char {
-            match *(p.add(1)) as u8 {
-                b'0' | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' => {
-                    eprint!(
-                        "*** PMATCH unimplemented: parse octal escape in {}",
-                        std::ffi::CStr::from_ptr(p).to_string_lossy()
-                    );
-                    *r = b'\0' as c_char;
-                    p = p.add(5);
-                }
-                b'a' => {
-                    *r = 0x07 as c_char;
-                    r = r.add(1);
-                    p = p.add(2);
-                }
-                b'b' => {
-                    *r = 0x08 as c_char;
-                    r = r.add(1);
-                    p = p.add(2);
-                }
-                b'f' => {
-                    *r = 0x0c as c_char;
-                    r = r.add(1);
-                    p = p.add(2);
-                }
-                b'n' => {
-                    *r = b'\n' as c_char;
-                    r = r.add(1);
-                    p = p.add(2);
-                }
-                b'r' => {
-                    *r = b'\r' as c_char;
-                    r = r.add(1);
-                    p = p.add(2);
-                }
-                b't' => {
-                    *r = b'\t' as c_char;
-                    r = r.add(1);
-                    p = p.add(2);
-                }
-                b'u' => {
-                    if libc::strlen(p) < 6 {
-                        // Can't be a valid escape sequence
-                        *r = *p;
-                        r = r.add(1);
-                        *r = *(p.add(1));
-                        r = r.add(1);
-                        p = p.add(2);
-                    } else {
-                        let mut buf: [c_char; 5] = [0; 5];
-                        libc::memcpy(
-                            buf.as_mut_ptr() as *mut libc::c_void,
-                            p.add(2) as *const libc::c_void,
-                            4,
-                        );
-                        buf[4] = b'\0' as c_char;
-                        let codepoint = libc::strtol(buf.as_ptr(), std::ptr::null_mut(), 16) as u32;
-                        let utf8_char = codepoint_to_utf8(codepoint);
-                        let cs = std::ffi::CString::new(utf8_char.clone()).unwrap();
-                        libc::strcpy(r, cs.as_ptr());
-                        r = r.add(utf8_char.len() + 1);
-                        p = p.add(6);
-                    }
-                }
-                b'U' => {
-                    if libc::strlen(p) < 10 {
-                        // Can't be a valid escape sequence
-                        *r = *p;
-                        r = r.add(1);
-                        *r = *(p.add(1));
-                        r = r.add(1);
-                        p = p.add(2);
-                    } else {
-                        let mut buf: [c_char; 9] = [0; 9];
-                        libc::memcpy(
-                            buf.as_mut_ptr() as *mut libc::c_void,
-                            p.add(2) as *const libc::c_void,
-                            8,
-                        );
-                        buf[8] = b'\0' as c_char;
-                        let codepoint = libc::strtol(buf.as_ptr(), std::ptr::null_mut(), 16) as u32;
-                        let utf8_char = codepoint_to_utf8(codepoint);
-                        let cs = std::ffi::CString::new(utf8_char.clone()).unwrap();
-                        libc::strcpy(r, cs.as_ptr());
-                        r = r.add(utf8_char.len() + 1);
-                        p = p.add(10);
-                    }
-                }
-                b'v' => {
-                    *r = 0x0b as c_char;
-                    r = r.add(1);
-                    p = p.add(2);
-                }
-                b'x' => {
-                    let mut endp: *mut c_char = std::ptr::null_mut();
-                    let i = libc::strtol(p.add(2), &mut endp, 16) as i32;
-                    if 0 < i && i <= 127 {
-                        *r = i as c_char;
-                    } else {
-                        eprint!("*** PMATCH unimplemented: parse \\x{}\n", i);
-                        *r = b'\0' as c_char;
-                    }
-                    r = r.add(1);
-                    assert!(endp != p);
-                    p = endp;
-                }
-                b'\0' => {
-                    eprint!("End of line after \\ escape\n");
-                    *r = b'\0' as c_char;
-                    r = r.add(1);
-                    p = p.add(1);
-                }
-                _ => {
-                    *r = *(p.add(1));
-                    r = r.add(1);
-                    p = p.add(2);
-                }
-            }
-        }
-    }
-    *r = b'\0' as c_char;
-    libc::free(quoted as *mut libc::c_void);
-    rv
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.next-utf8-to-codepoint-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.next-utf8-to-codepoint-fn]
@@ -2690,30 +2483,22 @@ pub unsafe fn parse_range(s: *const c_char) -> Rc<RefCell<PmatchTransducerContai
     while **c != b'\0' as c_char {
         let mut codepoint1: u32 = 0;
         let mut codepoint2: u32 = 0;
-        if libc::strlen(*c) >= 6
+        if std::ffi::CStr::from_ptr(*c).to_bytes().len() >= 6
             && **c == b'\\' as c_char
             && (*((*c).add(1)) == b'u' as c_char || *((*c).add(1)) == b'U' as c_char)
         {
             // an escape sequence
             let mut buf: [c_char; 9] = [0; 9];
             if *((*c).add(1)) == b'u' as c_char {
-                libc::memcpy(
-                    buf.as_mut_ptr() as *mut libc::c_void,
-                    (*c).add(2) as *const libc::c_void,
-                    4,
-                );
+                std::ptr::copy_nonoverlapping((*c).add(2), buf.as_mut_ptr(), 4);
                 buf[4] = b'\0' as c_char;
                 *c = (*c).add(6);
             } else {
-                libc::memcpy(
-                    buf.as_mut_ptr() as *mut libc::c_void,
-                    (*c).add(2) as *const libc::c_void,
-                    8,
-                );
+                std::ptr::copy_nonoverlapping((*c).add(2), buf.as_mut_ptr(), 8);
                 buf[8] = b'\0' as c_char;
                 *c = (*c).add(10);
             }
-            codepoint1 = libc::strtol(buf.as_ptr(), std::ptr::null_mut(), 16) as u32;
+            codepoint1 = c_strtol(buf.as_ptr(), 16) as u32;
         } else {
             codepoint1 = next_utf8_to_codepoint(c as *mut *mut u8);
         }
@@ -2724,29 +2509,21 @@ pub unsafe fn parse_range(s: *const c_char) -> Rc<RefCell<PmatchTransducerContai
             pmatcherror(&cs.to_string_lossy());
         }
         *c = (*c).add(1);
-        if libc::strlen(*c) >= 6
+        if std::ffi::CStr::from_ptr(*c).to_bytes().len() >= 6
             && **c == b'\\' as c_char
             && (*((*c).add(1)) == b'u' as c_char || *((*c).add(1)) == b'U' as c_char)
         {
             let mut buf: [c_char; 9] = [0; 9];
             if *((*c).add(1)) == b'u' as c_char {
-                libc::memcpy(
-                    buf.as_mut_ptr() as *mut libc::c_void,
-                    (*c).add(2) as *const libc::c_void,
-                    4,
-                );
+                std::ptr::copy_nonoverlapping((*c).add(2), buf.as_mut_ptr(), 4);
                 buf[4] = b'\0' as c_char;
                 *c = (*c).add(6);
             } else {
-                libc::memcpy(
-                    buf.as_mut_ptr() as *mut libc::c_void,
-                    (*c).add(2) as *const libc::c_void,
-                    8,
-                );
+                std::ptr::copy_nonoverlapping((*c).add(2), buf.as_mut_ptr(), 8);
                 buf[8] = b'\0' as c_char;
                 *c = (*c).add(10);
             }
-            codepoint2 = libc::strtol(buf.as_ptr(), std::ptr::null_mut(), 16) as u32;
+            codepoint2 = c_strtol(buf.as_ptr(), 16) as u32;
         } else {
             codepoint2 = next_utf8_to_codepoint(c as *mut *mut u8);
         }
@@ -2770,7 +2547,7 @@ pub unsafe fn parse_range(s: *const c_char) -> Rc<RefCell<PmatchTransducerContai
             codepoint1 += 1;
         }
     }
-    libc::free(orig_quoted as *mut libc::c_void);
+    c_free(orig_quoted);
     let container = PmatchTransducerContainer {
         name: String::new(),
         weight: 0.0,
@@ -2780,23 +2557,6 @@ pub unsafe fn parse_range(s: *const c_char) -> Rc<RefCell<PmatchTransducerContai
         t: *Box::from_raw(retval),
     };
     Rc::new(RefCell::new(container))
-}
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.get-weight-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-weight-fn]
-pub unsafe fn get_weight(s: *const c_char) -> f64 {
-    let mut rv: f64 = -3.1415;
-    let mut weightstart = s;
-    while (*weightstart != b'\0' as c_char)
-        && ((*weightstart == b' ' as c_char)
-            || (*weightstart == b'\t' as c_char)
-            || (*weightstart == b';' as c_char))
-    {
-        weightstart = weightstart.add(1);
-    }
-    let mut endp: *mut c_char = std::ptr::null_mut();
-    rv = libc::strtod(weightstart, &mut endp);
-    assert!(endp != weightstart as *mut c_char);
-    rv
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.get-size-info-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-size-info-fn]
@@ -5361,13 +5121,9 @@ using nearest neighbours",
         }
 
         if variables_entry_or_default("vector-similarity-projection-factor") != "1.0" {
-            let cstr =
-                std::ffi::CString::new(variables_index("vector-similarity-projection-factor"))
-                    .unwrap();
-            set_vector_similarity_projection_factor(libc::strtod(
-                cstr.as_ptr(),
-                std::ptr::null_mut(),
-            ) as WordVecFloat);
+            set_vector_similarity_projection_factor(c_strtod_str(&variables_index(
+                "vector-similarity-projection-factor",
+            )) as WordVecFloat);
         }
         /*
          * When there are two vectors A and B, we compute the vector A - B that
@@ -5691,9 +5447,7 @@ space-separated\n  (reading line {})\n",
                         // line.substr(pos + 1, nextpos - pos)
                         let sub_end = std::cmp::min(pos + 1 + (nextpos - pos), line.len());
                         let sub = &line[pos + 1..sub_end];
-                        let cstr = std::ffi::CString::new(sub).unwrap_or_default();
-                        let v = unsafe { libc::strtod(cstr.as_ptr(), std::ptr::null_mut()) }
-                            as WordVecFloat;
+                        let v = c_strtod_str(sub) as WordVecFloat;
                         components.push(v);
                         pos = nextpos;
                     }
@@ -5704,9 +5458,7 @@ space-separated\n  (reading line {})\n",
             // separator at the end
             if line_bytes[line_bytes.len() - 1] != separator {
                 let sub = &line[pos + 1..];
-                let cstr = std::ffi::CString::new(sub).unwrap_or_default();
-                let v =
-                    unsafe { libc::strtof(cstr.as_ptr(), std::ptr::null_mut()) } as WordVecFloat;
+                let v = c_strtod_str(sub) as WordVecFloat;
                 components.push(v);
             }
             if word_vectors_len() != 0 && word_vectors_first_vector_len() != components.len() {
@@ -6008,10 +5760,15 @@ pub unsafe fn compile(
     // lock here?
     init_globals();
     let expanded_script = expand_includes(pmatch);
-    let data_cstring = std::ffi::CString::new(expanded_script.clone()).unwrap();
-    set_data(libc::strdup(data_cstring.as_ptr()));
+    // Own the script buffer as a CString (into_raw); it is reclaimed with c_free
+    // below, keeping the alloc/free path on the Rust allocator.
+    set_data(
+        std::ffi::CString::new(expanded_script.clone())
+            .unwrap()
+            .into_raw(),
+    );
     set_startptr(data());
-    set_len(libc::strlen(data()));
+    set_len(std::ffi::CStr::from_ptr(data()).to_bytes().len());
     set_verbose(be_verbose);
     set_flatten(do_flatten);
     set_include_cosine_distances(do_include_cosine_distances);
@@ -6046,7 +5803,7 @@ pub unsafe fn compile(
     }
     // === END SEAM =========================================================
 
-    libc::free(startptr() as *mut libc::c_void);
+    c_free(startptr());
     let mut retval: HashMap<String, *mut HfstTransducer> = HashMap::new();
     for it in unsatisfied_insertions_snapshot().into_iter() {
         if !definitions_contains(it.as_str()) {

@@ -2,6 +2,7 @@
 //! epsilon-removal command-line tool. Drives the hfst-cli foundation (globals,
 //! getopt, commandline, program-options, tool-metadata, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::{self, HfstTransducer};
@@ -21,7 +22,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
@@ -162,7 +162,7 @@ unsafe fn process_stream(
         }
         instream.close();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -219,7 +219,7 @@ unsafe fn real_main() -> c_int {
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-remove-epsilons") {
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         process_stream(&mut instream, &mut outstream)

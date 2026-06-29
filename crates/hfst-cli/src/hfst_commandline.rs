@@ -15,14 +15,14 @@
 //! Globals live once in 'crate::globals'; in C they were '#include'd per tool.
 
 use crate::globals::{self, ColourTristate};
+use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_exception_defs::HfstFatalException;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
-use libc::{c_char, c_int};
 use std::ffi::CStr;
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 
 // ---------------------------------------------------------------------------
 // constants (header #defines / constexpr)
@@ -73,9 +73,9 @@ fn errno() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
 
-// strerror(errnum) appended to a FILE* (C: fprintf(stderr, "%s", strerror(e))).
+// strerror(errnum) appended to a writer (C: fprintf(stderr, "%s", strerror(e))).
 fn fput_strerror(f: &mut dyn Write, errnum: i32) {
-    fput_cstr(f, unsafe { libc::strerror(errnum) });
+    fput_str(f, &std::io::Error::from_raw_os_error(errnum).to_string());
 }
 
 // ---------------------------------------------------------------------------
@@ -86,14 +86,12 @@ fn fput_strerror(f: &mut dyn Write, errnum: i32) {
 // [spec:hfst:sem:hfst-commandline.error-at-line-fn]
 pub fn error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg: &str) {
     let f = &mut std::io::stderr();
-    unsafe {
-        fput_str(f, &format!("{}.{}: ", filename, linenum));
-        fput_str(f, msg);
-        if errnum != 0 {
-            fput_strerror(f, errnum);
-        }
-        fput_str(f, "\n");
+    fput_str(f, &format!("{}.{}: ", filename, linenum));
+    fput_str(f, msg);
+    if errnum != 0 {
+        fput_strerror(f, errnum);
     }
+    fput_str(f, "\n");
     if status != 0 {
         std::process::exit(status);
     }
@@ -103,18 +101,16 @@ pub fn error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg
 // [spec:hfst:sem:hfst-commandline.hfst-error-at-line-fn]
 pub fn hfst_error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg: &str) {
     let f = &mut std::io::stderr();
-    unsafe {
-        maybe_print_colour(f, COLOUR_BOLD);
-        fput_str(f, &format!("{}.{}: ", filename, linenum));
-        maybe_print_colour(f, COLOUR_RED);
-        fput_str(f, "Error: ");
+    maybe_print_colour(f, COLOUR_BOLD);
+    fput_str(f, &format!("{}.{}: ", filename, linenum));
+    maybe_print_colour(f, COLOUR_RED);
+    fput_str(f, "Error: ");
+    maybe_print_colour(f, COLOUR_RESET);
+    fput_str(f, msg);
+    if errnum != 0 {
+        maybe_print_colour(f, COLOUR_MAGENTA);
+        fput_strerror(f, errnum);
         maybe_print_colour(f, COLOUR_RESET);
-        fput_str(f, msg);
-        if errnum != 0 {
-            maybe_print_colour(f, COLOUR_MAGENTA);
-            fput_strerror(f, errnum);
-            maybe_print_colour(f, COLOUR_RESET);
-        }
     }
     if status != 0 {
         std::process::exit(status);
@@ -125,18 +121,16 @@ pub fn hfst_error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32
 // [spec:hfst:sem:hfst-commandline.hfst-warning-at-line-fn]
 pub fn hfst_warning_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg: &str) {
     let f = &mut std::io::stderr();
-    unsafe {
-        maybe_print_colour(f, COLOUR_BOLD);
-        fput_str(f, &format!("{}.{}: ", filename, linenum));
-        maybe_print_colour(f, COLOUR_YELLOW);
-        fput_str(f, "Warning: ");
+    maybe_print_colour(f, COLOUR_BOLD);
+    fput_str(f, &format!("{}.{}: ", filename, linenum));
+    maybe_print_colour(f, COLOUR_YELLOW);
+    fput_str(f, "Warning: ");
+    maybe_print_colour(f, COLOUR_RESET);
+    fput_str(f, msg);
+    if errnum != 0 {
+        maybe_print_colour(f, COLOUR_MAGENTA);
+        fput_strerror(f, errnum);
         maybe_print_colour(f, COLOUR_RESET);
-        fput_str(f, msg);
-        if errnum != 0 {
-            maybe_print_colour(f, COLOUR_MAGENTA);
-            fput_strerror(f, errnum);
-            maybe_print_colour(f, COLOUR_RESET);
-        }
     }
     if status != 0 {
         std::process::exit(status);
@@ -263,11 +257,9 @@ pub fn debug_save_transducer(t: &HfstTransducer, name: &str) {
 pub fn debug_printf(msg: &str) {
     if unsafe { globals::DEBUG } {
         let f = &mut std::io::stderr();
-        unsafe {
-            fput_str(f, "\nDEBUG: ");
-            fput_str(f, msg);
-            fput_str(f, "\n");
-        }
+        fput_str(f, "\nDEBUG: ");
+        fput_str(f, msg);
+        fput_str(f, "\n");
     }
 }
 
@@ -370,14 +362,12 @@ pub fn is_input_stream_in_ol_format(is: &HfstInputStream, program: &str) -> bool
 // [spec:hfst:def:hfst-commandline.hfst-strtoweight-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strtoweight-fn]
 pub fn hfst_strtoweight(s: &str) -> f32 {
-    let cs = std::ffi::CString::new(s).unwrap();
-    let mut endptr: *mut c_char = std::ptr::null_mut();
-    let rv = unsafe { libc::strtod(cs.as_ptr(), &mut endptr) };
-    if unsafe { *endptr } == 0 {
-        rv as f32
-    } else {
-        hfst_error(libc::EXIT_FAILURE, errno(), &format!("{} not a weight", s));
-        rv as f32
+    match s.parse::<f64>() {
+        Ok(rv) => rv as f32,
+        Err(_) => {
+            hfst_error(1, errno(), &format!("{} not a weight", s));
+            0.0
+        }
     }
 }
 
@@ -388,61 +378,56 @@ pub fn hfst_strtonumber(s: &str, infinite: Option<&mut bool>) -> i32 {
     if let Some(ref mut b) = infinite {
         **b = false;
     }
-    let cs = std::ffi::CString::new(s).unwrap();
-    let mut endptr: *mut c_char = std::ptr::null_mut();
-    let rv = unsafe { libc::strtod(cs.as_ptr(), &mut endptr) };
-    if unsafe { *endptr } == 0 {
-        if rv.is_infinite() && infinite.is_some() {
-            if let Some(b) = infinite {
-                *b = true;
-            }
-            // std::signbit(rv): 1 if negative, 0 otherwise.
-            return if rv.is_sign_negative() { 1 } else { 0 };
-        } else if rv > i32::MAX as f64 {
-            return i32::MAX;
-        } else if rv < i32::MIN as f64 {
-            return i32::MIN;
+    let rv = match s.parse::<f64>() {
+        Ok(rv) => rv,
+        Err(_) => {
+            hfst_error(1, errno(), &format!("{} not a number", s));
+            return 0;
         }
-        rv.floor() as i32
-    } else {
-        hfst_error(libc::EXIT_FAILURE, errno(), &format!("{} not a number", s));
-        rv as i32
+    };
+    if rv.is_infinite() && infinite.is_some() {
+        if let Some(b) = infinite {
+            *b = true;
+        }
+        // std::signbit(rv): 1 if negative, 0 otherwise.
+        return if rv.is_sign_negative() { 1 } else { 0 };
+    } else if rv > i32::MAX as f64 {
+        return i32::MAX;
+    } else if rv < i32::MIN as f64 {
+        return i32::MIN;
     }
+    rv.floor() as i32
 }
 
 // [spec:hfst:def:hfst-commandline.hfst-strtoul-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strtoul-fn]
 pub fn hfst_strtoul(s: &str, base: i32) -> u64 {
-    let cs = std::ffi::CString::new(s).unwrap();
-    let mut endptr: *mut c_char = std::ptr::null_mut();
-    let rv = unsafe { libc::strtoul(cs.as_ptr(), &mut endptr, base) };
-    if unsafe { *endptr } == 0 {
-        rv as u64
-    } else {
-        hfst_error(
-            libc::EXIT_FAILURE,
-            errno(),
-            &format!("{} is not a valid unsigned number string", s),
-        );
-        rv as u64
+    match u64::from_str_radix(s, base as u32) {
+        Ok(rv) => rv,
+        Err(_) => {
+            hfst_error(
+                1,
+                errno(),
+                &format!("{} is not a valid unsigned number string", s),
+            );
+            0
+        }
     }
 }
 
 // [spec:hfst:def:hfst-commandline.hfst-strtol-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strtol-fn]
 pub fn hfst_strtol(s: &str, base: i32) -> i64 {
-    let cs = std::ffi::CString::new(s).unwrap();
-    let mut endptr: *mut c_char = std::ptr::null_mut();
-    let rv = unsafe { libc::strtol(cs.as_ptr(), &mut endptr, base) };
-    if unsafe { *endptr } == 0 {
-        rv as i64
-    } else {
-        hfst_error(
-            libc::EXIT_FAILURE,
-            errno(),
-            &format!("{} is not a valid signed number string", s),
-        );
-        rv as i64
+    match i64::from_str_radix(s, base as u32) {
+        Ok(rv) => rv,
+        Err(_) => {
+            hfst_error(
+                1,
+                errno(),
+                &format!("{} is not a valid signed number string", s),
+            );
+            0
+        }
     }
 }
 
@@ -488,7 +473,7 @@ pub fn hfst_parse_format_name(s: &str) -> ImplementationType {
         );
     } else {
         hfst_error(
-            libc::EXIT_FAILURE,
+            1,
             0,
             &format!("Could not parse format name from string {}", s),
         );
@@ -523,102 +508,44 @@ pub fn hfst_strformat(format: ImplementationType) -> &'static str {
 // hfst_fwrite / hfst_tmpfile) were removed in the io-foundation de-C-ism: tools
 // open their I/O as std streams (globals::input_reader / output_writer / first_
 // reader / second_reader, or std::fs::File) and use std::io::{Read, Write, Seek}.
-
-// [spec:hfst:def:hfst-commandline.hfst-close-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-close-fn]
-pub fn hfst_close(fd: i32) -> i32 {
-    let rv = unsafe { libc::close(fd) };
-    if rv == -1 {
-        hfst_error(libc::EXIT_FAILURE, errno(), "close failed");
-    }
-    rv
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-open-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-open-fn]
-pub fn hfst_open(pathname: &str, flags: i32) -> i32 {
-    let path = std::ffi::CString::new(pathname).unwrap();
-    let rv = unsafe { libc::open(path.as_ptr(), flags) };
-    if rv == -1 {
-        hfst_error(libc::EXIT_FAILURE, errno(), "open failed");
-    }
-    rv
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-read-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-read-fn]
-pub unsafe fn hfst_read(fd: i32, buf: *mut libc::c_void, count: usize) -> isize {
-    if count > isize::MAX as usize {
-        hfst_error(
-            libc::EXIT_FAILURE,
-            0,
-            &format!("cannot read {} bytes in one read(2)", count),
-        );
-    }
-    let rv = unsafe { libc::read(fd, buf, count) };
-    if rv == -1 {
-        hfst_error(libc::EXIT_FAILURE, errno(), "read failed");
-    }
-    rv
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-write-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-write-fn]
-pub unsafe fn hfst_write(fd: i32, buf: *const libc::c_void, count: usize) -> isize {
-    let rv = unsafe { libc::write(fd, buf, count) };
-    if rv == -1 {
-        hfst_error(libc::EXIT_FAILURE, errno(), "write failed");
-    }
-    rv
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-mkstemp-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-mkstemp-fn]
-pub unsafe fn hfst_mkstemp(templ: *mut c_char) -> i32 {
-    let rv = unsafe { libc::mkstemp(templ) };
-    if rv == -1 {
-        hfst_error(libc::EXIT_FAILURE, errno(), "mkstemp failed");
-    }
-    rv
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-remove-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-remove-fn]
-pub fn hfst_remove(filename: &str) -> i32 {
-    let cs = std::ffi::CString::new(filename).unwrap();
-    let rv = unsafe { libc::remove(cs.as_ptr()) };
-    if rv == -1 {
-        hfst_error(
-            libc::EXIT_FAILURE,
-            errno(),
-            &format!("remove {} failed", filename),
-        );
-    }
-    rv
-}
+// The fd-level wrappers (hfst_close / hfst_open / hfst_read / hfst_write /
+// hfst_mkstemp / hfst_remove) had no callers and were dropped with the libc nuke.
 
 // ---------------------------------------------------------------------------
 // string functions
 // ---------------------------------------------------------------------------
 
+// strdup/strndup over a Rust allocation: the returned pointer is owned by a
+// `CString` (`into_raw`) and must be reclaimed with `hfst_free` (`from_raw`), so
+// the whole alloc/free path stays inside the Rust allocator — no libc.
+
 // [spec:hfst:def:hfst-commandline.hfst-strdup-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strdup-fn]
 pub unsafe fn hfst_strdup(s: *const c_char) -> *mut c_char {
-    let rv = unsafe { libc::strdup(s) };
-    if rv.is_null() {
-        hfst_error(libc::EXIT_FAILURE, errno(), "strdup failed");
+    if s.is_null() {
+        return std::ptr::null_mut();
     }
-    rv
+    unsafe { CStr::from_ptr(s) }.to_owned().into_raw()
 }
 
 // [spec:hfst:def:hfst-commandline.hfst-strndup-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strndup-fn]
 pub unsafe fn hfst_strndup(s: *const c_char, n: usize) -> *mut c_char {
-    let rv = unsafe { libc::strndup(s, n) };
-    if rv.is_null() {
-        hfst_error(libc::EXIT_FAILURE, errno(), "strndup failed");
+    if s.is_null() {
+        return std::ptr::null_mut();
     }
-    rv
+    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let take = bytes.len().min(n);
+    std::ffi::CString::new(&bytes[..take]).unwrap().into_raw()
+}
+
+// Free a pointer obtained from hfst_strdup/hfst_strndup (or any CString::into_raw).
+// Replaces the C `free()` calls; pairs the Rust allocator with the Rust dealloc.
+// [spec:hfst:def:hfst-commandline.hfst-free-fn]
+pub unsafe fn hfst_free(p: *mut c_char) {
+    if !p.is_null() {
+        drop(unsafe { std::ffi::CString::from_raw(p) });
+    }
 }
 
 // hfst_getdelim / hfst_getline (the FILE*-based line readers) were removed in the
@@ -639,10 +566,10 @@ fn readline(prompt: &str) -> *mut c_char {
     match std::io::stdin().read_line(&mut line) {
         Ok(0) | Err(_) => std::ptr::null_mut(),
         Ok(_) => {
-            // Hand the caller a malloc'd C string (matching getline's buffer, which
-            // the caller frees). read_line keeps the trailing '\n', as getline did.
-            let c = std::ffi::CString::new(line).unwrap_or_default();
-            unsafe { libc::strdup(c.as_ptr()) }
+            // Hand the caller an owned C string (matching getline's buffer, which
+            // the caller frees with hfst_free). read_line keeps the trailing '\n',
+            // as getline did.
+            std::ffi::CString::new(line).unwrap_or_default().into_raw()
         }
     }
 }
@@ -656,15 +583,10 @@ pub fn hfst_readline(prompt: &str) -> *mut c_char {
 // [spec:hfst:def:hfst-commandline.hfst-setlocale-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-setlocale-fn]
 pub fn hfst_setlocale() -> *mut c_char {
-    let rv = unsafe { libc::setlocale(libc::LC_ALL, b"\0".as_ptr() as *const c_char) };
-    if rv.is_null() {
-        hfst_error(
-            libc::EXIT_FAILURE,
-            errno(),
-            "Unable to set locale for character settings",
-        );
-    }
-    rv
+    // setlocale(LC_ALL, "") adopted the environment locale for C char handling.
+    // The Rust tools are UTF-8 throughout and never consult the C locale, so this
+    // is a no-op; every caller ignores the return value.
+    std::ptr::null_mut()
 }
 
 // [spec:hfst:def:hfst-commandline.set-program-name-fn]
@@ -698,41 +620,9 @@ fn set_program_name(argv0: &str) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// memory functions
-// ---------------------------------------------------------------------------
-
-// [spec:hfst:def:hfst-commandline.hfst-malloc-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-malloc-fn]
-pub unsafe fn hfst_malloc(size: usize) -> *mut libc::c_void {
-    let rv = unsafe { libc::malloc(size) };
-    if rv.is_null() && size > 0 {
-        hfst_error(libc::EXIT_FAILURE, errno(), "malloc failed");
-    }
-    rv
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-calloc-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-calloc-fn]
-// (Declared in hfst-commandline.h but never defined in the C sources; given the
-// natural body matching hfst_malloc/hfst_realloc to satisfy the shared API.)
-pub unsafe fn hfst_calloc(nmemb: usize, size: usize) -> *mut libc::c_void {
-    let rv = unsafe { libc::calloc(nmemb, size) };
-    if rv.is_null() && size > 0 {
-        hfst_error(libc::EXIT_FAILURE, errno(), "calloc failed");
-    }
-    rv
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-realloc-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-realloc-fn]
-pub unsafe fn hfst_realloc(ptr: *mut libc::c_void, size: usize) -> *mut libc::c_void {
-    let rv = unsafe { libc::realloc(ptr, size) };
-    if rv.is_null() && size > 0 {
-        hfst_error(libc::EXIT_FAILURE, errno(), "realloc failed");
-    }
-    rv
-}
+// The wrapped libc allocators (hfst_malloc / hfst_calloc / hfst_realloc) were
+// removed with the libc nuke: their only caller was extend_options_getenv, which
+// now builds the extended argv from a leaked Rust Vec.
 
 // ---------------------------------------------------------------------------
 // customized default printouts for HFST tools
@@ -808,52 +698,41 @@ pub fn print_version() {
 pub fn print_report_bugs() {
     let mut mw = globals::message_writer();
     let f = &mut *mw;
-    unsafe {
-        fput_str(
-            f,
-            &format!(
-                "Report bugs to <{}> or directly to our bug tracker at:\n<https://github.com/hfst/hfst/issues>\n",
-                PACKAGE_BUGREPORT
-            ),
-        );
-    }
+    fput_str(
+        f,
+        &format!(
+            "Report bugs to <{}> or directly to our bug tracker at:\n<https://github.com/hfst/hfst/issues>\n",
+            PACKAGE_BUGREPORT
+        ),
+    );
 }
 
 // [spec:hfst:def:hfst-commandline.extend-options-getenv-fn]
 // [spec:hfst:sem:hfst-commandline.extend-options-getenv-fn]
 pub unsafe fn extend_options_getenv(argc: *mut c_int, argv: *mut *mut *mut c_char) {
     unsafe {
-        let hfstopts = libc::getenv(b"HFST_OPTIONS\0".as_ptr() as *const c_char);
-        if hfstopts.is_null() {
-            return;
+        let hfstopts = match std::env::var("HFST_OPTIONS") {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        // strtok with a single-space delimiter yields the non-empty space-separated
+        // tokens (consecutive spaces collapse, like the C strtok loop did).
+        let tokens: Vec<&str> = hfstopts.split(' ').filter(|t| !t.is_empty()).collect();
+        let old_argc = *argc as usize;
+        // we cannot realloc argv since it's magic: build a fresh array (a leaked
+        // Rust Vec, never freed) holding the original argv pointers plus one
+        // owned C string per token, with a trailing NULL slot.
+        let mut new_argv: Vec<*mut c_char> = Vec::with_capacity(old_argc + tokens.len() + 1);
+        for i in 0..old_argc {
+            new_argv.push(*(*argv).add(i));
         }
-        let mut p = hfstopts;
-        let mut spaces: u32 = 0;
-        while *p != 0 {
-            if *p == b' ' as c_char {
-                spaces += 1;
-            }
-            p = p.offset(1);
-        }
-        // we cannot realloc argv since it's magic
-        let new_argv = hfst_malloc(
-            std::mem::size_of::<*mut c_char>() * (*argc as usize + spaces as usize + 1),
-        ) as *mut *mut c_char;
-        libc::memcpy(
-            new_argv as *mut libc::c_void,
-            *argv as *const libc::c_void,
-            std::mem::size_of::<*mut c_char>() * *argc as usize,
-        );
-        // there's this magic stuff with *argv that we shouldn't free it still
-        *argv = new_argv;
-        let space = b" \0".as_ptr() as *const c_char;
-        let mut new_arg = libc::strtok(hfstopts, space);
-        while !new_arg.is_null() {
-            let new_arg_spot = (*argv).offset(*argc as isize);
-            *new_arg_spot = hfst_strdup(new_arg);
+        for t in &tokens {
+            let cs = std::ffi::CString::new(*t).unwrap();
+            new_argv.push(hfst_strdup(cs.as_ptr()));
             *argc += 1;
-            new_arg = libc::strtok(std::ptr::null_mut(), space);
         }
+        new_argv.push(std::ptr::null_mut());
+        *argv = new_argv.leak().as_mut_ptr();
     }
 }
 
@@ -867,7 +746,7 @@ pub fn should_colourise() -> bool {
     let colour = unsafe { globals::COLOUR };
     if colour == ColourTristate::COLOUR_AUTO {
         // this is not the best heuristic but wfm
-        unsafe { libc::isatty(1) != 0 }
+        std::io::stdout().is_terminal()
     } else if colour == ColourTristate::COLOUR_ALWAYS {
         true
     } else if colour == ColourTristate::COLOUR_NEVER {

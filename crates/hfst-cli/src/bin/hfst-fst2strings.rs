@@ -3,6 +3,7 @@
 //! printing command-line tool. Drives the hfst-cli foundation (globals, getopt,
 //! commandline, program-options, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_data_types::{HfstTwoLevelPath, HfstTwoLevelPaths};
 use hfst::hfst_extract_strings::{ExtractStringsCb, RetVal};
@@ -25,7 +26,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
@@ -239,7 +239,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     BEAM = optarg.trim().parse::<f32>().unwrap_or(0.0);
                     if BEAM < 0.0 {
                         eprint!("Invalid argument for --beam\n");
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                 }
                 'c' => {
@@ -262,7 +262,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     } else {
                         error(
                             0,
-                            libc::EXIT_FAILURE,
+                            1,
                             "Unrecognised xfst option. available options are obey-flags, print-flags\n",
                         );
                     }
@@ -530,11 +530,7 @@ unsafe fn process_stream(
                 let mut best_paths: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
                 tc.extract_paths(&mut best_paths, -1, -1);
                 if best_paths.len() != 1 {
-                    error(
-                        libc::EXIT_FAILURE,
-                        0,
-                        "n_best(1) produced more than one path",
-                    );
+                    error(1, 0, "n_best(1) produced more than one path");
                 }
                 MAX_WEIGHT = best_paths.iter().next().unwrap().first;
             }
@@ -555,11 +551,11 @@ unsafe fn process_stream(
                 && t.is_cyclic()
             {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     "Transducer is cyclic. Use one or more of these options: -n, -N, -r, -l, -L, -c",
                 );
-                return libc::EXIT_FAILURE;
+                return 1;
             }
 
             if MAX_STRINGS > 0 {
@@ -604,7 +600,7 @@ unsafe fn process_stream(
         }
 
         instream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -665,7 +661,7 @@ unsafe fn real_main() -> c_int {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-fst2strings: cannot open output: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         retval = process_stream(&mut instream, &mut *out);

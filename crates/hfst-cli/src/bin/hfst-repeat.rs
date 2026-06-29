@@ -3,6 +3,7 @@
 //! command-line tool. Drives the hfst-cli foundation (globals, getopt,
 //! commandline, program-options, tool-metadata, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -22,7 +23,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::Write;
 
@@ -163,14 +163,14 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         check_unary_params(argc, argv);
         if AT_LEAST > AT_MOST {
             error(
-                libc::EXIT_FAILURE,
+                1,
                 0,
                 &format!("Cannot repeat from {} to {} times\n", AT_LEAST, AT_MOST),
             );
         }
         if FROM_INFINITY && !TO_INFINITY {
             error(
-                libc::EXIT_FAILURE,
+                1,
                 0,
                 &format!("Cannot repeat from infinity to {} times\n", AT_MOST),
             );
@@ -202,7 +202,7 @@ unsafe fn process_stream(
                 } else if !FROM_INFINITY && TO_INFINITY {
                     verbose_printf(&format!("Repeating [{}..*] {}...\n", AT_LEAST, inputname));
                 } else if FROM_INFINITY && TO_INFINITY {
-                    error(libc::EXIT_FAILURE, 0, &format!("Repeating *..{}?", AT_MOST));
+                    error(1, 0, &format!("Repeating *..{}?", AT_MOST));
                 }
             } else if !FROM_INFINITY && !TO_INFINITY {
                 verbose_printf(&format!(
@@ -220,7 +220,7 @@ unsafe fn process_stream(
                     AT_LEAST, inputname, transducer_n
                 ));
             } else if FROM_INFINITY && TO_INFINITY {
-                error(libc::EXIT_FAILURE, 0, &format!("Repeating *..{}?", AT_MOST));
+                error(1, 0, &format!("Repeating *..{}?", AT_MOST));
             }
 
             if !FROM_INFINITY && !TO_INFINITY {
@@ -246,13 +246,13 @@ unsafe fn process_stream(
                 let src = trans.clone();
                 hfst_set_formula_unary(&mut trans, &src, &composed_name);
             } else if FROM_INFINITY && !TO_INFINITY {
-                error(libc::EXIT_FAILURE, 0, &format!("Repeating *..{}?", AT_MOST));
+                error(1, 0, &format!("Repeating *..{}?", AT_MOST));
             }
             outstream.redirect(&mut trans);
         }
         instream.close();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -301,7 +301,7 @@ unsafe fn real_main() -> c_int {
             verbose_printf(&format!("Repeating from {} to infinite times\n", AT_LEAST));
         } else if FROM_INFINITY && !TO_INFINITY {
             error(
-                libc::EXIT_FAILURE,
+                1,
                 0,
                 &format!(
                     "Repeating at least infinite butno more than {} times?",
@@ -328,7 +328,7 @@ unsafe fn real_main() -> c_int {
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-repeat") {
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         process_stream(&mut instream, &mut outstream)

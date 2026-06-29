@@ -5,6 +5,7 @@
 //! This is a BINARY tool: it reads two input streams (firststream and
 //! secondstream) and writes their pairwise concatenation.
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -26,7 +27,6 @@ use hfst_cli::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 static mut HARMONIZE_FLAGS: bool = false;
@@ -199,7 +199,7 @@ unsafe fn concatenate_streams(
                 warning(0, 0, &warnstr);
             } else {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     &format!(
                         "Transducer type mismatch in {} and {}; formats {} and {} are not compatible for concatenation (--do-not-convert was requested)",
@@ -300,7 +300,7 @@ unsafe fn concatenate_streams(
                     second = Some(s);
                 } else {
                     error(
-                        libc::EXIT_FAILURE,
+                        1,
                         0,
                         &format!(
                             "Could not concatenate {} and {} [{}]:\nformats {} and {} are not compatible for concatenation (--do-not-convert was requested)",
@@ -340,7 +340,7 @@ unsafe fn concatenate_streams(
 
         if firststream.is_good() {
             error(
-                libc::EXIT_FAILURE,
+                1,
                 0,
                 &format!(
                     "second input '{}' contains fewer transducers than first input '{}'; this is only possible if the second input contains exactly one transducer",
@@ -352,7 +352,7 @@ unsafe fn concatenate_streams(
 
         if secondstream.is_good() {
             error(
-                libc::EXIT_FAILURE,
+                1,
                 0,
                 &format!(
                     "first input '{}' contains fewer transducers than second input '{}'",
@@ -366,7 +366,7 @@ unsafe fn concatenate_streams(
         secondstream.close();
         outstream.flush();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -424,7 +424,7 @@ unsafe fn real_main() -> c_int {
         if is_input_stream_in_ol_format(&firststream, "hfst-concatenate")
             || is_input_stream_in_ol_format(&secondstream, "hfst-concatenate")
         {
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         concatenate_streams(&mut firststream, &mut secondstream)

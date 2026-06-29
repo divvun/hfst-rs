@@ -5,6 +5,7 @@
 //! getopt-cases-unary.h, check-params-unary.h) that additionally reads an
 //! optional replacement transducer (-T) and/or a replacement file (-F).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::{ImplementationType, StringPair};
 use hfst::hfst_exception_defs::FunctionNotImplementedException;
@@ -29,7 +30,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 use std::io::{BufRead, BufReader};
@@ -214,7 +214,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 FROM_PAIR = label_to_stringpair(&fl);
                 if fl.is_empty() {
                     hfst_error(
-                        libc::EXIT_FAILURE,
+                        1,
                         0,
                         &format!(
                             "argument of source label option is empty;\n\
@@ -229,13 +229,9 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 match std::fs::File::open(&fname) {
                     Ok(f) => FROM_FILE = Some(BufReader::new(f)),
                     Err(_) => {
-                        error(
-                            libc::EXIT_FAILURE,
-                            0,
-                            &format!("Could not open '{}'", fname),
-                        );
+                        error(1, 0, &format!("Could not open '{}'", fname));
                         FROM_FILE_NAME = Some(fname);
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                 }
                 FROM_FILE_NAME = Some(fname);
@@ -247,7 +243,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 TO_PAIR = label_to_stringpair(&tl);
                 if tl.is_empty() {
                     hfst_error(
-                        libc::EXIT_FAILURE,
+                        1,
                         0,
                         &format!(
                             "argument of target label option is empty;\n\
@@ -264,13 +260,9 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 match std::fs::File::open(&fname) {
                     Ok(_f) => {}
                     Err(_) => {
-                        error(
-                            libc::EXIT_FAILURE,
-                            0,
-                            &format!("Could not open '{}'", fname),
-                        );
+                        error(1, 0, &format!("Could not open '{}'", fname));
                         TO_TRANSDUCER_FILENAME = Some(fname);
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                 }
                 TO_TRANSDUCER_FILENAME = Some(fname);
@@ -286,23 +278,15 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
 
         if (*(&raw const FROM_LABEL)).is_none() && (*(&raw const FROM_FILE_NAME)).is_none() {
-            hfst_error(
-                libc::EXIT_FAILURE,
-                0,
-                "Must state name of labels to rewrite with -f or -F",
-            );
-            return libc::EXIT_FAILURE;
+            hfst_error(1, 0, "Must state name of labels to rewrite with -f or -F");
+            return 1;
         }
         if (*(&raw const TO_LABEL)).is_none()
             && (*(&raw const TO_TRANSDUCER_FILENAME)).is_none()
             && (*(&raw const FROM_FILE_NAME)).is_none()
         {
-            hfst_error(
-                libc::EXIT_FAILURE,
-                0,
-                "Must give target labels with -t, -T or -F",
-            );
-            return libc::EXIT_FAILURE;
+            hfst_error(1, 0, "Must give target labels with -t, -T or -F");
+            return 1;
         }
         check_common_params();
         check_unary_params(argc, argv);
@@ -530,7 +514,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                         .convert(output_type, String::new());
                 } else {
                     hfst_error(
-                        libc::EXIT_FAILURE,
+                        1,
                         0,
                         &format!(
                             "Transducer type mismatch in {} and {}; \
@@ -600,7 +584,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                                 continue;
                             } else {
                                 hfst_error_at_line(
-                                    libc::EXIT_FAILURE,
+                                    1,
                                     0,
                                     &from_file_name,
                                     line_n,
@@ -620,7 +604,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                     TO_PAIR = label_to_stringpair(&tl);
                     if fl.is_empty() {
                         hfst_error_at_line(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &from_file_name,
                             line_n,
@@ -633,7 +617,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                     }
                     if tl.is_empty() {
                         hfst_error_at_line(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &from_file_name,
                             line_n,
@@ -795,7 +779,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
         TO_TRANSDUCER = None;
         instream.close();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -848,7 +832,7 @@ unsafe fn real_main() -> c_int {
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-substitute") {
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         process_stream(&mut instream)

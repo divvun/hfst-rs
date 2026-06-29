@@ -2,6 +2,7 @@
 //! information / properties command-line tool. Drives the hfst-cli foundation
 //! (globals, getopt, commandline, program-options, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::{HfstBasicTransducer, SummaryStats};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_exception_defs::FunctionNotImplementedException;
@@ -23,7 +24,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 // add tools-specific variables here
@@ -151,7 +151,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     SYMBOL_PAIR_THRESHOLD = hfst_strtoul(&cstr(optarg), 10) as i32;
                     if SYMBOL_PAIR_THRESHOLD < 0 {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "{} is not a valid argument for option --print-symbol-pair-statistics\n",
@@ -161,7 +161,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     }
                     if SYMBOL_PAIR_THRESHOLD == 0 {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             "0 is not a valid argument for option --print-symbol-pair-statistics\n",
                         );
@@ -186,7 +186,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-summarize: cannot open output: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         let mut transducer_n: usize = 0;
@@ -507,7 +507,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             &format!("\nRead {} transducers in total.\n", transducer_n),
         );
 
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -556,12 +556,12 @@ unsafe fn real_main() -> c_int {
         let retval = process_stream(&mut instream);
 
         if !globals::INPUTFILENAME.is_null() {
-            libc::free(globals::INPUTFILENAME as *mut libc::c_void);
+            hfst_cli::hfst_commandline::hfst_free(globals::INPUTFILENAME as *mut c_char);
         }
         if !globals::OUTFILENAME.is_null() {
-            libc::free(globals::OUTFILENAME as *mut libc::c_void);
+            hfst_cli::hfst_commandline::hfst_free(globals::OUTFILENAME as *mut c_char);
         }
         let _ = retval;
-        libc::EXIT_SUCCESS
+        0
     }
 }

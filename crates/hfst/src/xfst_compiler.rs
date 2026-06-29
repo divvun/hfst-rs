@@ -1652,7 +1652,7 @@ impl XfstCompiler {
             self.prompt();
             return self;
         }
-        let rv = unsafe { libc::system(std::ffi::CString::new(command).unwrap().as_ptr()) };
+        let rv = run_shell(command);
         if rv != 0 {
             eprint!("system {} returned {}\n", command, rv);
         }
@@ -1851,23 +1851,15 @@ impl XfstCompiler {
 
     // @brief Print directory contents
     pub fn print_dir(&mut self, glob: &str, oss: &mut dyn std::io::Write) -> &mut Self {
-        let pattern = std::ffi::CString::new(glob).unwrap();
-        let mut globbuf: libc::glob_t = unsafe { std::mem::zeroed() };
-        let rv =
-            unsafe { libc::glob(pattern.as_ptr(), 0, None, &mut globbuf as *mut libc::glob_t) };
-        if rv == 0 {
-            for i in 0..(globbuf.gl_pathc as usize) {
-                let ptr = unsafe { *globbuf.gl_pathv.add(i) };
-                let path = unsafe { std::ffi::CStr::from_ptr(ptr) }
-                    .to_string_lossy()
-                    .into_owned();
-                let _ = write!(oss, "{}\n", path);
+        match glob::glob(glob) {
+            Ok(paths) => {
+                for entry in paths.flatten() {
+                    let _ = write!(oss, "{}\n", entry.display());
+                }
             }
-        } else {
-            let _ = write!(oss, "glob({}) = {}\n", glob, rv);
-        }
-        unsafe {
-            libc::globfree(&mut globbuf as *mut libc::glob_t);
+            Err(e) => {
+                let _ = write!(oss, "glob({}) = {}\n", glob, e);
+            }
         }
         self.prompt();
         return self;
@@ -2283,7 +2275,7 @@ impl XfstCompiler {
             eprint!("Wrote net, closing file and converting into png format.\n");
         }
         let cmd1 = format!("dot -Tpng {} > {} 2> /dev/null", dotfilename, pngfilename);
-        if unsafe { libc::system(std::ffi::CString::new(cmd1).unwrap().as_ptr()) } != 0 {
+        if run_shell(&cmd1) != 0 {
             eprint!("Converting failed.\n");
             self.xfst_lesser_fail();
         }
@@ -2291,7 +2283,7 @@ impl XfstCompiler {
             eprint!("Converted to png format, viewing the graph.\n");
         }
         let cmd2 = format!("/usr/bin/xdg-open {} 2> /dev/null &", pngfilename);
-        if unsafe { libc::system(std::ffi::CString::new(cmd2).unwrap().as_ptr()) } != 0 {
+        if run_shell(&cmd2) != 0 {
             eprint!("Viewing failed.\n");
             self.xfst_lesser_fail();
         }
@@ -3013,6 +3005,20 @@ impl XfstCompiler {
         let _ = write!(oss, "\n");
         let _ = write!(oss, "Size: {}.\n", sigma_count);
         self.flush();
+    }
+}
+
+// Replacement for C system(3): run `command` through the shell and return its
+// exit code (or -1 if it could not be launched), so the callers' `!= 0` checks
+// keep working without libc.
+fn run_shell(command: &str) -> i32 {
+    match std::process::Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .status()
+    {
+        Ok(status) => status.code().unwrap_or(-1),
+        Err(_) => -1,
     }
 }
 

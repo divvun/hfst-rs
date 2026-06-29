@@ -9,7 +9,7 @@ hfst-types = { workspace = true }
 hfst-core = { workspace = true }
 hfst-openfst = { workspace = true }
 hfst-ol = { workspace = true }
-libc = "0.2"
+glob = "0.3"
 icu = "2.2.0"
 nfst-xre = { workspace = true }
 nfst-lexc = { workspace = true }

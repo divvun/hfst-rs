@@ -2,6 +2,7 @@
 //! pair-test command-line tool. Drives the hfst-cli foundation (globals,
 //! getopt, commandline, program-options, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::hfst_data_types::implementations::HfstState;
@@ -24,7 +25,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::collections::BTreeSet;
 use std::ffi::{CStr, CString};
 use std::io::BufRead;
@@ -264,14 +264,14 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
 
         if !PAIR_TEST_GIVEN {
-            PAIR_TEST_FILE_NAME = libc::strdup(CString::new("<stdin>").unwrap().as_ptr());
+            PAIR_TEST_FILE_NAME = CString::new("<stdin>").unwrap().into_raw();
         }
         check_common_params();
         check_unary_params(argc, argv);
 
         if cstr(globals::INPUTFILENAME) == "<stdin>" {
             error(
-                libc::EXIT_FAILURE,
+                1,
                 0,
                 "The rule transducer file needs to be given using option -i.",
             );
@@ -650,7 +650,7 @@ unsafe fn process_stream(
             Ok(r) => r,
             Err(e) => {
                 eprintln!("hfst-pair-test: cannot open pair-test strings file: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
 
@@ -709,7 +709,7 @@ unsafe fn process_stream(
                     Err(e) => {
                         if e.downcast_ref::<UnescapedColsFound>().is_some() {
                             error(
-                                libc::EXIT_FAILURE,
+                                1,
                                 0,
                                 &format!(
                                     "The correspondence {} contains unquoted colon-symbols. If \
@@ -775,7 +775,7 @@ unsafe fn process_stream(
             } // while lines in input
             if positive_test_cases.len() % 2 != 0 {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     "Got an odd number of positive test cases. Every input string\n\
                      has to have an output string.\n",
@@ -784,7 +784,7 @@ unsafe fn process_stream(
 
             if negative_test_cases.len() % 2 != 0 {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     "Got an odd number of negative test cases. Every input string\n\
                      has to have an output string.\n",
@@ -812,7 +812,7 @@ unsafe fn process_stream(
                     Err(e) => {
                         if e.downcast_ref::<UnescapedColsFound>().is_some() {
                             error(
-                                libc::EXIT_FAILURE,
+                                1,
                                 0,
                                 &format!(
                                     "The correspondence {} {} contains unescaped \
@@ -866,7 +866,7 @@ unsafe fn process_stream(
                     Err(e) => {
                         if e.downcast_ref::<UnescapedColsFound>().is_some() {
                             error(
-                                libc::EXIT_FAILURE,
+                                1,
                                 0,
                                 &format!(
                                     "The correspondence {} {} contains unquoted \
@@ -950,7 +950,7 @@ unsafe fn real_main() -> c_int {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-pair-test: cannot open output: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
 
@@ -964,8 +964,8 @@ unsafe fn real_main() -> c_int {
             }
         }
 
-        libc::free(globals::INPUTFILENAME as *mut libc::c_void);
-        libc::free(globals::OUTFILENAME as *mut libc::c_void);
+        hfst_cli::hfst_commandline::hfst_free(globals::INPUTFILENAME as *mut c_char);
+        hfst_cli::hfst_commandline::hfst_free(globals::OUTFILENAME as *mut c_char);
 
         exit_code
     }

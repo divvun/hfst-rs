@@ -5,6 +5,7 @@
 //! epsilons. Drives the hfst-cli foundation (globals, getopt, commandline,
 //! program-options, tool-metadata, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -24,7 +25,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 
@@ -155,12 +155,8 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
 
         if SYMBOL.is_none() && TSV_FILE_NAME.is_none() {
-            error(
-                libc::EXIT_FAILURE,
-                0,
-                "Either --symbol or --tsv-file is required",
-            );
-            return libc::EXIT_FAILURE;
+            error(1, 0, "Either --symbol or --tsv-file is required");
+            return 1;
         }
 
         check_common_params();
@@ -169,8 +165,8 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             match std::fs::File::open(name) {
                 Ok(f) => TSV_FILE = Some(f),
                 Err(_) => {
-                    error(libc::EXIT_FAILURE, 0, &format!("Could not open '{}'", name));
-                    return libc::EXIT_FAILURE;
+                    error(1, 0, &format!("Could not open '{}'", name));
+                    return 1;
                 }
             }
         }
@@ -256,7 +252,7 @@ unsafe fn process_stream(
         } // foreach transducer
         instream.close();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -317,7 +313,7 @@ unsafe fn real_main() -> c_int {
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-kill-paths") {
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         process_stream(&mut instream, &mut outstream)

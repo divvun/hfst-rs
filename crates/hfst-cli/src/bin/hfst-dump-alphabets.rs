@@ -2,6 +2,7 @@
 //! command-line tool. Drives the hfst-cli foundation (globals, getopt,
 //! commandline, program-options, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_exception_defs::FunctionNotImplementedException;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -22,7 +23,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::Write;
 
@@ -191,7 +191,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         verbose_printf("printing STRICT-TAGS += for VISL CG 3...\n");
                     } else {
                         eprintln!("Error: unrecognised format {}", optarg);
-                        std::process::exit(libc::EXIT_FAILURE);
+                        std::process::exit(1);
                     }
                     continue;
                 }
@@ -226,7 +226,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-dump-alphabets: could not open output: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         let mut emit = |s: &str| {
@@ -296,7 +296,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                     }
                 } else {
                     eprintln!("Error: cannot dump non-existent header alphabet");
-                    std::process::exit(libc::EXIT_FAILURE);
+                    std::process::exit(1);
                 }
             }
             if PRINT_SEEN {
@@ -317,7 +317,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
         if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
             emit("\t;\n");
         }
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -365,6 +365,6 @@ unsafe fn real_main() -> c_int {
         };
         let _retval = process_stream(&mut instream);
 
-        libc::EXIT_SUCCESS
+        0
     }
 }

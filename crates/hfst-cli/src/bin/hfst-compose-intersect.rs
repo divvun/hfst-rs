@@ -5,6 +5,7 @@
 //! BINARY tool: it reads a first stream (the lexicon) and a second stream
 //! (the rule file).
 
+use core::ffi::{c_char, c_int};
 use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -29,7 +30,6 @@ use hfst_cli::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 // static bool insert_missing_flags=false;
@@ -315,7 +315,7 @@ unsafe fn compose_streams(
                 warning(0, 0, &warnstr);
             } else {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     &format!(
                         "Transducer type mismatch in {} and {}; \
@@ -343,7 +343,7 @@ unsafe fn compose_streams(
         if is_input_stream_in_ol_format(firststream, "hfst-compose-intersect")
             || is_input_stream_in_ol_format(secondstream, "hfst-compose-intersect")
         {
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         let mut rules: HfstTransducerVector = Vec::new();
@@ -460,7 +460,7 @@ unsafe fn compose_streams(
         firststream.close();
         secondstream.close();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 

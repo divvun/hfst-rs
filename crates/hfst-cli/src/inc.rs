@@ -19,7 +19,11 @@
 use crate::globals::{self, ColourTristate};
 use crate::hfst_commandline;
 use crate::hfst_getopt;
-use libc::{EXIT_FAILURE, EXIT_SUCCESS, c_char, c_int};
+use core::ffi::{c_char, c_int};
+use std::ffi::CStr;
+
+const EXIT_SUCCESS: c_int = 0;
+const EXIT_FAILURE: c_int = 1;
 
 /// Result of dispatching one getopt character through a fragment handler.
 ///
@@ -90,7 +94,7 @@ pub unsafe fn handle_common_case(c: c_int, print_usage: impl FnOnce()) -> CaseRe
             // do not corrupt the data stream. output_writer() opens the real file
             // (or stdout, for the "<stdout>" sentinel) on demand.
             if name == "-" {
-                libc::free(globals::OUTFILENAME as *mut libc::c_void);
+                hfst_commandline::hfst_free(globals::OUTFILENAME as *mut c_char);
                 globals::OUTFILENAME = strdup_str("<stdout>");
                 globals::MESSAGE_TO_STDERR = true;
             }
@@ -100,11 +104,11 @@ pub unsafe fn handle_common_case(c: c_int, print_usage: impl FnOnce()) -> CaseRe
             let optarg = hfst_getopt::OPTARG;
             if optarg.is_null() {
                 globals::COLOUR = ColourTristate::COLOUR_ALWAYS;
-            } else if libc::strcmp(optarg, c"always".as_ptr()) == 0 {
+            } else if CStr::from_ptr(optarg) == c"always" {
                 globals::COLOUR = ColourTristate::COLOUR_ALWAYS;
-            } else if libc::strcmp(optarg, c"never".as_ptr()) == 0 {
+            } else if CStr::from_ptr(optarg) == c"never" {
                 globals::COLOUR = ColourTristate::COLOUR_NEVER;
-            } else if libc::strcmp(optarg, c"auto".as_ptr()) == 0 {
+            } else if CStr::from_ptr(optarg) == c"auto" {
                 globals::COLOUR = ColourTristate::COLOUR_AUTO;
             } else {
                 hfst_commandline::error(
@@ -134,7 +138,7 @@ pub unsafe fn handle_unary_case(c: c_int) -> CaseResult {
             globals::INPUTFILENAME = hfst_commandline::hfst_strdup(hfst_getopt::OPTARG);
             let name = cstr_to_string(globals::INPUTFILENAME);
             if name == "-" {
-                libc::free(globals::INPUTFILENAME as *mut libc::c_void);
+                hfst_commandline::hfst_free(globals::INPUTFILENAME as *mut c_char);
                 globals::INPUTFILENAME = strdup_str("<stdin>");
             }
             globals::INPUT_NAMED = true;
@@ -157,7 +161,7 @@ pub unsafe fn handle_binary_case(c: c_int) -> CaseResult {
             globals::FIRSTFILENAME = hfst_commandline::hfst_strdup(hfst_getopt::OPTARG);
             let name = cstr_to_string(globals::FIRSTFILENAME);
             if name == "-" {
-                libc::free(globals::FIRSTFILENAME as *mut libc::c_void);
+                hfst_commandline::hfst_free(globals::FIRSTFILENAME as *mut c_char);
                 globals::FIRSTFILENAME = strdup_str("<stdin>");
                 globals::IS_INPUT_STDIN = true;
             }
@@ -167,7 +171,7 @@ pub unsafe fn handle_binary_case(c: c_int) -> CaseResult {
             globals::SECONDFILENAME = hfst_commandline::hfst_strdup(hfst_getopt::OPTARG);
             let name = cstr_to_string(globals::SECONDFILENAME);
             if name == "-" {
-                libc::free(globals::SECONDFILENAME as *mut libc::c_void);
+                hfst_commandline::hfst_free(globals::SECONDFILENAME as *mut c_char);
                 globals::SECONDFILENAME = strdup_str("<stdin>");
                 globals::IS_INPUT_STDIN = true;
             }
@@ -203,7 +207,7 @@ pub unsafe fn handle_error_case(c: c_int) -> c_int {
                         hfst_getopt::OPTOPT as u8 as char
                     ),
                 );
-            } else if libc::isprint(hfst_getopt::OPTOPT) != 0 {
+            } else if hfst_getopt::OPTOPT >= 0x20 && hfst_getopt::OPTOPT <= 0x7e {
                 hfst_commandline::error(
                     EXIT_FAILURE,
                     0,
@@ -268,7 +272,7 @@ pub unsafe fn check_unary_params(argc: c_int, argv: *mut *mut c_char) {
                     hfst_commandline::hfst_strdup(*argv.offset(optind as isize));
                 let name = cstr_to_string(globals::INPUTFILENAME);
                 if name == "-" {
-                    libc::free(globals::INPUTFILENAME as *mut libc::c_void);
+                    hfst_commandline::hfst_free(globals::INPUTFILENAME as *mut c_char);
                     globals::INPUTFILENAME = strdup_str("<stdin>");
                 }
             } else if (argc - optind) > 1 {

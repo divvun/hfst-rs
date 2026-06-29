@@ -15,7 +15,7 @@
 use std::ffi::CStr;
 use std::io::{BufRead, BufReader, Write};
 
-use libc::c_char;
+use core::ffi::c_char;
 
 // colour tristate (hfst-commandline.h enum colour_tristate). Variant names kept
 // SCREAMING bug-for-bug (matches the crate's ImplementationType style).

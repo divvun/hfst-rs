@@ -187,7 +187,7 @@ fn replace_zero(s: &str) -> String {
 // [spec:hfst:def:lexc-compiler.should-colourise-fn]
 // [spec:hfst:sem:lexc-compiler.should-colourise-fn]
 fn should_colourise() -> bool {
-    unsafe { libc::isatty(1) != 0 }
+    std::io::IsTerminal::is_terminal(&std::io::stdout())
 }
 
 // [spec:hfst:def:lexc-utils.hfst.lexc.find-med-alingment-fn]

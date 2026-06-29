@@ -62,7 +62,7 @@ fn atof(s: &str) -> f64 {
 // Raw stand-in for 'sprintf(ptr + offset, ...)' into a caller-provided buffer:
 // copies the pre-formatted bytes and a trailing NUL (as sprintf does), returning
 // the byte count excluding the NUL (sprintf's return value).
-unsafe fn sprintf_at(ptr: *mut libc::c_char, offset: usize, s: &str) -> usize {
+unsafe fn sprintf_at(ptr: *mut core::ffi::c_char, offset: usize, s: &str) -> usize {
     unsafe {
         let dst = (ptr as *mut u8).add(offset);
         std::ptr::copy_nonoverlapping(s.as_ptr(), dst, s.len());
@@ -2182,7 +2182,7 @@ impl HfstBasicTransducer {
     // Writes into a caller-provided C buffer via 'sprintf' at a running offset.
     // [spec:hfst:def:hfst-transition-graph.write-in-att-format-fn]
     // [spec:hfst:sem:hfst-transition-graph.write-in-att-format-fn]
-    pub unsafe fn write_in_att_format_ptr(&self, ptr: *mut libc::c_char, write_weights: bool) {
+    pub unsafe fn write_in_att_format_ptr(&self, ptr: *mut core::ffi::c_char, write_weights: bool) {
         unsafe {
             let mut source_state: u32 = 0;
             let mut cwt: usize = 0; // characters written in total

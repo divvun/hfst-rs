@@ -253,6 +253,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "glob"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
+
+[[package]]
 name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -267,12 +273,12 @@ dependencies = [
 name = "hfst"
 version = "0.1.0"
 dependencies = [
+ "glob",
  "hfst-core",
  "hfst-ol",
  "hfst-openfst",
  "hfst-types",
  "icu",
- "libc",
  "nfst-lexc",
  "nfst-pmatch",
  "nfst-twolc",
@@ -285,7 +291,6 @@ name = "hfst-cli"
 version = "0.1.0"
 dependencies = [
  "hfst",
- "libc",
 ]
 
 [[package]]

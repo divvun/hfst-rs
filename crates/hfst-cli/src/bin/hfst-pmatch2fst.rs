@@ -3,6 +3,7 @@
 //! (globals, getopt, commandline, program-options) plus the hfst pmatch
 //! compiler and the OL conversion functions.
 
+use core::ffi::{c_char, c_int};
 use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -23,7 +24,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::Read;
 
@@ -272,7 +272,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
                 "{}: Empty ruleset, nothing to write",
                 cstr(globals::PROGRAM_NAME)
             );
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         // Then we convert it...
@@ -358,10 +358,10 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
                 "{}: Empty ruleset, nothing to write",
                 cstr(globals::PROGRAM_NAME)
             );
-            return libc::EXIT_FAILURE;
+            return 1;
         }
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -412,10 +412,10 @@ unsafe fn real_main() -> c_int {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("hfst-pmatch2fst: cannot open input: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         process_stream(&mut outstream, &mut *input);
-        libc::EXIT_SUCCESS
+        0
     }
 }

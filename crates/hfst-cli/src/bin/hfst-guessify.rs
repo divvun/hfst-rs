@@ -3,6 +3,7 @@
 //! hfst-cli foundation (globals, getopt, commandline, program-options,
 //! tool-metadata, inc fragments) and the ported hfst::guessify_fst library.
 
+use core::ffi::{c_char, c_int};
 use hfst::guessify_fst::{CATEGORY_SYMBOL_PREFIX, guessify_analyzer, store_guesser};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -22,7 +23,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
@@ -185,7 +185,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
                     if DEFAULT_PENALTY < 0.0 {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!("Invalid default penalty {}. Give a positive float.", optarg),
                         );
@@ -230,7 +230,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, out: &mut HfstOutputStr
 
         instream.close();
 
-        libc::EXIT_SUCCESS
+        0
     }
 }
 

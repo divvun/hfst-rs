@@ -45,11 +45,10 @@ pub fn new_string(lgth: usize) -> String {
 // [spec:hfst:def:string-manipulation.string-copy-fn]
 // [spec:hfst:sem:string-manipulation.string-copy-fn]
 pub unsafe fn string_copy(str: *const c_char) -> *mut c_char {
-    unsafe {
-        let new_str =
-            libc::malloc(std::mem::size_of::<c_char>() * libc::strlen(str) + 1) as *mut c_char;
-        libc::strcpy(new_str, str)
-    }
+    // strdup over the Rust allocator: an owned copy reclaimed with CString::from_raw.
+    unsafe { std::ffi::CStr::from_ptr(str) }
+        .to_owned()
+        .into_raw()
 }
 
 // [spec:hfst:def:string-manipulation.remove-sign-fn]

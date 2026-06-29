@@ -2,6 +2,7 @@
 //! metadata tool. Drives the hfst-cli foundation (globals, getopt,
 //! commandline, program-options, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -20,7 +21,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 
@@ -162,11 +162,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 let optstr = cstr(optarg);
                 match optstr.find('=') {
                     None => {
-                        error(
-                            libc::EXIT_FAILURE,
-                            0,
-                            &format!("Equals sign `=' missing from {}", optstr),
-                        );
+                        error(1, 0, &format!("Equals sign `=' missing from {}", optstr));
                     }
                     Some(idx) => {
                         let property = optstr[..idx].to_string();
@@ -209,7 +205,7 @@ unsafe fn process_stream(
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-edit-metadata: cannot open output: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         let mut transducer_n: usize = 0;
@@ -249,7 +245,7 @@ unsafe fn process_stream(
                         );
                     } else if key == "character-encoding" && !(val == "utf-8" || val == "UTF-8") {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             "Cannot set `character-encoding' to unsupported value;\n\
                              consider recoding sources of automaton",
@@ -281,7 +277,7 @@ unsafe fn process_stream(
         }
         instream.close();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 

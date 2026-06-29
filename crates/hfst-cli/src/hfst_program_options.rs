@@ -7,7 +7,7 @@
 
 use crate::hfst_commandline::GETOPT_COLOUR;
 use crate::hfst_getopt::{NO_ARGUMENT, OPTIONAL_ARGUMENT, Option, REQUIRED_ARGUMENT};
-use libc::c_int;
+use core::ffi::c_int;
 use std::io::Write;
 
 // All programs

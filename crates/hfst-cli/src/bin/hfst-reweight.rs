@@ -6,6 +6,7 @@
 //! This is a unary tool (it #includes inc/globals-common.h and
 //! inc/globals-unary.h and reads a single input stream).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -28,7 +29,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 
@@ -254,12 +254,8 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         "floor" => FUNC = f32::floor,
                         "ceil" => FUNC = f32::ceil,
                         _ => {
-                            hfst_error(
-                                libc::EXIT_FAILURE,
-                                0,
-                                &format!("Cannot parse {} as function name", name),
-                            );
-                            return libc::EXIT_FAILURE;
+                            hfst_error(1, 0, &format!("Cannot parse {} as function name", name));
+                            return 1;
                         }
                     }
                     continue;
@@ -303,12 +299,12 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
         if ARCS_ONLY && ENDS_ONLY {
             hfst_error(
-                libc::EXIT_FAILURE,
+                1,
                 0,
                 "Options '--arcs-only' and '--end-states-only' cannot be used \
 at the same time",
             );
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         check_common_params();
@@ -333,8 +329,8 @@ never apply",
             match std::fs::File::open(&name) {
                 Ok(f) => TSV_FILE = Some(f),
                 Err(_) => {
-                    error(libc::EXIT_FAILURE, 0, &format!("Could not open '{}'", name));
-                    return libc::EXIT_FAILURE;
+                    error(1, 0, &format!("Could not open '{}'", name));
+                    return 1;
                 }
             }
         }
@@ -432,7 +428,7 @@ weights will be discarded",
                 // C: rewind(tsv_file) — seek the std file back to the start.
                 let tsv_file = TSV_FILE.as_mut().unwrap();
                 let _ = tsv_file.seek(SeekFrom::Start(0));
-                libc::free(SYMBOL as *mut libc::c_void);
+                hfst_cli::hfst_commandline::hfst_free(SYMBOL as *mut c_char);
                 SYMBOL = std::ptr::null_mut();
                 ADDITION = 0.0;
                 MULTIPLIER = 1.0;
@@ -458,7 +454,7 @@ weights will be discarded",
                     let tab = match tab_pos {
                         None => {
                             hfst_error_at_line(
-                                libc::EXIT_FAILURE,
+                                1,
                                 0,
                                 &cstr(TSV_FILE_NAME),
                                 linen as u32,
@@ -502,7 +498,7 @@ weights will be discarded",
         } // foreach transducer
         instream.close();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -585,7 +581,7 @@ unsafe fn real_main() -> c_int {
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-reweight") {
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         process_stream(&mut instream, &mut outstream)

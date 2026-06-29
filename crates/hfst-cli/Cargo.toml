@@ -10,4 +10,3 @@ license.workspace = true
 # added as it is ported.
 [dependencies]
 hfst = { workspace = true }
-libc = "0.2"

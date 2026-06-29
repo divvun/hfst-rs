@@ -4,6 +4,7 @@
 //!
 //! Compiles string pairs and pair-strings into transducer(s).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -27,7 +28,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::BufRead;
 
@@ -83,14 +83,11 @@ fn take_negative_logarithm_e(weight: f32) -> f32 {
     if weight == 0.0 {
         result = 0.0; // shoud be INFINITY, but doesn't work in transitions
     } else {
-        set_errno(0);
         result = -(weight.ln());
-        if errno() != 0 {
-            error(
-                libc::EXIT_FAILURE,
-                errno(),
-                "unable to take negative logarithm",
-            );
+        // C checked errno (EDOM/ERANGE) after log(); Rust's ln() never sets errno
+        // and yields a non-finite result on a domain/range error instead.
+        if !result.is_finite() {
+            error(1, 0, "unable to take negative logarithm");
         }
     }
     result
@@ -103,14 +100,11 @@ fn take_negative_logarithm_10(weight: f32) -> f32 {
     if weight == 0.0 {
         result = 0.0; // shoud be INFINITY, but doesn't work in transitions
     } else {
-        set_errno(0);
         result = -(weight.log10());
-        if errno() != 0 {
-            error(
-                libc::EXIT_FAILURE,
-                errno(),
-                "unable to take negative logarithm",
-            );
+        // C checked errno (EDOM/ERANGE) after log10(); Rust's log10() never sets
+        // errno and yields a non-finite result on a domain/range error instead.
+        if !result.is_finite() {
+            error(1, 0, "unable to take negative logarithm");
         }
     }
     result
@@ -118,19 +112,6 @@ fn take_negative_logarithm_10(weight: f32) -> f32 {
 
 fn errno() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
-}
-
-fn set_errno(v: i32) {
-    unsafe {
-        #[cfg(target_os = "macos")]
-        {
-            *libc::__error() = v;
-        }
-        #[cfg(target_os = "linux")]
-        {
-            *libc::__errno_location() = v;
-        }
-    }
 }
 
 // [spec:hfst:def:hfst-strings2fst.print-usage-fn]
@@ -345,12 +326,8 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     } else if optarg == "no-negative-weights" {
                         WARN_NEGATIVE_WEIGHTS = false;
                     } else {
-                        hfst_error(
-                            libc::EXIT_FAILURE,
-                            0,
-                            &format!("unrecognised warning option -W{}", optarg),
-                        );
-                        return libc::EXIT_FAILURE;
+                        hfst_error(1, 0, &format!("unrecognised warning option -W{}", optarg));
+                        return 1;
                     }
                     continue;
                 }
@@ -431,13 +408,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 );
                 if (weight < 0.0) && WARN_NEGATIVE_WEIGHTS {
                     if WARNINGS_ARE_ERRORS {
-                        hfst_error_at_line(
-                            libc::EXIT_FAILURE,
-                            0,
-                            &inputfilename,
-                            line_n as u32,
-                            &errm,
-                        );
+                        hfst_error_at_line(1, 0, &inputfilename, line_n as u32, &errm);
                     } else {
                         hfst_warning_at_line(0, 0, &inputfilename, line_n as u32, &errm);
                     }
@@ -465,7 +436,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     if e.downcast_ref::<UnescapedColsFound>().is_some() {
                         if pairstrings {
                             error_at_line(
-                                libc::EXIT_FAILURE,
+                                1,
                                 errno(),
                                 &inputfilename,
                                 line_n as u32,
@@ -476,7 +447,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                             );
                         } else {
                             error_at_line(
-                                libc::EXIT_FAILURE,
+                                1,
                                 errno(),
                                 &inputfilename,
                                 line_n as u32,
@@ -489,7 +460,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     } else {
                         // IncorrectUtf8CodingException
                         error_at_line(
-                            libc::EXIT_FAILURE,
+                            1,
                             errno(),
                             &inputfilename,
                             line_n as u32,
@@ -549,7 +520,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
             hfst_set_name(&mut res, "?", "strings");
             outstream.redirect(&mut res);
         }
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -597,11 +568,7 @@ unsafe fn real_main() -> c_int {
                     }
                 }
                 Err(_) => {
-                    error(
-                        libc::EXIT_FAILURE,
-                        errno(),
-                        "Multichar symbol file can't be read.",
-                    );
+                    error(1, errno(), "Multichar symbol file can't be read.");
                 }
             }
         }
@@ -623,10 +590,10 @@ unsafe fn real_main() -> c_int {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("hfst-strings2fst: cannot open input: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         process_stream(&mut outstream, &mut *input);
-        libc::EXIT_SUCCESS
+        0
     }
 }

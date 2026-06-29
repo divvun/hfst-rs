@@ -3,7 +3,14 @@
 //! this implementation directly. Quirks (argv reordering, strdup leaks, the
 //! 'optopt = NULL' int assignments) are preserved bug-for-bug.
 
-use libc::{c_char, c_int};
+use core::ffi::{c_char, c_int};
+use std::ffi::CStr;
+
+// strdup over the Rust allocator: an owned C string the caller may mutate in
+// place; these are leaked (never reclaimed), exactly as the C strdup'd args were.
+unsafe fn dup_cstr(p: *const c_char) -> *mut c_char {
+    unsafe { CStr::from_ptr(p) }.to_owned().into_raw()
+}
 
 pub const NO_ARGUMENT: c_int = 0;
 pub const REQUIRED_ARGUMENT: c_int = 1;
@@ -85,7 +92,7 @@ pub unsafe fn getopt_long(
         other_arguments().push(*argv.offset(OPTIND as isize));
 
         // strdup because we are possibly modifying the argument
-        let arg0: *mut c_char = libc::strdup(*argv.offset(OPTIND as isize));
+        let arg0: *mut c_char = dup_cstr(*argv.offset(OPTIND as isize));
         let mut arg: *mut c_char = arg0; // free() should be called at the end...
 
         // skip initial '-' signs
@@ -123,7 +130,7 @@ pub unsafe fn getopt_long(
         // Go through all possible option strings
         while (*longopts).name != std::ptr::null() {
             // match found, short or long format
-            if libc::strcmp((*longopts).name, arg) == 0
+            if CStr::from_ptr((*longopts).name) == CStr::from_ptr(arg)
                 || (short_option && (*longopts).val == *arg as c_int)
             {
                 OPTIND += 1;
@@ -142,7 +149,7 @@ pub unsafe fn getopt_long(
                 {
                     if eq_used {
                         // we already have a pointer to the argument
-                        OPTARG = libc::strdup(argptr);
+                        OPTARG = dup_cstr(argptr);
                         argptr = argptr.offset(-1);
                         *argptr = b'=' as c_char; // change '\0' back to '='
                         return (*longopts).val;
@@ -159,7 +166,7 @@ pub unsafe fn getopt_long(
                     }
                     // next arg is required argument (cannot be optional argument)
                     if (*longopts).has_arg == REQUIRED_ARGUMENT {
-                        OPTARG = libc::strdup(*argv.offset(OPTIND as isize));
+                        OPTARG = dup_cstr(*argv.offset(OPTIND as isize));
                         other_arguments().push(*argv.offset(OPTIND as isize));
                         OPTIND += 1;
                         return (*longopts).val;

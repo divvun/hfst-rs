@@ -9,6 +9,7 @@
 //! check-params-unary.h); it mirrors hfst-invert's option-parsing skeleton and
 //! adds the tool-specific options.
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::{
     HfstOneLevelPath, HfstOneLevelPaths, HfstTwoLevelPaths, ImplementationType, StringPairVector,
@@ -36,7 +37,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::{BufRead, Write};
 
@@ -194,7 +194,7 @@ unsafe fn cstr(ptr: *const c_char) -> String {
 // 'hfst_strdup' replacement: duplicate a &str into a malloc'd C string.
 unsafe fn strdup_str(s: &str) -> *mut c_char {
     let c = CString::new(s).unwrap_or_default();
-    unsafe { libc::strdup(c.as_ptr()) }
+    c.into_raw()
 }
 
 fn fput(f: &mut dyn std::io::Write, s: &str) {
@@ -396,14 +396,14 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         INPUT_FORMAT = LookupInputFormat::ApertiumInput;
                     } else {
                         hfst_error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "Unknown output format {}; valid values are: xerox, cg, apertium\n",
                                 optarg
                             ),
                         );
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                 }
                 b'F' => {
@@ -415,14 +415,14 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         INPUT_FORMAT = LookupInputFormat::ApertiumInput;
                     } else {
                         hfst_error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "Unknown input format {}; valid values are:utf8, spaced, apertium\n",
                                 optarg
                             ),
                         );
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                 }
                 b'e' | b'E' => {
@@ -432,14 +432,14 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     BEAM = optarg.parse::<f32>().unwrap_or(0.0);
                     if BEAM < 0.0 {
                         eprint!("Invalid argument for --beam\n");
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                 }
                 b't' => {
                     TIME_CUTOFF = optarg.parse::<f64>().unwrap_or(0.0);
                     if TIME_CUTOFF < 0.0 {
                         eprint!("Invalid argument for --time-cutoff\n");
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                 }
                 b'x' => {
@@ -458,11 +458,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     } else if optarg == "obey-flags" {
                         OBEY_FLAGS = false;
                     } else {
-                        hfst_error(
-                            libc::EXIT_FAILURE,
-                            0,
-                            &format!("Xfst variable {} unrecognised", optarg),
-                        );
+                        hfst_error(1, 0, &format!("Xfst variable {} unrecognised", optarg));
                     }
                 }
                 b'c' => {
@@ -492,7 +488,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         PIPE_OUTPUT = true;
                     } else {
                         hfst_error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!("--pipe-mode argument {} unrecognised", optarg),
                         );
@@ -510,7 +506,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         CASCADE = CASCADE_COMPOSITION;
                     } else {
                         hfst_error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "--cascade argument {} unrecognised, possible values are\n\
@@ -738,7 +734,7 @@ unsafe fn string_to_utf8(p: &str) -> Vec<String> {
                 2
             } else {
                 hfst_error_at_line(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     &cstr(globals::INPUTFILENAME),
                     LINEN as u32,
@@ -1550,7 +1546,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
                 || inputstream.get_type() == ImplementationType::HFST_OLW_TYPE)
         {
             hfst_error(
-                libc::EXIT_FAILURE,
+                1,
                 0,
                 "not obeying flags not supported on optimized lookup transducers",
             );
@@ -1683,7 +1679,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
                 ),
             );
         }
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -1763,13 +1759,13 @@ unsafe fn real_main() -> c_int {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-lookup: cannot open output: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         process_stream(&mut instream, &mut *out);
         let _ = out.flush();
 
         // (free(inputfilename)/free(outfilename) in C++ are no-ops here.)
-        libc::EXIT_SUCCESS
+        0
     }
 }

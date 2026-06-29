@@ -3,6 +3,7 @@
 //! automaton. Drives the hfst-cli foundation (globals, getopt, commandline,
 //! program-options, tool-metadata, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::guessify_fst::{GuessDirection, affix_guessify};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -23,7 +24,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
@@ -157,7 +157,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         DIRECTION = GuessDirection::GuessSuffix;
                     } else {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "Unable to parse guessing direction from {};\nplease use one of 'prefix' or 'suffix'",
@@ -203,7 +203,7 @@ unsafe fn process_stream(
             let mut t = affix_guessify(&trans, DIRECTION, WEIGHT, FORMAT);
             outstream.redirect(&mut t);
         } // good instream
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -260,7 +260,7 @@ unsafe fn real_main() -> c_int {
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-affix-guessify") {
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         let retval = process_stream(&mut instream, &mut outstream);

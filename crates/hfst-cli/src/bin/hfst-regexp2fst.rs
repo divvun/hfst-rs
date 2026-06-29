@@ -3,6 +3,7 @@
 //! getopt, commandline, program-options, tool-metadata, inc fragments) plus the
 //! hfst XreCompiler.
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::{
@@ -26,7 +27,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::BufRead;
 
@@ -238,14 +238,14 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         set_xerox_composition(false);
                     } else {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "unknown option to --xerox-composition: '{}'\n",
                                 cstr(getopt::OPTARG)
                             ),
                         );
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                     continue;
                 }
@@ -255,14 +255,14 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         set_flag_is_epsilon_in_composition(true);
                     } else {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "Error: unknown option to --xfst: '{}'\n",
                                 cstr(getopt::OPTARG)
                             ),
                         );
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                     continue;
                 }
@@ -314,7 +314,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     if comp.contained_only_comments() {
                         if transducer_n == 1 {
                             error(
-                                libc::EXIT_FAILURE,
+                                1,
                                 0,
                                 &format!(
                                     "{}: XRE parsing failed: expression #{} \
@@ -327,7 +327,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                         break;
                     } else {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "{}: XRE parsing failed \
@@ -362,7 +362,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 if input.read_line(&mut line).unwrap_or(0) == 0 {
                     if input_contains_only_whitespace_or_comments {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "{}: XRE parsing failed: \
@@ -392,7 +392,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 let Some(mut compiled) = compiled else {
                     if !comp.contained_only_comments() {
                         hfst_error_at_line(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &cstr(globals::INPUTFILENAME),
                             line_count,
@@ -420,7 +420,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         }
         // C: free(line); free(first_line); -> owned String/Option, drop here.
         drop(first_line);
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -476,7 +476,7 @@ unsafe fn real_main() -> c_int {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("hfst-regexp2fst: cannot open input: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         process_stream(&mut outstream, &mut *input);
@@ -485,8 +485,8 @@ unsafe fn real_main() -> c_int {
             set_encode_weights(enc);
         }
 
-        libc::free(globals::INPUTFILENAME as *mut libc::c_void);
-        libc::free(globals::OUTFILENAME as *mut libc::c_void);
-        libc::EXIT_SUCCESS
+        hfst_cli::hfst_commandline::hfst_free(globals::INPUTFILENAME as *mut c_char);
+        hfst_cli::hfst_commandline::hfst_free(globals::OUTFILENAME as *mut c_char);
+        0
     }
 }

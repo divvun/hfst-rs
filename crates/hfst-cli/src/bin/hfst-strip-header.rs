@@ -7,6 +7,7 @@
 //! filename globals, with the "<stdin>"/"<stdout>" sentinels) and delegates the
 //! byte copy + HFST3-header stripping to hfst_input_stream::strip_hfst3_headers.
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_input_stream::strip_hfst3_headers;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -22,7 +23,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
@@ -131,22 +131,22 @@ unsafe fn process_stream() -> c_int {
         Ok(r) => r,
         Err(e) => {
             eprintln!("hfst-strip-header: could not open input: {e}");
-            return libc::EXIT_FAILURE;
+            return 1;
         }
     };
     let output = match globals::output_writer() {
         Ok(w) => w,
         Err(e) => {
             eprintln!("hfst-strip-header: could not open output: {e}");
-            return libc::EXIT_FAILURE;
+            return 1;
         }
     };
 
     match strip_hfst3_headers(input, output) {
-        Ok(()) => libc::EXIT_SUCCESS,
+        Ok(()) => 0,
         Err(e) => {
             eprintln!("hfst-strip-header: error while stripping headers: {e}");
-            libc::EXIT_FAILURE
+            1
         }
     }
 }

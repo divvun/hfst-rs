@@ -3,6 +3,7 @@
 //! a symbol (pair) command-line tool. Drives the hfst-cli foundation (globals,
 //! getopt, commandline, program-options, tool-metadata, inc fragments).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::StringPair;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -24,7 +25,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 // add tools-specific variables here
@@ -154,7 +154,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     SYMBOL_PAIR = label_to_stringpair(&lbl);
                     if lbl.is_empty() {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "argument of source label option is empty;\nif you REALLY want to replace epsilons with something, use @0@ or {}",
@@ -209,7 +209,7 @@ unsafe fn process_stream(
         }
         instream.close();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -266,7 +266,7 @@ unsafe fn real_main() -> c_int {
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-insert-freely") {
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         process_stream(&mut instream, &mut outstream)

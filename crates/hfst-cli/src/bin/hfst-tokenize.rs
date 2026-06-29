@@ -10,6 +10,7 @@
 //! positional argument as the ruleset archive filename, reads lines of stdin
 //! (via 'inputfile'), and prints to stdout.
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -27,7 +28,6 @@ use hfst_cli::hfst_program_options::{
     HFST_GETOPT_COMMON_SHORT, hfst_getopt_common_long, print_common_program_options,
 };
 use hfst_cli::inc::{CaseResult, handle_common_case, handle_error_case};
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::{BufRead, Write};
 
@@ -309,7 +309,7 @@ unsafe fn process_input_visl(
         }
         let _ = outstream.flush();
 
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -388,7 +388,7 @@ unsafe fn process_input_0delim(
         } else {
             process_input_0delim_print(container, outstream, &mut cur);
         }
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -466,7 +466,7 @@ unsafe fn process_input(
             }
         }
 
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -556,24 +556,25 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             } else if c == b'm' as c_int {
                 settings().tokenize_multichar = true;
             } else if c == b't' as c_int {
-                settings().time_cutoff = libc::atof(getopt::OPTARG);
+                settings().time_cutoff = cstr(getopt::OPTARG).trim().parse::<f64>().unwrap_or(0.0);
                 if settings().time_cutoff < 0.0 {
                     eprint!("Invalid argument for --time-cutoff\n");
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
             } else if c == b'u' as c_int {
                 settings().dedupe = true;
             } else if c == b'b' as c_int {
-                settings().beam = libc::atof(getopt::OPTARG) as f32;
+                settings().beam = cstr(getopt::OPTARG).trim().parse::<f64>().unwrap_or(0.0) as f32;
                 if settings().beam < 0.0 {
                     eprint!("Invalid argument for --beam\n");
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
             } else if c == b'l' as c_int {
-                settings().max_weight_classes = libc::atoi(getopt::OPTARG);
+                settings().max_weight_classes =
+                    cstr(getopt::OPTARG).trim().parse::<i32>().unwrap_or(0);
                 if settings().max_weight_classes < 1 {
                     eprint!("Invalid or no argument --weight-classes count\n");
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
             } else if c == b'z' as c_int {
                 settings().output_format = OutputFormat::tokenize;
@@ -617,14 +618,14 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         // no more options, we should now be at the input filename
         if (getopt::OPTIND + 1) < argc {
             eprint!("More than one input file given\n");
-            libc::EXIT_FAILURE
+            1
         } else if (getopt::OPTIND + 1) == argc {
             let ptr = &raw mut TOKENIZER_FILENAME;
             *ptr = cstr(*argv.offset(getopt::OPTIND as isize));
             EXIT_CONTINUE
         } else {
             eprint!("No input file given\n");
-            libc::EXIT_FAILURE
+            1
         }
     }
 }
@@ -677,7 +678,7 @@ unsafe fn real_main() -> c_int {
             Ok(f) => f,
             Err(_) => {
                 eprintln!("Could not open file {}", tokenizer_filename);
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         // The C wraps the rest in try/catch on HfstException (and a nested catch
@@ -703,7 +704,7 @@ unsafe fn real_main() -> c_int {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("hfst-tokenize: cannot open input: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         if first_header_attributes.get("name").map(|s| s.as_str()) != Some("TOP") {

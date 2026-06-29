@@ -4,6 +4,7 @@
 //! program-options, tool-metadata, inc fragments) and the now-available
 //! library helper hfst::generate_model_forms.
 
+use core::ffi::{c_char, c_int};
 use hfst::generate_model_forms::{
     StringVectorVector, compile_generator_from_guesser, get_alphabet_string_tokenizer, get_guesses,
     get_paradigms, is_guesser, read_model_forms,
@@ -25,7 +26,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::{BufRead, Write};
 
@@ -245,7 +245,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     GENERATE_THRESHOLD = get_float(&optarg());
                     if GENERATE_THRESHOLD < 0.0 {
                         error(
-                            libc::EXIT_FAILURE,
+                            1,
                             0,
                             &format!(
                                 "Invalid generate threshold {}. Give a positive float.",
@@ -260,7 +260,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         Ok(v) => MAX_NUMBER_OF_GUESSES = v,
                         Err(_msg) => {
                             error(
-                                libc::EXIT_FAILURE,
+                                1,
                                 0,
                                 &format!(
                                     "Invalid maximal number of guesses {}. Give a positive int.",
@@ -276,7 +276,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         Ok(v) => MAX_NUMBER_OF_FORMS = v,
                         Err(_msg) => {
                             error(
-                                libc::EXIT_FAILURE,
+                                1,
                                 0,
                                 &format!(
                                     "Invalid maximal number of generated forms {}. Give a positive int.",
@@ -358,7 +358,7 @@ unsafe fn real_main() -> c_int {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-guess: cannot open output: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
 
@@ -369,14 +369,14 @@ unsafe fn real_main() -> c_int {
 
         if !is_guesser(&guesser) {
             error(
-                libc::EXIT_FAILURE,
+                1,
                 0,
                 &format!(
                     "The transducer in {} is not a guesser.",
                     cstr(globals::INPUTFILENAME)
                 ),
             );
-            return libc::EXIT_FAILURE;
+            return 1;
         }
 
         let mut generator: Option<HfstTransducer> = None;
@@ -409,7 +409,7 @@ unsafe fn real_main() -> c_int {
                 Err(e) => {
                     eprintln!("Invalid model form line in model form file:");
                     eprintln!("{}", e.line);
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
             }
         }
@@ -464,6 +464,6 @@ unsafe fn real_main() -> c_int {
         drop(guesser);
         drop(generator);
 
-        libc::EXIT_SUCCESS
+        0
     }
 }

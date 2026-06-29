@@ -5,6 +5,7 @@
 //! it reads one input stream and converts each transducer to another binary
 //! implementation format.
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -25,7 +26,6 @@ use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 // tool-specific variables
@@ -52,7 +52,7 @@ fn fput(f: &mut dyn std::io::Write, s: &str) {
 unsafe fn set_output_type(type_: ImplementationType) {
     unsafe {
         if OUTPUT_TYPE != ImplementationType::UNSPECIFIED_TYPE {
-            error(libc::EXIT_FAILURE, 0, "Output type defined several times.");
+            error(1, 0, "Output type defined several times.");
         }
         OUTPUT_TYPE = type_;
     }
@@ -231,7 +231,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     set_output_type(hfst_parse_format_name(&cstr(getopt::OPTARG)));
                     // HAVE_XFSM is not defined in this build: reject xfsm output.
                     if OUTPUT_TYPE == ImplementationType::XFSM_TYPE {
-                        error(libc::EXIT_FAILURE, 0, "xfsm back-end is not available");
+                        error(1, 0, "xfsm back-end is not available");
                     }
                     continue;
                 }
@@ -249,7 +249,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 }
                 b'x' => {
                     // HAVE_XFSM is not defined in this build.
-                    error(libc::EXIT_FAILURE, 0, "xfsm back-end is not available");
+                    error(1, 0, "xfsm back-end is not available");
                     continue;
                 }
                 b't' => {
@@ -279,7 +279,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
         if OUTPUT_TYPE == ImplementationType::UNSPECIFIED_TYPE {
             error(
-                libc::EXIT_FAILURE,
+                1,
                 0,
                 "You must specify an output type (one of -S, -F, -t, -x, -l, -O, or -w)",
             );
@@ -338,7 +338,7 @@ unsafe fn process_stream(
         outstream.flush(); // needed for xfsm transducers whose writing is delayed
         instream.close();
         outstream.close();
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -391,12 +391,12 @@ unsafe fn real_main() -> c_int {
         if OUTPUT_TYPE == ImplementationType::XFSM_TYPE {
             if cstr(globals::OUTFILENAME) == "<stdout>" {
                 error(
-                    libc::EXIT_FAILURE,
+                    1,
                     0,
                     "Writing to standard output not supported for xfsm transducers,\n\
                      use 'hfst-fst2fst [--output|-o] OUTFILE' instead",
                 );
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         }
 

@@ -7,8 +7,8 @@
 //! (`HfstTransducer::lookup_fd_string`), so the tool no longer carries its own
 //! binary-format reader or traversal code.
 
+use core::ffi::{c_char, c_int};
 use hfst_cli::hfst_getopt as getopt;
-use libc::{c_char, c_int};
 use std::ffi::CString;
 
 // ---------------------------------------------------------------------------
@@ -553,11 +553,11 @@ unsafe fn real_main() -> c_int {
             match c as u8 {
                 b'h' => {
                     print_usage();
-                    return libc::EXIT_SUCCESS;
+                    return 0;
                 }
                 b'V' => {
                     print_version();
-                    return libc::EXIT_SUCCESS;
+                    return 0;
                 }
                 b'v' => {
                     VERBOSE_FLAG = true;
@@ -578,21 +578,21 @@ unsafe fn real_main() -> c_int {
                     BEAM = atof(getopt::OPTARG) as f32;
                     if BEAM < 0.0 {
                         print_err("Invalid argument for --beam\n");
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                 }
                 b't' => {
                     TIME_CUTOFF = atof(getopt::OPTARG);
                     if TIME_CUTOFF < 0.0 {
                         print_err("Invalid argument for --time-cutoff\n");
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                 }
                 b'n' => {
                     MAX_ANALYSES = atoi(getopt::OPTARG);
                     if MAX_ANALYSES < 1 {
                         print_err("Invalid or no argument for analyses count\n");
-                        return libc::EXIT_FAILURE;
+                        return 1;
                     }
                 }
                 b'x' => {
@@ -617,14 +617,14 @@ unsafe fn real_main() -> c_int {
                             PIPE_OUTPUT = true;
                         } else {
                             print_err(&format!("--pipe-mode argument {} unrecognised\n\n", a));
-                            return libc::EXIT_FAILURE;
+                            return 1;
                         }
                     }
                 }
                 _ => {
                     print_err("Invalid option\n\n");
                     print_short_help();
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
             }
         }
@@ -633,14 +633,14 @@ unsafe fn real_main() -> c_int {
         let optind = getopt::OPTIND;
         if (optind + 1) < argc {
             print_err("More than one input file given\n");
-            libc::EXIT_FAILURE
+            1
         } else if (optind + 1) == argc {
             let path = *argv.offset(optind as isize);
             let pathstr = cstr(path);
             setup(&pathstr)
         } else {
             print_err("No input file given\n");
-            libc::EXIT_FAILURE
+            1
         }
     }
 }

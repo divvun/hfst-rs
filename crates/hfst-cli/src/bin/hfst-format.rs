@@ -8,6 +8,7 @@
 //! stream to report its type) and has no process_stream. main is therefore
 //! very thin and simply prints the type returned by parse_options.
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -22,7 +23,6 @@ use hfst_cli::hfst_program_options::{
     print_common_unary_program_parameter_instructions,
 };
 use hfst_cli::inc::{CaseResult, handle_common_case, handle_unary_case};
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 static mut LIST_FORMATS: bool = false;
@@ -163,11 +163,13 @@ unsafe fn parse_options(argc: c_int, argv: *mut *mut c_char) -> ImplementationTy
             let ch = char::from_u32(c as u32);
             match ch {
                 Some('1') => {
-                    globals::INPUTFILENAME = libc::strdup(getopt::OPTARG);
+                    globals::INPUTFILENAME =
+                        hfst_cli::hfst_commandline::hfst_strdup(getopt::OPTARG);
                     continue;
                 }
                 Some('2') => {
-                    globals::INPUTFILENAME = libc::strdup(getopt::OPTARG);
+                    globals::INPUTFILENAME =
+                        hfst_cli::hfst_commandline::hfst_strdup(getopt::OPTARG);
                     continue;
                 }
                 Some('l') => {
@@ -175,7 +177,7 @@ unsafe fn parse_options(argc: c_int, argv: *mut *mut c_char) -> ImplementationTy
                     continue;
                 }
                 Some('t') => {
-                    FORMAT_TO_TEST = libc::strdup(getopt::OPTARG);
+                    FORMAT_TO_TEST = hfst_cli::hfst_commandline::hfst_strdup(getopt::OPTARG);
                     continue;
                 }
                 _ => {
@@ -264,7 +266,9 @@ unsafe fn parse_options(argc: c_int, argv: *mut *mut c_char) -> ImplementationTy
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if globals::INPUTFILENAME.is_null() {
                 if (argc - getopt::OPTIND) == 0 {
-                    globals::INPUTFILENAME = libc::strdup(b"<stdin>\0".as_ptr() as *const c_char);
+                    globals::INPUTFILENAME = hfst_cli::hfst_commandline::hfst_strdup(
+                        b"<stdin>\0".as_ptr() as *const c_char,
+                    );
                     let is = HfstInputStream::new();
                     return is.get_type();
                 } else if (argc - getopt::OPTIND) == 1 {

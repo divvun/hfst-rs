@@ -9,7 +9,7 @@ assertions (
     {id idiom1.parsers, kind @complete, author "brendan@necessary.nu", at 2026-06-28T14:38:04.130403Z}
     {id idiom1.pmatch, kind @complete, author "brendan@necessary.nu", at 2026-06-28T16:15:44.322893Z}
     {id idiom1.core, kind @complete, author "brendan@necessary.nu", at 2026-06-28T17:16:23.203852Z}
-    {id idiom2.io, kind @doing, author "brendan@necessary.nu", at 2026-06-28T18:27:26.173045Z}
+    {id idiom2.io, kind @complete, author "brendan@necessary.nu", at 2026-06-29T17:19:06.714162Z}
     {id librarify.ol-reuse, kind @complete, author "brendan@necessary.nu", at 2026-06-29T12:22:25.850919Z}
     {id librarify.fix-roundtrip, kind @complete, author "brendan@necessary.nu", at 2026-06-29T12:08:37.826618Z}
     {id librarify.symbols-used, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:11.919358Z}
@@ -29,4 +29,7 @@ assertions (
     {id expand-equivalences, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:34:43.599269Z}
     {id guess-generator, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:39:22.172305Z}
     {id librarify.io-foundation, kind @complete, author "brendan@necessary.nu", at 2026-06-29T17:15:13.930502Z}
+    {id idiom2.cstr, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:57:46.174762Z}
+    {id idiom2.cli, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:58:01.785472Z}
+    {id idiom2.drop-libc, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:58:23.868042Z}
 )

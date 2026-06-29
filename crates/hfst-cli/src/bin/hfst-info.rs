@@ -6,6 +6,7 @@
 //! features. Drives the hfst-cli foundation (globals, getopt, commandline,
 //! program-options).
 
+use core::ffi::{c_char, c_int};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, print_more_info,
@@ -15,7 +16,9 @@ use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
     HFST_GETOPT_COMMON_SHORT, hfst_getopt_common_long, print_common_program_options,
 };
-use libc::{EXIT_FAILURE, EXIT_SUCCESS, c_char, c_int};
+
+const EXIT_SUCCESS: c_int = 0;
+const EXIT_FAILURE: c_int = 1;
 use std::collections::BTreeSet;
 use std::ffi::{CStr, CString};
 

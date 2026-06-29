@@ -9,6 +9,7 @@
 //! opens it as a plain binary stream, builds a hfst_ol::PmatchContainer from it,
 //! and then matches the lines of stdin against it, printing to stdout.
 
+use core::ffi::{c_char, c_int};
 use hfst::pmatch::PmatchContainer;
 use hfst::transducer::{INFINITE_WEIGHT, IStream, Weight};
 use hfst_cli::globals;
@@ -22,7 +23,6 @@ use hfst_cli::hfst_program_options::{
     hfst_getopt_unary_long, print_common_program_options, print_common_unary_program_options,
 };
 use hfst_cli::inc::{CaseResult, handle_common_case, handle_error_case, handle_unary_case};
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::io::{BufRead, Write};
 
@@ -212,7 +212,7 @@ unsafe fn process_input(container: &mut PmatchContainer, outstream: &mut dyn Wri
                 &format!("\n{}\n", container.get_profiling_info()),
             );
         }
-        libc::EXIT_SUCCESS
+        0
     }
 }
 
@@ -303,35 +303,35 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             } else if c == b'm' as c_int {
                 MARK_PATTERNS = VarVal::Off;
             } else if c == b'b' as c_int {
-                MAX_CONTEXT = libc::atoi(getopt::OPTARG);
+                MAX_CONTEXT = cstr(getopt::OPTARG).trim().parse::<i32>().unwrap_or(0);
                 if MAX_CONTEXT < 0 {
                     eprint!("Invalid argument for --max-context\n");
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
             } else if c == b'r' as c_int {
-                MAX_RECURSION = libc::atoi(getopt::OPTARG);
+                MAX_RECURSION = cstr(getopt::OPTARG).trim().parse::<i32>().unwrap_or(0);
                 if MAX_RECURSION < 0 {
                     eprint!("Invalid argument for --max-recursion\n");
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
             } else if c == b'W' as c_int {
-                WEIGHT_CUTOFF = libc::atof(getopt::OPTARG) as Weight;
+                WEIGHT_CUTOFF = cstr(getopt::OPTARG).trim().parse::<f64>().unwrap_or(0.0) as Weight;
                 if WEIGHT_CUTOFF < 0.0 {
                     eprint!("Invalid argument for --weight-cutoff\n");
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
                 // NOTE: bug-for-bug — the C 'case W' has no 'break', so it
                 // falls through into 'case t' (time-cutoff) below.
-                TIME_CUTOFF = libc::atof(getopt::OPTARG);
+                TIME_CUTOFF = cstr(getopt::OPTARG).trim().parse::<f64>().unwrap_or(0.0);
                 if TIME_CUTOFF < 0.0 {
                     eprint!("Invalid argument for --time-cutoff\n");
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
             } else if c == b't' as c_int {
-                TIME_CUTOFF = libc::atof(getopt::OPTARG);
+                TIME_CUTOFF = cstr(getopt::OPTARG).trim().parse::<f64>().unwrap_or(0.0);
                 if TIME_CUTOFF < 0.0 {
                     eprint!("Invalid argument for --time-cutoff\n");
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
             } else if c == b'p' as c_int {
                 PROFILE = true;
@@ -342,18 +342,18 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         // no more options, we should now be at the input filename
         if (getopt::OPTIND + 1) < argc {
             eprint!("More than one input file given\n");
-            libc::EXIT_FAILURE
+            1
         } else if (getopt::OPTIND + 1) == argc {
             if !globals::INPUTFILENAME.is_null() {
                 eprint!("More than one input file given\n");
-                libc::EXIT_FAILURE
+                1
             } else {
                 globals::INPUTFILENAME = hfst_strdup(*argv.offset(getopt::OPTIND as isize));
                 // C: inputfile = hfst_fopen(inputfilename, "r"); if it resolves to
                 // stdin ("-"), reset the name to "<stdin>". The actual archive is
                 // (re)opened in real_main, so only the "-" detection is kept.
                 if cstr(globals::INPUTFILENAME) == "-" {
-                    libc::free(globals::INPUTFILENAME as *mut libc::c_void);
+                    hfst_cli::hfst_commandline::hfst_free(globals::INPUTFILENAME as *mut c_char);
                     let stdin_name = CString::new("<stdin>").unwrap();
                     globals::INPUTFILENAME = hfst_strdup(stdin_name.as_ptr());
                 }
@@ -361,7 +361,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             }
         } else if globals::INPUTFILENAME.is_null() {
             eprint!("No input file given\n");
-            libc::EXIT_FAILURE
+            1
         } else {
             EXIT_CONTINUE
         }
@@ -403,7 +403,7 @@ unsafe fn real_main() -> c_int {
             Ok(f) => f,
             Err(_) => {
                 eprintln!("Could not open file {}", inputfilename);
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         // The C wraps the container construction + processing in try/catch on
@@ -442,7 +442,7 @@ unsafe fn real_main() -> c_int {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-pmatch: cannot open output: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         let rv = process_input(&mut container, &mut *out);

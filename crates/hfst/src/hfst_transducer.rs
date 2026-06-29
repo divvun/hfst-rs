@@ -4840,7 +4840,11 @@ impl HfstTransducer {
         net.write_in_att_format_number_file(ofile, print_weights);
     }
 
-    pub unsafe fn write_in_att_format_ptr(&self, buffer: *mut libc::c_char, print_weights: bool) {
+    pub unsafe fn write_in_att_format_ptr(
+        &self,
+        buffer: *mut core::ffi::c_char,
+        print_weights: bool,
+    ) {
         let net = HfstBasicTransducer::new_from_hfst_transducer(self);
         unsafe {
             net.write_in_att_format_ptr(buffer, print_weights);
@@ -4856,7 +4860,7 @@ impl HfstTransducer {
     /* Implemented only for XFSM_TYPE. */
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.write-xfsm-transducer-in-att-format-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.write-xfsm-transducer-in-att-format-fn]
-    pub fn write_xfsm_transducer_in_att_format(&self, filename: *const libc::c_char) {
+    pub fn write_xfsm_transducer_in_att_format(&self, filename: *const core::ffi::c_char) {
         if self.type_ != ImplementationType::XFSM_TYPE {
             crate::HFST_THROW!(FunctionNotImplementedException);
         }
@@ -4866,7 +4870,7 @@ impl HfstTransducer {
     /* Implemented only for XFSM_TYPE. */
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.write-xfsm-transducer-in-prolog-format-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.write-xfsm-transducer-in-prolog-format-fn]
-    pub fn write_xfsm_transducer_in_prolog_format(&self, filename: *const libc::c_char) {
+    pub fn write_xfsm_transducer_in_prolog_format(&self, filename: *const core::ffi::c_char) {
         if self.type_ != ImplementationType::XFSM_TYPE {
             crate::HFST_THROW!(FunctionNotImplementedException);
         }
@@ -4891,7 +4895,9 @@ impl HfstTransducer {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.prolog-file-to-xfsm-transducer-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.prolog-file-to-xfsm-transducer-fn]
-    pub fn prolog_file_to_xfsm_transducer(filename: *const libc::c_char) -> *mut HfstTransducer {
+    pub fn prolog_file_to_xfsm_transducer(
+        filename: *const core::ffi::c_char,
+    ) -> *mut HfstTransducer {
         let _ = filename;
         crate::HFST_THROW!(FunctionNotImplementedException)
     }

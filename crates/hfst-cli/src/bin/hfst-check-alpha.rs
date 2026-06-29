@@ -3,6 +3,7 @@
 //! hfst-cli foundation (globals, getopt, commandline, program-options,
 //! tool-metadata, inc fragments). A binary tool (two input streams).
 
+use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_exception_defs::FunctionNotImplementedException;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -23,7 +24,6 @@ use hfst_cli::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
-use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
@@ -148,12 +148,12 @@ unsafe fn process_stream(
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-check-alpha: cannot open output: {e}");
-                return libc::EXIT_FAILURE;
+                return 1;
             }
         };
         let mut continue_reading = firststream.is_good() && secondstream.is_good();
         let mut transducer_n: usize = 0;
-        let mut mismatch = libc::EXIT_SUCCESS;
+        let mut mismatch = 0;
         while continue_reading {
             transducer_n += 1;
 
@@ -212,7 +212,7 @@ unsafe fn process_stream(
                 .cloned()
                 .collect();
             if !first_minus_second.is_empty() {
-                mismatch = libc::EXIT_FAILURE;
+                mismatch = 1;
                 fput(
                     &mut *out,
                     &format!(
@@ -238,7 +238,7 @@ unsafe fn process_stream(
                 .cloned()
                 .collect();
             if !second_minus_first.is_empty() {
-                mismatch = libc::EXIT_FAILURE;
+                mismatch = 1;
                 fput(
                     &mut *out,
                     &format!(
@@ -278,7 +278,7 @@ unsafe fn process_stream(
                     .cloned()
                     .collect();
                 if !first_minus_second.is_empty() {
-                    mismatch = libc::EXIT_FAILURE;
+                    mismatch = 1;
                     fput(
                         &mut *out,
                         &format!(
@@ -300,7 +300,7 @@ unsafe fn process_stream(
                 }
                 fput(&mut *out, "\n");
                 if !second_minus_first.is_empty() {
-                    mismatch = libc::EXIT_FAILURE;
+                    mismatch = 1;
                     fput(
                         &mut *out,
                         &format!(
@@ -393,12 +393,8 @@ unsafe fn real_main() -> c_int {
             })) {
                 Ok(s) => s,
                 Err(_) => {
-                    error(
-                        libc::EXIT_FAILURE,
-                        0,
-                        &format!("{} is not a valid transducer file", name),
-                    );
-                    return libc::EXIT_FAILURE;
+                    error(1, 0, &format!("{} is not a valid transducer file", name));
+                    return 1;
                 }
             }
         } else {
@@ -406,14 +402,14 @@ unsafe fn real_main() -> c_int {
                 Ok(s) => s,
                 Err(_) => {
                     error(
-                        libc::EXIT_FAILURE,
+                        1,
                         0,
                         &format!(
                             "{} is not a valid transducer file",
                             cstr(globals::FIRSTFILENAME)
                         ),
                     );
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
             }
         };
@@ -424,12 +420,8 @@ unsafe fn real_main() -> c_int {
             })) {
                 Ok(s) => s,
                 Err(_) => {
-                    error(
-                        libc::EXIT_FAILURE,
-                        0,
-                        &format!("{} is not a valid transducer file", name),
-                    );
-                    return libc::EXIT_FAILURE;
+                    error(1, 0, &format!("{} is not a valid transducer file", name));
+                    return 1;
                 }
             }
         } else {
@@ -437,14 +429,14 @@ unsafe fn real_main() -> c_int {
                 Ok(s) => s,
                 Err(_) => {
                     error(
-                        libc::EXIT_FAILURE,
+                        1,
                         0,
                         &format!(
                             "{} is not a valid transducer file",
                             cstr(globals::SECONDFILENAME)
                         ),
                     );
-                    return libc::EXIT_FAILURE;
+                    return 1;
                 }
             }
         };
@@ -453,9 +445,9 @@ unsafe fn real_main() -> c_int {
 
         let _retval = process_stream(&mut firststream, &mut secondstream);
 
-        libc::free(globals::FIRSTFILENAME as *mut libc::c_void);
-        libc::free(globals::SECONDFILENAME as *mut libc::c_void);
-        libc::free(globals::OUTFILENAME as *mut libc::c_void);
-        libc::EXIT_SUCCESS
+        hfst_cli::hfst_commandline::hfst_free(globals::FIRSTFILENAME as *mut c_char);
+        hfst_cli::hfst_commandline::hfst_free(globals::SECONDFILENAME as *mut c_char);
+        hfst_cli::hfst_commandline::hfst_free(globals::OUTFILENAME as *mut c_char);
+        0
     }
 }
