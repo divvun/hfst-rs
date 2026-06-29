@@ -1,5 +1,7 @@
 schema_version 7
 
+last_sync_at 2026-06-29T15:47:04.655385Z
+
 assertions (
     {id scaffold, kind @complete, author "brendan@necessary.nu", at 2026-06-24T17:12:44.389107Z}
     {id literal-port, kind @complete, author "brendan@necessary.nu", at 2026-06-28T12:00:14.477746Z}
@@ -26,4 +28,5 @@ assertions (
     {id affix-guessify, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:22:54.434532Z}
     {id expand-equivalences, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:34:43.599269Z}
     {id guess-generator, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:39:22.172305Z}
+    {id librarify.io-foundation, kind @doing, author "brendan@necessary.nu", at 2026-06-29T15:49:32.404173Z}
 )

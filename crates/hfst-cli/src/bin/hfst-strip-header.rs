@@ -121,33 +121,24 @@ unsafe fn parse_options(argc: c_int, argv: *mut *mut c_char) -> c_int {
 // [spec:hfst:def:hfst-strip-header.process-stream-fn]
 // [spec:hfst:sem:hfst-strip-header.process-stream-fn]
 unsafe fn process_stream() -> c_int {
-    // De-C-ified: open the input/output as std streams from the filename globals
-    // ("<stdin>"/"<stdout>" sentinels select the standard streams) and delegate
-    // the HFST3-header stripping to hfst_input_stream::strip_hfst3_headers. The
-    // C printed "Stripping..." once per byte under -v; that per-byte trace is
-    // dropped (diagnostic only — the stripped output is unchanged).
-    let (in_name, out_name) = unsafe { (cstr(globals::INPUTFILENAME), cstr(globals::OUTFILENAME)) };
-
-    let input: Box<dyn std::io::Read> = if in_name == "<stdin>" {
-        Box::new(std::io::stdin())
-    } else {
-        match std::fs::File::open(&in_name) {
-            Ok(f) => Box::new(f),
-            Err(e) => {
-                eprintln!("hfst-strip-header: could not open input {in_name}: {e}");
-                return libc::EXIT_FAILURE;
-            }
+    // De-C-ified: open the input/output as std streams (resolved from the
+    // filename globals by globals::input_reader / output_writer, which honour the
+    // "<stdin>"/"<stdout>" sentinels) and delegate the HFST3-header stripping to
+    // hfst_input_stream::strip_hfst3_headers. The C printed "Stripping..." once
+    // per byte under -v; that per-byte trace is dropped (diagnostic only — the
+    // stripped output is unchanged).
+    let input = match globals::input_reader() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("hfst-strip-header: could not open input: {e}");
+            return libc::EXIT_FAILURE;
         }
     };
-    let output: Box<dyn std::io::Write> = if out_name == "<stdout>" {
-        Box::new(std::io::stdout())
-    } else {
-        match std::fs::File::create(&out_name) {
-            Ok(f) => Box::new(f),
-            Err(e) => {
-                eprintln!("hfst-strip-header: could not open output {out_name}: {e}");
-                return libc::EXIT_FAILURE;
-            }
+    let output = match globals::output_writer() {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("hfst-strip-header: could not open output: {e}");
+            return libc::EXIT_FAILURE;
         }
     };
 

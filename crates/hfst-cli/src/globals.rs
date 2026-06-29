@@ -13,6 +13,9 @@
 //! const-initialised are stored as 'null_mut()' and substituted through an
 //! accessor fn (same shape as getopt's 'stderr_file()').
 
+use std::ffi::CStr;
+use std::io::{BufRead, BufReader, Write};
+
 use libc::c_char;
 
 // colour tristate (hfst-commandline.h enum colour_tristate). Variant names kept
@@ -111,4 +114,47 @@ fn stdin_file() -> *mut libc::FILE {
         static mut stdin: *mut libc::FILE;
     }
     unsafe { stdin }
+}
+
+// std-stream counterparts of the libc FILE* accessors above. The io-foundation
+// migration moves each tool's primary text I/O off the `*mut FILE` statics and
+// onto these: a tool opens its input/output as Rust std streams (resolved from
+// the INPUTFILENAME/OUTFILENAME globals, with the "<stdin>"/"<stdout>" sentinels
+// — or an unset name — selecting the standard stream) and threads the
+// `Box<dyn BufRead>`/`Box<dyn Write>` into the library, rather than reading or
+// writing a `*mut FILE` through libc.
+
+// Resolve one of the *FILENAME `*mut c_char` globals to an owned String.
+fn filename_of(ptr: *mut c_char) -> String {
+    if ptr.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+/// Primary text input as a buffered reader: stdin for the "<stdin>" sentinel (or
+/// an unset name), else the named file (INPUTFILENAME). The std counterpart of
+/// `inputfile()`.
+pub fn input_reader() -> std::io::Result<Box<dyn BufRead>> {
+    let name = filename_of(unsafe { INPUTFILENAME });
+    if name == "<stdin>" || name.is_empty() {
+        Ok(Box::new(BufReader::new(std::io::stdin())))
+    } else {
+        Ok(Box::new(BufReader::new(std::fs::File::open(&name)?)))
+    }
+}
+
+/// Primary text output as a writer: stdout for the "<stdout>" sentinel (or an
+/// unset name), else the named file (OUTFILENAME). The std counterpart of
+/// `outfile()`.
+pub fn output_writer() -> std::io::Result<Box<dyn Write>> {
+    let name = filename_of(unsafe { OUTFILENAME });
+    if name == "<stdout>" || name.is_empty() {
+        Ok(Box::new(std::io::stdout()))
+    } else {
+        Ok(Box::new(std::fs::File::create(&name)?))
+    }
 }
