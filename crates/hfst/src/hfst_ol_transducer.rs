@@ -370,6 +370,7 @@ mod ol_construction_io {
             // C++ tests 'if (!output_stream)' (failbit) and warns; the boxed writer has
             // no failbit, so the check is elided.
             transducer.write(&mut *self.output_stream);
+            let _ = self.output_stream.flush();
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-output-stream.open-fn]
@@ -379,9 +380,9 @@ mod ol_construction_io {
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-output-stream.close-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-output-stream.close-fn]
         pub fn close(&mut self) {
-            if !self.filename.is_empty() {
-                let _ = self.output_stream.flush();
-            }
+            // Flush unconditionally: stdout is a buffered std::io::stdout() and the
+            // tools exit via std::process::exit (no Drop), so it must be flushed too.
+            let _ = self.output_stream.flush();
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-output-stream.write-fn]

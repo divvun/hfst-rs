@@ -9,4 +9,5 @@ assertions (
     {id idiom1.core, kind @complete, author "brendan@necessary.nu", at 2026-06-28T17:16:23.203852Z}
     {id idiom2.io, kind @doing, author "brendan@necessary.nu", at 2026-06-28T18:27:26.173045Z}
     {id librarify.ol-reuse, kind @doing, author "brendan@necessary.nu", at 2026-06-28T20:14:25.195139Z}
+    {id librarify.fix-roundtrip, kind @doing, author "brendan@necessary.nu", at 2026-06-29T11:16:42.587454Z}
 )

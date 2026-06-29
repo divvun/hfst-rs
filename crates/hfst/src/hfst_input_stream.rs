@@ -1032,7 +1032,10 @@ mod input_impl {
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.hfst-input-stream-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.hfst-input-stream-fn]
         pub fn new_filename(filename: &str) -> Self {
-            if !filename.is_empty() {
+            // The CLI passes the sentinel "<stdin>" (and "") for standard input;
+            // route those to stdin rather than opening a file literally named
+            // "<stdin>".
+            if !filename.is_empty() && filename != "<stdin>" {
                 let f = match File::open(filename) {
                     Ok(f) => f,
                     Err(_) => crate::HFST_THROW_MESSAGE!(

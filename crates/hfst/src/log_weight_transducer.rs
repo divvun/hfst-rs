@@ -509,9 +509,9 @@ mod construction_io {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-output-stream.close-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-output-stream.close-fn]
         pub fn close(&mut self) {
-            if !self.filename.is_empty() {
-                let _ = self.output_stream.flush();
-            }
+            // Flush unconditionally: stdout is a buffered std::io::stdout() and the
+            // tools exit via std::process::exit (no Drop), so it must be flushed too.
+            let _ = self.output_stream.flush();
         }
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-output-stream.write-fn]
@@ -535,6 +535,7 @@ mod construction_io {
             let output_st = transducer.input_symbols().unwrap().as_ref().clone();
             t.set_output_symbols(Arc::new(output_st));
             let _ = t.store(&mut self.output_stream);
+            let _ = self.output_stream.flush();
         }
     }
 

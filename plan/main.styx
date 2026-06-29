@@ -542,6 +542,14 @@ children (
                 id librarify.fix-roundtrip
                 title "[Tier0/prereq] Fix the binary save→load round-trip: writing a transducer then reading it back panics — HfstInputStream type-detection hits the NotTransducerStreamException fallthrough (hfst_input_stream.rs:1008). Diagnose the type byte HfstOutputStream writes vs what read_transducer detects, fix it, add a write→read round-trip smoke test. Prerequisite for ol-reuse verification and all CLI-pipeline testing."
                 priority 5
+                log (
+                    {
+                        at 2026-06-29T11:16:42.587454Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+                )
             }
         )
     }

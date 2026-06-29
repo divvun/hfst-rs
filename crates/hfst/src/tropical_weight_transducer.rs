@@ -503,9 +503,10 @@ mod construction_io {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-output-stream.close-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-output-stream.close-fn]
         pub fn close(&mut self) {
-            if !self.filename.is_empty() {
-                let _ = self.output_stream.flush();
-            }
+            // Flush unconditionally: stdout (empty filename) is a buffered
+            // std::io::stdout() that must be flushed too, since the tools exit via
+            // std::process::exit, which does not run Drop.
+            let _ = self.output_stream.flush();
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-output-stream.write-fn]
@@ -532,6 +533,7 @@ mod construction_io {
             } else {
                 let _ = transducer.store(&mut self.output_stream);
             }
+            let _ = self.output_stream.flush();
         }
     }
 

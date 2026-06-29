@@ -140,6 +140,12 @@ mod output_impl {
         /// 'HfstOutputStream(const std::string &filename, ImplementationType type,
         /// bool hfst_format=true)'.
         pub fn new_filename(filename: &str, type_: ImplementationType, hfst_format: bool) -> Self {
+            // The CLI passes the sentinel "<stdout>" (and "") for standard output;
+            // route those to the stdout constructor rather than creating a file
+            // literally named "<stdout>".
+            if filename.is_empty() || filename == "<stdout>" {
+                return Self::new(type_, hfst_format);
+            }
             if !HfstTransducer::is_lean_implementation_type_available(type_) {
                 std::panic::panic_any(ImplementationTypeNotAvailableException::new(
                     "ImplementationTypeNotAvailableException".to_string(),

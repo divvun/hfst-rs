@@ -97,6 +97,17 @@ fn errno() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
 
+// Mutable errno slot, so it can be cleared before a libc call whose -1 return is
+// ambiguous between EOF and error (e.g. getline).
+#[cfg(target_os = "macos")]
+unsafe fn errno_location() -> *mut libc::c_int {
+    unsafe { libc::__error() }
+}
+#[cfg(not(target_os = "macos"))]
+unsafe fn errno_location() -> *mut libc::c_int {
+    unsafe { libc::__errno_location() }
+}
+
 // strerror(errnum) appended to a FILE* (C: fprintf(stderr, "%s", strerror(e))).
 unsafe fn fput_strerror(f: *mut libc::FILE, errnum: i32) {
     unsafe {
@@ -762,6 +773,10 @@ pub unsafe fn hfst_getline(
     n: *mut usize,
     stream: *mut libc::FILE,
 ) -> isize {
+    // Clear errno first: getline leaves it untouched at EOF, so a stale errno from
+    // an earlier libc/std call would otherwise be misread as a read failure when
+    // getline returns -1 at end of input.
+    unsafe { *errno_location() = 0 };
     let rv = unsafe { libc::getline(lineptr, n, stream) };
     if (rv < 0) && errno() != 0 {
         hfst_error(libc::EXIT_FAILURE, errno(), "getline failed");
