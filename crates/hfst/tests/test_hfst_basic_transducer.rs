@@ -426,6 +426,47 @@ fn input_symbols_used_collects_input_side_only() {
     assert!(!inputs.contains("y"));
 }
 
+// --- pair_target_state (librarify regression, not a C++ test-suite block)
+// The pair-path recogniser step lifted from hfst-pair-test: follow the exact
+// (in,out) transition, else fall back to an @_IDENTITY_SYMBOL_@ identity arc when
+// the queried pair is an unknown identity.
+#[test]
+fn pair_target_state_with_identity_fallback() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer: pair_target_state");
+
+    let mut t = HfstBasicTransducer::new();
+    t.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0),
+        true,
+    );
+    t.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(
+            2,
+            "@_IDENTITY_SYMBOL_@".to_string(),
+            "@_IDENTITY_SYMBOL_@".to_string(),
+            0.0,
+        ),
+        true,
+    );
+    t.set_final_weight(1, &0.0);
+    t.set_final_weight(2, &0.0);
+
+    let empty: BTreeSet<String> = BTreeSet::new();
+    let known: BTreeSet<String> = ["z".to_string()].into_iter().collect();
+
+    // Exact pair match wins.
+    assert_eq!(t.pair_target_state(0, "a", "b", &empty), Some(1));
+    // An unknown identity falls back to the identity transition.
+    assert_eq!(t.pair_target_state(0, "z", "z", &empty), Some(2));
+    // A *known* identity does not take the fallback.
+    assert_eq!(t.pair_target_state(0, "z", "z", &known), None);
+    // A non-identity pair with no exact match never falls back.
+    assert_eq!(t.pair_target_state(0, "x", "y", &empty), None);
+}
+
 // --- "HfstBasicTransducer: iterating through"
 // The C++ block has no assertions: it walks every state and its transitions,
 // printing source/target/input/output/weight, and the final weight of final

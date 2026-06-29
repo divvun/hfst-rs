@@ -311,24 +311,8 @@ fn get_target(
     t: &HfstBasicTransducer,
     known_symbols: &SymbolSet,
 ) -> HfstState {
-    let mut identity_target: HfstState = u32::MAX;
-
-    for it in t.transitions(s).iter() {
-        if it.get_input_symbol() == isymbol && it.get_output_symbol() == osymbol {
-            return it.get_target_state();
-        }
-        if it.get_input_symbol() == "@_IDENTITY_SYMBOL_@"
-            && it.get_output_symbol() == "@_IDENTITY_SYMBOL_@"
-        {
-            identity_target = it.get_target_state();
-        }
-    }
-
-    if isymbol == osymbol && !known_symbols.contains(isymbol) {
-        identity_target
-    } else {
-        u32::MAX
-    }
+    t.pair_target_state(s, isymbol, osymbol, known_symbols)
+        .unwrap_or(u32::MAX)
 }
 
 // [spec:hfst:def:hfst-pair-test.is-final-state-fn]

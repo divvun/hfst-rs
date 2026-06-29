@@ -609,6 +609,38 @@ impl HfstBasicTransducer {
         retval
     }
 
+    /// From state `s`, follow the transition whose label pair is
+    /// `(isymbol, osymbol)`. When no exact transition matches but the state has an
+    /// `@_IDENTITY_SYMBOL_@:@_IDENTITY_SYMBOL_@` identity transition AND the
+    /// queried pair is an unknown identity (`isymbol == osymbol` and not in
+    /// `known_symbols`), follow the identity transition instead. Returns the
+    /// target state, or `None` when no transition applies. This is the pair-path
+    /// recogniser step lifted from hfst-pair-test.
+    pub fn pair_target_state(
+        &self,
+        s: HfstState,
+        isymbol: &str,
+        osymbol: &str,
+        known_symbols: &BTreeSet<String>,
+    ) -> Option<HfstState> {
+        let mut identity_target: Option<HfstState> = None;
+        for it in self.transitions(s).iter() {
+            if it.get_input_symbol() == isymbol && it.get_output_symbol() == osymbol {
+                return Some(it.get_target_state());
+            }
+            if it.get_input_symbol() == crate::hfst_symbol_defs::internal_identity
+                && it.get_output_symbol() == crate::hfst_symbol_defs::internal_identity
+            {
+                identity_target = Some(it.get_target_state());
+            }
+        }
+        if isymbol == osymbol && !known_symbols.contains(isymbol) {
+            identity_target
+        } else {
+            None
+        }
+    }
+
     /// Return a copy with the states renumbered in discovery order: state 0
     /// stays 0, and every other state is assigned the next free id the first
     /// time it is reached — either as the running iteration source or as an arc

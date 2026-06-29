@@ -19,4 +19,5 @@ assertions (
     {id realign, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:51:34.278644Z}
     {id substitute-by-composition, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:58:21.308055Z}
     {id compose-intersect-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:09:41.317897Z}
+    {id pair-recognizer, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:21:40.342852Z}
 )

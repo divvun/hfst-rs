@@ -716,6 +716,28 @@ children (
                         id pair-recognizer
                         title "[Tier1] Lift hfst-pair-test's pair-path recognizer (get_target/print_recognized_prefix walk with the @_IDENTITY_SYMBOL_@ fallback + final-state check) into the library as a reusable basic-transducer path matcher; thin the tool. Largest pair-test logic cluster."
                         priority 5
+                        log (
+                            {
+                                at 2026-06-29T14:17:48.17416Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T14:21:32.131634Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Scope landed: added HfstBasicTransducer::pair_target_state(s, isymbol, osymbol, known_symbols) -> Option<HfstState> — the pair-path recogniser step lifted from hfst-pair-test's get_target: follow the exact (in,out) transition, else fall back to an @_IDENTITY_SYMBOL_@:@_IDENTITY_SYMBOL_@ identity arc when the queried pair is an unknown identity (isymbol==osymbol and not in known_symbols). hfst-pair-test's get_target shrinks from ~18 lines to a one-line wrapper: `t.pair_target_state(...).unwrap_or(u32::MAX)`, preserving the u32::MAX sentinel its callers (test_rule, print_recognized_prefix) use. Those two stay tool-side: test_rule is the tool's 0/1 positive/negative verdict logic; print_recognized_prefix is fput-based UI.\n\nBehavior-identical: Option-vs-u32::MAX is the only change (None <-> u32::MAX via unwrap_or); the identity-arc tracking, the last-arc-wins overwrite, and the unknown-identity guard all transcribe verbatim. Added tests/test_hfst_basic_transducer.rs::pair_target_state_with_identity_fallback covering exact match, unknown-identity fallback, known-identity no-fallback, and non-identity no-fallback. 138 lib tests + OL golden green.\n\nCLI smoke note: pair-test consumes a compiled twolc rule grammar + pair test strings (disproportionate to construct); verification is the unit test + the verbatim-transcription argument."
+                            }
+
+                            {
+                                at 2026-06-29T14:21:40.342852Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
                 )
                 log (
