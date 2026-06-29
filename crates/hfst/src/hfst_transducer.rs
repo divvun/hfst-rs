@@ -3865,6 +3865,17 @@ impl HfstTransducer {
         self
     }
 
+    /// Realign a transducer by pushing its labels to the start on both sides:
+    /// invert, push labels to the initial state, invert back, and push again.
+    /// Lifted verbatim from hfst-realign (the boundary-symbol variant is dead /
+    /// commented out in the C++; this is the only realignment it performs).
+    pub fn realign(&mut self) -> &mut HfstTransducer {
+        self.invert();
+        self.push_labels(PushType::TO_INITIAL_STATE);
+        self.invert();
+        self.push_labels(PushType::TO_INITIAL_STATE)
+    }
+
     pub fn push_weights(&mut self, push_type: PushType) -> &mut HfstTransducer {
         let to_initial_state = push_type == PushType::TO_INITIAL_STATE;
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {

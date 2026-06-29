@@ -2,7 +2,6 @@
 //! command-line tool. Drives the hfst-cli foundation (globals, getopt,
 //! commandline, program-options, tool-metadata, inc fragments).
 
-use hfst::hfst_data_types::PushType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -172,10 +171,7 @@ unsafe fn process_stream(
                 ));
             }
 
-            trans.invert();
-            trans.push_labels(PushType::TO_INITIAL_STATE);
-            trans.invert();
-            trans.push_labels(PushType::TO_INITIAL_STATE);
+            trans.realign();
             // C: hfst_set_name(trans, trans, "realign"); the dest and src are the
             // same object, which Rust cannot alias mut+const, so the read side is
             // taken from a copy (name/formula are unchanged by the copy).

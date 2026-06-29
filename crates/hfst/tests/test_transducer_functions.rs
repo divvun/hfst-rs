@@ -966,3 +966,33 @@ fn kill_paths_facade_tropical() {
         "the surviving 'a' path must remain after killing 'x'"
     );
 }
+
+// librarify regression: HfstTransducer::realign must be exactly the
+// invert/push-labels/invert/push-labels sequence lifted from hfst-realign.
+// compare is alignment-sensitive (see function_compare: [foo:bar] differs from
+// [foo:eps][eps:bar]), so realign genuinely changes the transducer; this asserts
+// the lifted method produces the identical result to the manual sequence. Built
+// on a deliberately mis-aligned relation ([a:eps] . [eps:b]) so the pushes have
+// real work to do.
+#[test]
+fn realign_matches_manual_sequence() {
+    let _g = serialized();
+    let mut t = HfstTransducer::new_symbol_pair("a", "@_EPSILON_SYMBOL_@", TROPICAL_OPENFST_TYPE);
+    let second = HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "b", TROPICAL_OPENFST_TYPE);
+    t.concatenate(&second, true);
+    t.minimize();
+
+    let mut via_method = t.clone();
+    via_method.realign();
+
+    let mut manual = t.clone();
+    manual.invert();
+    manual.push_labels(TO_INITIAL_STATE);
+    manual.invert();
+    manual.push_labels(TO_INITIAL_STATE);
+
+    assert!(
+        via_method.compare_default(&manual),
+        "realign() must equal invert/push/invert/push"
+    );
+}

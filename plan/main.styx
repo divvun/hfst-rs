@@ -632,6 +632,28 @@ children (
                         id realign
                         title "[Tier1] Lift hfst-realign's path-realignment transform into the library (HfstTransducer::realign() or an HfstBasicTransducer method) and thin the tool. Ground in tools/src/hfst-realign.cc; verify against a golden round-trip."
                         priority 5
+                        log (
+                            {
+                                at 2026-06-29T13:45:57.901969Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T13:51:24.54442Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Scope landed: added HfstTransducer::realign() = invert/push_labels(TO_INITIAL)/invert/push_labels(TO_INITIAL) (chainable -> &mut Self) and thinned hfst-realign's process_stream to `trans.realign()` (removed the now-unused PushType import). Grounded in tools/src/hfst-realign.cc: the transform is unconditional invert/push/invert/push (lines 171-174); the boundary_symbol variant (166-170) is COMMENTED OUT in the C++ and only affects the verbose \"towards start/end\" message, never the transform. The Rust port mirrored that faithfully.\n\nTest note: compare_default is ALIGNMENT-sensitive (function_compare asserts [foo:bar] != [foo:eps][eps:bar], \"Alignments must be the same\"), and realign's whole purpose is to change alignment — so a \"realign preserves relation via compare\" test is WRONG (it fails). Instead test_transducer_functions::realign_matches_manual_sequence asserts realign() == the manual invert/push/invert/push on a deliberately mis-aligned [a:eps].[eps:b]. 135 lib tests + OL golden green. CLI smoke (strings2fst | realign | fst2strings -> cat) now round-trips end to end thanks to librarify.fix-sparse-symt."
+                            }
+
+                            {
+                                at 2026-06-29T13:51:34.278644Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
