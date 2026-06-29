@@ -3,12 +3,10 @@
 //! automaton. Drives the hfst-cli foundation (globals, getopt, commandline,
 //! program-options, tool-metadata, inc fragments).
 
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
-use hfst::hfst_basic_transition::HfstBasicTransition;
+use hfst::guessify_fst::{GuessDirection, affix_guessify};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_symbol_defs::internal_identity;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -44,13 +42,9 @@ unsafe fn fput(f: *mut libc::FILE, s: &str) {
 }
 
 // add tools-specific variables here
-// [spec:hfst:def:hfst-affix-guessify.guess-direction]
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum GuessDirection {
-    GuessPrefix,
-    GuessSuffix,
-}
-
+// GuessDirection and the per-transducer affix-guesser construction now live in
+// hfst::guessify_fst; this tool keeps only the option-driven globals + the
+// stream-driver loop.
 static mut DIRECTION: GuessDirection = GuessDirection::GuessSuffix;
 static mut WEIGHT: f32 = 1.0f32;
 static mut FORMAT: ImplementationType = ImplementationType::TROPICAL_OPENFST_TYPE;
@@ -206,90 +200,8 @@ unsafe fn process_stream(
             } else {
                 verbose_printf(&format!("Guessifying {}... {}\n", inputname, transducer_n));
             }
-            let alpha = trans.get_alphabet();
-            match DIRECTION {
-                GuessDirection::GuessSuffix => {
-                    verbose_printf("Creating guesser prefix...\n");
-                    let mutt = HfstBasicTransducer::from_transducer(&trans);
-                    let mut repl = HfstBasicTransducer::new();
-                    let guess_state = repl.add_state(0);
-                    let guess_arc = HfstBasicTransition::new_symbols(
-                        guess_state,
-                        internal_identity.to_string(),
-                        internal_identity.to_string(),
-                        WEIGHT,
-                    );
-                    repl.add_transition(guess_state, &guess_arc, true);
-                    for x in alpha.iter() {
-                        let x_arc = HfstBasicTransition::new_symbols(
-                            guess_state,
-                            x.clone(),
-                            x.clone(),
-                            WEIGHT,
-                        );
-                        repl.add_transition(guess_state, &x_arc, true);
-                    }
-                    verbose_printf("Rebuilding suffix...\n");
-                    for s in 0..=mutt.get_max_state() {
-                        let d = repl.add_state(s + 1);
-                        if mutt.is_final_state(s) {
-                            let fw = mutt.get_final_weight(s);
-                            repl.set_final_weight(d, &fw);
-                        }
-                        let guess_arc = HfstBasicTransition::new_symbols(
-                            d,
-                            internal_identity.to_string(),
-                            internal_identity.to_string(),
-                            WEIGHT,
-                        );
-                        repl.add_transition(guess_state, &guess_arc, true);
-                        for x in alpha.iter() {
-                            let x_arc =
-                                HfstBasicTransition::new_symbols(d, x.clone(), x.clone(), WEIGHT);
-                            repl.add_transition(guess_state, &x_arc, true);
-                        }
-                        for arc in mutt.transitions(s).iter() {
-                            let newarc = HfstBasicTransition::new_symbols(
-                                arc.get_target_state() + 1,
-                                arc.get_input_symbol(),
-                                arc.get_output_symbol(),
-                                arc.get_weight(),
-                            );
-                            repl.add_transition(d, &newarc, true);
-                        }
-                    } // for each state
-                    verbose_printf("converting and saving...\n");
-                    let mut t = HfstTransducer::new_from_basic(&repl, FORMAT);
-                    outstream.redirect(&mut t);
-                }
-                GuessDirection::GuessPrefix => {
-                    verbose_printf("Creating guesser suffix...\n");
-                    let mut repl = HfstBasicTransducer::from_transducer(&trans);
-                    let guess_state = repl.add_state_new();
-                    repl.set_final_weight(guess_state, &0.0f32);
-                    let guess_arc = HfstBasicTransition::new_symbols(
-                        guess_state,
-                        internal_identity.to_string(),
-                        internal_identity.to_string(),
-                        WEIGHT,
-                    );
-                    repl.add_transition(guess_state, &guess_arc, true);
-                    verbose_printf("Linking prefix...\n");
-                    let max_state = repl.get_max_state();
-                    for s in 0..=max_state {
-                        let newarc = HfstBasicTransition::new_symbols(
-                            guess_state,
-                            internal_identity.to_string(),
-                            internal_identity.to_string(),
-                            WEIGHT,
-                        );
-                        repl.add_transition(s, &newarc, true);
-                    }
-                    verbose_printf("Converting and saving...\n");
-                    let mut t = HfstTransducer::new_from_basic(&repl, FORMAT);
-                    outstream.redirect(&mut t);
-                }
-            } // which direction
+            let mut t = affix_guessify(&trans, DIRECTION, WEIGHT, FORMAT);
+            outstream.redirect(&mut t);
         } // good instream
         libc::EXIT_SUCCESS
     }

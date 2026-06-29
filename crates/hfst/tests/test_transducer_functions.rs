@@ -24,6 +24,7 @@
 // The binary ops (concatenate/disjunct/intersect/subtract/compose/insert_freely)
 // default harmonize=true in the C++ header, mirrored by passing true.
 
+use hfst::guessify_fst::{GuessDirection, affix_guessify};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::hfst_data_types::ImplementationType::{
@@ -1025,4 +1026,57 @@ fn substitute_by_composition_matches_direct() {
         composed.compare_default(&direct),
         "compose substitution must match direct substitution"
     );
+}
+
+// librarify regression: guessify_fst::affix_guessify is the per-transducer body
+// of hfst-affix-guessify lifted into the library. Assertions are derived from
+// the C++ semantics (not the lifted code): each direction adds exactly one
+// "guess" state to the input, and the guesser carries an identity self-loop
+// (the "guess any symbol" arc). Input is the "ab" acceptor: 0 -a-> 1 -b-> 2*.
+#[test]
+fn affix_guessify_adds_one_guess_state_with_identity_loop() {
+    let _g = serialized();
+
+    let build_input = || {
+        let mut basic = HfstBasicTransducer::new();
+        basic.add_transition(
+            0,
+            &HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 0.0),
+            true,
+        );
+        basic.add_transition(
+            1,
+            &HfstBasicTransition::new_symbols(2, "b".to_string(), "b".to_string(), 0.0),
+            true,
+        );
+        basic.set_final_weight(2, &0.0);
+        HfstTransducer::new_from_basic(&basic, TROPICAL_OPENFST_TYPE)
+    };
+
+    // Does any state carry an @_IDENTITY_SYMBOL_@ self-loop?
+    let has_identity_self_loop = |t: &HfstTransducer| -> bool {
+        let b = HfstBasicTransducer::from_transducer(t);
+        b.iter().enumerate().any(|(s, transitions)| {
+            transitions.iter().any(|arc| {
+                arc.get_input_symbol() == internal_identity && arc.get_target_state() as usize == s
+            })
+        })
+    };
+
+    let input = build_input();
+    let input_max = HfstBasicTransducer::from_transducer(&input).get_max_state();
+
+    for direction in [GuessDirection::GuessSuffix, GuessDirection::GuessPrefix] {
+        let guesser = affix_guessify(&input, direction, 1.0, TROPICAL_OPENFST_TYPE);
+        let guesser_max = HfstBasicTransducer::from_transducer(&guesser).get_max_state();
+        assert_eq!(
+            guesser_max,
+            input_max + 1,
+            "affix_guessify must add exactly one guess state"
+        );
+        assert!(
+            has_identity_self_loop(&guesser),
+            "the guesser must carry an identity self-loop"
+        );
+    }
 }

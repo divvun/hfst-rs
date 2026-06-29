@@ -406,6 +406,13 @@ children (
                         kind @status
                         text "Todo → Doing (nplan_start)"
                     }
+
+                    {
+                        at 2026-06-29T15:10:18.078012Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Parked (unclaimed) behind the librarify wave. idiom2.io de-C-ifies the hfst library's FILE*/getc/fputc/printf I/O (40 sites remain: print_dot, print_pckimmo, ol_transducer, basic_transducer, att writers; libc still in Cargo.toml). The librarify wave (Wave 4.5) is concurrently lifting CLI bespoke logic INTO the hfst library, and each lift lands already de-C-ified (std::io Read/Write, e.g. strip_hfst3_headers). Finishing librarify first lets idiom2.io sweep the whole library's remaining FILE* sites in ONE pass rather than de-C-ifying lifted logic twice. Partial progress (tropical/log weight transducers, 0 libc) is committed at 4576874d. Resume idiom2.io after the librarify Tier-1 lifts land."
+                    }
                 )
             }
 
@@ -830,6 +837,21 @@ children (
                         id affix-guessify
                         title "[Tier1] Lift hfst-affix-guessify's guessify transform into guessify_fst::affix_guessify(direction, default_weight, format) + a GuessDirection enum; thin the tool to one call."
                         priority 5
+                        log (
+                            {
+                                at 2026-06-29T15:16:03.922883Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T15:22:54.434532Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {

@@ -11,6 +11,7 @@
 
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
+use crate::hfst_data_types::ImplementationType;
 use crate::hfst_data_types::ImplementationType::{HFST_OLW_TYPE, TROPICAL_OPENFST_TYPE};
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_lookup_flag_diacritics::FlagDiacriticTable;
@@ -297,6 +298,106 @@ pub fn store_guesser(
         generator.substitute(my_default(), internal_default, true, true);
         generator.convert(HFST_OLW_TYPE, String::new());
         out.operator_shl(&mut generator);
+    }
+}
+
+// Direction of guessing for `affix_guessify`. Lifted verbatim from
+// hfst-affix-guessify's tool-local enum so the affix-guesser construction can
+// live in the library.
+// [spec:hfst:def:hfst-affix-guessify.guess-direction]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum GuessDirection {
+    GuessPrefix,
+    GuessSuffix,
+}
+
+// Build a weighted affix guesser from a single automaton — the per-transducer
+// body of hfst-affix-guessify's process_stream, lifted into the library. The
+// `GuessSuffix` branch rebuilds the automaton with a fresh "guess" prefix state
+// (state 0) whose identity/alphabet self-loops carry `weight`, shifting every
+// original state by +1; the `GuessPrefix` branch appends a single guess state
+// that every state can reach by an identity arc. The result is converted to
+// `format`. (The tool's mid-algorithm "-v" traces — "Creating guesser
+// prefix...", "Rebuilding suffix...", "converting and saving..." — were
+// diagnostic and are not reproduced here; the constructed transducer is
+// unchanged. The owning tool keeps the [spec:hfst:*:hfst-affix-guessify
+// .process-stream-fn] annotation on its stream-driver loop.)
+pub fn affix_guessify(
+    trans: &HfstTransducer,
+    direction: GuessDirection,
+    weight: f32,
+    format: ImplementationType,
+) -> HfstTransducer {
+    let alpha = trans.get_alphabet();
+    match direction {
+        GuessDirection::GuessSuffix => {
+            let mutt = HfstBasicTransducer::from_transducer(trans);
+            let mut repl = HfstBasicTransducer::new();
+            let guess_state = repl.add_state(0);
+            let guess_arc = HfstBasicTransition::new_symbols(
+                guess_state,
+                internal_identity.to_string(),
+                internal_identity.to_string(),
+                weight,
+            );
+            repl.add_transition(guess_state, &guess_arc, true);
+            for x in alpha.iter() {
+                let x_arc =
+                    HfstBasicTransition::new_symbols(guess_state, x.clone(), x.clone(), weight);
+                repl.add_transition(guess_state, &x_arc, true);
+            }
+            for s in 0..=mutt.get_max_state() {
+                let d = repl.add_state(s + 1);
+                if mutt.is_final_state(s) {
+                    let fw = mutt.get_final_weight(s);
+                    repl.set_final_weight(d, &fw);
+                }
+                let guess_arc = HfstBasicTransition::new_symbols(
+                    d,
+                    internal_identity.to_string(),
+                    internal_identity.to_string(),
+                    weight,
+                );
+                repl.add_transition(guess_state, &guess_arc, true);
+                for x in alpha.iter() {
+                    let x_arc = HfstBasicTransition::new_symbols(d, x.clone(), x.clone(), weight);
+                    repl.add_transition(guess_state, &x_arc, true);
+                }
+                for arc in mutt.transitions(s).iter() {
+                    let newarc = HfstBasicTransition::new_symbols(
+                        arc.get_target_state() + 1,
+                        arc.get_input_symbol(),
+                        arc.get_output_symbol(),
+                        arc.get_weight(),
+                    );
+                    repl.add_transition(d, &newarc, true);
+                }
+            }
+            HfstTransducer::new_from_basic(&repl, format)
+        }
+        GuessDirection::GuessPrefix => {
+            let mut repl = HfstBasicTransducer::from_transducer(trans);
+            let guess_state = repl.add_state_new();
+            repl.set_final_weight(guess_state, &0.0f32);
+            let guess_arc = HfstBasicTransition::new_symbols(
+                guess_state,
+                internal_identity.to_string(),
+                internal_identity.to_string(),
+                weight,
+            );
+            repl.add_transition(guess_state, &guess_arc, true);
+            let max_state = repl.get_max_state();
+            for s in 0..=max_state {
+                let newarc = HfstBasicTransition::new_symbols(
+                    guess_state,
+                    internal_identity.to_string(),
+                    internal_identity.to_string(),
+                    weight,
+                );
+                repl.add_transition(s, &newarc, true);
+            }
+            HfstTransducer::new_from_basic(&repl, format)
+        }
     }
 }
 
