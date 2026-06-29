@@ -507,6 +507,36 @@ fn transform_weights_applies_per_arc_and_final_symbol_aware() {
     assert!((r.get_final_weight(2) - 1.5).abs() < 1e-6);
 }
 
+// --- summarize (librarify regression, not a C++ test-suite block)
+// The single-pass statistics lifted from hfst-summarize. Build {cat, cab} (a
+// shared "ca" prefix, branching at state 2) and check the core figures.
+#[test]
+fn summarize_counts_states_arcs_and_alphabet() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer: summarize");
+
+    let mut t = HfstBasicTransducer::new();
+    for (from, to, sym) in [(0, 1, "c"), (1, 2, "a"), (2, 3, "t"), (2, 4, "b")] {
+        t.add_transition(
+            from,
+            &HfstBasicTransition::new_symbols(to, sym.to_string(), sym.to_string(), 0.0),
+            true,
+        );
+    }
+    t.set_final_weight(3, &0.0);
+    t.set_final_weight(4, &0.0);
+
+    let s = t.summarize();
+    assert_eq!(s.states, 5); // 0..4
+    assert_eq!(s.arcs, 4);
+    assert_eq!(s.final_states, 2);
+    assert!(s.acceptor); // every arc is x:x
+    assert!(!s.cyclic);
+    assert_eq!(s.densest_arcs, 2); // state 2 branches to t and b
+    let alpha: Vec<&str> = s.found_alphabet.iter().map(|x| x.as_str()).collect();
+    assert_eq!(alpha, vec!["a", "b", "c", "t"]);
+}
+
 // --- "HfstBasicTransducer: iterating through"
 // The C++ block has no assertions: it walks every state and its transitions,
 // printing source/target/input/output/weight, and the final weight of final

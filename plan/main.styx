@@ -759,6 +759,28 @@ children (
                         id summarize-stats
                         title "[Tier1] Lift hfst-summarize's single-pass statistics into HfstBasicTransducer::summarize() -> a stats struct (states, final states, arcs, found alphabet, optional symbol-pair counts, input/output determinism, acceptor, cyclicity + cyclic-at-initial, epsilon counts, densest/sparsest arcs, most-ambiguous input/output, uniq arcs, sigma density). Tool keeps its type-derived flags (is_mutable/weighted) + all output formatting; only the arc-traversal stats move to the lib. Verify byte-identical summarize output."
                         priority 5
+                        log (
+                            {
+                                at 2026-06-29T14:36:39.238972Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T14:46:14.100206Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Scope landed: added HfstBasicTransducer::SummaryStats struct (19 fields) + summarize() — a verbatim transcription of hfst-summarize's single-pass arc-traversal loop (states/final/arcs, found_alphabet, symbol_pairs, per-state input/output ambiguity -> determinism + most-ambiguous, epsilon counts, acceptor, densest/sparsest arcs, uniq arcs, cyclic + cyclic-at-initial). The tool destructures `let SummaryStats { states, final_states, ... } = mutt.summarize();` into the SAME local names its formatting already used, so the entire output-formatting block (385-660) is UNTOUCHED. The tool keeps its type-derived flags (is_mutable/weighted from get_type()), the header alphabet (get_alphabet), the derived averages, and all fput formatting. Removed ~20 accumulator decls + the ~90-line loop + the now-unused is_epsilon/BTreeMap imports.\n\nByte-identical VERIFIED by stash-diff: built the pre-change binary, ran both on a {cat,cab,dog} fst, diffed default AND -S (symbol-pair-statistics) output -> IDENTICAL both. One intended internal change: summarize() always populates symbol_pairs (the tool gated it on PRINT_SYMBOL_PAIR_STATISTICS) — but symbol_pairs only feeds the -S-gated output section, so output is unchanged whether or not -S is passed. Added tests/test_hfst_basic_transducer::summarize_counts_states_arcs_and_alphabet. 140 lib tests + OL golden green.\n\nCompletes librarify.stats-weight-lifts (both sub-nodes)."
+                            }
+
+                            {
+                                at 2026-06-29T14:46:23.423823Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {

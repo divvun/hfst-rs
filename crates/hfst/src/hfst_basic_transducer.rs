@@ -362,6 +362,33 @@ impl substitution_data {
     }
 }
 
+/// Single-pass arc-traversal statistics of a graph, lifted from hfst-summarize.
+/// Holds only the figures the traversal computes; the tool keeps its type-derived
+/// flags (is_mutable/weighted), the header alphabet, the derived averages, and all
+/// output formatting. Field names match the locals the tool destructures into.
+#[derive(Clone, Debug)]
+pub struct SummaryStats {
+    pub states: usize,
+    pub final_states: usize,
+    pub arcs: usize,
+    pub io_epsilons: usize,
+    pub input_epsilons: usize,
+    pub output_epsilons: usize,
+    pub densest_arcs: usize,
+    pub sparsest_arcs: usize,
+    pub uniq_input_arcs: usize,
+    pub uniq_output_arcs: usize,
+    pub most_ambiguous_input: (String, u32),
+    pub most_ambiguous_output: (String, u32),
+    pub found_alphabet: BTreeSet<String>,
+    pub symbol_pairs: BTreeMap<(String, String), u32>,
+    pub acceptor: bool,
+    pub input_deterministic: bool,
+    pub output_deterministic: bool,
+    pub cyclic: bool,
+    pub cyclic_at_initial_state: bool,
+}
+
 // Ported in batches; several protected helpers (check_alphabet,
 // swap_state_numbers, the initialize_* reservers, …) are only called by methods
 // in not-yet-ported batches (AT&T I/O, substitution). Allowed until complete.
@@ -800,6 +827,141 @@ impl HfstBasicTransducer {
             source_state += 1;
         }
         replication
+    }
+
+    /// Compute hfst-summarize's single-pass arc-traversal statistics. Walks every
+    /// state and transition once, accumulating counts, the seen alphabet, the
+    /// per-state input/output ambiguity (→ determinism + most-ambiguous symbols),
+    /// epsilon counts, the acceptor flag, and cyclicity. Transcribed verbatim from
+    /// the tool's loop; the symbol-pair map is always populated (the tool decides
+    /// whether to print it).
+    pub fn summarize(&self) -> SummaryStats {
+        let mut states: usize = 0;
+        let mut final_states: usize = 0;
+        let mut arcs: usize = 0;
+        let mut io_epsilons: usize = 0;
+        let mut input_epsilons: usize = 0;
+        let mut output_epsilons: usize = 0;
+        let mut densest_arcs: usize = 0;
+        let mut sparsest_arcs: usize = 1 << 31;
+        let mut uniq_input_arcs: usize = 0;
+        let mut uniq_output_arcs: usize = 0;
+        let mut most_ambiguous_input: (String, u32) = (String::new(), 0);
+        let mut most_ambiguous_output: (String, u32) = (String::new(), 0);
+        let mut found_alphabet: BTreeSet<String> = BTreeSet::new();
+        let mut symbol_pairs: BTreeMap<(String, String), u32> = BTreeMap::new();
+        let mut acceptor = true;
+        let mut input_deterministic = true;
+        let mut output_deterministic = true;
+        let mut cyclic = false;
+        let mut cyclic_at_initial_state = false;
+
+        let mut source_state: u32 = 0;
+        let is_begin_state = |s: u32| s == 0;
+        for transitions in self.states_and_transitions() {
+            let s = source_state;
+            states += 1;
+            if self.is_final_state(s) {
+                final_states += 1;
+            }
+            let mut arcs_here: usize = 0;
+            let mut input_ambiguity: BTreeMap<String, u32> = BTreeMap::new();
+            let mut output_ambiguity: BTreeMap<String, u32> = BTreeMap::new();
+
+            for tr_it in transitions {
+                arcs += 1;
+                arcs_here += 1;
+                found_alphabet.insert(tr_it.get_input_symbol());
+                found_alphabet.insert(tr_it.get_output_symbol());
+
+                *symbol_pairs
+                    .entry((tr_it.get_input_symbol(), tr_it.get_output_symbol()))
+                    .or_insert(0) += 1;
+
+                if tr_it.get_input_symbol() != tr_it.get_output_symbol() {
+                    acceptor = false;
+                }
+                if is_epsilon(&tr_it.get_input_symbol()) && is_epsilon(&tr_it.get_output_symbol()) {
+                    io_epsilons += 1;
+                    input_epsilons += 1;
+                    output_epsilons += 1;
+                    input_deterministic = false;
+                    output_deterministic = false;
+                } else if is_epsilon(&tr_it.get_input_symbol()) {
+                    input_epsilons += 1;
+                    input_deterministic = false;
+                } else if is_epsilon(&tr_it.get_output_symbol()) {
+                    output_epsilons += 1;
+                    output_deterministic = false;
+                }
+                input_ambiguity.entry(tr_it.get_input_symbol()).or_insert(0);
+                output_ambiguity
+                    .entry(tr_it.get_output_symbol())
+                    .or_insert(0);
+                let in_amb = input_ambiguity.get_mut(&tr_it.get_input_symbol()).unwrap();
+                *in_amb += 1;
+                if *in_amb > 1 {
+                    input_deterministic = false;
+                }
+                let out_amb = output_ambiguity
+                    .get_mut(&tr_it.get_output_symbol())
+                    .unwrap();
+                *out_amb += 1;
+                if *out_amb > 1 {
+                    output_deterministic = false;
+                }
+                if is_begin_state(source_state) && (tr_it.get_target_state() == 0) {
+                    cyclic = true;
+                    cyclic_at_initial_state = true;
+                }
+                if source_state == tr_it.get_target_state() {
+                    cyclic = true;
+                }
+            }
+            if arcs_here > densest_arcs {
+                densest_arcs = arcs_here;
+            }
+            if arcs_here < sparsest_arcs {
+                sparsest_arcs = arcs_here;
+            }
+            for (key, value) in input_ambiguity.iter() {
+                if *value > most_ambiguous_input.1 {
+                    most_ambiguous_input.0 = key.clone();
+                    most_ambiguous_input.1 = *value;
+                }
+                uniq_input_arcs += 1;
+            }
+            for (key, value) in output_ambiguity.iter() {
+                if *value > most_ambiguous_output.1 {
+                    most_ambiguous_output.0 = key.clone();
+                    most_ambiguous_output.1 = *value;
+                }
+                uniq_output_arcs += 1;
+            }
+            source_state += 1;
+        }
+
+        SummaryStats {
+            states,
+            final_states,
+            arcs,
+            io_epsilons,
+            input_epsilons,
+            output_epsilons,
+            densest_arcs,
+            sparsest_arcs,
+            uniq_input_arcs,
+            uniq_output_arcs,
+            most_ambiguous_input,
+            most_ambiguous_output,
+            found_alphabet,
+            symbol_pairs,
+            acceptor,
+            input_deterministic,
+            output_deterministic,
+            cyclic,
+            cyclic_at_initial_state,
+        }
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.prune-alphabet-fn]

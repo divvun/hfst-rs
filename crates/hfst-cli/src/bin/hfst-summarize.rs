@@ -2,11 +2,11 @@
 //! information / properties command-line tool. Drives the hfst-cli foundation
 //! (globals, getopt, commandline, program-options, inc fragments).
 
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
+use hfst::hfst_basic_transducer::{HfstBasicTransducer, SummaryStats};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_exception_defs::FunctionNotImplementedException;
 use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_symbol_defs::{StringSet, is_epsilon};
+use hfst::hfst_symbol_defs::StringSet;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -24,7 +24,6 @@ use hfst_cli::inc::{
     handle_unary_case,
 };
 use libc::{c_char, c_int};
-use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 
 // add tools-specific variables here
@@ -195,21 +194,6 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             }
             let trans = HfstTransducer::new_from_stream(instream);
             let mutt = HfstBasicTransducer::new_from_transducer(&trans);
-            let mut states: usize = 0;
-            let mut final_states: usize = 0;
-            //let paths: usize = 0;
-            let mut arcs: usize = 0;
-            //let sccs: usize = 0;
-            let mut io_epsilons: usize = 0;
-            let mut input_epsilons: usize = 0;
-            let mut output_epsilons: usize = 0;
-            // others
-            let mut densest_arcs: usize = 0;
-            let mut sparsest_arcs: usize = 1 << 31;
-            let mut uniq_input_arcs: usize = 0;
-            let mut uniq_output_arcs: usize = 0;
-            let mut most_ambiguous_input: (String, u32) = (String::new(), 0);
-            let mut most_ambiguous_output: (String, u32) = (String::new(), 0);
             let initial_state: u32 = 0; // mutt.get_initial_state();
             let mut transducer_alphabet: StringSet = StringSet::new();
             #[allow(unused_assignments)]
@@ -229,19 +213,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                     }
                 }
             }
-            let mut found_alphabet: StringSet = StringSet::new();
             //let expanded = true;
             #[allow(unused_assignments)]
             let mut is_mutable = true;
-            let mut acceptor = true;
-            let mut input_deterministic = true;
-            let mut output_deterministic = true;
             //let input_label_sorted = false;
             //let output_label_sorted = false;
             #[allow(unused_assignments)]
             let mut weighted = true;
-            let mut cyclic = false;
-            let mut cyclic_at_initial_state = false;
             //let topologically_sorted = false;
             //let accessible = true;
             //let coaccessible = true;
@@ -278,97 +256,27 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                 }
             }
 
-            let mut symbol_pairs: BTreeMap<(String, String), u32> = BTreeMap::new();
-            // iterate states in random order
-            let mut source_state: u32 = 0;
-            let is_begin_state = |s: u32| s == 0;
-            for transitions in mutt.states_and_transitions() {
-                let s = source_state;
-                states += 1;
-                if mutt.is_final_state(s) {
-                    final_states += 1;
-                }
-                let mut arcs_here: usize = 0;
-                let mut input_ambiguity: BTreeMap<String, u32> = BTreeMap::new();
-                let mut output_ambiguity: BTreeMap<String, u32> = BTreeMap::new();
-
-                for tr_it in transitions {
-                    arcs += 1;
-                    arcs_here += 1;
-                    found_alphabet.insert(tr_it.get_input_symbol());
-                    found_alphabet.insert(tr_it.get_output_symbol());
-
-                    // ADDED
-                    if PRINT_SYMBOL_PAIR_STATISTICS {
-                        *symbol_pairs
-                            .entry((tr_it.get_input_symbol(), tr_it.get_output_symbol()))
-                            .or_insert(0) += 1;
-                    }
-
-                    if tr_it.get_input_symbol() != tr_it.get_output_symbol() {
-                        acceptor = false;
-                    }
-                    if is_epsilon(&tr_it.get_input_symbol())
-                        && is_epsilon(&tr_it.get_output_symbol())
-                    {
-                        io_epsilons += 1;
-                        input_epsilons += 1;
-                        output_epsilons += 1;
-                        input_deterministic = false;
-                        output_deterministic = false;
-                    } else if is_epsilon(&tr_it.get_input_symbol()) {
-                        input_epsilons += 1;
-                        input_deterministic = false;
-                    } else if is_epsilon(&tr_it.get_output_symbol()) {
-                        output_epsilons += 1;
-                        output_deterministic = false;
-                    }
-                    input_ambiguity.entry(tr_it.get_input_symbol()).or_insert(0);
-                    output_ambiguity
-                        .entry(tr_it.get_output_symbol())
-                        .or_insert(0);
-                    let in_amb = input_ambiguity.get_mut(&tr_it.get_input_symbol()).unwrap();
-                    *in_amb += 1;
-                    if *in_amb > 1 {
-                        input_deterministic = false;
-                    }
-                    let out_amb = output_ambiguity
-                        .get_mut(&tr_it.get_output_symbol())
-                        .unwrap();
-                    *out_amb += 1;
-                    if *out_amb > 1 {
-                        output_deterministic = false;
-                    }
-                    if is_begin_state(source_state) && (tr_it.get_target_state() == 0) {
-                        cyclic = true;
-                        cyclic_at_initial_state = true;
-                    }
-                    if source_state == tr_it.get_target_state() {
-                        cyclic = true;
-                    }
-                }
-                if arcs_here > densest_arcs {
-                    densest_arcs = arcs_here;
-                }
-                if arcs_here < sparsest_arcs {
-                    sparsest_arcs = arcs_here;
-                }
-                for (key, value) in input_ambiguity.iter() {
-                    if *value > most_ambiguous_input.1 {
-                        most_ambiguous_input.0 = key.clone();
-                        most_ambiguous_input.1 = *value;
-                    }
-                    uniq_input_arcs += 1;
-                }
-                for (key, value) in output_ambiguity.iter() {
-                    if *value > most_ambiguous_output.1 {
-                        most_ambiguous_output.0 = key.clone();
-                        most_ambiguous_output.1 = *value;
-                    }
-                    uniq_output_arcs += 1;
-                }
-                source_state += 1;
-            }
+            let SummaryStats {
+                states,
+                final_states,
+                arcs,
+                io_epsilons,
+                input_epsilons,
+                output_epsilons,
+                densest_arcs,
+                sparsest_arcs,
+                uniq_input_arcs,
+                uniq_output_arcs,
+                most_ambiguous_input,
+                most_ambiguous_output,
+                found_alphabet,
+                symbol_pairs,
+                acceptor,
+                input_deterministic,
+                output_deterministic,
+                cyclic,
+                cyclic_at_initial_state,
+            } = mutt.summarize();
             // traverse
 
             // count physical size

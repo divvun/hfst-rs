@@ -21,4 +21,5 @@ assertions (
     {id compose-intersect-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:09:41.317897Z}
     {id pair-recognizer, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:21:40.342852Z}
     {id reweight-transform, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:33:10.179488Z}
+    {id summarize-stats, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:46:23.423823Z}
 )
