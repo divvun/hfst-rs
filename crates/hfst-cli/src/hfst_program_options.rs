@@ -6,8 +6,7 @@
 //! preserved bug-for-bug.
 
 use crate::hfst_commandline::GETOPT_COLOUR;
-use crate::hfst_getopt::{NO_ARGUMENT, OPTIONAL_ARGUMENT, Option, REQUIRED_ARGUMENT};
-use core::ffi::c_int;
+use crate::hfst_getopt::{GetOpt, NO_ARGUMENT, OPTIONAL_ARGUMENT, REQUIRED_ARGUMENT};
 use std::io::Write;
 
 // All programs
@@ -85,85 +84,71 @@ pub fn print_common_binary_program_parameter_instructions(file: &mut dyn Write) 
 }
 
 // ----------------------------------------------------------------------------
-// getopt macro payloads. In C these are '#define's spliced into each tool's
-// 'option long_options[]' initialiser; here the SHORT strings are consts and
-// the LONG lists are helper fns returning the same Option entries the bin then
-// concatenates (with its tool-specific options and a terminating {0,0,0,0})
-// into its own 'getopt_long' table.
+// getopt long-option tables. In C these were '#define'd 'option long_options[]'
+// fragments each tool spliced in; here they are helper fns returning the GetOpt
+// entries the bin concatenates with its tool-specific options into its own
+// 'getopt_long' table. (The C SHORT optstrings are gone — the Rust getopt
+// derives short options from the table's single-character names.)
 // ----------------------------------------------------------------------------
 
-pub const HFST_GETOPT_COMMON_SHORT: &str = ":hVvqsd";
-pub const HFST_GETOPT_UNARY_SHORT: &str = "i:o:";
-pub const HFST_GETOPT_BINARY_SHORT: &str = "1:2:o:C";
-
 // HFST_GETOPT_COMMON_LONG
-pub fn hfst_getopt_common_long() -> [Option; 8] {
+pub fn hfst_getopt_common_long() -> [GetOpt; 8] {
     [
-        Option {
-            name: c"help".as_ptr(),
+        GetOpt {
+            name: "help",
             has_arg: NO_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b'h' as c_int,
+            val: b'h' as i32,
         },
-        Option {
-            name: c"version".as_ptr(),
+        GetOpt {
+            name: "version",
             has_arg: NO_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b'V' as c_int,
+            val: b'V' as i32,
         },
-        Option {
-            name: c"verbose".as_ptr(),
+        GetOpt {
+            name: "verbose",
             has_arg: NO_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b'v' as c_int,
+            val: b'v' as i32,
         },
-        Option {
-            name: c"quiet".as_ptr(),
+        GetOpt {
+            name: "quiet",
             has_arg: NO_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b'q' as c_int,
+            val: b'q' as i32,
         },
-        Option {
-            name: c"silent".as_ptr(),
+        GetOpt {
+            name: "silent",
             has_arg: NO_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b's' as c_int,
+            val: b's' as i32,
         },
-        Option {
-            name: c"debug".as_ptr(),
+        GetOpt {
+            name: "debug",
             has_arg: NO_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b'd' as c_int,
+            val: b'd' as i32,
         },
-        Option {
-            name: c"color".as_ptr(),
+        GetOpt {
+            name: "color",
             has_arg: OPTIONAL_ARGUMENT,
-            flag: std::ptr::null_mut(),
             val: GETOPT_COLOUR,
         },
-        Option {
-            name: c"colour".as_ptr(),
+        GetOpt {
+            name: "colour",
             has_arg: OPTIONAL_ARGUMENT,
-            flag: std::ptr::null_mut(),
             val: GETOPT_COLOUR,
         },
     ]
 }
 
 // HFST_GETOPT_UNARY_LONG
-pub fn hfst_getopt_unary_long() -> [Option; 2] {
+pub fn hfst_getopt_unary_long() -> [GetOpt; 2] {
     [
-        Option {
-            name: c"input".as_ptr(),
+        GetOpt {
+            name: "input",
             has_arg: REQUIRED_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b'i' as c_int,
+            val: b'i' as i32,
         },
-        Option {
-            name: c"output".as_ptr(),
+        GetOpt {
+            name: "output",
             has_arg: REQUIRED_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b'o' as c_int,
+            val: b'o' as i32,
         },
     ]
 }
@@ -171,31 +156,27 @@ pub fn hfst_getopt_unary_long() -> [Option; 2] {
 // HFST_GETOPT_BINARY_LONG
 //
 // 'input2' is mapped to the '1' option value, bug-for-bug with the C macro.
-pub fn hfst_getopt_binary_long() -> [Option; 4] {
+pub fn hfst_getopt_binary_long() -> [GetOpt; 4] {
     [
-        Option {
-            name: c"input1".as_ptr(),
+        GetOpt {
+            name: "input1",
             has_arg: REQUIRED_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b'1' as c_int,
+            val: b'1' as i32,
         },
-        Option {
-            name: c"input2".as_ptr(),
+        GetOpt {
+            name: "input2",
             has_arg: REQUIRED_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b'1' as c_int,
+            val: b'1' as i32,
         },
-        Option {
-            name: c"output".as_ptr(),
+        GetOpt {
+            name: "output",
             has_arg: REQUIRED_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b'o' as c_int,
+            val: b'o' as i32,
         },
-        Option {
-            name: c"do-not-convert".as_ptr(),
+        GetOpt {
+            name: "do-not-convert",
             has_arg: NO_ARGUMENT,
-            flag: std::ptr::null_mut(),
-            val: b'C' as c_int,
+            val: b'C' as i32,
         },
     ]
 }

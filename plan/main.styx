@@ -1091,4 +1091,106 @@ children (
             }
         )
     }
+
+    {
+        id idiom3
+        title "Stage 3 — de-C-ify the string/argv substrate: char* → &str/String, remove all std::ffi (CStr/CString/c_char/c_void/c_int), delete the vestigial hfst_ string/mem wrappers and fput* helpers. No CString/CStr/char* anywhere in the built crates."
+        children (
+            {
+                id idiom3.getopt
+                title "Keystone foundation: Rust-native getopt over Vec&lt;String&gt; (getopt_long signature, OPTARG → Option&lt;String&gt;, OPTIND → usize, Option.name → &amp;str); globals *FILENAME/PROGRAM_NAME → String/Option&lt;String&gt;; commandline: delete hfst_strdup/hfst_free/hfst_strndup/hfst_setlocale/hfst_readline + fput*/fput_cstr/fput_strerror (use write!); program_options Option tables; inc check_*_params over &amp;[String]"
+                log (
+                    {
+                        at 2026-06-29T19:08:20.128778Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T22:41:34.521867Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id idiom3.tools
+                title "All 58 tool bins: drop per-bin cstr()/fput() helpers + c_char/c_int/CString/CStr imports; real_main() collects Vec&lt;String&gt; (no Vec&lt;CString&gt;/argv); parse_options over the Rust getopt; OPTARG → String; *FILENAME globals as String"
+                deps (idiom3.getopt)
+                log (
+                    {
+                        at 2026-06-29T22:25:42.318759Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Bin conversion status: 5/6 batches landed clean (A,C,D,E,F = 48 bins; each built per-bin). Batch B (dump-alphabets, edit-metadata, eliminate-flags, expand-equivalences, flookup, format, fst2fst, fst2strings, fst2txt, grep) still running. Foundation (getopt→Vec<String>, globals→String accessors, commandline no fput*/vestigial, inc, program_options) locked + lib-compiling; hfst-invert is the reference.\n\nFINAL-INTEGRATION CHECKLIST (mine, after Batch B + the lib agent finish):\n1. lib agent (idiom3.lib-strings) converts pmatch data-buffer/get_delimited/parse_range/c_free + att-ptr writers + prolog_file_to_xfsm_transducer.\n2. I convert get_Ins_transition(*const c_char)->&str (+ ins_transition wrapper) and fix its one bin caller hfst-tokenize.rs:151.\n3. Fix hfst-txt2fst.rs:253 prolog_file_to_xfsm_transducer call to pass &str (once lib agent converts that fn).\n4. grep -rnE 'c_char|CStr|CString|core::ffi|std::ffi|std::os::raw' across crates/hfst/src + crates/hfst-cli/src => expect ZERO (the gate).\n5. cargo build --workspace clean; cargo fmt; cargo nextest run -p hfst => 151 passed / 14 skipped.\n6. nplan_complete idiom3.getopt/tools/lib-strings/gate; nplan_commit type:done ids:[idiom3.*] elements:[arch:hfst:backend-dispatch] (hfst_transducer.rs touched) + the usual file-size/complexity/function-density/test-footprint/duplication bypasses."
+                    }
+
+                    {
+                        at 2026-06-29T22:41:44.204873Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T22:41:52.602462Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id idiom3.lib-strings
+                title "hfst library char* internals → &amp;str/String: pmatch_compiler (data/startptr/getinput/parse_range/get_delimited/string_copy + the c_char globals), hfst_basic_transducer (sprintf_at, write_in_att_format_ptr), hfst_transducer (write_in_att_format_ptr, xfsm filename params), string_manipulation (string_copy); remove remaining CStr/CString/c_char"
+                log (
+                    {
+                        at 2026-06-29T22:42:05.504252Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T22:42:35.552818Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Done. hfst lib char* removed: deleted dead vestigial (getinput, get_RC/LC_transition, read_args, string_copy, write_in_att_format_ptr chain + sprintf_at, write_xfsm_transducer_in_att_format); converted path_from_filename/get_delimited(_lr)/parse_range/get_Ins_transition/ins_transition to &str/String; pmatch DATA buffer Cell<*mut c_char> -> RefCell<String> (startptr/c_free/c_strtol vestigial, deleted); compile() CString round-trips dropped; prolog_file_to_xfsm_transducer/write_xfsm_transducer_in_prolog_format -> &str (throwing XFSM stubs). The dead hfst-cli hfst_file_to_mem module (0 callers post-conversion) deleted. grep c_char/CStr/CString/core::ffi/std::ffi/std::os::raw across crates/hfst/src+crates/hfst-cli/src = ZERO. 151 hfst tests pass. Cosmetic follow-up: ~30 benign `unnecessary unsafe block` warnings remain (unsafe fn bodies that became fully-safe after cstr removal but keep the canonical wrapper) — house-style, matches the hfst-invert reference."
+                    }
+
+                    {
+                        at 2026-06-29T22:42:46.358388Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id idiom3.gate
+                title "Closing gate: zero std::ffi / CStr / CString / c_char / c_void / c_int in crates/hfst/src + crates/hfst-cli/src; no hfst_ string/mem vestigial wrappers; no fput*; workspace builds + 151 hfst tests green"
+                deps (idiom3.getopt idiom3.tools idiom3.lib-strings)
+                log (
+                    {
+                        at 2026-06-29T22:42:52.194812Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T22:43:00.388411Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+        )
+    }
 )

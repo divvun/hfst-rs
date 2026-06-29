@@ -32,4 +32,8 @@ assertions (
     {id idiom2.cstr, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:57:46.174762Z}
     {id idiom2.cli, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:58:01.785472Z}
     {id idiom2.drop-libc, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:58:23.868042Z}
+    {id idiom3.getopt, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:41:34.521867Z}
+    {id idiom3.tools, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:41:52.602462Z}
+    {id idiom3.lib-strings, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:42:46.358388Z}
+    {id idiom3.gate, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:43:00.388411Z}
 )

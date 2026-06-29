@@ -6,7 +6,6 @@
 //! This is a unary tool (it #includes inc/globals-common.h and
 //! inc/globals-unary.h and reads a single input stream).
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -15,36 +14,20 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_error, hfst_error_at_line,
-    hfst_set_program_name, hfst_strdup, hfst_strtoweight, hfst_warning,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
+    hfst_set_program_name, hfst_strtoweight, hfst_warning, is_input_stream_in_ol_format,
+    print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, hfst_getopt_common_long,
-    hfst_getopt_unary_long, print_common_program_options, print_common_unary_program_options,
-    print_common_unary_program_parameter_instructions,
+    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
+    print_common_unary_program_options, print_common_unary_program_parameter_instructions,
 };
 use hfst_cli::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
 use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use std::ffi::{CStr, CString};
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
-
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
+use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 
 // add tools-specific variables here
 // [spec:hfst:def:hfst-reweight.id-fn]
@@ -54,40 +37,36 @@ fn id(w: f32) -> f32 {
 }
 static mut ADDITION: f32 = 0.0;
 static mut MULTIPLIER: f32 = 1.0;
-static mut FUNCNAME: *mut c_char = std::ptr::null_mut();
+static mut FUNCNAME: Option<String> = None;
 // [spec:hfst:def:hfst-reweight.func-fn]
 // [spec:hfst:sem:hfst-reweight.func-fn]
 static mut FUNC: fn(f32) -> f32 = id;
 static mut UPPER_BOUND: f32 = f32::MAX;
 static mut LOWER_BOUND: f32 = 0.0;
-static mut INPUT_SYMBOL: *mut c_char = std::ptr::null_mut();
-static mut OUTPUT_SYMBOL: *mut c_char = std::ptr::null_mut();
-static mut SYMBOL: *mut c_char = std::ptr::null_mut();
+static mut INPUT_SYMBOL: Option<String> = None;
+static mut OUTPUT_SYMBOL: Option<String> = None;
+static mut SYMBOL: Option<String> = None;
 static mut ENDS_ONLY: bool = false;
 static mut ARCS_ONLY: bool = false;
-static mut TSV_FILE_NAME: *mut c_char = std::ptr::null_mut();
+static mut TSV_FILE_NAME: Option<String> = None;
 static mut TSV_FILE: Option<std::fs::File> = None;
 
 // [spec:hfst:def:hfst-reweight.print-usage-fn]
 // [spec:hfst:sem:hfst-reweight.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        let mut msg = globals::message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        // Usage line
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE]\nReweight transducer weights simply\n\n",
-                program_name
-            ),
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "Reweighting options:\n\
+fn print_usage() {
+    let mut msg = globals::message_writer();
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    // Usage line
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE]\nReweight transducer weights simply\n\n",
+        globals::program_name()
+    );
+    print_common_program_options(&mut *msg);
+    print_common_unary_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "Reweighting options:\n\
   -a, --addition=AVAL        add AVAL to matching weights\n\
   -b, --multiplier=BVAL      multiply matching weights by BVAL\n\
   -F, --function=FNAME       operate matching weights by FNAME\n\
@@ -99,13 +78,13 @@ unsafe fn print_usage() {
   -e, --end-states-only      match end states only, no arcs\n\
   -A, --arcs-only            match arcs only, no end states\n\
   -T, --tsv-file=TFILE       read reweighting rules from TFILE\n\
-\n",
-        );
-        fput(&mut *msg, "\n");
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        fput(
-            &mut *msg,
-            "If AVAL, BVAL or FNAME are omitted, they default to neutral \
+\n"
+    );
+    let _ = write!(msg, "\n");
+    print_common_unary_program_parameter_instructions(&mut *msg);
+    let _ = write!(
+        msg,
+        "If AVAL, BVAL or FNAME are omitted, they default to neutral \
 elements of addition, multiplication or identity function.\n\
 If LVAL or UVAL are omitted, they default to minimum and maximum \
 values of the weight structure.\n\
@@ -127,85 +106,42 @@ AVAL or BVAL. AVAL values must be preceded by a + character, \
 BVAL should be given as plain digits. \
 Comment lines starting with # and empty lines are ignored.\n\n\
 Weights are by default modified for all arcs and end states,\n\
-unless option --end-states-only or --arcs-only is used.\n",
-        );
-        fput(&mut *msg, "\n");
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-    }
+unless option --end-states-only or --arcs-only is used.\n"
+    );
+    let _ = write!(msg, "\n");
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
 }
 
 // [spec:hfst:def:hfst-reweight.parse-options-fn]
 // [spec:hfst:sem:hfst-reweight.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             long_options.extend(hfst_getopt_unary_long());
             // add tool-specific options here
-            let opt_names = [
-                "addition",
-                "multiplier",
-                "function",
-                "lower-bound",
-                "upper-bound",
-                "input-symbol",
-                "output-symbol",
-                "symbol",
-                "end-states-only",
-                "arcs-only",
-                "tsv",
+            let tool_opts: [(&'static str, i32, i32); 11] = [
+                ("addition", getopt::REQUIRED_ARGUMENT, 'a' as i32),
+                ("multiplier", getopt::REQUIRED_ARGUMENT, 'b' as i32),
+                ("function", getopt::REQUIRED_ARGUMENT, 'F' as i32),
+                ("lower-bound", getopt::REQUIRED_ARGUMENT, 'l' as i32),
+                ("upper-bound", getopt::REQUIRED_ARGUMENT, 'u' as i32),
+                ("input-symbol", getopt::REQUIRED_ARGUMENT, 'I' as i32),
+                ("output-symbol", getopt::REQUIRED_ARGUMENT, 'O' as i32),
+                ("symbol", getopt::REQUIRED_ARGUMENT, 'S' as i32),
+                ("end-states-only", getopt::NO_ARGUMENT, 'e' as i32),
+                ("arcs-only", getopt::NO_ARGUMENT, 'A' as i32),
+                ("tsv", getopt::REQUIRED_ARGUMENT, 'T' as i32),
             ];
-            let opt_specs: [(i32, c_int); 11] = [
-                (1, 'a' as c_int),
-                (1, 'b' as c_int),
-                (1, 'F' as c_int),
-                (1, 'l' as c_int),
-                (1, 'u' as c_int),
-                (1, 'I' as c_int),
-                (1, 'O' as c_int),
-                (1, 'S' as c_int),
-                (0, 'e' as c_int),
-                (0, 'A' as c_int),
-                (1, 'T' as c_int),
-            ];
-            // keep the CStrings alive for the duration of getopt_long
-            let opt_cstrings: Vec<CString> = opt_names
-                .iter()
-                .map(|n| CString::new(*n).unwrap())
-                .collect();
-            for (i, cs) in opt_cstrings.iter().enumerate() {
-                long_options.push(getopt::Option {
-                    name: cs.as_ptr(),
-                    has_arg: opt_specs[i].0,
-                    flag: std::ptr::null_mut(),
-                    val: opt_specs[i].1,
-                });
+            for (name, has_arg, val) in tool_opts {
+                long_options.push(getopt::GetOpt { name, has_arg, val });
             }
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!(
-                "{}{}a:b:F:l:u:I:O:S:eT:A",
-                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            // add tool-specific options here
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
@@ -213,7 +149,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             // The C switch chains the #include'd case groups in order: common
             // cases, then unary cases, then the tool's own, then the terminal
             // error arm.
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
@@ -224,19 +160,18 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 CaseResult::NotHandled => {}
             }
             // tool-specific cases
-            let optarg = getopt::OPTARG;
             match c as u8 as char {
                 'a' => {
-                    ADDITION = hfst_strtoweight(&cstr(optarg));
+                    ADDITION = hfst_strtoweight(&getopt::optarg());
                     continue;
                 }
                 'b' => {
-                    MULTIPLIER = hfst_strtoweight(&cstr(optarg));
+                    MULTIPLIER = hfst_strtoweight(&getopt::optarg());
                     continue;
                 }
                 'F' => {
-                    FUNCNAME = hfst_strdup(optarg);
-                    let name = cstr(optarg);
+                    let name = getopt::optarg();
+                    FUNCNAME = Some(name.clone());
                     match name.as_str() {
                         "cos" => FUNC = f32::cos,
                         "sin" => FUNC = f32::sin,
@@ -261,23 +196,23 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     continue;
                 }
                 'l' => {
-                    LOWER_BOUND = hfst_strtoweight(&cstr(optarg));
+                    LOWER_BOUND = hfst_strtoweight(&getopt::optarg());
                     continue;
                 }
                 'u' => {
-                    UPPER_BOUND = hfst_strtoweight(&cstr(optarg));
+                    UPPER_BOUND = hfst_strtoweight(&getopt::optarg());
                     continue;
                 }
                 'I' => {
-                    INPUT_SYMBOL = hfst_strdup(optarg);
+                    INPUT_SYMBOL = Some(getopt::optarg());
                     continue;
                 }
                 'O' => {
-                    OUTPUT_SYMBOL = hfst_strdup(optarg);
+                    OUTPUT_SYMBOL = Some(getopt::optarg());
                     continue;
                 }
                 'S' => {
-                    SYMBOL = hfst_strdup(optarg);
+                    SYMBOL = Some(getopt::optarg());
                     continue;
                 }
                 'e' => {
@@ -289,7 +224,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     continue;
                 }
                 'T' => {
-                    TSV_FILE_NAME = hfst_strdup(optarg);
+                    TSV_FILE_NAME = Some(getopt::optarg());
                     continue;
                 }
                 _ => {}
@@ -308,10 +243,9 @@ at the same time",
         }
 
         check_common_params();
-        check_unary_params(argc, argv);
-        if FUNCNAME.is_null() {
-            let cs = CString::new("id").unwrap();
-            FUNCNAME = hfst_strdup(cs.as_ptr());
+        check_unary_params(args);
+        if FUNCNAME.is_none() {
+            FUNCNAME = Some("id".to_string());
         }
         if UPPER_BOUND < LOWER_BOUND {
             hfst_warning(
@@ -324,8 +258,7 @@ never apply",
                 ),
             );
         }
-        if !TSV_FILE_NAME.is_null() {
-            let name = cstr(TSV_FILE_NAME);
+        if let Some(name) = TSV_FILE_NAME.clone() {
             match std::fs::File::open(&name) {
                 Ok(f) => TSV_FILE = Some(f),
                 Err(_) => {
@@ -356,27 +289,24 @@ unsafe fn reweight(w: f32, i: Option<&str>, o: Option<&str>) -> f32 {
             if ENDS_ONLY {
                 return w;
             }
-            if !SYMBOL.is_null() {
-                let symbol = cstr(SYMBOL);
+            if let Some(symbol) = SYMBOL.clone() {
                 if i != symbol && o != symbol {
                     // symbol doesn't match, don't apply
                     return w;
                 }
             }
-            if !INPUT_SYMBOL.is_null() && !OUTPUT_SYMBOL.is_null() {
-                let isym = cstr(INPUT_SYMBOL);
-                let osym = cstr(OUTPUT_SYMBOL);
+            if let (Some(isym), Some(osym)) = (INPUT_SYMBOL.clone(), OUTPUT_SYMBOL.clone()) {
                 if i != isym && o != osym {
                     // input doesn't match, don't apply
                     return w;
                 }
-            } else if !INPUT_SYMBOL.is_null() {
-                if i != cstr(INPUT_SYMBOL) {
+            } else if let Some(isym) = INPUT_SYMBOL.clone() {
+                if i != isym {
                     // input doesn't match, don't apply
                     return w;
                 }
-            } else if !OUTPUT_SYMBOL.is_null() {
-                if o != cstr(OUTPUT_SYMBOL) {
+            } else if let Some(osym) = OUTPUT_SYMBOL.clone() {
+                if o != osym {
                     // output doesn't match, don't apply
                     return w;
                 }
@@ -396,10 +326,7 @@ unsafe fn do_reweight(trans: &mut HfstTransducer) {
 
 // [spec:hfst:def:hfst-reweight.process-stream-fn]
 // [spec:hfst:sem:hfst-reweight.process-stream-fn]
-unsafe fn process_stream(
-    instream: &mut HfstInputStream,
-    outstream: &mut HfstOutputStream,
-) -> c_int {
+unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOutputStream) -> i32 {
     unsafe {
         let mut transducer_n: usize = 0;
         while instream.is_good() {
@@ -413,7 +340,7 @@ unsafe fn process_stream(
 weights will be discarded",
                 );
             }
-            let inputname = hfst_get_name(&trans, &cstr(globals::INPUTFILENAME));
+            let inputname = hfst_get_name(&trans, &globals::input_filename());
             if transducer_n == 1 {
                 verbose_printf(&format!("Reweighting {}...\n", inputname));
             } else {
@@ -428,12 +355,14 @@ weights will be discarded",
                 // C: rewind(tsv_file) — seek the std file back to the start.
                 let tsv_file = TSV_FILE.as_mut().unwrap();
                 let _ = tsv_file.seek(SeekFrom::Start(0));
-                hfst_cli::hfst_commandline::hfst_free(SYMBOL as *mut c_char);
-                SYMBOL = std::ptr::null_mut();
+                SYMBOL = None;
                 ADDITION = 0.0;
                 MULTIPLIER = 1.0;
                 let mut linen: usize = 0;
-                verbose_printf(&format!("Reading reweights from {}\n", cstr(TSV_FILE_NAME)));
+                verbose_printf(&format!(
+                    "Reading reweights from {}\n",
+                    TSV_FILE_NAME.clone().unwrap_or_default()
+                ));
                 let mut reader = BufReader::new(tsv_file);
                 let mut line = String::new();
                 loop {
@@ -456,7 +385,7 @@ weights will be discarded",
                             hfst_error_at_line(
                                 1,
                                 0,
-                                &cstr(TSV_FILE_NAME),
+                                &TSV_FILE_NAME.clone().unwrap_or_default(),
                                 linen as u32,
                                 "at least one tab required per line",
                             );
@@ -469,9 +398,9 @@ weights will be discarded",
                     while endstr < line_str.len() && line_str[endstr] != b'\n' {
                         endstr += 1;
                     }
-                    // SYMBOL = strndup(line, tab); kept as a C string for cstr()/free.
+                    // SYMBOL = strndup(line, tab); kept as the substring before the tab.
                     let sym = String::from_utf8_lossy(&line_str[..tab]).into_owned();
-                    SYMBOL = hfst_strdup(CString::new(sym).unwrap_or_default().as_ptr());
+                    SYMBOL = Some(sym);
                     let weightspec =
                         String::from_utf8_lossy(&line_str[tab + 1..endstr]).into_owned();
                     if weightspec.as_bytes().first() == Some(&b'+') {
@@ -484,9 +413,9 @@ weights will be discarded",
                         LOWER_BOUND,
                         UPPER_BOUND,
                         MULTIPLIER,
-                        cstr(FUNCNAME),
+                        FUNCNAME.clone().unwrap_or_default(),
                         ADDITION,
-                        cstr(SYMBOL)
+                        SYMBOL.clone().unwrap_or_default()
                     ));
                     do_reweight(&mut trans);
                 } // getline
@@ -509,52 +438,40 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "HfstReweight");
-        let retval = parse_options(argc, argv);
+        let retval = parse_options(&mut args);
         if retval != EXIT_CONTINUE {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
-        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
+        let input_opened = globals::input_filename() != "<stdin>";
+        let output_opened = globals::output_filename() != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
-            cstr(globals::INPUTFILENAME),
-            cstr(globals::OUTFILENAME)
+            globals::input_filename(),
+            globals::output_filename()
         ));
         verbose_printf(&format!(
             "Modifying weights {} < w < {} as {} * {}(w) + {}\n",
             LOWER_BOUND,
             UPPER_BOUND,
             MULTIPLIER,
-            cstr(FUNCNAME),
+            FUNCNAME.clone().unwrap_or_default(),
             ADDITION
         ));
-        if !SYMBOL.is_null() {
-            verbose_printf(&format!("only if arc has symbol {}\n", cstr(SYMBOL)));
+        if let Some(symbol) = SYMBOL.clone() {
+            verbose_printf(&format!("only if arc has symbol {}\n", symbol));
         }
-        if !INPUT_SYMBOL.is_null() {
-            verbose_printf(&format!("only if input symbol is {}\n", cstr(INPUT_SYMBOL)));
+        if let Some(isym) = INPUT_SYMBOL.clone() {
+            verbose_printf(&format!("only if input symbol is {}\n", isym));
         }
-        if !OUTPUT_SYMBOL.is_null() {
-            verbose_printf(&format!(
-                "only if output symbol is {}\n",
-                cstr(OUTPUT_SYMBOL)
-            ));
+        if let Some(osym) = OUTPUT_SYMBOL.clone() {
+            verbose_printf(&format!("only if output symbol is {}\n", osym));
         }
         if ENDS_ONLY {
             verbose_printf("only on final weights, no arcs\n");
@@ -568,14 +485,14 @@ unsafe fn real_main() -> c_int {
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
         let mut instream = if input_opened {
-            HfstInputStream::new_filename(&cstr(globals::INPUTFILENAME))
+            HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
         };
 
         let type_ = instream.get_type();
         let mut outstream = if output_opened {
-            HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), type_, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
         };

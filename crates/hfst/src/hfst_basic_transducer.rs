@@ -59,18 +59,6 @@ fn atof(s: &str) -> f64 {
     s.trim_start().parse::<f64>().unwrap_or(0.0)
 }
 
-// Raw stand-in for 'sprintf(ptr + offset, ...)' into a caller-provided buffer:
-// copies the pre-formatted bytes and a trailing NUL (as sprintf does), returning
-// the byte count excluding the NUL (sprintf's return value).
-unsafe fn sprintf_at(ptr: *mut core::ffi::c_char, offset: usize, s: &str) -> usize {
-    unsafe {
-        let dst = (ptr as *mut u8).add(offset);
-        std::ptr::copy_nonoverlapping(s.as_ptr(), dst, s.len());
-        *dst.add(s.len()) = 0;
-    }
-    s.len()
-}
-
 // 'fgets(buf, 255, file)': read up to 254 bytes or through a newline; None at
 // EOF (when no bytes at all could be read). A trailing newline (if any) is kept,
 // matching fgets. Faithful BufRead stand-in for the original C 'c_fgets'.
@@ -2173,71 +2161,6 @@ impl HfstBasicTransducer {
                 w_fputs(file, "\n");
             }
             source_state += 1;
-        }
-    }
-
-    // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-att-format-fn]
-    // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-att-format-fn]
-    //
-    // Writes into a caller-provided C buffer via 'sprintf' at a running offset.
-    // [spec:hfst:def:hfst-transition-graph.write-in-att-format-fn]
-    // [spec:hfst:sem:hfst-transition-graph.write-in-att-format-fn]
-    pub unsafe fn write_in_att_format_ptr(&self, ptr: *mut core::ffi::c_char, write_weights: bool) {
-        unsafe {
-            let mut source_state: u32 = 0;
-            let mut cwt: usize = 0; // characters written in total
-            #[allow(unused_assignments)]
-            let mut cw: usize = 0; // characters written in latest call to sprintf
-            for it in self.state_vector.iter() {
-                for tr_it in it.iter() {
-                    let data = tr_it.get_transition_data().clone();
-
-                    let mut isymbol = data.get_input_symbol();
-                    replace_all(&mut isymbol, " ", "@_SPACE_@");
-                    replace_all(&mut isymbol, "@_EPSILON_SYMBOL_@", "@0@");
-                    replace_all(&mut isymbol, "\t", "@_TAB_@");
-
-                    let mut osymbol = data.get_output_symbol();
-                    replace_all(&mut osymbol, " ", "@_SPACE_@");
-                    replace_all(&mut osymbol, "@_EPSILON_SYMBOL_@", "@0@");
-                    replace_all(&mut osymbol, "\t", "@_TAB_@");
-
-                    cw = sprintf_at(
-                        ptr,
-                        cwt,
-                        &format!(
-                            "{}\t{}\t{}\t{}",
-                            source_state,
-                            tr_it.get_target_state(),
-                            isymbol,
-                            osymbol
-                        ),
-                    );
-                    cwt += cw;
-
-                    if write_weights {
-                        cw = sprintf_at(ptr, cwt, &format!("\t{:.6}", data.get_weight()));
-                    }
-                    cwt += cw;
-                    cw = sprintf_at(ptr, cwt, "\n");
-                    cwt += cw;
-                }
-                if self.is_final_state(source_state) {
-                    cw = sprintf_at(ptr, cwt, &format!("{}", source_state));
-                    cwt += cw;
-                    if write_weights {
-                        cw = sprintf_at(
-                            ptr,
-                            cwt,
-                            &format!("\t{:.6}", self.get_final_weight(source_state)),
-                        );
-                    }
-                    cwt += cw;
-                    cw = sprintf_at(ptr, cwt, "\n");
-                    cwt += cw;
-                }
-                source_state += 1;
-            }
         }
     }
 

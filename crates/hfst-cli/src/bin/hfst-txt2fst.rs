@@ -4,7 +4,6 @@
 //!
 //! Convert AT&T or prolog format into a binary transducer.
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -16,16 +15,15 @@ use hfst_cli::hfst_commandline::{
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, hfst_getopt_common_long,
-    hfst_getopt_unary_long, print_common_program_options, print_common_unary_program_options,
+    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
+    print_common_unary_program_options,
 };
 use hfst_cli::hfst_tool_metadata::{hfst_set_formula, hfst_set_name};
 use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use std::ffi::{CStr, CString};
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 
 // ---------------------------------------------------------------------------
 // Tool-global state. C: file-scope static variables.
@@ -36,8 +34,8 @@ static mut OUTPUT_FORMAT: ImplementationType = ImplementationType::UNSPECIFIED_T
 static mut READ_PROLOG_FORMAT: bool = false;
 // whether numbers are used instead of symbol names
 static mut USE_NUMBERS: bool = false; // not used
-// printname for epsilon
-static mut EPSILONNAME: *mut c_char = std::ptr::null_mut();
+// printname for epsilon (None until set; defaults to "@0@")
+static mut EPSILONNAME: Option<String> = None;
 
 // check if there are epsilon cycles with a negative weight
 static mut CHECK_NEGATIVE_EPSILON_CYCLES: bool = false;
@@ -45,20 +43,6 @@ static mut WARN_NEGATIVE_WEIGHTS: bool = true;
 static mut WARNINGS_ARE_ERRORS: bool = false;
 
 static mut DISJUNCT_MULTIPLE_TRANSDUCERS: bool = false;
-
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
 
 // Equivalent of the C++ 'feof(inputfile)': no bytes remain on the buffered
 // reader (the readers' own EndOfStreamException paths panic_any internally).
@@ -71,120 +55,82 @@ fn is_eof(input: &mut dyn BufRead) -> bool {
 
 // [spec:hfst:def:hfst-txt2fst.print-usage-fn]
 // [spec:hfst:sem:hfst-txt2fst.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        let mut msg = globals::message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE]\nConvert AT&T or prolog format into a binary transducer\n\n",
-                program_name
-            ),
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "Text and format options:\n  -f, --format=FMT    Write result using FMT as backend format\n  -e, --epsilon=EPS   Interpret string EPS as epsilon in att format\n  -p, --prolog        Read prolog format instead of att\n",
-        );
-        fput(
-            &mut *msg,
-            "Other options:\n  -C, --check-negative-epsilon-cycles  Issue a warning if there are epsilon cycles\n                                       with a negative weight in the transducer\n  -j, --disjunct                       Disjunct transducers\n",
-        );
-        fput(&mut *msg, "\n");
-        fput(
-            &mut *msg,
-            "If OUTFILE or INFILE is missing or -, standard streams will be used.\nIf FMT is not given, OpenFst's tropical format will be used.\nThe possible values for FMT are { foma, openfst-tropical, openfst-log,\nsfst, optimized-lookup-weighted, optimized-lookup-unweighted }.\nIf EPS is not given, @0@ will be used.\n\nSpace in transition symbols must be escaped as '@_SPACE_@' when using\natt format.\n",
-        );
-        fput(&mut *msg, "\n");
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-    }
+fn print_usage() {
+    let mut msg = globals::message_writer();
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE]\nConvert AT&T or prolog format into a binary transducer\n\n",
+        globals::program_name()
+    );
+    print_common_program_options(&mut *msg);
+    print_common_unary_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "Text and format options:\n  -f, --format=FMT    Write result using FMT as backend format\n  -e, --epsilon=EPS   Interpret string EPS as epsilon in att format\n  -p, --prolog        Read prolog format instead of att\n",
+    );
+    let _ = write!(
+        msg,
+        "Other options:\n  -C, --check-negative-epsilon-cycles  Issue a warning if there are epsilon cycles\n                                       with a negative weight in the transducer\n  -j, --disjunct                       Disjunct transducers\n",
+    );
+    let _ = write!(msg, "\n");
+    let _ = write!(
+        msg,
+        "If OUTFILE or INFILE is missing or -, standard streams will be used.\nIf FMT is not given, OpenFst's tropical format will be used.\nThe possible values for FMT are {{ foma, openfst-tropical, openfst-log,\nsfst, optimized-lookup-weighted, optimized-lookup-unweighted }}.\nIf EPS is not given, @0@ will be used.\n\nSpace in transition symbols must be escaped as '@_SPACE_@' when using\natt format.\n",
+    );
+    let _ = write!(msg, "\n");
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
 }
 
 // [spec:hfst:def:hfst-txt2fst.parse-options-fn]
 // [spec:hfst:sem:hfst-txt2fst.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             long_options.extend(hfst_getopt_unary_long());
             // add tool-specific options here
-            let epsilon_name = CString::new("epsilon").unwrap();
-            let number_name = CString::new("number").unwrap();
-            let format_name = CString::new("format").unwrap();
-            let prolog_name = CString::new("prolog").unwrap();
-            let disjunct_name = CString::new("disjunct").unwrap();
-            let check_neg_name = CString::new("check-negative-epsilon-cycles").unwrap();
-            let wstuff_name = CString::new("Wstuff").unwrap();
-            long_options.push(getopt::Option {
-                name: epsilon_name.as_ptr(),
-                has_arg: 1, // required_argument
-                flag: std::ptr::null_mut(),
-                val: 'e' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "epsilon",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'e' as i32,
             });
-            long_options.push(getopt::Option {
-                name: number_name.as_ptr(),
-                has_arg: 0, // no_argument
-                flag: std::ptr::null_mut(),
-                val: 'n' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "number",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'n' as i32,
             });
-            long_options.push(getopt::Option {
-                name: format_name.as_ptr(),
-                has_arg: 1, // required_argument
-                flag: std::ptr::null_mut(),
-                val: 'f' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "format",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'f' as i32,
             });
-            long_options.push(getopt::Option {
-                name: prolog_name.as_ptr(),
-                has_arg: 0, // no_argument
-                flag: std::ptr::null_mut(),
-                val: 'p' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "prolog",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'p' as i32,
             });
-            long_options.push(getopt::Option {
-                name: disjunct_name.as_ptr(),
-                has_arg: 0, // no_argument
-                flag: std::ptr::null_mut(),
-                val: 'j' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "disjunct",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'j' as i32,
             });
-            long_options.push(getopt::Option {
-                name: check_neg_name.as_ptr(),
-                has_arg: 0, // no_argument
-                flag: std::ptr::null_mut(),
-                val: 'C' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "check-negative-epsilon-cycles",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'C' as i32,
             });
-            long_options.push(getopt::Option {
-                name: wstuff_name.as_ptr(),
-                has_arg: 1, // required_argument
-                flag: std::ptr::null_mut(),
-                val: 'W' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "Wstuff",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'W' as i32,
             });
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!(
-                "{}{}e:nf:pjC",
-                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            // add tool-specific options here
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
@@ -192,7 +138,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             // The C switch chains the #include'd case groups in order: common
             // cases, then unary cases, then the tool's own, then the terminal
             // error arm.
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
@@ -205,7 +151,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             // add tool-specific cases here
             match c as u8 as char {
                 'e' => {
-                    EPSILONNAME = hfst_cli::hfst_commandline::hfst_strdup(getopt::OPTARG);
+                    EPSILONNAME = Some(getopt::optarg());
                     continue;
                 }
                 'j' => {
@@ -221,7 +167,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     continue;
                 }
                 'f' => {
-                    OUTPUT_FORMAT = hfst_parse_format_name(&cstr(getopt::OPTARG));
+                    OUTPUT_FORMAT = hfst_parse_format_name(&getopt::optarg());
                     continue;
                 }
                 'C' => {
@@ -229,7 +175,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     continue;
                 }
                 'W' => {
-                    let optarg = cstr(getopt::OPTARG);
+                    let optarg = getopt::optarg();
                     if optarg == "error" {
                         WARNINGS_ARE_ERRORS = true;
                     } else if optarg == "no-error" {
@@ -250,13 +196,14 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
 
         check_common_params();
-        check_unary_params(argc, argv);
-        if EPSILONNAME.is_null() {
-            let eps = CString::new("@0@").unwrap();
-            EPSILONNAME = hfst_cli::hfst_commandline::hfst_strdup(eps.as_ptr());
+        check_unary_params(args);
+        if (*std::ptr::addr_of!(EPSILONNAME)).is_none() {
+            *std::ptr::addr_of_mut!(EPSILONNAME) = Some("@0@".to_string());
             verbose_printf(&format!(
                 "Using default epsilon representation {}\n",
-                cstr(EPSILONNAME)
+                (*std::ptr::addr_of!(EPSILONNAME))
+                    .clone()
+                    .unwrap_or_default()
             ));
         }
         if OUTPUT_FORMAT == ImplementationType::UNSPECIFIED_TYPE {
@@ -282,13 +229,15 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
 // [spec:hfst:def:hfst-txt2fst.process-stream-fn]
 // [spec:hfst:sem:hfst-txt2fst.process-stream-fn]
-unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> c_int {
+unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> i32 {
     unsafe {
         let mut transducer_n: usize = 0;
         let mut linecount: u32 = 0;
 
-        let inputfilename = cstr(globals::INPUTFILENAME);
-        let epsilonname = cstr(EPSILONNAME);
+        let inputfilename = globals::input_filename();
+        let epsilonname = (*std::ptr::addr_of!(EPSILONNAME))
+            .clone()
+            .unwrap_or_default();
 
         // outstream.open();
         while !is_eof(input) {
@@ -303,8 +252,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     // C: catches HfstException around prolog_file_to_xfsm_transducer;
                     // the Rust foundation panics rather than throwing, so the catch
                     // arm is not reproduced here.
-                    let ifn = CString::new(inputfilename.clone()).unwrap_or_default();
-                    let t = HfstTransducer::prolog_file_to_xfsm_transducer(ifn.as_ptr());
+                    let t = HfstTransducer::prolog_file_to_xfsm_transducer(&inputfilename);
                     outstream.redirect(&mut *t);
                     drop(Box::from_raw(t));
                     outstream.flush();
@@ -405,32 +353,23 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "HfstTxt2Fst");
-        let retval = parse_options(argc, argv);
+        let retval = parse_options(&mut args);
 
         if retval != EXIT_CONTINUE {
             return retval;
         }
         // close buffers, we use streams
-        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
+        let output_opened = globals::output_filename() != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
-            cstr(globals::INPUTFILENAME),
-            cstr(globals::OUTFILENAME)
+            globals::input_filename(),
+            globals::output_filename()
         ));
         match OUTPUT_FORMAT {
             ImplementationType::SFST_TYPE => {
@@ -461,7 +400,7 @@ unsafe fn real_main() -> c_int {
         }
 
         if OUTPUT_FORMAT == ImplementationType::XFSM_TYPE {
-            if cstr(globals::OUTFILENAME) == "<stdout>" {
+            if globals::output_filename() == "<stdout>" {
                 hfst_error(
                     1,
                     0,
@@ -477,7 +416,7 @@ unsafe fn real_main() -> c_int {
                 );
                 return 1;
             }
-            if cstr(globals::INPUTFILENAME) == "<stdin>" {
+            if globals::input_filename() == "<stdin>" {
                 hfst_error(
                     1,
                     0,
@@ -490,7 +429,7 @@ unsafe fn real_main() -> c_int {
 
         // here starts the buffer handling part
         let mut outstream = if output_opened {
-            HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), OUTPUT_FORMAT, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), OUTPUT_FORMAT, true)
         } else {
             HfstOutputStream::new(OUTPUT_FORMAT, true)
         };
@@ -502,8 +441,6 @@ unsafe fn real_main() -> c_int {
             }
         };
         process_stream(&mut outstream, &mut *input);
-        hfst_cli::hfst_commandline::hfst_free(globals::INPUTFILENAME as *mut c_char);
-        hfst_cli::hfst_commandline::hfst_free(globals::OUTFILENAME as *mut c_char);
         0
     }
 }

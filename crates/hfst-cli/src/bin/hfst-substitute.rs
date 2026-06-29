@@ -5,7 +5,6 @@
 //! getopt-cases-unary.h, check-params-unary.h) that additionally reads an
 //! optional replacement transducer (-T) and/or a replacement file (-F).
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::{ImplementationType, StringPair};
 use hfst::hfst_exception_defs::FunctionNotImplementedException;
@@ -21,9 +20,8 @@ use hfst_cli::hfst_commandline::{
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, hfst_getopt_common_long,
-    hfst_getopt_unary_long, print_common_program_options, print_common_unary_program_options,
-    print_common_unary_program_parameter_instructions,
+    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
+    print_common_unary_program_options, print_common_unary_program_parameter_instructions,
 };
 use hfst_cli::hfst_tool_metadata::{hfst_set_formula_unary, hfst_set_name_unary};
 use hfst_cli::inc::{
@@ -31,8 +29,7 @@ use hfst_cli::inc::{
     handle_unary_case,
 };
 use std::collections::BTreeMap;
-use std::ffi::{CStr, CString};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 
 // [spec:hfst:def:hfst-substitute.hfst-symbol-substitutions]
 type HfstSymbolSubstitutions = BTreeMap<String, String>;
@@ -56,20 +53,6 @@ static mut PAIR_SUBSTITUTION_MAP: Option<HfstSymbolPairSubstitutions> = None;
 static mut IN_ORDER: bool = false;
 static mut ALLOW_TRANSDUCER_CONVERSION: bool = true;
 
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
-
 // Reads one line from a buffered reader the way 'hfst_getline' does: the
 // returned string keeps its trailing newline; 'None' marks end of input.
 fn read_line(f: &mut dyn BufRead) -> Option<String> {
@@ -83,110 +66,85 @@ fn read_line(f: &mut dyn BufRead) -> Option<String> {
 
 // [spec:hfst:def:hfst-substitute.print-usage-fn]
 // [spec:hfst:sem:hfst-substitute.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        let mut msg = globals::message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE]\nRelabel transducer arcs\n\n",
-                program_name
-            ),
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "Relabeling options:\n\
-             \x20 -f, --from-label=FLABEL      replace FLABEL\n\
-             \x20 -t, --to-label=TLABEL        replace with TLABEL\n\
-             \x20 -T, --to-transducer=TFILE    replace with transducer read from TFILE\n\
-             \x20 -F, --from-file=LABELFILE    read replacements from LABELFILE\n\
-             \x20 -R, --in-order               keep the order of the replacements\n\
-             \x20                              (with -F)\n\
-             Input options:\n\
-             \x20 -C, --do-not-convert         require that transducers in TFILE and INFILE\n\
-             \x20                              have the same type\n\
-             Transient optimisation schemes:\n\
-             \x20 -9, --compose                compose substitutions when possible\n",
-        );
-        fput(&mut *msg, "\n");
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        fput(
-            &mut *msg,
-            "LABEL must be a symbol name in single arc in transducer,\n\
-             or colon separated pair defining an arc.\n\
-             If TFILE is specified, FLABEL must be a pair.\n\
-             LABELFILE is a 2 column tsv file where col 1 is FLABEL\n\
-             and col 2 gives TLABEL specifications.\n",
-        );
-        fput(
-            &mut *msg,
-            &format!(
-                "\nExamples:\n\
-                 \x20 {pn} -i tr.hfst -o tr_relabeled.hfst -f 'a' -t 'A'\n\
-                 \x20     relabel all symbols 'a' with 'A'\n\
-                 \x20 {pn} -i tr.hfst -o tr_relabeled.hfst -f 'a:b' -t 'A:B'\n\
-                 \x20     relabel all arcs 'a:b' with 'A:B'\n\
-                 \x20 {pn} -i tr.hfst -o tr_relabeled.hfst -f 'a:b' -T repl.hfst\n\
-                 \x20     replace all arcs 'a:b' with transducer repl.hfst\n\n",
-                pn = program_name
-            ),
-        );
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-    }
+fn print_usage() {
+    let mut msg = globals::message_writer();
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let program_name = globals::program_name();
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE]\nRelabel transducer arcs\n\n",
+        program_name
+    );
+    print_common_program_options(&mut *msg);
+    print_common_unary_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "Relabeling options:\n\
+         \x20 -f, --from-label=FLABEL      replace FLABEL\n\
+         \x20 -t, --to-label=TLABEL        replace with TLABEL\n\
+         \x20 -T, --to-transducer=TFILE    replace with transducer read from TFILE\n\
+         \x20 -F, --from-file=LABELFILE    read replacements from LABELFILE\n\
+         \x20 -R, --in-order               keep the order of the replacements\n\
+         \x20                              (with -F)\n\
+         Input options:\n\
+         \x20 -C, --do-not-convert         require that transducers in TFILE and INFILE\n\
+         \x20                              have the same type\n\
+         Transient optimisation schemes:\n\
+         \x20 -9, --compose                compose substitutions when possible\n",
+    );
+    let _ = write!(msg, "\n");
+    print_common_unary_program_parameter_instructions(&mut *msg);
+    let _ = write!(
+        msg,
+        "LABEL must be a symbol name in single arc in transducer,\n\
+         or colon separated pair defining an arc.\n\
+         If TFILE is specified, FLABEL must be a pair.\n\
+         LABELFILE is a 2 column tsv file where col 1 is FLABEL\n\
+         and col 2 gives TLABEL specifications.\n",
+    );
+    let _ = write!(
+        msg,
+        "\nExamples:\n\
+         \x20 {pn} -i tr.hfst -o tr_relabeled.hfst -f 'a' -t 'A'\n\
+         \x20     relabel all symbols 'a' with 'A'\n\
+         \x20 {pn} -i tr.hfst -o tr_relabeled.hfst -f 'a:b' -t 'A:B'\n\
+         \x20     relabel all arcs 'a:b' with 'A:B'\n\
+         \x20 {pn} -i tr.hfst -o tr_relabeled.hfst -f 'a:b' -T repl.hfst\n\
+         \x20     replace all arcs 'a:b' with transducer repl.hfst\n\n",
+        pn = program_name
+    );
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
 }
 
 // [spec:hfst:def:hfst-substitute.parse-options-fn]
 // [spec:hfst:sem:hfst-substitute.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             long_options.extend(hfst_getopt_unary_long());
             // add tool-specific options here
             for (name, has_arg, val) in [
-                ("from-label\0", 1, b'f'),
-                ("from-file\0", 1, b'F'),
-                ("to-label\0", 1, b't'),
-                ("to-transducer\0", 1, b'T'),
-                ("in-order\0", 0, b'R'),
-                ("compose\0", 0, b'9'),
-                ("do-not-convert\0", 0, b'C'),
+                ("from-label", getopt::REQUIRED_ARGUMENT, b'f'),
+                ("from-file", getopt::REQUIRED_ARGUMENT, b'F'),
+                ("to-label", getopt::REQUIRED_ARGUMENT, b't'),
+                ("to-transducer", getopt::REQUIRED_ARGUMENT, b'T'),
+                ("in-order", getopt::NO_ARGUMENT, b'R'),
+                ("compose", getopt::NO_ARGUMENT, b'9'),
+                ("do-not-convert", getopt::NO_ARGUMENT, b'C'),
             ] {
-                long_options.push(getopt::Option {
-                    name: name.as_ptr() as *const c_char,
+                long_options.push(getopt::GetOpt {
+                    name,
                     has_arg,
-                    flag: std::ptr::null_mut(),
-                    val: val as c_int,
+                    val: val as i32,
                 });
             }
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!(
-                "{}{}f:F:t:T:R9C",
-                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
@@ -194,7 +152,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             // The C switch chains the #include'd case groups in order: common
             // cases, then unary cases, then the tool's own, then the terminal
             // error arm.
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
@@ -206,8 +164,8 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             }
 
             // add tool-specific cases here
-            if c == b'f' as c_int {
-                let mut fl = cstr(getopt::OPTARG);
+            if c == b'f' as i32 {
+                let mut fl = getopt::optarg();
                 if fl == "@0@" {
                     fl = internal_epsilon.to_string();
                 }
@@ -224,8 +182,8 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     );
                 }
                 FROM_LABEL = Some(fl);
-            } else if c == b'F' as c_int {
-                let fname = cstr(getopt::OPTARG);
+            } else if c == b'F' as i32 {
+                let fname = getopt::optarg();
                 match std::fs::File::open(&fname) {
                     Ok(f) => FROM_FILE = Some(BufReader::new(f)),
                     Err(_) => {
@@ -235,8 +193,8 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     }
                 }
                 FROM_FILE_NAME = Some(fname);
-            } else if c == b't' as c_int {
-                let mut tl = cstr(getopt::OPTARG);
+            } else if c == b't' as i32 {
+                let mut tl = getopt::optarg();
                 if tl == "@0@" {
                     tl = internal_epsilon.to_string();
                 }
@@ -253,8 +211,8 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     );
                 }
                 TO_LABEL = Some(tl);
-            } else if c == b'T' as c_int {
-                let fname = cstr(getopt::OPTARG);
+            } else if c == b'T' as i32 {
+                let fname = getopt::optarg();
                 // C: probe the file with hfst_fopen then immediately fclose; here
                 // we just check it opens (the std File drops/closes at scope end).
                 match std::fs::File::open(&fname) {
@@ -266,11 +224,11 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     }
                 }
                 TO_TRANSDUCER_FILENAME = Some(fname);
-            } else if c == b'R' as c_int {
+            } else if c == b'R' as i32 {
                 IN_ORDER = true;
-            } else if c == b'9' as c_int {
+            } else if c == b'9' as i32 {
                 COMPOSE = true;
-            } else if c == b'C' as c_int {
+            } else if c == b'C' as i32 {
                 ALLOW_TRANSDUCER_CONVERSION = false;
             } else {
                 return handle_error_case(c);
@@ -289,7 +247,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             return 1;
         }
         check_common_params();
-        check_unary_params(argc, argv);
+        check_unary_params(args);
         EXIT_CONTINUE
     }
 }
@@ -464,7 +422,7 @@ unsafe fn perform_delayed(trans: &mut HfstTransducer) {
 
 // [spec:hfst:def:hfst-substitute.process-stream-fn]
 // [spec:hfst:sem:hfst-substitute.process-stream-fn]
-unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
+unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
     unsafe {
         let mut symbol_pair_map_in_use = false;
         let mut symbol_map_in_use = false;
@@ -487,7 +445,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                     let ct = conversion_type(instream_type, to_transducer_type);
                     let mut warnstr = format!(
                         "Transducer type mismatch in {} and {}; ",
-                        cstr(globals::INPUTFILENAME),
+                        globals::input_filename(),
                         to_fname
                     );
                     if ct == 1 {
@@ -520,7 +478,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                             "Transducer type mismatch in {} and {}; \
                              formats {} and {} are not compatible for substitution \
                              (--do-not-convert was requested)",
-                            cstr(globals::INPUTFILENAME),
+                            globals::input_filename(),
                             to_fname,
                             hfst_strformat(instream_type),
                             hfst_strformat(to_transducer_type)
@@ -534,9 +492,9 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             output_type = instream.get_type();
         }
 
-        let output_named = cstr(globals::OUTFILENAME) != "<stdout>";
+        let output_named = globals::output_filename() != "<stdout>";
         let mut outstream = if output_named {
-            HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), output_type, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), output_type, true)
         } else {
             HfstOutputStream::new(output_type, true)
         };
@@ -551,7 +509,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             let inputname = {
                 let n = trans.get_name();
                 if n.is_empty() {
-                    cstr(globals::INPUTFILENAME)
+                    globals::input_filename()
                 } else {
                     n
                 }
@@ -790,31 +748,22 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "HfstSubstitute");
-        let retval = parse_options(argc, argv);
+        let retval = parse_options(&mut args);
         if retval != EXIT_CONTINUE {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
+        let input_opened = globals::input_filename() != "<stdin>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
-            cstr(globals::INPUTFILENAME),
-            cstr(globals::OUTFILENAME)
+            globals::input_filename(),
+            globals::output_filename()
         ));
 
         if (*(&raw const FROM_FILE)).is_some() {
@@ -826,7 +775,7 @@ unsafe fn real_main() -> c_int {
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing.)
         let mut instream = if input_opened {
-            HfstInputStream::new_filename(&cstr(globals::INPUTFILENAME))
+            HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
         };

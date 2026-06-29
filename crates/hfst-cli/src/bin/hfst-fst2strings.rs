@@ -3,7 +3,6 @@
 //! printing command-line tool. Drives the hfst-cli foundation (globals, getopt,
 //! commandline, program-options, inc fragments).
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_data_types::{HfstTwoLevelPath, HfstTwoLevelPaths};
 use hfst::hfst_extract_strings::{ExtractStringsCb, RetVal};
@@ -18,36 +17,21 @@ use hfst_cli::hfst_commandline::{
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, hfst_getopt_common_long,
-    hfst_getopt_unary_long, print_common_program_options,
+    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
     print_common_unary_program_parameter_instructions,
 };
 use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use std::ffi::{CStr, CString};
-
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
+use std::io::Write;
 
 // Tool-specific globals. These mirror the file-scope statics of the C++ tool.
 // the maximum number of strings printed for each transducer
-static mut MAX_STRINGS: c_int = 0;
-static mut CYCLES: c_int = -1;
-static mut NBEST_STRINGS: c_int = -1;
-static mut MAX_RANDOM_STRINGS: c_int = -1;
+static mut MAX_STRINGS: i32 = 0;
+static mut CYCLES: i32 = -1;
+static mut NBEST_STRINGS: i32 = -1;
+static mut MAX_RANDOM_STRINGS: i32 = -1;
 static mut MAX_WEIGHT: f32 = -1.0;
 static mut BEAM: f32 = -1.0;
 static mut DISPLAY_WEIGHTS: bool = false;
@@ -69,143 +53,113 @@ static mut PRINT_SEPARATOR_AFTER_EACH_TRANSDUCER: bool = false;
 
 // [spec:hfst:def:hfst-fst2strings.print-usage-fn]
 // [spec:hfst:sem:hfst-fst2strings.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = globals::message_writer();
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE]\nDisplay the strings recognized by a transducer\n\n",
-                program_name
-            ),
-        );
-        print_common_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "Fst2strings options:\n\
-             \x20 -n, --max-strings=NSTR     print at most NSTR strings\n\
-             \x20 -N, --nbest=NBEST          print at most NBEST best strings\n\
-             \x20 -r, --random=NRAND         print at most NRAND random strings\n\
-             \x20 -c, --cycles=NCYC          follow cycles at most NCYC times\n\
-             \x20 -w, --print-weights        display the weight for each string\n\
-             \x20 -S, --print-separator      print separator \"--\" after each transducer\n\
-             \x20 -e, --epsilon-format=EPS   print epsilon as EPS\n\
-             \x20 -X, --xfst=VARIABLE        toggle xfst compatibility option VARIABLE\n",
-        );
-        fput(
-            &mut *msg,
-            "Path filters:\n\
-             \x20 -b, --beam=B               reject output string with weight more than B away from\n\
-             \x20                            the weight of the best output string\n\
-             \x20 -l, --max-in-length=MIL    reject input string longer than MIL\n\
-             \x20 -L, --max-out-length=MOL   reject output string longer than MOL\n\
-             \x20 -p, --in-prefix=OPREFIX    input string must begin with IPREFIX\n\
-             \x20 -P, --out-prefix=OPREFIX   output string must begin with OPREFIX\n\
-             \x20 -u, --in-exclude=IXSTR     input string must not contain IXSTR\n\
-             \x20 -U, --out-exclude=OXST     output string must not contain OXSTR\n",
-        );
+fn print_usage() {
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let mut msg = globals::message_writer();
+    let program_name = globals::program_name();
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE]\nDisplay the strings recognized by a transducer\n\n",
+        program_name
+    );
+    print_common_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "Fst2strings options:\n\
+         \x20 -n, --max-strings=NSTR     print at most NSTR strings\n\
+         \x20 -N, --nbest=NBEST          print at most NBEST best strings\n\
+         \x20 -r, --random=NRAND         print at most NRAND random strings\n\
+         \x20 -c, --cycles=NCYC          follow cycles at most NCYC times\n\
+         \x20 -w, --print-weights        display the weight for each string\n\
+         \x20 -S, --print-separator      print separator \"--\" after each transducer\n\
+         \x20 -e, --epsilon-format=EPS   print epsilon as EPS\n\
+         \x20 -X, --xfst=VARIABLE        toggle xfst compatibility option VARIABLE\n"
+    );
+    let _ = write!(
+        msg,
+        "Path filters:\n\
+         \x20 -b, --beam=B               reject output string with weight more than B away from\n\
+         \x20                            the weight of the best output string\n\
+         \x20 -l, --max-in-length=MIL    reject input string longer than MIL\n\
+         \x20 -L, --max-out-length=MOL   reject output string longer than MOL\n\
+         \x20 -p, --in-prefix=OPREFIX    input string must begin with IPREFIX\n\
+         \x20 -P, --out-prefix=OPREFIX   output string must begin with OPREFIX\n\
+         \x20 -u, --in-exclude=IXSTR     input string must not contain IXSTR\n\
+         \x20 -U, --out-exclude=OXST     output string must not contain OXSTR\n"
+    );
 
-        fput(&mut *msg, "\n");
+    let _ = write!(msg, "\n");
 
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        fput(
-            &mut *msg,
-            "If all NSTR, NBEST and NCYC are omitted, \
-             all possible paths are printed:\n\
-             NSTR, NBEST and NCYC default to infinity.\n\
-             NBEST overrides NSTR and NCYC\n\
-             NRAND overrides NBEST, NSTR and NCYC\n\
-             B must be a non-negative float\n\
-             If EPS is not given, default is empty string.\n\
-             Numeric options are parsed with strtod(3).\n\
-             Xfst variables supported are { obey-flags, print-flags,\n\
-             print-pairs, print-space, quote-special }.\n",
-        );
-        fput(
-            &mut *msg,
-            &format!(
-                "\nExamples:\n\
-                 \x20 {} lexical.hfst    generates all forms of lexical.hfst\n\
-                 \x20 {} -P \"cat<n>\" -c 0 lexical.hfst\n\
-                 \x20                    generates paradigm for cat<n> without following cycles\n\n",
-                program_name, program_name
-            ),
-        );
+    print_common_unary_program_parameter_instructions(&mut *msg);
+    let _ = write!(
+        msg,
+        "If all NSTR, NBEST and NCYC are omitted, \
+         all possible paths are printed:\n\
+         NSTR, NBEST and NCYC default to infinity.\n\
+         NBEST overrides NSTR and NCYC\n\
+         NRAND overrides NBEST, NSTR and NCYC\n\
+         B must be a non-negative float\n\
+         If EPS is not given, default is empty string.\n\
+         Numeric options are parsed with strtod(3).\n\
+         Xfst variables supported are {{ obey-flags, print-flags,\n\
+         print-pairs, print-space, quote-special }}.\n"
+    );
+    let _ = write!(
+        msg,
+        "\nExamples:\n\
+         \x20 {} lexical.hfst    generates all forms of lexical.hfst\n\
+         \x20 {} -P \"cat<n>\" -c 0 lexical.hfst\n\
+         \x20                    generates paradigm for cat<n> without following cycles\n\n",
+        program_name, program_name
+    );
 
-        fput(
-            &mut *msg,
-            "Known bugs:\n\
-             \x20 Does not work correctly for hfst optimized lookup format.\n\n",
-        );
+    let _ = write!(
+        msg,
+        "Known bugs:\n\
+         \x20 Does not work correctly for hfst optimized lookup format.\n\n"
+    );
 
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-    }
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
 }
 
 // [spec:hfst:def:hfst-fst2strings.parse-options-fn]
 // [spec:hfst:sem:hfst-fst2strings.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             long_options.extend(hfst_getopt_unary_long());
             // add tool-specific options here
-            let tool_long: [(&str, c_int, c_int); 16] = [
-                ("beam", 1, b'b' as c_int),
-                ("cycles", 1, b'c' as c_int),
-                ("epsilon-format", 1, b'e' as c_int),
-                ("in-exclude", 1, b'u' as c_int),
-                ("in-prefix", 1, b'p' as c_int),
-                ("max-in-length", 1, b'l' as c_int),
-                ("max-out-length", 1, b'L' as c_int),
-                ("max-strings", 1, b'n' as c_int),
-                ("nbest", 1, b'N' as c_int),
-                ("random", 1, b'r' as c_int),
-                ("print-separator", 0, b'S' as c_int),
-                ("out-exclude", 1, b'U' as c_int),
-                ("out-prefix", 1, b'P' as c_int),
-                ("print-weights", 0, b'w' as c_int),
-                ("xfst", 1, b'X' as c_int),
-                ("", 0, 0),
+            let tool_long: [(&str, i32, i32); 15] = [
+                ("beam", 1, b'b' as i32),
+                ("cycles", 1, b'c' as i32),
+                ("epsilon-format", 1, b'e' as i32),
+                ("in-exclude", 1, b'u' as i32),
+                ("in-prefix", 1, b'p' as i32),
+                ("max-in-length", 1, b'l' as i32),
+                ("max-out-length", 1, b'L' as i32),
+                ("max-strings", 1, b'n' as i32),
+                ("nbest", 1, b'N' as i32),
+                ("random", 1, b'r' as i32),
+                ("print-separator", 0, b'S' as i32),
+                ("out-exclude", 1, b'U' as i32),
+                ("out-prefix", 1, b'P' as i32),
+                ("print-weights", 0, b'w' as i32),
+                ("xfst", 1, b'X' as i32),
             ];
-            // Keep the CStrings alive for the duration of getopt_long below.
-            let names: Vec<CString> = tool_long
-                .iter()
-                .map(|(n, _, _)| CString::new(*n).unwrap())
-                .collect();
-            for (i, (_, has_arg, val)) in tool_long.iter().enumerate() {
-                let name_ptr = if i == tool_long.len() - 1 {
-                    std::ptr::null()
-                } else {
-                    names[i].as_ptr()
-                };
-                long_options.push(getopt::Option {
-                    name: name_ptr,
+            for (name, has_arg, val) in tool_long.iter() {
+                long_options.push(getopt::GetOpt {
+                    name,
                     has_arg: *has_arg,
-                    flag: std::ptr::null_mut(),
                     val: *val,
                 });
             }
-            let short = CString::new(format!(
-                "{}{}Swb:c:e:u:p:l:L:n:r:N:U:P:X:",
-                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
@@ -213,7 +167,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             // The C switch chains the #include'd case groups in order: common
             // cases, then unary cases, then the tool's own, then the terminal
             // error arm.
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
@@ -224,16 +178,16 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 CaseResult::NotHandled => {}
             }
 
-            let optarg = cstr(getopt::OPTARG);
+            let optarg = getopt::optarg();
             match c as u8 as char {
                 'n' => {
-                    MAX_STRINGS = hfst_strtoul(&optarg, 10) as c_int;
+                    MAX_STRINGS = hfst_strtoul(&optarg, 10) as i32;
                 }
                 'N' => {
-                    NBEST_STRINGS = hfst_strtoul(&optarg, 10) as c_int;
+                    NBEST_STRINGS = hfst_strtoul(&optarg, 10) as i32;
                 }
                 'r' => {
-                    MAX_RANDOM_STRINGS = hfst_strtoul(&optarg, 10) as c_int;
+                    MAX_RANDOM_STRINGS = hfst_strtoul(&optarg, 10) as i32;
                 }
                 'b' => {
                     BEAM = optarg.trim().parse::<f32>().unwrap_or(0.0);
@@ -243,7 +197,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     }
                 }
                 'c' => {
-                    CYCLES = hfst_strtoul(&optarg, 10) as c_int;
+                    CYCLES = hfst_strtoul(&optarg, 10) as i32;
                 }
                 'w' => {
                     DISPLAY_WEIGHTS = true;
@@ -298,7 +252,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
 
         check_common_params();
-        check_unary_params(argc, argv);
+        check_unary_params(args);
         EXIT_CONTINUE
     }
 }
@@ -351,15 +305,15 @@ unsafe fn get_print_format(s: &str) -> String {
 // Print results as they come
 // [spec:hfst:def:hfst-fst2strings.callback]
 struct Callback<'a> {
-    count: c_int,
-    max_num: c_int,
+    count: i32,
+    max_num: i32,
     out_: &'a mut dyn std::io::Write,
 }
 
 impl<'a> Callback<'a> {
     // [spec:hfst:def:hfst-fst2strings.callback.callback-fn]
     // [spec:hfst:sem:hfst-fst2strings.callback.callback-fn]
-    fn new(max: c_int, out: &'a mut dyn std::io::Write) -> Self {
+    fn new(max: i32, out: &'a mut dyn std::io::Write) -> Self {
         Callback {
             count: 0,
             max_num: max,
@@ -426,21 +380,21 @@ impl ExtractStringsCb for Callback<'_> {
                     for it in path.second.iter() {
                         if (!FILTER_FD) || (!FdOperation::is_diacritic(&it.0)) {
                             if PRINT_SPACES && !first_pair {
-                                fput(self.out_, " ");
+                                let _ = self.out_.write_all(b" ");
                             }
 
-                            fput(self.out_, &get_print_format(&it.0));
+                            let _ = self.out_.write_all(get_print_format(&it.0).as_bytes());
                             first_pair = false;
                         }
 
                         if it.0 != it.1 && ((!FILTER_FD) || (!FdOperation::is_diacritic(&it.1))) {
-                            fput(self.out_, &format!(":{}", get_print_format(&it.1)));
+                            let _ = write!(self.out_, ":{}", get_print_format(&it.1));
                         }
                     }
                     if DISPLAY_WEIGHTS {
-                        fput(self.out_, &format!("\t{}", path.first));
+                        let _ = write!(self.out_, "\t{}", path.first);
                     }
-                    fput(self.out_, "\n");
+                    let _ = self.out_.write_all(b"\n");
                 } else {
                     let mut is_automaton = true;
 
@@ -448,36 +402,36 @@ impl ExtractStringsCb for Callback<'_> {
                     for it in path.second.iter() {
                         if (!FILTER_FD) || (!FdOperation::is_diacritic(&it.0)) {
                             if PRINT_SPACES && !first_symbol {
-                                fput(self.out_, " ");
+                                let _ = self.out_.write_all(b" ");
                             }
                             if it.0 != it.1 {
                                 is_automaton = false;
                             }
 
-                            fput(self.out_, &get_print_format(&it.0));
+                            let _ = self.out_.write_all(get_print_format(&it.0).as_bytes());
                         }
                         first_symbol = false;
                     }
                     if PRINT_SPACES {
-                        fput(self.out_, " ");
+                        let _ = self.out_.write_all(b" ");
                     }
 
                     if !is_automaton {
-                        fput(self.out_, ":");
+                        let _ = self.out_.write_all(b":");
                         for it in path.second.iter() {
                             if (!FILTER_FD) || (!FdOperation::is_diacritic(&it.1)) {
                                 if PRINT_SPACES {
-                                    fput(self.out_, " ");
+                                    let _ = self.out_.write_all(b" ");
                                 }
-                                fput(self.out_, &get_print_format(&it.1));
+                                let _ = self.out_.write_all(get_print_format(&it.1).as_bytes());
                             }
                         }
                     }
 
                     if DISPLAY_WEIGHTS {
-                        fput(self.out_, &format!("\t{}", path.first));
+                        let _ = write!(self.out_, "\t{}", path.first);
                     }
-                    fput(self.out_, "\n");
+                    let _ = self.out_.write_all(b"\n");
                     // std::endl flushes
                     let _ = self.out_.flush();
                 }
@@ -494,12 +448,12 @@ impl ExtractStringsCb for Callback<'_> {
 unsafe fn process_stream(
     instream: &mut HfstInputStream,
     outstream: &mut dyn std::io::Write,
-) -> c_int {
+) -> i32 {
     unsafe {
         let mut first_transducer = true;
         while instream.is_good() {
             if !first_transducer && PRINT_SEPARATOR_AFTER_EACH_TRANSDUCER {
-                fput(outstream, "--\n");
+                let _ = outstream.write_all(b"--\n");
             }
             first_transducer = false;
 
@@ -611,23 +565,14 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "HfstFst2Strings");
         EPSILON_FORMAT = String::new();
-        let mut retval = parse_options(argc, argv);
+        let mut retval = parse_options(&mut args);
 
         if MAX_STRINGS > 0 && MAX_RANDOM_STRINGS > 0 && !globals::SILENT {
             warning(0, 0, "option --max_strings ignored, --random used\n");
@@ -638,21 +583,21 @@ unsafe fn real_main() -> c_int {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
+        let input_opened = globals::input_filename() != "<stdin>";
         // (C closes outfile here when it is not stdout and re-opens an ofstream
         // to outfilename inside; the foundation now models the output as a std
         // writer opened from OUTFILENAME, written to directly.)
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
-            cstr(globals::INPUTFILENAME),
-            cstr(globals::OUTFILENAME)
+            globals::input_filename(),
+            globals::output_filename()
         ));
         // here starts the buffer handling part
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // printing "%s is not a valid transducer file" is not reproduced here.)
         let mut instream = if input_opened {
-            HfstInputStream::new_filename(&cstr(globals::INPUTFILENAME))
+            HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
         };

@@ -13,17 +13,15 @@
 //! own tool-specific cases, then 'handle_error_case' (the '?'/':'/default arm).
 //!
 //! These fragments declare no manifest symbols, so they carry no '[spec]'
-//! annotations. Globals live in 'crate::globals' (in C they were '#include'd per
-//! tool); the wrapped libc/format helpers live in 'crate::hfst_commandline'.
+//! annotations. Globals live in 'crate::globals'; the leftover free arguments are
+//! read from the program's `Vec<String>` after the getopt loop.
 
 use crate::globals::{self, ColourTristate};
 use crate::hfst_commandline;
 use crate::hfst_getopt;
-use core::ffi::{c_char, c_int};
-use std::ffi::CStr;
 
-const EXIT_SUCCESS: c_int = 0;
-const EXIT_FAILURE: c_int = 1;
+const EXIT_SUCCESS: i32 = 0;
+const EXIT_FAILURE: i32 = 1;
 
 /// Result of dispatching one getopt character through a fragment handler.
 ///
@@ -37,27 +35,7 @@ pub enum CaseResult {
     /// 'c' matched a case that ended in 'break' — continue the getopt loop.
     Break,
     /// 'c' matched a case that ended in 'return <code>' from 'parse_options'.
-    Return(c_int),
-}
-
-// ---------------------------------------------------------------------------
-// local std-stream accessors + small string helpers (the C used the 'stdin' /
-// 'stdout' / 'stderr' macros and the 'hfst_strdup' wrapper directly)
-// ---------------------------------------------------------------------------
-
-// 'hfst_strdup("literal")': duplicate a Rust string into a fresh C buffer.
-fn strdup_str(s: &str) -> *mut c_char {
-    let cs = std::ffi::CString::new(s).unwrap();
-    unsafe { hfst_commandline::hfst_strdup(cs.as_ptr()) }
-}
-
-// Render a C string pointer as a Rust String for the &str-taking wrappers
-// (hfst_fopen) and for '%s' interpolation (the C passed the char* straight in).
-unsafe fn cstr_to_string(p: *const c_char) -> String {
-    if p.is_null() {
-        return String::new();
-    }
-    unsafe { std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned() }
+    Return(i32),
 }
 
 // ---------------------------------------------------------------------------
@@ -68,57 +46,48 @@ unsafe fn cstr_to_string(p: *const c_char) -> String {
 ///
 /// 'print_usage' is the tool's own usage printer (per-tool in C; passed in
 /// here): invoked by the '-h' case before it returns EXIT_SUCCESS.
-pub unsafe fn handle_common_case(c: c_int, print_usage: impl FnOnce()) -> CaseResult {
+pub unsafe fn handle_common_case(c: i32, print_usage: impl FnOnce()) -> CaseResult {
     unsafe {
-        if c == b'd' as c_int {
+        if c == b'd' as i32 {
             globals::DEBUG = true;
             CaseResult::Break
-        } else if c == b'h' as c_int {
+        } else if c == b'h' as i32 {
             print_usage();
             CaseResult::Return(EXIT_SUCCESS)
-        } else if c == b'V' as c_int {
+        } else if c == b'V' as i32 {
             hfst_commandline::print_version();
             CaseResult::Return(EXIT_SUCCESS)
-        } else if c == b'v' as c_int {
+        } else if c == b'v' as i32 {
             globals::VERBOSE = true;
             globals::SILENT = false;
             CaseResult::Break
-        } else if c == b'q' as c_int || c == b's' as c_int {
+        } else if c == b'q' as i32 || c == b's' as i32 {
             globals::VERBOSE = false;
             globals::SILENT = true;
             CaseResult::Break
-        } else if c == b'o' as c_int {
-            globals::OUTFILENAME = hfst_commandline::hfst_strdup(hfst_getopt::OPTARG);
-            let name = cstr_to_string(globals::OUTFILENAME);
+        } else if c == b'o' as i32 {
+            globals::set_output_filename(hfst_getopt::optarg());
             // A "-" output name means stdout; messages then go to stderr so they
             // do not corrupt the data stream. output_writer() opens the real file
             // (or stdout, for the "<stdout>" sentinel) on demand.
-            if name == "-" {
-                hfst_commandline::hfst_free(globals::OUTFILENAME as *mut c_char);
-                globals::OUTFILENAME = strdup_str("<stdout>");
+            if globals::output_filename() == "-" {
+                globals::set_output_filename("<stdout>");
                 globals::MESSAGE_TO_STDERR = true;
             }
             globals::OUTPUT_NAMED = true;
             CaseResult::Break
         } else if c == hfst_commandline::GETOPT_COLOUR {
-            let optarg = hfst_getopt::OPTARG;
-            if optarg.is_null() {
-                globals::COLOUR = ColourTristate::COLOUR_ALWAYS;
-            } else if CStr::from_ptr(optarg) == c"always" {
-                globals::COLOUR = ColourTristate::COLOUR_ALWAYS;
-            } else if CStr::from_ptr(optarg) == c"never" {
-                globals::COLOUR = ColourTristate::COLOUR_NEVER;
-            } else if CStr::from_ptr(optarg) == c"auto" {
-                globals::COLOUR = ColourTristate::COLOUR_AUTO;
-            } else {
-                hfst_commandline::error(
-                    EXIT_FAILURE,
-                    0,
-                    &format!(
-                        "--colour must be one of always, never, auto, not {}",
-                        cstr_to_string(optarg)
-                    ),
-                );
+            match hfst_getopt::optarg_opt().as_deref() {
+                None | Some("always") => globals::COLOUR = ColourTristate::COLOUR_ALWAYS,
+                Some("never") => globals::COLOUR = ColourTristate::COLOUR_NEVER,
+                Some("auto") => globals::COLOUR = ColourTristate::COLOUR_AUTO,
+                Some(other) => {
+                    hfst_commandline::error(
+                        EXIT_FAILURE,
+                        0,
+                        &format!("--colour must be one of always, never, auto, not {}", other),
+                    );
+                }
             }
             CaseResult::Break
         } else {
@@ -132,14 +101,12 @@ pub unsafe fn handle_common_case(c: c_int, print_usage: impl FnOnce()) -> CaseRe
 // ---------------------------------------------------------------------------
 
 /// The shared unary-tool input-option switch case ('-i / --input').
-pub unsafe fn handle_unary_case(c: c_int) -> CaseResult {
+pub unsafe fn handle_unary_case(c: i32) -> CaseResult {
     unsafe {
-        if c == b'i' as c_int {
-            globals::INPUTFILENAME = hfst_commandline::hfst_strdup(hfst_getopt::OPTARG);
-            let name = cstr_to_string(globals::INPUTFILENAME);
-            if name == "-" {
-                hfst_commandline::hfst_free(globals::INPUTFILENAME as *mut c_char);
-                globals::INPUTFILENAME = strdup_str("<stdin>");
+        if c == b'i' as i32 {
+            globals::set_input_filename(hfst_getopt::optarg());
+            if globals::input_filename() == "-" {
+                globals::set_input_filename("<stdin>");
             }
             globals::INPUT_NAMED = true;
             CaseResult::Break
@@ -155,29 +122,25 @@ pub unsafe fn handle_unary_case(c: c_int) -> CaseResult {
 
 /// The shared binary-tool input-option switch cases
 /// ('-1 / --input1', '-2 / --input2', '-C / --do-not-convert').
-pub unsafe fn handle_binary_case(c: c_int) -> CaseResult {
+pub unsafe fn handle_binary_case(c: i32) -> CaseResult {
     unsafe {
-        if c == b'1' as c_int {
-            globals::FIRSTFILENAME = hfst_commandline::hfst_strdup(hfst_getopt::OPTARG);
-            let name = cstr_to_string(globals::FIRSTFILENAME);
-            if name == "-" {
-                hfst_commandline::hfst_free(globals::FIRSTFILENAME as *mut c_char);
-                globals::FIRSTFILENAME = strdup_str("<stdin>");
+        if c == b'1' as i32 {
+            globals::set_first_filename(hfst_getopt::optarg());
+            if globals::first_filename() == "-" {
+                globals::set_first_filename("<stdin>");
                 globals::IS_INPUT_STDIN = true;
             }
             globals::FIRST_NAMED = true;
             CaseResult::Break
-        } else if c == b'2' as c_int {
-            globals::SECONDFILENAME = hfst_commandline::hfst_strdup(hfst_getopt::OPTARG);
-            let name = cstr_to_string(globals::SECONDFILENAME);
-            if name == "-" {
-                hfst_commandline::hfst_free(globals::SECONDFILENAME as *mut c_char);
-                globals::SECONDFILENAME = strdup_str("<stdin>");
+        } else if c == b'2' as i32 {
+            globals::set_second_filename(hfst_getopt::optarg());
+            if globals::second_filename() == "-" {
+                globals::set_second_filename("<stdin>");
                 globals::IS_INPUT_STDIN = true;
             }
             globals::SECOND_NAMED = true;
             CaseResult::Break
-        } else if c == b'C' as c_int {
+        } else if c == b'C' as i32 {
             globals::ALLOW_TRANSDUCER_CONVERSION = false;
             CaseResult::Break
         } else {
@@ -194,11 +157,11 @@ pub unsafe fn handle_binary_case(c: c_int) -> CaseResult {
 /// and the 'default' (invalid option). This is the terminal arm — every 'c'
 /// that no earlier handler matched lands here, and each branch calls 'error'
 /// (which exits) and then returns EXIT_FAILURE.
-pub unsafe fn handle_error_case(c: c_int) -> c_int {
+pub unsafe fn handle_error_case(c: i32) -> i32 {
     unsafe {
-        if c == b'?' as c_int {
+        if c == b'?' as i32 {
             hfst_commandline::print_short_help();
-            if hfst_getopt::OPTOPT == b'c' as c_int {
+            if hfst_getopt::OPTOPT == b'c' as i32 {
                 hfst_commandline::error(
                     EXIT_FAILURE,
                     0,
@@ -217,7 +180,7 @@ pub unsafe fn handle_error_case(c: c_int) -> c_int {
                 hfst_commandline::error(EXIT_FAILURE, 0, "Unknown option");
             }
             EXIT_FAILURE
-        } else if c == b':' as c_int {
+        } else if c == b':' as i32 {
             hfst_commandline::print_short_help();
             hfst_commandline::error(
                 EXIT_FAILURE,
@@ -249,7 +212,7 @@ pub unsafe fn handle_error_case(c: c_int) -> c_int {
 pub unsafe fn check_common_params() {
     unsafe {
         if !globals::OUTPUT_NAMED {
-            globals::OUTFILENAME = strdup_str("<stdout>");
+            globals::set_output_filename("<stdout>");
             // Default data output is stdout, so messages go to stderr (the tool
             // opens stdout on demand via output_writer()).
             globals::MESSAGE_TO_STDERR = true;
@@ -262,29 +225,27 @@ pub unsafe fn check_common_params() {
 // ---------------------------------------------------------------------------
 
 /// Post-parse resolution of the unary input file from the leftover free
-/// argument ('argv[optind]'). 'optind' is read from the getopt globals.
-pub unsafe fn check_unary_params(argc: c_int, argv: *mut *mut c_char) {
+/// argument ('args[optind]'). 'optind' is read from the getopt globals.
+pub unsafe fn check_unary_params(args: &[String]) {
     unsafe {
         let optind = hfst_getopt::OPTIND;
+        let remaining = args.len() - optind;
         if !globals::INPUT_NAMED {
-            if (argc - optind) == 1 {
-                globals::INPUTFILENAME =
-                    hfst_commandline::hfst_strdup(*argv.offset(optind as isize));
-                let name = cstr_to_string(globals::INPUTFILENAME);
-                if name == "-" {
-                    hfst_commandline::hfst_free(globals::INPUTFILENAME as *mut c_char);
-                    globals::INPUTFILENAME = strdup_str("<stdin>");
+            if remaining == 1 {
+                globals::set_input_filename(args[optind].clone());
+                if globals::input_filename() == "-" {
+                    globals::set_input_filename("<stdin>");
                 }
-            } else if (argc - optind) > 1 {
+            } else if remaining > 1 {
                 hfst_commandline::error(
                     EXIT_FAILURE,
                     0,
                     "no more than one transducer file may be given",
                 );
             } else {
-                globals::INPUTFILENAME = strdup_str("<stdin>");
+                globals::set_input_filename("<stdin>");
             }
-        } else if (argc - optind) > 0 {
+        } else if remaining > 0 {
             hfst_commandline::error(
                 EXIT_FAILURE,
                 0,
@@ -300,11 +261,12 @@ pub unsafe fn check_unary_params(argc: c_int, argv: *mut *mut c_char) {
 
 /// Post-parse resolution of the two binary input files from the leftover free
 /// arguments, honouring whichever of '-1'/'-2' was already supplied.
-pub unsafe fn check_binary_params(argc: c_int, argv: *mut *mut c_char) {
+pub unsafe fn check_binary_params(args: &[String]) {
     unsafe {
         let optind = hfst_getopt::OPTIND;
+        let remaining = args.len() - optind;
         if globals::FIRST_NAMED && globals::SECOND_NAMED {
-            if (argc - optind) > 0 {
+            if remaining > 0 {
                 // hfst-tool file1 file2 file3
                 hfst_commandline::error(
                     EXIT_FAILURE,
@@ -314,20 +276,17 @@ pub unsafe fn check_binary_params(argc: c_int, argv: *mut *mut c_char) {
             }
         } else if !globals::FIRST_NAMED && !globals::SECOND_NAMED {
             // neither input given in options:
-            if (argc - optind) == 2 {
+            if remaining == 2 {
                 // hfst-tool file1 file2
-                globals::FIRSTFILENAME =
-                    hfst_commandline::hfst_strdup(*argv.offset(optind as isize));
-                globals::SECONDFILENAME =
-                    hfst_commandline::hfst_strdup(*argv.offset((optind + 1) as isize));
+                globals::set_first_filename(args[optind].clone());
+                globals::set_second_filename(args[optind + 1].clone());
                 globals::IS_INPUT_STDIN = false;
-            } else if (argc - optind) == 1 {
+            } else if remaining == 1 {
                 // hfst-tool file2 < file1
-                globals::SECONDFILENAME =
-                    hfst_commandline::hfst_strdup(*argv.offset(optind as isize));
-                globals::FIRSTFILENAME = strdup_str("<stdin>");
+                globals::set_second_filename(args[optind].clone());
+                globals::set_first_filename("<stdin>");
                 globals::IS_INPUT_STDIN = true;
-            } else if (argc - optind) > 2 {
+            } else if remaining > 2 {
                 hfst_commandline::error(
                     EXIT_FAILURE,
                     0,
@@ -342,14 +301,13 @@ pub unsafe fn check_binary_params(argc: c_int, argv: *mut *mut c_char) {
                 );
             }
         } else if !globals::FIRST_NAMED {
-            if (argc - optind) == 1 {
+            if remaining == 1 {
                 // hfst-tool file1 -2 file2
-                globals::FIRSTFILENAME =
-                    hfst_commandline::hfst_strdup(*argv.offset(optind as isize));
+                globals::set_first_filename(args[optind].clone());
                 globals::IS_INPUT_STDIN = false;
-            } else if (argc - optind) == 0 {
+            } else if remaining == 0 {
                 // hfst-tool -2 file2 < file1
-                globals::FIRSTFILENAME = strdup_str("<stdin>");
+                globals::set_first_filename("<stdin>");
                 globals::IS_INPUT_STDIN = true;
             } else {
                 // hfst-tool -2 file2 file1 file3
@@ -360,14 +318,13 @@ pub unsafe fn check_binary_params(argc: c_int, argv: *mut *mut c_char) {
                 );
             }
         } else if !globals::SECOND_NAMED {
-            if (argc - optind) == 1 {
+            if remaining == 1 {
                 // hfst-tool file2 -1 file1
-                globals::SECONDFILENAME =
-                    hfst_commandline::hfst_strdup(*argv.offset(optind as isize));
+                globals::set_second_filename(args[optind].clone());
                 globals::IS_INPUT_STDIN = false;
-            } else if (argc - optind) == 0 {
+            } else if remaining == 0 {
                 // hfst-tool -1 file1 < file2
-                globals::SECONDFILENAME = strdup_str("<stdin>");
+                globals::set_second_filename("<stdin>");
                 globals::IS_INPUT_STDIN = true;
             } else {
                 // hfst-tool -1 file1 file2 file3

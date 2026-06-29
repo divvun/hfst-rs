@@ -8,7 +8,6 @@
 //! stream to report its type) and has no process_stream. main is therefore
 //! very thin and simply prints the type returned by parse_options.
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -18,131 +17,92 @@ use hfst_cli::hfst_commandline::{
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, hfst_getopt_common_long,
-    hfst_getopt_unary_long, print_common_program_options, print_common_unary_program_options,
-    print_common_unary_program_parameter_instructions,
+    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
+    print_common_unary_program_options, print_common_unary_program_parameter_instructions,
 };
 use hfst_cli::inc::{CaseResult, handle_common_case, handle_unary_case};
-use std::ffi::{CStr, CString};
+use std::io::Write;
 
 static mut LIST_FORMATS: bool = false;
-static mut FORMAT_TO_TEST: *mut c_char = std::ptr::null_mut();
+// C used a NULL char* as "no format requested"; modelled as Option.
+static mut FORMAT_TO_TEST: Option<String> = None;
 
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
+fn format_to_test() -> Option<String> {
+    unsafe { (*std::ptr::addr_of!(FORMAT_TO_TEST)).clone() }
 }
 
 // fprintf(stdout, ...): write to file descriptor 1.
 fn fput_stdout(s: &str) {
-    use std::io::Write;
     let _ = std::io::stdout().write_all(s.as_bytes());
     let _ = std::io::stdout().flush();
 }
 
 // fprintf(stderr, ...): write to file descriptor 2.
 fn fput_stderr(s: &str) {
-    use std::io::Write;
     let _ = std::io::stderr().write_all(s.as_bytes());
     let _ = std::io::stderr().flush();
 }
 
 // [spec:hfst:def:hfst-format.print-usage-fn]
 // [spec:hfst:sem:hfst-format.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        // c.f.
-        // http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = globals::message_writer();
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE]\ndetermine HFST transducer format\n\n",
-                program_name
-            ),
-        );
+fn print_usage() {
+    // c.f.
+    // http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let mut msg = globals::message_writer();
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE]\ndetermine HFST transducer format\n\n",
+        globals::program_name()
+    );
 
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "Tool-specific options:\n  -l, --list-formats     List available transducer formats\n                         and print them to standard output\n",
-        );
-        fput(
-            &mut *msg,
-            "  -t, --test-format FMT  Whether the format FMT is available,\n                         exits with 0 if it is, else with 1\n",
-        );
-        fput(&mut *msg, "\n");
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        fput(&mut *msg, "\n");
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-    }
+    print_common_program_options(&mut *msg);
+    print_common_unary_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "Tool-specific options:\n  -l, --list-formats     List available transducer formats\n                         and print them to standard output\n"
+    );
+    let _ = write!(
+        msg,
+        "  -t, --test-format FMT  Whether the format FMT is available,\n                         exits with 0 if it is, else with 1\n"
+    );
+    let _ = write!(msg, "\n");
+    print_common_unary_program_parameter_instructions(&mut *msg);
+    let _ = write!(msg, "\n");
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
 }
 
 // [spec:hfst:def:hfst-format.parse-options-fn]
 // [spec:hfst:sem:hfst-format.parse-options-fn]
-unsafe fn parse_options(argc: c_int, argv: *mut *mut c_char) -> ImplementationType {
+unsafe fn parse_options(args: &mut Vec<String>) -> ImplementationType {
     unsafe {
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             long_options.extend(hfst_getopt_unary_long());
-            long_options.push(getopt::Option {
-                name: b"input1\0".as_ptr() as *const c_char,
+            long_options.push(getopt::GetOpt {
+                name: "input1",
                 has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: '1' as c_int,
+                val: '1' as i32,
             });
-            long_options.push(getopt::Option {
-                name: b"input2\0".as_ptr() as *const c_char,
+            long_options.push(getopt::GetOpt {
+                name: "input2",
                 has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: '2' as c_int,
+                val: '2' as i32,
             });
-            long_options.push(getopt::Option {
-                name: b"list-formats\0".as_ptr() as *const c_char,
+            long_options.push(getopt::GetOpt {
+                name: "list-formats",
                 has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 'l' as c_int,
+                val: 'l' as i32,
             });
-            long_options.push(getopt::Option {
-                name: b"test-format\0".as_ptr() as *const c_char,
+            long_options.push(getopt::GetOpt {
+                name: "test-format",
                 has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: 't' as c_int,
+                val: 't' as i32,
             });
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!(
-                "{}{}1:2:lt:",
-                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
@@ -150,7 +110,7 @@ unsafe fn parse_options(argc: c_int, argv: *mut *mut c_char) -> ImplementationTy
             // The C switch chains the #include'd case groups in order: common
             // cases, then unary cases, then the tool's own cases, then the
             // terminal default arm (which here is a no-op, NOT the error arm).
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => std::process::exit(code),
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
@@ -163,13 +123,11 @@ unsafe fn parse_options(argc: c_int, argv: *mut *mut c_char) -> ImplementationTy
             let ch = char::from_u32(c as u32);
             match ch {
                 Some('1') => {
-                    globals::INPUTFILENAME =
-                        hfst_cli::hfst_commandline::hfst_strdup(getopt::OPTARG);
+                    globals::set_input_filename(getopt::optarg());
                     continue;
                 }
                 Some('2') => {
-                    globals::INPUTFILENAME =
-                        hfst_cli::hfst_commandline::hfst_strdup(getopt::OPTARG);
+                    globals::set_input_filename(getopt::optarg());
                     continue;
                 }
                 Some('l') => {
@@ -177,7 +135,7 @@ unsafe fn parse_options(argc: c_int, argv: *mut *mut c_char) -> ImplementationTy
                     continue;
                 }
                 Some('t') => {
-                    FORMAT_TO_TEST = hfst_cli::hfst_commandline::hfst_strdup(getopt::OPTARG);
+                    FORMAT_TO_TEST = Some(getopt::optarg());
                     continue;
                 }
                 _ => {
@@ -189,8 +147,7 @@ unsafe fn parse_options(argc: c_int, argv: *mut *mut c_char) -> ImplementationTy
             }
         }
 
-        if !FORMAT_TO_TEST.is_null() {
-            let fmt = cstr(FORMAT_TO_TEST);
+        if let Some(fmt) = format_to_test() {
             if (fmt == "sfst"
                 && HfstTransducer::is_implementation_type_available(ImplementationType::SFST_TYPE))
                 || (fmt == "openfst-tropical"
@@ -263,19 +220,24 @@ unsafe fn parse_options(argc: c_int, argv: *mut *mut c_char) -> ImplementationTy
         // non-transducer stream it prints an error and exit(1). The Rust ctor
         // currently panics rather than throwing, so the catch arm is mirrored
         // by catching the panic.
+        let optind = getopt::OPTIND;
+        let remaining = args.len() - optind;
+        let free_arg = if remaining == 1 {
+            Some(args[optind].clone())
+        } else {
+            None
+        };
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if globals::INPUTFILENAME.is_null() {
-                if (argc - getopt::OPTIND) == 0 {
-                    globals::INPUTFILENAME = hfst_cli::hfst_commandline::hfst_strdup(
-                        b"<stdin>\0".as_ptr() as *const c_char,
-                    );
+            if globals::input_filename().is_empty() {
+                if remaining == 0 {
+                    globals::set_input_filename("<stdin>");
                     let is = HfstInputStream::new();
                     return is.get_type();
-                } else if (argc - getopt::OPTIND) == 1 {
-                    globals::INPUTFILENAME = *argv.offset(getopt::OPTIND as isize);
+                } else if remaining == 1 {
+                    globals::set_input_filename(free_arg.clone().unwrap());
                 }
             }
-            let is = HfstInputStream::new_filename(&cstr(globals::INPUTFILENAME));
+            let is = HfstInputStream::new_filename(&globals::input_filename());
             is.get_type()
         }));
 
@@ -297,24 +259,15 @@ fn main() {
 
 unsafe fn real_main() {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt
-        // reorders/replaces it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "HfstFormat");
         globals::VERBOSE = true;
-        let type_ = parse_options(argc, argv);
+        let type_ = parse_options(&mut args);
         verbose_printf(&format!(
             "Transducers in {} are of type {}\n",
-            cstr(globals::INPUTFILENAME),
+            globals::input_filename(),
             hfst_strformat(type_)
         ));
     }

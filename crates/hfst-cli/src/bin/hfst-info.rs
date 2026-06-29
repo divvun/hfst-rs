@@ -6,21 +6,18 @@
 //! features. Drives the hfst-cli foundation (globals, getopt, commandline,
 //! program-options).
 
-use core::ffi::{c_char, c_int};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, print_more_info,
     print_report_bugs, print_version, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
-use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, hfst_getopt_common_long, print_common_program_options,
-};
+use hfst_cli::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
 
-const EXIT_SUCCESS: c_int = 0;
-const EXIT_FAILURE: c_int = 1;
+const EXIT_SUCCESS: i32 = 0;
+const EXIT_FAILURE: i32 = 1;
 use std::collections::BTreeSet;
-use std::ffi::{CStr, CString};
+use std::io::Write;
 
 // Configured-build constants the C tool received from config.h. The reference
 // build (config.log) sets HFST_LONGVERSION=300170001, PACKAGE_VERSION="3.17.1",
@@ -42,20 +39,6 @@ static mut MAX_VERSION: i64 = -1;
 // required_features collected as a set<string>; BTreeSet preserves the
 // sorted-iteration order the C++ std::set used.
 static mut REQUIRED_FEATURES: Option<BTreeSet<String>> = None;
-
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
 
 // strtoul(s, &endptr, 10): parse a leading run of base-10 digits from 's',
 // returning the parsed value and the unparsed remainder (the C 'endptr'). Like
@@ -109,101 +92,78 @@ fn parse_version_string(s: &str) -> i64 {
 
 // [spec:hfst:def:hfst-info.print-usage-fn]
 // [spec:hfst:sem:hfst-info.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = globals::message_writer();
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE]\nshow or test HFST versions and features\n\n",
-                program_name
-            ),
-        );
-        print_common_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "Test features:\n  -a, --atleast-version=MVER   require at least MVER version of HFST\n  -e, --exact-version=EVER     require exactly EVER version of HFST\n  -m, --max-version=UVER       require at most UVER version of HFST\n  -f, --requirefeature=FEAT    require named FEAT support from HFST\n",
-        );
-        fput(&mut *msg, "\n");
-        fput(
-            &mut *msg,
-            "MVER, EVER or UVER version vectors must be composed of one to three full stop separated runs of digits.\nFEAT should be name of feature supported by HFST, such as SFST, foma or openfst\n\n",
-        );
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-    }
+fn print_usage() {
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let mut msg = globals::message_writer();
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE]\nshow or test HFST versions and features\n\n",
+        globals::program_name()
+    );
+    print_common_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "Test features:\n  -a, --atleast-version=MVER   require at least MVER version of HFST\n  -e, --exact-version=EVER     require exactly EVER version of HFST\n  -m, --max-version=UVER       require at most UVER version of HFST\n  -f, --requirefeature=FEAT    require named FEAT support from HFST\n"
+    );
+    let _ = write!(msg, "\n");
+    let _ = write!(
+        msg,
+        "MVER, EVER or UVER version vectors must be composed of one to three full stop separated runs of digits.\nFEAT should be name of feature supported by HFST, such as SFST, foma or openfst\n\n"
+    );
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
 }
 
 // [spec:hfst:def:hfst-info.parse-options-fn]
 // [spec:hfst:sem:hfst-info.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
-            long_options.push(getopt::Option {
-                name: c"atleast-version".as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: b'a' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "atleast-version",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: b'a' as i32,
             });
-            long_options.push(getopt::Option {
-                name: c"exact-version".as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: b'e' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "exact-version",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: b'e' as i32,
             });
-            long_options.push(getopt::Option {
-                name: c"max-version".as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: b'm' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "max-version",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: b'm' as i32,
             });
-            long_options.push(getopt::Option {
-                name: c"require-feature".as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: b'f' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "require-feature",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: b'f' as i32,
             });
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!("{}a:e:f:m:", HFST_GETOPT_COMMON_SHORT)).unwrap();
-            let mut option_index: c_int = 0;
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
             // The C switch handles only a/e/m/f/h/V; every other accepted option
             // (the common -v/-q/-s/-d/-o/--colour) falls through with no action.
-            if c == b'a' as c_int {
-                MIN_VERSION = parse_version_string(&cstr(getopt::OPTARG));
-            } else if c == b'e' as c_int {
-                EXACT_VERSION = parse_version_string(&cstr(getopt::OPTARG));
-            } else if c == b'm' as c_int {
-                MAX_VERSION = parse_version_string(&cstr(getopt::OPTARG));
-            } else if c == b'f' as c_int {
+            if c == b'a' as i32 {
+                MIN_VERSION = parse_version_string(&getopt::optarg());
+            } else if c == b'e' as i32 {
+                EXACT_VERSION = parse_version_string(&getopt::optarg());
+            } else if c == b'm' as i32 {
+                MAX_VERSION = parse_version_string(&getopt::optarg());
+            } else if c == b'f' as i32 {
                 REQUIRED_FEATURES
                     .get_or_insert_with(BTreeSet::new)
-                    .insert(cstr(getopt::OPTARG));
-            } else if c == b'h' as c_int {
+                    .insert(getopt::optarg());
+            } else if c == b'h' as i32 {
                 print_usage();
                 return EXIT_SUCCESS;
-            } else if c == b'V' as c_int {
+            } else if c == b'V' as i32 {
                 print_version();
                 return EXIT_SUCCESS;
             }
@@ -229,22 +189,13 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "HfstInfo");
-        parse_options(argc, argv);
+        parse_options(&mut args);
         if MIN_VERSION != -1 {
             verbose_printf(&format!(
                 "Requiring current version {} to be greater than {}\n",
@@ -318,7 +269,7 @@ unsafe fn real_main() -> c_int {
         }
         verbose_printf(&format!(
             "HFST info version: {}\nHFST packaging: {}\nHFST version: {}\nHFST long version: {}\n",
-            cstr(globals::HFST_TOOL_VERSION),
+            globals::hfst_tool_version(),
             PACKAGE_STRING,
             PACKAGE_VERSION,
             HFST_LONGVERSION

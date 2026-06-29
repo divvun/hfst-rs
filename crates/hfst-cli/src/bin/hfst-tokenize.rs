@@ -10,7 +10,6 @@
 //! positional argument as the ruleset archive filename, reads lines of stdin
 //! (via 'inputfile'), and prints to stdout.
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -20,30 +19,13 @@ use hfst::pmatch_tokenize::{
 };
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, hfst_setlocale, print_more_info,
+    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, print_more_info,
     print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
-use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, hfst_getopt_common_long, print_common_program_options,
-};
+use hfst_cli::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
 use hfst_cli::inc::{CaseResult, handle_common_case, handle_error_case};
-use std::ffi::{CStr, CString};
 use std::io::{BufRead, Write};
-
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
 
 // File-scope tool state (the C++ file-scope statics).
 static mut SUPERBLANKS: bool = false; // Input is apertium-style superblanks
@@ -52,7 +34,7 @@ static mut BLANKLINE_SEPARATED: bool = true; // Input is separated by blank line
 // (as opposed to single newlines)
 static mut KEEP_NEWLINES: bool = false;
 #[allow(dead_code)]
-static mut TOKEN_NUMBER: c_int = 1;
+static mut TOKEN_NUMBER: i32 = 1;
 static mut TOKENIZER_FILENAME: String = String::new();
 const DEFAULT_FORMAT: ImplementationType = ImplementationType::TROPICAL_OPENFST_TYPE;
 
@@ -72,55 +54,50 @@ fn settings() -> &'static mut TokenizeSettings {
 
 // [spec:hfst:def:hfst-tokenize.print-usage-fn]
 // [spec:hfst:sem:hfst-tokenize.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        let mut msg = globals::message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [--segment | --xerox | --cg | --giella-cg] [OPTIONS...] RULESET\nperform matching/lookup on text streams\n\n",
-                program_name
-            ),
-        );
-        print_common_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "  -n, --newline            Newline as input separator (default is blank line)\n\
-             \x20 -a, --print-all          Print nonmatching text\n\
-             \x20 -w, --print-weight       Print weights (overrides earlier -W option)\n\
-             \x20 -W, --no-weights         Don't print weights (default; overrides earlier -w, or -w implied by -g, options)\n\
-             \x20 -m, --tokenize-multichar Tokenize multicharacter symbols\n\
-             \x20                          (by default only one grapheme is tokenized at a time\n\
-             \x20                          regardless of what is present in the alphabet)\n\
-             \x20 -b, --beam=B             Output only analyses whose weight is within B from best result\n\
-             \x20 -tS, --time-cutoff=S     Limit search after having used S seconds per input\n\
-             \x20 -lN, --weight-classes=N  Output no more than N best weight classes\n\
-             \x20                          (where analyses with equal weight constitute a class\n\
-             \x20 -u, --unique             Remove duplicate analyses\n\
-             \x20 -z, --segment            Segmenting / tokenization mode (default)\n\
-             \x20 -i, --space-separated    Tokenization with one sentence per line, space-separated tokens\n\
-             \x20 -x, --xerox              Xerox output\n\
-             \x20 -c, --cg                 Constraint Grammar output\n\
-             \x20 -S, --superblanks        Ignore contents of unescaped [] (cf. apertium-destxt); flush on NUL\n\
-             \x20 -g, --giella-cg          CG format used in Giella infrastructure (implies -w and -l2,\n\
-             \x20                          treats @PMATCH_INPUT_MARK@ as subreading separator,\n\
-             \x20                          expects tags to be Multichar_symbols, flush on NUL)\n\
-             \x20 -C  --conllu             CoNLL-U format\n\
-             \x20 -f, --finnpos            FinnPos output\n\
-             \x20 -L, --visl               VISL input and output (implies -W, handles <s> as blocks and <STYLE> inline)\n",
-        );
-        fput(
-            &mut *msg,
-            "Use standard streams for input and output (for now).\n\n",
-        );
+fn print_usage() {
+    let mut msg = globals::message_writer();
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let _ = write!(
+        msg,
+        "Usage: {} [--segment | --xerox | --cg | --giella-cg] [OPTIONS...] RULESET\nperform matching/lookup on text streams\n\n",
+        globals::program_name()
+    );
+    print_common_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "  -n, --newline            Newline as input separator (default is blank line)\n\
+         \x20 -a, --print-all          Print nonmatching text\n\
+         \x20 -w, --print-weight       Print weights (overrides earlier -W option)\n\
+         \x20 -W, --no-weights         Don't print weights (default; overrides earlier -w, or -w implied by -g, options)\n\
+         \x20 -m, --tokenize-multichar Tokenize multicharacter symbols\n\
+         \x20                          (by default only one grapheme is tokenized at a time\n\
+         \x20                          regardless of what is present in the alphabet)\n\
+         \x20 -b, --beam=B             Output only analyses whose weight is within B from best result\n\
+         \x20 -tS, --time-cutoff=S     Limit search after having used S seconds per input\n\
+         \x20 -lN, --weight-classes=N  Output no more than N best weight classes\n\
+         \x20                          (where analyses with equal weight constitute a class\n\
+         \x20 -u, --unique             Remove duplicate analyses\n\
+         \x20 -z, --segment            Segmenting / tokenization mode (default)\n\
+         \x20 -i, --space-separated    Tokenization with one sentence per line, space-separated tokens\n\
+         \x20 -x, --xerox              Xerox output\n\
+         \x20 -c, --cg                 Constraint Grammar output\n\
+         \x20 -S, --superblanks        Ignore contents of unescaped [] (cf. apertium-destxt); flush on NUL\n\
+         \x20 -g, --giella-cg          CG format used in Giella infrastructure (implies -w and -l2,\n\
+         \x20                          treats @PMATCH_INPUT_MARK@ as subreading separator,\n\
+         \x20                          expects tags to be Multichar_symbols, flush on NUL)\n\
+         \x20 -C  --conllu             CoNLL-U format\n\
+         \x20 -f, --finnpos            FinnPos output\n\
+         \x20 -L, --visl               VISL input and output (implies -W, handles <s> as blocks and <STYLE> inline)\n",
+    );
+    let _ = write!(
+        msg,
+        "Use standard streams for input and output (for now).\n\n"
+    );
 
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-        fput(&mut *msg, "\n");
-    }
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
+    let _ = write!(msg, "\n");
 }
 
 // [spec:hfst:def:hfst-tokenize.make-naive-tokenizer-fn]
@@ -174,9 +151,8 @@ unsafe fn make_naive_tokenizer(dictionary: &mut HfstTransducer) -> PmatchContain
             dict_name = "unknown_pmatch_tokenized_dict".to_string();
             dictionary.set_name(&dict_name);
         }
-        let dict_name_c = CString::new(dict_name.clone()).unwrap();
         let dict_ins_arc = HfstTransducer::new_symbol(
-            &hfst::pmatch_compiler::get_Ins_transition(dict_name_c.as_ptr()),
+            &hfst::pmatch_compiler::get_Ins_transition(&dict_name),
             DEFAULT_FORMAT,
         );
         // We now make the center of the tokenizer
@@ -277,7 +253,7 @@ unsafe fn process_input_visl(
     container: &mut PmatchContainer,
     outstream: &mut dyn Write,
     input: &mut dyn BufRead,
-) -> c_int {
+) -> i32 {
     unsafe {
         let mut buf: Vec<u8> = Vec::new();
         loop {
@@ -321,7 +297,7 @@ unsafe fn process_input_0delim(
     outstream: &mut dyn Write,
     do_superblank: bool,
     input: &mut dyn BufRead,
-) -> c_int {
+) -> i32 {
     unsafe {
         let mut buf: Vec<u8> = Vec::new();
         let mut in_blank = false;
@@ -412,7 +388,7 @@ unsafe fn process_input(
     container: &mut PmatchContainer,
     outstream: &mut dyn Write,
     input: &mut dyn BufRead,
-) -> c_int {
+) -> i32 {
     unsafe {
         // (The C++ sets std::fixed/setprecision(10) on the stream for cg/giellacg/
         // visl; the library print functions format weights themselves, so there is
@@ -472,123 +448,95 @@ unsafe fn process_input(
 
 // [spec:hfst:def:hfst-tokenize.parse-options-fn]
 // [spec:hfst:sem:hfst-tokenize.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             // tool-specific options
-            let names: &[(&str, c_int, c_int)] = &[
-                ("newline", 0, b'n' as c_int),
-                ("keep-newline", 0, b'k' as c_int),
-                ("print-all", 0, b'a' as c_int),
-                ("print-weights", 0, b'w' as c_int),
-                ("no-weights", 0, b'W' as c_int),
-                ("tokenize-multichar", 0, b'm' as c_int),
-                ("beam", 1, b'b' as c_int),
-                ("time-cutoff", 1, b't' as c_int),
-                ("weight-classes", 1, b'l' as c_int),
-                ("unique", 0, b'u' as c_int),
-                ("segment", 0, b'z' as c_int),
-                ("space-separated", 0, b'd' as c_int),
-                ("xerox", 0, b'x' as c_int),
-                ("cg", 0, b'c' as c_int),
-                ("superblanks", 0, b'S' as c_int),
-                ("giella-cg", 0, b'g' as c_int),
-                ("gtd", 0, b'g' as c_int),
-                ("conllu", 0, b'C' as c_int),
-                ("finnpos", 0, b'f' as c_int),
-                ("visl", 0, b'L' as c_int),
+            let names: &[(&str, i32, i32)] = &[
+                ("newline", getopt::NO_ARGUMENT, b'n' as i32),
+                ("keep-newline", getopt::NO_ARGUMENT, b'k' as i32),
+                ("print-all", getopt::NO_ARGUMENT, b'a' as i32),
+                ("print-weights", getopt::NO_ARGUMENT, b'w' as i32),
+                ("no-weights", getopt::NO_ARGUMENT, b'W' as i32),
+                ("tokenize-multichar", getopt::NO_ARGUMENT, b'm' as i32),
+                ("beam", getopt::REQUIRED_ARGUMENT, b'b' as i32),
+                ("time-cutoff", getopt::REQUIRED_ARGUMENT, b't' as i32),
+                ("weight-classes", getopt::REQUIRED_ARGUMENT, b'l' as i32),
+                ("unique", getopt::NO_ARGUMENT, b'u' as i32),
+                ("segment", getopt::NO_ARGUMENT, b'z' as i32),
+                ("space-separated", getopt::NO_ARGUMENT, b'd' as i32),
+                ("xerox", getopt::NO_ARGUMENT, b'x' as i32),
+                ("cg", getopt::NO_ARGUMENT, b'c' as i32),
+                ("superblanks", getopt::NO_ARGUMENT, b'S' as i32),
+                ("giella-cg", getopt::NO_ARGUMENT, b'g' as i32),
+                ("gtd", getopt::NO_ARGUMENT, b'g' as i32),
+                ("conllu", getopt::NO_ARGUMENT, b'C' as i32),
+                ("finnpos", getopt::NO_ARGUMENT, b'f' as i32),
+                ("visl", getopt::NO_ARGUMENT, b'L' as i32),
             ];
-            let name_storage: Vec<CString> = names
-                .iter()
-                .map(|(n, _, _)| CString::new(*n).unwrap())
-                .collect();
-            for (i, (_, has_arg, val)) in names.iter().enumerate() {
-                long_options.push(getopt::Option {
-                    name: name_storage[i].as_ptr(),
-                    has_arg: *has_arg,
-                    flag: std::ptr::null_mut(),
-                    val: *val,
-                });
+            for &(name, has_arg, val) in names {
+                long_options.push(getopt::GetOpt { name, has_arg, val });
             }
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!(
-                "{}nkawWmub:t:l:zixcSgCfL",
-                HFST_GETOPT_COMMON_SHORT
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
 
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
             }
-            if c == b'k' as c_int {
+            if c == b'k' as i32 {
                 KEEP_NEWLINES = true;
                 BLANKLINE_SEPARATED = false;
-            } else if c == b'n' as c_int {
+            } else if c == b'n' as i32 {
                 BLANKLINE_SEPARATED = false;
-            } else if c == b'a' as c_int {
+            } else if c == b'a' as i32 {
                 settings().print_all = true;
-            } else if c == b'w' as c_int {
+            } else if c == b'w' as i32 {
                 settings().print_weights = true;
-            } else if c == b'W' as c_int {
+            } else if c == b'W' as i32 {
                 settings().print_weights = false;
-            } else if c == b'm' as c_int {
+            } else if c == b'm' as i32 {
                 settings().tokenize_multichar = true;
-            } else if c == b't' as c_int {
-                settings().time_cutoff = cstr(getopt::OPTARG).trim().parse::<f64>().unwrap_or(0.0);
+            } else if c == b't' as i32 {
+                settings().time_cutoff = getopt::optarg().trim().parse::<f64>().unwrap_or(0.0);
                 if settings().time_cutoff < 0.0 {
                     eprint!("Invalid argument for --time-cutoff\n");
                     return 1;
                 }
-            } else if c == b'u' as c_int {
+            } else if c == b'u' as i32 {
                 settings().dedupe = true;
-            } else if c == b'b' as c_int {
-                settings().beam = cstr(getopt::OPTARG).trim().parse::<f64>().unwrap_or(0.0) as f32;
+            } else if c == b'b' as i32 {
+                settings().beam = getopt::optarg().trim().parse::<f64>().unwrap_or(0.0) as f32;
                 if settings().beam < 0.0 {
                     eprint!("Invalid argument for --beam\n");
                     return 1;
                 }
-            } else if c == b'l' as c_int {
-                settings().max_weight_classes =
-                    cstr(getopt::OPTARG).trim().parse::<i32>().unwrap_or(0);
+            } else if c == b'l' as i32 {
+                settings().max_weight_classes = getopt::optarg().trim().parse::<i32>().unwrap_or(0);
                 if settings().max_weight_classes < 1 {
                     eprint!("Invalid or no argument --weight-classes count\n");
                     return 1;
                 }
-            } else if c == b'z' as c_int {
+            } else if c == b'z' as i32 {
                 settings().output_format = OutputFormat::tokenize;
-            } else if c == b'i' as c_int {
+            } else if c == b'i' as i32 {
                 settings().output_format = OutputFormat::space_separated;
-            } else if c == b'x' as c_int {
+            } else if c == b'x' as i32 {
                 settings().output_format = OutputFormat::xerox;
-            } else if c == b'c' as c_int {
+            } else if c == b'c' as i32 {
                 settings().output_format = OutputFormat::cg;
-            } else if c == b'C' as c_int {
+            } else if c == b'C' as i32 {
                 settings().output_format = OutputFormat::conllu;
-            } else if c == b'S' as c_int {
+            } else if c == b'S' as i32 {
                 SUPERBLANKS = true;
-            } else if c == b'g' as c_int {
+            } else if c == b'g' as i32 {
                 settings().output_format = OutputFormat::giellacg;
                 settings().print_weights = true;
                 settings().print_all = true;
@@ -598,13 +546,13 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 if settings().max_weight_classes == i32::MAX {
                     settings().max_weight_classes = 2;
                 }
-            } else if c == b'L' as c_int {
+            } else if c == b'L' as i32 {
                 settings().output_format = OutputFormat::visl;
                 settings().print_weights = false;
                 settings().print_all = true;
                 settings().dedupe = true;
                 settings().verbose = false;
-            } else if c == b'f' as c_int {
+            } else if c == b'f' as i32 {
                 settings().output_format = OutputFormat::finnpos;
             } else {
                 return handle_error_case(c);
@@ -616,12 +564,12 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
 
         // no more options, we should now be at the input filename
+        let argc = args.len();
         if (getopt::OPTIND + 1) < argc {
             eprint!("More than one input file given\n");
             1
         } else if (getopt::OPTIND + 1) == argc {
-            let ptr = &raw mut TOKENIZER_FILENAME;
-            *ptr = cstr(*argv.offset(getopt::OPTIND as isize));
+            *std::ptr::addr_of_mut!(TOKENIZER_FILENAME) = args[getopt::OPTIND].clone();
             EXIT_CONTINUE
         } else {
             eprint!("No input file given\n");
@@ -645,23 +593,13 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "HfstTokenize");
-        hfst_setlocale();
-        let retval = parse_options(argc, argv);
+        let retval = parse_options(&mut args);
         if retval != EXIT_CONTINUE {
             return retval;
         }
@@ -672,7 +610,7 @@ unsafe fn real_main() -> c_int {
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             tokenizer_filename,
-            cstr(globals::OUTFILENAME)
+            globals::output_filename()
         ));
         let mut file = match std::fs::File::open(&tokenizer_filename) {
             Ok(f) => f,

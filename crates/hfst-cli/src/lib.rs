@@ -14,7 +14,6 @@
 
 pub mod globals;
 pub mod hfst_commandline;
-pub mod hfst_file_to_mem;
 pub mod hfst_getopt;
 pub mod hfst_program_options;
 pub mod hfst_tool_metadata;

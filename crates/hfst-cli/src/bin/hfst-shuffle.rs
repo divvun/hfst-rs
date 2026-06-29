@@ -4,7 +4,6 @@
 //! it reads two input streams (firstfile + secondfile) and writes their
 //! shuffle.
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -17,8 +16,7 @@ use hfst_cli::hfst_commandline::{
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_BINARY_SHORT, HFST_GETOPT_COMMON_SHORT, hfst_getopt_binary_long,
-    hfst_getopt_common_long, print_common_binary_program_options,
+    hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
     print_common_binary_program_parameter_instructions, print_common_program_options,
 };
 use hfst_cli::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_binary, hfst_set_name_binary};
@@ -26,85 +24,45 @@ use hfst_cli::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
-use std::ffi::{CStr, CString};
-
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
+use std::io::Write;
 
 // [spec:hfst:def:hfst-shuffle.print-usage-fn]
 // [spec:hfst:sem:hfst-shuffle.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        let mut msg = globals::message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nShuffle two transducers\n\n",
-                program_name
-            ),
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        fput(&mut *msg, "\n");
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        fput(&mut *msg, "\n");
-        fput(
-            &mut *msg,
-            &format!(
-                "\nExamples:\n  {} -o shuffled.hfst cat.hfst dog.hfst\n\n",
-                program_name
-            ),
-        );
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-    }
+fn print_usage() {
+    let mut msg = globals::message_writer();
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nShuffle two transducers\n\n",
+        globals::program_name()
+    );
+    print_common_program_options(&mut *msg);
+    print_common_binary_program_options(&mut *msg);
+    let _ = write!(msg, "\n");
+    print_common_binary_program_parameter_instructions(&mut *msg);
+    let _ = write!(msg, "\n");
+    let _ = write!(
+        msg,
+        "\nExamples:\n  {} -o shuffled.hfst cat.hfst dog.hfst\n\n",
+        globals::program_name()
+    );
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
 }
 
 // [spec:hfst:def:hfst-shuffle.parse-options-fn]
 // [spec:hfst:sem:hfst-shuffle.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             long_options.extend(hfst_getopt_binary_long());
             // add tool-specific options here
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!(
-                "{}{}",
-                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_BINARY_SHORT
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            // add tool-specific options here
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
@@ -117,7 +75,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
             }
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
@@ -125,7 +83,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             return handle_error_case(c);
         }
 
-        check_binary_params(argc, argv);
+        check_binary_params(args);
         check_common_params();
         EXIT_CONTINUE
     }
@@ -136,7 +94,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 unsafe fn shuffle_streams(
     firststream: &mut HfstInputStream,
     secondstream: &mut HfstInputStream,
-) -> c_int {
+) -> i32 {
     unsafe {
         // there must be at least one transducer in both input streams
         let mut continue_reading = firststream.is_good() && secondstream.is_good();
@@ -149,8 +107,8 @@ unsafe fn shuffle_streams(
                 let ct = conversion_type(type1, type2);
                 let mut warnstr = format!(
                     "Transducer type mismatch in {} and {}; ",
-                    cstr(globals::FIRSTFILENAME),
-                    cstr(globals::SECONDFILENAME)
+                    globals::first_filename(),
+                    globals::second_filename()
                 );
                 if ct == 1 {
                     warnstr.push_str("using former type as output");
@@ -175,8 +133,8 @@ unsafe fn shuffle_streams(
                     0,
                     &format!(
                         "Transducer type mismatch in {} and {}; formats {} and {} are not compatible for shuffle (--do-not-convert was requested)",
-                        cstr(globals::FIRSTFILENAME),
-                        cstr(globals::SECONDFILENAME),
+                        globals::first_filename(),
+                        globals::second_filename(),
                         hfst_strformat(type1),
                         hfst_strformat(type2)
                     ),
@@ -186,9 +144,9 @@ unsafe fn shuffle_streams(
             output_type = type1;
         }
 
-        let output_named = cstr(globals::OUTFILENAME) != "<stdout>";
+        let output_named = globals::output_filename() != "<stdout>";
         let mut outstream = if output_named {
-            HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), output_type, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), output_type, true)
         } else {
             HfstOutputStream::new(output_type, true)
         };
@@ -204,13 +162,12 @@ unsafe fn shuffle_streams(
                 second = Some(HfstTransducer::new_from_stream(secondstream));
                 transducer_n_second += 1;
             }
-            let firstname = hfst_get_name(first.as_ref().unwrap(), &cstr(globals::FIRSTFILENAME));
+            let firstname = hfst_get_name(first.as_ref().unwrap(), &globals::first_filename());
             if second.is_none() {
                 // make scan-build happy, this should not happen
                 std::panic::panic_any(String::from("Error: second stream has a NULL value."));
             }
-            let secondname =
-                hfst_get_name(second.as_ref().unwrap(), &cstr(globals::SECONDFILENAME));
+            let secondname = hfst_get_name(second.as_ref().unwrap(), &globals::second_filename());
             if transducer_n_first == 1 {
                 verbose_printf(&format!("Shuffling {} and {}...\n", firstname, secondname));
             } else {
@@ -302,8 +259,8 @@ unsafe fn shuffle_streams(
                 0,
                 &format!(
                     "second input '{}' contains fewer transducers than first input '{}'; this is only possible if the second input contains exactly one transducer",
-                    cstr(globals::SECONDFILENAME),
-                    cstr(globals::FIRSTFILENAME)
+                    globals::second_filename(),
+                    globals::first_filename()
                 ),
             );
         }
@@ -314,8 +271,8 @@ unsafe fn shuffle_streams(
                 0,
                 &format!(
                     "first input '{}' contains fewer transducers than second input '{}'",
-                    cstr(globals::FIRSTFILENAME),
-                    cstr(globals::SECONDFILENAME)
+                    globals::first_filename(),
+                    globals::second_filename()
                 ),
             );
         }
@@ -334,45 +291,36 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "HfstShuffle");
-        let mut retval = parse_options(argc, argv);
+        let mut retval = parse_options(&mut args);
         if retval != EXIT_CONTINUE {
             return retval;
         }
         // close buffers, we use streams
-        let first_opened = cstr(globals::FIRSTFILENAME) != "<stdin>";
-        let second_opened = cstr(globals::SECONDFILENAME) != "<stdin>";
+        let first_opened = globals::first_filename() != "<stdin>";
+        let second_opened = globals::second_filename() != "<stdin>";
         verbose_printf(&format!(
             "Reading from {} and {}, writing to {}\n",
-            cstr(globals::FIRSTFILENAME),
-            cstr(globals::SECONDFILENAME),
-            cstr(globals::OUTFILENAME)
+            globals::first_filename(),
+            globals::second_filename(),
+            globals::output_filename()
         ));
         // here starts the buffer handling part
         // (the C wraps each ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch
         // arms are not reproduced here.)
         let mut firststream = if first_opened {
-            HfstInputStream::new_filename(&cstr(globals::FIRSTFILENAME))
+            HfstInputStream::new_filename(&globals::first_filename())
         } else {
             HfstInputStream::new()
         };
         let mut secondstream = if second_opened {
-            HfstInputStream::new_filename(&cstr(globals::SECONDFILENAME))
+            HfstInputStream::new_filename(&globals::second_filename())
         } else {
             HfstInputStream::new()
         };

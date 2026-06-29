@@ -10,8 +10,6 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
-use std::os::raw::c_char;
-
 use crate::twolc::replace_substr;
 
 // @brief Thrown when a string manipulation function receives incorrect
@@ -40,15 +38,6 @@ impl FaultyStringInput {
 // [spec:hfst:sem:string-manipulation.new-string-fn]
 pub fn new_string(lgth: usize) -> String {
     "\0".repeat(lgth)
-}
-
-// [spec:hfst:def:string-manipulation.string-copy-fn]
-// [spec:hfst:sem:string-manipulation.string-copy-fn]
-pub unsafe fn string_copy(str: *const c_char) -> *mut c_char {
-    // strdup over the Rust allocator: an owned copy reclaimed with CString::from_raw.
-    unsafe { std::ffi::CStr::from_ptr(str) }
-        .to_owned()
-        .into_raw()
 }
 
 // [spec:hfst:def:string-manipulation.remove-sign-fn]

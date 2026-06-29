@@ -15,13 +15,11 @@
 //! Globals live once in 'crate::globals'; in C they were '#include'd per tool.
 
 use crate::globals::{self, ColourTristate};
-use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_exception_defs::HfstFatalException;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
-use std::ffi::CStr;
 use std::io::{IsTerminal, Write};
 
 // ---------------------------------------------------------------------------
@@ -29,10 +27,10 @@ use std::io::{IsTerminal, Write};
 // ---------------------------------------------------------------------------
 
 /// option "character" for colour
-pub const GETOPT_COLOUR: c_int = 27;
+pub const GETOPT_COLOUR: i32 = 27;
 
 /// successful return value for argument parsing routine
-pub const EXIT_CONTINUE: c_int = 42;
+pub const EXIT_CONTINUE: i32 = 42;
 
 pub const WIKI_URL: &str = "https://github.com/hfst/hfst/wiki";
 
@@ -50,32 +48,17 @@ const PACKAGE_STRING: &str = "";
 const PACKAGE_BUGREPORT: &str = "";
 
 // ---------------------------------------------------------------------------
-// internal helpers (no C counterpart; the C used fprintf/vfprintf directly)
+// internal helpers
 // ---------------------------------------------------------------------------
-
-// Write a Rust string slice to a writer verbatim (the C did fprintf(f, "%s", s)
-// or fputs); keeps arbitrary bytes including ANSI escapes intact.
-fn fput_str(f: &mut dyn Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
-
-// Write a NUL-terminated C string pointer to a writer (the C printed globals such
-// as program_name with fprintf(f, "%s", p)).
-fn fput_cstr(f: &mut dyn Write, p: *const c_char) {
-    if !p.is_null() {
-        let s = unsafe { CStr::from_ptr(p) }.to_string_lossy();
-        let _ = f.write_all(s.as_bytes());
-    }
-}
 
 // Current value of errno, as the C read it after a failing libc call.
 fn errno() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
 
-// strerror(errnum) appended to a writer (C: fprintf(stderr, "%s", strerror(e))).
-fn fput_strerror(f: &mut dyn Write, errnum: i32) {
-    fput_str(f, &std::io::Error::from_raw_os_error(errnum).to_string());
+// The OS strerror text for `errnum` (C: strerror(e)).
+fn strerror(errnum: i32) -> String {
+    std::io::Error::from_raw_os_error(errnum).to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -86,12 +69,11 @@ fn fput_strerror(f: &mut dyn Write, errnum: i32) {
 // [spec:hfst:sem:hfst-commandline.error-at-line-fn]
 pub fn error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg: &str) {
     let f = &mut std::io::stderr();
-    fput_str(f, &format!("{}.{}: ", filename, linenum));
-    fput_str(f, msg);
+    let _ = write!(f, "{}.{}: {}", filename, linenum, msg);
     if errnum != 0 {
-        fput_strerror(f, errnum);
+        let _ = write!(f, "{}", strerror(errnum));
     }
-    fput_str(f, "\n");
+    let _ = writeln!(f);
     if status != 0 {
         std::process::exit(status);
     }
@@ -102,14 +84,14 @@ pub fn error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg
 pub fn hfst_error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg: &str) {
     let f = &mut std::io::stderr();
     maybe_print_colour(f, COLOUR_BOLD);
-    fput_str(f, &format!("{}.{}: ", filename, linenum));
+    let _ = write!(f, "{}.{}: ", filename, linenum);
     maybe_print_colour(f, COLOUR_RED);
-    fput_str(f, "Error: ");
+    let _ = write!(f, "Error: ");
     maybe_print_colour(f, COLOUR_RESET);
-    fput_str(f, msg);
+    let _ = write!(f, "{}", msg);
     if errnum != 0 {
         maybe_print_colour(f, COLOUR_MAGENTA);
-        fput_strerror(f, errnum);
+        let _ = write!(f, "{}", strerror(errnum));
         maybe_print_colour(f, COLOUR_RESET);
     }
     if status != 0 {
@@ -122,14 +104,14 @@ pub fn hfst_error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32
 pub fn hfst_warning_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg: &str) {
     let f = &mut std::io::stderr();
     maybe_print_colour(f, COLOUR_BOLD);
-    fput_str(f, &format!("{}.{}: ", filename, linenum));
+    let _ = write!(f, "{}.{}: ", filename, linenum);
     maybe_print_colour(f, COLOUR_YELLOW);
-    fput_str(f, "Warning: ");
+    let _ = write!(f, "Warning: ");
     maybe_print_colour(f, COLOUR_RESET);
-    fput_str(f, msg);
+    let _ = write!(f, "{}", msg);
     if errnum != 0 {
         maybe_print_colour(f, COLOUR_MAGENTA);
-        fput_strerror(f, errnum);
+        let _ = write!(f, "{}", strerror(errnum));
         maybe_print_colour(f, COLOUR_RESET);
     }
     if status != 0 {
@@ -141,15 +123,11 @@ pub fn hfst_warning_at_line(status: i32, errnum: i32, filename: &str, linenum: u
 // [spec:hfst:sem:hfst-commandline.error-fn]
 pub fn error(status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
-    unsafe {
-        fput_cstr(f, globals::PROGRAM_NAME);
-        fput_str(f, ": ");
-        fput_str(f, msg);
-        if errnum != 0 {
-            fput_strerror(f, errnum);
-        }
-        fput_str(f, "\n");
+    let _ = write!(f, "{}: {}", globals::program_name(), msg);
+    if errnum != 0 {
+        let _ = write!(f, "{}", strerror(errnum));
     }
+    let _ = writeln!(f);
     if status != 0 {
         std::process::exit(status);
     }
@@ -159,21 +137,18 @@ pub fn error(status: i32, errnum: i32, msg: &str) {
 // [spec:hfst:sem:hfst-commandline.hfst-error-fn]
 pub fn hfst_error(status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
-    unsafe {
-        maybe_print_colour(f, COLOUR_BOLD);
-        fput_cstr(f, globals::PROGRAM_NAME);
-        fput_str(f, ": ");
-        maybe_print_colour(f, COLOUR_RED);
-        fput_str(f, "Error: ");
+    maybe_print_colour(f, COLOUR_BOLD);
+    let _ = write!(f, "{}: ", globals::program_name());
+    maybe_print_colour(f, COLOUR_RED);
+    let _ = write!(f, "Error: ");
+    maybe_print_colour(f, COLOUR_RESET);
+    let _ = write!(f, "{}", msg);
+    if errnum != 0 {
+        maybe_print_colour(f, COLOUR_MAGENTA);
+        let _ = write!(f, "{}", strerror(errnum));
         maybe_print_colour(f, COLOUR_RESET);
-        fput_str(f, msg);
-        if errnum != 0 {
-            maybe_print_colour(f, COLOUR_MAGENTA);
-            fput_strerror(f, errnum);
-            maybe_print_colour(f, COLOUR_RESET);
-        }
-        fput_str(f, "\n");
     }
+    let _ = writeln!(f);
     if status != 0 {
         std::process::exit(status);
     }
@@ -183,15 +158,11 @@ pub fn hfst_error(status: i32, errnum: i32, msg: &str) {
 // [spec:hfst:sem:hfst-commandline.warning-fn]
 pub fn warning(status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
-    unsafe {
-        fput_cstr(f, globals::PROGRAM_NAME);
-        fput_str(f, ": warning: ");
-        fput_str(f, msg);
-        if errnum != 0 {
-            fput_strerror(f, errnum);
-        }
-        fput_str(f, "\n");
+    let _ = write!(f, "{}: warning: {}", globals::program_name(), msg);
+    if errnum != 0 {
+        let _ = write!(f, "{}", strerror(errnum));
     }
+    let _ = writeln!(f);
     if status != 0 {
         std::process::exit(status);
     }
@@ -201,21 +172,18 @@ pub fn warning(status: i32, errnum: i32, msg: &str) {
 // [spec:hfst:sem:hfst-commandline.hfst-warning-fn]
 pub fn hfst_warning(status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
-    unsafe {
-        maybe_print_colour(f, COLOUR_BOLD);
-        fput_cstr(f, globals::PROGRAM_NAME);
-        fput_str(f, ": ");
-        maybe_print_colour(f, COLOUR_YELLOW);
-        fput_str(f, "Warning: ");
+    maybe_print_colour(f, COLOUR_BOLD);
+    let _ = write!(f, "{}: ", globals::program_name());
+    maybe_print_colour(f, COLOUR_YELLOW);
+    let _ = write!(f, "Warning: ");
+    maybe_print_colour(f, COLOUR_RESET);
+    let _ = write!(f, "{}", msg);
+    if errnum != 0 {
+        maybe_print_colour(f, COLOUR_MAGENTA);
+        let _ = write!(f, "{}", strerror(errnum));
         maybe_print_colour(f, COLOUR_RESET);
-        fput_str(f, msg);
-        if errnum != 0 {
-            maybe_print_colour(f, COLOUR_MAGENTA);
-            fput_strerror(f, errnum);
-            maybe_print_colour(f, COLOUR_RESET);
-        }
-        fput_str(f, "\n");
     }
+    let _ = writeln!(f);
     if status != 0 {
         std::process::exit(status);
     }
@@ -244,7 +212,7 @@ pub fn debug_save_transducer(t: &HfstTransducer, name: &str) {
         let mut debug_out = HfstOutputStream::new_filename(name, t.get_type(), true);
         debug_printf(&format!(
             "*** DEBUG ({}): saving current transducer to {}\n",
-            unsafe { cstr_to_string(globals::PROGRAM_NAME) },
+            globals::program_name(),
             name
         ));
         debug_out.redirect(&mut t);
@@ -257,9 +225,7 @@ pub fn debug_save_transducer(t: &HfstTransducer, name: &str) {
 pub fn debug_printf(msg: &str) {
     if unsafe { globals::DEBUG } {
         let f = &mut std::io::stderr();
-        fput_str(f, "\nDEBUG: ");
-        fput_str(f, msg);
-        fput_str(f, "\n");
+        let _ = write!(f, "\nDEBUG: {}\n", msg);
     }
 }
 
@@ -267,7 +233,7 @@ pub fn debug_printf(msg: &str) {
 // [spec:hfst:sem:hfst-commandline.verbose-printf-fn]
 pub fn verbose_printf(msg: &str) {
     if unsafe { globals::VERBOSE } {
-        fput_str(&mut *globals::message_writer(), msg);
+        let _ = write!(globals::message_writer(), "{}", msg);
     }
 }
 
@@ -343,12 +309,10 @@ pub fn is_input_stream_in_ol_format(is: &HfstInputStream, program: &str) -> bool
     if is.get_type() == ImplementationType::HFST_OL_TYPE
         || is.get_type() == ImplementationType::HFST_OLW_TYPE
     {
-        fput_str(
-            &mut std::io::stderr(),
-            &format!(
-                "Error: {} cannot process transducers that are in optimized lookup format.\n",
-                program
-            ),
+        let _ = write!(
+            std::io::stderr(),
+            "Error: {} cannot process transducers that are in optimized lookup format.\n",
+            program
         );
         return true;
     }
@@ -512,81 +476,25 @@ pub fn hfst_strformat(format: ImplementationType) -> &'static str {
 // hfst_mkstemp / hfst_remove) had no callers and were dropped with the libc nuke.
 
 // ---------------------------------------------------------------------------
-// string functions
+// interactive line input
 // ---------------------------------------------------------------------------
 
-// strdup/strndup over a Rust allocation: the returned pointer is owned by a
-// `CString` (`into_raw`) and must be reclaimed with `hfst_free` (`from_raw`), so
-// the whole alloc/free path stays inside the Rust allocator — no libc.
-
-// [spec:hfst:def:hfst-commandline.hfst-strdup-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-strdup-fn]
-pub unsafe fn hfst_strdup(s: *const c_char) -> *mut c_char {
-    if s.is_null() {
-        return std::ptr::null_mut();
-    }
-    unsafe { CStr::from_ptr(s) }.to_owned().into_raw()
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-strndup-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-strndup-fn]
-pub unsafe fn hfst_strndup(s: *const c_char, n: usize) -> *mut c_char {
-    if s.is_null() {
-        return std::ptr::null_mut();
-    }
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
-    let take = bytes.len().min(n);
-    std::ffi::CString::new(&bytes[..take]).unwrap().into_raw()
-}
-
-// Free a pointer obtained from hfst_strdup/hfst_strndup (or any CString::into_raw).
-// Replaces the C `free()` calls; pairs the Rust allocator with the Rust dealloc.
-// [spec:hfst:def:hfst-commandline.hfst-free-fn]
-pub unsafe fn hfst_free(p: *mut c_char) {
-    if !p.is_null() {
-        drop(unsafe { std::ffi::CString::from_raw(p) });
-    }
-}
-
-// hfst_getdelim / hfst_getline (the FILE*-based line readers) were removed in the
-// io-foundation de-C-ism: tools read from globals::input_reader() (a BufRead) via
-// read_line / read_until / lines().
-
-// [spec:hfst:def:hfst-commandline.readline-fn]
-// [spec:hfst:sem:hfst-commandline.readline-fn]
-// The non-readline fallback. The real readline-library path is #if'd out, so
-// this is the active implementation.
-fn readline(prompt: &str) -> *mut c_char {
+// [spec:hfst:def:hfst-commandline.hfst-readline-fn]
+// [spec:hfst:sem:hfst-commandline.hfst-readline-fn]
+//
+// The non-readline fallback (the real readline-library path is #if'd out): print
+// the prompt, then read a line (trailing '\n' kept, as getline did). None at EOF.
+pub fn hfst_readline(prompt: &str) -> Option<String> {
     {
         let mut mw = globals::message_writer();
-        fput_str(&mut *mw, prompt);
+        let _ = write!(mw, "{}", prompt);
         let _ = mw.flush();
     }
     let mut line = String::new();
     match std::io::stdin().read_line(&mut line) {
-        Ok(0) | Err(_) => std::ptr::null_mut(),
-        Ok(_) => {
-            // Hand the caller an owned C string (matching getline's buffer, which
-            // the caller frees with hfst_free). read_line keeps the trailing '\n',
-            // as getline did.
-            std::ffi::CString::new(line).unwrap_or_default().into_raw()
-        }
+        Ok(0) | Err(_) => None,
+        Ok(_) => Some(line),
     }
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-readline-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-readline-fn]
-pub fn hfst_readline(prompt: &str) -> *mut c_char {
-    readline(prompt)
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-setlocale-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-setlocale-fn]
-pub fn hfst_setlocale() -> *mut c_char {
-    // setlocale(LC_ALL, "") adopted the environment locale for C char handling.
-    // The Rust tools are UTF-8 throughout and never consult the C locale, so this
-    // is a no-op; every caller ignores the return value.
-    std::ptr::null_mut()
 }
 
 // [spec:hfst:def:hfst-commandline.set-program-name-fn]
@@ -614,15 +522,8 @@ fn set_program_name(argv0: &str) {
     } else {
         name
     };
-    let cs = std::ffi::CString::new(chosen).unwrap();
-    unsafe {
-        globals::PROGRAM_NAME = hfst_strdup(cs.as_ptr()) as *const c_char;
-    }
+    globals::set_program_name(chosen);
 }
-
-// The wrapped libc allocators (hfst_malloc / hfst_calloc / hfst_realloc) were
-// removed with the libc nuke: their only caller was extend_options_getenv, which
-// now builds the extended argv from a leaked Rust Vec.
 
 // ---------------------------------------------------------------------------
 // customized default printouts for HFST tools
@@ -632,25 +533,19 @@ fn set_program_name(argv0: &str) {
 // [spec:hfst:sem:hfst-commandline.hfst-set-program-name-fn]
 pub fn hfst_set_program_name(argv0: &str, version_vector: &str, wikiname: &str) {
     set_program_name(argv0);
-    let v = std::ffi::CString::new(version_vector).unwrap();
-    let w = std::ffi::CString::new(wikiname).unwrap();
-    unsafe {
-        globals::HFST_TOOL_VERSION = hfst_strdup(v.as_ptr()) as *const c_char;
-        globals::HFST_TOOL_WIKINAME = hfst_strdup(w.as_ptr()) as *const c_char;
-    }
+    globals::set_hfst_tool_version(version_vector);
+    globals::set_hfst_tool_wikiname(wikiname);
 }
 
 // [spec:hfst:def:hfst-commandline.print-short-help-fn]
 // [spec:hfst:sem:hfst-commandline.print-short-help-fn]
 pub fn print_short_help() {
-    // C printed a one-line pointer to --help via message_out (see literal below).
     let mut mw = globals::message_writer();
-    let f = &mut *mw;
-    unsafe {
-        fput_str(f, "Try ``");
-        fput_cstr(f, globals::PROGRAM_NAME);
-        fput_str(f, " --help'' for more information.\n");
-    }
+    let _ = write!(
+        mw,
+        "Try ``{} --help'' for more information.\n",
+        globals::program_name()
+    );
 }
 
 // print web site reference
@@ -658,18 +553,14 @@ pub fn print_short_help() {
 // [spec:hfst:sem:hfst-commandline.print-more-info-fn]
 pub fn print_more_info() {
     let mut mw = globals::message_writer();
-    let f = &mut *mw;
-    unsafe {
-        fput_cstr(f, globals::PROGRAM_NAME);
-        fput_str(f, " home page: \n<");
-        fput_str(f, WIKI_URL);
-        fput_str(f, "/");
-        fput_cstr(f, globals::HFST_TOOL_WIKINAME);
-        fput_str(f, ">\n");
-        fput_str(f, "General help using HFST software: \n<");
-        fput_str(f, WIKI_URL);
-        fput_str(f, ">\n");
-    }
+    let _ = write!(
+        mw,
+        "{} home page: \n<{}/{}>\nGeneral help using HFST software: \n<{}>\n",
+        globals::program_name(),
+        WIKI_URL,
+        globals::hfst_tool_wikiname(),
+        WIKI_URL
+    );
 }
 
 // print version message
@@ -677,62 +568,44 @@ pub fn print_more_info() {
 // [spec:hfst:sem:hfst-commandline.print-version-fn]
 pub fn print_version() {
     let mut mw = globals::message_writer();
-    let f = &mut *mw;
-    unsafe {
-        fput_cstr(f, globals::PROGRAM_NAME);
-        fput_str(f, " ");
-        fput_cstr(f, globals::HFST_TOOL_VERSION);
-        fput_str(f, &format!(" ({})\n", PACKAGE_STRING));
-        fput_str(
-            f,
-            "Copyright (C) 2017 University of Helsinki,\n\
-             License GPLv3: GNU GPL version 3 <http://gnu.org/licenses/gpl.html>\n\
-             This is free software: you are free to change and redistribute it.\n\
-             There is NO WARRANTY, to the extent permitted by law.\n",
-        );
-    }
+    let _ = write!(
+        mw,
+        "{} {} ({})\n",
+        globals::program_name(),
+        globals::hfst_tool_version(),
+        PACKAGE_STRING
+    );
+    let _ = write!(
+        mw,
+        "Copyright (C) 2017 University of Helsinki,\n\
+         License GPLv3: GNU GPL version 3 <http://gnu.org/licenses/gpl.html>\n\
+         This is free software: you are free to change and redistribute it.\n\
+         There is NO WARRANTY, to the extent permitted by law.\n",
+    );
 }
 
 // [spec:hfst:def:hfst-commandline.print-report-bugs-fn]
 // [spec:hfst:sem:hfst-commandline.print-report-bugs-fn]
 pub fn print_report_bugs() {
     let mut mw = globals::message_writer();
-    let f = &mut *mw;
-    fput_str(
-        f,
-        &format!(
-            "Report bugs to <{}> or directly to our bug tracker at:\n<https://github.com/hfst/hfst/issues>\n",
-            PACKAGE_BUGREPORT
-        ),
+    let _ = write!(
+        mw,
+        "Report bugs to <{}> or directly to our bug tracker at:\n<https://github.com/hfst/hfst/issues>\n",
+        PACKAGE_BUGREPORT
     );
 }
 
 // [spec:hfst:def:hfst-commandline.extend-options-getenv-fn]
 // [spec:hfst:sem:hfst-commandline.extend-options-getenv-fn]
-pub unsafe fn extend_options_getenv(argc: *mut c_int, argv: *mut *mut *mut c_char) {
-    unsafe {
-        let hfstopts = match std::env::var("HFST_OPTIONS") {
-            Ok(v) => v,
-            Err(_) => return,
-        };
-        // strtok with a single-space delimiter yields the non-empty space-separated
-        // tokens (consecutive spaces collapse, like the C strtok loop did).
-        let tokens: Vec<&str> = hfstopts.split(' ').filter(|t| !t.is_empty()).collect();
-        let old_argc = *argc as usize;
-        // we cannot realloc argv since it's magic: build a fresh array (a leaked
-        // Rust Vec, never freed) holding the original argv pointers plus one
-        // owned C string per token, with a trailing NULL slot.
-        let mut new_argv: Vec<*mut c_char> = Vec::with_capacity(old_argc + tokens.len() + 1);
-        for i in 0..old_argc {
-            new_argv.push(*(*argv).add(i));
+//
+// Append the space-separated tokens of $HFST_OPTIONS to the program arguments
+// (consecutive spaces collapse, as the C strtok loop did); getopt then permutes
+// them into place.
+pub fn extend_options_getenv(args: &mut Vec<String>) {
+    if let Ok(hfstopts) = std::env::var("HFST_OPTIONS") {
+        for t in hfstopts.split(' ').filter(|t| !t.is_empty()) {
+            args.push(t.to_string());
         }
-        for t in &tokens {
-            let cs = std::ffi::CString::new(*t).unwrap();
-            new_argv.push(hfst_strdup(cs.as_ptr()));
-            *argc += 1;
-        }
-        new_argv.push(std::ptr::null_mut());
-        *argv = new_argv.leak().as_mut_ptr();
     }
 }
 
@@ -761,19 +634,6 @@ pub fn should_colourise() -> bool {
 // [spec:hfst:sem:hfst-commandline.maybe-print-colour-fn]
 pub fn maybe_print_colour(f: &mut dyn Write, colour: &str) {
     if should_colourise() {
-        fput_str(f, colour);
+        let _ = write!(f, "{}", colour);
     }
-}
-
-// ---------------------------------------------------------------------------
-// small local utility (no C counterpart)
-// ---------------------------------------------------------------------------
-
-// Render a C string pointer as a Rust String for interpolation into a message
-// (C interpolated such pointers straight into printf with %s).
-unsafe fn cstr_to_string(p: *const c_char) -> String {
-    if p.is_null() {
-        return String::new();
-    }
-    unsafe { std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned() }
 }

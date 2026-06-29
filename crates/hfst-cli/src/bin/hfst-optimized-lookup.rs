@@ -7,9 +7,7 @@
 //! (`HfstTransducer::lookup_fd_string`), so the tool no longer carries its own
 //! binary-format reader or traversal code.
 
-use core::ffi::{c_char, c_int};
 use hfst_cli::hfst_getopt as getopt;
-use std::ffi::CString;
 
 // ---------------------------------------------------------------------------
 // config.h-defined constants
@@ -58,7 +56,7 @@ static mut DISPLAY_WEIGHTS_FLAG: bool = false;
 static mut DISPLAY_UNIQUE_FLAG: bool = false;
 static mut ECHO_INPUTS_FLAG: bool = false;
 static mut BE_FAST: bool = false;
-static mut MAX_ANALYSES: c_int = c_int::MAX;
+static mut MAX_ANALYSES: i32 = i32::MAX;
 static mut TIME_CUTOFF: f64 = 0.0;
 
 static mut BEAM: f32 = -1.0;
@@ -398,7 +396,7 @@ fn run_transducer(t: &mut Transducer) {
 // ---------------------------------------------------------------------------
 // [spec:hfst:def:hfst-optimized-lookup.setup-fn]
 // [spec:hfst:sem:hfst-optimized-lookup.setup-fn]
-fn setup(path: &str) -> c_int {
+fn setup(path: &str) -> i32 {
     let mut instream = hfst::hfst_input_stream::HfstInputStream::new_filename(path);
     let t = hfst::hfst_transducer::HfstTransducer::new_from_stream(&mut instream);
     let weighted = t.get_type() == hfst::hfst_data_types::ImplementationType::HFST_OLW_TYPE;
@@ -497,20 +495,12 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) for getopt_long.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
+        let mut args: Vec<String> = std::env::args().collect();
 
         loop {
-            let long_options: [getopt::Option; 15] = [
+            let long_options: [getopt::GetOpt; 14] = [
                 // first the hfst-mandated options
                 opt("help", 0, b'h'),
                 opt("version", 0, b'V'),
@@ -527,23 +517,9 @@ unsafe fn real_main() -> c_int {
                 opt("fast", 0, b'f'),
                 opt("pipe-mode", 2, b'p'),
                 opt("analyses", 1, b'n'),
-                getopt::Option {
-                    name: std::ptr::null(),
-                    has_arg: 0,
-                    flag: std::ptr::null_mut(),
-                    val: 0,
-                },
             ];
 
-            let short = CString::new("hVvqsewb:t:uxfn:p::").unwrap();
-            let mut option_index: c_int = 0;
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(&mut args, &long_options);
 
             if c == -1 {
                 // no more options to look at
@@ -575,21 +551,21 @@ unsafe fn real_main() -> c_int {
                     DISPLAY_UNIQUE_FLAG = true;
                 }
                 b'b' => {
-                    BEAM = atof(getopt::OPTARG) as f32;
+                    BEAM = parse_leading_f64(&getopt::optarg()) as f32;
                     if BEAM < 0.0 {
                         print_err("Invalid argument for --beam\n");
                         return 1;
                     }
                 }
                 b't' => {
-                    TIME_CUTOFF = atof(getopt::OPTARG);
+                    TIME_CUTOFF = parse_leading_f64(&getopt::optarg());
                     if TIME_CUTOFF < 0.0 {
                         print_err("Invalid argument for --time-cutoff\n");
                         return 1;
                     }
                 }
                 b'n' => {
-                    MAX_ANALYSES = atoi(getopt::OPTARG);
+                    MAX_ANALYSES = parse_leading_i32(&getopt::optarg());
                     if MAX_ANALYSES < 1 {
                         print_err("Invalid or no argument for analyses count\n");
                         return 1;
@@ -601,13 +577,12 @@ unsafe fn real_main() -> c_int {
                 b'f' => {
                     BE_FAST = true;
                 }
-                b'p' => {
-                    let arg = getopt::OPTARG;
-                    if arg.is_null() {
+                b'p' => match getopt::optarg_opt() {
+                    None => {
                         PIPE_INPUT = true;
                         PIPE_OUTPUT = true;
-                    } else {
-                        let a = cstr(arg);
+                    }
+                    Some(a) => {
                         if a == "both" || a == "BOTH" {
                             PIPE_INPUT = true;
                             PIPE_OUTPUT = true;
@@ -620,7 +595,7 @@ unsafe fn real_main() -> c_int {
                             return 1;
                         }
                     }
-                }
+                },
                 _ => {
                     print_err("Invalid option\n\n");
                     print_short_help();
@@ -631,12 +606,11 @@ unsafe fn real_main() -> c_int {
 
         // no more options, we should now be at the input filename
         let optind = getopt::OPTIND;
-        if (optind + 1) < argc {
+        if (optind + 1) < args.len() {
             print_err("More than one input file given\n");
             1
-        } else if (optind + 1) == argc {
-            let path = *argv.offset(optind as isize);
-            let pathstr = cstr(path);
+        } else if (optind + 1) == args.len() {
+            let pathstr = args[optind].clone();
             setup(&pathstr)
         } else {
             print_err("No input file given\n");
@@ -646,49 +620,11 @@ unsafe fn real_main() -> c_int {
 }
 
 // helpers -------------------------------------------------------------------
-fn opt(name: &str, has_arg: c_int, val: u8) -> getopt::Option {
-    // leak the CString so the pointer stays valid for getopt's lifetime (the
-    // long_options table is rebuilt every loop iteration in the C++ too, via a
-    // static array of string literals).
-    let c = CString::new(name).unwrap();
-    let ptr = c.into_raw() as *const c_char;
-    getopt::Option {
-        name: ptr,
+fn opt(name: &'static str, has_arg: i32, val: u8) -> getopt::GetOpt {
+    getopt::GetOpt {
+        name,
         has_arg,
-        flag: std::ptr::null_mut(),
-        val: val as c_int,
-    }
-}
-
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { std::ffi::CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-// atof / atoi over a possibly-NULL C string, matching the C library semantics
-// the tool relies on (atof(optarg) / atoi(optarg)).
-unsafe fn atof(ptr: *const c_char) -> f64 {
-    unsafe {
-        if ptr.is_null() {
-            return 0.0;
-        }
-        let s = cstr(ptr);
-        parse_leading_f64(&s)
-    }
-}
-
-unsafe fn atoi(ptr: *const c_char) -> c_int {
-    unsafe {
-        if ptr.is_null() {
-            return 0;
-        }
-        let s = cstr(ptr);
-        parse_leading_i32(&s)
+        val: val as i32,
     }
 }
 
@@ -721,7 +657,7 @@ fn parse_leading_f64(s: &str) -> f64 {
     t[..end].parse::<f64>().unwrap_or(0.0)
 }
 
-fn parse_leading_i32(s: &str) -> c_int {
+fn parse_leading_i32(s: &str) -> i32 {
     let t = s.trim_start();
     let mut end = 0;
     let bytes = t.as_bytes();
@@ -733,5 +669,5 @@ fn parse_leading_i32(s: &str) -> c_int {
             break;
         }
     }
-    t[..end].parse::<c_int>().unwrap_or(0)
+    t[..end].parse::<i32>().unwrap_or(0)
 }

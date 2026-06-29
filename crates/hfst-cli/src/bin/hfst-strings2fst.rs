@@ -4,7 +4,6 @@
 //!
 //! Compiles string pairs and pair-strings into transducer(s).
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -20,26 +19,24 @@ use hfst_cli::hfst_commandline::{
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, hfst_getopt_common_long,
-    hfst_getopt_unary_long, print_common_program_options,
+    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
 };
 use hfst_cli::hfst_tool_metadata::hfst_set_name;
 use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use std::ffi::{CStr, CString};
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 
 // ---------------------------------------------------------------------------
 // Tool-global state. C: file-scope static variables.
 // ---------------------------------------------------------------------------
 
-static mut EPSILONNAME: *mut c_char = std::ptr::null_mut(); // FIX: use this
+static mut EPSILONNAME: Option<String> = None; // None until set; defaults to "@0@"
 static mut HAS_SPACES: bool = false;
 static mut DISJUNCT_STRINGS: bool = false;
 static mut PAIRSTRINGS: bool = false;
-static mut MULTICHAR_SYMBOL_FILENAME: *mut c_char = std::ptr::null_mut();
+static mut MULTICHAR_SYMBOL_FILENAME: Option<String> = None;
 static mut MULTICHAR_SYMBOLS: Vec<String> = Vec::new();
 
 static mut SUM_OF_WEIGHTS: f32 = 0.0;
@@ -51,20 +48,6 @@ static mut WARN_NEGATIVE_WEIGHTS: bool = true;
 static mut WARNINGS_ARE_ERRORS: bool = false;
 
 static mut OUTPUT_FORMAT: ImplementationType = ImplementationType::UNSPECIFIED_TYPE;
-
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
 
 // [spec:hfst:def:hfst-strings2fst.divide-by-sum-of-weights-fn]
 // [spec:hfst:sem:hfst-strings2fst.divide-by-sum-of-weights-fn]
@@ -116,148 +99,104 @@ fn errno() -> i32 {
 
 // [spec:hfst:def:hfst-strings2fst.print-usage-fn]
 // [spec:hfst:sem:hfst-strings2fst.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        let mut msg = globals::message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE]\nCompile string pairs and pair-strings into transducer(s)\n\n",
-                program_name
-            ),
-        );
-        print_common_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "Input/Output options:\n  -i, --input=INFILE     Read input strings from INFILE\n  -o, --output=OUTFILE   Write output transducer to OUTFILE\n",
-        );
-        fput(
-            &mut *msg,
-            "String and format options:\n  -f, --format=FMT          Write result in FMT format\n  -j, --disjunct-strings    Disjunct all strings instead of transforming\n                            each string into a separate transducer\n      --norm                Divide each weight by sum of all weights\n                            (with option -j)\n      --log                 Take negative natural logarithm of each weight\n      --log10               Take negative 10-based logarithm of each weight\n  -p, --pairstrings         Input is in pairstring format\n  -S, --has-spaces          Input has spaces between symbols/symbol pairs\n  -e, --epsilon=EPS         Interpret string EPS as epsilon.\n  -m, --multichar-symbols=FILE   Strings that must be tokenized as one symbol.\n",
-        );
-        fput(&mut *msg, "\n");
+fn print_usage() {
+    let mut msg = globals::message_writer();
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let program_name = globals::program_name();
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE]\nCompile string pairs and pair-strings into transducer(s)\n\n",
+        program_name
+    );
+    print_common_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "Input/Output options:\n  -i, --input=INFILE     Read input strings from INFILE\n  -o, --output=OUTFILE   Write output transducer to OUTFILE\n",
+    );
+    let _ = write!(
+        msg,
+        "String and format options:\n  -f, --format=FMT          Write result in FMT format\n  -j, --disjunct-strings    Disjunct all strings instead of transforming\n                            each string into a separate transducer\n      --norm                Divide each weight by sum of all weights\n                            (with option -j)\n      --log                 Take negative natural logarithm of each weight\n      --log10               Take negative 10-based logarithm of each weight\n  -p, --pairstrings         Input is in pairstring format\n  -S, --has-spaces          Input has spaces between symbols/symbol pairs\n  -e, --epsilon=EPS         Interpret string EPS as epsilon.\n  -m, --multichar-symbols=FILE   Strings that must be tokenized as one symbol.\n",
+    );
+    let _ = write!(msg, "\n");
 
-        fput(
-            &mut *msg,
-            "If OUTFILE or INFILE is missing or -, standard streams will be used.\nFMT can be { foma, openfst-tropical, openfst-log, sfst, \noptimized-lookup-weighted, optimized-lookup-unweighted }.\nIf EPS is not defined, the default representation of @0@ is used.\nOption --norm precedes option --log.\nThe FILE of option -m lists all multichar-symbols, each symbol\non its own line.\nBackslash '\\' may be used to escape ':', tab and itself. For any\nother symbol x '\\x' means x literally, i.e. is the same as 'x'.\nThe weight of a string can be given after the string separated\nby a tabulator. The weight cannot be zero.\n\n",
-        );
+    let _ = write!(
+        msg,
+        "If OUTFILE or INFILE is missing or -, standard streams will be used.\nFMT can be {{ foma, openfst-tropical, openfst-log, sfst, \noptimized-lookup-weighted, optimized-lookup-unweighted }}.\nIf EPS is not defined, the default representation of @0@ is used.\nOption --norm precedes option --log.\nThe FILE of option -m lists all multichar-symbols, each symbol\non its own line.\nBackslash '\\' may be used to escape ':', tab and itself. For any\nother symbol x '\\x' means x literally, i.e. is the same as 'x'.\nThe weight of a string can be given after the string separated\nby a tabulator. The weight cannot be zero.\n\n",
+    );
 
-        fput(
-            &mut *msg,
-            &format!(
-                "Examples:\n  echo \"cat:dog\" | {}            create cat:dog fst\n  echo \"c:da:ot:g\" | {} -p       same as pairstring\n  echo \"c:d a:o t:g\" | {} -p -S  same as pairstring with spaces\n  echo \"c a t:d o g\" | {} -S     same with spaces\n\n",
-                program_name, program_name, program_name, program_name
-            ),
-        );
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-        fput(&mut *msg, "\n");
-    }
+    let _ = write!(
+        msg,
+        "Examples:\n  echo \"cat:dog\" | {}            create cat:dog fst\n  echo \"c:da:ot:g\" | {} -p       same as pairstring\n  echo \"c:d a:o t:g\" | {} -p -S  same as pairstring with spaces\n  echo \"c a t:d o g\" | {} -S     same with spaces\n\n",
+        program_name, program_name, program_name, program_name
+    );
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
+    let _ = write!(msg, "\n");
 }
 
 // [spec:hfst:def:hfst-strings2fst.parse-options-fn]
 // [spec:hfst:sem:hfst-strings2fst.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             long_options.extend(hfst_getopt_unary_long());
             // add tool-specific options here
-            let disjunct_name = CString::new("disjunct-strings").unwrap();
-            let epsilon_name = CString::new("epsilon").unwrap();
-            let norm_name = CString::new("norm").unwrap();
-            let log_name = CString::new("log").unwrap();
-            let log10_name = CString::new("log10").unwrap();
-            let pairstrings_name = CString::new("pairstrings").unwrap();
-            let has_spaces_name = CString::new("has-spaces").unwrap();
-            let multichar_name = CString::new("multichar-symbols").unwrap();
-            let format_name = CString::new("format").unwrap();
-            let wstuff_name = CString::new("Wstuff").unwrap();
-            long_options.push(getopt::Option {
-                name: disjunct_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 'j' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "disjunct-strings",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'j' as i32,
             });
-            long_options.push(getopt::Option {
-                name: epsilon_name.as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: 'e' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "epsilon",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'e' as i32,
             });
-            long_options.push(getopt::Option {
-                name: norm_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: '2' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "norm",
+                has_arg: getopt::NO_ARGUMENT,
+                val: '2' as i32,
             });
-            long_options.push(getopt::Option {
-                name: log_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: '3' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "log",
+                has_arg: getopt::NO_ARGUMENT,
+                val: '3' as i32,
             });
-            long_options.push(getopt::Option {
-                name: log10_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: '4' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "log10",
+                has_arg: getopt::NO_ARGUMENT,
+                val: '4' as i32,
             });
-            long_options.push(getopt::Option {
-                name: pairstrings_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 'p' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "pairstrings",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'p' as i32,
             });
-            long_options.push(getopt::Option {
-                name: has_spaces_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 'S' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "has-spaces",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'S' as i32,
             });
-            long_options.push(getopt::Option {
-                name: multichar_name.as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: 'm' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "multichar-symbols",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'm' as i32,
             });
-            long_options.push(getopt::Option {
-                name: format_name.as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: 'f' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "format",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'f' as i32,
             });
-            long_options.push(getopt::Option {
-                name: wstuff_name.as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: 'W' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "Wstuff",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'W' as i32,
             });
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!(
-                "{}{}je:234pSm:f:W:",
-                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
@@ -265,7 +204,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             // The C switch chains the #include'd case groups in order: common
             // cases, then unary cases, then the tool's own, then the terminal
             // error arm.
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
@@ -279,7 +218,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             let cc = c as u8 as char;
             match cc {
                 'e' => {
-                    EPSILONNAME = hfst_cli::hfst_commandline::hfst_strdup(getopt::OPTARG);
+                    EPSILONNAME = Some(getopt::optarg());
                     continue;
                 }
                 '2' => {
@@ -307,16 +246,15 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     continue;
                 }
                 'm' => {
-                    MULTICHAR_SYMBOL_FILENAME =
-                        hfst_cli::hfst_commandline::hfst_strdup(getopt::OPTARG);
+                    MULTICHAR_SYMBOL_FILENAME = Some(getopt::optarg());
                     continue;
                 }
                 'f' => {
-                    OUTPUT_FORMAT = hfst_parse_format_name(&cstr(getopt::OPTARG));
+                    OUTPUT_FORMAT = hfst_parse_format_name(&getopt::optarg());
                     continue;
                 }
                 'W' => {
-                    let optarg = cstr(getopt::OPTARG);
+                    let optarg = getopt::optarg();
                     if optarg == "error" {
                         WARNINGS_ARE_ERRORS = true;
                     } else if optarg == "no-error" {
@@ -337,14 +275,13 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
 
         check_common_params();
-        check_unary_params(argc, argv);
+        check_unary_params(args);
         if OUTPUT_FORMAT == ImplementationType::UNSPECIFIED_TYPE {
             verbose_printf("Output format not specified, defaulting to openfst tropical\n");
             OUTPUT_FORMAT = ImplementationType::TROPICAL_OPENFST_TYPE;
         }
-        if EPSILONNAME.is_null() {
-            let eps = CString::new("@0@").unwrap();
-            EPSILONNAME = hfst_cli::hfst_commandline::hfst_strdup(eps.as_ptr());
+        if (*std::ptr::addr_of!(EPSILONNAME)).is_none() {
+            *std::ptr::addr_of_mut!(EPSILONNAME) = Some("@0@".to_string());
         }
         EXIT_CONTINUE
     }
@@ -352,18 +289,19 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
 // [spec:hfst:def:hfst-strings2fst.process-stream-fn]
 // [spec:hfst:sem:hfst-strings2fst.process-stream-fn]
-unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> c_int {
+unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> i32 {
     unsafe {
         let mut transducer_n: usize = 0;
         let mut disjunction = HfstBasicTransducer::new();
         let mut line_n: usize = 0;
 
-        let multichar_symbol_tokenizer = HfstStrings2FstTokenizer::new(
-            &*std::ptr::addr_of!(MULTICHAR_SYMBOLS),
-            &cstr(EPSILONNAME),
-        );
+        let epsilonname = (*std::ptr::addr_of!(EPSILONNAME))
+            .clone()
+            .unwrap_or_default();
+        let multichar_symbol_tokenizer =
+            HfstStrings2FstTokenizer::new(&*std::ptr::addr_of!(MULTICHAR_SYMBOLS), &epsilonname);
 
-        let inputfilename = cstr(globals::INPUTFILENAME);
+        let inputfilename = globals::input_filename();
 
         let mut line = String::new();
         loop {
@@ -531,28 +469,18 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "Strings2Fst");
-        let retval = parse_options(argc, argv);
+        let retval = parse_options(&mut args);
         if retval != EXIT_CONTINUE {
             return retval;
         }
 
-        if !MULTICHAR_SYMBOL_FILENAME.is_null() {
-            let fname = cstr(MULTICHAR_SYMBOL_FILENAME);
+        if let Some(fname) = (*std::ptr::addr_of!(MULTICHAR_SYMBOL_FILENAME)).clone() {
             verbose_printf(&format!("Reading multichar symbols from {}\n", fname));
             match std::fs::read_to_string(&fname) {
                 Ok(contents) => {
@@ -574,15 +502,15 @@ unsafe fn real_main() -> c_int {
         }
 
         // close output buffers, we use output streams
-        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
+        let output_opened = globals::output_filename() != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
-            cstr(globals::INPUTFILENAME),
-            cstr(globals::OUTFILENAME)
+            globals::input_filename(),
+            globals::output_filename()
         ));
         // here starts the buffer handling part
         let mut outstream = if output_opened {
-            HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), OUTPUT_FORMAT, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), OUTPUT_FORMAT, true)
         } else {
             HfstOutputStream::new(OUTPUT_FORMAT, true)
         };

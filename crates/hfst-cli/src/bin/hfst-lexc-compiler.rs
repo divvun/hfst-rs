@@ -5,7 +5,6 @@
 //!
 //! Compile lexc files into a transducer.
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::{
@@ -19,12 +18,9 @@ use hfst_cli::hfst_commandline::{
     hfst_warning, print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
-use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, hfst_getopt_common_long, print_common_program_options,
-};
+use hfst_cli::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
 use hfst_cli::hfst_tool_metadata::{hfst_set_formula, hfst_set_name};
 use hfst_cli::inc::{CaseResult, check_common_params, handle_common_case, handle_error_case};
-use std::ffi::{CStr, CString};
 use std::io::Write;
 
 // ---------------------------------------------------------------------------
@@ -59,181 +55,121 @@ static mut ENCODE_WEIGHTS: bool = false;
 static mut ENC: bool = false;
 static mut SPLIT_CHARACTERS: bool = false;
 
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
-
 fn eput(s: &str) {
     let _ = std::io::stderr().write_all(s.as_bytes());
 }
 
 // [spec:hfst:def:hfst-lexc-compiler.print-usage-fn]
 // [spec:hfst:sem:hfst-lexc-compiler.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = globals::message_writer();
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE1...]]\nCompile lexc files into transducer\n\n",
-                program_name
-            ),
-        );
-        print_common_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "Input/Output options:\n  -f, --format=FORMAT     compile into FORMAT transducer\n  -o, --output=OUTFILE    write result into OUTFILE\n",
-        );
-        fput(
-            &mut *msg,
-            "Lexc options:\n  -A, --alignStrings      align characters in input and output strings\n  -E, --encode-weights    encode weights when minimizing (default is false)\n  -F, --withFlags         use flags to hyperminimize result\n  -M, --minimizeFlags     if --withFlags is used, minimize the number of flags\n  -R, --renameFlags       if --withFlags and --minimizeFlags are used, rename\n                          flags (for testing)\n  -x,\n  --xerox-composition=BOOL   Whether flag diacritics are treated as ordinary\n                             symbols in composition (default is true).\n  -X, --xfst=VARIABLE     toggle xfst compatibility option VARIABLE.\n   --split-characters     disable unicode character parsing for multichars\n   -Wall                  enable all warnings:\n   -Wone-sided-flags      warn about one sided flag diacritics\n   -Wrepeated-lexicons    warn about repeat lexicon names\n   -Wmissing-lexicons     warn about lexicons used but missing\n   -Wunused-lexicons      warn about lexicons defined but unused\n   -Wmissing-alphabets    warn about implicit alphabets\n   -Wunnecessary-escapes  warn about unneeded %-escapes\n   -Werror                treat warnings as errors\n",
-        );
-        fput(&mut *msg, "\n");
-        fput(
-            &mut *msg,
-            "If INFILE or OUTFILE are omitted or -, standard streams will be used\nThe possible values for FORMAT are { sfst, openfst-tropical, openfst-log,\nfoma, optimized-lookup-unweighted, optimized-lookup-weighted }.\nBOOL is one of {true,ON,yes} or {false,OFF,no}.\nXfst variables are {flag-is-epsilon (default OFF)}.\n",
-        );
-        fput(
-            &mut *msg,
-            &format!(
-                "\nExamples:\n  {} -o cat.hfst cat.lexc               Compile single-file lexicon\n  {} -o L.hfst Root.lexc 2.lexc 3.lexc  Compile multi-file lexicon\n\nUsing weights:\n  LEXICON Root\n  cat # \"weight: 2\" ;    Define weight for a word\n  <[dog::1]+> # ;        Use weights in regular expressions\n\nUsing weights has an effect only if FORMAT is weighted, i.e.\n{{ openfst-tropical, openfst-log, optimized-lookup-weighted }}.\n\n",
-                program_name, program_name
-            ),
-        );
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-    }
+fn print_usage() {
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let mut msg = globals::message_writer();
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE1...]]\nCompile lexc files into transducer\n\n",
+        globals::program_name()
+    );
+    print_common_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "Input/Output options:\n  -f, --format=FORMAT     compile into FORMAT transducer\n  -o, --output=OUTFILE    write result into OUTFILE\n"
+    );
+    let _ = write!(
+        msg,
+        "Lexc options:\n  -A, --alignStrings      align characters in input and output strings\n  -E, --encode-weights    encode weights when minimizing (default is false)\n  -F, --withFlags         use flags to hyperminimize result\n  -M, --minimizeFlags     if --withFlags is used, minimize the number of flags\n  -R, --renameFlags       if --withFlags and --minimizeFlags are used, rename\n                          flags (for testing)\n  -x,\n  --xerox-composition=BOOL   Whether flag diacritics are treated as ordinary\n                             symbols in composition (default is true).\n  -X, --xfst=VARIABLE     toggle xfst compatibility option VARIABLE.\n   --split-characters     disable unicode character parsing for multichars\n   -Wall                  enable all warnings:\n   -Wone-sided-flags      warn about one sided flag diacritics\n   -Wrepeated-lexicons    warn about repeat lexicon names\n   -Wmissing-lexicons     warn about lexicons used but missing\n   -Wunused-lexicons      warn about lexicons defined but unused\n   -Wmissing-alphabets    warn about implicit alphabets\n   -Wunnecessary-escapes  warn about unneeded %-escapes\n   -Werror                treat warnings as errors\n"
+    );
+    let _ = write!(msg, "\n");
+    let _ = msg.write_all(
+        "If INFILE or OUTFILE are omitted or -, standard streams will be used\nThe possible values for FORMAT are { sfst, openfst-tropical, openfst-log,\nfoma, optimized-lookup-unweighted, optimized-lookup-weighted }.\nBOOL is one of {true,ON,yes} or {false,OFF,no}.\nXfst variables are {flag-is-epsilon (default OFF)}.\n"
+            .as_bytes(),
+    );
+    let _ = write!(
+        msg,
+        "\nExamples:\n  {0} -o cat.hfst cat.lexc               Compile single-file lexicon\n  {0} -o L.hfst Root.lexc 2.lexc 3.lexc  Compile multi-file lexicon\n\nUsing weights:\n  LEXICON Root\n  cat # \"weight: 2\" ;    Define weight for a word\n  <[dog::1]+> # ;        Use weights in regular expressions\n\nUsing weights has an effect only if FORMAT is weighted, i.e.\n{{ openfst-tropical, openfst-log, optimized-lookup-weighted }}.\n\n",
+        globals::program_name()
+    );
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
 }
 
 // [spec:hfst:def:hfst-lexc-compiler.parse-options-fn]
 // [spec:hfst:sem:hfst-lexc-compiler.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
-            let encode_weights_name = CString::new("encode-weights").unwrap();
-            let format_name = CString::new("format").unwrap();
-            let output_name = CString::new("output").unwrap();
-            let align_strings_name = CString::new("alignStrings").unwrap();
-            let with_flags_name = CString::new("withFlags").unwrap();
-            let minimize_flags_name = CString::new("minimizeFlags").unwrap();
-            let rename_flags_name = CString::new("renameFlags").unwrap();
-            let xerox_composition_name = CString::new("xerox-composition").unwrap();
-            let xfst_name = CString::new("xfst").unwrap();
-            let werror_name = CString::new("Werror").unwrap();
-            let wstuff_name = CString::new("Wstuff").unwrap();
-            let split_characters_name = CString::new("split-characters").unwrap();
-            long_options.push(getopt::Option {
-                name: encode_weights_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 'E' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "encode-weights",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'E' as i32,
             });
-            long_options.push(getopt::Option {
-                name: format_name.as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: 'f' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "format",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'f' as i32,
             });
-            long_options.push(getopt::Option {
-                name: output_name.as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: 'o' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "output",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'o' as i32,
             });
-            long_options.push(getopt::Option {
-                name: align_strings_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 'A' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "alignStrings",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'A' as i32,
             });
-            long_options.push(getopt::Option {
-                name: with_flags_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 'F' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "withFlags",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'F' as i32,
             });
-            long_options.push(getopt::Option {
-                name: minimize_flags_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 'M' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "minimizeFlags",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'M' as i32,
             });
-            long_options.push(getopt::Option {
-                name: rename_flags_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 'R' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "renameFlags",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'R' as i32,
             });
-            long_options.push(getopt::Option {
-                name: xerox_composition_name.as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: 'x' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "xerox-composition",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'x' as i32,
             });
-            long_options.push(getopt::Option {
-                name: xfst_name.as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: 'X' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "xfst",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'X' as i32,
             });
-            long_options.push(getopt::Option {
-                name: werror_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 'Q' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "Werror",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'Q' as i32,
             });
-            long_options.push(getopt::Option {
-                name: wstuff_name.as_ptr(),
-                has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: 'W' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "Wstuff",
+                has_arg: getopt::REQUIRED_ARGUMENT,
+                val: 'W' as i32,
             });
-            long_options.push(getopt::Option {
-                name: split_characters_name.as_ptr(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: '9' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "split-characters",
+                has_arg: getopt::NO_ARGUMENT,
+                val: '9' as i32,
             });
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short =
-                CString::new(format!("{}Ef:o:AFMRx:X:QW:9", HFST_GETOPT_COMMON_SHORT)).unwrap();
-            let mut option_index: c_int = 0;
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
 
             // The C switch chains the #include'd case groups in order: common
             // cases, then the tool's own, then the terminal error arm.
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
@@ -250,7 +186,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     continue;
                 }
                 'f' => {
-                    FORMAT = hfst_parse_format_name(&cstr(getopt::OPTARG));
+                    FORMAT = hfst_parse_format_name(&getopt::optarg());
                     continue;
                 }
                 'F' => {
@@ -266,7 +202,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     continue;
                 }
                 'x' => {
-                    let argument = cstr(getopt::OPTARG);
+                    let argument = getopt::optarg();
                     if argument == "yes" || argument == "true" || argument == "ON" {
                         XEROX_COMPOSITION = true;
                     } else if argument == "no" || argument == "false" || argument == "OFF" {
@@ -274,20 +210,20 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     } else {
                         eput(&format!(
                             "Error: unknown option to --xerox-composition: '{}'\n",
-                            cstr(getopt::OPTARG)
+                            getopt::optarg()
                         ));
                         return 1;
                     }
                     continue;
                 }
                 'X' => {
-                    let argument = cstr(getopt::OPTARG);
+                    let argument = getopt::optarg();
                     if argument == "flag-is-epsilon" {
                         set_flag_is_epsilon_in_composition(true);
                     } else {
                         eput(&format!(
                             "Error: unknown option to --xfst: '{}'\n",
-                            cstr(getopt::OPTARG)
+                            getopt::optarg()
                         ));
                         return 1;
                     }
@@ -306,7 +242,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     continue;
                 }
                 'W' => {
-                    let optarg = cstr(getopt::OPTARG);
+                    let optarg = getopt::optarg();
                     if optarg == "error" {
                         TREAT_WARNINGS_AS_ERRORS = true;
                     } else if optarg == "all" {
@@ -365,10 +301,9 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             FORMAT = ImplementationType::TROPICAL_OPENFST_TYPE;
         }
 
-        if argc - getopt::OPTIND > 0 {
-            while getopt::OPTIND < argc {
-                let arg = *argv.offset(getopt::OPTIND as isize);
-                let name = cstr(arg);
+        if args.len() > getopt::OPTIND {
+            while getopt::OPTIND < args.len() {
+                let name = args[getopt::OPTIND].clone();
                 // C: lexcfiles.push(hfst_fopen(name, "r")); a "-" resolved to stdin,
                 // otherwise the named file was opened (erroring on failure). The
                 // content is read by filename later, so only validate openability and
@@ -396,7 +331,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
 // [spec:hfst:def:hfst-lexc-compiler.lexc-streams-fn]
 // [spec:hfst:sem:hfst-lexc-compiler.lexc-streams-fn]
-unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream) -> c_int {
+unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream) -> i32 {
     unsafe {
         let lexcfilenames = &*std::ptr::addr_of!(LEXCFILENAMES);
         for i in 0..(LEXCCOUNT as usize) {
@@ -462,23 +397,14 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "HfstLexc");
 
-        let retval = parse_options(argc, argv);
+        let retval = parse_options(&mut args);
         if retval != EXIT_CONTINUE {
             return retval;
         }
@@ -493,11 +419,11 @@ unsafe fn real_main() -> c_int {
         for i in 0..(LEXCCOUNT as usize) {
             verbose_printf(&format!("{}, ", lexcfilenames[i]));
         }
-        verbose_printf(&format!("writing to {}\n", cstr(globals::OUTFILENAME)));
+        verbose_printf(&format!("writing to {}\n", globals::output_filename()));
         // here starts the buffer handling part
-        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
+        let output_opened = globals::output_filename() != "<stdout>";
         let mut outstream = if output_opened {
-            HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), FORMAT, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), FORMAT, true)
         } else {
             HfstOutputStream::new(FORMAT, true)
         };

@@ -2,7 +2,6 @@
 //! tool that walks through a transducer arc by arc. Drives the hfst-cli
 //! foundation (globals, getopt, commandline, program-options, inc fragments).
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -14,33 +13,18 @@ use hfst_cli::hfst_commandline::{
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, hfst_getopt_common_long,
-    hfst_getopt_unary_long, print_common_program_options, print_common_unary_program_options,
-    print_common_unary_program_parameter_instructions,
+    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
+    print_common_unary_program_options, print_common_unary_program_parameter_instructions,
 };
 use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
 use std::collections::BTreeMap;
-use std::ffi::{CStr, CString};
+use std::io::Write;
 
 // add tools-specific variables here
 static mut CAVE_MODE: bool = false;
-
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
 
 // The C arclabel readline-completion helpers (arclabel_generator /
 // arclabel_completion) are gated behind HAVE_DECL_RL_COMPLETION_MATCHES and the
@@ -60,69 +44,44 @@ fn fput(f: &mut dyn std::io::Write, s: &str) {
 
 // [spec:hfst:def:hfst-traverse.print-usage-fn]
 // [spec:hfst:sem:hfst-traverse.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        // Usage line
-        let mut msg = globals::message_writer();
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE]\nWalk through the transducer arc by arc\n\n",
-                program_name
-            ),
-        );
+fn print_usage() {
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    // Usage line
+    let mut msg = globals::message_writer();
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE]\nWalk through the transducer arc by arc\n\n",
+        globals::program_name()
+    );
 
-        // options, grouped
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        fput(&mut *msg, "\n");
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        fput(&mut *msg, "\n");
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-    }
+    // options, grouped
+    print_common_program_options(&mut *msg);
+    print_common_unary_program_options(&mut *msg);
+    let _ = write!(msg, "\n");
+    print_common_unary_program_parameter_instructions(&mut *msg);
+    let _ = write!(msg, "\n");
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
 }
 
 // [spec:hfst:def:hfst-traverse.parse-options-fn]
 // [spec:hfst:sem:hfst-traverse.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             long_options.extend(hfst_getopt_unary_long());
             // add tool-specific options here
-            long_options.push(getopt::Option {
-                name: CString::new("cave").unwrap().into_raw(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 'X' as c_int,
+            long_options.push(getopt::GetOpt {
+                name: "cave",
+                has_arg: getopt::NO_ARGUMENT,
+                val: 'X' as i32,
             });
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!(
-                "{}{}",
-                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            // add tool-specific options here
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
@@ -130,7 +89,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             // The C switch chains the #include'd case groups in order: common
             // cases, then unary cases, then the tool's own 'X', then the
             // terminal error arm.
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
@@ -140,7 +99,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
             }
-            if c == 'X' as c_int {
+            if c == 'X' as i32 {
                 CAVE_MODE = true;
                 continue;
             }
@@ -148,17 +107,17 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
 
         check_common_params();
-        check_unary_params(argc, argv);
+        check_unary_params(args);
         EXIT_CONTINUE
     }
 }
 
 // [spec:hfst:def:hfst-traverse.main-loop-fn]
 // [spec:hfst:sem:hfst-traverse.main-loop-fn]
-unsafe fn main_loop(trans: &HfstBasicTransducer) -> c_int {
+unsafe fn main_loop(trans: &HfstBasicTransducer) -> i32 {
     unsafe {
         let mut msg = globals::message_writer();
-        fput(&mut *msg, "Enter labels to seek all paths\n");
+        let _ = write!(msg, "Enter labels to seek all paths\n");
         // record current paths with their end states. The C++ uses a
         // multimap<string, HfstState>; a BTreeMap<(String, usize), HfstState>
         // (keyed on an insertion counter to permit duplicate path strings)
@@ -172,26 +131,24 @@ unsafe fn main_loop(trans: &HfstBasicTransducer) -> c_int {
         loop {
             // print available paths
             for ((path_str, _), state) in paths.iter() {
-                fput(
-                    &mut *msg,
-                    &format!("On path `{}' are continuations:\n", path_str),
-                );
+                let _ = write!(msg, "On path `{}' are continuations:\n", path_str);
                 let transitions = trans.index(*state);
                 if transitions.is_empty() {
-                    fput(&mut *msg, "<Nothing, you've hit a dead end here>\n");
+                    let _ = write!(msg, "<Nothing, you've hit a dead end here>\n");
                 }
                 for arc in transitions.iter() {
-                    fput(
-                        &mut *msg,
-                        &format!("{}\t{}\n", arc.get_input_symbol(), arc.get_output_symbol()),
+                    let _ = write!(
+                        msg,
+                        "{}\t{}\n",
+                        arc.get_input_symbol(),
+                        arc.get_output_symbol()
                     );
                 }
             }
-            let label_ptr = hfst_readline("traverse> ");
-            if label_ptr.is_null() {
-                return 0;
-            }
-            let label = cstr(label_ptr);
+            let label = match hfst_readline("traverse> ") {
+                Some(l) => l,
+                None => return 0,
+            };
             let mut new_paths: BTreeMap<(String, usize), u32> = BTreeMap::new();
             for ((path_str, _), state) in paths.iter() {
                 for arc in trans.index(*state).iter() {
@@ -209,23 +166,22 @@ unsafe fn main_loop(trans: &HfstBasicTransducer) -> c_int {
             }
             if new_paths.is_empty() {
                 if label == "quit" || label.is_empty() {
-                    fput(&mut *msg, "Use EOF (Ctrl-D or similar) to quit\n");
+                    let _ = write!(msg, "Use EOF (Ctrl-D or similar) to quit\n");
                 } else if label == "XYZZY" {
-                    fput(&mut *msg, "Nothing happens\n");
+                    let _ = write!(msg, "Nothing happens\n");
                 }
-                fput(&mut *msg, &format!("could not advance with {}\n", label));
+                let _ = write!(msg, "could not advance with {}\n", label);
             } else {
                 paths = new_paths;
             }
             // (add_history is readline-only; omitted — see note above.)
-            hfst_cli::hfst_commandline::hfst_free(label_ptr as *mut c_char);
         } // while paths not empty
     }
 }
 
 // [spec:hfst:def:hfst-traverse.process-stream-fn]
 // [spec:hfst:sem:hfst-traverse.process-stream-fn]
-unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
+unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
     unsafe {
         let mut msg = globals::message_writer();
         let mut transducer_n: usize = 0;
@@ -235,20 +191,19 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             let trans = HfstTransducer::new_from_stream(instream);
             let mut trans_name = trans.get_name();
             if trans_name.is_empty() {
-                trans_name = cstr(globals::INPUTFILENAME);
+                trans_name = globals::input_filename();
             }
             // HfstBasicTransducer walkable(trans);
             let walkable = trans.get_basic_transducer();
             if CAVE_MODE {
-                fput(
-                    &mut *msg,
-                    "WELCOME TO ADVENTURE!! WOULD YOU LIKE INSTRUCTIONS?\n\n",
+                let _ = write!(
+                    msg,
+                    "WELCOME TO ADVENTURE!! WOULD YOU LIKE INSTRUCTIONS?\n\n"
                 );
-                let yesno_ptr = hfst_readline("");
-                let yesno = cstr(yesno_ptr);
+                let yesno = hfst_readline("").unwrap_or_default();
                 if yesno == "YES" || yesno == "yes" {
-                    fput(
-                        &mut *msg,
+                    let _ = write!(
+                        msg,
                         "SOMEWHERE NEARBY IS COLOSSAL CAVE \
                          WHERE OTHERS HAVE FOUND\n\
                          FORTUNES IN TREASURES AND GOLD, \
@@ -262,11 +217,8 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                          (IF STUCK TYPE HELP FOR SOME HINTS)\n\n",
                     );
                 }
-                if !yesno_ptr.is_null() {
-                    hfst_cli::hfst_commandline::hfst_free(yesno_ptr as *mut c_char);
-                }
-                fput(
-                    &mut *msg,
+                let _ = write!(
+                    msg,
                     "YOU ARE STANDING AT THE END OF A ROAD BEFORE A \
                      SMALL FINITE\n\
                      STATE AUTOMATON . AROUND YOU IS A FOREST. A SMALL\n\
@@ -274,13 +226,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                      DOWN A GULLY:\n\n",
                 );
             } else {
-                fput(
-                    &mut *msg,
-                    &format!("Traversing automaton {}\n\n", trans_name),
-                );
+                let _ = write!(msg, "Traversing automaton {}\n\n", trans_name);
             }
             if walkable.state_vector.is_empty() {
-                fput(&mut *msg, "Nowhere to go\n");
+                let _ = write!(msg, "Nowhere to go\n");
                 return 0;
             }
             return main_loop(&walkable);
@@ -297,37 +246,28 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "HfstDeterminize");
-        let retval = parse_options(argc, argv);
+        let retval = parse_options(&mut args);
         if retval != EXIT_CONTINUE {
             return retval;
         }
         // close buffers, we use streams
-        let input_opened = cstr(globals::INPUTFILENAME) != "<stdin>";
-        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
+        let input_opened = globals::input_filename() != "<stdin>";
+        let output_opened = globals::output_filename() != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
-            cstr(globals::INPUTFILENAME),
-            cstr(globals::OUTFILENAME)
+            globals::input_filename(),
+            globals::output_filename()
         ));
 
         // here starts the buffer handling part
         let mut instream = if input_opened {
-            HfstInputStream::new_filename(&cstr(globals::INPUTFILENAME))
+            HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
         };
@@ -340,7 +280,7 @@ unsafe fn real_main() -> c_int {
         // construction so the buffer-handling part matches the source.
         let type_ = instream.get_type();
         let _outstream = if output_opened {
-            HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), type_, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
         };

@@ -3,7 +3,6 @@
 //! commandline, program-options, tool-metadata, inc fragments). A binary tool:
 //! it reads two input streams (firstfile + secondfile) and composes them.
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_exception_defs::TransducerTypeMismatchException;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -14,13 +13,12 @@ use hfst::hfst_transducer::{
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, conversion_type, convert_transducers, error, extend_options_getenv,
-    hfst_set_program_name, hfst_strdup, hfst_strformat, is_input_stream_in_ol_format,
-    print_more_info, print_report_bugs, verbose_printf, warning,
+    hfst_set_program_name, hfst_strformat, is_input_stream_in_ol_format, print_more_info,
+    print_report_bugs, verbose_printf, warning,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_BINARY_SHORT, HFST_GETOPT_COMMON_SHORT, hfst_getopt_binary_long,
-    hfst_getopt_common_long, print_common_binary_program_options,
+    hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
     print_common_binary_program_parameter_instructions, print_common_program_options,
 };
 use hfst_cli::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_binary, hfst_set_name_binary};
@@ -28,124 +26,82 @@ use hfst_cli::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
-use std::ffi::{CStr, CString};
+use std::io::Write;
 
 static mut HARMONIZE_FLAGS: bool = false;
 static mut HARMONIZE: bool = true;
 
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
-
 // [spec:hfst:def:hfst-compose.print-usage-fn]
 // [spec:hfst:sem:hfst-compose.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        let mut msg = globals::message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nCompose two transducers\n\n",
-                program_name
-            ),
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "Composition options:\n  -x, --xerox-composition=VALUE Whether flag diacritics are treated as ordinary\n                                symbols in composition (default is false).\n  -X, --xfst=VARIABLE    Toggle xfst compatibility option VARIABLE.\nHarmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n",
-        );
-        fput(&mut *msg, "\n");
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        fput(&mut *msg, "\n");
-        fput(
-            &mut *msg,
-            "Xfst variables are {flag-is-epsilon (default OFF)}.\n",
-        );
-        fput(
-            &mut *msg,
-            "VALUE can be one of the following: [true|false], [yes|no] or [ON|OFF],\n",
-        );
-        fput(&mut *msg, "false being the default.\n");
-        fput(
-            &mut *msg,
-            &format!(
-                "\nExamples:\n  {} -o cat2dog.hfst cat2mouse.hfst mouse2dog.hfst  composes two automata\n\n",
-                program_name
-            ),
-        );
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-    }
+fn print_usage() {
+    let mut msg = globals::message_writer();
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let program_name = globals::program_name();
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nCompose two transducers\n\n",
+        program_name
+    );
+    print_common_program_options(&mut *msg);
+    print_common_binary_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "Composition options:\n  -x, --xerox-composition=VALUE Whether flag diacritics are treated as ordinary\n                                symbols in composition (default is false).\n  -X, --xfst=VARIABLE    Toggle xfst compatibility option VARIABLE.\nHarmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n"
+    );
+    let _ = write!(msg, "\n");
+    print_common_binary_program_parameter_instructions(&mut *msg);
+    let _ = write!(msg, "\n");
+    let _ = write!(
+        msg,
+        "Xfst variables are {{flag-is-epsilon (default OFF)}}.\n"
+    );
+    let _ = write!(
+        msg,
+        "VALUE can be one of the following: [true|false], [yes|no] or [ON|OFF],\n"
+    );
+    let _ = write!(msg, "false being the default.\n");
+    let _ = write!(
+        msg,
+        "\nExamples:\n  {} -o cat2dog.hfst cat2mouse.hfst mouse2dog.hfst  composes two automata\n\n",
+        program_name
+    );
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
 }
 
 // [spec:hfst:def:hfst-compose.parse-options-fn]
 // [spec:hfst:sem:hfst-compose.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             long_options.extend(hfst_getopt_binary_long());
             // add tool-specific options here
-            long_options.push(getopt::Option {
-                name: CString::new("harmonize-flags").unwrap().into_raw() as *const c_char,
+            long_options.push(getopt::GetOpt {
+                name: "harmonize-flags",
                 has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: b'F' as c_int,
+                val: b'F' as i32,
             });
-            long_options.push(getopt::Option {
-                name: CString::new("do-not-harmonize").unwrap().into_raw() as *const c_char,
+            long_options.push(getopt::GetOpt {
+                name: "do-not-harmonize",
                 has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: b'H' as c_int,
+                val: b'H' as i32,
             });
-            long_options.push(getopt::Option {
-                name: CString::new("xerox-composition").unwrap().into_raw() as *const c_char,
+            long_options.push(getopt::GetOpt {
+                name: "xerox-composition",
                 has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: b'x' as c_int,
+                val: b'x' as i32,
             });
-            long_options.push(getopt::Option {
-                name: CString::new("xfst").unwrap().into_raw() as *const c_char,
+            long_options.push(getopt::GetOpt {
+                name: "xfst",
                 has_arg: 1,
-                flag: std::ptr::null_mut(),
-                val: b'X' as c_int,
+                val: b'X' as i32,
             });
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!(
-                "{}{}FHx:X:",
-                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_BINARY_SHORT
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
@@ -158,45 +114,41 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
             }
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
             }
-            if c == b'F' as c_int {
+            if c == b'F' as i32 {
                 HARMONIZE_FLAGS = true;
                 continue;
-            } else if c == b'H' as c_int {
+            } else if c == b'H' as i32 {
                 HARMONIZE = false;
                 continue;
-            } else if c == b'x' as c_int {
-                let argument = cstr(hfst_strdup(getopt::OPTARG));
+            } else if c == b'x' as i32 {
+                let argument = getopt::optarg();
                 if argument == "yes" || argument == "true" || argument == "ON" {
                     set_xerox_composition(true);
                 } else if argument == "no" || argument == "false" || argument == "OFF" {
                     set_xerox_composition(false);
                 } else {
-                    fput(
-                        &mut std::io::stderr(),
-                        &format!(
-                            "Error: unknown option to --xerox-composition: '{}'\n",
-                            cstr(getopt::OPTARG)
-                        ),
+                    let _ = write!(
+                        std::io::stderr(),
+                        "Error: unknown option to --xerox-composition: '{}'\n",
+                        getopt::optarg()
                     );
                     return 1;
                 }
                 continue;
-            } else if c == b'X' as c_int {
-                let argument = cstr(hfst_strdup(getopt::OPTARG));
+            } else if c == b'X' as i32 {
+                let argument = getopt::optarg();
                 if argument == "flag-is-epsilon" {
                     set_flag_is_epsilon_in_composition(true);
                 } else {
-                    fput(
-                        &mut std::io::stderr(),
-                        &format!(
-                            "Error: unknown option to --xfst: '{}'\n",
-                            cstr(getopt::OPTARG)
-                        ),
+                    let _ = write!(
+                        std::io::stderr(),
+                        "Error: unknown option to --xfst: '{}'\n",
+                        getopt::optarg()
                     );
                     return 1;
                 }
@@ -205,7 +157,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             return handle_error_case(c);
         }
 
-        check_binary_params(argc, argv);
+        check_binary_params(args);
         check_common_params();
         EXIT_CONTINUE
     }
@@ -216,7 +168,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 unsafe fn compose_streams(
     firststream: &mut HfstInputStream,
     secondstream: &mut HfstInputStream,
-) -> c_int {
+) -> i32 {
     unsafe {
         // there must be at least one transducer in both input streams
         let mut continue_reading = firststream.is_good() && secondstream.is_good();
@@ -229,8 +181,8 @@ unsafe fn compose_streams(
                 let ct = conversion_type(type1, type2);
                 let mut warnstr = format!(
                     "Transducer type mismatch in {} and {}; ",
-                    cstr(globals::FIRSTFILENAME),
-                    cstr(globals::SECONDFILENAME)
+                    globals::first_filename(),
+                    globals::second_filename()
                 );
                 if ct == 1 {
                     warnstr.push_str("using former type as output");
@@ -256,8 +208,8 @@ unsafe fn compose_streams(
                     0,
                     &format!(
                         "Transducer type mismatch in {} and {}; formats {} and {} are not compatible for composition (--do-not-convert was requested)",
-                        cstr(globals::FIRSTFILENAME),
-                        cstr(globals::SECONDFILENAME),
+                        globals::first_filename(),
+                        globals::second_filename(),
                         hfst_strformat(type1),
                         hfst_strformat(type2)
                     ),
@@ -267,9 +219,9 @@ unsafe fn compose_streams(
             output_type = type1;
         }
 
-        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
+        let output_opened = globals::output_filename() != "<stdout>";
         let mut outstream = if output_opened {
-            HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), output_type, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), output_type, true)
         } else {
             HfstOutputStream::new(output_type, true)
         };
@@ -287,13 +239,12 @@ unsafe fn compose_streams(
                 second = Some(HfstTransducer::new_from_stream(secondstream));
                 transducer_n_second += 1;
             }
-            let firstname = hfst_get_name(first.as_ref().unwrap(), &cstr(globals::FIRSTFILENAME));
+            let firstname = hfst_get_name(first.as_ref().unwrap(), &globals::first_filename());
             if second.is_none() {
                 // make scan-build happy, this should not happen
                 std::panic::panic_any("Error: second stream has a NULL value.");
             }
-            let secondname =
-                hfst_get_name(second.as_ref().unwrap(), &cstr(globals::SECONDFILENAME));
+            let secondname = hfst_get_name(second.as_ref().unwrap(), &globals::second_filename());
             if transducer_n_first == 1 {
                 verbose_printf(&format!("Composing {} and {}...\n", firstname, secondname));
             } else {
@@ -426,8 +377,8 @@ unsafe fn compose_streams(
                 0,
                 &format!(
                     "second input '{}' contains fewer transducers than first input '{}'; this is only possible if the second input contains exactly one transducer",
-                    cstr(globals::SECONDFILENAME),
-                    cstr(globals::FIRSTFILENAME)
+                    globals::second_filename(),
+                    globals::first_filename()
                 ),
             );
         }
@@ -438,8 +389,8 @@ unsafe fn compose_streams(
                 0,
                 &format!(
                     "first input '{}' contains fewer transducers than second input '{}'; this is only possible if the first input contains exactly one transducer",
-                    cstr(globals::FIRSTFILENAME),
-                    cstr(globals::SECONDFILENAME)
+                    globals::first_filename(),
+                    globals::second_filename()
                 ),
             );
         }
@@ -460,45 +411,36 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.1", "HfstCompose");
-        let retval = parse_options(argc, argv);
+        let retval = parse_options(&mut args);
         if retval != EXIT_CONTINUE {
             return retval;
         }
         // close buffers, we use streams
-        let first_opened = cstr(globals::FIRSTFILENAME) != "<stdin>";
-        let second_opened = cstr(globals::SECONDFILENAME) != "<stdin>";
+        let first_opened = globals::first_filename() != "<stdin>";
+        let second_opened = globals::second_filename() != "<stdin>";
         verbose_printf(&format!(
             "Reading from {} and {}, writing to {}\n",
-            cstr(globals::FIRSTFILENAME),
-            cstr(globals::SECONDFILENAME),
-            cstr(globals::OUTFILENAME)
+            globals::first_filename(),
+            globals::second_filename(),
+            globals::output_filename()
         ));
         // here starts the buffer handling part
         // (the C wraps the ctors in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
         let mut firststream = if first_opened {
-            HfstInputStream::new_filename(&cstr(globals::FIRSTFILENAME))
+            HfstInputStream::new_filename(&globals::first_filename())
         } else {
             HfstInputStream::new()
         };
         let mut secondstream = if second_opened {
-            HfstInputStream::new_filename(&cstr(globals::SECONDFILENAME))
+            HfstInputStream::new_filename(&globals::second_filename())
         } else {
             HfstInputStream::new()
         };

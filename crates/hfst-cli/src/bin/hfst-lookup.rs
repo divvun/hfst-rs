@@ -9,7 +9,6 @@
 //! check-params-unary.h); it mirrors hfst-invert's option-parsing skeleton and
 //! adds the tool-specific options.
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::{
     HfstOneLevelPath, HfstOneLevelPaths, HfstTwoLevelPaths, ImplementationType, StringPairVector,
@@ -24,27 +23,24 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, extend_options_getenv, hfst_error, hfst_error_at_line, hfst_set_program_name,
-    hfst_setlocale, hfst_strformat, hfst_warning, print_more_info, print_report_bugs,
-    verbose_printf,
+    hfst_strformat, hfst_warning, print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, hfst_getopt_common_long,
-    hfst_getopt_unary_long, print_common_program_options,
+    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
     print_common_unary_program_parameter_instructions,
 };
 use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use std::ffi::{CStr, CString};
 use std::io::{BufRead, Write};
 
 // ---------------------------------------------------------------------------
 // tools-specific global state (the C++ file's static variables)
 // ---------------------------------------------------------------------------
 
-static mut LOOKUP_FILE_NAME: *mut c_char = std::ptr::null_mut();
+static mut LOOKUP_FILE_NAME: String = String::new();
 // The lookup-strings input. In the C this was a FILE* (a named file from -I, or
 // stdin); after the io-foundation de-C-ism it is a std::io::BufRead. LOOKUP_GIVEN
 // records whether -I named a file (so the seekable file-size progress bar and the
@@ -101,27 +97,27 @@ static mut PRINT_PAIRS: bool = false;
 static mut PRINT_SPACE: bool = false;
 static mut QUOTE_SPECIAL: bool = false;
 
-static mut EPSILON_FORMAT: *mut c_char = std::ptr::null_mut();
-static mut SPACE_FORMAT: *mut c_char = std::ptr::null_mut();
+static mut EPSILON_FORMAT: String = String::new();
+static mut SPACE_FORMAT: String = String::new();
 
 // the formats for lookup cases go like so:
 //  BEGIN LOOKUP LOOKUP LOOKUP... END
 // for standard case of more than 0 and less than infinite results:
-static mut BEGIN_SETF: *mut c_char = std::ptr::null_mut(); // print before set of lookups
-static mut LOOKUPF: *mut c_char = std::ptr::null_mut(); // print before each lookup
-static mut END_SETF: *mut c_char = std::ptr::null_mut(); // print for each lookup
+static mut BEGIN_SETF: String = String::new(); // print before set of lookups
+static mut LOOKUPF: String = String::new(); // print before each lookup
+static mut END_SETF: String = String::new(); // print for each lookup
 // when there are 0 results:
-static mut EMPTY_BEGIN_SETF: *mut c_char = std::ptr::null_mut();
-static mut EMPTY_LOOKUPF: *mut c_char = std::ptr::null_mut();
-static mut EMPTY_END_SETF: *mut c_char = std::ptr::null_mut();
+static mut EMPTY_BEGIN_SETF: String = String::new();
+static mut EMPTY_LOOKUPF: String = String::new();
+static mut EMPTY_END_SETF: String = String::new();
 // when there are 0 results and token is unrecognizable by analyser:
-static mut UNKNOWN_BEGIN_SETF: *mut c_char = std::ptr::null_mut();
-static mut UNKNOWN_LOOKUPF: *mut c_char = std::ptr::null_mut();
-static mut UNKNOWN_END_SETF: *mut c_char = std::ptr::null_mut();
+static mut UNKNOWN_BEGIN_SETF: String = String::new();
+static mut UNKNOWN_LOOKUPF: String = String::new();
+static mut UNKNOWN_END_SETF: String = String::new();
 // when there are infinite results:
-static mut INFINITE_BEGIN_SETF: *mut c_char = std::ptr::null_mut();
-static mut INFINITE_LOOKUPF: *mut c_char = std::ptr::null_mut();
-static mut INFINITE_END_SETF: *mut c_char = std::ptr::null_mut();
+static mut INFINITE_BEGIN_SETF: String = String::new();
+static mut INFINITE_LOOKUPF: String = String::new();
+static mut INFINITE_END_SETF: String = String::new();
 
 static mut PRINT_STATISTICS: bool = false;
 static mut SHOW_PROGRESS_BAR: bool = false;
@@ -176,193 +172,144 @@ static mut ANALYSES: u64 = 0;
 // which transducer in the cascade we are handling
 static mut TRANSDUCER_NUMBER: u32 = 0;
 
-// ---------------------------------------------------------------------------
-// small C runtime shims used by the tool (strdup/getline have no foundation
-// wrapper; reproduced here as raw libc, matching the C++ exactly)
-// ---------------------------------------------------------------------------
-
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-// 'hfst_strdup' replacement: duplicate a &str into a malloc'd C string.
-unsafe fn strdup_str(s: &str) -> *mut c_char {
-    let c = CString::new(s).unwrap_or_default();
-    c.into_raw()
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
-
 // [spec:hfst:def:hfst-lookup.print-usage-fn]
 // [spec:hfst:sem:hfst-lookup.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = globals::message_writer();
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE]\n\
-                 perform transducer lookup (apply)\n\
-                 NOTE: hfst-lookup does lookup from left to right as opposed to xfst and foma\n\
-                 \x20     lookup which is carried out from right to left. In order to do lookup\n\
-                 \x20     in a similar way as xfst and foma, use 'hfst-flookup' instead.\n\
-                 \n",
-                program_name
-            ),
-        );
+fn print_usage() {
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let mut msg = globals::message_writer();
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE]\n\
+         perform transducer lookup (apply)\n\
+         NOTE: hfst-lookup does lookup from left to right as opposed to xfst and foma\n\
+         \x20     lookup which is carried out from right to left. In order to do lookup\n\
+         \x20     in a similar way as xfst and foma, use 'hfst-flookup' instead.\n\
+         \n",
+        globals::program_name()
+    );
 
-        print_common_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "Input/Output options:\n\
-             \x20 -i, --input=INFILE       Read input transducer from INFILE\n\
-             \x20 -o, --output=OUTFILE     Write output to OUTFILE\n\
-             \x20 -p, --pipe-mode[=STREAM] Control input and output streams\n",
-        );
+    print_common_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "Input/Output options:\n\
+         \x20 -i, --input=INFILE       Read input transducer from INFILE\n\
+         \x20 -o, --output=OUTFILE     Write output to OUTFILE\n\
+         \x20 -p, --pipe-mode[=STREAM] Control input and output streams\n"
+    );
 
-        fput(
-            &mut *msg,
-            "Lookup options:\n\
-             \x20 -I, --input-strings=SFILE        Read lookup strings from SFILE\n\
-             \x20 -O, --output-format=OFORMAT      Use OFORMAT printing results sets\n\
-             \x20 -e, --epsilon-format=EPS         Print epsilon as EPS\n\
-             \x20 -F, --input-format=IFORMAT       Use IFORMAT parsing input\n\
-             \x20 -x, --statistics                 Print statistics\n\
-             \x20 -X, --xfst=VARIABLE              Toggle xfst VARIABLE\n\
-             \x20 -c, --cycles=INT                 How many times to follow input epsilon cycles\n\
-             \x20                                  (only for non-lookup-optimized transducers)\n\
-             \x20 -n, --max-number=INT             Maximum number of results printed for each input\n\
-             \x20                                  (only for lookup-optimized transducers)\n\
-             \x20 -b, --beam=B                     Output only analyses whose weight is within B from\n\
-             \x20                                  the best analysis\n\
-             \x20 -t, --time-cutoff=S              Limit search after having used S seconds per input\n\
-             \x20                                  (only for lookup-optimized transducers)\n\
-             \x20 -C, --cascade=CASCADE            How multiple transducers in input are handled\n\
-             \x20 -P, --progress                   Show neat progress bar if possible\n",
-        );
-        fput(&mut *msg, "\n");
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        fput(
-            &mut *msg,
-            "OFORMAT is one of {xerox,cg,apertium}, xerox being default\n\
-             IFORMAT is one of {text,spaced,apertium}, default being text,\n\
-             unless OFORMAT is apertium\n\
-             VARIABLEs relevant to lookup are {print-pairs,print-space,\n\
-             quote-special,show-flags,obey-flags}\n\
-             Input epsilon cycles are followed by default INT=5 times.\n\
-             Epsilon is printed by default as an empty string.\n\
-             B must be a non-negative float.\n\
-             S must be a non-negative float. The default, 0.0, indicates no cutoff.\n\
-             If the input contains several transducers, a set containing\n\
-             results from all transducers is printed for each input string.\n",
-        );
-        fput(&mut *msg, "\n");
+    let _ = write!(
+        msg,
+        "Lookup options:\n\
+         \x20 -I, --input-strings=SFILE        Read lookup strings from SFILE\n\
+         \x20 -O, --output-format=OFORMAT      Use OFORMAT printing results sets\n\
+         \x20 -e, --epsilon-format=EPS         Print epsilon as EPS\n\
+         \x20 -F, --input-format=IFORMAT       Use IFORMAT parsing input\n\
+         \x20 -x, --statistics                 Print statistics\n\
+         \x20 -X, --xfst=VARIABLE              Toggle xfst VARIABLE\n\
+         \x20 -c, --cycles=INT                 How many times to follow input epsilon cycles\n\
+         \x20                                  (only for non-lookup-optimized transducers)\n\
+         \x20 -n, --max-number=INT             Maximum number of results printed for each input\n\
+         \x20                                  (only for lookup-optimized transducers)\n\
+         \x20 -b, --beam=B                     Output only analyses whose weight is within B from\n\
+         \x20                                  the best analysis\n\
+         \x20 -t, --time-cutoff=S              Limit search after having used S seconds per input\n\
+         \x20                                  (only for lookup-optimized transducers)\n\
+         \x20 -C, --cascade=CASCADE            How multiple transducers in input are handled\n\
+         \x20 -P, --progress                   Show neat progress bar if possible\n"
+    );
+    let _ = write!(msg, "\n");
+    print_common_unary_program_parameter_instructions(&mut *msg);
+    let _ = msg.write_all(
+        "OFORMAT is one of {xerox,cg,apertium}, xerox being default\n\
+         IFORMAT is one of {text,spaced,apertium}, default being text,\n\
+         unless OFORMAT is apertium\n\
+         VARIABLEs relevant to lookup are {print-pairs,print-space,\n\
+         quote-special,show-flags,obey-flags}\n\
+         Input epsilon cycles are followed by default INT=5 times.\n\
+         Epsilon is printed by default as an empty string.\n\
+         B must be a non-negative float.\n\
+         S must be a non-negative float. The default, 0.0, indicates no cutoff.\n\
+         If the input contains several transducers, a set containing\n\
+         results from all transducers is printed for each input string.\n"
+            .as_bytes(),
+    );
+    let _ = write!(msg, "\n");
 
-        fput(
-            &mut *msg,
-            "CASCADE must be one of { union, priority-union, composition }.\n\
-             If not specified, defaults to {union}.\n",
-        );
-        fput(&mut *msg, "\n");
+    let _ = msg.write_all(
+        "CASCADE must be one of { union, priority-union, composition }.\n\
+         If not specified, defaults to {union}.\n"
+            .as_bytes(),
+    );
+    let _ = write!(msg, "\n");
 
-        fput(
-            &mut *msg,
-            "STREAM can be { input, output, both }. If not given, defaults to {both}.\n\
-             If input file is not specified with -I, input is read interactively line by\n\
-             line from the user. If you redirect input from a file, use --pipe-mode=input.\n\
-             --pipe-mode=output is ignored on non-windows platforms.\n",
-        );
-        fput(&mut *msg, "\n");
+    let _ = msg.write_all(
+        "STREAM can be { input, output, both }. If not given, defaults to {both}.\n\
+         If input file is not specified with -I, input is read interactively line by\n\
+         line from the user. If you redirect input from a file, use --pipe-mode=input.\n\
+         --pipe-mode=output is ignored on non-windows platforms.\n"
+            .as_bytes(),
+    );
+    let _ = write!(msg, "\n");
 
-        fput(
-            &mut *msg,
-            "Todo:\n\
-             \x20 Support --xfst=obey-flags for optimized lookup format.\n\
-             \x20 Support --cycles for optimized lookup format.\n",
-        );
+    let _ = write!(
+        msg,
+        "Todo:\n\
+         \x20 Support --xfst=obey-flags for optimized lookup format.\n\
+         \x20 Support --cycles for optimized lookup format.\n"
+    );
 
-        fput(
-            &mut *msg,
-            "\n\
-             Known bugs:\n\
-             \x20 'quote-special' quotes spaces that come from 'print-space'\n",
-        );
+    let _ = write!(
+        msg,
+        "\n\
+         Known bugs:\n\
+         \x20 'quote-special' quotes spaces that come from 'print-space'\n"
+    );
 
-        fput(&mut *msg, "\n");
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-    }
+    let _ = write!(msg, "\n");
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
 }
 
 // [spec:hfst:def:hfst-lookup.parse-options-fn]
 // [spec:hfst:sem:hfst-lookup.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             long_options.extend(hfst_getopt_unary_long());
             // add tool-specific options here
             for (name, has_arg, val) in [
-                ("input-strings", 1, b'I'),
-                ("output-format", 1, b'O'),
-                ("input-format", 1, b'F'),
-                ("statistics", 0, b'x'),
-                ("cycles", 1, b'c'),
-                ("max-number", 1, b'n'),
-                ("xfst", 1, b'X'),
-                ("epsilon-format", 1, b'e'),
-                ("epsilon-format2", 1, b'E'),
-                ("beam", 1, b'b'),
-                ("time-cutoff", 1, b't'),
-                ("pipe-mode", 2, b'p'),
-                ("progress", 0, b'P'),
-                ("cascade", 1, b'C'),
+                ("input-strings", getopt::REQUIRED_ARGUMENT, b'I'),
+                ("output-format", getopt::REQUIRED_ARGUMENT, b'O'),
+                ("input-format", getopt::REQUIRED_ARGUMENT, b'F'),
+                ("statistics", getopt::NO_ARGUMENT, b'x'),
+                ("cycles", getopt::REQUIRED_ARGUMENT, b'c'),
+                ("max-number", getopt::REQUIRED_ARGUMENT, b'n'),
+                ("xfst", getopt::REQUIRED_ARGUMENT, b'X'),
+                ("epsilon-format", getopt::REQUIRED_ARGUMENT, b'e'),
+                ("epsilon-format2", getopt::REQUIRED_ARGUMENT, b'E'),
+                ("beam", getopt::REQUIRED_ARGUMENT, b'b'),
+                ("time-cutoff", getopt::REQUIRED_ARGUMENT, b't'),
+                ("pipe-mode", getopt::OPTIONAL_ARGUMENT, b'p'),
+                ("progress", getopt::NO_ARGUMENT, b'P'),
+                ("cascade", getopt::REQUIRED_ARGUMENT, b'C'),
             ] {
-                long_options.push(getopt::Option {
-                    name: CString::new(name).unwrap().into_raw(),
+                long_options.push(getopt::GetOpt {
+                    name,
                     has_arg,
-                    flag: std::ptr::null_mut(),
-                    val: val as c_int,
+                    val: val as i32,
                 });
             }
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!(
-                "{}{}{}",
-                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, "I:O:F:xc:n:X:e:E:b:t:p::PC:"
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
 
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
@@ -374,10 +321,10 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             }
 
             // add tool-specific cases here
-            let optarg = cstr(getopt::OPTARG);
+            let optarg = getopt::optarg();
             match c as u8 {
                 b'I' => {
-                    LOOKUP_FILE_NAME = strdup_str(&optarg);
+                    LOOKUP_FILE_NAME = optarg.clone();
                     // C: lookup_file = fopen(lookup_file_name, "r"); open the named
                     // file as a buffered std reader instead.
                     match std::fs::File::open(&optarg) {
@@ -426,7 +373,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     }
                 }
                 b'e' | b'E' => {
-                    EPSILON_FORMAT = strdup_str(&optarg);
+                    EPSILON_FORMAT = optarg.clone();
                 }
                 b'b' => {
                     BEAM = optarg.parse::<f32>().unwrap_or(0.0);
@@ -450,7 +397,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         PRINT_PAIRS = true;
                     } else if optarg == "print-space" {
                         PRINT_SPACE = true;
-                        SPACE_FORMAT = strdup_str(" ");
+                        SPACE_FORMAT = " ".to_string();
                     } else if optarg == "show-flags" {
                         SHOW_FLAGS = true;
                     } else if optarg == "quote-special" {
@@ -468,7 +415,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     MAX_NUMBER = optarg.parse::<i32>().unwrap_or(0) as isize;
                 }
                 b'p' => {
-                    if getopt::OPTARG.is_null() {
+                    if getopt::optarg_opt().is_none() {
                         PIPE_INPUT = true;
                         PIPE_OUTPUT = true;
                     } else if optarg == "both" || optarg == "BOTH" {
@@ -524,55 +471,55 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
         match OUTPUT_FORMAT {
             LookupOutputFormat::XeroxOutput => {
-                BEGIN_SETF = strdup_str(XEROX_BEGIN_SETF);
-                LOOKUPF = strdup_str(XEROX_LOOKUPF);
-                END_SETF = strdup_str(XEROX_END_SETF);
-                EMPTY_BEGIN_SETF = strdup_str(XEROX_EMPTY_BEGIN_SETF);
-                EMPTY_LOOKUPF = strdup_str(XEROX_EMPTY_LOOKUPF);
-                EMPTY_END_SETF = strdup_str(XEROX_EMPTY_END_SETF);
-                UNKNOWN_BEGIN_SETF = strdup_str(XEROX_UNKNOWN_BEGIN_SETF);
-                UNKNOWN_LOOKUPF = strdup_str(XEROX_UNKNOWN_LOOKUPF);
-                UNKNOWN_END_SETF = strdup_str(XEROX_UNKNOWN_END_SETF);
-                INFINITE_BEGIN_SETF = strdup_str(XEROX_INFINITE_BEGIN_SETF);
-                INFINITE_LOOKUPF = strdup_str(XEROX_INFINITE_LOOKUPF);
-                INFINITE_END_SETF = strdup_str(XEROX_INFINITE_END_SETF);
+                BEGIN_SETF = XEROX_BEGIN_SETF.to_string();
+                LOOKUPF = XEROX_LOOKUPF.to_string();
+                END_SETF = XEROX_END_SETF.to_string();
+                EMPTY_BEGIN_SETF = XEROX_EMPTY_BEGIN_SETF.to_string();
+                EMPTY_LOOKUPF = XEROX_EMPTY_LOOKUPF.to_string();
+                EMPTY_END_SETF = XEROX_EMPTY_END_SETF.to_string();
+                UNKNOWN_BEGIN_SETF = XEROX_UNKNOWN_BEGIN_SETF.to_string();
+                UNKNOWN_LOOKUPF = XEROX_UNKNOWN_LOOKUPF.to_string();
+                UNKNOWN_END_SETF = XEROX_UNKNOWN_END_SETF.to_string();
+                INFINITE_BEGIN_SETF = XEROX_INFINITE_BEGIN_SETF.to_string();
+                INFINITE_LOOKUPF = XEROX_INFINITE_LOOKUPF.to_string();
+                INFINITE_END_SETF = XEROX_INFINITE_END_SETF.to_string();
             }
             LookupOutputFormat::CgOutput => {
-                BEGIN_SETF = strdup_str(CG_BEGIN_SETF);
-                LOOKUPF = strdup_str(CG_LOOKUPF);
-                END_SETF = strdup_str(CG_END_SETF);
-                EMPTY_BEGIN_SETF = strdup_str(CG_EMPTY_BEGIN_SETF);
-                EMPTY_LOOKUPF = strdup_str(CG_EMPTY_LOOKUPF);
-                EMPTY_END_SETF = strdup_str(CG_EMPTY_END_SETF);
-                UNKNOWN_BEGIN_SETF = strdup_str(CG_UNKNOWN_BEGIN_SETF);
-                UNKNOWN_LOOKUPF = strdup_str(CG_UNKNOWN_LOOKUPF);
-                UNKNOWN_END_SETF = strdup_str(CG_UNKNOWN_END_SETF);
-                INFINITE_BEGIN_SETF = strdup_str(CG_INFINITE_BEGIN_SETF);
-                INFINITE_LOOKUPF = strdup_str(CG_INFINITE_LOOKUPF);
-                INFINITE_END_SETF = strdup_str(CG_INFINITE_END_SETF);
+                BEGIN_SETF = CG_BEGIN_SETF.to_string();
+                LOOKUPF = CG_LOOKUPF.to_string();
+                END_SETF = CG_END_SETF.to_string();
+                EMPTY_BEGIN_SETF = CG_EMPTY_BEGIN_SETF.to_string();
+                EMPTY_LOOKUPF = CG_EMPTY_LOOKUPF.to_string();
+                EMPTY_END_SETF = CG_EMPTY_END_SETF.to_string();
+                UNKNOWN_BEGIN_SETF = CG_UNKNOWN_BEGIN_SETF.to_string();
+                UNKNOWN_LOOKUPF = CG_UNKNOWN_LOOKUPF.to_string();
+                UNKNOWN_END_SETF = CG_UNKNOWN_END_SETF.to_string();
+                INFINITE_BEGIN_SETF = CG_INFINITE_BEGIN_SETF.to_string();
+                INFINITE_LOOKUPF = CG_INFINITE_LOOKUPF.to_string();
+                INFINITE_END_SETF = CG_INFINITE_END_SETF.to_string();
             }
             LookupOutputFormat::ApertiumOutput => {
-                BEGIN_SETF = strdup_str(APERTIUM_BEGIN_SETF);
-                LOOKUPF = strdup_str(APERTIUM_LOOKUPF);
-                END_SETF = strdup_str(APERTIUM_END_SETF);
-                EMPTY_BEGIN_SETF = strdup_str(APERTIUM_EMPTY_BEGIN_SETF);
-                EMPTY_LOOKUPF = strdup_str(APERTIUM_EMPTY_LOOKUPF);
-                EMPTY_END_SETF = strdup_str(APERTIUM_EMPTY_END_SETF);
-                UNKNOWN_BEGIN_SETF = strdup_str(APERTIUM_UNKNOWN_BEGIN_SETF);
-                UNKNOWN_LOOKUPF = strdup_str(APERTIUM_UNKNOWN_LOOKUPF);
-                UNKNOWN_END_SETF = strdup_str(APERTIUM_UNKNOWN_END_SETF);
-                INFINITE_BEGIN_SETF = strdup_str(APERTIUM_INFINITE_BEGIN_SETF);
-                INFINITE_LOOKUPF = strdup_str(APERTIUM_INFINITE_LOOKUPF);
-                INFINITE_END_SETF = strdup_str(APERTIUM_INFINITE_END_SETF);
+                BEGIN_SETF = APERTIUM_BEGIN_SETF.to_string();
+                LOOKUPF = APERTIUM_LOOKUPF.to_string();
+                END_SETF = APERTIUM_END_SETF.to_string();
+                EMPTY_BEGIN_SETF = APERTIUM_EMPTY_BEGIN_SETF.to_string();
+                EMPTY_LOOKUPF = APERTIUM_EMPTY_LOOKUPF.to_string();
+                EMPTY_END_SETF = APERTIUM_EMPTY_END_SETF.to_string();
+                UNKNOWN_BEGIN_SETF = APERTIUM_UNKNOWN_BEGIN_SETF.to_string();
+                UNKNOWN_LOOKUPF = APERTIUM_UNKNOWN_LOOKUPF.to_string();
+                UNKNOWN_END_SETF = APERTIUM_UNKNOWN_END_SETF.to_string();
+                INFINITE_BEGIN_SETF = APERTIUM_INFINITE_BEGIN_SETF.to_string();
+                INFINITE_LOOKUPF = APERTIUM_INFINITE_LOOKUPF.to_string();
+                INFINITE_END_SETF = APERTIUM_INFINITE_END_SETF.to_string();
             }
         }
 
         if !LOOKUP_GIVEN {
             *lookup_reader() = Some(Box::new(std::io::BufReader::new(std::io::stdin())));
-            LOOKUP_FILE_NAME = strdup_str("<stdin>");
+            LOOKUP_FILE_NAME = "<stdin>".to_string();
         }
         check_common_params();
-        check_unary_params(argc, argv);
+        check_unary_params(args);
         EXIT_CONTINUE
     }
 }
@@ -590,15 +537,15 @@ unsafe fn print_prompt() {
 // [spec:hfst:def:hfst-lookup.lookup-printf-fn]
 // [spec:hfst:sem:hfst-lookup.lookup-printf-fn]
 unsafe fn lookup_printf(
-    format: *const c_char,
+    format: &str,
     input: Option<&HfstOneLevelPath>,
     result: Option<&HfstOneLevelPath>,
     markup: Option<&str>,
     ofile: &mut dyn Write,
-) -> c_int {
+) -> i32 {
     unsafe {
-        let epsilon_format = cstr(EPSILON_FORMAT);
-        let space_format = cstr(SPACE_FORMAT);
+        let epsilon_format = EPSILON_FORMAT.clone();
+        let space_format = SPACE_FORMAT.clone();
 
         // Build the lookupform string (the result side).
         let lookupform: Option<String> = result.map(|r| {
@@ -674,7 +621,7 @@ unsafe fn lookup_printf(
         let m = markup.map(|s| s.to_string()).unwrap_or_default();
 
         // Walk the format string, substituting %-escapes.
-        let format_s = cstr(format);
+        let format_s = format;
         let mut res = String::new();
         let mut percent = false;
         for ch in format_s.chars() {
@@ -710,8 +657,8 @@ unsafe fn lookup_printf(
         } else {
             get_print_format(&res)
         };
-        fput(ofile, &printed);
-        printed.len() as c_int
+        let _ = ofile.write_all(printed.as_bytes());
+        printed.len() as i32
     }
 }
 
@@ -736,7 +683,7 @@ unsafe fn string_to_utf8(p: &str) -> Vec<String> {
                 hfst_error_at_line(
                     1,
                     0,
-                    &cstr(globals::INPUTFILENAME),
+                    &globals::input_filename(),
                     LINEN as u32,
                     &format!("{} not valid UTF-8\n", &p[idx..]),
                 );
@@ -860,7 +807,7 @@ fn replace_all(symbol: String, str1: &str, str2: &str) -> String {
 unsafe fn get_print_format(s: &str) -> String {
     unsafe {
         if is_epsilon(s) {
-            return cstr(EPSILON_FORMAT);
+            return EPSILON_FORMAT.clone();
         }
         if QUOTE_SPECIAL {
             return replace_all(
@@ -878,7 +825,7 @@ unsafe fn get_print_format(s: &str) -> String {
 unsafe fn print_lookup_string(s: &StringVector, out: &mut dyn Write) {
     unsafe {
         for it in s.iter() {
-            fput(&mut *out, &get_print_format(it));
+            let _ = out.write_all(get_print_format(it).as_bytes());
         }
     }
 }
@@ -962,7 +909,7 @@ unsafe fn lookup_fd_and_print(
             if results_spv.is_empty() {
                 if print_fail {
                     let input = get_lookup_string(&s.second);
-                    fput(&mut *out, &format!("{}\t{}+?\tinf\n\n", input, input));
+                    let _ = out.write_all(format!("{}\t{}+?\tinf\n\n", input, input).as_bytes());
                     let _ = out.flush();
                 }
             } else {
@@ -980,31 +927,31 @@ unsafe fn lookup_fd_and_print(
                         } else {
                             print_lookup_string(&s.second, &mut *out);
                         }
-                        fput(&mut *out, "\t");
+                        let _ = out.write_all(b"\t");
                         // and the path that yielded the result string
                         let mut first_pair = true;
                         for it2 in it.second.iter() {
                             if SHOW_FLAGS || !FdOperation::is_diacritic(&it2.1) {
                                 if PRINT_SPACE && !first_pair {
-                                    fput(&mut *out, " ");
+                                    let _ = out.write_all(b" ");
                                 }
-                                fput(
-                                    &mut *out,
-                                    &format!(
+                                let _ = out.write_all(
+                                    format!(
                                         "{}:{}",
                                         get_print_format(&it2.0),
                                         get_print_format(&it2.1)
-                                    ),
+                                    )
+                                    .as_bytes(),
                                 );
                                 first_pair = false;
                             }
                         }
                         // and the weight of that path (add the weight of input)
-                        fput(&mut *out, &format!("\t{:.6}\n", it.first + s.first));
+                        let _ = out.write_all(format!("\t{:.6}\n", it.first + s.first).as_bytes());
                     }
                 }
                 if !no_newline {
-                    fput(&mut *out, "\n");
+                    let _ = out.write_all(b"\n");
                 }
             }
             let _ = out.flush();
@@ -1223,9 +1170,10 @@ unsafe fn lookup_cascading_ol(
                         for it in s.second.iter() {
                             input += it;
                         }
-                        fput(&mut *out, &format!("{}\t{}+?\tinf\n\n", input, input));
+                        let _ =
+                            out.write_all(format!("{}\t{}+?\tinf\n\n", input, input).as_bytes());
                     } else {
-                        fput(&mut *out, "\n");
+                        let _ = out.write_all(b"\n");
                     }
                     let _ = out.flush();
                 }
@@ -1313,9 +1261,10 @@ unsafe fn lookup_cascading_basic(
                         for it in s.second.iter() {
                             input += it;
                         }
-                        fput(&mut *out, &format!("{}\t{}+?\tinf\n\n", input, input));
+                        let _ =
+                            out.write_all(format!("{}\t{}+?\tinf\n\n", input, input).as_bytes());
                     } else {
-                        fput(&mut *out, "\n");
+                        let _ = out.write_all(b"\n");
                     }
                     let _ = out.flush();
                 }
@@ -1367,18 +1316,18 @@ unsafe fn print_lookups(
         let mut lowest_weight: f32 = -1.0;
 
         if outside_sigma {
-            lookup_printf(UNKNOWN_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
-            lookup_printf(UNKNOWN_LOOKUPF, Some(kv), None, markup, &mut *ofile);
-            lookup_printf(UNKNOWN_END_SETF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(&UNKNOWN_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(&UNKNOWN_LOOKUPF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(&UNKNOWN_END_SETF, Some(kv), None, markup, &mut *ofile);
             NO_ANALYSES += 1;
         } else if kvs.is_empty() {
-            lookup_printf(EMPTY_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
-            lookup_printf(EMPTY_LOOKUPF, Some(kv), None, markup, &mut *ofile);
-            lookup_printf(EMPTY_END_SETF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(&EMPTY_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(&EMPTY_LOOKUPF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(&EMPTY_END_SETF, Some(kv), None, markup, &mut *ofile);
             NO_ANALYSES += 1;
         } else if inf {
             ANALYSED += 1;
-            lookup_printf(INFINITE_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(&INFINITE_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
             let mut first = true;
             for lkv in kvs.iter() {
                 if first {
@@ -1386,14 +1335,14 @@ unsafe fn print_lookups(
                 }
                 first = false;
                 if BEAM < 0.0 || lkv.first <= (lowest_weight + BEAM) {
-                    lookup_printf(INFINITE_LOOKUPF, Some(kv), Some(lkv), markup, &mut *ofile);
+                    lookup_printf(&INFINITE_LOOKUPF, Some(kv), Some(lkv), markup, &mut *ofile);
                     ANALYSES += 1;
                 }
             }
-            lookup_printf(INFINITE_END_SETF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(&INFINITE_END_SETF, Some(kv), None, markup, &mut *ofile);
         } else {
             ANALYSED += 1;
-            lookup_printf(BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(&BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
             let mut first = true;
             for lkv in kvs.iter() {
                 if first {
@@ -1401,11 +1350,11 @@ unsafe fn print_lookups(
                 }
                 first = false;
                 if BEAM < 0.0 || lkv.first <= (lowest_weight + BEAM) {
-                    lookup_printf(LOOKUPF, Some(kv), Some(lkv), markup, &mut *ofile);
+                    lookup_printf(&LOOKUPF, Some(kv), Some(lkv), markup, &mut *ofile);
                     ANALYSES += 1;
                 }
             }
-            lookup_printf(END_SETF, Some(kv), None, markup, &mut *ofile);
+            lookup_printf(&END_SETF, Some(kv), None, markup, &mut *ofile);
         }
     }
 }
@@ -1470,7 +1419,7 @@ unsafe fn perform_lookups_basic(
     }
 }
 
-unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn Write) -> c_int {
+unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn Write) -> i32 {
     unsafe {
         let mut cascade: Vec<HfstTransducer> = Vec::new();
         let mut cascade_mut: Vec<HfstBasicTransducer> = Vec::new();
@@ -1496,7 +1445,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
 
             let mut inputname = trans.get_name();
             if inputname.is_empty() {
-                inputname = cstr(globals::INPUTFILENAME);
+                inputname = globals::input_filename();
             }
             if transducer_n == 1 {
                 verbose_printf(&format!("Reading {}...\n", inputname));
@@ -1556,7 +1505,8 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
         // convert to HfstBasicTransducer
         let mut line: String;
 
-        let input_tokenizer = HfstStrings2FstTokenizer::new(&mc_symbols, &cstr(EPSILON_FORMAT));
+        let epsilon_format = EPSILON_FORMAT.clone();
+        let input_tokenizer = HfstStrings2FstTokenizer::new(&mc_symbols, &epsilon_format);
 
         if !only_optimized_lookup && !globals::SILENT {
             hfst_warning(
@@ -1577,7 +1527,8 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             // from the start, so the file's metadata length is the equivalent size
             // and no rewind is needed.
             if LOOKUP_GIVEN {
-                if let Ok(md) = std::fs::metadata(&cstr(LOOKUP_FILE_NAME)) {
+                let lookup_file_name = LOOKUP_FILE_NAME.clone();
+                if let Ok(md) = std::fs::metadata(&lookup_file_name) {
                     filesize = md.len() as i64;
                 }
             }
@@ -1663,20 +1614,20 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
         }
 
         if PRINT_STATISTICS {
-            fput(
-                &mut *outstream,
-                &format!(
+            let _ = outstream.write_all(
+                format!(
                     "Strings\tFound\tMissing\tResults\n{}\t{}\t{}\t{}\n",
                     INPUTS, ANALYSED, NO_ANALYSES, ANALYSES
-                ),
+                )
+                .as_bytes(),
             );
-            fput(
-                &mut *outstream,
-                &format!(
+            let _ = outstream.write_all(
+                format!(
                     "Coverage\tAmbiguity\n{:.6}\t{:.6}\n",
                     ANALYSED as f32 / INPUTS as f32,
                     ANALYSES as f32 / INPUTS as f32
-                ),
+                )
+                .as_bytes(),
             );
         }
         0
@@ -1690,27 +1641,18 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // initialise strdup'd defaults (the C++ does this at static init time)
-        EPSILON_FORMAT = strdup_str("");
-        SPACE_FORMAT = strdup_str("");
+        // initialise default formats (the C++ does this at static init time)
+        EPSILON_FORMAT = String::new();
+        SPACE_FORMAT = String::new();
 
-        hfst_setlocale();
-
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.6", "HfstLookup");
 
-        let retval = parse_options(argc, argv);
+        let retval = parse_options(&mut args);
         if retval != EXIT_CONTINUE {
             return retval;
         }
@@ -1718,8 +1660,8 @@ unsafe fn real_main() -> c_int {
         // close buffers, we use streams
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
-            cstr(globals::INPUTFILENAME),
-            cstr(globals::OUTFILENAME)
+            globals::input_filename(),
+            globals::output_filename()
         ));
         verbose_printf(&format!(
             "Output formats:\n\
@@ -1728,20 +1670,20 @@ unsafe fn real_main() -> c_int {
              \x20 untokenised:'{}''{}''{}',\n\
              \x20 infinite:'{}''{}''{}\n\
              \x20 epsilon: '{}', space: '{}', flags: {}\n",
-            cstr(BEGIN_SETF),
-            cstr(LOOKUPF),
-            cstr(END_SETF),
-            cstr(EMPTY_BEGIN_SETF),
-            cstr(EMPTY_LOOKUPF),
-            cstr(EMPTY_END_SETF),
-            cstr(UNKNOWN_BEGIN_SETF),
-            cstr(UNKNOWN_LOOKUPF),
-            cstr(UNKNOWN_END_SETF),
-            cstr(INFINITE_BEGIN_SETF),
-            cstr(INFINITE_LOOKUPF),
-            cstr(INFINITE_END_SETF),
-            cstr(EPSILON_FORMAT),
-            cstr(SPACE_FORMAT),
+            BEGIN_SETF.clone(),
+            LOOKUPF.clone(),
+            END_SETF.clone(),
+            EMPTY_BEGIN_SETF.clone(),
+            EMPTY_LOOKUPF.clone(),
+            EMPTY_END_SETF.clone(),
+            UNKNOWN_BEGIN_SETF.clone(),
+            UNKNOWN_LOOKUPF.clone(),
+            UNKNOWN_END_SETF.clone(),
+            INFINITE_BEGIN_SETF.clone(),
+            INFINITE_LOOKUPF.clone(),
+            INFINITE_END_SETF.clone(),
+            EPSILON_FORMAT.clone(),
+            SPACE_FORMAT.clone(),
             SHOW_FLAGS as i32
         ));
 
@@ -1749,8 +1691,8 @@ unsafe fn real_main() -> c_int {
         // (C++ wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // emitting "%s is not a valid transducer file" is not reproduced here.)
-        let mut instream = if cstr(globals::INPUTFILENAME) != "<stdin>" {
-            HfstInputStream::new_filename(&cstr(globals::INPUTFILENAME))
+        let mut instream = if globals::input_filename() != "<stdin>" {
+            HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
         };

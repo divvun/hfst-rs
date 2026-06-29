@@ -3,7 +3,6 @@
 //! getopt, commandline, program-options, tool-metadata, inc fragments) plus the
 //! hfst XreCompiler.
 
-use core::ffi::{c_char, c_int};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::{
@@ -14,24 +13,22 @@ use hfst::xre::XreCompiler;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_error_at_line, hfst_parse_format_name,
-    hfst_set_program_name, hfst_strdup, print_more_info, print_report_bugs, verbose_printf,
+    hfst_set_program_name, print_more_info, print_report_bugs, verbose_printf,
 };
-use hfst_cli::hfst_file_to_mem::hfst_file_to_mem;
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
-    HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT, hfst_getopt_common_long,
-    hfst_getopt_unary_long, print_common_program_options, print_common_unary_program_options,
+    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
+    print_common_unary_program_options,
 };
 use hfst_cli::hfst_tool_metadata::hfst_set_name;
 use hfst_cli::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use std::ffi::{CStr, CString};
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 
 // File-scope tool state, mirroring the static globals in the C++ source.
-static mut EPSILONNAME: *mut c_char = std::ptr::null_mut();
+static mut EPSILONNAME: Option<String> = None;
 static mut DISJUNCT_EXPRESSIONS: bool = false;
 static mut LINE_SEPARATED: bool = true;
 static mut ENCODE_WEIGHTS: bool = false;
@@ -40,142 +37,96 @@ static mut HARMONIZE: bool = true;
 static mut HARMONIZE_FLAGS: bool = false;
 static mut MINIMIZE_RESULT: bool = true;
 
-unsafe fn cstr(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn fput(f: &mut dyn std::io::Write, s: &str) {
-    let _ = f.write_all(s.as_bytes());
-}
-
 // [spec:hfst:def:hfst-regexp2fst.print-usage-fn]
 // [spec:hfst:sem:hfst-regexp2fst.print-usage-fn]
-unsafe fn print_usage() {
-    unsafe {
-        let mut msg = globals::message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Usage: {} [OPTIONS...] [INFILE]\n\
-                 Compile (weighted) regular expressions into transducer(s)\n",
-                program_name
-            ),
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        fput(
-            &mut *msg,
-            "String and format options:\n\
-             \x20 -f, --format=FMT          Write result in FMT format\n\
-             \x20 -j, --disjunct            Disjunct all regexps instead of transforming\n\
-             \x20                           each regexp into a separate transducer\n\
-             \x20 -l, --line                Input is line separated (default)\n\
-             \x20 -S, --semicolon           Input is semicolon separated\n\
-             \x20 -e, --epsilon=EPS         Map EPS as zero, i.e. epsilon.\n\
-             \x20 -x, --xerox-composition=VALUE Whether flag diacritics are treated as ordinary\n\
-             \x20                               symbols in composition (default is false).\n\
-             \x20 -X, --xfst=VARIABLE       Toggle xfst compatibility option VARIABLE.\n\
-             Harmonization and optimization options:\n\
-             \x20 -H, --do-not-harmonize    Do not expand '?' symbols.\n\
-             \x20 -F, --harmonize-flags     Harmonize flag diacritics.\n\
-             \x20 -E, --encode-weights      Encode weights when minimizing (default is false).\n\
-             \x20 -M, --do-not-minimize     Determinize result instead of minimizing it.\n",
-        );
-        fput(&mut *msg, "\n");
+fn print_usage() {
+    let mut msg = globals::message_writer();
+    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
+    let _ = write!(
+        msg,
+        "Usage: {} [OPTIONS...] [INFILE]\n\
+         Compile (weighted) regular expressions into transducer(s)\n",
+        globals::program_name()
+    );
+    print_common_program_options(&mut *msg);
+    print_common_unary_program_options(&mut *msg);
+    let _ = write!(
+        msg,
+        "String and format options:\n\
+         \x20 -f, --format=FMT          Write result in FMT format\n\
+         \x20 -j, --disjunct            Disjunct all regexps instead of transforming\n\
+         \x20                           each regexp into a separate transducer\n\
+         \x20 -l, --line                Input is line separated (default)\n\
+         \x20 -S, --semicolon           Input is semicolon separated\n\
+         \x20 -e, --epsilon=EPS         Map EPS as zero, i.e. epsilon.\n\
+         \x20 -x, --xerox-composition=VALUE Whether flag diacritics are treated as ordinary\n\
+         \x20                               symbols in composition (default is false).\n\
+         \x20 -X, --xfst=VARIABLE       Toggle xfst compatibility option VARIABLE.\n\
+         Harmonization and optimization options:\n\
+         \x20 -H, --do-not-harmonize    Do not expand '?' symbols.\n\
+         \x20 -F, --harmonize-flags     Harmonize flag diacritics.\n\
+         \x20 -E, --encode-weights      Encode weights when minimizing (default is false).\n\
+         \x20 -M, --do-not-minimize     Determinize result instead of minimizing it.\n"
+    );
+    let _ = write!(msg, "\n");
 
-        fput(
-            &mut *msg,
-            "If OUTFILE or INFILE is missing or -, standard streams will be used.\n\
-             FMT must be one of the following: \
-             {foma, sfst, openfst-tropical, openfst-log}.\n\
-             If EPS is not defined, the default representation of 0 is used\n\
-             VALUEs recognized are {true,ON,yes} and {false,OFF,no}.\n\
-             Xfst variables are {flag-is-epsilon (default OFF)}.\n\
-             \n",
-        );
+    let _ = write!(
+        msg,
+        "If OUTFILE or INFILE is missing or -, standard streams will be used.\n\
+         FMT must be one of the following: \
+         {{foma, sfst, openfst-tropical, openfst-log}}.\n\
+         If EPS is not defined, the default representation of 0 is used\n\
+         VALUEs recognized are {{true,ON,yes}} and {{false,OFF,no}}.\n\
+         Xfst variables are {{flag-is-epsilon (default OFF)}}.\n\
+         \n"
+    );
 
-        let program_name = cstr(globals::PROGRAM_NAME);
-        fput(
-            &mut *msg,
-            &format!(
-                "Examples:\n\
-                 \x20 echo \" {{cat}}:{{dog}} \" | {0}       create transducer {{cat}}:{{dog}}\n\
-                 \x20 echo \" {{cat}}:{{dog}}::3 \" | {0}    same but with weight 3\n\
-                 \x20 echo \" c:d a:o::3 t:g \" | {0}    same but with weight 3\n\
-                 \x20                                             in the middle\n\
-                 \x20 echo \" cat ; dog ; \"3\" \" | {0} -S  create transducers\n\
-                 \x20                                             \"cat\" and \"dog\" and \"3\"\n\
-                 \n",
-                program_name
-            ),
-        );
-        print_report_bugs();
-        fput(&mut *msg, "\n");
-        print_more_info();
-        fput(&mut *msg, "\n");
-    }
+    let _ = write!(
+        msg,
+        "Examples:\n\
+         \x20 echo \" {{cat}}:{{dog}} \" | {0}       create transducer {{cat}}:{{dog}}\n\
+         \x20 echo \" {{cat}}:{{dog}}::3 \" | {0}    same but with weight 3\n\
+         \x20 echo \" c:d a:o::3 t:g \" | {0}    same but with weight 3\n\
+         \x20                                             in the middle\n\
+         \x20 echo \" cat ; dog ; \"3\" \" | {0} -S  create transducers\n\
+         \x20                                             \"cat\" and \"dog\" and \"3\"\n\
+         \n",
+        globals::program_name()
+    );
+    print_report_bugs();
+    let _ = write!(msg, "\n");
+    print_more_info();
+    let _ = write!(msg, "\n");
 }
 
 // [spec:hfst:def:hfst-regexp2fst.parse-options-fn]
 // [spec:hfst:sem:hfst-regexp2fst.parse-options-fn]
-unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
+unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(&mut argc, &mut argv);
+        extend_options_getenv(args);
         // use of this function requires options are settable on global scope
         loop {
-            let mut long_options: Vec<getopt::Option> = Vec::new();
+            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());
             long_options.extend(hfst_getopt_unary_long());
             // add tool-specific options here
-            let push_opt =
-                |v: &mut Vec<getopt::Option>, name: &'static str, has_arg: c_int, val: c_int| {
-                    let c = CString::new(name).unwrap();
-                    let ptr = c.into_raw();
-                    v.push(getopt::Option {
-                        name: ptr,
-                        has_arg,
-                        flag: std::ptr::null_mut(),
-                        val,
-                    });
-                };
-            push_opt(&mut long_options, "disjunct", 0, 'j' as c_int);
-            push_opt(&mut long_options, "epsilon", 1, 'e' as c_int);
-            push_opt(&mut long_options, "line", 0, 'l' as c_int);
-            push_opt(&mut long_options, "semicolon", 0, 'S' as c_int);
-            push_opt(&mut long_options, "format", 1, 'f' as c_int);
-            push_opt(&mut long_options, "do-not-harmonize", 0, 'H' as c_int);
-            push_opt(&mut long_options, "harmonize-flags", 0, 'F' as c_int);
-            push_opt(&mut long_options, "encode-weights", 0, 'E' as c_int);
-            push_opt(&mut long_options, "xerox-composition", 1, 'x' as c_int);
-            push_opt(&mut long_options, "xfst", 1, 'X' as c_int);
-            push_opt(&mut long_options, "do-not-minimize", 0, 'M' as c_int);
-            long_options.push(getopt::Option {
-                name: std::ptr::null(),
-                has_arg: 0,
-                flag: std::ptr::null_mut(),
-                val: 0,
-            });
-            let short = CString::new(format!(
-                "{}{}je:lSf:HFEx:X:M",
-                HFST_GETOPT_COMMON_SHORT, HFST_GETOPT_UNARY_SHORT
-            ))
-            .unwrap();
-            let mut option_index: c_int = 0;
-            let c = getopt::getopt_long(
-                argc,
-                argv,
-                short.as_ptr(),
-                long_options.as_ptr(),
-                &mut option_index,
-            );
+            let tool_opts: [(&'static str, i32, i32); 11] = [
+                ("disjunct", getopt::NO_ARGUMENT, 'j' as i32),
+                ("epsilon", getopt::REQUIRED_ARGUMENT, 'e' as i32),
+                ("line", getopt::NO_ARGUMENT, 'l' as i32),
+                ("semicolon", getopt::NO_ARGUMENT, 'S' as i32),
+                ("format", getopt::REQUIRED_ARGUMENT, 'f' as i32),
+                ("do-not-harmonize", getopt::NO_ARGUMENT, 'H' as i32),
+                ("harmonize-flags", getopt::NO_ARGUMENT, 'F' as i32),
+                ("encode-weights", getopt::NO_ARGUMENT, 'E' as i32),
+                ("xerox-composition", getopt::REQUIRED_ARGUMENT, 'x' as i32),
+                ("xfst", getopt::REQUIRED_ARGUMENT, 'X' as i32),
+                ("do-not-minimize", getopt::NO_ARGUMENT, 'M' as i32),
+            ];
+            for (name, has_arg, val) in tool_opts {
+                long_options.push(getopt::GetOpt { name, has_arg, val });
+            }
+            let c = getopt::getopt_long(args, &long_options);
             if -1 == c {
                 break;
             }
@@ -183,7 +134,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             // The C switch chains the #include'd case groups in order: common
             // cases, then unary cases, then the tool's own, then the terminal
             // error arm.
-            match handle_common_case(c, || print_usage()) {
+            match handle_common_case(c, print_usage) {
                 CaseResult::Return(code) => return code,
                 CaseResult::Break => continue,
                 CaseResult::NotHandled => {}
@@ -195,7 +146,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
             }
             match c as u8 as char {
                 'e' => {
-                    EPSILONNAME = hfst_strdup(getopt::OPTARG);
+                    EPSILONNAME = Some(getopt::optarg());
                     continue;
                 }
                 'j' => {
@@ -211,7 +162,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     continue;
                 }
                 'f' => {
-                    OUTPUT_FORMAT = hfst_parse_format_name(&cstr(getopt::OPTARG));
+                    OUTPUT_FORMAT = hfst_parse_format_name(&getopt::optarg());
                     continue;
                 }
                 'H' => {
@@ -231,7 +182,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                     continue;
                 }
                 'x' => {
-                    let argument = cstr(getopt::OPTARG);
+                    let argument = getopt::optarg();
                     if argument == "yes" || argument == "true" || argument == "ON" {
                         set_xerox_composition(true);
                     } else if argument == "no" || argument == "false" || argument == "OFF" {
@@ -240,27 +191,21 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
                         error(
                             1,
                             0,
-                            &format!(
-                                "unknown option to --xerox-composition: '{}'\n",
-                                cstr(getopt::OPTARG)
-                            ),
+                            &format!("unknown option to --xerox-composition: '{}'\n", argument),
                         );
                         return 1;
                     }
                     continue;
                 }
                 'X' => {
-                    let argument = cstr(getopt::OPTARG);
+                    let argument = getopt::optarg();
                     if argument == "flag-is-epsilon" {
                         set_flag_is_epsilon_in_composition(true);
                     } else {
                         error(
                             1,
                             0,
-                            &format!(
-                                "Error: unknown option to --xfst: '{}'\n",
-                                cstr(getopt::OPTARG)
-                            ),
+                            &format!("Error: unknown option to --xfst: '{}'\n", argument),
                         );
                         return 1;
                     }
@@ -272,7 +217,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
         }
 
         check_common_params();
-        check_unary_params(argc, argv);
+        check_unary_params(args);
         if OUTPUT_FORMAT == ImplementationType::UNSPECIFIED_TYPE {
             verbose_printf("Output format not specified, defaulting to openfst tropical\n");
             OUTPUT_FORMAT = ImplementationType::TROPICAL_OPENFST_TYPE;
@@ -283,7 +228,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 
 // [spec:hfst:def:hfst-regexp2fst.process-stream-fn]
 // [spec:hfst:sem:hfst-regexp2fst.process-stream-fn]
-unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> c_int {
+unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> i32 {
     unsafe {
         let mut transducer_n: usize = 0;
         let mut line_count: u32 = 0;
@@ -298,15 +243,19 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         let mut first_line: Option<String> = None;
 
         if !LINE_SEPARATED {
-            let mut filebuf_ = hfst_file_to_mem(&cstr(globals::INPUTFILENAME));
+            // C: read the whole input into a NUL-terminated buffer and walk it
+            // with a char* cursor. Here we read it into a String and track a byte
+            // offset; compile_first reports how many bytes it consumed.
+            let mut content = String::new();
+            let _ = input.read_to_string(&mut content);
+            let mut offset: usize = 0;
             let mut chars_read: u32 = 0;
 
             loop {
                 transducer_n += 1;
                 verbose_printf(&format!("Compiling expression #{}\n", transducer_n as i32));
-                // Build a &str view of the remaining buffer at the current cursor.
-                let remaining = cstr(filebuf_);
-                let compiled = comp.compile_first(&remaining, &mut chars_read);
+                let remaining = &content[offset..];
+                let compiled = comp.compile_first(remaining, &mut chars_read);
                 // (the C wraps compile_first in try/catch on HfstException; the
                 // Rust path currently panics rather than throwing, so the catch
                 // arm that calls hfst_error is not reproduced here.)
@@ -319,7 +268,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                                 &format!(
                                     "{}: XRE parsing failed: expression #{} \
                                      contains only whitespace or comments",
-                                    cstr(globals::INPUTFILENAME),
+                                    globals::input_filename(),
                                     transducer_n as u32
                                 ),
                             );
@@ -332,15 +281,13 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                             &format!(
                                 "{}: XRE parsing failed \
                                  in expression #{} separated by semicolons",
-                                cstr(globals::INPUTFILENAME),
+                                globals::input_filename(),
                                 transducer_n as u32
                             ),
                         );
                     }
                 }
-                for _ in 0..chars_read {
-                    filebuf_ = filebuf_.add(1);
-                }
+                offset += chars_read as usize;
                 if let Some(mut compiled) = compiled {
                     if DISJUNCT_EXPRESSIONS {
                         disjunction.disjunct(&compiled, HARMONIZE);
@@ -350,7 +297,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     }
                     // C: delete compiled; -> owned, drops here.
                 }
-                if *filebuf_ == 0 {
+                if offset >= content.len() {
                     break;
                 }
             }
@@ -367,7 +314,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                             &format!(
                                 "{}: XRE parsing failed: \
                                  input contains only whitespace or comments",
-                                cstr(globals::INPUTFILENAME)
+                                globals::input_filename()
                             ),
                         );
                     }
@@ -394,7 +341,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                         hfst_error_at_line(
                             1,
                             0,
-                            &cstr(globals::INPUTFILENAME),
+                            &globals::input_filename(),
                             line_count,
                             "XRE parsing failed\n",
                         );
@@ -431,22 +378,13 @@ fn main() {
     std::process::exit(code);
 }
 
-unsafe fn real_main() -> c_int {
+unsafe fn real_main() -> i32 {
     unsafe {
-        // Build a C-style argv (NULL-terminated) from the Rust args; getopt and
-        // extend_options_getenv reorder/replace it in place.
-        let c_args: Vec<CString> = std::env::args()
-            .map(|a| CString::new(a).unwrap_or_default())
-            .collect();
-        let mut argv_vec: Vec<*mut c_char> =
-            c_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-        argv_vec.push(std::ptr::null_mut());
-        let argc: c_int = c_args.len() as c_int;
-        let argv: *mut *mut c_char = argv_vec.as_mut_ptr();
-        let argv0 = cstr(*argv);
+        let mut args: Vec<String> = std::env::args().collect();
+        let argv0 = args.first().cloned().unwrap_or_default();
 
         hfst_set_program_name(&argv0, "0.2", "Regexp2Fst");
-        let retval = parse_options(argc, argv);
+        let retval = parse_options(&mut args);
         if retval != EXIT_CONTINUE {
             return retval;
         }
@@ -460,15 +398,15 @@ unsafe fn real_main() -> c_int {
         }
 
         // close buffers, we use streams
-        let output_opened = cstr(globals::OUTFILENAME) != "<stdout>";
+        let output_opened = globals::output_filename() != "<stdout>";
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
-            cstr(globals::INPUTFILENAME),
-            cstr(globals::OUTFILENAME)
+            globals::input_filename(),
+            globals::output_filename()
         ));
         // here starts the buffer handling part
         let mut outstream = if output_opened {
-            HfstOutputStream::new_filename(&cstr(globals::OUTFILENAME), OUTPUT_FORMAT, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), OUTPUT_FORMAT, true)
         } else {
             HfstOutputStream::new(OUTPUT_FORMAT, true)
         };
@@ -485,8 +423,6 @@ unsafe fn real_main() -> c_int {
             set_encode_weights(enc);
         }
 
-        hfst_cli::hfst_commandline::hfst_free(globals::INPUTFILENAME as *mut c_char);
-        hfst_cli::hfst_commandline::hfst_free(globals::OUTFILENAME as *mut c_char);
         0
     }
 }
