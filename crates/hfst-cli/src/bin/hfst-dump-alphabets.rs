@@ -24,6 +24,7 @@ use hfst_cli::inc::{
 };
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::io::Write;
 
 unsafe fn cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
@@ -217,7 +218,20 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 // [spec:hfst:sem:hfst-dump-alphabets.process-stream-fn]
 unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
     unsafe {
-        let outfile = globals::outfile();
+        // Data output goes to a std stream (the std counterpart of the libc
+        // outfile FILE*); `emit` writes a string and ignores errors, matching the
+        // old fput/fputs. (print_usage's message_out path stays on FILE* until
+        // the message_out chunk of io-foundation.)
+        let mut out = match globals::output_writer() {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("hfst-dump-alphabets: could not open output: {e}");
+                return libc::EXIT_FAILURE;
+            }
+        };
+        let mut emit = |s: &str| {
+            let _ = out.write_all(s.as_bytes());
+        };
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
@@ -255,18 +269,16 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
             }
             let found_alphabet: StringSet = mutt.symbols_used();
             if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
-                fput(
-                    outfile,
+                emit(
                     "## automatically generated VISL CG 3 file from HFST automaton's alphabet data:\n",
                 );
-                fput(outfile, "## (some statistics here TODO)\n");
-                fput(outfile, "STRICT-TAGS +=\n");
+                emit("## (some statistics here TODO)\n");
+                emit("STRICT-TAGS +=\n");
             } else if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3List {
-                fput(
-                    outfile,
+                emit(
                     "## automatically generated VISL CG 3 file from HFST automaton's alphabet data:\n",
                 );
-                fput(outfile, "## (some statistics here TODO)\n");
+                emit("## (some statistics here TODO)\n");
             }
             if PRINT_META {
                 if transducer_knows_alphabet {
@@ -275,11 +287,11 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                             continue;
                         }
                         if OUTPUT_FORMAT == AlphaDumpFormat::Tsv {
-                            fput(outfile, &format!("{}\n", s));
+                            emit(&format!("{}\n", s));
                         } else if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
-                            fput(outfile, &format!("\t{}\n", s));
+                            emit(&format!("\t{}\n", s));
                         } else if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3List {
-                            fput(outfile, &format!("LIST {} = {} ;\n", s, s));
+                            emit(&format!("LIST {} = {} ;\n", s, s));
                         }
                     }
                 } else {
@@ -293,17 +305,17 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                         continue;
                     }
                     if OUTPUT_FORMAT == AlphaDumpFormat::Tsv {
-                        fput(outfile, &format!("{}\n", s));
+                        emit(&format!("{}\n", s));
                     } else if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
-                        fput(outfile, &format!("\t{}\n", s));
+                        emit(&format!("\t{}\n", s));
                     } else if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3List {
-                        fput(outfile, &format!("LIST {} = {} ;\n", s, s));
+                        emit(&format!("LIST {} = {} ;\n", s, s));
                     }
                 }
             }
         } // for each automaton
         if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
-            fput(outfile, "\t;\n");
+            emit("\t;\n");
         }
         libc::EXIT_SUCCESS
     }
