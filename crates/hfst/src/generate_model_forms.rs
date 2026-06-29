@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
+use crate::hfst_data_types::ImplementationType::{HFST_OLW_TYPE, TROPICAL_OPENFST_TYPE};
 use crate::hfst_symbol_defs::{StringSet, StringVector};
 use crate::hfst_tokenizer::HfstTokenizer;
 use crate::hfst_transducer::HfstTransducer;
@@ -50,6 +50,28 @@ impl InvalidModelLine {
 // 'struct InvalidModelFile {}'.
 #[derive(Clone, Debug)]
 pub struct InvalidModelFile;
+
+// Whether `t` is a guesser. hfst-guessify marks the guessers it builds with the
+// "reverse input" property (set in guessify_fst::guessify_analyzer), so a
+// guesser is exactly a transducer carrying that property. The C++ checked
+// get_properties().count("reverse input") != 1; this was inline in hfst-guess's
+// main and is lifted here.
+pub fn is_guesser(t: &HfstTransducer) -> bool {
+    t.get_properties().get("reverse input").is_some()
+}
+
+// Compile a generator from a guesser, for the case where the guesser file did
+// not already bundle a generator: copy the guesser, convert to tropical, invert
+// it (a generator maps the guesser's analyses back to surface forms), and
+// convert to the optimised-lookup weighted type. Lifted verbatim from
+// hfst-guess's main.
+pub fn compile_generator_from_guesser(guesser: &HfstTransducer) -> HfstTransducer {
+    let mut generator = HfstTransducer::new_copy(guesser);
+    generator.convert(TROPICAL_OPENFST_TYPE, String::new());
+    generator.invert();
+    generator.convert(HFST_OLW_TYPE, String::new());
+    generator
+}
 
 // 'guessify_fst.cc': 'bool is_cathegory_symbol(const std::string &symbol)'.
 fn is_cathegory_symbol(symbol: &str) -> bool {

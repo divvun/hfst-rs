@@ -858,6 +858,21 @@ children (
                         id guess-generator
                         title "[Tier1] Lift hfst-guess's generator compilation into generate_model_forms::compile_generator_from_guesser + is_guesser; thin the tool."
                         priority 5
+                        log (
+                            {
+                                at 2026-06-29T15:35:22.346555Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T15:39:22.172305Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {

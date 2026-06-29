@@ -24,6 +24,7 @@
 // The binary ops (concatenate/disjunct/intersect/subtract/compose/insert_freely)
 // default harmonize=true in the C++ header, mirrored by passing true.
 
+use hfst::generate_model_forms::{compile_generator_from_guesser, is_guesser};
 use hfst::guessify_fst::{GuessDirection, affix_guessify};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
@@ -1079,4 +1080,34 @@ fn affix_guessify_adds_one_guess_state_with_identity_loop() {
             "the guesser must carry an identity self-loop"
         );
     }
+}
+
+// librarify regression: generate_model_forms::is_guesser /
+// compile_generator_from_guesser, lifted from hfst-guess's main. A guesser is
+// exactly a transducer carrying the "reverse input" property; the compiled
+// generator is the inverted guesser in the optimised-lookup weighted type.
+#[test]
+fn is_guesser_and_compile_generator_from_guesser() {
+    let _g = serialized();
+
+    // is_guesser keys off the "reverse input" property.
+    let mut g = HfstTransducer::new_symbol("x", TROPICAL_OPENFST_TYPE);
+    assert!(!is_guesser(&g), "a plain transducer is not a guesser");
+    g.set_property("reverse input", "true");
+    assert!(is_guesser(&g), "the property marks a guesser");
+
+    // compile_generator_from_guesser inverts and converts to HFST_OLW_TYPE.
+    let guesser = HfstTransducer::new_symbol_pair("a", "b", TROPICAL_OPENFST_TYPE);
+    let generator = compile_generator_from_guesser(&guesser);
+    assert_eq!(generator.get_type(), HFST_OLW_TYPE);
+
+    // Converted back to tropical, it equals the manually inverted guesser.
+    let mut generator_back = generator.clone();
+    generator_back.convert(TROPICAL_OPENFST_TYPE, String::new());
+    let mut expected = guesser.clone();
+    expected.invert();
+    assert!(
+        generator_back.compare_default(&expected),
+        "the generator must be the inverted guesser"
+    );
 }

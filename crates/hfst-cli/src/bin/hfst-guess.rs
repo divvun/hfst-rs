@@ -5,9 +5,9 @@
 //! library helper hfst::generate_model_forms.
 
 use hfst::generate_model_forms::{
-    StringVectorVector, get_alphabet_string_tokenizer, get_guesses, get_paradigms, read_model_forms,
+    StringVectorVector, compile_generator_from_guesser, get_alphabet_string_tokenizer, get_guesses,
+    get_paradigms, is_guesser, read_model_forms,
 };
-use hfst::hfst_data_types::ImplementationType::{HFST_OLW_TYPE, TROPICAL_OPENFST_TYPE};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::StringVector;
 use hfst::hfst_transducer::HfstTransducer;
@@ -363,7 +363,7 @@ unsafe fn real_main() -> c_int {
         // rather than throwing, so that catch arm is not reproduced here.)
         let mut guesser = HfstTransducer::new_from_stream(&mut instream);
 
-        if guesser.get_properties().get("reverse input").is_none() {
+        if !is_guesser(&guesser) {
             error(
                 libc::EXIT_FAILURE,
                 0,
@@ -384,11 +384,7 @@ unsafe fn real_main() -> c_int {
                     cstr(globals::INPUTFILENAME)
                 ));
 
-                let mut gen_tr = HfstTransducer::new_copy(&guesser);
-                gen_tr.convert(TROPICAL_OPENFST_TYPE, String::new());
-                gen_tr.invert();
-                gen_tr.convert(HFST_OLW_TYPE, String::new());
-                generator = Some(gen_tr);
+                generator = Some(compile_generator_from_guesser(&guesser));
             } else {
                 generator = Some(HfstTransducer::new_from_stream(&mut instream));
             }

@@ -25,4 +25,5 @@ assertions (
     {id strip-header, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:01:44.033048Z}
     {id affix-guessify, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:22:54.434532Z}
     {id expand-equivalences, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:34:43.599269Z}
+    {id guess-generator, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:39:22.172305Z}
 )
