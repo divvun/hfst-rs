@@ -528,6 +528,21 @@ children (
                 id librarify.label-parse
                 title "[Tier1] Add hfst_symbol_defs::label_to_stringpair (escaped-colon label parser, honoring \\: and @0@→epsilon) and call it from hfst-substitute and hfst-insert-freely (verbatim ×2)"
                 priority 5
+                log (
+                    {
+                        at 2026-06-29T12:36:45.75891Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T12:44:00.042686Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Scope landed: added hfst_symbol_defs::label_to_stringpair (escaped-colon arc-label parser honoring \\: and @0@->internal_epsilon) carrying both tools' spec ids; deleted the two local copies in hfst-substitute and hfst-insert-freely, which now import it. Added tests/test_label_to_stringpair.rs (6 cases: plain pair, no-colon->None, first-interior-colon-wins, @0@->epsilon both sides, escaped-colon-not-a-separator, escaped-backslash-leaves-colon). 128 lib tests + OL golden green. Functional smoke: insert-freely -a x:x inserts freely; substitute -f a:a -t a:@0@ yields cat->cat:ct (output a elided to epsilon).\n\nGrounding: confirmed the C++ label_to_stringpair() in tools/src/hfst-substitute.cc and tools/src/hfst-insert-freely.cc are byte-identical (modulo brace style) -> a genuine duplicate, unlike symbols-used/renumber-states where the divergence was inherent. The unified lib fn is the faithful 1:1 port (= substitute's Rust port)."
+                    }
+                )
             }
 
             {

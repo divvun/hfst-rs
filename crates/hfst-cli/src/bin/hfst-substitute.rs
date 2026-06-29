@@ -10,7 +10,7 @@ use hfst::hfst_data_types::{ImplementationType, StringPair};
 use hfst::hfst_exception_defs::FunctionNotImplementedException;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_symbol_defs::{internal_epsilon, internal_identity};
+use hfst::hfst_symbol_defs::{internal_epsilon, internal_identity, label_to_stringpair};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -88,55 +88,6 @@ unsafe fn read_line(f: *mut libc::FILE) -> Option<String> {
             Some(s)
         }
     }
-}
-
-// [spec:hfst:def:hfst-substitute.label-to-stringpair-fn]
-// [spec:hfst:sem:hfst-substitute.label-to-stringpair-fn]
-fn label_to_stringpair(label: &str) -> Option<StringPair> {
-    let bytes = label.as_bytes();
-    let len = bytes.len();
-    // 'colon' is the byte index of the candidate separating colon ('strchr(label,
-    // ':')'); 'None' models the C NULL.
-    let find_colon_from = |start: usize| -> Option<usize> {
-        bytes[start..]
-            .iter()
-            .position(|&b| b == b':')
-            .map(|i| start + i)
-    };
-    let mut colon: Option<usize> = find_colon_from(0);
-    while let Some(c) = colon {
-        if c == 0 {
-            // colon == label
-            colon = find_colon_from(c + 1);
-        } else if c == len - 1 {
-            // colon == endstr - 1
-            colon = None;
-        } else if bytes[c - 1] == b'\\' {
-            if c > 1 {
-                // colon > label + 1
-                if bytes[c - 2] == b'\\' {
-                    break;
-                } else {
-                    colon = find_colon_from(c + 1);
-                }
-            }
-            // (When c == 1 the C code leaves 'colon' unchanged; preserved here.)
-        } else {
-            break;
-        }
-    }
-    let (mut first, mut second) = match colon {
-        // (label < colon) && (colon < endstr): a real, interior separator.
-        Some(c) if c > 0 && c < len => (label[0..c].to_string(), label[c + 1..len].to_string()),
-        _ => return None,
-    };
-    if first == "@0@" {
-        first = internal_epsilon.to_string();
-    }
-    if second == "@0@" {
-        second = internal_epsilon.to_string();
-    }
-    Some((first, second))
 }
 
 // [spec:hfst:def:hfst-substitute.print-usage-fn]

@@ -91,6 +91,67 @@ pub fn is_default(str: &str) -> bool {
     str == internal_default
 }
 
+// [spec:hfst:def:hfst-substitute.label-to-stringpair-fn]
+// [spec:hfst:sem:hfst-substitute.label-to-stringpair-fn]
+// [spec:hfst:def:hfst-insert-freely.label-to-stringpair-fn]
+// [spec:hfst:sem:hfst-insert-freely.label-to-stringpair-fn]
+/// Parse a transducer arc label `in:out` into its (input, output) pair,
+/// honoring backslash-escaped colons (`\:` is a literal colon, not a separator)
+/// and mapping the `@0@` epsilon marker to the internal epsilon symbol. Returns
+/// `None` when the label has no genuine interior separator.
+///
+/// This is the 1:1 port of the byte-identical `label_to_stringpair()` carried by
+/// both `tools/src/hfst-substitute.cc` and `tools/src/hfst-insert-freely.cc`.
+/// NOTE: like the C++, a label whose only colon is an escaped colon at index 1
+/// (e.g. `\:x`) loops forever — the C++ `if (colon > label+1)` has no `else`, so
+/// `colon` is never advanced. The behaviour is preserved verbatim.
+pub fn label_to_stringpair(label: &str) -> Option<StringPair> {
+    let bytes = label.as_bytes();
+    let len = bytes.len();
+    // Byte index of the candidate separating colon (`strchr(label, ':')`);
+    // `None` models the C `NULL`.
+    let find_colon_from = |start: usize| -> Option<usize> {
+        bytes[start..]
+            .iter()
+            .position(|&b| b == b':')
+            .map(|i| start + i)
+    };
+    let mut colon: Option<usize> = find_colon_from(0);
+    while let Some(c) = colon {
+        if c == 0 {
+            // colon == label
+            colon = find_colon_from(c + 1);
+        } else if c == len - 1 {
+            // colon == endstr - 1
+            colon = None;
+        } else if bytes[c - 1] == b'\\' {
+            if c > 1 {
+                // colon > label + 1
+                if bytes[c - 2] == b'\\' {
+                    break;
+                } else {
+                    colon = find_colon_from(c + 1);
+                }
+            }
+            // (When c == 1 the C code leaves 'colon' unchanged; preserved here.)
+        } else {
+            break;
+        }
+    }
+    let (mut first, mut second) = match colon {
+        // (label < colon) && (colon < endstr): a real, interior separator.
+        Some(c) if c > 0 && c < len => (label[0..c].to_string(), label[c + 1..len].to_string()),
+        _ => return None,
+    };
+    if first == "@0@" {
+        first = internal_epsilon.to_string();
+    }
+    if second == "@0@" {
+        second = internal_epsilon.to_string();
+    }
+    Some((first, second))
+}
+
 pub mod symbols {
     use super::{
         FdOperation, HfstTwoLevelPath, HfstTwoLevelPaths, String, StringPairSet, StringPairVector,

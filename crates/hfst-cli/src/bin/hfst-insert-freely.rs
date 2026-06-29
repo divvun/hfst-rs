@@ -6,7 +6,7 @@
 use hfst::hfst_data_types::StringPair;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_symbol_defs::internal_epsilon;
+use hfst::hfst_symbol_defs::{internal_epsilon, label_to_stringpair};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -48,73 +48,6 @@ unsafe fn fput(f: *mut libc::FILE, s: &str) {
 }
 
 // FMT: Copied from hfst-substitute.cc ... should probably go in a library function
-
-/// @brief parse string pair from arc label.
-///
-/// @return new stringpair, or null if not a pair.
-// [spec:hfst:def:hfst-insert-freely.label-to-stringpair-fn]
-// [spec:hfst:sem:hfst-insert-freely.label-to-stringpair-fn]
-fn label_to_stringpair(label: &str) -> Option<StringPair> {
-    let bytes = label.as_bytes();
-    let endstr = bytes.len();
-    // index of the first ':' (or None for the C NULL); we walk forward
-    // skipping colons that do not delimit a genuine pair.
-    let mut colon: Option<usize> = bytes.iter().position(|&b| b == b':');
-    loop {
-        match colon {
-            None => break,
-            Some(c) => {
-                if c == 0 {
-                    // colon at the very start: keep scanning past it
-                    colon = bytes[c + 1..]
-                        .iter()
-                        .position(|&b| b == b':')
-                        .map(|p| p + c + 1);
-                } else if c == endstr - 1 {
-                    // trailing colon: not a pair
-                    colon = None;
-                } else if bytes[c - 1] == b'\\' {
-                    if c > 1 {
-                        if bytes[c - 2] == b'\\' {
-                            break;
-                        } else {
-                            colon = bytes[c + 1..]
-                                .iter()
-                                .position(|&b| b == b':')
-                                .map(|p| p + c + 1);
-                        }
-                    } else {
-                        // C falls through the if with no else: colon unchanged,
-                        // so the while condition (colon != NULL) loops forever
-                        // unless we break. Mirror by breaking out of scanning.
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    let colon = match colon {
-        // (0 < colon) && (colon < endstr) in the C; a colon at index 0 fails
-        // the (label < colon) test as well.
-        Some(c) if c > 0 && c < endstr => c,
-        _ => return None,
-    };
-
-    let mut first = label[..colon].to_string();
-    let mut second = label[colon + 1..endstr].to_string();
-
-    if first == "@0@" {
-        first = internal_epsilon.to_string();
-    }
-    if second == "@0@" {
-        second = internal_epsilon.to_string();
-    }
-
-    Some((first, second))
-}
 
 // [spec:hfst:def:hfst-insert-freely.print-usage-fn]
 // [spec:hfst:sem:hfst-insert-freely.print-usage-fn]
