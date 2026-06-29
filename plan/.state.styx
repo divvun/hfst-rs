@@ -15,4 +15,5 @@ assertions (
     {id librarify.label-parse, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:14.571506Z}
     {id is-weighted, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:16.201789Z}
     {id kill-paths, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:13:25.58945Z}
+    {id fix-sparse-symt, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:38:55.194731Z}
 )

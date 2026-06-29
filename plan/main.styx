@@ -721,6 +721,27 @@ children (
                     }
                 )
             }
+
+            {
+                id fix-sparse-symt
+                title "[Tier0] Fix the binary save->load round-trip for transducers with a holed symbol table: rustfst bin_symt wrote len() (incl. empty sparse-key placeholders) as the row count but emitted only real rows, so the reader over-read past the table and threw NotTransducerStreamException. Write the true row count + preserve sparse labels on parse (add_symbol_with_key). Unblocks CLI write->read verification for every tool whose op drops an alphabet symbol (kill-paths, substitute, preprocess, multi-transducer streams)."
+                priority 5
+                log (
+                    {
+                        at 2026-06-29T13:38:40.200895Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T13:38:55.194731Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
         )
     }
 )

@@ -259,3 +259,73 @@ fn stream_round_trip_log() {
     }
     stream_round_trip(LOG_OPENFST_TYPE);
 }
+
+// --- Regression: sparse symbol-table round trip (not a C++ port block).
+//
+// A transducer whose symbol table has a hole — a symbol dropped from the
+// alphabet, e.g. by kill_paths, leaving the survivors on their original global
+// numbers — used to fail the binary write->read round trip: the sparse symbol
+// table serialized a row count (len, incl. the empty slot) larger than the rows
+// emitted, so the reader over-read past the table, misread the FST body, and
+// threw NotTransducerStreamException. Fixed in rustfst's bin_symt serializer.
+fn sparse_symtable_round_trip(type_: ImplementationType) {
+    verbose_print("Sparse symbol-table round trip", type_);
+
+    // Build {a, x}, then kill "x"; its symbol number is left as a hole.
+    let mut t = HfstTransducer::new_symbol_pair("a", "a", type_);
+    let tx = HfstTransducer::new_symbol_pair("x", "x", type_);
+    t.disjunct(&tx, true);
+    let mut killed = t.kill_paths("x");
+
+    let path = temp_path(&format!("hfst_sparse_symt_{type_:?}.hfst"));
+    {
+        let mut out = HfstOutputStream::new_filename(&path, type_, true);
+        out.operator_shl(&mut killed);
+        out.close();
+    }
+
+    let mut instream = HfstInputStream::new_filename(&path);
+    let mut count = 0u32;
+    let mut read_back = None;
+    while !instream.is_eof() {
+        read_back = Some(HfstTransducer::new_from_stream(&mut instream));
+        count += 1;
+    }
+    instream.close();
+    let _ = std::fs::remove_file(&path);
+
+    assert_eq!(count, 1, "exactly one transducer must round-trip");
+    // The read-back transducer keeps the surviving "a" arc and no "x".
+    let basic = read_back.unwrap().get_basic_transducer();
+    let mut has_a = false;
+    for transitions in basic.iter() {
+        for arc in transitions.iter() {
+            assert_ne!(arc.get_input_symbol(), "x");
+            if arc.get_input_symbol() == "a" {
+                has_a = true;
+            }
+        }
+    }
+    assert!(
+        has_a,
+        "the surviving 'a' arc must be present after round trip"
+    );
+}
+
+#[test]
+fn sparse_symtable_round_trip_tropical() {
+    let _g = serialized();
+    if !HfstTransducer::is_implementation_type_available(TROPICAL_OPENFST_TYPE) {
+        return;
+    }
+    sparse_symtable_round_trip(TROPICAL_OPENFST_TYPE);
+}
+
+#[test]
+fn sparse_symtable_round_trip_log() {
+    let _g = serialized();
+    if !HfstTransducer::is_implementation_type_available(LOG_OPENFST_TYPE) {
+        return;
+    }
+    sparse_symtable_round_trip(LOG_OPENFST_TYPE);
+}
