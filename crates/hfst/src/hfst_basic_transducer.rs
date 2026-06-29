@@ -647,6 +647,59 @@ impl HfstBasicTransducer {
         replication
     }
 
+    /// Return a copy with every transition whose input or output symbol equals
+    /// `symbol` removed, surviving states renumbered in discovery order. This is
+    /// the kill-paths transform lifted from hfst-kill-paths: the discovery-order
+    /// rebuild of [`Self::renumber_states`] plus a per-arc filter. Unlike
+    /// `renumber_states` it seeds state 0's final weight up front (matching the
+    /// CLI loop), so an accepting start state is preserved.
+    pub fn kill_paths(&self, symbol: &str) -> HfstBasicTransducer {
+        let mut replication = HfstBasicTransducer::new();
+        let mut state_count: HfstState = 1;
+        let mut rebuilt: BTreeMap<HfstState, HfstState> = BTreeMap::new();
+        rebuilt.insert(0, 0);
+        if self.is_final_state(0) {
+            replication.set_final_weight(0, &self.get_final_weight(0));
+        }
+        let mut source_state: HfstState = 0;
+        for state in self.iter() {
+            if !rebuilt.contains_key(&source_state) {
+                replication.add_state(state_count);
+                if self.is_final_state(source_state) {
+                    replication.set_final_weight(state_count, &self.get_final_weight(source_state));
+                }
+                rebuilt.insert(source_state, state_count);
+                state_count += 1;
+            }
+            for arc in state.iter() {
+                if arc.get_input_symbol() == symbol || arc.get_output_symbol() == symbol {
+                    // killed arc: do not replicate
+                    continue;
+                }
+                if !rebuilt.contains_key(&arc.get_target_state()) {
+                    replication.add_state(state_count);
+                    if self.is_final_state(arc.get_target_state()) {
+                        replication.set_final_weight(
+                            state_count,
+                            &self.get_final_weight(arc.get_target_state()),
+                        );
+                    }
+                    rebuilt.insert(arc.get_target_state(), state_count);
+                    state_count += 1;
+                }
+                let nu = HfstBasicTransition::new_symbols(
+                    rebuilt[&arc.get_target_state()],
+                    arc.get_input_symbol(),
+                    arc.get_output_symbol(),
+                    arc.get_weight(),
+                );
+                replication.add_transition(rebuilt[&source_state], &nu, true);
+            }
+            source_state += 1;
+        }
+        replication
+    }
+
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.prune-alphabet-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.prune-alphabet-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.prune-alphabet-fn]

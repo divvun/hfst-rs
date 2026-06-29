@@ -5,9 +5,6 @@
 //! epsilons. Drives the hfst-cli foundation (globals, getopt, commandline,
 //! program-options, tool-metadata, inc fragments).
 
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
-use hfst::hfst_basic_transition::HfstBasicTransition;
-use hfst::hfst_data_types::implementations::HfstState;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -28,7 +25,6 @@ use hfst_cli::inc::{
     handle_unary_case,
 };
 use libc::{c_char, c_int};
-use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 
 // add tools-specific variables here
@@ -180,52 +176,7 @@ unsafe fn parse_options(mut argc: c_int, mut argv: *mut *mut c_char) -> c_int {
 unsafe fn do_killing(trans: &mut HfstTransducer) {
     unsafe {
         let symbol = SYMBOL.clone().unwrap_or_default();
-        let original = HfstBasicTransducer::from_hfst_transducer(&*trans);
-        let mut replication = HfstBasicTransducer::new();
-        let mut state_count: HfstState = 1;
-        let mut rebuilt: BTreeMap<HfstState, HfstState> = BTreeMap::new();
-        rebuilt.insert(0, 0); // HfstBasicTransducer initially has state number zero
-        if original.is_final_state(0) {
-            replication.set_final_weight(0, &original.get_final_weight(0));
-        }
-        let mut source_state: HfstState = 0;
-        for state in original.iter() {
-            if !rebuilt.contains_key(&source_state) {
-                replication.add_state(state_count);
-                if original.is_final_state(source_state) {
-                    replication
-                        .set_final_weight(state_count, &original.get_final_weight(source_state));
-                }
-                rebuilt.insert(source_state, state_count);
-                state_count += 1;
-            }
-            for arc in state.iter() {
-                if arc.get_input_symbol() == symbol || arc.get_output_symbol() == symbol {
-                    // just skip replicating
-                    continue;
-                }
-                if !rebuilt.contains_key(&arc.get_target_state()) {
-                    replication.add_state(state_count);
-                    if original.is_final_state(arc.get_target_state()) {
-                        replication.set_final_weight(
-                            state_count,
-                            &original.get_final_weight(arc.get_target_state()),
-                        );
-                    }
-                    rebuilt.insert(arc.get_target_state(), state_count);
-                    state_count += 1;
-                }
-                let nu = HfstBasicTransition::new_symbols(
-                    rebuilt[&arc.get_target_state()],
-                    arc.get_input_symbol(),
-                    arc.get_output_symbol(),
-                    arc.get_weight(),
-                );
-                replication.add_transition(rebuilt[&source_state], &nu, true);
-            }
-            source_state += 1;
-        }
-        *trans = HfstTransducer::from_basic_transducer(&replication, trans.get_type());
+        *trans = trans.kill_paths(&symbol);
     }
 }
 

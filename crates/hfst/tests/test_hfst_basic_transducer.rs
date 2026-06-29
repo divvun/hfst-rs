@@ -355,6 +355,47 @@ fn renumber_states_compacts_in_discovery_order() {
     assert_eq!(r.get_final_weight(2), 0.5);
 }
 
+// --- kill_paths (librarify regression, not a C++ test-suite block)
+// kill_paths(sym) returns a copy with every transition whose input or output is
+// `sym` dropped, surviving states renumbered. Build a two-path transducer and
+// kill one branch's symbol; the surviving branch stays, the killed arc is gone.
+#[test]
+fn kill_paths_drops_matching_arcs() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer: kill_paths");
+
+    // 0 -(a:a)-> 1(final), 0 -(x:x)-> 2(final)
+    let mut t = HfstBasicTransducer::new();
+    t.add_state(2);
+    t.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 0.0),
+        true,
+    );
+    t.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(2, "x".to_string(), "x".to_string(), 0.0),
+        true,
+    );
+    t.set_final_weight(1, &0.0);
+    t.set_final_weight(2, &0.0);
+
+    let killed = t.kill_paths("x");
+
+    // State 0 keeps only the a:a arc; the x:x arc is gone.
+    let s0: Vec<_> = killed.iter().next().unwrap().iter().collect();
+    assert_eq!(s0.len(), 1);
+    assert_eq!(s0[0].get_input_symbol(), "a");
+
+    // No surviving transition anywhere mentions the killed symbol.
+    for transitions in killed.iter() {
+        for arc in transitions.iter() {
+            assert_ne!(arc.get_input_symbol(), "x");
+            assert_ne!(arc.get_output_symbol(), "x");
+        }
+    }
+}
+
 // --- "HfstBasicTransducer: iterating through"
 // The C++ block has no assertions: it walks every state and its transitions,
 // printing source/target/input/output/weight, and the final weight of final

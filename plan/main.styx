@@ -500,6 +500,13 @@ children (
                         kind @note
                         text "Scope landed: lifted the genuine \"collect input+output symbols into a BTreeSet<String>\" loops to HfstBasicTransducer::symbols_used() (which already existed at hfst_basic_transducer.rs:586) in 3 tools / 4 sites — hfst-dump-alphabets (found_alphabet), hfst-check-alpha (first+second found_alphabet), hfst-pair-test (get_symbols -> known_symbols.extend(t.symbols_used())). All type-compatible drop-ins (HfstAlphabet = StringSet = SymbolSet = BTreeSet<String>), behavior-preserving; verified by single-transducer smoke (alphabet a,b,c,d,g,o,t correct) + 121 lib tests + OL golden.\n\nDeliberately NOT folded into this node:\n- hfst-summarize: its arc loop is multi-purpose (found_alphabet + symbol_pairs + ambiguity + epsilon counts in one pass). Injecting symbols_used() = redundant double-traversal that stats-weight-lifts will immediately rewrite — deferred to librarify.stats-weight-lifts (HfstBasicTransducer::summarize()/properties() returns the alphabet too).\n- hfst-compose-intersect: check_all_symbols/check_multi_char_symbols collect rule INPUT symbols only (not input+output), so symbols_used() is the wrong primitive — belongs with librarify.algo-lifts (compose_intersect_fast + alphabet diagnostics).\n- hfst-lookup/hfst-flookup: the audit's \"alphabet-coverage prefilter for gating\" is a NEW feature that would change tool output; out of scope for a behavior-preserving lift. Their existing loops are input-only multichar-symbol collection for the tokenizer, not symbols_used().\n\nPre-existing port quirk surfaced (not introduced): unused_assignments warnings on hfst-check-alpha's transducer_knows_alphabet (first transducer's value is overwritten before read) — faithful to the C++, left as-is."
                     }
+
+                    {
+                        at 2026-06-29T13:04:11.919358Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -521,6 +528,13 @@ children (
                         kind @note
                         text "Scope landed: added HfstBasicTransducer::renumber_states() — verbatim discovery-order state-compaction copy — and thinned hfst-preprocess-for-optimized-lookup-format (its ~40-line hand-rolled BTreeMap rebuild -> one call). Method transcribes preprocess's loop exactly (including state-0 final-weight not being copied because state 0 is pre-seeded into the id map; documented on the method). Added tests/test_hfst_basic_transducer.rs::renumber_states_compacts_in_discovery_order as a regression oracle (out-of-order discovery -> language \"ab\" preserved, states compacted). 122 lib tests + OL golden green; preprocess CLI smoke preserves {cab,cat,dog}.\n\nDeliberately NOT folded into this node (the other two tools the audit listed):\n- hfst-kill-paths (do_killing): same renumber skeleton BUT skips arcs whose in/out == the kill symbol AND seeds state-0 final weight. The arc filter is the tool's entire purpose -> belongs to librarify.algo-lifts (HfstTransducer::kill_paths(sym)); that node will own the thinning and can build on renumber_states.\n- hfst-reweight (do_reweight): same skeleton BUT applies reweight() to every final/arc weight AND seeds state-0 final weight. The weight transform is the tool's entire purpose -> belongs to librarify.stats-weight-lifts (transform_weights(predicate)+Reweighter).\nBoth also diverge on the state-0 final-weight seeding (they set it; preprocess/renumber_states do not), so they cannot reuse renumber_states unchanged anyway. Honest count for this node: 1 tool thinned + a reusable primitive, not 3-4."
                     }
+
+                    {
+                        at 2026-06-29T13:04:13.350904Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -541,6 +555,13 @@ children (
                         author "brendan@necessary.nu"
                         kind @note
                         text "Scope landed: added hfst_symbol_defs::label_to_stringpair (escaped-colon arc-label parser honoring \\: and @0@->internal_epsilon) carrying both tools' spec ids; deleted the two local copies in hfst-substitute and hfst-insert-freely, which now import it. Added tests/test_label_to_stringpair.rs (6 cases: plain pair, no-colon->None, first-interior-colon-wins, @0@->epsilon both sides, escaped-colon-not-a-separator, escaped-backslash-leaves-colon). 128 lib tests + OL golden green. Functional smoke: insert-freely -a x:x inserts freely; substitute -f a:a -t a:@0@ yields cat->cat:ct (output a elided to epsilon).\n\nGrounding: confirmed the C++ label_to_stringpair() in tools/src/hfst-substitute.cc and tools/src/hfst-insert-freely.cc are byte-identical (modulo brace style) -> a genuine duplicate, unlike symbols-used/renumber-states where the divergence was inherent. The unified lib fn is the faithful 1:1 port (= substitute's Rust port)."
+                    }
+
+                    {
+                        at 2026-06-29T13:04:14.571506Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
                     }
                 )
             }
@@ -568,6 +589,13 @@ children (
                                 kind @note
                                 text "Scope landed: added ImplementationType::is_weighted() (true for TROPICAL_OPENFST/LOG_OPENFST/HFST_OLW) in hfst_data_types.rs and used it for hfst-fst2txt's weighting clause. Added tests/test_implementation_type.rs (weighted vs unweighted variants). 130 lib tests + OL golden green; fst2txt prints the weight column on a tropical fst.\n\nGrounding corrected the node premise (which said \"HfstTransducer::is_weighted() already exists — call it\"): the FACADE HfstTransducer has NO is_weighted (only the hfst-ol Transducer does), and the C++ HfstTransducer has none either — C++ fst2txt.cc uses the same bespoke per-type branching. So this is a new lib predicate, not a pre-existing call.\n\nBehavior-preservation proof: fst2txt's chain is `SFST/FOMA/XFSM -> false; TROPICAL/LOG -> true; else -> true`. Because the else arm ALSO yields true, the decision collapses to printw = !(SFST|FOMA|XFSM). Replacing the TROPICAL||LOG clause condition with type_.is_weighted() (which adds HFST_OLW) is byte-identical: HFST_OLW was already caught by else->true, every other type lands in the same arm as before. Documented inline at the call site."
                             }
+
+                            {
+                                at 2026-06-29T13:04:16.201789Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
                         )
                     }
 
@@ -576,6 +604,21 @@ children (
                         title "[Tier1] Lift hfst-kill-paths do_killing into HfstTransducer::kill_paths(sym): the discovery-order rebuild that skips arcs whose input or output == sym and seeds state-0's final weight (the renumber_states skeleton + an arc predicate + final-0 seeding). Thin the tool to one call + its unsafe removed."
                         priority 5
                         deps (librarify.renumber-states)
+                        log (
+                            {
+                                at 2026-06-29T13:04:30.289699Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T13:12:13.608839Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Scope landed: added HfstBasicTransducer::kill_paths(&self, symbol) (discovery-order rebuild that skips arcs whose input OR output == symbol, with state-0 final-weight seeding — the renumber_states skeleton + a per-arc filter) and a thin HfstTransducer::kill_paths facade (get_basic_transducer -> kill_paths -> from_basic_transducer, preserving type). hfst-kill-paths do_killing collapses from ~48 lines to `*trans = trans.kill_paths(&symbol)`; removed its HfstBasicTransducer/HfstBasicTransition/HfstState/BTreeMap imports. The remaining `unsafe` in do_killing is only the SYMBOL static-mut read (io-foundation's job to remove, not this node).\n\nTests: tests/test_hfst_basic_transducer.rs::kill_paths_drops_matching_arcs (basic method: two-path graph, kill one symbol, surviving branch kept + no killed symbol anywhere) and tests/test_transducer_functions.rs::kill_paths_facade_tropical (facade: disjunct {a,x} -> kill x -> convert back, a survives, no x). 132 lib tests + OL golden green.\n\nCLI smoke note: hfst-kill-paths runs (exit 0) but reading the result back via fst2txt/fst2strings panics at hfst_input_stream.rs:439 — the PRE-EXISTING binary save/load round-trip bug (layout-dependent; also hit hfst-substitute output last session), NOT a kill_paths defect. The facade lib test exercises the full convert->kill->convert path with zero file I/O, so correctness is proven independently of that bug."
+                            }
+                        )
                     }
 
                     {

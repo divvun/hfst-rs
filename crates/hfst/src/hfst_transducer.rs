@@ -939,6 +939,15 @@ impl HfstTransducer {
         HFST_THROW!(FunctionNotImplementedException)
     }
 
+    /// Return a copy with every transition labelled `symbol` (on either the
+    /// input or output side) removed, surviving states renumbered. Converts to a
+    /// basic transducer, applies [`HfstBasicTransducer::kill_paths`], and
+    /// converts back to this transducer's type. Lifted from hfst-kill-paths.
+    pub fn kill_paths(&self, symbol: &str) -> HfstTransducer {
+        let killed = self.get_basic_transducer().kill_paths(symbol);
+        HfstTransducer::from_basic_transducer(&killed, self.get_type())
+    }
+
     /// For internal use: create an 'HfstBasicTransducer' equivalent to '*this'
     /// and delete the backend implementation.
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.convert-to-basic-transducer-fn]

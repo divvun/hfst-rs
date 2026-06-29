@@ -936,3 +936,33 @@ fn binary_operations_log() {
     let _g = serialized();
     function_binary_operations(LOG_OPENFST_TYPE);
 }
+
+// librarify regression (not a C++ port block): HfstTransducer::kill_paths facade
+// round-trips through the basic-transducer conversion. Build the disjunction
+// {a, x}, kill "x", and confirm the converted-back result keeps an "a" arc and
+// contains no "x" arc anywhere. This exercises the full convert -> kill -> convert
+// path that the CLI smoke cannot (the binary save/load round-trip bug blocks it).
+#[test]
+fn kill_paths_facade_tropical() {
+    let _g = serialized();
+    let mut t = HfstTransducer::new_symbol_pair("a", "a", TROPICAL_OPENFST_TYPE);
+    let tx = HfstTransducer::new_symbol_pair("x", "x", TROPICAL_OPENFST_TYPE);
+    t.disjunct(&tx, true);
+
+    let killed_basic = t.kill_paths("x").get_basic_transducer();
+
+    let mut has_a = false;
+    for transitions in killed_basic.iter() {
+        for arc in transitions.iter() {
+            assert_ne!(arc.get_input_symbol(), "x");
+            assert_ne!(arc.get_output_symbol(), "x");
+            if arc.get_input_symbol() == "a" {
+                has_a = true;
+            }
+        }
+    }
+    assert!(
+        has_a,
+        "the surviving 'a' path must remain after killing 'x'"
+    );
+}
