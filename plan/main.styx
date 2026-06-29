@@ -754,6 +754,27 @@ children (
                 id librarify.stats-weight-lifts
                 title "[Tier1] HfstBasicTransducer::summarize()/properties() single-pass stats struct (counts/determinism/cyclicity/ambiguity) for hfst-summarize; conditional HfstTransducer::transform_weights(predicate)+Reweighter for hfst-reweight (unconditional already in tropical/log)"
                 priority 5
+                children (
+                    {
+                        id summarize-stats
+                        title "[Tier1] Lift hfst-summarize's single-pass statistics into HfstBasicTransducer::summarize() -> a stats struct (states, final states, arcs, found alphabet, optional symbol-pair counts, input/output determinism, acceptor, cyclicity + cyclic-at-initial, epsilon counts, densest/sparsest arcs, most-ambiguous input/output, uniq arcs, sigma density). Tool keeps its type-derived flags (is_mutable/weighted) + all output formatting; only the arc-traversal stats move to the lib. Verify byte-identical summarize output."
+                        priority 5
+                    }
+
+                    {
+                        id reweight-transform
+                        title "[Tier1] Lift hfst-reweight's do_reweight rebuild into HfstTransducer::transform_weights with a per-arc/final predicate+reweighter (the tool's reweight() decides the new weight from the current weight + the in/out symbols, conditionally by symbol/from/to). Reuses the renumber_states-style rebuild; the unconditional weight transform already exists in tropical/log. Thin do_reweight to one call; verify via CLI reweight round-trip (now possible after fix-sparse-symt)."
+                        priority 5
+                    }
+                )
+                log (
+                    {
+                        at 2026-06-29T14:27:01.525705Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Decomposed into 2 per-tool sub-nodes (summarize-stats, reweight-transform). Rationale: the node bundles two independent, non-trivial lifts across two tools. summarize-stats is large — a single-pass computation of ~20 interleaved statistics (states/arcs/alphabet/symbol-pairs/ambiguity/determinism/acceptor/cyclicity/epsilons/densest-sparsest/most-ambiguous/uniq/density) that must extract into a stats struct while keeping hfst-summarize's output byte-identical. reweight-transform is a separate weight-transform lift (do_reweight's predicate-driven rebuild). Splitting matches algo-lifts: one lift = one verified commit, no giant uncommitted chunk. They are independent (no dep between them). Per [dec:hfst:librarify-cli]."
+                    }
+                )
             }
 
             {
