@@ -396,6 +396,36 @@ fn kill_paths_drops_matching_arcs() {
     }
 }
 
+// --- input_symbols_used (librarify regression, not a C++ test-suite block)
+// input_symbols_used() collects only the input side of each transition (the
+// input-only sibling of symbols_used), used by hfst-compose-intersect's alphabet
+// diagnostics.
+#[test]
+fn input_symbols_used_collects_input_side_only() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer: input_symbols_used");
+
+    let mut t = HfstBasicTransducer::new();
+    t.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(1, "a".to_string(), "x".to_string(), 0.0),
+        true,
+    );
+    t.add_transition(
+        1,
+        &HfstBasicTransition::new_symbols(2, "b".to_string(), "y".to_string(), 0.0),
+        true,
+    );
+    t.set_final_weight(2, &0.0);
+
+    let inputs = t.input_symbols_used();
+    assert!(inputs.contains("a"));
+    assert!(inputs.contains("b"));
+    // Output-side symbols must not appear.
+    assert!(!inputs.contains("x"));
+    assert!(!inputs.contains("y"));
+}
+
 // --- "HfstBasicTransducer: iterating through"
 // The C++ block has no assertions: it walks every state and its transitions,
 // printing source/target/input/output/weight, and the final weight of final

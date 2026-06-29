@@ -688,6 +688,28 @@ children (
                         id compose-intersect-diagnostics
                         title "[Tier1] Lift hfst-compose-intersect's check_all_symbols / check_multi_char_symbols alphabet-diagnostic helpers (rule-input vs lexicon-output symbol gap detection) into the library; the fast compose-intersect driver already exists (HfstTransducer::compose_intersect). Thin the tool to call lib diagnostics + the existing driver."
                         priority 5
+                        log (
+                            {
+                                at 2026-06-29T14:03:55.346781Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T14:09:31.026478Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Scope landed: added HfstBasicTransducer::input_symbols_used() (input-only sibling of symbols_used) and wired hfst-compose-intersect's check_all_symbols + check_multi_char_symbols to it, replacing their two hand-rolled rule-input collection loops. HfstAlphabet = BTreeSet<String>, drop-in. Behavior-identical: the manual loop iterated 0..=get_max_state() x transitions(s) collecting input symbols into a set; input_symbols_used() iterates state_vector x transitions doing the same -> same set (order irrelevant, used only with .contains()). Added tests/test_hfst_basic_transducer.rs::input_symbols_used_collects_input_side_only. 137 lib tests + OL golden green.\n\nDeliberately NOT lifted: the lexicon OUTPUT-symbol scan in each function. It must stay tool-side because (a) it returns the FIRST offending symbol in TRAVERSAL order (a BTreeSet would return the sorted-first one — a different error message), and (b) the two functions apply different per-scan filters (check_all_symbols short-circuits on @_IDENTITY_SYMBOL_@ and returns any missing symbol; check_multi_char_symbols skips specials and returns only multichar symbols via the tokenizer). Forcing a shared library primitive there would either change behavior or need per-function closures — tool-specific diagnostic logic, kept in the tool. Consistent with the symbols-used discipline.\n\nCLI smoke note: compose-intersect's diagnostics only fire on alphabet-mismatch error paths and the tool's -1/-2 short flags are finicky to drive; verification is via the input_symbols_used unit test + the behavior-identical argument above."
+                            }
+
+                            {
+                                at 2026-06-29T14:09:41.317897Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {

@@ -233,15 +233,7 @@ fn is_special_symbol(symbol: &str) -> bool {
 fn check_all_symbols(lexicon: &HfstTransducer, rule: &HfstTransducer) -> String {
     let rule_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule);
 
-    let mut rule_input_symbols: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
-
-    for s in 0..=rule_b.get_max_state() {
-        for it in rule_b.transitions(s).iter() {
-            let input_symbol = it.get_input_symbol();
-            rule_input_symbols.insert(input_symbol);
-        }
-    }
+    let rule_input_symbols = rule_b.input_symbols_used();
 
     if rule_input_symbols.contains(internal_identity) {
         return String::new();
@@ -270,15 +262,7 @@ fn check_multi_char_symbols(lexicon: &HfstTransducer, rule: &HfstTransducer) -> 
 
     let tokenizer = HfstTokenizer::new();
 
-    let mut rule_input_symbols: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
-
-    for s in 0..=rule_b.get_max_state() {
-        for it in rule_b.transitions(s).iter() {
-            let input_symbol = it.get_input_symbol();
-            rule_input_symbols.insert(input_symbol);
-        }
-    }
+    let rule_input_symbols = rule_b.input_symbols_used();
 
     for s in 0..=lexicon_b.get_max_state() {
         for it in lexicon_b.transitions(s).iter() {

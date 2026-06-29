@@ -595,6 +595,20 @@ impl HfstBasicTransducer {
         retval
     }
 
+    /// The set of input symbols occurring on this graph's transitions — the
+    /// input-only sibling of [`Self::symbols_used`]. Used by alphabet-compatibility
+    /// diagnostics (e.g. hfst-compose-intersect checks whether a rule's input
+    /// alphabet covers a lexicon's output symbols).
+    pub fn input_symbols_used(&self) -> HfstAlphabet {
+        let mut retval = HfstAlphabet::new();
+        for it in self.state_vector.iter() {
+            for tr_it in it.iter() {
+                retval.insert(tr_it.get_transition_data().get_input_symbol());
+            }
+        }
+        retval
+    }
+
     /// Return a copy with the states renumbered in discovery order: state 0
     /// stays 0, and every other state is assigned the next free id the first
     /// time it is reached — either as the running iteration source or as an arc
