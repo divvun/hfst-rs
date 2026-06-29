@@ -258,9 +258,11 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: *mut libc::FILE) 
                 || type_ == ImplementationType::XFSM_TYPE
             {
                 printw = false;
-            } else if type_ == ImplementationType::TROPICAL_OPENFST_TYPE
-                || type_ == ImplementationType::LOG_OPENFST_TYPE
-            {
+            } else if type_.is_weighted() {
+                // tropical/log OpenFST and weighted optimized-lookup; the prior
+                // SFST/foma/xfsm arm already returned false, and the else arm
+                // below also yields true, so this is byte-for-byte equivalent to
+                // the original `type_ == TROPICAL_OPENFST || type_ == LOG_OPENFST`.
                 printw = true;
             } else {
                 // this should not happen

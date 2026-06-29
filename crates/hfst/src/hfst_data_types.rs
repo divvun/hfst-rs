@@ -32,6 +32,19 @@ pub enum ImplementationType {
     ERROR_TYPE,
 }
 
+impl ImplementationType {
+    /// Whether transducers of this implementation type carry weights. The
+    /// weighted HFST backends are tropical/log OpenFST and the weighted
+    /// optimized-lookup format; SFST, foma, plain optimized-lookup, and the
+    /// metadata-only types are unweighted.
+    pub fn is_weighted(&self) -> bool {
+        matches!(
+            self,
+            Self::TROPICAL_OPENFST_TYPE | Self::LOG_OPENFST_TYPE | Self::HFST_OLW_TYPE
+        )
+    }
+}
+
 /// \brief The type of a push operation. @see HfstTransducer::push_weights
 // [spec:hfst:def:hfst-data-types.hfst.push-type]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]

@@ -554,6 +554,21 @@ children (
                         id is-weighted
                         title "[Tier1] Wire hfst-fst2txt to the library weighting check instead of its bespoke one: HfstTransducer::is_weighted() already exists — call it (and expose ImplementationType::is_weighted() if the tool keys on the type byte directly). Cheapest, fully independent lift."
                         priority 5
+                        log (
+                            {
+                                at 2026-06-29T12:59:54.482062Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T13:02:31.001353Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Scope landed: added ImplementationType::is_weighted() (true for TROPICAL_OPENFST/LOG_OPENFST/HFST_OLW) in hfst_data_types.rs and used it for hfst-fst2txt's weighting clause. Added tests/test_implementation_type.rs (weighted vs unweighted variants). 130 lib tests + OL golden green; fst2txt prints the weight column on a tropical fst.\n\nGrounding corrected the node premise (which said \"HfstTransducer::is_weighted() already exists — call it\"): the FACADE HfstTransducer has NO is_weighted (only the hfst-ol Transducer does), and the C++ HfstTransducer has none either — C++ fst2txt.cc uses the same bespoke per-type branching. So this is a new lib predicate, not a pre-existing call.\n\nBehavior-preservation proof: fst2txt's chain is `SFST/FOMA/XFSM -> false; TROPICAL/LOG -> true; else -> true`. Because the else arm ALSO yields true, the decision collapses to printw = !(SFST|FOMA|XFSM). Replacing the TROPICAL||LOG clause condition with type_.is_weighted() (which adds HFST_OLW) is byte-identical: HFST_OLW was already caught by else->true, every other type lands in the same arm as before. Documented inline at the call site."
+                            }
+                        )
                     }
 
                     {
