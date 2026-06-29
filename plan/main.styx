@@ -549,6 +549,52 @@ children (
                 id librarify.algo-lifts
                 title "[Tier1] Single-purpose transducer-algebra lifts: HfstTransducer::kill_paths(sym) (kill-paths), realign() (realign), substitute_by_composition() (substitute), compose_intersect_fast()+alphabet diagnostics (compose-intersect), pair-path recognizer with identity fallback (pair-test), ImplementationType::is_weighted() expose (fst2txt)"
                 priority 5
+                children (
+                    {
+                        id is-weighted
+                        title "[Tier1] Wire hfst-fst2txt to the library weighting check instead of its bespoke one: HfstTransducer::is_weighted() already exists — call it (and expose ImplementationType::is_weighted() if the tool keys on the type byte directly). Cheapest, fully independent lift."
+                        priority 5
+                    }
+
+                    {
+                        id kill-paths
+                        title "[Tier1] Lift hfst-kill-paths do_killing into HfstTransducer::kill_paths(sym): the discovery-order rebuild that skips arcs whose input or output == sym and seeds state-0's final weight (the renumber_states skeleton + an arc predicate + final-0 seeding). Thin the tool to one call + its unsafe removed."
+                        priority 5
+                        deps (librarify.renumber-states)
+                    }
+
+                    {
+                        id realign
+                        title "[Tier1] Lift hfst-realign's path-realignment transform into the library (HfstTransducer::realign() or an HfstBasicTransducer method) and thin the tool. Ground in tools/src/hfst-realign.cc; verify against a golden round-trip."
+                        priority 5
+                    }
+
+                    {
+                        id substitute-by-composition
+                        title "[Tier1] Lift hfst-substitute's substitute-by-composition branch into HfstTransducer::substitute_by_composition() (build the relabel transducer + compose), thinning that path of the tool. Keep the in-place per-arc substitute branch as-is (that one is already a thin lib call)."
+                        priority 5
+                    }
+
+                    {
+                        id compose-intersect-diagnostics
+                        title "[Tier1] Lift hfst-compose-intersect's check_all_symbols / check_multi_char_symbols alphabet-diagnostic helpers (rule-input vs lexicon-output symbol gap detection) into the library; the fast compose-intersect driver already exists (HfstTransducer::compose_intersect). Thin the tool to call lib diagnostics + the existing driver."
+                        priority 5
+                    }
+
+                    {
+                        id pair-recognizer
+                        title "[Tier1] Lift hfst-pair-test's pair-path recognizer (get_target/print_recognized_prefix walk with the @_IDENTITY_SYMBOL_@ fallback + final-state check) into the library as a reusable basic-transducer path matcher; thin the tool. Largest pair-test logic cluster."
+                        priority 5
+                    }
+                )
+                log (
+                    {
+                        at 2026-06-29T12:55:40.0357Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Decomposed into 6 per-operation sub-nodes (is-weighted, kill-paths, realign, substitute-by-composition, compose-intersect-diagnostics, pair-recognizer). Rationale: the original node bundled 6 unrelated transducer-algebra lifts across 6 tools (~3000 LOC) into one all-or-nothing DoD unit — several are genuine C++ algorithm ports (realign, substitute_by_composition, the pair-path recognizer) needing their own grounding + golden verification. Splitting matches how cleanly the other Tier-1 leaves (symbols-used, renumber-states, label-parse) landed: one lift = one verified commit, and a mid-stream stop never leaves a giant uncommitted node. Ordered cheapest/most-independent first: is-weighted (lib fn already exists) -> kill-paths (reuses renumber_states, deps on it) -> realign -> substitute-by-composition -> compose-intersect-diagnostics -> pair-recognizer. Per [dec:hfst:librarify-cli]."
+                    }
+                )
             }
 
             {
