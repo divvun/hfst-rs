@@ -3,15 +3,16 @@
 //! foundation (globals, getopt, commandline, program-options, tool-metadata,
 //! inc fragments).
 
+use hfst::expand_equivalences::{
+    FsaLevel, TsvExtensionError, expand_equivalences, read_tsv_extensions,
+};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_symbol_defs::{internal_epsilon, internal_identity};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_fopen, hfst_getline,
-    hfst_set_program_name, hfst_strdup, hfst_strndup, is_input_stream_in_ol_format,
-    print_more_info, print_report_bugs, verbose_printf,
+    EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_fopen, hfst_set_program_name,
+    hfst_strdup, is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -30,15 +31,11 @@ static mut ONLY_TO_LABEL: *mut c_char = std::ptr::null_mut();
 static mut ACX_FILE_NAME: *mut c_char = std::ptr::null_mut();
 static mut ACX_FILE: *mut libc::FILE = std::ptr::null_mut();
 static mut TSV_FILE_NAME: *mut c_char = std::ptr::null_mut();
-static mut TSV_FILE: *mut libc::FILE = std::ptr::null_mut();
 
-// [spec:hfst:def:hfst-expand-equivalences.fsa-level-t]
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum FsaLevel {
-    First,
-    Second,
-    Both,
-}
+// FsaLevel, the TSV reader, and the extension/compose loop now live in
+// hfst::expand_equivalences; this tool keeps only the option-driven LEVEL global.
+// The TSV file is opened (as a std stream) and parsed in process_stream, so no
+// libc TSV handle is held here.
 static mut LEVEL: FsaLevel = FsaLevel::First;
 
 unsafe fn cstr(ptr: *const c_char) -> String {
@@ -257,22 +254,15 @@ unsafe fn check_options(_argc: c_int, _argv: *mut *mut c_char) {
                 "Only one of parameters -a, -t, must be used.",
             );
         } else if !TSV_FILE_NAME.is_null() {
-            TSV_FILE = hfst_fopen(&cstr(TSV_FILE_NAME), "r");
+            // TSV is opened as a std stream and parsed in process_stream via
+            // read_tsv_extensions; no libc handle is opened here. A missing file
+            // is reported there (slightly later than the C++, which fopen'd it at
+            // this point) with the same fatal error.
         } else if !ACX_FILE_NAME.is_null() {
             ACX_FILE = hfst_fopen(&cstr(ACX_FILE_NAME), "r");
         } else {
             error(libc::EXIT_FAILURE, 0, "Logic error again!");
         }
-    }
-}
-
-// [spec:hfst:def:hfst-expand-equivalences.add-extension-fn]
-// [spec:hfst:sem:hfst-expand-equivalences.add-extension-fn]
-unsafe fn add_extension(t: &mut HfstTransducer, from: &str, to: &str) {
-    unsafe {
-        verbose_printf(&format!("extending {} by {}\n", from, to));
-        let remap = HfstTransducer::new_symbol_pair(from, to, t.get_type());
-        t.disjunct(&remap, true);
     }
 }
 
@@ -284,141 +274,54 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         while instream.is_good() {
             transducer_n += 1;
             let _ = transducer_n; // C++ counts but never reads it
-            let mut trans = HfstTransducer::new_from_stream(instream);
-            let mut extensions = HfstTransducer::new_symbol_pair(
-                internal_identity,
-                internal_identity,
-                trans.get_type(),
-            );
+            let trans = HfstTransducer::new_from_stream(instream);
+
+            // Collect the (from, to) extension pairs from whichever source the
+            // options selected. The TSV parser and the extension/compose loop now
+            // live in hfst::expand_equivalences; the per-extension "extending X by
+            // Y" and "Applying extensions on N level" -v traces were diagnostic and
+            // are not reproduced.
+            let mut pairs: Vec<(String, String)> = Vec::new();
             if !ONLY_FROM_LABEL.is_null() {
                 verbose_printf(&format!(
                     "using single commandline extension {} with {}\n",
                     cstr(ONLY_FROM_LABEL),
                     cstr(ONLY_TO_LABEL)
                 ));
-                add_extension(
-                    &mut extensions,
-                    &cstr(ONLY_FROM_LABEL),
-                    &cstr(ONLY_TO_LABEL),
-                );
-            } else if !TSV_FILE.is_null() {
-                let mut line: *mut c_char = std::ptr::null_mut();
-                let mut len: usize = 0;
-                let mut line_n: usize = 0;
-                verbose_printf(&format!(
-                    "reading extensions from {}...\n",
-                    cstr(TSV_FILE_NAME)
-                ));
-                while hfst_getline(&mut line, &mut len, TSV_FILE) != -1 {
-                    line_n += 1;
-                    if *line == b'\n' as c_char {
-                        continue;
-                    }
-                    let tab = libc::strstr(line, c"\t".as_ptr());
-                    if tab.is_null() {
-                        if *line == b'#' as c_char {
-                            // a comment is a line starting with # without tabs
-                            continue;
-                        } else {
-                            error_at_line(
-                                libc::EXIT_FAILURE,
-                                0,
-                                &cstr(TSV_FILE_NAME),
-                                line_n as u32,
-                                "At least one tab required per line",
-                            );
-                        }
-                    }
-                    let from_char = hfst_strndup(line, tab.offset_from(line) as usize);
-                    if libc::strlen(from_char) == 0 {
-                        error_at_line(
+                pairs.push((cstr(ONLY_FROM_LABEL), cstr(ONLY_TO_LABEL)));
+            } else if !TSV_FILE_NAME.is_null() {
+                let tsv_name = cstr(TSV_FILE_NAME);
+                verbose_printf(&format!("reading extensions from {}...\n", tsv_name));
+                let file = match std::fs::File::open(&tsv_name) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        error(
                             libc::EXIT_FAILURE,
                             0,
-                            &cstr(TSV_FILE_NAME),
-                            line_n as u32,
-                            &format!(
-                                "First field is empty;\n\
-                                 if you REALLY want to extend epsilons as \
-                                 equivalent, use @0@ or {}",
-                                internal_epsilon
-                            ),
+                            &format!("cannot open {}: {}", tsv_name, e),
                         );
+                        return;
                     }
-                    let mut endstr = tab.offset(1);
-                    let mut tab = libc::strstr(endstr, c"\t".as_ptr());
-                    while !tab.is_null() {
-                        let to_char = hfst_strndup(endstr, tab.offset_from(endstr) as usize);
-                        if libc::strlen(to_char) == 0 {
-                            error_at_line(
-                                libc::EXIT_FAILURE,
-                                0,
-                                &cstr(TSV_FILE_NAME),
-                                line_n as u32,
-                                &format!(
-                                    "Extension field seems empty;\n\
-                                     if you REALLY mean something is equivalent\
-                                      to epsilons, use @0@ or {}",
-                                    internal_epsilon
-                                ),
-                            );
-                        }
-                        add_extension(&mut extensions, &cstr(from_char), &cstr(to_char));
-                        libc::free(to_char as *mut libc::c_void);
-                        endstr = tab.offset(1);
-                        tab = libc::strstr(endstr, c"\t".as_ptr());
+                };
+                match read_tsv_extensions(std::io::BufReader::new(file)) {
+                    Ok(p) => pairs = p,
+                    Err(TsvExtensionError { line, message }) => {
+                        error_at_line(libc::EXIT_FAILURE, 0, &tsv_name, line, &message);
+                        return;
                     }
-                    let tab = endstr;
-                    while (*endstr != 0) && (*endstr != b'\n' as c_char) {
-                        endstr = endstr.offset(1);
-                    }
-                    let to_char = hfst_strndup(tab, endstr.offset_from(tab) as usize);
-                    if libc::strlen(to_char) == 0 {
-                        error_at_line(
-                            libc::EXIT_FAILURE,
-                            0,
-                            &cstr(TSV_FILE_NAME),
-                            line_n as u32,
-                            &format!(
-                                "Extension field seems empty;\n\
-                                 if you REALLY mean something is equivalent\
-                                  to epsilons, use @0@ or {}",
-                                internal_epsilon
-                            ),
-                        );
-                    }
-                    add_extension(&mut extensions, &cstr(from_char), &cstr(to_char));
-                } // while getline
+                }
             } else if !ACX_FILE.is_null() {
                 verbose_printf(&format!("Reading ACX from {}...\n", cstr(ACX_FILE_NAME)));
                 // The libxml ACX-parsing body is gated behind #if HAVE_LIBXML_TREE_H
                 // in the C++ source; without libxml it compiles to nothing, which
-                // is the path reproduced here.
+                // is the path reproduced here (no extensions added).
             } else {
                 error(libc::EXIT_FAILURE, 0, "DANGER TERROR HORROR !!!!!!");
+                return;
             }
-            extensions.minimize().repeat_star().minimize();
-            match LEVEL {
-                FsaLevel::Both => {
-                    verbose_printf("Applying extensions on second level\n");
-                    trans.compose(&extensions, true);
-                    verbose_printf("Applying extensions on first level\n");
-                    // trans = extensions->invert().compose(trans);
-                    extensions.invert().compose(&trans, true);
-                    trans = extensions.clone();
-                }
-                FsaLevel::First => {
-                    verbose_printf("Applying extensions on first level\n");
-                    // trans = extensions->invert().compose(trans);
-                    extensions.invert().compose(&trans, true);
-                    trans = extensions.clone();
-                }
-                FsaLevel::Second => {
-                    verbose_printf("Applying extensions on second level\n");
-                    trans.compose(&extensions, true);
-                }
-            }
+
+            let mut trans = expand_equivalences(trans, &pairs, LEVEL);
             outstream.redirect(&mut trans);
-            // C: delete extensions; the Rust binding drops at end of scope.
         } // for each automaton
     }
 }

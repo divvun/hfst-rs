@@ -864,6 +864,21 @@ children (
                         id expand-equivalences
                         title "[Tier1] Lift hfst-expand-equivalences's add_extension/expand loop + the TSV extension reader into a library expand_equivalences() + read_tsv_extensions (new module); thin the tool."
                         priority 5
+                        log (
+                            {
+                                at 2026-06-29T15:24:06.819877Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T15:34:43.599269Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
