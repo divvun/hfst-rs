@@ -3,8 +3,7 @@
 //! rebuild tool). Drives the hfst-cli foundation (globals, getopt, commandline,
 //! program-options, tool-metadata, inc fragments).
 
-use hfst::hfst_basic_transducer::{HfstBasicTransducer, HfstState};
-use hfst::hfst_basic_transition::HfstBasicTransition;
+use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -25,7 +24,6 @@ use hfst_cli::inc::{
     handle_unary_case,
 };
 use libc::{c_char, c_int};
-use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
@@ -156,48 +154,7 @@ unsafe fn process_stream(
             // C++: HfstBasicTransducer original(trans); — the
             // HfstBasicTransducer(const HfstTransducer&) conversion constructor.
             let original: HfstBasicTransducer = trans.get_basic_transducer();
-            let mut replication = HfstBasicTransducer::new();
-            let mut state_count: HfstState = 1;
-            let mut rebuilt: BTreeMap<HfstState, HfstState> = BTreeMap::new();
-            rebuilt.insert(0, 0);
-            let mut source_state: HfstState = 0;
-            // C++ iterates original.begin()..original.end(); each step is one
-            // state, with source_state as the running index.
-            for state in original.iter() {
-                if !rebuilt.contains_key(&source_state) {
-                    replication.add_state(state_count);
-                    if original.is_final_state(source_state) {
-                        replication.set_final_weight(
-                            state_count,
-                            &original.get_final_weight(source_state),
-                        );
-                    }
-                    rebuilt.insert(source_state, state_count);
-                    state_count += 1;
-                }
-                for arc in state.iter() {
-                    if !rebuilt.contains_key(&arc.get_target_state()) {
-                        replication.add_state(state_count);
-                        if original.is_final_state(arc.get_target_state()) {
-                            replication.set_final_weight(
-                                state_count,
-                                &original.get_final_weight(arc.get_target_state()),
-                            );
-                        }
-                        rebuilt.insert(arc.get_target_state(), state_count);
-                        state_count += 1;
-                    }
-                    let nu = HfstBasicTransition::new_symbols(
-                        rebuilt[&arc.get_target_state()],
-                        arc.get_input_symbol(),
-                        arc.get_output_symbol(),
-                        arc.get_weight(),
-                    );
-                    let src_rebuilt = rebuilt[&source_state];
-                    replication.add_transition(src_rebuilt, &nu, true);
-                }
-                source_state += 1;
-            }
+            let replication = original.renumber_states();
             trans = HfstTransducer::new_from_basic(&replication, trans.get_type());
             // C: hfst_set_name(trans, trans, "fu"); the dest and src are the same
             // object, which Rust cannot alias mut+const, so the read side is taken

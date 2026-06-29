@@ -507,6 +507,21 @@ children (
                 id librarify.renumber-states
                 title "[Tier1] Add HfstBasicTransducer::renumber_states()/rebuild() (state-renumbered copy) and call it from hfst-preprocess-for-optimized-lookup-format, hfst-kill-paths, hfst-reweight (replaces the hand-rolled BTreeMap rebuild ×3-4)"
                 priority 5
+                log (
+                    {
+                        at 2026-06-29T12:28:49.831129Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T12:35:35.123364Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Scope landed: added HfstBasicTransducer::renumber_states() — verbatim discovery-order state-compaction copy — and thinned hfst-preprocess-for-optimized-lookup-format (its ~40-line hand-rolled BTreeMap rebuild -> one call). Method transcribes preprocess's loop exactly (including state-0 final-weight not being copied because state 0 is pre-seeded into the id map; documented on the method). Added tests/test_hfst_basic_transducer.rs::renumber_states_compacts_in_discovery_order as a regression oracle (out-of-order discovery -> language \"ab\" preserved, states compacted). 122 lib tests + OL golden green; preprocess CLI smoke preserves {cab,cat,dog}.\n\nDeliberately NOT folded into this node (the other two tools the audit listed):\n- hfst-kill-paths (do_killing): same renumber skeleton BUT skips arcs whose in/out == the kill symbol AND seeds state-0 final weight. The arc filter is the tool's entire purpose -> belongs to librarify.algo-lifts (HfstTransducer::kill_paths(sym)); that node will own the thinning and can build on renumber_states.\n- hfst-reweight (do_reweight): same skeleton BUT applies reweight() to every final/arc weight AND seeds state-0 final weight. The weight transform is the tool's entire purpose -> belongs to librarify.stats-weight-lifts (transform_weights(predicate)+Reweighter).\nBoth also diverge on the state-0 final-weight seeding (they set it; preprocess/renumber_states do not), so they cannot reuse renumber_states unchanged anyway. Honest count for this node: 1 tool thinned + a reusable primitive, not 3-4."
+                    }
+                )
             }
 
             {

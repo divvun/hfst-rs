@@ -595,6 +595,58 @@ impl HfstBasicTransducer {
         retval
     }
 
+    /// Return a copy with the states renumbered in discovery order: state 0
+    /// stays 0, and every other state is assigned the next free id the first
+    /// time it is reached — either as the running iteration source or as an arc
+    /// target. All transitions are copied verbatim with their targets remapped.
+    /// This compacts the state numbering; it is the pure-renumber core lifted
+    /// from hfst-preprocess-for-optimized-lookup-format.
+    ///
+    /// Note: state 0 is pre-seeded into the id map, so its final weight is not
+    /// copied (matching the long-standing behaviour of the CLI loop this was
+    /// lifted from). Callers that need state 0's final weight preserved set it
+    /// themselves before/after renumbering.
+    pub fn renumber_states(&self) -> HfstBasicTransducer {
+        let mut replication = HfstBasicTransducer::new();
+        let mut state_count: HfstState = 1;
+        let mut rebuilt: BTreeMap<HfstState, HfstState> = BTreeMap::new();
+        rebuilt.insert(0, 0);
+        let mut source_state: HfstState = 0;
+        for state in self.iter() {
+            if !rebuilt.contains_key(&source_state) {
+                replication.add_state(state_count);
+                if self.is_final_state(source_state) {
+                    replication.set_final_weight(state_count, &self.get_final_weight(source_state));
+                }
+                rebuilt.insert(source_state, state_count);
+                state_count += 1;
+            }
+            for arc in state.iter() {
+                if !rebuilt.contains_key(&arc.get_target_state()) {
+                    replication.add_state(state_count);
+                    if self.is_final_state(arc.get_target_state()) {
+                        replication.set_final_weight(
+                            state_count,
+                            &self.get_final_weight(arc.get_target_state()),
+                        );
+                    }
+                    rebuilt.insert(arc.get_target_state(), state_count);
+                    state_count += 1;
+                }
+                let nu = HfstBasicTransition::new_symbols(
+                    rebuilt[&arc.get_target_state()],
+                    arc.get_input_symbol(),
+                    arc.get_output_symbol(),
+                    arc.get_weight(),
+                );
+                let src_rebuilt = rebuilt[&source_state];
+                replication.add_transition(src_rebuilt, &nu, true);
+            }
+            source_state += 1;
+        }
+        replication
+    }
+
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.prune-alphabet-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.prune-alphabet-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.prune-alphabet-fn]

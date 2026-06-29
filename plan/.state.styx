@@ -11,4 +11,5 @@ assertions (
     {id librarify.ol-reuse, kind @complete, author "brendan@necessary.nu", at 2026-06-29T12:22:25.850919Z}
     {id librarify.fix-roundtrip, kind @complete, author "brendan@necessary.nu", at 2026-06-29T12:08:37.826618Z}
     {id librarify.symbols-used, kind @doing, author "brendan@necessary.nu", at 2026-06-29T12:23:12.271179Z}
+    {id librarify.renumber-states, kind @doing, author "brendan@necessary.nu", at 2026-06-29T12:28:49.831129Z}
 )

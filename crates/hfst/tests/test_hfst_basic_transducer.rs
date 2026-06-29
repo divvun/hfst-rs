@@ -303,6 +303,58 @@ fn unknown_and_identity_symbols() {
     // SFST facade disjunct block intentionally skipped (out of scope).
 }
 
+// --- renumber_states (librarify regression, not a C++ test-suite block)
+// renumber_states() is the pure-renumber primitive lifted out of
+// hfst-preprocess-for-optimized-lookup-format: it returns a copy whose states
+// are renumbered in discovery order (state 0 stays 0; every other state takes
+// the next free id the first time it is reached, as source or as arc target),
+// copying every transition verbatim with remapped targets. Build a graph whose
+// reachable states are NOT in sequential order so the renumber genuinely
+// reorders, and check the compacted result preserves the language "ab".
+#[test]
+fn renumber_states_compacts_in_discovery_order() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer: renumber_states");
+
+    // 0 -(a:a)-> 2 -(b:b)-> 1(final); state 1 is reached only after state 2.
+    let mut t = HfstBasicTransducer::new();
+    t.add_state(2);
+    t.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(2, "a".to_string(), "a".to_string(), 0.0),
+        true,
+    );
+    t.add_transition(
+        2,
+        &HfstBasicTransition::new_symbols(1, "b".to_string(), "b".to_string(), 0.0),
+        true,
+    );
+    t.set_final_weight(1, &0.5);
+
+    let r = t.renumber_states();
+
+    // Discovery order: 0->0, then target 2 becomes 1, then source 1 becomes 2.
+    assert_eq!(r.get_max_state(), 2);
+
+    // state 0: single a:a arc to the renumbered "2" (now id 1).
+    let s0: Vec<_> = r.iter().next().unwrap().iter().collect();
+    assert_eq!(s0.len(), 1);
+    assert_eq!(s0[0].get_target_state(), 1);
+    assert_eq!(s0[0].get_input_symbol(), "a");
+
+    // new id 1 (old state 2): single b:b arc to old state 1, now id 2.
+    let s1: Vec<_> = r.iter().nth(1).unwrap().iter().collect();
+    assert_eq!(s1.len(), 1);
+    assert_eq!(s1[0].get_target_state(), 2);
+    assert_eq!(s1[0].get_input_symbol(), "b");
+    assert!(!r.is_final_state(1));
+
+    // new id 2 (old final state 1): no arcs, final, weight carried over.
+    assert!(r.iter().nth(2).unwrap().is_empty());
+    assert!(r.is_final_state(2));
+    assert_eq!(r.get_final_weight(2), 0.5);
+}
+
 // --- "HfstBasicTransducer: iterating through"
 // The C++ block has no assertions: it walks every state and its transitions,
 // printing source/target/input/output/weight, and the final weight of final
