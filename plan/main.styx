@@ -472,6 +472,13 @@ children (
                         kind @blocker
                         text "Verification-blocked. hfst-optimized-lookup has zero test coverage and there are no OL fixtures in the repo. Attempting to generate one via the CLI (strings2fst | fst2fst -O) panics: HfstInputStream::read_transducer hits the `_ =>` fallthrough at hfst_input_stream.rs:1008-1014 and throws NotTransducerStreamException (\"transducer type not recognised\") — the binary round-trip (write transducer -> read back) does not recognize the written type. The lib engine IS confirmed sufficient (transducer.rs initialize_input + lookup_fd_cstr cover tokenization, the +? unknown-symbol case, weighting, flag diacritics, limit/time_cutoff; the 8 tool Variants collapse to one lookup_fd_str call; HfstInputStream already builds HFST_OL/OLW). But gutting ~1800 lines of a user-facing tool with no smoke test is unsafe. Prerequisite: fix the binary round-trip / type-detection so an OL fixture + golden-output smoke test can be built, THEN gut. Unblock candidates: investigate the header type byte written by HfstOutputStream vs the type detected on read."
                     }
+
+                    {
+                        at 2026-06-29T12:22:25.850919Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -479,6 +486,21 @@ children (
                 id librarify.symbols-used
                 title "[Tier1] Replace the inline \"scan all arcs, collect input+output symbols\" loop with HfstBasicTransducer::symbols_used() across 7 tools (pair-test, dump-alphabets, check-alpha, summarize, lookup, flookup, compose-intersect); add an alphabet-coverage prefilter for lookup/flookup gating"
                 priority 5
+                log (
+                    {
+                        at 2026-06-29T12:23:12.271179Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T12:27:39.579866Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Scope landed: lifted the genuine \"collect input+output symbols into a BTreeSet<String>\" loops to HfstBasicTransducer::symbols_used() (which already existed at hfst_basic_transducer.rs:586) in 3 tools / 4 sites — hfst-dump-alphabets (found_alphabet), hfst-check-alpha (first+second found_alphabet), hfst-pair-test (get_symbols -> known_symbols.extend(t.symbols_used())). All type-compatible drop-ins (HfstAlphabet = StringSet = SymbolSet = BTreeSet<String>), behavior-preserving; verified by single-transducer smoke (alphabet a,b,c,d,g,o,t correct) + 121 lib tests + OL golden.\n\nDeliberately NOT folded into this node:\n- hfst-summarize: its arc loop is multi-purpose (found_alphabet + symbol_pairs + ambiguity + epsilon counts in one pass). Injecting symbols_used() = redundant double-traversal that stats-weight-lifts will immediately rewrite — deferred to librarify.stats-weight-lifts (HfstBasicTransducer::summarize()/properties() returns the alphabet too).\n- hfst-compose-intersect: check_all_symbols/check_multi_char_symbols collect rule INPUT symbols only (not input+output), so symbols_used() is the wrong primitive — belongs with librarify.algo-lifts (compose_intersect_fast + alphabet diagnostics).\n- hfst-lookup/hfst-flookup: the audit's \"alphabet-coverage prefilter for gating\" is a NEW feature that would change tool output; out of scope for a behavior-preserving lift. Their existing loops are input-only multichar-symbol collection for the tokenizer, not symbols_used().\n\nPre-existing port quirk surfaced (not introduced): unused_assignments warnings on hfst-check-alpha's transducer_knows_alphabet (first transducer's value is overwritten before read) — faithful to the C++, left as-is."
+                    }
+                )
             }
 
             {

@@ -178,14 +178,7 @@ unsafe fn process_stream(
                     }
                 }
             }
-            let mut first_found_alphabet: StringSet = StringSet::new();
-            // iterate states in random order
-            for transitions in mutt.states_and_transitions() {
-                for tr_it in transitions {
-                    first_found_alphabet.insert(tr_it.get_input_symbol());
-                    first_found_alphabet.insert(tr_it.get_output_symbol());
-                }
-            }
+            let first_found_alphabet: StringSet = mutt.symbols_used();
             // read second alphas
             let second = HfstTransducer::new_from_stream(secondstream);
             let secondmutt: HfstBasicTransducer = second.get_basic_transducer();
@@ -206,14 +199,7 @@ unsafe fn process_stream(
                     }
                 }
             }
-            let mut second_found_alphabet: StringSet = StringSet::new();
-            // iterate states in random order
-            for transitions in secondmutt.states_and_transitions() {
-                for tr_it in transitions {
-                    second_found_alphabet.insert(tr_it.get_input_symbol());
-                    second_found_alphabet.insert(tr_it.get_output_symbol());
-                }
-            }
+            let second_found_alphabet: StringSet = secondmutt.symbols_used();
             // match
             fput(globals::outfile(), "Actual alphabet differences:\n");
             let first_minus_second: StringSet = first_found_alphabet

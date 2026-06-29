@@ -567,12 +567,7 @@ fn is_empty_or_comment(line: &str) -> bool {
 // [spec:hfst:def:hfst-pair-test.get-symbols-fn]
 // [spec:hfst:sem:hfst-pair-test.get-symbols-fn]
 fn get_symbols(t: &HfstBasicTransducer, known_symbols: &mut SymbolSet) {
-    for transitions in t.iter() {
-        for jt in transitions.iter() {
-            known_symbols.insert(jt.get_input_symbol());
-            known_symbols.insert(jt.get_output_symbol());
-        }
-    }
+    known_symbols.extend(t.symbols_used());
 }
 
 // [spec:hfst:def:hfst-pair-test.strip-space-fn]

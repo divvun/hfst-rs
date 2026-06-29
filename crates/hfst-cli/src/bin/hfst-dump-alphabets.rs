@@ -253,14 +253,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> c_int {
                     }
                 }
             }
-            let mut found_alphabet = StringSet::new();
-            // iterate states in random order
-            for it in mutt.iter() {
-                for tr_it in it.iter() {
-                    found_alphabet.insert(tr_it.get_input_symbol());
-                    found_alphabet.insert(tr_it.get_output_symbol());
-                }
-            }
+            let found_alphabet: StringSet = mutt.symbols_used();
             if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
                 fput(
                     outfile,

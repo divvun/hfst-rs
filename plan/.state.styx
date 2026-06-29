@@ -8,6 +8,7 @@ assertions (
     {id idiom1.pmatch, kind @complete, author "brendan@necessary.nu", at 2026-06-28T16:15:44.322893Z}
     {id idiom1.core, kind @complete, author "brendan@necessary.nu", at 2026-06-28T17:16:23.203852Z}
     {id idiom2.io, kind @doing, author "brendan@necessary.nu", at 2026-06-28T18:27:26.173045Z}
-    {id librarify.ol-reuse, kind @doing, author "brendan@necessary.nu", at 2026-06-28T20:14:25.195139Z}
+    {id librarify.ol-reuse, kind @complete, author "brendan@necessary.nu", at 2026-06-29T12:22:25.850919Z}
     {id librarify.fix-roundtrip, kind @complete, author "brendan@necessary.nu", at 2026-06-29T12:08:37.826618Z}
+    {id librarify.symbols-used, kind @doing, author "brendan@necessary.nu", at 2026-06-29T12:23:12.271179Z}
 )
