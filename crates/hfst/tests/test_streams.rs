@@ -329,3 +329,38 @@ fn sparse_symtable_round_trip_log() {
     }
     sparse_symtable_round_trip(LOG_OPENFST_TYPE);
 }
+
+// --- strip_hfst3_headers (librarify regression, not a C++ port block).
+// Pure byte-stream filtering, no symbols, so no serialization lock needed.
+#[test]
+fn strip_hfst3_headers_removes_embedded_headers() {
+    use hfst::hfst_input_stream::strip_hfst3_headers;
+    // before + [HFST3\0 header-text \0] + after  ->  before + after
+    let mut input: Vec<u8> = Vec::new();
+    input.extend_from_slice(b"before");
+    input.extend_from_slice(b"HFST3\0");
+    input.extend_from_slice(b"some header text\0");
+    input.extend_from_slice(b"after");
+
+    let mut output: Vec<u8> = Vec::new();
+    strip_hfst3_headers(&input[..], &mut output).unwrap();
+    assert_eq!(output, b"beforeafter");
+}
+
+#[test]
+fn strip_hfst3_headers_passes_through_partial_matches() {
+    use hfst::hfst_input_stream::strip_hfst3_headers;
+    // "HFSTX" is not a header (HFST then X); the matched prefix and X are emitted.
+    let mut output: Vec<u8> = Vec::new();
+    strip_hfst3_headers(&b"aHFSTXb"[..], &mut output).unwrap();
+    assert_eq!(output, b"aHFSTXb");
+}
+
+#[test]
+fn strip_hfst3_headers_drops_trailing_partial_header() {
+    use hfst::hfst_input_stream::strip_hfst3_headers;
+    // A partial header at end-of-stream is dropped, matching the C ungetc loop.
+    let mut output: Vec<u8> = Vec::new();
+    strip_hfst3_headers(&b"abcHFST"[..], &mut output).unwrap();
+    assert_eq!(output, b"abc");
+}

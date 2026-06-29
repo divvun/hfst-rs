@@ -848,6 +848,28 @@ children (
                         id strip-header
                         title "[Tier1] Lift hfst-strip-header's HFST3-header stripping into hfst_input_stream::strip_hfst3_headers(impl Read, impl Write) (de-C-ify the FILE* byte loop); thin the tool. Smallest of the four."
                         priority 5
+                        log (
+                            {
+                                at 2026-06-29T14:51:56.902602Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T15:01:33.37535Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Scope landed: added hfst_input_stream::strip_hfst3_headers(impl Read, impl Write) — hfst-strip-header's HFST3-header-stripping byte filter, de-C-ified from the FILE* fgetc/fputc/ungetc loop (a one-byte `pending` slot replaces ungetc; BufReader/BufWriter for buffering). The faithful C edge case is preserved: a partial header at end-of-stream is dropped, not flushed. The tool's process_stream collapses to: open std streams from the filename globals (INPUTFILENAME/OUTFILENAME with the \"<stdin>\"/\"<stdout>\" sentinels selecting std streams; Box<dyn Read>/Box<dyn Write>) and one library call. Removed the tool's only libc fgetc/fputc/ungetc usage.\n\nVerified: 3 lib unit tests (test_streams: embedded-header removal, partial-match passthrough, trailing-partial-header drop) + CLI smoke both ways (stdin->stdout: beforeHFST3\\0junk\\0after -> beforeafter; -i/-o file: xHFST3\\0hdr\\0yz -> xyz). 143 lib tests + OL golden green.\n\nNotes: (1) the C's per-byte \"Stripping...\" -v trace is dropped (diagnostic only; stripped output unchanged). (2) Output flushes correctly despite the tool's std::process::exit: strip_hfst3_headers flushes its BufWriter before returning, which propagates through Box<dyn Write> -> Stdout to fd 1. (3) check_unary_params still opens the FILE* INPUTFILE/OUTFILE redundantly (the tool now ignores them, opening its own std handles); harmless here (input FILE* unused; output double-truncate is a no-op since the FILE* writes nothing) and the residual static-mut FILE* globals are io-foundation's to remove."
+                            }
+
+                            {
+                                at 2026-06-29T15:01:44.033048Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
                 )
                 log (

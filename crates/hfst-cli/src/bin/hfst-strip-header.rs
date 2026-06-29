@@ -3,10 +3,11 @@
 //! getopt, commandline, program-options, inc fragments).
 //!
 //! Unlike most unary tools, this one does not build HfstInputStream /
-//! HfstOutputStream objects: it copies raw bytes from the input FILE* to the
-//! output FILE*, dropping any embedded "HFST3" headers (and the NUL-terminated
-//! text that follows them).
+//! HfstOutputStream objects: it opens its input/output as std streams (from the
+//! filename globals, with the "<stdin>"/"<stdout>" sentinels) and delegates the
+//! byte copy + HFST3-header stripping to hfst_input_stream::strip_hfst3_headers.
 
+use hfst::hfst_input_stream::strip_hfst3_headers;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, hfst_set_program_name, print_more_info, print_report_bugs, verbose_printf,
@@ -119,44 +120,42 @@ unsafe fn parse_options(argc: c_int, argv: *mut *mut c_char) -> c_int {
 
 // [spec:hfst:def:hfst-strip-header.process-stream-fn]
 // [spec:hfst:sem:hfst-strip-header.process-stream-fn]
-unsafe fn process_stream(f_in: *mut libc::FILE, f_out: *mut libc::FILE) -> c_int {
-    unsafe {
-        // "HFST3" plus the trailing NUL terminator (index 5).
-        let header: &[u8] = b"HFST3\0";
-        let mut header_loc: usize = 0; // how much of the header has been found
-        loop {
-            let mut c = libc::fgetc(f_in);
-            if c == libc::EOF {
-                return libc::EXIT_SUCCESS;
+unsafe fn process_stream() -> c_int {
+    // De-C-ified: open the input/output as std streams from the filename globals
+    // ("<stdin>"/"<stdout>" sentinels select the standard streams) and delegate
+    // the HFST3-header stripping to hfst_input_stream::strip_hfst3_headers. The
+    // C printed "Stripping..." once per byte under -v; that per-byte trace is
+    // dropped (diagnostic only — the stripped output is unchanged).
+    let (in_name, out_name) = unsafe { (cstr(globals::INPUTFILENAME), cstr(globals::OUTFILENAME)) };
+
+    let input: Box<dyn std::io::Read> = if in_name == "<stdin>" {
+        Box::new(std::io::stdin())
+    } else {
+        match std::fs::File::open(&in_name) {
+            Ok(f) => Box::new(f),
+            Err(e) => {
+                eprintln!("hfst-strip-header: could not open input {in_name}: {e}");
+                return libc::EXIT_FAILURE;
             }
-            verbose_printf("Stripping...\n");
-            if c == header[header_loc] as c_int {
-                if header_loc == 5 {
-                    // we've found the whole header (incl. null terminator);
-                    // eat text until the next null terminator
-                    loop {
-                        c = libc::fgetc(f_in);
-                        if c == b'\0' as c_int || c == libc::EOF {
-                            break;
-                        }
-                    }
-                    header_loc = 0;
-                } else {
-                    header_loc += 1; // look for the next character now
-                }
-            } else if header_loc > 0 {
-                // flush the characters that could have been header but turned
-                // out not to be
-                for &b in &header[0..header_loc] {
-                    libc::fputc(b as c_int, f_out);
-                }
-                header_loc = 0;
-                // the character we just grabbed could be the start of the
-                // header, so put it back
-                libc::ungetc(c, f_in);
-            } else {
-                libc::fputc(c, f_out);
+        }
+    };
+    let output: Box<dyn std::io::Write> = if out_name == "<stdout>" {
+        Box::new(std::io::stdout())
+    } else {
+        match std::fs::File::create(&out_name) {
+            Ok(f) => Box::new(f),
+            Err(e) => {
+                eprintln!("hfst-strip-header: could not open output {out_name}: {e}");
+                return libc::EXIT_FAILURE;
             }
+        }
+    };
+
+    match strip_hfst3_headers(input, output) {
+        Ok(()) => libc::EXIT_SUCCESS,
+        Err(e) => {
+            eprintln!("hfst-strip-header: error while stripping headers: {e}");
+            libc::EXIT_FAILURE
         }
     }
 }
@@ -193,7 +192,7 @@ unsafe fn real_main() -> c_int {
             cstr(globals::OUTFILENAME)
         ));
 
-        let retval = process_stream(globals::inputfile(), globals::outfile());
+        let retval = process_stream();
 
         // The C frees inputfilename/outfilename here; in the Rust foundation
         // those are static-mut C strings owned by the globals module, so they

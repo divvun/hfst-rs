@@ -47,7 +47,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, BufWriter, Read, Write};
 
 use hfst_openfst::StdVectorFst;
 
@@ -1119,6 +1119,65 @@ mod input_impl {
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.is-hfst-header-included-fn]
         pub fn is_hfst_header_included(&self) -> bool {
             self.has_hfst_header
+        }
+    }
+}
+
+/// Copy `input` to `output`, removing every embedded `HFST3\0` header together
+/// with the NUL-terminated header text that follows it. De-C-ified from
+/// hfst-strip-header's `FILE*` `fgetc`/`fputc`/`ungetc` loop — a one-byte
+/// `pending` slot replaces `ungetc`. A partial header at end-of-stream is dropped
+/// (not flushed), matching the C.
+pub fn strip_hfst3_headers<R: Read, W: Write>(input: R, output: W) -> std::io::Result<()> {
+    const HEADER: &[u8] = b"HFST3\0";
+    let mut reader = BufReader::new(input);
+    let mut writer = BufWriter::new(output);
+    let mut header_loc: usize = 0;
+    let mut pending: Option<u8> = None;
+
+    loop {
+        let c = match pending.take() {
+            Some(b) => b,
+            None => match read_one_byte(&mut reader)? {
+                Some(b) => b,
+                None => return writer.flush(),
+            },
+        };
+
+        if c == HEADER[header_loc] {
+            if header_loc == 5 {
+                // The whole "HFST3\0" matched; eat the header text up to the next
+                // NUL (or EOF).
+                loop {
+                    match read_one_byte(&mut reader)? {
+                        Some(b'\0') | None => break,
+                        Some(_) => continue,
+                    }
+                }
+                header_loc = 0;
+            } else {
+                header_loc += 1;
+            }
+        } else if header_loc > 0 {
+            // The candidate header turned out not to be one; emit the bytes that
+            // matched so far and reconsider `c` from scratch (the `ungetc`).
+            writer.write_all(&HEADER[0..header_loc])?;
+            header_loc = 0;
+            pending = Some(c);
+        } else {
+            writer.write_all(&[c])?;
+        }
+    }
+}
+
+fn read_one_byte<R: Read>(r: &mut R) -> std::io::Result<Option<u8>> {
+    let mut buf = [0u8; 1];
+    loop {
+        match r.read(&mut buf) {
+            Ok(0) => return Ok(None),
+            Ok(_) => return Ok(Some(buf[0])),
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
         }
     }
 }
