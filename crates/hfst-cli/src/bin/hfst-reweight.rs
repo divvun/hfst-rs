@@ -7,7 +7,6 @@
 //! inc/globals-unary.h and reads a single input stream).
 
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
-use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -30,7 +29,6 @@ use hfst_cli::inc::{
     handle_unary_case,
 };
 use libc::{c_char, c_int};
-use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 
 unsafe fn cstr(ptr: *const c_char) -> String {
@@ -385,55 +383,11 @@ unsafe fn reweight(w: f32, i: Option<&str>, o: Option<&str>) -> f32 {
 }
 
 unsafe fn do_reweight(trans: &mut HfstTransducer) {
-    unsafe {
-        // [spec:hfst:def:hfst-reweight.original-fn]
-        // [spec:hfst:sem:hfst-reweight.original-fn]
-        let original = HfstBasicTransducer::from_hfst_transducer(trans);
-        let mut replication = HfstBasicTransducer::new();
-        let mut state_count: u32 = 1;
-        let mut rebuilt: BTreeMap<u32, u32> = BTreeMap::new();
-        rebuilt.insert(0, 0); // HfstBasicTransducer initially has state number zero
-        if original.is_final_state(0) {
-            let nuweight = reweight(original.get_final_weight(0), None, None);
-            replication.set_final_weight(0, &nuweight);
-        }
-        let mut source_state: u32 = 0;
-        for state in original.states_and_transitions().iter() {
-            if !rebuilt.contains_key(&source_state) {
-                replication.add_state(state_count);
-                if original.is_final_state(source_state) {
-                    let nuweight = reweight(original.get_final_weight(source_state), None, None);
-                    replication.set_final_weight(state_count, &nuweight);
-                }
-                rebuilt.insert(source_state, state_count);
-                state_count += 1;
-            }
-            for arc in state.iter() {
-                let target = arc.get_target_state();
-                if !rebuilt.contains_key(&target) {
-                    replication.add_state(state_count);
-                    if original.is_final_state(target) {
-                        let nuweight = reweight(original.get_final_weight(target), None, None);
-                        replication.set_final_weight(state_count, &nuweight);
-                    }
-                    rebuilt.insert(target, state_count);
-                    state_count += 1;
-                }
-                let isym = arc.get_input_symbol();
-                let osym = arc.get_output_symbol();
-                let nuweight = reweight(arc.get_weight(), Some(&isym), Some(&osym));
-                let nu = HfstBasicTransition::new_symbols(
-                    *rebuilt.get(&target).unwrap(),
-                    isym,
-                    osym,
-                    nuweight,
-                );
-                replication.add_transition(*rebuilt.get(&source_state).unwrap(), &nu, true);
-            }
-            source_state += 1;
-        }
-        *trans = HfstTransducer::new_from_basic(&replication, trans.get_type());
-    }
+    // [spec:hfst:def:hfst-reweight.original-fn]
+    // [spec:hfst:sem:hfst-reweight.original-fn]
+    let original = HfstBasicTransducer::from_hfst_transducer(trans);
+    let replication = original.transform_weights(|w, i, o| unsafe { reweight(w, i, o) });
+    *trans = HfstTransducer::new_from_basic(&replication, trans.get_type());
 }
 
 // [spec:hfst:def:hfst-reweight.process-stream-fn]

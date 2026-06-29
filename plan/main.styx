@@ -765,6 +765,28 @@ children (
                         id reweight-transform
                         title "[Tier1] Lift hfst-reweight's do_reweight rebuild into HfstTransducer::transform_weights with a per-arc/final predicate+reweighter (the tool's reweight() decides the new weight from the current weight + the in/out symbols, conditionally by symbol/from/to). Reuses the renumber_states-style rebuild; the unconditional weight transform already exists in tropical/log. Thin do_reweight to one call; verify via CLI reweight round-trip (now possible after fix-sparse-symt)."
                         priority 5
+                        log (
+                            {
+                                at 2026-06-29T14:27:36.43298Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-06-29T14:33:00.082069Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Scope landed: added HfstBasicTransducer::transform_weights(f) where f: Fn(f32, Option<&str>, Option<&str>) -> f32 — the do_reweight rebuild from hfst-reweight: discovery-order renumber (the renumber_states/kill_paths skeleton + state-0 final seeding) applying f to every weight, with the transition's symbols passed so callers reweight conditionally ((w,None,None) for final weights, (w,Some(in),Some(out)) for arcs). hfst-reweight's do_reweight collapses from ~48 lines to `let replication = original.transform_weights(|w,i,o| unsafe { reweight(w,i,o) }); *trans = new_from_basic(...)`. The tool's reweight() closure (which reads the static-mut config: LOWER/UPPER_BOUND, ARCS_ONLY, ENDS_ONLY, SYMBOL, INPUT/OUTPUT_SYMBOL, MULTIPLIER, FUNC, ADDITION) stays in the tool and is passed as the predicate — the lib method is safe; the unsafe is encapsulated in the closure. Removed the now-unnecessary inner unsafe block + unused HfstBasicTransition/BTreeMap imports.\n\nDistinct from the existing unconditional HfstTransducer::transform_weights(fn(f32)->f32) — this is on HfstBasicTransducer, symbol-aware, closure-based. Behavior-identical (verbatim transcription, f replaces reweight). Tests: test_hfst_basic_transducer::transform_weights_applies_per_arc_and_final_symbol_aware (per-arc +10 on input \"a\", final +1, b-arc unchanged) + CLI smoke (reweight -a 2.0 on \"cat\": all weights 0.0 -> 2.0, round-trips via fix-sparse-symt). 139 lib tests + OL golden green.\n\nCompletes librarify.stats-weight-lifts's second sub-node; summarize-stats remains."
+                            }
+
+                            {
+                                at 2026-06-29T14:33:10.179488Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
                 )
                 log (

@@ -467,6 +467,46 @@ fn pair_target_state_with_identity_fallback() {
     assert_eq!(t.pair_target_state(0, "x", "y", &empty), None);
 }
 
+// --- transform_weights (librarify regression, not a C++ test-suite block)
+// The do_reweight rebuild lifted from hfst-reweight: f receives (weight, in, out)
+// — (w, None, None) for a final weight, (w, Some, Some) for an arc — so it can
+// reweight conditionally on the symbols.
+#[test]
+fn transform_weights_applies_per_arc_and_final_symbol_aware() {
+    let _g = serialized();
+    verbose_print("HfstBasicTransducer: transform_weights");
+
+    let mut t = HfstBasicTransducer::new();
+    t.add_transition(
+        0,
+        &HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 1.0),
+        true,
+    );
+    t.add_transition(
+        1,
+        &HfstBasicTransition::new_symbols(2, "b".to_string(), "b".to_string(), 1.0),
+        true,
+    );
+    t.set_final_weight(2, &0.5);
+
+    // +10 only to arcs whose input symbol is "a"; finals (None) get +1.
+    let r = t.transform_weights(|w, i, _o| match i {
+        Some("a") => w + 10.0,
+        None => w + 1.0,
+        _ => w,
+    });
+
+    // state 0: a-arc 1.0 -> 11.0
+    let s0: Vec<_> = r.iter().next().unwrap().iter().collect();
+    assert_eq!(s0.len(), 1);
+    assert!((s0[0].get_weight() - 11.0).abs() < 1e-6);
+    // state 1: b-arc 1.0 unchanged
+    let s1: Vec<_> = r.iter().nth(1).unwrap().iter().collect();
+    assert!((s1[0].get_weight() - 1.0).abs() < 1e-6);
+    // final weight 0.5 -> 1.5 (the None, None branch)
+    assert!((r.get_final_weight(2) - 1.5).abs() < 1e-6);
+}
+
 // --- "HfstBasicTransducer: iterating through"
 // The C++ block has no assertions: it walks every state and its transitions,
 // printing source/target/input/output/weight, and the final weight of final

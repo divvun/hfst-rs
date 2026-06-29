@@ -746,6 +746,62 @@ impl HfstBasicTransducer {
         replication
     }
 
+    /// Return a copy with every weight transformed by `f`, surviving states
+    /// renumbered in discovery order (the do_reweight rebuild from hfst-reweight).
+    /// `f` receives the current weight together with the transition's symbols so
+    /// it can reweight conditionally: `(w, None, None)` for a state's final weight
+    /// and `(w, Some(input), Some(output))` for an arc weight; it returns the new
+    /// weight. Unlike the unconditional backend `transform_weights`, this is
+    /// symbol-aware. State 0's final weight is seeded up front (matching the CLI
+    /// loop, like [`Self::kill_paths`]).
+    pub fn transform_weights<F>(&self, f: F) -> HfstBasicTransducer
+    where
+        F: Fn(f32, Option<&str>, Option<&str>) -> f32,
+    {
+        let mut replication = HfstBasicTransducer::new();
+        let mut state_count: HfstState = 1;
+        let mut rebuilt: BTreeMap<HfstState, HfstState> = BTreeMap::new();
+        rebuilt.insert(0, 0);
+        if self.is_final_state(0) {
+            replication.set_final_weight(0, &f(self.get_final_weight(0), None, None));
+        }
+        let mut source_state: HfstState = 0;
+        for state in self.iter() {
+            if !rebuilt.contains_key(&source_state) {
+                replication.add_state(state_count);
+                if self.is_final_state(source_state) {
+                    replication.set_final_weight(
+                        state_count,
+                        &f(self.get_final_weight(source_state), None, None),
+                    );
+                }
+                rebuilt.insert(source_state, state_count);
+                state_count += 1;
+            }
+            for arc in state.iter() {
+                let target = arc.get_target_state();
+                if !rebuilt.contains_key(&target) {
+                    replication.add_state(state_count);
+                    if self.is_final_state(target) {
+                        replication.set_final_weight(
+                            state_count,
+                            &f(self.get_final_weight(target), None, None),
+                        );
+                    }
+                    rebuilt.insert(target, state_count);
+                    state_count += 1;
+                }
+                let isym = arc.get_input_symbol();
+                let osym = arc.get_output_symbol();
+                let nuweight = f(arc.get_weight(), Some(&isym), Some(&osym));
+                let nu = HfstBasicTransition::new_symbols(rebuilt[&target], isym, osym, nuweight);
+                replication.add_transition(rebuilt[&source_state], &nu, true);
+            }
+            source_state += 1;
+        }
+        replication
+    }
+
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.prune-alphabet-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.prune-alphabet-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.prune-alphabet-fn]
