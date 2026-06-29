@@ -14,11 +14,10 @@ use hfst::pmatch_compiler::PmatchCompiler;
 fn def_states(src: &str, name: &str) -> u32 {
     let mut c = PmatchCompiler::new(TROPICAL_OPENFST_TYPE);
     let defs = c.compile(src);
-    let d = *defs
+    let d = defs
         .get(name)
         .unwrap_or_else(|| panic!("no {name} in pmatch result"));
-    assert!(!d.is_null(), "{name} transducer is null");
-    unsafe { &*d }.number_of_states()
+    d.number_of_states()
 }
 
 fn top_states(src: &str) -> u32 {
@@ -29,9 +28,8 @@ fn top_states(src: &str) -> u32 {
 fn compile_and_match(src: &str, input: &str) -> String {
     let mut compiler = PmatchCompiler::new(TROPICAL_OPENFST_TYPE);
     let defs = compiler.compile(src);
-    let top = *defs.get("TOP").expect("no TOP in pmatch result");
-    assert!(!top.is_null());
-    let top_owned = unsafe { (*top).clone() };
+    let top = defs.get("TOP").expect("no TOP in pmatch result");
+    let top_owned = top.clone();
     let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_owned]);
     container.match_(input, 0.0, 0.0)
 }

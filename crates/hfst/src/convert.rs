@@ -1739,6 +1739,15 @@ thread_local! {
 
 // Read-only access to the transducer currently being constructed, exactly as
 // the C++ reaches it through the 'constructing_transducer' static.
+//
+// SAFETY-ISLAND [convert-engine]: the format-conversion graph builder is
+// self-referential — a `ConvertTransducer` republishes a raw pointer to itself
+// through `CONSTRUCTING_TRANSDUCER` so the `ConvertFstState`/`ConvertTransition`
+// it builds can read back the source `fst`. The pointer is non-null and valid for
+// the whole construction (the box outlives every state built from it); the
+// returned `&'a` is only ever read, never aliased mutably. The other raw-pointer
+// `unsafe` blocks in this file belong to the same island. Removing it needs an
+// index/arena rewrite of the conversion algorithm (deferred).
 unsafe fn constructing_transducer<'a>() -> &'a ConvertTransducer {
     unsafe {
         let p = CONSTRUCTING_TRANSDUCER.with(|c| c.get());

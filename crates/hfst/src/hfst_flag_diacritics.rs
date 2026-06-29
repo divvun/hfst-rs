@@ -368,6 +368,12 @@ impl<T: Ord + Clone> Default for FdTable<T> {
 /// \brief Contains the values of each of the flag diacritic features from a
 /// table. It allows for evaluating a series of diacritic operations.
 // [spec:hfst:def:hfst-flag-diacritics.hfst.fd-state]
+// SAFETY-ISLAND [fdstate-self-ref]: `table` borrows the `FdTable` that the owning
+// structs (hfst-ol `Transducer`, `PmatchContainer`, the lookup state) also hold
+// by value — so a `&'a FdTable` field would make those structs self-referential,
+// which safe Rust can't express without Rc/arena. The pointer is set from a live
+// `&FdTable` in `new` (null in `new_default`, never dereferenced then), the table
+// outlives the `FdState`, and every deref below is a shared read.
 #[derive(Clone)]
 pub struct FdState<T: Ord + Clone> {
     table: *const FdTable<T>,

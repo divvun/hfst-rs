@@ -161,7 +161,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
         comp.set_flatten(FLATTEN);
         comp.set_include_cosine_distances(INCLUDE_COSINE_DISTANCES);
         let mut file_bytes: Vec<u8> = Vec::new();
-        let mut definitions: std::collections::HashMap<String, *mut HfstTransducer> =
+        let mut definitions: std::collections::HashMap<String, HfstTransducer> =
             std::collections::HashMap::new();
 
         let mut includedir = String::new();
@@ -213,8 +213,8 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
         let mut keys: Vec<&String> = definitions.keys().collect();
         keys.sort();
         for key in &keys {
-            let t = definitions[*key];
-            let string_set = (*t).get_alphabet();
+            let t = &definitions[*key];
+            let string_set = t.get_alphabet();
             for sym in string_set.iter() {
                 if !symbols_seen.contains(sym) {
                     harmonizer.insert_to_alphabet(sym);
@@ -250,9 +250,9 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
         // When done compiling everything, look for TOP and output it first.
         if definitions.contains_key("TOP") {
             let properties: std::collections::BTreeMap<String, String> =
-                (*definitions["TOP"]).get_properties().clone();
+                definitions["TOP"].get_properties().clone();
             let intermediate_tmp =
-                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&*definitions["TOP"]);
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&definitions["TOP"]);
             let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                 &intermediate_tmp,
                 true,                  // weighted
@@ -265,7 +265,6 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
                 output_tmp.set_property(k, v);
             }
             outstream.redirect(&mut output_tmp);
-            drop(Box::from_raw(definitions["TOP"]));
             definitions.remove("TOP");
 
             if globals::VERBOSE {
@@ -277,13 +276,13 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
             let mut rest_keys: Vec<String> = definitions.keys().cloned().collect();
             rest_keys.sort();
             for key in &rest_keys {
-                let t = definitions[key];
+                let t = &definitions[key];
                 if globals::VERBOSE {
                     eprintln!("Converting {}... ", key);
                     TIMER = clock();
                 }
                 let intermediate_tmp =
-                    ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&*t);
+                    ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t);
                 let harmonized_tmp = if !key.contains("UNCOMPOSE") {
                     ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                         &intermediate_tmp,
@@ -303,7 +302,6 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
                     ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp);
                 output_tmp.set_name(key);
                 outstream.redirect(&mut output_tmp);
-                drop(Box::from_raw(t));
                 if globals::VERBOSE {
                     let duration = (clock() - TIMER) as f64 / CLOCKS_PER_SEC as f64;
                     eprintln!("converted in {:.2} seconds", duration);

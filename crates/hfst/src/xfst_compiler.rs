@@ -21,7 +21,6 @@
 #![allow(unused_variables)]
 #![allow(unused_mut)]
 #![allow(unused_assignments)]
-#![allow(unsafe_op_in_unsafe_fn)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 

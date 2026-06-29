@@ -16,7 +16,6 @@
 #![allow(unused_variables)]
 #![allow(unused_mut)]
 #![allow(clippy::too_many_arguments)]
-#![allow(unsafe_op_in_unsafe_fn)]
 
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_data_types::StringPairSet;
@@ -959,7 +958,7 @@ impl PmatchMappingPairsContainer {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.push-back-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.push-back-fn]
-    pub unsafe fn push_back(&mut self, one_pair: &PmatchMappingPairsContainer) {
+    pub fn push_back(&mut self, one_pair: &PmatchMappingPairsContainer) {
         for it in one_pair.mapping_pairs.iter() {
             let pair: PairRef =
                 PmatchObjectPair::new(it.borrow().get_left(), it.borrow().get_right());
@@ -971,7 +970,7 @@ impl PmatchMappingPairsContainer {
 impl PmatchContextsContainer {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-contexts-container.pmatch-contexts-container-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-contexts-container.pmatch-contexts-container-fn]
-    pub unsafe fn new(
+    pub fn new(
         t: ReplaceType,
         context: &PmatchContextsContainer,
     ) -> Rc<RefCell<PmatchContextsContainer>> {
@@ -987,7 +986,7 @@ impl PmatchContextsContainer {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-contexts-container.push-back-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-contexts-container.push-back-fn]
-    pub unsafe fn push_back(&mut self, one_context: &PmatchContextsContainer) {
+    pub fn push_back(&mut self, one_context: &PmatchContextsContainer) {
         for it in one_context.context_pairs.iter() {
             let pair: PairRef =
                 PmatchObjectPair::new(it.borrow().get_left(), it.borrow().get_right());
@@ -1015,25 +1014,6 @@ impl PmatchReplaceRuleContainer {
             type_: t,
             mapping: m,
             context: c,
-        }))
-    }
-}
-
-impl PmatchParallelRulesContainer {
-    // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.pmatch-parallel-rules-container-fn]
-    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.pmatch-parallel-rules-container-fn]
-    pub unsafe fn new(
-        rule: Rc<RefCell<PmatchReplaceRuleContainer>>,
-    ) -> Rc<RefCell<PmatchParallelRulesContainer>> {
-        let arrow = rule.borrow().arrow;
-        Rc::new(RefCell::new(PmatchParallelRulesContainer {
-            name: String::new(),
-            weight: 0.0,
-            line_defined: 0,
-            my_timer: 0,
-            cache: None,
-            arrow,
-            rules: vec![rule],
         }))
     }
 }
@@ -1514,11 +1494,10 @@ pub struct PmatchCompiler {
     pub flatten: bool,
     pub include_cosine_distances: bool,
     pub includedir: String,
-    pub definitions_: BTreeMap<String, *mut HfstTransducer>,
+    pub definitions_: BTreeMap<String, HfstTransducer>,
 }
 
 // ===== body: utility-transducers =====
-#[allow(unsafe_op_in_unsafe_fn)]
 impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.pmatch-utility-transducers-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.pmatch-utility-transducers-fn]
@@ -2322,34 +2301,6 @@ pub fn get_delimited_lr(s: &str, delim_left: char, delim_right: char) -> String 
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-delimited-fn]
 pub fn get_delimited(s: &str, delim: char) -> String {
     get_delimited_lr(s, delim, delim)
-}
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.next-utf8-to-codepoint-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.next-utf8-to-codepoint-fn]
-pub unsafe fn next_utf8_to_codepoint(c: *mut *mut u8) -> u32 {
-    let mut codepoint: u32 = 0;
-    let mut bytes_in_char: i32 = 0;
-    if **c <= 127 {
-        bytes_in_char = 1;
-        codepoint = (**c & 127) as u32;
-    } else if (**c & (128 + 64)) == (128 + 64) {
-        bytes_in_char = 2;
-        codepoint = (**c & 31) as u32;
-    } else if (**c & (128 + 64 + 32)) == (128 + 64 + 32) {
-        bytes_in_char = 3;
-        codepoint = (**c & 15) as u32;
-    } else if (**c & (128 + 64 + 32 + 16)) == (128 + 64 + 32 + 16) {
-        bytes_in_char = 4;
-        codepoint = (**c & 7) as u32;
-    } else {
-        return 0;
-    }
-    let mut i = 1;
-    while i < bytes_in_char {
-        codepoint = (codepoint << 6) | ((*(*c).add(i as usize) & 63) as u64) as u32;
-        i += 1;
-    }
-    *c = (*c).add(bytes_in_char as usize);
-    codepoint
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.codepoint-to-utf8-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.codepoint-to-utf8-fn]
@@ -4915,7 +4866,7 @@ pub fn cosine_distance_vec(left: Vec<WordVecFloat>, right: Vec<WordVecFloat>) ->
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-like-arc-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-like-arc-fn]
 pub fn compile_like_arc(word1: String, word2: String, nwords: u32, is_negative: bool) -> ObjRef {
-    unsafe {
+    {
         let mut this_word1: WordVector = WordVector::default();
         let mut this_word2: WordVector = WordVector::default();
         {
@@ -4987,8 +4938,7 @@ using nearest neighbours",
             let top_n: Vec<(WordVector, WordVecFloat)> =
                 get_top_n(nwords as usize, &word_vectors_snapshot(), &mut this_word);
             let tok: HfstTokenizer = HfstTokenizer::new();
-            let retval: *mut HfstTransducer =
-                Box::into_raw(Box::new(HfstTransducer::new_type(format())));
+            let mut retval: HfstTransducer = HfstTransducer::new_type(format());
             if verbose() {
                 eprintln!("Inserting into Like({}):", this_word.word);
             }
@@ -5002,7 +4952,7 @@ using nearest neighbours",
                 if include_cosine_distances() {
                     tmp.set_final_weights(top_n[i].1, false);
                 }
-                (*retval).disjunct(&tmp, true);
+                retval.disjunct(&tmp, true);
             }
             let container = Rc::new(RefCell::new(PmatchTransducerContainer {
                 name: String::new(),
@@ -5010,7 +4960,7 @@ using nearest neighbours",
                 line_defined: 0,
                 my_timer: 0,
                 cache: None,
-                t: *Box::from_raw(retval),
+                t: retval,
             }));
             return as_obj(container);
         }
@@ -5080,8 +5030,7 @@ using nearest neighbours",
             is_negative,
         );
         let tok: HfstTokenizer = HfstTokenizer::new();
-        let retval: *mut HfstTransducer =
-            Box::into_raw(Box::new(HfstTransducer::new_type(format())));
+        let mut retval: HfstTransducer = HfstTransducer::new_type(format());
         let mut i: usize = 0;
         while i < top_n.len() && i <= nwords as usize {
             if verbose() {
@@ -5092,7 +5041,7 @@ using nearest neighbours",
             if include_cosine_distances() {
                 tmp.set_final_weights(top_n[i].1, false);
             }
-            (*retval).disjunct(&tmp, true);
+            retval.disjunct(&tmp, true);
             // if (include_cosine_distances) {
             //     for (size_t j = i + 1; j < word_vectors.size() && j <= nwords;
             //     ++j) {
@@ -5113,7 +5062,7 @@ using nearest neighbours",
             line_defined: 0,
             my_timer: 0,
             cache: None,
-            t: *Box::from_raw(retval),
+            t: retval,
         }));
         as_obj(container)
     }
@@ -5122,7 +5071,7 @@ using nearest neighbours",
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-like-arc-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-like-arc-fn]
 pub fn compile_like_arc_word(word: String, nwords: u32) -> ObjRef {
-    unsafe {
+    {
         let mut this_word: WordVector = WordVector::default();
         for it in word_vectors_snapshot().iter() {
             if word == it.word {
@@ -5149,8 +5098,7 @@ pub fn compile_like_arc_word(word: String, nwords: u32) -> ObjRef {
             get_top_n(nwords as usize, &word_vectors_snapshot(), &mut this_word);
 
         let tok: HfstTokenizer = HfstTokenizer::new();
-        let retval: *mut HfstTransducer =
-            Box::into_raw(Box::new(HfstTransducer::new_type(format())));
+        let mut retval: HfstTransducer = HfstTransducer::new_type(format());
         if verbose() {
             eprintln!("Inserting into Like({}):", word);
         }
@@ -5163,7 +5111,7 @@ pub fn compile_like_arc_word(word: String, nwords: u32) -> ObjRef {
             if include_cosine_distances() {
                 tmp.set_final_weights(top_n[i].1, false);
             }
-            (*retval).disjunct(&tmp, true);
+            retval.disjunct(&tmp, true);
         }
         let container = Rc::new(RefCell::new(PmatchTransducerContainer {
             name: String::new(),
@@ -5171,7 +5119,7 @@ pub fn compile_like_arc_word(word: String, nwords: u32) -> ObjRef {
             line_defined: 0,
             my_timer: 0,
             cache: None,
-            t: *Box::from_raw(retval),
+            t: retval,
         }));
         as_obj(container)
     }
@@ -5548,15 +5496,15 @@ pub fn expand_includes(script: &str) -> String {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-fn]
-pub unsafe fn compile(
+pub fn compile(
     pmatch: &str,
-    defs: &mut HashMap<String, *mut HfstTransducer>,
+    defs: &HashMap<String, HfstTransducer>,
     impl_: ImplementationType,
     be_verbose: bool,
     do_flatten: bool,
     do_include_cosine_distances: bool,
     includedir_: String,
-) -> HashMap<String, *mut HfstTransducer> {
+) -> HashMap<String, HfstTransducer> {
     // lock here?
     init_globals();
     let expanded_script = expand_includes(pmatch);
@@ -5571,7 +5519,7 @@ pub unsafe fn compile(
         definitions_insert(
             key.clone(),
             as_obj(PmatchTransducerContainer::new(HfstTransducer::new_copy(
-                &**value,
+                value,
             ))),
         );
     }
@@ -5596,7 +5544,7 @@ pub unsafe fn compile(
     }
     // === END SEAM =========================================================
 
-    let mut retval: HashMap<String, *mut HfstTransducer> = HashMap::new();
+    let mut retval: HashMap<String, HfstTransducer> = HashMap::new();
     for it in unsatisfied_insertions_snapshot().into_iter() {
         if !definitions_contains(it.as_str()) {
             eprint!("Inserted transducer {} was never defined!\n", it);
@@ -5643,21 +5591,16 @@ pub unsafe fn compile(
                         second.borrow().get_name().to_string()
                     );
                 }
-                let tmp: *mut HfstTransducer;
-                if def_insed_expressions_contains(first) {
-                    tmp = Box::into_raw(Box::new(
-                        def_insed_expressions_get(first)
-                            .unwrap()
-                            .borrow_mut()
-                            .evaluate(),
-                    ));
+                let mut tmp: HfstTransducer = if def_insed_expressions_contains(first) {
+                    def_insed_expressions_get(first)
+                        .unwrap()
+                        .borrow_mut()
+                        .evaluate()
                 } else {
-                    tmp = Box::into_raw(Box::new(
-                        definitions_get(first).unwrap().borrow_mut().evaluate(),
-                    ));
-                }
-                (*tmp).minimize();
-                dummy.harmonize(&mut *tmp, true);
+                    definitions_get(first).unwrap().borrow_mut().evaluate()
+                };
+                tmp.minimize();
+                dummy.harmonize(&mut tmp, true);
                 // This is what it will be called in the archive
                 // XXX: seems to use the index not the name...)
                 if uncomposed_contains(first) {
@@ -5665,11 +5608,11 @@ pub unsafe fn compile(
                         eprint!("\nUncompose\n");
                     }
                     if uncount == 0 {
-                        (*tmp).set_name(&("UNCOMPOSE LEFT ".to_string() + first));
+                        tmp.set_name(&("UNCOMPOSE LEFT ".to_string() + first));
                         retval.insert("UNCOMPOSE LEFT ".to_string() + first, tmp);
                         uncount += 1;
                     } else if uncount == 1 {
-                        (*tmp).set_name(&("UNCOMPOSE RIGHT ".to_string() + first));
+                        tmp.set_name(&("UNCOMPOSE RIGHT ".to_string() + first));
                         retval.insert("UNCOMPOSE RIGHT ".to_string() + first, tmp);
                         uncount += 1;
                     } else {
@@ -5677,7 +5620,7 @@ pub unsafe fn compile(
                         uncount += 1;
                     }
                 } else {
-                    (*tmp).set_name(first);
+                    tmp.set_name(first);
                     retval.insert(first.clone(), tmp);
                 }
             }
@@ -5685,35 +5628,26 @@ pub unsafe fn compile(
 
         // Now that dummy is harmonized with everything, we harmonize
         // everything with dummy and minimize the results
-        let retval_keys: Vec<String> = retval.keys().cloned().collect();
-        for key in retval_keys.iter() {
-            let second = *retval.get(key).unwrap();
-            (*second).harmonize(&mut dummy, true);
-            (*second).minimize();
+        for second in retval.values_mut() {
+            second.harmonize(&mut dummy, true);
+            second.minimize();
         }
     } else {
         if definitions_len() == 0 {
             eprint!("warning: pmatch compilation had an empty result\n");
-            retval.insert(
-                "TOP".to_string(),
-                Box::into_raw(Box::new(HfstTransducer::new_type(format()))),
-            );
+            retval.insert("TOP".to_string(), HfstTransducer::new_type(format()));
         } else if !definitions_contains("TOP") {
             eprint!("Pmatch compilation warning: regex or TOP was undefined, using ");
             let first_key = definitions_keys().into_iter().next().unwrap();
             eprint!("{} as root\n", first_key);
-            let tmp = Box::into_raw(Box::new(
-                definitions_get(&first_key).unwrap().borrow_mut().evaluate(),
-            ));
-            (*tmp).minimize();
-            (*tmp).set_name("TOP");
+            let mut tmp = definitions_get(&first_key).unwrap().borrow_mut().evaluate();
+            tmp.minimize();
+            tmp.set_name("TOP");
             retval.insert("TOP".to_string(), tmp);
         } else {
-            let tmp = Box::into_raw(Box::new(
-                definitions_get("TOP").unwrap().borrow_mut().evaluate(),
-            ));
-            (*tmp).minimize();
-            (*tmp).set_name("TOP");
+            let mut tmp = definitions_get("TOP").unwrap().borrow_mut().evaluate();
+            tmp.minimize();
+            tmp.set_name("TOP");
             retval.insert("TOP".to_string(), tmp);
         }
     }
@@ -5802,9 +5736,9 @@ pub unsafe fn compile(
         let mut begins_and_ends_with_non_whitespace = HfstTransducer::new_copy(&not_whitespace);
         begins_and_ends_with_non_whitespace.concatenate(&anything, true);
         begins_and_ends_with_non_whitespace.concatenate(&not_whitespace, true);
-        begins_and_ends_with_non_whitespace.compose(&*(*retval.get("TOP").unwrap()), true);
+        begins_and_ends_with_non_whitespace.compose(retval.get("TOP").unwrap(), true);
         let mut is_single_non_whitespace = HfstTransducer::new_copy(&not_whitespace);
-        is_single_non_whitespace.compose(&*(*retval.get("TOP").unwrap()), true);
+        is_single_non_whitespace.compose(retval.get("TOP").unwrap(), true);
         let empty = HfstTransducer::new_type(format());
         if begins_and_ends_with_non_whitespace.compare(&empty, true) == false
             || is_single_non_whitespace.compare(&empty, true) == false
@@ -5827,14 +5761,13 @@ pub unsafe fn compile(
                 &HfstTransducer::new_symbol_pair(internal_epsilon, RC_EXIT_SYMBOL, format()),
                 true,
             );
-            top_with_boundaries.concatenate(&*(*retval.get("TOP").unwrap()), true);
+            top_with_boundaries.concatenate(retval.get("TOP").unwrap(), true);
             top_with_boundaries.concatenate(&rc, true);
-            drop(Box::from_raw(*retval.get("TOP").unwrap()));
             retval.insert(
                 "TOP".to_string(),
-                Box::into_raw(Box::new(add_pmatch_delimiters(&top_with_boundaries))),
+                add_pmatch_delimiters(&top_with_boundaries),
             );
-            (*(*retval.get("TOP").unwrap())).minimize();
+            retval.get_mut("TOP").unwrap().minimize();
             if verbose() {
                 let duration = (clock() - timer()) as f64 / CLOCKS_PER_SEC as f64;
                 set_timer(clock());
@@ -5846,8 +5779,9 @@ pub unsafe fn compile(
         }
     }
     let vars: Vec<(String, String)> = variables_snapshot();
+    let top = retval.get_mut("TOP").unwrap();
     for (key, value) in vars.iter() {
-        (*(*retval.get("TOP").unwrap())).set_property(key, value);
+        top.set_property(key, value);
     }
     set_data(String::new());
     set_len(0);
@@ -5868,13 +5802,9 @@ pub fn write_compilation_stack_indentation_to_err() {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-text-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-text-fn]
-pub fn read_text(
-    filename: String,
-    type_: ImplementationType,
-    spaced_text: bool,
-) -> *mut HfstTransducer {
+pub fn read_text(filename: String, type_: ImplementationType, spaced_text: bool) -> HfstTransducer {
     let tok = HfstTokenizer::new();
-    let retval: *mut HfstTransducer = Box::into_raw(Box::new(HfstTransducer::new_type(type_)));
+    let mut retval: HfstTransducer = HfstTransducer::new_type(type_);
     match fs::read_to_string(&filename) {
         Err(_) => {
             eprint!(
@@ -5892,9 +5822,7 @@ pub fn read_text(
                         let _spv = HfstTokenizer::tokenize_space_separated(&line);
                     } else {
                         let spv = tok.tokenize(&line, false); // XXX
-                        unsafe {
-                            (*retval).disjunct_spv(&spv);
-                        }
+                        retval.disjunct_spv(&spv);
                     }
                 }
             }
@@ -5904,7 +5832,7 @@ pub fn read_text(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-spaced-text-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-spaced-text-fn]
-pub fn read_spaced_text(filename: String, type_: ImplementationType) -> *mut HfstTransducer {
+pub fn read_spaced_text(filename: String, type_: ImplementationType) -> HfstTransducer {
     read_text(filename, type_, true)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.path-from-filename-fn]
@@ -6053,7 +5981,7 @@ fn map_caseop(op: nfst_pmatch::CaseOp, side: Option<nfst_pmatch::CaseSide>) -> P
 fn as_obj<T: PmatchObject + 'static>(p: Rc<RefCell<T>>) -> ObjRef {
     p
 }
-unsafe fn pmb_symbol(sym: String) -> ObjRef {
+fn pmb_symbol(sym: String) -> ObjRef {
     Rc::new(RefCell::new(PmatchSymbol {
         name: String::new(),
         weight: 0.0,
@@ -6063,7 +5991,7 @@ unsafe fn pmb_symbol(sym: String) -> ObjRef {
         sym,
     }))
 }
-unsafe fn pmb_string(string: String, multichar: bool) -> ObjRef {
+fn pmb_string(string: String, multichar: bool) -> ObjRef {
     Rc::new(RefCell::new(PmatchString {
         name: String::new(),
         weight: 0.0,
@@ -6074,7 +6002,7 @@ unsafe fn pmb_string(string: String, multichar: bool) -> ObjRef {
         multichar,
     }))
 }
-unsafe fn pmb_question_mark() -> ObjRef {
+fn pmb_question_mark() -> ObjRef {
     Rc::new(RefCell::new(PmatchQuestionMark {
         name: String::new(),
         weight: 0.0,
@@ -6083,7 +6011,7 @@ unsafe fn pmb_question_mark() -> ObjRef {
         cache: None,
     }))
 }
-unsafe fn pmb_empty() -> ObjRef {
+fn pmb_empty() -> ObjRef {
     Rc::new(RefCell::new(PmatchEmpty {
         name: String::new(),
         weight: 0.0,
@@ -6092,7 +6020,7 @@ unsafe fn pmb_empty() -> ObjRef {
         cache: None,
     }))
 }
-unsafe fn pmb_epsilon_arc() -> ObjRef {
+fn pmb_epsilon_arc() -> ObjRef {
     Rc::new(RefCell::new(PmatchEpsilonArc {
         name: String::new(),
         weight: 0.0,
@@ -6101,7 +6029,7 @@ unsafe fn pmb_epsilon_arc() -> ObjRef {
         cache: None,
     }))
 }
-unsafe fn pmb_acceptor(set: PmatchPredefined) -> ObjRef {
+fn pmb_acceptor(set: PmatchPredefined) -> ObjRef {
     Rc::new(RefCell::new(PmatchAcceptor {
         name: String::new(),
         weight: 0.0,
@@ -6111,7 +6039,7 @@ unsafe fn pmb_acceptor(set: PmatchPredefined) -> ObjRef {
         set,
     }))
 }
-unsafe fn pmb_unary(op: PmatchUnaryOp, root: ObjRef) -> ObjRef {
+fn pmb_unary(op: PmatchUnaryOp, root: ObjRef) -> ObjRef {
     Rc::new(RefCell::new(PmatchUnaryOperation {
         name: String::new(),
         weight: 0.0,
@@ -6122,7 +6050,7 @@ unsafe fn pmb_unary(op: PmatchUnaryOp, root: ObjRef) -> ObjRef {
         root,
     }))
 }
-unsafe fn pmb_binary(op: PmatchBinaryOp, left: ObjRef, right: ObjRef) -> ObjRef {
+fn pmb_binary(op: PmatchBinaryOp, left: ObjRef, right: ObjRef) -> ObjRef {
     Rc::new(RefCell::new(PmatchBinaryOperation {
         name: String::new(),
         weight: 0.0,
@@ -6134,7 +6062,7 @@ unsafe fn pmb_binary(op: PmatchBinaryOp, left: ObjRef, right: ObjRef) -> ObjRef 
         right,
     }))
 }
-unsafe fn pmb_ternary(op: PmatchTernaryOp, left: ObjRef, middle: ObjRef, right: ObjRef) -> ObjRef {
+fn pmb_ternary(op: PmatchTernaryOp, left: ObjRef, middle: ObjRef, right: ObjRef) -> ObjRef {
     Rc::new(RefCell::new(PmatchTernaryOperation {
         name: String::new(),
         weight: 0.0,
@@ -6147,7 +6075,7 @@ unsafe fn pmb_ternary(op: PmatchTernaryOp, left: ObjRef, middle: ObjRef, right: 
         right,
     }))
 }
-unsafe fn pmb_numeric(op: PmatchNumericOp, root: ObjRef, values: Vec<i32>) -> ObjRef {
+fn pmb_numeric(op: PmatchNumericOp, root: ObjRef, values: Vec<i32>) -> ObjRef {
     Rc::new(RefCell::new(PmatchNumericOperation {
         name: String::new(),
         weight: 0.0,
@@ -6159,17 +6087,17 @@ unsafe fn pmb_numeric(op: PmatchNumericOp, root: ObjRef, values: Vec<i32>) -> Ob
         values,
     }))
 }
-unsafe fn pmb_object_pair(left: ObjRef, right: ObjRef) -> PairRef {
+fn pmb_object_pair(left: ObjRef, right: ObjRef) -> PairRef {
     Rc::new(RefCell::new(PmatchObjectPair { left, right }))
 }
-unsafe fn pmb_markup_container(left_of_arrow: ObjRef, left: ObjRef, right: ObjRef) -> PairRef {
+fn pmb_markup_container(left_of_arrow: ObjRef, left: ObjRef, right: ObjRef) -> PairRef {
     Rc::new(RefCell::new(PmatchMarkupContainer {
         left,
         right,
         left_of_arrow,
     }))
 }
-unsafe fn pmb_tc(t: HfstTransducer) -> Rc<RefCell<PmatchTransducerContainer>> {
+fn pmb_tc(t: HfstTransducer) -> Rc<RefCell<PmatchTransducerContainer>> {
     Rc::new(RefCell::new(PmatchTransducerContainer {
         name: String::new(),
         weight: 0.0,
@@ -6191,7 +6119,7 @@ fn path_of(path: &str) -> String {
 }
 // STRINGLIKE: QUOTED_LITERAL -> PmatchString, CURLY_LITERAL -> PmatchString
 // (multichar), SYMBOL -> PmatchSymbol (no used_definitions / empty-check).
-unsafe fn build_stringlike(e: &nfst_pmatch::SpannedExpr) -> ObjRef {
+fn build_stringlike(e: &nfst_pmatch::SpannedExpr) -> ObjRef {
     use nfst_pmatch::PmatchExpr as PE;
     match &e.value {
         PE::QuotedLiteral(s) => pmb_string(s.clone(), false),
@@ -6201,7 +6129,7 @@ unsafe fn build_stringlike(e: &nfst_pmatch::SpannedExpr) -> ObjRef {
     }
 }
 // CONCATENATED_STRING_LIST: right-folded Concatenate of STRINGLIKEs.
-unsafe fn build_concatenated_string_list(items: &[nfst_pmatch::SpannedExpr]) -> ObjRef {
+fn build_concatenated_string_list(items: &[nfst_pmatch::SpannedExpr]) -> ObjRef {
     let mut iter = items.iter().rev();
     let last = iter.next().expect("non-empty string list");
     let mut acc = build_stringlike(last);
@@ -6212,7 +6140,7 @@ unsafe fn build_concatenated_string_list(items: &[nfst_pmatch::SpannedExpr]) -> 
 }
 // MappingSide -> object: Expr -> build, Dotted([..]) -> PmatchEpsilonArc,
 // Dotted([. E .]) -> build.
-unsafe fn side_to_obj(side: &nfst_pmatch::MappingSide) -> ObjRef {
+fn side_to_obj(side: &nfst_pmatch::MappingSide) -> ObjRef {
     use nfst_pmatch::MappingSide as MS;
     match side {
         MS::Expr(e) => build_object(e),
@@ -6221,7 +6149,7 @@ unsafe fn side_to_obj(side: &nfst_pmatch::MappingSide) -> ObjRef {
     }
 }
 // READ_FROM productions: eagerly load the named file into a container.
-unsafe fn build_read_file(kind: nfst_pmatch::ReadKind, path: &str) -> ObjRef {
+fn build_read_file(kind: nfst_pmatch::ReadKind, path: &str) -> ObjRef {
     use nfst_pmatch::ReadKind as RK;
     let filepath = path_of(path);
     match kind {
@@ -6230,18 +6158,17 @@ unsafe fn build_read_file(kind: nfst_pmatch::ReadKind, path: &str) -> ObjRef {
             // facade; mirror the structure as far as it goes.
             let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(&filepath);
             instream.close();
-            let read = Box::into_raw(Box::new(HfstTransducer::new_type(format())));
-            as_obj(pmb_tc(*Box::from_raw(read)))
+            as_obj(pmb_tc(HfstTransducer::new_type(format())))
         }
-        RK::Text => as_obj(pmb_tc(*Box::from_raw(read_text(
+        RK::Text => as_obj(pmb_tc(read_text(
             filepath,
             ImplementationType::TROPICAL_OPENFST_TYPE,
             false,
-        )))),
-        RK::Spaced => as_obj(pmb_tc(*Box::from_raw(read_spaced_text(
+        ))),
+        RK::Spaced => as_obj(pmb_tc(read_spaced_text(
             filepath,
             ImplementationType::TROPICAL_OPENFST_TYPE,
-        )))),
+        ))),
         RK::Prolog => match std::fs::File::open(&filepath) {
             Err(_) => {
                 eprintln!("File cannot be opened.");
@@ -6271,16 +6198,15 @@ unsafe fn build_read_file(kind: nfst_pmatch::ReadKind, path: &str) -> ObjRef {
                 eprintln!("Failed to read regex from {}.", filepath);
             }
             let mut xre_compiler = crate::xre::XreCompiler::new(format());
-            // pmb_tc still owns via raw pointer (idiom1.pmatch); bridge the Option.
             let compiled = xre_compiler
                 .compile(&regex)
-                .map_or(std::ptr::null_mut(), |t| Box::into_raw(Box::new(t)));
-            as_obj(pmb_tc(*Box::from_raw(compiled)))
+                .unwrap_or_else(|| HfstTransducer::new_type(format()));
+            as_obj(pmb_tc(compiled))
         }
     }
 }
 /// Build a 'PmatchObject*' AST node from an 'nfst-pmatch' expression node.
-pub unsafe fn build_object(e: &nfst_pmatch::SpannedExpr) -> ObjRef {
+pub fn build_object(e: &nfst_pmatch::SpannedExpr) -> ObjRef {
     use nfst_pmatch::BinaryOp as B;
     use nfst_pmatch::PmatchExpr as PE;
     match &e.value {
@@ -6728,11 +6654,11 @@ pub unsafe fn build_object(e: &nfst_pmatch::SpannedExpr) -> ObjRef {
         PE::ReadFile { kind, path } => build_read_file(*kind, path),
         PE::ReadLexc(path) => {
             let filepath = path_of(path);
-            as_obj(pmb_tc(*Box::from_raw(HfstTransducer::read_lexc_ptr(
+            as_obj(pmb_tc(HfstTransducer::read_lexc(
                 &filepath,
                 format(),
                 verbose(),
-            ))))
+            )))
         }
         PE::ReadVec(path) => {
             let filepath = path_of(path);
@@ -6745,7 +6671,7 @@ pub unsafe fn build_object(e: &nfst_pmatch::SpannedExpr) -> ObjRef {
 // AddDelimiters if need_delimiters; reset need_delimiters. } The trailing
 // weight is folded into a 'Weighted' node by nfst, so only the delimiter wrap
 // remains here.
-unsafe fn build_expression1(body: &nfst_pmatch::SpannedExpr) -> ObjRef {
+fn build_expression1(body: &nfst_pmatch::SpannedExpr) -> ObjRef {
     let obj = build_object(body);
     let result = if need_delimiters() {
         pmb_unary(PmatchUnaryOp::AddDelimiters, obj)
@@ -6756,7 +6682,7 @@ unsafe fn build_expression1(body: &nfst_pmatch::SpannedExpr) -> ObjRef {
     result
 }
 // PMATCH DEFINITION verbose timer report.
-unsafe fn report_defined(name: &str) {
+fn report_defined(name: &str) {
     if verbose() {
         let duration = (clock() - timer()) as f64 / CLOCKS_PER_SEC as f64;
         set_timer(clock());
@@ -6764,7 +6690,7 @@ unsafe fn report_defined(name: &str) {
     }
 }
 // PMATCH DEFINITION { shadow check + insert }.
-unsafe fn insert_definition(name: String, obj: ObjRef) {
+fn insert_definition(name: String, obj: ObjRef) {
     if definitions_contains(&name) {
         warn(format!(
             "definition of {} on line {} shadows earlier definition\n",
@@ -6776,7 +6702,7 @@ unsafe fn insert_definition(name: String, obj: ObjRef) {
 /// Apply one top-level 'nfst-pmatch' statement (definition / def-ins /
 /// regex-top / set-variable / list-definition / read-vec), populating the
 /// 'hfst::pmatch' globals.
-pub unsafe fn build_statement(s: &nfst_pmatch::Spanned<nfst_pmatch::PmatchStatement>) {
+pub fn build_statement(s: &nfst_pmatch::Spanned<nfst_pmatch::PmatchStatement>) {
     use nfst_pmatch::PmatchStatement as PS;
     use nfst_pmatch::VariableValue;
     match &s.value {
@@ -6891,8 +6817,7 @@ impl PmatchCompiler {
         if definitions_contains(name) {
             let obj = definitions_get(name).unwrap();
             let evaluated = obj.borrow_mut().evaluate();
-            self.definitions_
-                .insert(name.to_string(), Box::into_raw(Box::new(evaluated)));
+            self.definitions_.insert(name.to_string(), evaluated);
         }
     }
 
@@ -6900,8 +6825,8 @@ impl PmatchCompiler {
     // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.compile-fn]
     // Mirrors 'hfst::pmatch::compile', with the bison 'pmatchparse()' step
     // replaced by a walk over the 'nfst-pmatch' AST (the sanctioned deviation).
-    pub fn compile(&mut self, src: &str) -> HashMap<String, *mut HfstTransducer> {
-        unsafe {
+    pub fn compile(&mut self, src: &str) -> HashMap<String, HfstTransducer> {
+        {
             init_globals();
             let expanded_script = expand_includes(src);
             set_verbose(self.verbose);
@@ -6929,7 +6854,7 @@ impl PmatchCompiler {
                 }
             }
 
-            let mut retval: HashMap<String, *mut HfstTransducer> = HashMap::new();
+            let mut retval: HashMap<String, HfstTransducer> = HashMap::new();
 
             for it in unsatisfied_insertions_snapshot().into_iter() {
                 if !definitions_contains(it.as_str()) {
@@ -6970,16 +6895,16 @@ impl PmatchCompiler {
                         } else {
                             definitions_get(key).unwrap()
                         };
-                        let tmp = Box::into_raw(Box::new(obj_ptr.borrow_mut().evaluate()));
-                        (*tmp).minimize();
-                        dummy.harmonize(&mut *tmp, false);
+                        let mut tmp: HfstTransducer = obj_ptr.borrow_mut().evaluate();
+                        tmp.minimize();
+                        dummy.harmonize(&mut tmp, false);
                         if uncomposed_contains(key) {
                             if uncount == 0 {
-                                (*tmp).set_name(&format!("UNCOMPOSE LEFT {}", key));
+                                tmp.set_name(&format!("UNCOMPOSE LEFT {}", key));
                                 retval.insert(format!("UNCOMPOSE LEFT {}", key), tmp);
                                 uncount += 1;
                             } else if uncount == 1 {
-                                (*tmp).set_name(&format!("UNCOMPOSE RIGHT {}", key));
+                                tmp.set_name(&format!("UNCOMPOSE RIGHT {}", key));
                                 retval.insert(format!("UNCOMPOSE RIGHT {}", key), tmp);
                                 uncount += 1;
                             } else {
@@ -6987,21 +6912,18 @@ impl PmatchCompiler {
                                 uncount += 1;
                             }
                         } else {
-                            (*tmp).set_name(key);
+                            tmp.set_name(key);
                             retval.insert(key.clone(), tmp);
                         }
                     }
                 }
-                for (_k, v) in retval.iter_mut() {
-                    (**v).harmonize(&mut dummy, false);
-                    (**v).minimize();
+                for v in retval.values_mut() {
+                    v.harmonize(&mut dummy, false);
+                    v.minimize();
                 }
             } else if definitions_is_empty() {
                 eprintln!("warning: pmatch compilation had an empty result");
-                retval.insert(
-                    "TOP".to_string(),
-                    Box::into_raw(Box::new(HfstTransducer::new_type(format()))),
-                );
+                retval.insert("TOP".to_string(), HfstTransducer::new_type(format()));
             } else if !definitions_contains("TOP") {
                 let (first_key, first_obj) = {
                     let snap = definitions_snapshot();
@@ -7013,15 +6935,15 @@ impl PmatchCompiler {
                     "Pmatch compilation warning: regex or TOP was undefined, using {} as root",
                     first_key
                 );
-                let tmp = Box::into_raw(Box::new(first_obj.borrow_mut().evaluate()));
-                (*tmp).minimize();
-                (*tmp).set_name("TOP");
+                let mut tmp: HfstTransducer = first_obj.borrow_mut().evaluate();
+                tmp.minimize();
+                tmp.set_name("TOP");
                 retval.insert("TOP".to_string(), tmp);
             } else {
                 let top_obj = definitions_get("TOP").unwrap();
-                let tmp = Box::into_raw(Box::new(top_obj.borrow_mut().evaluate()));
-                (*tmp).minimize();
-                (*tmp).set_name("TOP");
+                let mut tmp: HfstTransducer = top_obj.borrow_mut().evaluate();
+                tmp.minimize();
+                tmp.set_name("TOP");
                 retval.insert("TOP".to_string(), tmp);
             }
 
@@ -7112,11 +7034,10 @@ impl PmatchCompiler {
                     HfstTransducer::new_from_transducer(&not_whitespace);
                 begins_and_ends_with_non_whitespace.concatenate(&anything, true);
                 begins_and_ends_with_non_whitespace.concatenate(&not_whitespace, true);
-                let top_ptr = *retval.get("TOP").unwrap();
-                begins_and_ends_with_non_whitespace.compose(&*top_ptr, true);
+                begins_and_ends_with_non_whitespace.compose(retval.get("TOP").unwrap(), true);
                 let mut is_single_non_whitespace =
                     HfstTransducer::new_from_transducer(&not_whitespace);
-                is_single_non_whitespace.compose(&*top_ptr, true);
+                is_single_non_whitespace.compose(retval.get("TOP").unwrap(), true);
                 let empty = HfstTransducer::new_type(format());
                 if !begins_and_ends_with_non_whitespace.compare(&empty, true)
                     || !is_single_non_whitespace.compare(&empty, true)
@@ -7154,12 +7075,10 @@ impl PmatchCompiler {
                         ),
                         true,
                     );
-                    top_with_boundaries.concatenate(&*top_ptr, true);
+                    top_with_boundaries.concatenate(retval.get("TOP").unwrap(), true);
                     top_with_boundaries.concatenate(&rc, true);
-                    let _ = Box::from_raw(top_ptr);
-                    let new_top =
-                        Box::into_raw(Box::new(add_pmatch_delimiters(&top_with_boundaries)));
-                    (*new_top).minimize();
+                    let mut new_top = add_pmatch_delimiters(&top_with_boundaries);
+                    new_top.minimize();
                     retval.insert("TOP".to_string(), new_top);
                     if verbose() {
                         let duration = (clock() - timer()) as f64 / CLOCKS_PER_SEC as f64;
@@ -7170,9 +7089,9 @@ impl PmatchCompiler {
             }
 
             let vars: Vec<(String, String)> = variables_snapshot();
-            let top_ptr = *retval.get("TOP").unwrap();
+            let top = retval.get_mut("TOP").unwrap();
             for (k, v) in &vars {
-                (*top_ptr).set_property(k, v);
+                top.set_property(k, v);
             }
             set_data(String::new());
             set_len(0);

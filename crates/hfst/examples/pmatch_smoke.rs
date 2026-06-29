@@ -14,10 +14,8 @@ fn main() {
     let defs = c.compile(SRC);
     assert!(!defs.is_empty(), "pmatch compile produced no transducers");
 
-    let top = *defs.get("TOP").expect("no TOP in pmatch result");
-    assert!(!top.is_null(), "TOP transducer is null");
-    let t = unsafe { &*top };
-    let states = t.number_of_states();
+    let top = defs.get("TOP").expect("no TOP in pmatch result");
+    let states = top.number_of_states();
     assert!(states >= 1, "expected a non-empty TOP transducer");
 
     println!("pmatch OK: Define TOP [cat|dog] -> {states} states");

@@ -1193,4 +1193,59 @@ children (
             }
         )
     }
+
+    {
+        id idiom4
+        title "Stage 4 — eliminate all remaining `unsafe`; flag the irreducible. hfst-cli static mut → thread_local Cell/RefCell (single-threaded tools); hfst lib: unmark vestigial `unsafe fn`, convert convertible raw-ptr islands, flag genuinely-irreducible ones with #[allow]+SAFETY. hfst-c stays out of scope (FFI). Deps idiom3."
+        children (
+            {
+                id idiom4.lib
+                title "hfst lib: unmark the vestigial `unsafe fn` (pmatch pmb_*/build_*/compile/build_statement etc. — no unsafe ops in body) + their call-site `unsafe {}`; convert convertible raw-ptr islands (pmatch `*mut HfstTransducer` definitions_/compile-return → Box/owned); flag genuinely-irreducible raw-ptr islands (convert.rs FST machinery, input_stream backend lifetime, OL-lookup, rustfst FFI) with #[allow(...)] + a SAFETY comment."
+                log (
+                    {
+                        at 2026-06-29T23:04:56.628545Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-29T23:46:49.341466Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id idiom4.gate
+                title "Enforce + verify: hfst-cli gated `#![forbid(unsafe_code)]` (every residual unsafe is a flagged #[allow] island); hfst lib `#![deny(unsafe_op_in_unsafe_fn)]` with only the flagged SAFETY islands remaining; workspace builds + 151 hfst tests pass; surface the final flagged-island inventory."
+                deps (idiom4.lib)
+                log (
+                    {
+                        at 2026-06-29T23:46:30.830908Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Done (lib-scoped; the CLI #![forbid(unsafe_code)] half was vetoed — CLI is throwaway). hfst lib now carries #![deny(unsafe_op_in_unsafe_fn)] crate-wide with ZERO allow overrides (the 3 vestigial module/impl allows were removed after deleting the 2 dead unsafe fns next_utf8_to_codepoint + PmatchParallelRulesContainer::new). Residual: 1 real unsafe fn (convert.rs constructing_transducer) + 49 unsafe blocks, all within 6 greppable flagged islands: [convert-engine] (FST-conversion self-ref graph builder), [fdstate-self-ref] (FdState borrows owner's FdTable), [ol-lookup-paths] (two-level-paths aliased across recursive &mut OL lookup), [substitute-alias] (mutate-then-read graph ptr), OL-lookup &mut self + input_stream backend lifetime (IDIOM-STAGE-2). The convertible C-isms (pmatch definitions_/compile → owned HashMap<String,HfstTransducer>, vestigial unsafe fns) are gone. 151 hfst tests pass; workspace builds."
+                    }
+
+                    {
+                        at 2026-06-29T23:46:51.392884Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
+            }
+        )
+        log (
+            {
+                at 2026-06-29T23:04:50.853915Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Refocused on the LIB only. CLI de-unsafe (static mut → thread_local) was VETOED by operator: the CLI/tool code is throwaway once the frontends are redone, so de-unsafing it is wasted energy. Retired idiom4.cli-globals + idiom4.cli-tools; the CLI foundation thread_local experiment was reverted (workspace back to committed idiom3, builds green). Scope (operator-approved): convert the clean raw-pointer C-isms now [pmatch definitions_ BTreeMap<String,*mut HfstTransducer> + compile/read_text returns → owned Box; *const FdTable/*const HfstBasicTransducer → &; *mut HfstTwoLevelPaths output params → &mut/return; *mut Box round-trips → owned; unmark vestigial unsafe fn pmb_*/build_*]; FLAG the genuinely-hard core [convert.rs FST-conversion graph builder + CONSTRUCTING_TRANSDUCER self-ref; OL-lookup as_hfst_ol_ptr &mut; input_stream backend lifetime] with // SAFETY: notes. Enforce with #![deny(unsafe_op_in_unsafe_fn)] on the hfst crate. Oracle: 151 hfst tests."
+            }
+        )
+    }
 )

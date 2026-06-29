@@ -2088,10 +2088,12 @@ pub struct Transducer {
 
     // for lookup
     current_weight: Weight,
-    // Raw, aliasing pointer exactly as the C++ 'HfstTwoLevelPaths *': in
-    // 'lookup_fd' it borrows a locally-owned set, in 'lookup_fd_pairs' it
-    // borrows the result set being returned. Valid only across the
-    // 'get_analyses' call it brackets.
+    // SAFETY-ISLAND [ol-lookup-paths]: raw aliasing pointer exactly as the C++
+    // 'HfstTwoLevelPaths *' — it aliases a function-local result set across the
+    // recursive '&mut self' 'get_analyses'/'note_analysis' OL traversal (set in
+    // 'lookup_fd'/'lookup_fd_pairs', read at the deref sites below). A safe
+    // '&mut HfstTwoLevelPaths' would have to thread through the entire recursive
+    // lookup hot path; valid only across the 'get_analyses' call it brackets.
     lookup_paths: *mut HfstTwoLevelPaths,
     encoder: Option<Box<Encoder>>,
     input_tape: Tape,

@@ -408,7 +408,7 @@ impl HfstBasicTransducer {
 
     /** @brief The assignment operator ('operator=' + 'assign'). */
     pub fn assign(&mut self, graph: &HfstBasicTransducer) -> &mut Self {
-        if self as *const HfstBasicTransducer == graph as *const HfstBasicTransducer {
+        if std::ptr::eq(self, graph) {
             return self;
         }
         self.state_vector = graph.state_vector.clone();
@@ -2980,8 +2980,11 @@ impl HfstBasicTransducer {
 
         let offset = s;
 
-        // Copy the graph. The raw-pointer deref mirrors the C++ (the graphs are
-        // distinct; aliasing self would be UB there too).
+        // SAFETY-ISLAND [substitute-alias]: the substitution map's pointed-to
+        // graph is mutated (`get_mut` + `harmonize`) after the pointer is stored
+        // and before it is read here, so a shared `&'a` held across the `&mut` of
+        // the same map fails the borrow check. The graphs are distinct from `self`
+        // (aliasing self would be UB in the C++ too); read-only deref.
         let graph_ref = unsafe { &*sub.substituting_graph };
         let mut source_state: HfstState = 0;
         for it in graph_ref.state_vector.iter() {

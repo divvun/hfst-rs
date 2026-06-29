@@ -14,6 +14,10 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
+// Wave-4 idiom: every unsafe op must sit in an explicit, justified `unsafe {}`
+// block — even inside an `unsafe fn`. The only remaining unsafe is the flagged
+// raw-pointer islands (search `SAFETY-ISLAND`).
+#![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod alphabet;
 pub mod compose_intersect_fst;
