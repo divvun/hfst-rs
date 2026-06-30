@@ -120,6 +120,9 @@ pub type NetRef = Rc<RefCell<HfstTransducer>>;
 pub struct XfstCompiler {
     /* Whether readline library is used when reading user input. */
     pub use_readline_: bool,
+    /* Whether the lexc parser must be reset before reading lexc (set true after
+    the first lexc read; was a file-static bool). */
+    has_lexc_been_read_: bool,
     /* Whether interactive text is read from standard input. */
     pub read_interactive_text_from_stdin_: bool,
     /* Windows-specific: whether output, error messages and warnings are printed to the console. */
@@ -171,6 +174,7 @@ impl XfstCompiler {
     pub fn new_with_impl(impl_: ImplementationType) -> Self {
         let mut c = XfstCompiler {
             use_readline_: false,
+            has_lexc_been_read_: false,
             read_interactive_text_from_stdin_: false,
             output_to_console_: false,
             xre_: XreCompiler::new(impl_),
@@ -3285,10 +3289,6 @@ impl Default for XfstCompiler {
     }
 }
 
-// whether we need to reset the lexc parser before reading lexc
-static HAS_LEXC_BEEN_READ_: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
 const WEIGHT_PRECISION: &str = "5";
 const LOOKUP_CYCLE_CUTOFF: &str = "5";
 const PRINT_WORDS_CYCLE_CUTOFF: &str = "5";
@@ -5618,10 +5618,10 @@ impl XfstCompiler {
             }
         };
 
-        if HAS_LEXC_BEEN_READ_.load(std::sync::atomic::Ordering::Relaxed) {
+        if self.has_lexc_been_read_ {
             self.lexc_.reset();
         } else {
-            HAS_LEXC_BEEN_READ_.store(true, std::sync::atomic::Ordering::Relaxed);
+            self.has_lexc_been_read_ = true;
         }
 
         let Some(mut t) = self.lexc_.compile(&indata) else {

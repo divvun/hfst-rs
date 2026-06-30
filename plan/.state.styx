@@ -53,4 +53,5 @@ assertions (
     {id idiom5.diacritic-registry, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:53:13.737829Z}
     {id idiom5.symbol-coding, kind @complete, author "brendan@necessary.nu", at 2026-06-30T03:51:41.74194Z}
     {id idiom6.foundation, kind @complete, author "brendan@necessary.nu", at 2026-06-30T01:54:30.890999Z}
+    {id idiom5.xfst-lexc-flag, kind @complete, author "brendan@necessary.nu", at 2026-06-30T11:34:06.146425Z}
 )

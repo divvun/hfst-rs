@@ -1373,6 +1373,27 @@ children (
                     }
                 )
             }
+
+            {
+                id idiom5.xfst-lexc-flag
+                title "Move the HAS_LEXC_BEEN_READ_ file-static AtomicBool onto XfstCompiler as a private has_lexc_been_read_ field (the 2 sites are in an &mut self method). One config-ish global removed; bounded."
+                priority 3
+                log (
+                    {
+                        at 2026-06-30T11:33:54.245249Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-30T11:34:06.146425Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
         )
         log (
             {
@@ -1380,6 +1401,14 @@ children (
                 author "brendan@necessary.nu"
                 kind @decision
                 text "Operator directive (2026-06-30): remove ALL global mutable state in the hfst library and eliminate the UB; no raw pointers unless absolutely necessary AND proven UB-free. Operator chose \"Everything — thread context through\" over keeping the safe data-bearing singletons. This SUPERSEDES the [dec:hfst:idiomatize-staging] deferral of symbol-coding de-singletonization to \"Stage 3+\". Landscape (measured): static mut = 0 already. Global mutable state populations: (A) data-bearing singletons — tropical symbol-coding NUMBER2SYMBOL/SYMBOL2NUMBER/MAX_NUMBER (~80 call sites across hfst_basic_transducer, both weight transducers, all convert_*, compose_intersect_*, hfst_basic_transition — the deepest change in the port), convert-format coding (NUMBER_TO_STRING/STRING_TO_NUMBER), diacritic registry (DIACRITIC_* — a deterministic memo-cache), exception slot (HFST_EXCEPTION — write-on-throw, ~0 real readers); (B) read-mostly config atomics in hfst_transducer.rs (CAN_MINIMIZE/ENCODE_WEIGHTS/MINIMIZATION_ALGORITHM/...); (C) per-compile scratch thread_locals (pmatch_compiler/xre/lexc_utils/twolc). Raw-pointer/UB landscape: 54 raw-ptr sites, genuine UB at WARNING_STREAM (leaked *mut Box<dyn Write> deref'd later) and HfstInputStream lifetime hole (open_hfst_input_stream returns *mut, erases the File borrow). Wave plan: warning-stream(UB) -> rawptr(convertible islands) -> convert-arena(convert.rs FST builder) -> input-stream(owned-File lifetime) -> scratch(thread_local->instance) -> small-globals(exception/diacritic/config) -> symbol-coding(KEYSTONE: thread coding context; has an internal fork — full &mut Context API param vs Rc<RefCell<Coder>> shared handle — resolve at that wave) -> gate. Each wave keeps 151 hfst tests green and commits separately."
+            }
+
+            {
+                at 2026-06-30T11:34:19.731816Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Remaining-globals plan (after the symbol-coding keystone landed): operator wants ALL globals removed (config flags NOT lower-priority). Measured remaining global mutable state in the hfst lib + the realistic cost of each:\n1. CONFIG FLAGS (hfst_transducer.rs: CAN_MINIMIZE, UNKNOWN_SYMBOLS_IN_USE, MINIMIZE_EVEN_IF_ALREADY_MINIMAL, FLAG_IS_EPSILON_IN_COMPOSITION, ENCODE_WEIGHTS, MINIMIZATION_ALGORITHM, XEROX_COMPOSITION, HARMONIZE_SMALLER) + the 2 hopcroft atomics. ~30 reads + 41 writes; genuinely runtime-toggled (pmatch flips xerox_composition around compose, XFST flips flag-is-epsilon/encode-weights). They are read DEEP inside operations (compose/minimize/harmonize) whose callers span lib+CLI+tests, so de-globalizing = a public-op-API ripple. DESIGN FORK (operator's call): (a) thread an HfstContext/config through the op API (faithful, divvunspell SpellerConfig-style, but enormous ripple); (b) config-on-transducer field read via self.config (tractable, ops already &self — but changes 'set globally' propagation; CLI/pmatch would set per-transducer). Recommend (b) if behavior survives the 152 tests, else (a).\n2. PER-COMPILE SCRATCH (keystone-scale each): pmatch_compiler ~40 thread_locals reached via ~121 free-fn accessor sites across many evaluate(&mut self) methods on different AST types sharing one global eval context -> thread a &mut PmatchCompiler/eval-context through the recursive evaluation; xre.rs (~5), lexc_utils.rs (~4), twolc.rs OST_CONFIG (~8) -> their compiler instances.\n3. OPERATION-LOCAL SCRATCH: tropical RNG_STATE (random-path), hfst_transducer SHUFFLE_FAILED/SHUFFLE_CODING_CASE, log/tropical LOG_SECONDS_IN_HARMONIZE (profiling accumulator), warning_stream (owned per-thread sink) -> thread through the owning operation.\n4. FREE-FN WARN-ONCE: pmatch_tokenize IS_CG_TAG_MODIFIER_WARNED (is_cg_tag free fn) -> thread a warn-flag.\n5. convert.rs CONSTRUCTING_TRANSDUCER (*mut, thread_local) -> the convert-arena raw-ptr redesign (separate idiom5.convert-arena).\nOrder: bounded flags first (HAS_LEXC done), then config (after the design fork is chosen), then the scratch clusters (delegate the big mechanical ones to agents iterating to green, like the K3 switch), then convert-arena. 152 hfst tests gate each."
+                after_done true
             }
         )
     }
