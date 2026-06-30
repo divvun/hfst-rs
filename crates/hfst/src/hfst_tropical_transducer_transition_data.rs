@@ -143,6 +143,21 @@ impl SymbolCoder {
         }
         harmv
     }
+
+    /// Build a translator mapping `other`'s symbol numbers into *this* coder's
+    /// number space, interning any of `other`'s symbols this coder lacks. The
+    /// result is indexed by `other`'s number: `translator[n]` is the number in
+    /// `self` of the symbol that is number `n` in `other`. This is the
+    /// harmonization primitive the keystone's K3 uses to reconcile two graphs'
+    /// numberings before a binary op (divvunspell's
+    /// `TransducerAlphabet::create_translator_from`).
+    pub fn create_translator_from(&mut self, other: &SymbolCoder) -> Vec<u32> {
+        let mut translator: Vec<u32> = Vec::with_capacity(other.number2symbol.len());
+        for symbol in &other.number2symbol {
+            translator.push(self.get_number(symbol));
+        }
+        translator
+    }
 }
 
 impl Default for SymbolCoder {
@@ -423,5 +438,34 @@ impl Symbol2NumberMapInitializer {
         map.insert(String::from("@_UNKNOWN_SYMBOL_@"), 1);
         map.insert(String::from("@_IDENTITY_SYMBOL_@"), 2);
         Symbol2NumberMapInitializer
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_translator_from_maps_other_numbers_into_self() {
+        // Two independent coders where the same string gets different numbers.
+        let mut other = SymbolCoder::new();
+        let a_in_other = other.get_number("a"); // 3
+        let b_in_other = other.get_number("b"); // 4
+
+        let mut me = SymbolCoder::new();
+        let b_in_self = me.get_number("b"); // 3
+        me.get_number("c"); // 4
+
+        let translator = me.create_translator_from(&other);
+
+        // The three special symbols map straight through (0/1/2).
+        assert_eq!(&translator[0..3], &[0, 1, 2]);
+        // 'b' already existed in self -> same number, no new interning.
+        assert_eq!(translator[b_in_other as usize], b_in_self);
+        // 'a' was absent from self -> interned at the next free number (5).
+        assert_eq!(translator[a_in_other as usize], 5);
+        assert_eq!(me.get_number("a"), 5);
+        // self's existing 'c' is untouched.
+        assert_eq!(me.get_number("c"), 4);
     }
 }
