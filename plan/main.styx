@@ -1296,6 +1296,27 @@ children (
                     }
                 )
             }
+
+            {
+                id idiom5.exception-slot
+                title "Delete the HFST_EXCEPTION global. The static Mutex<String> was written on every HFST_THROW/HFST_THROW_MESSAGE but hfst_get_exception has zero functional callers (incl hfst-c). Remove the static, both accessor fns, and the dead hfst_set_exception call from both throw macros (the typed panic_any payload already carries the name). Behavior-preserving; removes a shared-mutable global outright."
+                priority 3
+                log (
+                    {
+                        at 2026-06-30T00:38:24.651573Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-30T00:44:11.600653Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
         )
         log (
             {

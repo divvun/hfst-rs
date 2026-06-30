@@ -77,8 +77,8 @@ mod output_impl {
         /// stream to standard output. (No '[spec:]' id in the C++ for this ctor.)
         pub fn new(type_: ImplementationType, hfst_format: bool) -> Self {
             if !HfstTransducer::is_lean_implementation_type_available(type_) {
-                // 'throw ImplementationTypeNotAvailableException(...)' — direct throw, so
-                // (unlike HFST_THROW) it does NOT touch the hfst_set_exception global.
+                // 'throw ImplementationTypeNotAvailableException(...)' — a direct
+                // panic_any rather than HFST_THROW (which can't carry the 'type_').
                 std::panic::panic_any(ImplementationTypeNotAvailableException::new(
                     "ImplementationTypeNotAvailableException".to_string(),
                     file!().to_string(),
