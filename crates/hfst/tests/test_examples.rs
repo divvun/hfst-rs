@@ -34,7 +34,6 @@
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::hfst_data_types::ImplementationType::{self, LOG_OPENFST_TYPE, TROPICAL_OPENFST_TYPE};
-use hfst::hfst_exception_defs::NotValidAttFormatException;
 use hfst::hfst_transducer::HfstTransducer;
 
 // The tropical/log transition-data symbol coding lives in process-global
@@ -201,7 +200,8 @@ fn run_not_valid_att_format(type_: ImplementationType) {
     });
     assert!(
         payload
-            .downcast_ref::<NotValidAttFormatException>()
+            .downcast_ref::<hfst::error::Error>()
+            .filter(|__e| matches!(__e.kind, hfst::error::ErrorKind::NotValidAttFormat))
             .is_some(),
         "expected NotValidAttFormatException"
     );

@@ -69,7 +69,6 @@ pub struct HfstOlTransducer;
 mod ol_construction_io {
     #![allow(unused_imports)]
     use super::*;
-    use crate::hfst_exception_defs::StreamIsClosedException;
     use crate::hfst_flag_diacritics::FdTable;
     use crate::hfst_symbol_defs::StringSet;
     use crate::transducer::{HeaderFlag, IStream, SymbolNumber, SymbolTable, Transducer};
@@ -312,7 +311,7 @@ mod ol_construction_io {
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.read-transducer-fn]
         pub fn read_transducer(&mut self, has_header: bool) -> Transducer {
             if self.is_eof() {
-                crate::HFST_THROW!(StreamIsClosedException);
+                crate::HFST_THROW!(StreamIsClosed);
             }
             // C++ wraps the body in 'try { ... } catch (const HfstException e) { throw e; }',
             // i.e. it merely rethrows; Rust panics propagate, so no wrapper is needed.

@@ -4,7 +4,6 @@
 //! it reads two input streams (firstfile + secondfile) and composes them.
 
 use hfst::hfst_data_types::ImplementationType;
-use hfst::hfst_exception_defs::TransducerTypeMismatchException;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::{EngineConfig, HfstTransducer};
@@ -278,7 +277,10 @@ unsafe fn compose_streams(
                     }));
                     if res.is_err() {
                         let e = res.err().unwrap();
-                        if e.downcast_ref::<TransducerTypeMismatchException>()
+                        if e.downcast_ref::<hfst::error::Error>()
+                            .filter(|__e| {
+                                matches!(__e.kind, hfst::error::ErrorKind::TransducerTypeMismatch)
+                            })
                             .is_some()
                         {
                             if globals::ALLOW_TRANSDUCER_CONVERSION {
@@ -325,7 +327,10 @@ unsafe fn compose_streams(
             }));
             if res.is_err() {
                 let e = res.err().unwrap();
-                if e.downcast_ref::<TransducerTypeMismatchException>()
+                if e.downcast_ref::<hfst::error::Error>()
+                    .filter(|__e| {
+                        matches!(__e.kind, hfst::error::ErrorKind::TransducerTypeMismatch)
+                    })
                     .is_some()
                 {
                     if globals::ALLOW_TRANSDUCER_CONVERSION {

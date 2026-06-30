@@ -190,7 +190,10 @@ unsafe fn shuffle_streams(
             };
             if let Some(err) = shuffle_err {
                 if err
-                    .downcast_ref::<hfst::hfst_exception_defs::TransducersAreNotAutomataException>()
+                    .downcast_ref::<hfst::error::Error>()
+                    .filter(|__e| {
+                        matches!(__e.kind, hfst::error::ErrorKind::TransducersAreNotAutomata)
+                    })
                     .is_some()
                 {
                     // outer catch (TransducersAreNotAutomataException)
@@ -203,7 +206,10 @@ unsafe fn shuffle_streams(
                         ),
                     );
                 } else if err
-                    .downcast_ref::<hfst::hfst_exception_defs::TransducerTypeMismatchException>()
+                    .downcast_ref::<hfst::error::Error>()
+                    .filter(|__e| {
+                        matches!(__e.kind, hfst::error::ErrorKind::TransducerTypeMismatch)
+                    })
                     .is_some()
                 {
                     // inner catch (TransducerTypeMismatchException)

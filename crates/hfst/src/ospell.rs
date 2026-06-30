@@ -323,20 +323,10 @@ impl Default for InputString {
     }
 }
 
+// The ospell `AlphabetTranslationException` (which carried the first
+// untranslatable symbol) is now `crate::error::ErrorKind::AlphabetTranslation`,
+// with the symbol carried in the `Error` message.
 // [spec:hfst:def:transducer.hfst-ol.alphabet-translation-exception]
-// "what" should hold the first untranslatable symbol
-#[derive(Debug)]
-pub struct AlphabetTranslationException {
-    pub what: String,
-}
-
-impl AlphabetTranslationException {
-    // [spec:hfst:def:transducer.hfst-ol.alphabet-translation-exception.alphabet-translation-exception-fn]
-    // [spec:hfst:sem:transducer.hfst-ol.alphabet-translation-exception.alphabet-translation-exception-fn]
-    pub fn new(what: String) -> Self {
-        AlphabetTranslationException { what }
-    }
-}
 
 /// A spellchecker, constructed from two optimized-lookup transducer instances.
 /// An alphabet translator is built at construction time.
@@ -397,7 +387,7 @@ impl<'a> Speller<'a> {
             if !to_symbols.contains_key(&from_keys[i]) {
                 let name = from_keys[i].clone();
                 if name != "" {
-                    std::panic::panic_any(AlphabetTranslationException::new(from_keys[i].clone()))
+                    crate::err!(AlphabetTranslation, from_keys[i].clone()).throw()
                 }
             }
             // translator at i points to lexicon's symbol for mutator's string

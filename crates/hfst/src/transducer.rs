@@ -23,7 +23,6 @@ use crate::hfst_data_types::size_t_to_uint;
 use crate::hfst_data_types::{
     HfstOneLevelPath, HfstOneLevelPaths, HfstTwoLevelPath, HfstTwoLevelPaths, StringVector,
 };
-use crate::hfst_exception_defs::TransducerHasWrongTypeException;
 use crate::hfst_flag_diacritics::{FdOperation, FdState, FdTable};
 use crate::hfst_symbol_defs::{is_default, is_identity, is_unknown};
 
@@ -415,7 +414,7 @@ impl TransducerHeader {
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.header-error-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-header.header-error-fn]
     fn header_error() -> ! {
-        crate::HFST_THROW!(TransducerHasWrongTypeException)
+        crate::HFST_THROW!(TransducerHasWrongType)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.read-bool-property-fn]
@@ -501,7 +500,7 @@ impl TransducerHeader {
             has_unweighted_input_epsilon_cycles: Self::read_bool_property(is),
         };
         if !is.good() {
-            crate::HFST_THROW!(TransducerHasWrongTypeException);
+            crate::HFST_THROW!(TransducerHasWrongType);
         }
         header
     }
@@ -702,7 +701,7 @@ impl TransducerAlphabet {
                 alpha.identity_symbol = i;
             }
             if !is.good() {
-                crate::HFST_THROW!(TransducerHasWrongTypeException);
+                crate::HFST_THROW!(TransducerHasWrongType);
             }
             alpha.symbol_table.push(str);
             i += 1;
@@ -2368,7 +2367,7 @@ impl Transducer {
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-windex-table-fn]
     pub fn copy_windex_table(&self) -> TransducerTable<TransitionWIndex> {
         if !self.hdr().probe_flag(HeaderFlag::Weighted) {
-            crate::HFST_THROW!(TransducerHasWrongTypeException);
+            crate::HFST_THROW!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
         for i in 0..self.hdr().index_table_size() {
@@ -2383,7 +2382,7 @@ impl Transducer {
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-transitionw-table-fn]
     pub fn copy_transitionw_table(&self) -> TransducerTable<TransitionW> {
         if !self.hdr().probe_flag(HeaderFlag::Weighted) {
-            crate::HFST_THROW!(TransducerHasWrongTypeException);
+            crate::HFST_THROW!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
         for i in 0..self.hdr().target_table_size() {
@@ -2400,7 +2399,7 @@ impl Transducer {
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-index-table-fn]
     pub fn copy_index_table(&self) -> TransducerTable<TransitionIndex> {
         if self.hdr().probe_flag(HeaderFlag::Weighted) {
-            crate::HFST_THROW!(TransducerHasWrongTypeException);
+            crate::HFST_THROW!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
         for i in 0..self.hdr().index_table_size() {
@@ -2417,7 +2416,7 @@ impl Transducer {
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-transition-table-fn]
     pub fn copy_transition_table(&self) -> TransducerTable<Transition> {
         if self.hdr().probe_flag(HeaderFlag::Weighted) {
-            crate::HFST_THROW!(TransducerHasWrongTypeException);
+            crate::HFST_THROW!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
         for i in 0..self.hdr().target_table_size() {
@@ -2447,7 +2446,7 @@ impl Transducer {
             ));
         }
         if !is.good() {
-            crate::HFST_THROW!(TransducerHasWrongTypeException);
+            crate::HFST_THROW!(TransducerHasWrongType);
         }
     }
 

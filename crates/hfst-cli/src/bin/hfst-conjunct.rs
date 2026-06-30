@@ -4,7 +4,6 @@
 //! inc fragments). A BINARY tool: it reads two input streams (first + second).
 
 use hfst::hfst_data_types::ImplementationType;
-use hfst::hfst_exception_defs::TransducerTypeMismatchException;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -243,7 +242,10 @@ unsafe fn conjunct_streams(
             };
             if let Err(payload) = intersect_result {
                 if payload
-                    .downcast_ref::<TransducerTypeMismatchException>()
+                    .downcast_ref::<hfst::error::Error>()
+                    .filter(|__e| {
+                        matches!(__e.kind, hfst::error::ErrorKind::TransducerTypeMismatch)
+                    })
                     .is_some()
                 {
                     if globals::ALLOW_TRANSDUCER_CONVERSION {

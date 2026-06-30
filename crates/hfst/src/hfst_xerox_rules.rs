@@ -81,8 +81,6 @@ impl fmt::Display for Rule {
 
 // ===== flattened bodies (free fns share scope) =====
 use crate::HFST_THROW_MESSAGE;
-use crate::hfst_exception_defs::TransducerTypeMismatchException;
-use crate::hfst_exception_defs::TransducersAreNotAutomataException;
 use crate::hfst_symbol_defs::HfstSymbolSubstitutions;
 use crate::hfst_symbol_defs::StringSet;
 use crate::hfst_symbol_defs::internal_epsilon;
@@ -100,7 +98,7 @@ impl Rule {
             if mappingPairVector[i].0.get_type() != type_
                 || mappingPairVector[i].1.get_type() != type_
             {
-                crate::HFST_THROW_MESSAGE!(TransducerTypeMismatchException, "Rule mapping");
+                crate::HFST_THROW_MESSAGE!(TransducerTypeMismatch, "Rule mapping");
             }
         }
 
@@ -140,12 +138,12 @@ impl Rule {
             if mappingPairVector[i].0.get_type() != type_
                 || mappingPairVector[i].1.get_type() != type_
             {
-                crate::HFST_THROW_MESSAGE!(TransducerTypeMismatchException, "Rule mapping");
+                crate::HFST_THROW_MESSAGE!(TransducerTypeMismatch, "Rule mapping");
             }
         }
         for j in 0..a_context.len() {
             if a_context[j].0.get_type() != type_ || a_context[j].1.get_type() != type_ {
-                crate::HFST_THROW_MESSAGE!(TransducerTypeMismatchException, "Rule context");
+                crate::HFST_THROW_MESSAGE!(TransducerTypeMismatch, "Rule context");
             }
         }
 
@@ -1088,7 +1086,7 @@ pub fn parallelBracketedReplace(ruleVector: &Vec<Rule>, optional: bool) -> HfstT
 
     // if they have contexts, process them
     if ruleVector.len() != mappingWithBracketsVector.len() {
-        crate::HFST_THROW_MESSAGE!(TransducerTypeMismatchException, "Vector sizes don't match");
+        crate::HFST_THROW_MESSAGE!(TransducerTypeMismatch, "Vector sizes don't match");
     }
 
     let contextReplaceMap: std::collections::BTreeMap<
@@ -2758,10 +2756,7 @@ pub fn restriction(_center: &HfstTransducer, context: &HfstTransducerPairVector)
     c_proj2.output_project();
 
     if !c_proj1.compare(_center, true) || !c_proj2.compare(_center, true) {
-        HFST_THROW_MESSAGE!(
-            TransducersAreNotAutomataException,
-            "HfstXeroxRules::restriction"
-        );
+        HFST_THROW_MESSAGE!(TransducersAreNotAutomata, "HfstXeroxRules::restriction");
     }
 
     let type_: ImplementationType = _center.get_type();
@@ -2886,10 +2881,7 @@ pub fn before(left: &HfstTransducer, right: &HfstTransducer) -> HfstTransducer {
         || !r_proj1.compare(right, true)
         || !r_proj2.compare(right, true)
     {
-        HFST_THROW_MESSAGE!(
-            TransducersAreNotAutomataException,
-            "HfstXeroxRules::restriction"
-        );
+        HFST_THROW_MESSAGE!(TransducersAreNotAutomata, "HfstXeroxRules::restriction");
     }
 
     let type_: ImplementationType = left.get_type();
@@ -2931,10 +2923,7 @@ pub fn after(left: &HfstTransducer, right: &HfstTransducer) -> HfstTransducer {
         || !r_proj1.compare(right, true)
         || !r_proj2.compare(right, true)
     {
-        HFST_THROW_MESSAGE!(
-            TransducersAreNotAutomataException,
-            "HfstXeroxRules::restriction"
-        );
+        HFST_THROW_MESSAGE!(TransducersAreNotAutomata, "HfstXeroxRules::restriction");
     }
 
     let type_: ImplementationType = left.get_type();

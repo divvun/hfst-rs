@@ -20,11 +20,6 @@ use crate::hfst_data_types::{
     size_t_to_int, size_t_to_uint,
 };
 use crate::hfst_epsilon_handler::HfstEpsilonHandler;
-use crate::hfst_exception_defs::{
-    EmptyStringException, EndOfStreamException, HfstException, NotValidAttFormatException,
-    NotValidPrologFormatException, StateIndexOutOfBoundsException, StateIsNotFinalException,
-    TransducersAreNotAutomataException,
-};
 use crate::hfst_flag_diacritics::FdOperation;
 use crate::hfst_lookup_flag_diacritics::FlagDiacriticTable;
 use crate::hfst_symbol_defs::{
@@ -109,7 +104,10 @@ fn catch_get_stripped_line(is: &mut dyn BufRead, linecount: &mut u32) -> Option<
     match r {
         Ok(v) => Some(v),
         Err(e) => {
-            if e.downcast_ref::<EndOfStreamException>().is_some() {
+            if e.downcast_ref::<crate::error::Error>()
+                .filter(|__e| matches!(__e.kind, crate::error::ErrorKind::EndOfStream))
+                .is_some()
+            {
                 None
             } else {
                 std::panic::resume_unwind(e)
@@ -1204,12 +1202,12 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.get-final-weight-fn]
     pub fn get_final_weight(&self, s: HfstState) -> WeightType {
         if s > self.get_max_state() {
-            crate::HFST_THROW!(StateIndexOutOfBoundsException);
+            crate::HFST_THROW!(StateIndexOutOfBounds);
         }
         if let Some(w) = self.final_weight_map.get(&s) {
             return *w;
         }
-        crate::HFST_THROW!(StateIsNotFinalException)
+        crate::HFST_THROW!(StateIsNotFinal)
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.set-final-weight-fn]
@@ -1254,7 +1252,7 @@ impl HfstBasicTransducer {
     `StateIndexOutOfBoundsException` if the state does not exist. */
     pub fn index(&self, s: HfstState) -> &HfstBasicTransitions {
         if s as usize >= self.state_vector.len() {
-            crate::HFST_THROW!(StateIndexOutOfBoundsException);
+            crate::HFST_THROW!(StateIndexOutOfBounds);
         }
         &self.state_vector[s as usize]
     }
@@ -1267,7 +1265,7 @@ impl HfstBasicTransducer {
     /** @brief Get mutable transitions. */
     pub fn transitions_mut(&mut self, s: HfstState) -> &mut HfstBasicTransitions {
         if s as usize >= self.state_vector.len() {
-            crate::HFST_THROW!(StateIndexOutOfBoundsException);
+            crate::HFST_THROW!(StateIndexOutOfBounds);
         }
         &mut self.state_vector[s as usize]
     }
@@ -1595,7 +1593,7 @@ impl HfstBasicTransducer {
         // Print the name.
         if name.contains(',') {
             let msg = "no commas allowed in the name of prolog networks".to_string();
-            crate::HFST_THROW_MESSAGE!(HfstException, msg);
+            crate::HFST_THROW_MESSAGE!(Hfst, msg);
         }
         w_fputs(file, &format!("network({}).\n", identifier));
 
@@ -1656,7 +1654,7 @@ impl HfstBasicTransducer {
         // Print the name.
         if name.contains(',') {
             let msg = "no commas allowed in the name of prolog networks".to_string();
-            crate::HFST_THROW_MESSAGE!(HfstException, msg);
+            crate::HFST_THROW_MESSAGE!(Hfst, msg);
         }
         let _ = writeln!(os, "network({}).", name);
 
@@ -2396,7 +2394,7 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-transition-graph.std.string-get-stripped-line-fn]
     pub fn get_stripped_line(is: &mut dyn BufRead, linecount: &mut u32) -> String {
         let linestr = match bufread_fgets(is) {
-            None => crate::HFST_THROW!(EndOfStreamException),
+            None => crate::HFST_THROW!(EndOfStream),
             Some(l) => l,
         };
         *linecount += 1;
@@ -2417,7 +2415,7 @@ impl HfstBasicTransducer {
         loop {
             match catch_get_stripped_line(is, linecount) {
                 Some(l) => linestr = l,
-                None => crate::HFST_THROW!(NotValidPrologFormatException),
+                None => crate::HFST_THROW!(NotValidPrologFormat),
             }
 
             if linestr.len() != 0 && linestr.as_bytes()[0] == b'#' {
@@ -2430,7 +2428,7 @@ impl HfstBasicTransducer {
         if !Self::parse_prolog_network_line(&linestr, &mut retval) {
             let mut message = String::from("first line not valid prolog: ");
             message.push_str(&linestr);
-            crate::HFST_THROW_MESSAGE!(NotValidPrologFormatException, message);
+            crate::HFST_THROW_MESSAGE!(NotValidPrologFormat, message);
         }
 
         loop {
@@ -2451,7 +2449,7 @@ impl HfstBasicTransducer {
             {
                 let mut message = String::from("line not valid prolog: ");
                 message.push_str(&linestr);
-                crate::HFST_THROW_MESSAGE!(NotValidPrologFormatException, message);
+                crate::HFST_THROW_MESSAGE!(NotValidPrologFormat, message);
             }
         }
     }
@@ -2482,7 +2480,7 @@ impl HfstBasicTransducer {
         warn_negs: bool,
     ) -> HfstBasicTransducer {
         if is_eof(is) {
-            crate::HFST_THROW!(EndOfStreamException);
+            crate::HFST_THROW!(EndOfStream);
         }
 
         let mut retval = HfstBasicTransducer::new();
@@ -2513,7 +2511,7 @@ impl HfstBasicTransducer {
 
             if !retval.add_att_line(&line, epsilon_symbol, warn_negs) {
                 let message = line.clone();
-                crate::HFST_THROW_MESSAGE!(NotValidAttFormatException, message);
+                crate::HFST_THROW_MESSAGE!(NotValidAttFormat, message);
             }
         }
         retval
@@ -2795,10 +2793,7 @@ impl HfstBasicTransducer {
                     if !HfstTropicalTransducerTransitionData::is_valid_symbol(&fi)
                         || !HfstTropicalTransducerTransitionData::is_valid_symbol(&fo)
                     {
-                        crate::HFST_THROW_MESSAGE!(
-                            EmptyStringException,
-                            "HfstBasicTransducer::substitute"
-                        );
+                        crate::HFST_THROW_MESSAGE!(EmptyString, "HfstBasicTransducer::substitute");
                     }
 
                     let tr = HfstBasicTransition::new_symbols(
@@ -2818,7 +2813,7 @@ impl HfstBasicTransducer {
                             || !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1)
                         {
                             crate::HFST_THROW_MESSAGE!(
-                                EmptyStringException,
+                                EmptyString,
                                 "HfstBasicTransducer::substitute"
                             );
                         }
@@ -2855,7 +2850,7 @@ impl HfstBasicTransducer {
         if !HfstTropicalTransducerTransitionData::is_valid_symbol(old_symbol)
             || !HfstTropicalTransducerTransitionData::is_valid_symbol(new_symbol)
         {
-            crate::HFST_THROW_MESSAGE!(EmptyStringException, "HfstBasicTransducer::substitute");
+            crate::HFST_THROW_MESSAGE!(EmptyString, "HfstBasicTransducer::substitute");
         }
 
         // If a symbol is substituted with itself, do nothing.
@@ -2949,14 +2944,14 @@ impl HfstBasicTransducer {
         if !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.0)
             || !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1)
         {
-            crate::HFST_THROW_MESSAGE!(EmptyStringException, "HfstBasicTransducer::substitute");
+            crate::HFST_THROW_MESSAGE!(EmptyString, "HfstBasicTransducer::substitute");
         }
 
         for sp in sps.iter() {
             if !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.0)
                 || !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1)
             {
-                crate::HFST_THROW_MESSAGE!(EmptyStringException, "HfstBasicTransducer::substitute");
+                crate::HFST_THROW_MESSAGE!(EmptyString, "HfstBasicTransducer::substitute");
             }
         }
 
@@ -2976,7 +2971,7 @@ impl HfstBasicTransducer {
             || !HfstTropicalTransducerTransitionData::is_valid_symbol(&old_pair.1)
             || !HfstTropicalTransducerTransitionData::is_valid_symbol(&new_pair.1)
         {
-            crate::HFST_THROW_MESSAGE!(EmptyStringException, "HfstBasicTransducer::substitute");
+            crate::HFST_THROW_MESSAGE!(EmptyString, "HfstBasicTransducer::substitute");
         }
 
         let mut new_pair_set: StringPairSet = BTreeSet::new();
@@ -3005,7 +3000,7 @@ impl HfstBasicTransducer {
             && HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1))
         {
             crate::HFST_THROW_MESSAGE!(
-                EmptyStringException,
+                EmptyString,
                 "HfstBasicTransducer::substitute(const HfstSymbolPair&, const HfstBasicTransducer&)"
             );
         }
@@ -3318,7 +3313,7 @@ impl HfstBasicTransducer {
             && HfstTropicalTransducerTransitionData::is_valid_symbol(&symbol_pair.1))
         {
             crate::HFST_THROW_MESSAGE!(
-                EmptyStringException,
+                EmptyString,
                 "HfstBasicTransducer::insert_freely(const HfstSymbolPair&, W)"
             );
         }
@@ -3351,7 +3346,7 @@ impl HfstBasicTransducer {
                 && HfstTropicalTransducerTransitionData::is_valid_symbol(&symbol_pair.1))
             {
                 crate::HFST_THROW_MESSAGE!(
-                    EmptyStringException,
+                    EmptyString,
                     "HfstBasicTransducer::insert_freely(const HfstSymbolPairSet&, W)"
                 );
             }
@@ -3482,7 +3477,7 @@ impl HfstBasicTransducer {
                 let isym = data.get_input_symbol(&self.coder);
                 let osym = data.get_output_symbol(&self.coder);
                 if isym != osym {
-                    crate::HFST_THROW!(TransducersAreNotAutomataException);
+                    crate::HFST_THROW!(TransducersAreNotAutomata);
                 }
                 symbols_present.insert(isym);
             }
@@ -3587,7 +3582,7 @@ impl HfstBasicTransducer {
         for (first, _) in substitution_map.iter() {
             if !HfstTropicalTransducerTransitionData::is_valid_symbol(first) {
                 crate::HFST_THROW_MESSAGE!(
-                    EmptyStringException,
+                    EmptyString,
                     "HfstBasicTransducer::substitute (const std::map<HfstSymbol, HfstBasicTransducer> &)"
                 );
             }
@@ -3619,7 +3614,7 @@ impl HfstBasicTransducer {
                     let msg = "symbol to be substituted must not occur only on one side of \
                                transition"
                         .to_string();
-                    crate::HFST_THROW_MESSAGE!(HfstException, msg);
+                    crate::HFST_THROW_MESSAGE!(Hfst, msg);
                 } else {
                     let target = self.state_vector[s][j].get_target_state();
                     let weight = self.state_vector[s][j].get_weight();
@@ -4941,7 +4936,7 @@ impl HfstBasicTransducer {
             } else {
                 std::panic::resume_unwind(e)
             };
-            crate::HFST_THROW_MESSAGE!(TransducersAreNotAutomataException, msg);
+            crate::HFST_THROW_MESSAGE!(TransducersAreNotAutomata, msg);
         }
 
         result

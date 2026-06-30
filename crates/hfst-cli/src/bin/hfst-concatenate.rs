@@ -243,7 +243,10 @@ unsafe fn concatenate_streams(
             };
             if let Err(e) = attempt {
                 let is_type_mismatch = e
-                    .downcast_ref::<hfst::hfst_exception_defs::TransducerTypeMismatchException>()
+                    .downcast_ref::<hfst::error::Error>()
+                    .filter(|__e| {
+                        matches!(__e.kind, hfst::error::ErrorKind::TransducerTypeMismatch)
+                    })
                     .is_some();
                 if !is_type_mismatch {
                     std::panic::resume_unwind(e);

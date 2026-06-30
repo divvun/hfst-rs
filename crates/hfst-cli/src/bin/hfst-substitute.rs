@@ -7,7 +7,6 @@
 
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::{ImplementationType, StringPair};
-use hfst::hfst_exception_defs::FunctionNotImplementedException;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_symbol_defs::{internal_epsilon, label_to_stringpair};
@@ -618,7 +617,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                         }));
                         if let Err(payload) = result {
                             if payload
-                                .downcast_ref::<FunctionNotImplementedException>()
+                                .downcast_ref::<hfst::error::Error>()
+                                .filter(|__e| {
+                                    matches!(
+                                        __e.kind,
+                                        hfst::error::ErrorKind::FunctionNotImplemented
+                                    )
+                                })
                                 .is_some()
                             {
                                 if !warned_already {
@@ -668,7 +673,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                 }));
                 if let Err(payload) = result {
                     if payload
-                        .downcast_ref::<FunctionNotImplementedException>()
+                        .downcast_ref::<hfst::error::Error>()
+                        .filter(|__e| {
+                            matches!(__e.kind, hfst::error::ErrorKind::FunctionNotImplemented)
+                        })
                         .is_some()
                     {
                         if !warned_already {

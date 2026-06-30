@@ -1595,6 +1595,14 @@ children (
                 id idiom6.unify
                 title "Phase A — collapse the ~30 `*Exception` structs into the single `Error` payload. Delete `hfst_exception_defs.rs`; redefine the throw macros to `panic_any(Error::new(ErrorKind::X))`; add `Error::throw()`; rewire every `HFST_THROW!`/`HFST_THROW_MESSAGE!` site (drop the `Exception` suffix), every `catch_unwind` downcast (→ `downcast::<Error>()` + match `.kind`), and the tests/CLI that downcast `*Exception`. Control flow stays panic-based (identical behaviour); the `Exception` nomenclature is gone. Oracle: 153 tests."
                 deps (idiom6.rename)
+                log (
+                    {
+                        at 2026-06-30T19:50:32.954779Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

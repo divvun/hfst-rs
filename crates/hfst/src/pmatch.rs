@@ -14,7 +14,6 @@ use std::time::Instant;
 use icu::segmenter::GraphemeClusterSegmenter;
 use tracing::{debug, warn};
 
-use crate::hfst_exception_defs::{HfstException, TransducerHeaderException};
 use crate::hfst_flag_diacritics::{FdState, FdTable};
 use crate::transducer::{
     DoubleTape, Encoder, NO_COUNTER, NO_SYMBOL_NUMBER, SymbolNumber, SymbolNumberVector,
@@ -1983,12 +1982,12 @@ impl PmatchContainer {
             f.read(&mut len_bytes);
             let remaining_header_len = u16::from_ne_bytes(len_bytes) as usize;
             if f.get() != 0 {
-                crate::HFST_THROW!(TransducerHeaderException);
+                crate::HFST_THROW!(TransducerHeader);
             }
             let mut headervalue = vec![0u8; remaining_header_len];
             f.read(&mut headervalue);
             if remaining_header_len == 0 || headervalue[remaining_header_len - 1] != 0 {
-                crate::HFST_THROW!(TransducerHeaderException);
+                crate::HFST_THROW!(TransducerHeader);
             }
             let cstrlen = |s: &[u8]| -> usize { s.iter().position(|&b| b == 0).unwrap_or(s.len()) };
             let mut i = 0usize;
@@ -2012,7 +2011,7 @@ impl PmatchContainer {
             for &b in matched.iter().rev() {
                 f.putback(b);
             }
-            crate::HFST_THROW!(TransducerHeaderException);
+            crate::HFST_THROW!(TransducerHeader);
         }
     }
 
@@ -2095,7 +2094,7 @@ impl PmatchContainer {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.decrease-stack-depth-fn]
     pub fn decrease_stack_depth(&mut self) {
         if self.stack_depth == 0 {
-            crate::HFST_THROW_MESSAGE!(HfstException, "pmatch: negative stack depth");
+            crate::HFST_THROW_MESSAGE!(Hfst, "pmatch: negative stack depth");
         }
         self.stack_depth -= 1;
     }

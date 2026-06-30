@@ -24,7 +24,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::hfst_data_types::size_t_to_uint;
-use crate::hfst_exception_defs::HfstFatalException;
 use crate::transducer::{
     INFINITE_WEIGHT, NO_TABLE_INDEX, SymbolNumber, TRANSITION_TARGET_TABLE_START, TransducerTable,
     TransitionTableIndex, TransitionW, Weight,
@@ -233,7 +232,7 @@ impl StatePlaceholder {
              HfstTransducer;\ntried to calculate symbol_offset for symbol not \
              present in state",
         );
-        crate::HFST_THROW_MESSAGE!(HfstFatalException, message)
+        crate::HFST_THROW_MESSAGE!(Fatal, message)
     }
 }
 

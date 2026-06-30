@@ -49,7 +49,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::compose_intersect_fst::{ComposeIntersectFst, StateNotDefined, SymbolSet, Transition};
+use crate::compose_intersect_fst::{ComposeIntersectFst, SymbolSet, Transition};
 use crate::compose_intersect_rule::ComposeIntersectRule;
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_data_types::size_t_to_uint;

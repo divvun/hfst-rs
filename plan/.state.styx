@@ -62,4 +62,5 @@ assertions (
     {id idiom5.convert-arena, kind @complete, author "brendan@necessary.nu", at 2026-06-30T17:51:18.09784Z}
     {id idiom5.lexer-cgtag-globals, kind @complete, author "brendan@necessary.nu", at 2026-06-30T18:52:35.95305Z}
     {id idiom6.rename, kind @complete, author "brendan@necessary.nu", at 2026-06-30T19:34:53.986091Z}
+    {id idiom6.unify, kind @complete, author "brendan@necessary.nu", at 2026-06-30T19:50:32.954779Z}
 )

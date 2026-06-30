@@ -16,7 +16,6 @@
 
 use crate::globals::{self, ColourTristate};
 use hfst::hfst_data_types::ImplementationType;
-use hfst::hfst_exception_defs::HfstFatalException;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
@@ -297,7 +296,7 @@ pub fn convert_transducers(first: &mut HfstTransducer, second: &mut HfstTransduc
     } else {
         // This should not happen.
         hfst::HFST_THROW_MESSAGE!(
-            HfstFatalException,
+            Fatal,
             "convert_transducers: conversion_type returned an invalid integer"
         );
     }

@@ -52,10 +52,6 @@ pub enum TwolType {
 }
 
 // ===== flattened bodies (free fns share scope) =====
-use crate::hfst_exception_defs::ContextTransducersAreNotAutomataException;
-use crate::hfst_exception_defs::EmptySetOfContextsException;
-use crate::hfst_exception_defs::HfstFatalException;
-use crate::hfst_exception_defs::TransducerTypeMismatchException;
 use crate::hfst_symbol_defs::internal_epsilon;
 // Port of 'libhfst/src/HfstRules.cc', lines 1-790 (the 'hfst::rules' namespace
 // body, excluding the MAIN_TEST block). 1:1, bug-for-bug.
@@ -80,7 +76,7 @@ pub fn replace(
     } else {
         //fprintf(stderr, "ERROR: replace: Impossible replace type\n");
         //exit(1);
-        crate::HFST_THROW_MESSAGE!(HfstFatalException, "impossible replace type");
+        crate::HFST_THROW_MESSAGE!(Fatal, "impossible replace type");
     }
 
     let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, type_, true);
@@ -214,7 +210,7 @@ pub fn two_level_if(
     alphabet: &mut StringPairSet,
 ) -> HfstTransducer {
     if context.0.get_type() != context.1.get_type() {
-        crate::HFST_THROW_MESSAGE!(TransducerTypeMismatchException, "rules::two_level_if");
+        crate::HFST_THROW_MESSAGE!(TransducerTypeMismatch, "rules::two_level_if");
     }
     let type_ = context.0.get_type();
 
@@ -274,7 +270,7 @@ pub fn two_level_only_if(
     alphabet: &mut StringPairSet,
 ) -> HfstTransducer {
     if context.0.get_type() != context.1.get_type() {
-        crate::HFST_THROW_MESSAGE!(TransducerTypeMismatchException, "rules::two_level_only_if");
+        crate::HFST_THROW_MESSAGE!(TransducerTypeMismatch, "rules::two_level_only_if");
     }
     let type_ = context.0.get_type();
 
@@ -339,7 +335,7 @@ pub fn replace_in_context(
 ) -> HfstTransducer {
     // test that all transducers have the same type
     if context.0.get_type() != context.1.get_type() || context.0.get_type() != t.get_type() {
-        crate::HFST_THROW_MESSAGE!(TransducerTypeMismatchException, "rules::replace_in_context");
+        crate::HFST_THROW_MESSAGE!(TransducerTypeMismatch, "rules::replace_in_context");
     }
     let type_ = t.get_type();
 
@@ -351,7 +347,7 @@ pub fn replace_in_context(
     t2_proj.input_project();
 
     if !t1_proj.compare(&context.0, true) || !t2_proj.compare(&context.1, true) {
-        crate::HFST_THROW!(ContextTransducersAreNotAutomataException);
+        crate::HFST_THROW!(ContextTransducersAreNotAutomata);
     }
 
     let leftm: String = "@_LEFT_MARKER_@".to_string();
@@ -718,15 +714,15 @@ pub fn restriction(
             type_defined = true;
         } else {
             if type_ != it.0.get_type() {
-                crate::HFST_THROW_MESSAGE!(TransducerTypeMismatchException, "rules::restriction");
+                crate::HFST_THROW_MESSAGE!(TransducerTypeMismatch, "rules::restriction");
             }
         }
         if type_ != it.1.get_type() {
-            crate::HFST_THROW_MESSAGE!(TransducerTypeMismatchException, "rules::restriction");
+            crate::HFST_THROW_MESSAGE!(TransducerTypeMismatch, "rules::restriction");
         }
     }
     if !type_defined {
-        crate::HFST_THROW_MESSAGE!(EmptySetOfContextsException, "rules::restriction");
+        crate::HFST_THROW_MESSAGE!(EmptySetOfContexts, "rules::restriction");
     }
 
     let marker: String = "@_MARKER_@".to_string();

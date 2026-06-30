@@ -295,7 +295,6 @@ pub struct XreCompiler {
 // the dependency list in NOTES.
 // ===========================================================================
 
-use crate::hfst_exception_defs::HfstException;
 use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unknown};
 use crate::hfst_xerox_rules::{after, before};
 
@@ -708,7 +707,7 @@ impl XreCompiler {
                 let t = self.eval(expr);
                 if !t.is_automaton() {
                     crate::HFST_THROW_MESSAGE!(
-                        HfstException,
+                        Hfst,
                         "Containment with weight only works with automata"
                     );
                 }
@@ -835,7 +834,7 @@ impl XreCompiler {
                 let a = self.eval(inner);
                 if !a.is_automaton() {
                     crate::HFST_THROW_MESSAGE!(
-                        HfstException,
+                        Hfst,
                         "Complement operator ~ is defined only for automata"
                     );
                 }
@@ -985,13 +984,13 @@ impl XreCompiler {
                 left
             }
             // Operators the C++ grammar rejects with xreerror + YYABORT.
-            BinaryOp::Shuffle => crate::HFST_THROW_MESSAGE!(HfstException, "No shuffle"),
-            BinaryOp::UpperSubtract => crate::HFST_THROW_MESSAGE!(HfstException, "No upper minus"),
-            BinaryOp::LowerSubtract => crate::HFST_THROW_MESSAGE!(HfstException, "No lower minus"),
+            BinaryOp::Shuffle => crate::HFST_THROW_MESSAGE!(Hfst, "No shuffle"),
+            BinaryOp::UpperSubtract => crate::HFST_THROW_MESSAGE!(Hfst, "No upper minus"),
+            BinaryOp::LowerSubtract => crate::HFST_THROW_MESSAGE!(Hfst, "No lower minus"),
             BinaryOp::IgnoreInternally => {
-                crate::HFST_THROW_MESSAGE!(HfstException, "No ignoring internally")
+                crate::HFST_THROW_MESSAGE!(Hfst, "No ignoring internally")
             }
-            BinaryOp::LeftQuotient => crate::HFST_THROW_MESSAGE!(HfstException, "No left quotient"),
+            BinaryOp::LeftQuotient => crate::HFST_THROW_MESSAGE!(Hfst, "No left quotient"),
         }
     }
 
@@ -1010,20 +1009,16 @@ impl XreCompiler {
         // is_valid_function_call: defined + correct arity.
         let expected = match self.function_arguments_.get(&fname) {
             Some(n) => *n,
-            None => crate::HFST_THROW_MESSAGE!(
-                HfstException,
-                format!("No such function defined: '{}'", name)
-            ),
+            None => {
+                crate::HFST_THROW_MESSAGE!(Hfst, format!("No such function defined: '{}'", name))
+            }
         };
         if !self.function_definitions_.contains_key(&fname) {
-            crate::HFST_THROW_MESSAGE!(
-                HfstException,
-                format!("No such function defined: '{}'", name)
-            );
+            crate::HFST_THROW_MESSAGE!(Hfst, format!("No such function defined: '{}'", name));
         }
         if expected as usize != n_args {
             crate::HFST_THROW_MESSAGE!(
-                HfstException,
+                Hfst,
                 format!(
                     "Wrong number of arguments: function '{}' expects {}, {} given",
                     name, expected, n_args
@@ -1065,7 +1060,7 @@ impl XreCompiler {
                 t
             }
             Err(_) => crate::HFST_THROW_MESSAGE!(
-                HfstException,
+                Hfst,
                 format!("Could not parse body of function '{}'", name)
             ),
         }

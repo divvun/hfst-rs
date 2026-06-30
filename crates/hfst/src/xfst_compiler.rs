@@ -2823,7 +2823,8 @@ impl XfstCompiler {
                 transducer_is_empty = !v;
             }
             Err(e) => {
-                if e.downcast_ref::<crate::hfst_exception_defs::TransducerIsCyclicException>()
+                if e.downcast_ref::<crate::error::Error>()
+                    .filter(|__e| matches!(__e.kind, crate::error::ErrorKind::TransducerIsCyclic))
                     .is_some()
                 {
                     upper_is_cyclic = true;
@@ -2843,7 +2844,8 @@ impl XfstCompiler {
                 transducer_is_empty = !v;
             }
             Err(e) => {
-                if e.downcast_ref::<crate::hfst_exception_defs::TransducerIsCyclicException>()
+                if e.downcast_ref::<crate::error::Error>()
+                    .filter(|__e| matches!(__e.kind, crate::error::ErrorKind::TransducerIsCyclic))
                     .is_some()
                 {
                     lower_is_cyclic = true;
@@ -2944,7 +2946,8 @@ impl XfstCompiler {
             }
         }));
         if let Err(e) = result {
-            if e.downcast_ref::<crate::hfst_exception_defs::TransducerIsCyclicException>()
+            if e.downcast_ref::<crate::error::Error>()
+                .filter(|__e| matches!(__e.kind, crate::error::ErrorKind::TransducerIsCyclic))
                 .is_some()
             {
                 let cutoff = crate::hfst_data_types::size_t_to_uint(string_to_size_t(
@@ -3994,7 +3997,10 @@ impl XfstCompiler {
                 }));
                 std::panic::set_hook(__prev_hook);
                 if let Err(e) = __res {
-                    if e.downcast_ref::<crate::hfst_exception_defs::TransducersAreNotAutomataException>()
+                    if e.downcast_ref::<crate::error::Error>()
+                        .filter(|__e| {
+                            matches!(__e.kind, crate::error::ErrorKind::TransducersAreNotAutomata)
+                        })
                         .is_some()
                     {
                         self.error_message("transducers are not automata");
@@ -4088,7 +4094,13 @@ impl XfstCompiler {
                     }));
                     std::panic::set_hook(__prev_hook);
                     if let Err(e) = __res {
-                        if e.downcast_ref::<crate::hfst_exception_defs::FlagDiacriticsAreNotIdentitiesException>()
+                        if e.downcast_ref::<crate::error::Error>()
+                            .filter(|__e| {
+                                matches!(
+                                    __e.kind,
+                                    crate::error::ErrorKind::FlagDiacriticsAreNotIdentities
+                                )
+                            })
                             .is_some()
                         {
                             self.error_message(
@@ -4160,8 +4172,8 @@ impl XfstCompiler {
         }));
         std::panic::set_hook(__prev_hook);
         if let Err(__e) = __res {
-            let __name = match __e.downcast_ref::<crate::hfst_exception_defs::HfstException>() {
-                Some(__ex) => __ex.name.clone(),
+            let __name = match __e.downcast_ref::<crate::error::Error>() {
+                Some(__ex) => __ex.message.clone().unwrap_or_default(),
                 None => String::new(),
             };
             error!("could not eliminate flag '{}': {}", name, __name);
@@ -4313,7 +4325,8 @@ impl XfstCompiler {
         std::panic::set_hook(__prev_hook);
         if let Err(__e) = __res {
             if __e
-                .downcast_ref::<crate::hfst_exception_defs::TransducerIsNotAutomatonException>()
+                .downcast_ref::<crate::error::Error>()
+                .filter(|__e| matches!(__e.kind, crate::error::ErrorKind::TransducerIsNotAutomaton))
                 .is_some()
             {
                 error!("Error: Negation is defined only for automata.");
@@ -4688,7 +4701,10 @@ impl XfstCompiler {
             }
             Err(__e) => {
                 if __e
-                    .downcast_ref::<crate::hfst_exception_defs::FunctionNotImplementedException>()
+                    .downcast_ref::<crate::error::Error>()
+                    .filter(|__e| {
+                        matches!(__e.kind, crate::error::ErrorKind::FunctionNotImplemented)
+                    })
                     .is_some()
                 {
                     error!("function not available");

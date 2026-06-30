@@ -36,7 +36,6 @@ use hfst_openfst::{LogTransition, LogVectorFst, LogWeight, SymbolTable};
 use crate::convert_transducer_format::{ConversionFunctions, StateId};
 use crate::hfst_basic_transducer::{HfstBasicTransducer, HfstState};
 use crate::hfst_basic_transition::HfstBasicTransition;
-use crate::hfst_exception_defs::MissingOpenFstInputSymbolTableException;
 use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unknown};
 
 impl ConversionFunctions {
@@ -57,7 +56,7 @@ impl ConversionFunctions {
 
         /* An HFST log transducer always has an input symbol table. */
         if has_hfst_header && inputsym.is_none() {
-            crate::HFST_THROW!(MissingOpenFstInputSymbolTableException);
+            crate::HFST_THROW!(MissingOpenFstInputSymbolTable);
         }
 
         let mut net = HfstBasicTransducer::new();
@@ -96,7 +95,7 @@ impl ConversionFunctions {
         equivalent to the input symbol table. */
         let inputsym = match inputsym {
             None => {
-                crate::HFST_THROW!(MissingOpenFstInputSymbolTableException);
+                crate::HFST_THROW!(MissingOpenFstInputSymbolTable);
             }
             Some(inputsym) => inputsym,
         };

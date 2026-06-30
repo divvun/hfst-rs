@@ -16,8 +16,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::hfst_exception_defs::{EmptyStringException, HfstFatalException};
-
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.symbol-type]
 pub type SymbolType = String;
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.weight-type]
@@ -98,7 +96,7 @@ impl SymbolCoder {
             let mut message = String::from("HfstTropicalTransducerTransitionData: number ");
             message.push_str(&number.to_string());
             message.push_str(" is not mapped to any symbol");
-            crate::HFST_THROW_MESSAGE!(HfstFatalException, message);
+            crate::HFST_THROW_MESSAGE!(Fatal, message);
         }
         self.number2symbol[number as usize].clone()
     }
@@ -244,7 +242,7 @@ impl HfstTropicalTransducerTransitionData {
     ) -> Self {
         if isymbol.is_empty() || osymbol.is_empty() {
             crate::HFST_THROW_MESSAGE!(
-                EmptyStringException,
+                EmptyString,
                 "HfstTropicalTransducerTransitionData(SymbolType, SymbolType, WeightType)"
             );
         }

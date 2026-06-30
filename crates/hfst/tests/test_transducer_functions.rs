@@ -33,7 +33,6 @@ use hfst::hfst_data_types::ImplementationType::{
 };
 use hfst::hfst_data_types::PushType::{TO_FINAL_STATE, TO_INITIAL_STATE};
 use hfst::hfst_data_types::{HfstOneLevelPaths, HfstTwoLevelPaths, StringPair, StringVector};
-use hfst::hfst_exception_defs::TransducersAreNotAutomataException;
 use hfst::hfst_symbol_defs::{
     HfstSymbolPairSubstitutions, HfstSymbolSubstitutions, StringPairSet, StringSet,
     internal_identity,
@@ -236,7 +235,8 @@ fn function_shuffle(type_: ImplementationType) {
     });
     assert!(
         payload
-            .downcast_ref::<TransducersAreNotAutomataException>()
+            .downcast_ref::<hfst::error::Error>()
+            .filter(|__e| matches!(__e.kind, hfst::error::ErrorKind::TransducersAreNotAutomata))
             .is_some()
     );
 }

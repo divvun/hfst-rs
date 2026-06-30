@@ -3212,7 +3212,10 @@ impl PmatchObject for PmatchBinaryOperation {
                 }));
                 std::panic::set_hook(__prev_hook);
                 if let Err(e) = __res {
-                    if e.downcast_ref::<crate::hfst_exception_defs::TransducersAreNotAutomataException>()
+                    if e.downcast_ref::<crate::error::Error>()
+                        .filter(|__e| {
+                            matches!(__e.kind, crate::error::ErrorKind::TransducersAreNotAutomata)
+                        })
                         .is_some()
                     {
                         pmatchwarning(
@@ -3266,10 +3269,18 @@ impl PmatchObject for PmatchBinaryOperation {
                         lhs = std::mem::replace(&mut rhs, HfstTransducer::new_type(ctx.format()));
                     }
                     Err(e) => {
-                        if e.downcast_ref::<crate::hfst_exception_defs::TransducersAreNotAutomataException>()
+                        if e.downcast_ref::<crate::error::Error>()
+                            .filter(|__e| {
+                                matches!(
+                                    __e.kind,
+                                    crate::error::ErrorKind::TransducersAreNotAutomata
+                                )
+                            })
                             .is_some()
                         {
-                            ctx.pmatcherror("Error: transducers must be automata in merge operation.");
+                            ctx.pmatcherror(
+                                "Error: transducers must be automata in merge operation.",
+                            );
                             unreachable!("pmatcherror panics");
                         } else {
                             std::panic::resume_unwind(e);

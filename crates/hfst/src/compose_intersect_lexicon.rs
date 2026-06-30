@@ -35,7 +35,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::compose_intersect_fst::{ComposeIntersectFst, StateNotDefined, TransitionSet};
+use crate::compose_intersect_fst::{ComposeIntersectFst, TransitionSet};
 use crate::compose_intersect_rule_pair::ComposeIntersectRuleObject;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;

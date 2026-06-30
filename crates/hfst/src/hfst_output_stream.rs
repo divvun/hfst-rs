@@ -63,10 +63,6 @@ mod output_impl {
     use super::*;
 
     use crate::hfst_data_types::ImplementationType;
-    use crate::hfst_exception_defs::{
-        HfstFatalException, ImplementationTypeNotAvailableException,
-        SpecifiedTypeRequiredException, StreamIsClosedException, TransducerTypeMismatchException,
-    };
     use crate::hfst_transducer::HfstTransducer;
     use crate::log_weight_transducer::LogWeightOutputStream;
     use crate::tropical_weight_transducer::TropicalWeightOutputStream;
@@ -79,12 +75,7 @@ mod output_impl {
             if !HfstTransducer::is_lean_implementation_type_available(type_) {
                 // 'throw ImplementationTypeNotAvailableException(...)' — a direct
                 // panic_any rather than HFST_THROW (which can't carry the 'type_').
-                std::panic::panic_any(ImplementationTypeNotAvailableException::new(
-                    "ImplementationTypeNotAvailableException".to_string(),
-                    file!().to_string(),
-                    line!() as usize,
-                    type_,
-                ));
+                crate::err!(ImplementationTypeNotAvailable(type_)).throw();
             }
 
             let mut implementation = StreamImplementation {
@@ -122,7 +113,7 @@ mod output_impl {
                 ImplementationType::HFST_OLW_TYPE => {
                     implementation.hfst_ol = Some(Box::new(HfstOlOutputStream::new(true)));
                 }
-                _ => crate::HFST_THROW!(SpecifiedTypeRequiredException),
+                _ => crate::HFST_THROW!(SpecifiedTypeRequired),
             }
 
             HfstOutputStream {
@@ -147,12 +138,7 @@ mod output_impl {
                 return Self::new(type_, hfst_format);
             }
             if !HfstTransducer::is_lean_implementation_type_available(type_) {
-                std::panic::panic_any(ImplementationTypeNotAvailableException::new(
-                    "ImplementationTypeNotAvailableException".to_string(),
-                    file!().to_string(),
-                    line!() as usize,
-                    type_,
-                ));
+                crate::err!(ImplementationTypeNotAvailable(type_)).throw();
             }
 
             let mut implementation = StreamImplementation {
@@ -203,7 +189,7 @@ mod output_impl {
                     implementation.hfst_ol =
                         Some(Box::new(HfstOlOutputStream::new_filename(filename, true)));
                 }
-                _ => crate::HFST_THROW!(SpecifiedTypeRequiredException),
+                _ => crate::HFST_THROW!(SpecifiedTypeRequired),
             }
 
             HfstOutputStream {
@@ -312,7 +298,7 @@ mod output_impl {
 
         pub fn flush(&mut self) -> &mut Self {
             if !self.is_open {
-                crate::HFST_THROW!(StreamIsClosedException);
+                crate::HFST_THROW!(StreamIsClosed);
             }
             if self.type_ == ImplementationType::XFSM_TYPE {
                 // implementation.xfsm->flush();
@@ -329,12 +315,12 @@ mod output_impl {
         /// 'HfstOutputStream &operator<< (HfstTransducer &transducer)'.
         pub fn operator_shl(&mut self, transducer: &mut HfstTransducer) -> &mut Self {
             if !self.is_open {
-                crate::HFST_THROW!(StreamIsClosedException);
+                crate::HFST_THROW!(StreamIsClosed);
             }
 
             if self.type_ != transducer.type_ {
                 crate::HFST_THROW_MESSAGE!(
-                    TransducerTypeMismatchException,
+                    TransducerTypeMismatch,
                     "operator<<: HfstOutputStream and HfstTransducer do not have the same type"
                 );
             }
@@ -381,7 +367,7 @@ mod output_impl {
                 // write header length using two bytes
                 let header_length: i32 = header.len() as i32;
                 if header_length > MAX_HEADER_LENGTH {
-                    crate::HFST_THROW_MESSAGE!(HfstFatalException, "transducer header is too long");
+                    crate::HFST_THROW_MESSAGE!(Fatal, "transducer header is too long");
                 }
 
                 // mirrors C++ '*((char*)(&header_length)+i)' (native-endian byte punning)

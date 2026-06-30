@@ -21,9 +21,6 @@ use std::collections::BTreeSet;
 
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
-use hfst::hfst_exception_defs::{
-    EmptyStringException, NotValidAttFormatException, StateIsNotFinalException,
-};
 use hfst::hfst_symbol_defs::StringPairSet;
 
 // The tropical transition-data symbol coding lives in process-global statics
@@ -131,7 +128,10 @@ fn exceptions() {
                 let _w = t.get_final_weight(0);
             });
             assert!(
-                payload.downcast_ref::<StateIsNotFinalException>().is_some(),
+                payload
+                    .downcast_ref::<hfst::error::Error>()
+                    .filter(|__e| matches!(__e.kind, hfst::error::ErrorKind::StateIsNotFinal))
+                    .is_some(),
                 "expected StateIsNotFinalException"
             );
         }
@@ -153,7 +153,8 @@ fn exceptions() {
     });
     assert!(
         payload
-            .downcast_ref::<NotValidAttFormatException>()
+            .downcast_ref::<hfst::error::Error>()
+            .filter(|__e| matches!(__e.kind, hfst::error::ErrorKind::NotValidAttFormat))
             .is_some(),
         "expected NotValidAttFormatException"
     );
@@ -229,7 +230,10 @@ fn empty_string_exception() {
         empty_symbol.add_transition(0, &tr, true);
     });
     assert!(
-        payload.downcast_ref::<EmptyStringException>().is_some(),
+        payload
+            .downcast_ref::<hfst::error::Error>()
+            .filter(|__e| matches!(__e.kind, hfst::error::ErrorKind::EmptyString))
+            .is_some(),
         "expected EmptyStringException"
     );
 }

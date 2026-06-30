@@ -120,15 +120,9 @@ mod construction_io {
     use std::io::{BufRead, Read, Write};
     use std::sync::Arc;
 
-    use crate::hfst_exception_defs::{
-        NotValidAttFormatException, StreamIsClosedException, SymbolNotFoundException,
-        TransducerHasWrongTypeException,
-    };
     use crate::hfst_flag_diacritics::FdOperation;
     // 'HfstFatalException' is referenced by the (deferred) read_transducer path.
     #[allow(unused_imports)]
-    use crate::hfst_exception_defs::HfstFatalException;
-
     // ---------------------------------------------------------------------------
     // File-static globals from the .cc
     // ---------------------------------------------------------------------------
@@ -379,7 +373,7 @@ mod construction_io {
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-input-stream.read-transducer-fn]
         pub fn read_transducer(&mut self) -> LogVectorFst {
             if self.is_eof() {
-                crate::HFST_THROW!(StreamIsClosedException);
+                crate::HFST_THROW!(StreamIsClosed);
             }
             // rustfst has no streaming istream read, so read the remaining bytes
             // and 'load_prefix' one FST from the front (it reports how many bytes
@@ -389,7 +383,7 @@ mod construction_io {
                 Ok(x) => x,
                 Err(_) => {
                     crate::HFST_THROW_MESSAGE!(
-                        TransducerHasWrongTypeException,
+                        TransducerHasWrongType,
                         "could not read LOG_OPENFST transducer payload"
                     )
                 }
@@ -984,7 +978,7 @@ mod construction_io {
                 } else {
                     // line could not be parsed
                     let message = line_str.to_string();
-                    crate::HFST_THROW_MESSAGE!(NotValidAttFormatException, message);
+                    crate::HFST_THROW_MESSAGE!(NotValidAttFormat, message);
                 }
             }
 
@@ -1128,7 +1122,7 @@ mod construction_io {
         pub fn get_symbol_number(t: &LogVectorFst, symbol: &str) -> u32 {
             assert!(t.input_symbols().is_some());
             match t.input_symbols().unwrap().get_label(symbol) {
-                None => crate::HFST_THROW!(SymbolNotFoundException),
+                None => crate::HFST_THROW!(SymbolNotFound),
                 Some(i) => i,
             }
         }
@@ -1570,7 +1564,6 @@ mod operations {
 
     // 'FunctionNotImplementedException' is needed by 'n_best''s HFST_THROW; the
     // skeleton does not import it, so pull it in here.
-    use crate::hfst_exception_defs::FunctionNotImplementedException;
 
     /// 'dst->SetInputSymbols(src->InputSymbols())' — copy 'src''s input symbol table
     /// (as a shared 'Arc') onto 'dst'. No-op when 'src' has no input symbols.
@@ -1682,7 +1675,7 @@ mod operations {
             fst::ShortestPath(*t, n_best_fst, (size_t)n);
             return n_best_fst; */
             // in openfst 1.8 LogFst does not have necessary algebra for shortest paths
-            crate::HFST_THROW!(FunctionNotImplementedException)
+            crate::HFST_THROW!(FunctionNotImplemented)
         }
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.repeat-star-fn]
@@ -2155,7 +2148,6 @@ mod lookup_extract_misc {
     use hfst_openfst::rustfst::fst_properties::{FstProperties, compute_fst_properties};
 
     use crate::hfst_data_types::HfstTwoLevelPath;
-    use crate::hfst_exception_defs::FunctionNotImplementedException;
     use crate::hfst_flag_diacritics::FdState;
 
     // [spec:hfst:def:log-weight-transducer.hfst.implementations.label-pair]
@@ -2379,7 +2371,7 @@ mod lookup_extract_misc {
             max_num: i32,
         ) {
             let _ = (t, results, max_num);
-            crate::HFST_THROW!(FunctionNotImplementedException);
+            crate::HFST_THROW!(FunctionNotImplemented);
         }
 
         // ---- substitute ----------------------------------------------------------

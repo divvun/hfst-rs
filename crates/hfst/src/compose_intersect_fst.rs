@@ -32,30 +32,12 @@ use crate::compose_intersect_utilities::{Comparator, SpaceSavingSet};
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::implementations::HfstState;
-use crate::hfst_exception_defs::HfstException;
 use crate::hfst_tropical_transducer_transition_data::SymbolCoder;
 
-// HFST_EXCEPTION_CHILD_DECLARATION(StateNotDefined);  (in the .h)
-// HFST_EXCEPTION_CHILD_DEFINITION(StateNotDefined);   (in the .cc)
-//
-// A subclass of 'HfstException' whose constructor forwards '(name, file, line)'
-// to the base — exactly what the (non-exported) 'hfst_exception_child!' macro
-// generates. Reproduced here because the macro is private to
-// 'hfst_exception_defs', and 'HFST_THROW!(StateNotDefined)' needs
-// 'StateNotDefined::new(String, String, usize)' in scope.
+// The compose-intersect `StateNotDefined` signal (a C++ `HfstException` child)
+// is now `crate::error::ErrorKind::StateNotDefined`; `HFST_THROW!(StateNotDefined)`
+// raises it via the unified `Error` payload.
 // [spec:hfst:def:compose-intersect-fst.state-not-defined]
-#[derive(Clone, Debug)]
-pub struct StateNotDefined {
-    pub base: HfstException,
-}
-
-impl StateNotDefined {
-    pub fn new(name: String, file: String, line: usize) -> Self {
-        StateNotDefined {
-            base: HfstException::new(name, file, line),
-        }
-    }
-}
 
 // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.transition]
 #[derive(Clone, Debug)]

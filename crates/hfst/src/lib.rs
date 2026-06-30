@@ -40,7 +40,6 @@ pub mod hfst_basic_transducer;
 pub mod hfst_basic_transition;
 pub mod hfst_data_types;
 pub mod hfst_epsilon_handler;
-pub mod hfst_exception_defs;
 pub mod hfst_extract_strings;
 pub mod hfst_flag_diacritics;
 pub mod hfst_input_stream;

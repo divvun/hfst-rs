@@ -4,7 +4,6 @@
 
 use hfst::hfst_basic_transducer::{HfstBasicTransducer, SummaryStats};
 use hfst::hfst_data_types::ImplementationType;
-use hfst::hfst_exception_defs::FunctionNotImplementedException;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::StringSet;
 use hfst::hfst_transducer::HfstTransducer;
@@ -166,7 +165,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                     transducer_knows_alphabet = true;
                 }
                 Err(e) => {
-                    if e.downcast_ref::<FunctionNotImplementedException>()
+                    if e.downcast_ref::<hfst::error::Error>()
+                        .filter(|__e| {
+                            matches!(__e.kind, hfst::error::ErrorKind::FunctionNotImplemented)
+                        })
                         .is_some()
                     {
                         transducer_knows_alphabet = false;

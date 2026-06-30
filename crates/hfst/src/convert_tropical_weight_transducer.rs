@@ -27,7 +27,6 @@ use hfst_openfst::{StdTransition, StdVectorFst, SymbolTable};
 use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
-use crate::hfst_exception_defs::{HfstFatalException, MissingOpenFstInputSymbolTableException};
 use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unknown};
 
 /* Handle symbol tables when converting 't' to 'net'. 'has_hfst_header'
@@ -40,7 +39,7 @@ fn handle_symbol_tables(t: &StdVectorFst, net: &mut HfstBasicTransducer, has_hfs
 
     /* An HFST tropical transducer always has an input symbol table. */
     if has_hfst_header && inputsym.is_none() {
-        crate::HFST_THROW!(MissingOpenFstInputSymbolTableException);
+        crate::HFST_THROW!(MissingOpenFstInputSymbolTable);
     }
 
     // An empty transducer
@@ -79,7 +78,7 @@ fn handle_symbol_tables(t: &StdVectorFst, net: &mut HfstBasicTransducer, has_hfs
     If the output symbol table is missing, we assume that it would be
     equivalent to the input symbol table. */
     if inputsym.is_none() {
-        crate::HFST_THROW!(MissingOpenFstInputSymbolTableException);
+        crate::HFST_THROW!(MissingOpenFstInputSymbolTable);
     }
 }
 
@@ -176,7 +175,7 @@ impl ConversionFunctions {
                         "FATAL ERROR: input number {} not in symbol_vector\n",
                         arc.ilabel
                     );
-                    crate::HFST_THROW_MESSAGE!(HfstFatalException, oss);
+                    crate::HFST_THROW_MESSAGE!(Fatal, oss);
                     // exit(1);
                 }
                 if arc.olabel as usize >= symbol_vector.len() {
@@ -184,7 +183,7 @@ impl ConversionFunctions {
                         "FATAL ERROR: output number {} not in symbol_vector\n",
                         arc.olabel
                     );
-                    crate::HFST_THROW_MESSAGE!(HfstFatalException, oss);
+                    crate::HFST_THROW_MESSAGE!(Fatal, oss);
                     // exit(1);
                 }
 

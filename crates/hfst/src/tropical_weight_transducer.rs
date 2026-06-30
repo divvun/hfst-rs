@@ -120,15 +120,9 @@ mod construction_io {
     use std::io::{BufRead, Read, Write};
     use std::sync::Arc;
 
-    use crate::hfst_exception_defs::{
-        NotValidAttFormatException, StreamIsClosedException, SymbolNotFoundException,
-        TransducerHasWrongTypeException,
-    };
     use crate::hfst_flag_diacritics::FdOperation;
     // 'HfstFatalException' is referenced by the (deferred) read_transducer path.
     #[allow(unused_imports)]
-    use crate::hfst_exception_defs::HfstFatalException;
-
     // ---------------------------------------------------------------------------
     // File-static globals from the .cc
     // ---------------------------------------------------------------------------
@@ -384,7 +378,7 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.read-transducer-fn]
         pub fn read_transducer(&mut self) -> StdVectorFst {
             if self.is_eof() {
-                crate::HFST_THROW!(StreamIsClosedException);
+                crate::HFST_THROW!(StreamIsClosed);
             }
             // rustfst has no streaming istream read, so read the remaining bytes
             // and 'load_prefix' one FST from the front (it reports how many bytes
@@ -394,7 +388,7 @@ mod construction_io {
                 Ok(x) => x,
                 Err(_) => {
                     crate::HFST_THROW_MESSAGE!(
-                        TransducerHasWrongTypeException,
+                        TransducerHasWrongType,
                         "could not read TROPICAL_OPENFST transducer payload"
                     )
                 }
@@ -996,7 +990,7 @@ mod construction_io {
                 } else {
                     // line could not be parsed
                     let message = line_str.to_string();
-                    crate::HFST_THROW_MESSAGE!(NotValidAttFormatException, message);
+                    crate::HFST_THROW_MESSAGE!(NotValidAttFormat, message);
                 }
             }
 
@@ -1137,7 +1131,7 @@ mod construction_io {
         pub fn get_symbol_number(t: &StdVectorFst, symbol: &str) -> u32 {
             assert!(t.input_symbols().is_some());
             match t.input_symbols().unwrap().get_label(symbol) {
-                None => crate::HFST_THROW!(SymbolNotFoundException),
+                None => crate::HFST_THROW!(SymbolNotFound),
                 Some(i) => i,
             }
         }

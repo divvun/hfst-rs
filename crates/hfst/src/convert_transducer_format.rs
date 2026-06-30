@@ -20,7 +20,6 @@
 use std::collections::BTreeMap;
 
 use crate::hfst_data_types::{StringVector, size_t_to_uint};
-use crate::hfst_exception_defs::FunctionNotImplementedException;
 
 // 'fst::StdArc::StateId', i.e. 'unsigned int'. (Gated by 'HAVE_OPENFST'; the
 // OpenFST converters that use it are deferred to the rustfst backend.)
@@ -145,7 +144,7 @@ impl ConversionFunctions {
             retval.name = t.get_name();
             return retval;
         }
-        crate::HFST_THROW!(FunctionNotImplementedException)
+        crate::HFST_THROW!(FunctionNotImplemented)
     }
 }
 
