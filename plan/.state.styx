@@ -1,6 +1,15 @@
 schema_version 7
 
-last_sync_at 2026-06-29T15:47:04.655385Z
+last_sync_at 2026-06-30T01:24:36.929302Z
+
+derived_priorities (
+    {id idiom3.gate, priority 2, derived_at 2026-06-30T01:24:36.929302Z}
+    {id idiom3.getopt, priority 0, derived_at 2026-06-30T01:24:36.929302Z}
+    {id idiom3.lib-strings, priority 0, derived_at 2026-06-30T01:24:36.929302Z}
+    {id idiom3.tools, priority 1, derived_at 2026-06-30T01:24:36.929302Z}
+    {id idiom4.gate, priority 1, derived_at 2026-06-30T01:24:36.929302Z}
+    {id idiom4.lib, priority 0, derived_at 2026-06-30T01:24:36.929302Z}
+)
 
 assertions (
     {id scaffold, kind @complete, author "brendan@necessary.nu", at 2026-06-24T17:12:44.389107Z}
@@ -36,7 +45,6 @@ assertions (
     {id idiom3.tools, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:41:52.602462Z}
     {id idiom3.lib-strings, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:42:46.358388Z}
     {id idiom3.gate, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:43:00.388411Z}
-    {id idiom4.cli-globals, kind @doing, author "brendan@necessary.nu", at 2026-06-29T22:51:19.552486Z}
     {id idiom4.lib, kind @complete, author "brendan@necessary.nu", at 2026-06-29T23:46:49.341466Z}
     {id idiom4.gate, kind @complete, author "brendan@necessary.nu", at 2026-06-29T23:46:51.392884Z}
     {id idiom5.warning-stream, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:27:52.319428Z}

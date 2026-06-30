@@ -4,9 +4,10 @@
 //! number↔string coding ('number_to_string_vector' / 'string_to_number_map',
 //! seeded with the three special symbols by the global 'dummy3'/'dummy4'
 //! objects) and the harmonization helpers built on it, plus the typedefs
-//! ('StateId', 'String2NumberMap', 'NumberVector'). Ported exactly as the
-//! tropical interning infra is — the two C++ 'static' members become
-//! module-level 'LazyLock<Mutex<…>>' seeded by the initializer structs.
+//! ('StateId', 'String2NumberMap', 'NumberVector'). The two C++ 'static' members
+//! are encapsulated in an owned ['FormatCoder'] (the same K1 treatment as the
+//! tropical 'SymbolCoder'); a single process-global instance preserves the
+//! shared session numbering until a later stage moves it onto the conversion.
 //!
 //! Deferred to higher layers (facade + backends):
 //!   * 'hfst_transducer_to_hfst_basic_transducer' (the type-dispatch) needs the
@@ -39,23 +40,81 @@ pub type NumberVector = Vec<u32>;
 // the map first and the vector second, and nothing locks them the other way
 // round, so the pair is deadlock-free.
 
-/* A number-to-string vector common to all transducers during a session. */
+/* The number↔string coding common to all transducers during a session. The two
+C++ statics (number_to_string_vector / string_to_number_map, seeded by the
+'dummy3'/'dummy4' globals) are encapsulated in an owned 'FormatCoder' — the same
+K1 treatment the tropical coding gets in SymbolCoder. A single process-global
+instance preserves the shared session numbering exactly; later stages move it
+onto the conversion path. */
 // [spec:hfst:def:convert-transducer-format.hfst.implementations.dummy3-fn]
 // [spec:hfst:sem:convert-transducer-format.hfst.implementations.dummy3-fn]
-static NUMBER_TO_STRING_VECTOR: LazyLock<Mutex<StringVector>> = LazyLock::new(|| {
-    let mut vector = StringVector::new();
-    StringVectorInitializer::new(&mut vector);
-    Mutex::new(vector)
-});
-
-/* A string-to-number map common to all transducers during a session. */
 // [spec:hfst:def:convert-transducer-format.hfst.implementations.dummy4-fn]
 // [spec:hfst:sem:convert-transducer-format.hfst.implementations.dummy4-fn]
-static STRING_TO_NUMBER_MAP: LazyLock<Mutex<String2NumberMap>> = LazyLock::new(|| {
-    let mut map = String2NumberMap::new();
-    String2NumberMapInitializer::new(&mut map);
-    Mutex::new(map)
-});
+static GLOBAL_FORMAT_CODER: LazyLock<Mutex<FormatCoder>> =
+    LazyLock::new(|| Mutex::new(FormatCoder::new()));
+
+/// Owned number↔string coding for format conversion: 'number_to_string' is the
+/// key table (index = number) and 'string_to_number' its inverse. Seeded with
+/// the three special symbols at 0/1/2.
+#[derive(Clone, Debug)]
+pub struct FormatCoder {
+    number_to_string: StringVector,
+    string_to_number: String2NumberMap,
+}
+
+impl FormatCoder {
+    pub fn new() -> Self {
+        let mut number_to_string = StringVector::new();
+        StringVectorInitializer::new(&mut number_to_string);
+        let mut string_to_number = String2NumberMap::new();
+        String2NumberMapInitializer::new(&mut string_to_number);
+        FormatCoder {
+            number_to_string,
+            string_to_number,
+        }
+    }
+
+    /// Map 'number' to its string, or "" if out of range (as the C++ does).
+    pub fn get_string(&self, number: u32) -> String {
+        if number as usize >= self.number_to_string.len() {
+            return String::from("");
+        }
+        self.number_to_string[number as usize].clone()
+    }
+
+    /// Map 'str' to its number, appending it at the next free index if unseen.
+    pub fn get_number(&mut self, str: &str) -> u32 {
+        match self.string_to_number.get(str) {
+            None => {
+                self.number_to_string.push(str.to_string());
+                let new_index = size_t_to_uint(self.number_to_string.len() - 1);
+                self.string_to_number.insert(str.to_string(), new_index);
+                new_index
+            }
+            Some(second) => *second,
+        }
+    }
+
+    pub fn get_harmonization_vector(&mut self, coding_vector: &StringVector) -> NumberVector {
+        let mut retval = NumberVector::new();
+        retval.reserve(coding_vector.len());
+        for it in coding_vector.iter() {
+            if *it != "" {
+                retval.push(self.get_number(it));
+            } else {
+                // a gap in indexing
+                retval.push(0);
+            }
+        }
+        retval
+    }
+}
+
+impl Default for FormatCoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions]
 pub struct ConversionFunctions;
@@ -101,11 +160,7 @@ impl ConversionFunctions {
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.get-string-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.get-string-fn]
     pub fn get_string(number: u32) -> String {
-        let number_to_string_vector = NUMBER_TO_STRING_VECTOR.lock().unwrap();
-        if number as usize >= number_to_string_vector.len() {
-            return String::from("");
-        } // number not found
-        number_to_string_vector[number as usize].clone()
+        GLOBAL_FORMAT_CODER.lock().unwrap().get_string(number)
     }
 
     /* Get the number that represents 'str' in the string-to-number map.
@@ -113,18 +168,7 @@ impl ConversionFunctions {
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.get-number-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.get-number-fn]
     pub fn get_number(str: &str) -> u32 {
-        let mut string_to_number_map = STRING_TO_NUMBER_MAP.lock().unwrap();
-        match string_to_number_map.get(str) {
-            None => {
-                // string not found
-                let mut number_to_string_vector = NUMBER_TO_STRING_VECTOR.lock().unwrap();
-                number_to_string_vector.push(str.to_string());
-                let new_index = size_t_to_uint(number_to_string_vector.len() - 1);
-                string_to_number_map.insert(str.to_string(), new_index);
-                new_index
-            }
-            Some(second) => *second,
-        }
+        GLOBAL_FORMAT_CODER.lock().unwrap().get_number(str)
     }
 
     /* Get a vector that tells how a transducer that follows the
@@ -133,17 +177,10 @@ impl ConversionFunctions {
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.get-harmonization-vector-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.get-harmonization-vector-fn]
     pub fn get_harmonization_vector(coding_vector: &StringVector) -> NumberVector {
-        let mut retval = NumberVector::new();
-        retval.reserve(coding_vector.len());
-        for it in coding_vector.iter() {
-            if *it != "" {
-                retval.push(Self::get_number(it));
-            } else {
-                // a gap in indexing
-                retval.push(0);
-            }
-        }
-        retval
+        GLOBAL_FORMAT_CODER
+            .lock()
+            .unwrap()
+            .get_harmonization_vector(coding_vector)
     }
 }
 
