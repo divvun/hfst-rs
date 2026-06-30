@@ -1,18 +1,18 @@
 //! Port of 'libhfst/src/HfstLookupFlagDiacritics.{h,cc}'.
 //!
-//! 'FlagDiacriticTable''s 'diacritic_*' maps are C++ 'static' class members, i.e.
-//! process-global mutable state shared across all instances. They are ported as
-//! module-level 'static Mutex<BTreeMap<…>>'. C++ 'map[key]' reads are ported as
-//! 'entry(...).or_default()' / '.or_insert(...)' to preserve 'operator[]''s
-//! default-insert side effect.
+//! 'FlagDiacriticTable''s 'diacritic_*' maps were C++ 'static' class members —
+//! process-global mutable state — used as a memo-cache: 'split_diacritic' parsed
+//! a diacritic string into them once and the accessors read them back. Because
+//! that parse is a deterministic pure function of the string, the cache is gone:
+//! 'parse_diacritic' recomputes the (operator, feature, value) on demand, so the
+//! type holds no global state. The only mutable state left is each instance's own
+//! 'feature_values'/'feature_polarities' (the actual flag-unification registers).
 //!
 //! The '#ifdef DEBUG' 'main' is dead code (it calls a
 //! 'define_diacritic'/'KeyVector' API that no longer exists) and is not ported.
-//! The '#ifdef DEBUG' 'display' is ported; see its note for the 'short'-key
-//! adaptation forced by the now-'String'-keyed static maps.
+//! The '#ifdef DEBUG' 'display' is ported; see its note.
 
 use std::collections::BTreeMap;
-use std::sync::Mutex;
 
 // [spec:hfst:def:hfst-lookup-flag-diacritics.diacritic-operator]
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -42,11 +42,11 @@ pub type FeaturePolarities = BTreeMap<String, bool>;
 // [spec:hfst:def:hfst-lookup-flag-diacritics.hfst.string-vector]
 pub use crate::hfst_data_types::StringVector;
 
-// The 'static' class members of FlagDiacriticTable.
-static DIACRITIC_OPERATORS: Mutex<DiacriticOperators> = Mutex::new(BTreeMap::new());
-static DIACRITIC_FEATURES: Mutex<DiacriticFeatures> = Mutex::new(BTreeMap::new());
-static DIACRITIC_VALUES: Mutex<DiacriticValues> = Mutex::new(BTreeMap::new());
-static DIACRITIC_HAS_VALUE: Mutex<DiacriticSettingMap> = Mutex::new(BTreeMap::new());
+// The C++ 'static' class members (diacritic_operators/_features/_values/
+// _has_value) were a process-global memo-cache that 'split_diacritic' populated
+// from the diacritic string and the accessors below read back. The parse is a
+// deterministic pure function of the string, so the cache is gone: the accessors
+// recompute via 'parse_diacritic' on demand. Four shared-mutable globals removed.
 
 // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table]
 pub struct FlagDiacriticTable {
@@ -56,36 +56,57 @@ pub struct FlagDiacriticTable {
 }
 
 impl FlagDiacriticTable {
-    // Accessors mirroring 'operator[]' on the static maps (default-insert).
+    // Decompose a flag diacritic '@[PNDRCU].FEATURE(.VALUE)?@' into (operator,
+    // feature, value). This is exactly the parse the C++ 'split_diacritic'
+    // performed once into the global maps; it is recomputed on demand instead.
+    // For a non-diacritic string the accessors below never see it (callers gate
+    // on 'is_diacritic' first), but it returns inert defaults rather than panic.
+    fn parse_diacritic(symbol: &str) -> (DiacriticOperator, String, Option<String>) {
+        let bytes = symbol.as_bytes();
+        if symbol.len() < 5 || bytes[2] != b'.' {
+            return (DiacriticOperator::Pop, String::new(), None);
+        }
+        let op = match bytes[1] {
+            b'P' => DiacriticOperator::Pop,
+            b'N' => DiacriticOperator::Nop,
+            b'D' => DiacriticOperator::Dop,
+            b'R' => DiacriticOperator::Rop,
+            b'C' => DiacriticOperator::Cop,
+            b'U' => DiacriticOperator::Uop,
+            _ => DiacriticOperator::Pop,
+        };
+        // Third character is always the first fullstop (index 2).
+        let first_full_stop_pos: usize = 2;
+        let second_full_stop_pos = symbol[first_full_stop_pos + 1..]
+            .find('.')
+            .map(|i| i + first_full_stop_pos + 1);
+        let last_char_pos = symbol.len() - 1;
+        match second_full_stop_pos {
+            None => (
+                op,
+                symbol[first_full_stop_pos + 1..last_char_pos].to_string(),
+                None,
+            ),
+            Some(second_full_stop_pos) => (
+                op,
+                symbol[first_full_stop_pos + 1..second_full_stop_pos].to_string(),
+                Some(symbol[second_full_stop_pos + 1..last_char_pos].to_string()),
+            ),
+        }
+    }
+
+    // Accessors mirroring 'operator[]' on the (now-removed) static maps.
     fn op_of(symbol: &str) -> DiacriticOperator {
-        *DIACRITIC_OPERATORS
-            .lock()
-            .unwrap()
-            .entry(symbol.to_string())
-            .or_insert(DiacriticOperator::Pop)
+        Self::parse_diacritic(symbol).0
     }
     fn feature_of(symbol: &str) -> String {
-        DIACRITIC_FEATURES
-            .lock()
-            .unwrap()
-            .entry(symbol.to_string())
-            .or_default()
-            .clone()
+        Self::parse_diacritic(symbol).1
     }
     fn value_of(symbol: &str) -> String {
-        DIACRITIC_VALUES
-            .lock()
-            .unwrap()
-            .entry(symbol.to_string())
-            .or_default()
-            .clone()
+        Self::parse_diacritic(symbol).2.unwrap_or_default()
     }
     fn has_value_of(symbol: &str) -> bool {
-        *DIACRITIC_HAS_VALUE
-            .lock()
-            .unwrap()
-            .entry(symbol.to_string())
-            .or_default()
+        Self::parse_diacritic(symbol).2.is_some()
     }
 
     // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.is-genuine-diacritic-fn]
@@ -123,92 +144,11 @@ impl FlagDiacriticTable {
         true
     }
 
-    // Precondition: diacritic_string matches @[A-Z][.][A-Z]+([.][A-Z]+)?@
-    // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.split-diacritic-fn]
-    // [spec:hfst:sem:hfst-lookup-flag-diacritics.flag-diacritic-table.split-diacritic-fn]
-    fn split_diacritic(diacritic_string: &str) {
-        match diacritic_string.as_bytes()[1] {
-            b'P' => {
-                DIACRITIC_OPERATORS
-                    .lock()
-                    .unwrap()
-                    .insert(diacritic_string.to_string(), DiacriticOperator::Pop);
-            }
-            b'N' => {
-                DIACRITIC_OPERATORS
-                    .lock()
-                    .unwrap()
-                    .insert(diacritic_string.to_string(), DiacriticOperator::Nop);
-            }
-            b'D' => {
-                DIACRITIC_OPERATORS
-                    .lock()
-                    .unwrap()
-                    .insert(diacritic_string.to_string(), DiacriticOperator::Dop);
-            }
-            b'R' => {
-                DIACRITIC_OPERATORS
-                    .lock()
-                    .unwrap()
-                    .insert(diacritic_string.to_string(), DiacriticOperator::Rop);
-            }
-            b'C' => {
-                DIACRITIC_OPERATORS
-                    .lock()
-                    .unwrap()
-                    .insert(diacritic_string.to_string(), DiacriticOperator::Cop);
-            }
-            b'U' => {
-                DIACRITIC_OPERATORS
-                    .lock()
-                    .unwrap()
-                    .insert(diacritic_string.to_string(), DiacriticOperator::Uop);
-            }
-            _ => {
-                assert!(false);
-            }
-        }
-
-        // Third character is always the first fullstop.
-        let first_full_stop_pos: usize = 2;
-        // Find the second full stop, if there is one.
-        let second_full_stop_pos = diacritic_string[first_full_stop_pos + 1..]
-            .find('.')
-            .map(|i| i + first_full_stop_pos + 1);
-        let last_char_pos = diacritic_string.len() - 1;
-        match second_full_stop_pos {
-            None => {
-                let op = Self::op_of(diacritic_string);
-                assert!(
-                    op == DiacriticOperator::Cop
-                        || op == DiacriticOperator::Dop
-                        || op == DiacriticOperator::Rop
-                );
-                DIACRITIC_HAS_VALUE
-                    .lock()
-                    .unwrap()
-                    .insert(diacritic_string.to_string(), false);
-                DIACRITIC_FEATURES.lock().unwrap().insert(
-                    diacritic_string.to_string(),
-                    diacritic_string[first_full_stop_pos + 1..last_char_pos].to_string(),
-                );
-            }
-            Some(second_full_stop_pos) => {
-                DIACRITIC_HAS_VALUE
-                    .lock()
-                    .unwrap()
-                    .insert(diacritic_string.to_string(), true);
-                DIACRITIC_FEATURES.lock().unwrap().insert(
-                    diacritic_string.to_string(),
-                    diacritic_string[first_full_stop_pos + 1..second_full_stop_pos].to_string(),
-                );
-                DIACRITIC_VALUES.lock().unwrap().insert(
-                    diacritic_string.to_string(),
-                    diacritic_string[second_full_stop_pos + 1..last_char_pos].to_string(),
-                );
-            }
-        }
-    }
+    // The C++ 'split_diacritic' parsed a genuine diacritic into the global maps;
+    // that work now lives in 'parse_diacritic', recomputed on demand by the
+    // accessors, so the cache-populating pass is gone. Its 'assert' that a
+    // value-less diacritic is C/D/R-op is preserved by 'is_genuine_diacritic'
+    // (which rejects '@P.X@' / '@N.X@' / '@U.X@' — they require a value).
 
     // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.flag-diacritic-table-fn]
     // [spec:hfst:sem:hfst-lookup-flag-diacritics.flag-diacritic-table.flag-diacritic-table-fn]
@@ -223,11 +163,9 @@ impl FlagDiacriticTable {
     // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.is-diacritic-fn]
     // [spec:hfst:sem:hfst-lookup-flag-diacritics.flag-diacritic-table.is-diacritic-fn]
     pub fn is_diacritic(symbol: &str) -> bool {
-        let res = Self::is_genuine_diacritic(symbol);
-        if res {
-            Self::split_diacritic(symbol);
-        }
-        res
+        // The C++ also eagerly split a genuine diacritic into the global maps;
+        // with on-demand parsing that side effect is unnecessary.
+        Self::is_genuine_diacritic(symbol)
     }
 
     // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.set-positive-value-fn]
@@ -409,12 +347,12 @@ impl FlagDiacriticTable {
     //
     // '#ifdef DEBUG' dead code: the original keyed the static maps by 'short'
     // (an old number-based API), so the 'short' key is looked up by its decimal
-    // string in the surviving 'String'-keyed maps. 'operator[]''s default-insert
-    // is preserved via the 'op_of'/'feature_of'/'value_of' accessors, and the
+    // string. With the cache gone, "defined" is just "parses as a genuine
+    // diacritic"; the op/feature/value come from the on-demand accessors, and the
     // unscoped C++ enum streams as its integer value (mirrored with 'as i32').
     pub fn display(diacritic: i16) {
         let key = diacritic.to_string();
-        if !DIACRITIC_OPERATORS.lock().unwrap().contains_key(&key) {
+        if !Self::is_genuine_diacritic(&key) {
             println!("{} not defined.", diacritic);
         } else {
             println!(

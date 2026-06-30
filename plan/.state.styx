@@ -42,4 +42,5 @@ assertions (
     {id idiom5.warning-stream, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:27:52.319428Z}
     {id idiom5.rawptr-returns, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:35:35.518012Z}
     {id idiom5.exception-slot, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:44:11.600653Z}
+    {id idiom5.diacritic-registry, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:53:13.737829Z}
 )

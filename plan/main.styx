@@ -1317,6 +1317,27 @@ children (
                     }
                 )
             }
+
+            {
+                id idiom5.diacritic-registry
+                title "Delete the 4 FlagDiacriticTable global Mutex maps (DIACRITIC_OPERATORS/FEATURES/VALUES/HAS_VALUE). They were a deterministic memo-cache keyed on the diacritic string (split_diacritic populated them; op_of/feature_of/value_of/has_value_of read them). Replace with a single pure parse_diacritic computed on demand; drop split_diacritic; is_diacritic becomes is_genuine_diacritic. Removes 4 shared-mutable globals; behavior-preserving (parse is deterministic)."
+                priority 3
+                log (
+                    {
+                        at 2026-06-30T00:46:46.773598Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-30T00:53:13.737829Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
         )
         log (
             {
