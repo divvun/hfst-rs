@@ -40,4 +40,5 @@ assertions (
     {id idiom4.lib, kind @complete, author "brendan@necessary.nu", at 2026-06-29T23:46:49.341466Z}
     {id idiom4.gate, kind @complete, author "brendan@necessary.nu", at 2026-06-29T23:46:51.392884Z}
     {id idiom5.warning-stream, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:27:52.319428Z}
+    {id idiom5.rawptr-returns, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:35:35.518012Z}
 )

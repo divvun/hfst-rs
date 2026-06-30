@@ -1275,6 +1275,27 @@ children (
                     }
                 )
             }
+
+            {
+                id idiom5.rawptr-returns
+                title "Convert the *mut HfstTransducer-returning facade fns to owned: convert_static -> HfstTransducer, harmonize_symbol_encodings -> HfstTransducer, extract_path_transducers -> Vec<HfstTransducer>, prolog_file_to_xfsm_transducer -> HfstTransducer, read_lexc_ptr -> Option<HfstTransducer> (drops the placeholder-leak dance + read_lexc's latent &*null UB). Ripple the 2 CLI callers (hfst-grep, hfst-txt2fst) by re-wrapping into their own out-of-scope raw-ptr statics."
+                priority 3
+                log (
+                    {
+                        at 2026-06-30T00:31:29.73927Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-30T00:35:35.518012Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
         )
         log (
             {

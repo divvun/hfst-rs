@@ -252,9 +252,8 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     // C: catches HfstException around prolog_file_to_xfsm_transducer;
                     // the Rust foundation panics rather than throwing, so the catch
                     // arm is not reproduced here.
-                    let t = HfstTransducer::prolog_file_to_xfsm_transducer(&inputfilename);
-                    outstream.redirect(&mut *t);
-                    drop(Box::from_raw(t));
+                    let mut t = HfstTransducer::prolog_file_to_xfsm_transducer(&inputfilename);
+                    outstream.redirect(&mut t);
                     outstream.flush();
                     break;
                 }

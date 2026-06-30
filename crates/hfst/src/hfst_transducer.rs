@@ -1005,12 +1005,12 @@ impl HfstTransducer {
 
     /// For internal use: create a new transducer equivalent to 't' in format
     /// 'type_'. (Static 'convert'.)
-    pub fn convert_static(t: &HfstTransducer, type_: ImplementationType) -> *mut HfstTransducer {
+    pub fn convert_static(t: &HfstTransducer, type_: ImplementationType) -> HfstTransducer {
         if type_ == ERROR_TYPE {
             HFST_THROW_MESSAGE!(SpecifiedTypeRequiredException, "HfstTransducer::convert");
         }
         if type_ == t.type_ {
-            return Box::into_raw(Box::new(HfstTransducer::new_copy(t)));
+            return HfstTransducer::new_copy(t);
         }
         if !Self::is_lean_implementation_type_available(type_) {
             std::panic::panic_any(ImplementationTypeNotAvailableException::new(
@@ -1029,8 +1029,7 @@ impl HfstTransducer {
         // get_basic_transducer (full type-dispatch incl. HFST_OL, heap-allocated
         // like the C++ stack temporary); new_from_basic is HfstTransducer(net, type).
         let net = t.get_basic_transducer();
-        let retval = Box::into_raw(Box::new(HfstTransducer::new_from_basic(&net, type_)));
-        retval
+        HfstTransducer::new_from_basic(&net, type_)
     }
 
     /// \brief Convert the transducer into an equivalent transducer in format
@@ -1476,14 +1475,11 @@ impl HfstTransducer {
     */
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.harmonize-symbol-encodings-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.harmonize-symbol-encodings-fn]
-    pub fn harmonize_symbol_encodings(&mut self, another: &HfstTransducer) -> *mut HfstTransducer {
+    pub fn harmonize_symbol_encodings(&mut self, another: &HfstTransducer) -> HfstTransducer {
         let another_basic = HfstBasicTransducer::from_hfst_transducer(another);
         let this_basic = HfstBasicTransducer::from_hfst_transducer(&*self);
         *self = HfstTransducer::from_basic_transducer(&this_basic, self.get_type());
-        Box::into_raw(Box::new(HfstTransducer::from_basic_transducer(
-            &another_basic,
-            another.get_type(),
-        )))
+        HfstTransducer::from_basic_transducer(&another_basic, another.get_type())
     }
 
     /*
@@ -2618,12 +2614,12 @@ impl<'a> ExtractStringsCb for ExtractStringsCb_<'a> {
 impl HfstTransducer {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.extract-path-transducers-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.extract-path-transducers-fn]
-    pub fn extract_path_transducers(&mut self) -> Vec<*mut HfstTransducer> {
+    pub fn extract_path_transducers(&mut self) -> Vec<HfstTransducer> {
         if self.type_ != ImplementationType::SFST_TYPE {
             crate::HFST_THROW!(FunctionNotImplementedException);
         }
 
-        let hfst_paths: Vec<*mut HfstTransducer> = Vec::new();
+        let hfst_paths: Vec<HfstTransducer> = Vec::new();
         // #if HAVE_SFST block elided (SFST backend is compiled out).
         hfst_paths
     }
@@ -4874,7 +4870,7 @@ impl HfstTransducer {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.prolog-file-to-xfsm-transducer-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.prolog-file-to-xfsm-transducer-fn]
-    pub fn prolog_file_to_xfsm_transducer(filename: &str) -> *mut HfstTransducer {
+    pub fn prolog_file_to_xfsm_transducer(filename: &str) -> HfstTransducer {
         let _ = filename;
         crate::HFST_THROW!(FunctionNotImplementedException)
     }
@@ -5042,10 +5038,8 @@ impl HfstTransducer {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.read-lexc-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.read-lexc-fn]
     pub fn read_lexc(filename: &str, type_: ImplementationType, verbose: bool) -> HfstTransducer {
-        let ptr = HfstTransducer::read_lexc_ptr(filename, type_, verbose);
-        let retval = HfstTransducer::new_copy(unsafe { &*ptr });
-        unsafe { drop(Box::from_raw(ptr)) };
-        retval
+        HfstTransducer::read_lexc_ptr(filename, type_, verbose)
+            .expect("read_lexc: lexc compilation produced no transducer")
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.read-lexc-ptr-fn]
@@ -5054,7 +5048,7 @@ impl HfstTransducer {
         filename: &str,
         type_: ImplementationType,
         verbose: bool,
-    ) -> *mut HfstTransducer {
+    ) -> Option<HfstTransducer> {
         if type_ == ImplementationType::XFSM_TYPE {
             HFST_THROW!(FunctionNotImplementedException);
         }
@@ -5068,8 +5062,6 @@ impl HfstTransducer {
             ));
         }
 
-        let retval: *mut HfstTransducer = Box::into_raw(Box::new(HfstTransducer::new()));
-
         match type_ {
             ImplementationType::FOMA_TYPE
             | ImplementationType::SFST_TYPE
@@ -5078,20 +5070,12 @@ impl HfstTransducer {
                 // The C++ 'compiler.parse(filename.c_str())' reads the file via the
                 // Flex/Bison lexer; the ported LexcCompiler walks an AST built from
                 // source text instead, so read the file here and feed 'compile'.
-                //
-                // C++ does 'retval = compiler.compileLexical();' which overwrites the
-                // 'new HfstTransducer()' placeholder pointer and LEAKS it (the
-                // placeholder is never deleted, so its destructor never runs). We must
-                // likewise leak it: dropping the UNSPECIFIED_TYPE placeholder would run
-                // the faithful destructor and throw FunctionNotImplementedException.
-                let _leaked_placeholder = retval;
+                // (The C++ 'new HfstTransducer()' placeholder that it then leaks was a
+                // raw-pointer artifact and is gone with the owned return.)
                 let mut compiler = crate::lexc::LexcCompiler::new(type_);
                 compiler.set_verbosity(verbose as u32);
                 let source = std::fs::read_to_string(filename).unwrap();
-                // read_lexc_ptr is a facade *mut API (idiom1.core); bridge the Option.
-                compiler
-                    .compile(&source)
-                    .map_or(std::ptr::null_mut(), |t| Box::into_raw(Box::new(t)))
+                compiler.compile(&source)
             }
             ImplementationType::ERROR_TYPE => {
                 HFST_THROW!(TransducerHasWrongTypeException);

@@ -689,8 +689,10 @@ unsafe fn match_lines(infile: &mut dyn BufRead, infilename: &str, out: &mut dyn 
 unsafe fn optimise_matcher() {
     unsafe {
         verbose_printf("Optimising...\n");
-        OPTIMISED_MATCHER =
-            HfstTransducer::convert_static(&*MATCHER, ImplementationType::HFST_OL_TYPE);
+        OPTIMISED_MATCHER = Box::into_raw(Box::new(HfstTransducer::convert_static(
+            &*MATCHER,
+            ImplementationType::HFST_OL_TYPE,
+        )));
     }
 }
 
