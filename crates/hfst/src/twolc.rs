@@ -109,8 +109,10 @@ pub struct OtherSymbolTransducer {
     pub(crate) is_broken: bool,
     pub(crate) transducer: HfstTransducer,
 }
-// thread-local config replacing the five OtherSymbolTransducer statics:
-pub(crate) struct OstConfig {
+// per-compile config replacing the five OtherSymbolTransducer statics; `pub` to
+// match the `pub` OtherSymbolTransducer/Rule methods that thread it (twolc is a
+// `pub mod`).
+pub struct OstConfig {
     pub(crate) input_symbols: BTreeSet<String>,
     pub(crate) output_symbols: BTreeSet<String>,
     pub(crate) diacritics: BTreeSet<String>,
