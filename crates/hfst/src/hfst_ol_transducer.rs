@@ -346,7 +346,7 @@ mod ol_construction_io {
             let output_stream: Box<dyn std::io::Write> = match std::fs::File::create(filename) {
                 Ok(f) => Box::new(f),
                 Err(_) => {
-                    eprintln!("HfstOlOutputStream: ERROR: failbit set (3).");
+                    tracing::error!("HfstOlOutputStream: failbit set (3).");
                     Box::new(std::io::sink())
                 }
             };

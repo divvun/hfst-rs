@@ -13,7 +13,7 @@
 //!   * 'static bool firstLexicon' becomes the 'first_lexicon_' field;
 //!   * the unused 'static StringVector multichar_symbols' is dropped.
 //!
-//! # Stream / WINDOWS plumbing dropped — error text via 'eprintln!'.
+//! # Stream / WINDOWS plumbing dropped — error text via 'tracing'.
 //!
 //! # Deferred (record as 'unimplemented!')
 //! - 'parse(FILE*)' / 'parse(const char*)' REPLACED by the AST-walk 'compile(&str)'.
@@ -43,6 +43,7 @@ use crate::hfst_symbol_defs::{HfstSymbolSubstitutions, StringSet};
 use crate::hfst_tokenizer::HfstTokenizer;
 use crate::hfst_transducer::HfstTransducer;
 use crate::xre::XreCompiler;
+use tracing::{debug, error, info, warn};
 
 // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler]
 pub struct LexcCompiler {
@@ -507,7 +508,7 @@ impl LexcCompiler {
             "-Wrepeated-lexicons" => self.warn_repeated_lexicons_ = value,
             "-Wmissing-alphabets" => self.warn_missing_alphabets_ = value,
             "-Wunnecessary-escapes" => self.warn_unnecessary_escapes_ = value,
-            _ => eprintln!("unknown warning {}", warning),
+            _ => error!("unknown warning {}", warning),
         }
     }
 
@@ -605,7 +606,7 @@ impl LexcCompiler {
         } else if warning == "-Wunnecessary-escapes" {
             self.warn_unnecessary_escapes_
         } else {
-            eprintln!("unknown warning {}", warning);
+            error!("unknown warning {}", warning);
             false
         }
     }
@@ -617,21 +618,13 @@ impl LexcCompiler {
     /// The C++ free function printed Flex token positions; the AST-walk port has
     /// no hand-lexer position state, so it just writes the message to stderr.
     fn error_at_current_token(&self, format: &str) {
-        if should_colourise() {
-            eprintln!("\u{1b}[01m\u{1b}[31m{}\u{1b}[0m", format);
-        } else {
-            eprintln!("{}", format);
-        }
+        error!("{}", format);
     }
 
     // [spec:hfst:def:lexc-utils.hfst.lexc.warning-at-current-token-fn]
     // [spec:hfst:sem:lexc-utils.hfst.lexc.warning-at-current-token-fn]
     fn warning_at_current_token(&self, format: &str) {
-        if should_colourise() {
-            eprintln!("\u{1b}[01m\u{1b}[33m{}\u{1b}[0m", format);
-        } else {
-            eprintln!("{}", format);
-        }
+        warn!("{}", format);
     }
 
     // [spec:hfst:def:lexc-utils.hfst.lexc.strip-percents-fn]
@@ -1082,7 +1075,7 @@ impl LexcCompiler {
             );
             if new_alpha.chars().count() > 1 {
                 self.warning_at_current_token(&errm);
-                eprintln!("you shoudl add {} to Multichar_Symbols section", new_alpha);
+                warn!("you shoudl add {} to Multichar_Symbols section", new_alpha);
             } else if self.warn_missing_alphabets_ && self.treat_warnings_as_errors_ {
                 self.error_at_current_token(&errm);
                 self.parseErrors_ = true;
@@ -1105,7 +1098,7 @@ impl LexcCompiler {
         entry.disjunct(&new_paths, true).optimize();
 
         if !self.quiet_ && (self.currentEntries_ % 10000) == 0 {
-            eprint!("{}...", self.currentEntries_);
+            info!("{}...", self.currentEntries_);
         }
 
         // add key to trie
@@ -1133,7 +1126,7 @@ impl LexcCompiler {
         // FIXME: collect implicit characters
         self.xre_.define(definition_name, xre);
         if !self.quiet_ {
-            eprintln!(
+            info!(
                 "Defined '{}': ? Kb., ? states, ? arcs, ? paths.",
                 definition_name
             );
@@ -1191,11 +1184,13 @@ impl LexcCompiler {
             }
             self.set_initial_lexicon_name(lexicon_name);
         }
-        if !self.first_lexicon_ && !self.quiet_ {
-            eprint!("{} ", self.currentEntries_);
-        }
         if !self.quiet_ {
-            eprint!("{}...", lexicon_name);
+            let mut line = String::new();
+            if !self.first_lexicon_ {
+                line.push_str(&format!("{} ", self.currentEntries_));
+            }
+            line.push_str(&format!("{}...", lexicon_name));
+            info!("{}", line);
         }
         self.first_lexicon_ = false;
 
@@ -1312,7 +1307,7 @@ impl LexcCompiler {
     // Port of 'LexcCompiler::compileLexical()' (LexcCompiler.cc ~1300-1699).
     //
     // The C++ 'std::ostream *err = get_stream(error_)' plumbing and every
-    // 'flush(err)' are folded into plain 'eprintln!'/'eprint!' to stderr, per the
+    // 'flush(err)' are folded into 'tracing' diagnostics, per the
     // module docs (the non-WINDOWS code path). The 'if (debug)' AT&T dumps are
     // omitted because the file-global 'bool debug' is always 'false'. The
     // 'COLOUR_*' '#define's are inlined as literal ANSI escapes to avoid a
@@ -1320,16 +1315,13 @@ impl LexcCompiler {
     // 'should_colourise').
     pub fn compile_lexical(&mut self) -> Option<HfstTransducer> {
         if self.parseErrors_ {
-            eprintln!("compilation aborted due to previous errors");
+            error!("compilation aborted due to previous errors");
             return None;
         }
         let mut warnings_generated = false;
         self.print_connectedness(&mut warnings_generated);
         if warnings_generated && self.treat_warnings_as_errors_ {
-            if should_colourise() {
-                eprint!("\u{1b}[31m*** ERROR: \u{1b}[0m");
-            }
-            eprintln!("missing or unused LEXICONs (see above) and -Werror has been enabled");
+            error!("missing or unused LEXICONs (see above) and -Werror has been enabled");
             return None;
         }
 
@@ -1371,7 +1363,7 @@ impl LexcCompiler {
 
             for s in &self.lexiconNames_ {
                 if self.verbose_ {
-                    eprint!("Morphotaxing... {} ", s);
+                    debug!("Morphotaxing... {} ", s);
                 }
                 let joiner_enc = joiner_encode(s);
 
@@ -1416,7 +1408,7 @@ impl LexcCompiler {
 
             for s in &self.lexiconNames_ {
                 if self.verbose_ {
-                    eprint!("Morphotaxing... {} ", s);
+                    debug!("Morphotaxing... {} ", s);
                 }
                 let flag_p_string = flag_joiner_encode(s, false);
                 let flag_r_string = flag_joiner_encode(s, true);
@@ -1466,8 +1458,7 @@ impl LexcCompiler {
         let mut all_substitutions = HfstSymbolSubstitutions::new();
         if self.with_flags_ {
             if self.verbose_ {
-                eprintln!();
-                eprintln!("Changing flags...");
+                debug!("Changing flags...");
             }
             let mut fake_flags_to_real_flags = HfstSymbolSubstitutions::new();
             // Change fake flags to real flags
@@ -1492,8 +1483,7 @@ impl LexcCompiler {
 
         // replace reg exp key with transducers
         if self.verbose_ {
-            eprintln!();
-            eprintln!("Inserting regular expressions...");
+            debug!("Inserting regular expressions...");
         }
 
         // substitute all reg expression into special, unharmonizible symbols
@@ -1588,18 +1578,14 @@ impl LexcCompiler {
 
         rv.optimize();
 
-        if !self.quiet_ {
-            eprintln!();
-        }
-
         Some(rv)
     }
 
     // Port of 'LexcCompiler::printConnectedness(bool &warnings_generated)'
     // (LexcCompiler.cc ~1701-1765): the missing/unused-lexicon validation. The
     // C++ 'set_difference' over the sorted 'std::set's becomes 'BTreeSet'
-    // differences (also sorted). The 'COLOUR_*' escapes are inlined to stderr,
-    // and 'flush(err)' is dropped (folded into 'eprintln!').
+    // differences (also sorted). The 'COLOUR_*' escapes are dropped (the
+    // 'tracing' subscriber owns formatting), and 'flush(err)' is dropped.
     pub fn print_connectedness(&self, warnings_generated: &mut bool) -> &Self {
         if self.lexiconNames_ != self.continuations_ {
             let lex_minus_cont: Vec<&String> = self
@@ -1613,15 +1599,17 @@ impl LexcCompiler {
             if !cont_minus_lex.is_empty() {
                 for s in &cont_minus_lex {
                     if !self.quiet_ && self.warn_missing_lexicons_ {
-                        if should_colourise() && self.treat_warnings_as_errors_ {
-                            eprint!("\u{1b}[31mERROR: \u{1b}[0m");
-                        } else if should_colourise() {
-                            eprint!("\u{1b}[33mWarning: \u{1b}[0m");
+                        if self.treat_warnings_as_errors_ {
+                            error!(
+                                "Sublexicon is mentioned but not defined. [-Wmissing-lexicons] ({}) ",
+                                s
+                            );
+                        } else {
+                            warn!(
+                                "Sublexicon is mentioned but not defined. [-Wmissing-lexicons] ({}) ",
+                                s
+                            );
                         }
-                        eprintln!(
-                            "Sublexicon is mentioned but not defined. [-Wmissing-lexicons] ({}) ",
-                            s
-                        );
                     }
                     *warnings_generated = true;
                 }
@@ -1629,18 +1617,22 @@ impl LexcCompiler {
             if !lex_minus_cont.is_empty() {
                 *warnings_generated = true;
                 if !self.quiet_ && self.warn_unused_lexicons_ {
-                    if should_colourise() && self.treat_warnings_as_errors_ {
-                        eprint!("\u{1b}[31mERROR: \u{1b}[0m");
-                    } else if should_colourise() {
-                        eprint!("\u{1b}[33mWarning: \u{1b}[0m");
-                    }
-                    eprintln!("Sublexicons defined but not used [-Wunused-lexicons]");
                     let mut line = String::new();
                     for s in &lex_minus_cont {
                         line.push_str(s);
                         line.push(' ');
                     }
-                    eprintln!("{}", line);
+                    if self.treat_warnings_as_errors_ {
+                        error!(
+                            "Sublexicons defined but not used [-Wunused-lexicons]\n{}",
+                            line
+                        );
+                    } else {
+                        warn!(
+                            "Sublexicons defined but not used [-Wunused-lexicons]\n{}",
+                            line
+                        );
+                    }
                 }
             }
         }

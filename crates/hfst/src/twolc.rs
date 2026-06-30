@@ -63,6 +63,7 @@ use nfst_xre::{BinaryOp, UnaryOp};
 #[allow(unused_imports)]
 use crate::hfst_data_types::{ImplementationType, StringPair, StringPairVector, StringVector};
 use crate::hfst_transducer::HfstTransducer;
+use tracing::{debug, error, info, warn};
 
 // Special symbols (OtherSymbolTransducer.h file-scope 'static const's):
 pub const TWOLC_IDENTITY: &str = "@_TWOLC_IDENTITY_SYMBOL_@";
@@ -545,7 +546,7 @@ impl OtherSymbolTransducer {
             }
         }
         if self.is_broken {
-            eprintln!("Unknown pair: {} {}", input_symbol, output_symbol);
+            error!("Unknown pair: {} {}", input_symbol, output_symbol);
         }
     }
 
@@ -2156,7 +2157,7 @@ impl RuleContainer {
     pub fn compile(&mut self, cfg: &OstConfig, be_verbose: bool) {
         for rule in self.rule_vector.iter_mut() {
             if be_verbose {
-                eprintln!("Compiling {}", Rule::get_print_name(&rule.rule().name));
+                debug!("Compiling {}", Rule::get_print_name(&rule.rule().name));
             }
             rule.compile(cfg);
         }
@@ -2176,7 +2177,7 @@ impl RuleContainer {
         for rule in self.rule_vector.iter_mut() {
             if be_verbose {
                 let name = Rule::get_print_name(&rule.rule().get_name());
-                eprintln!("Storing {name}");
+                debug!("Storing {name}");
             }
             rule.rule_mut().store(cfg, out);
         }
@@ -2255,13 +2256,11 @@ impl RightArrowRuleContainer {
             if self.report_right_arrow_conflicts {
                 let existing_name = self.base.rule_vector[existing_index].rule().name.clone();
                 let incoming_name = rule.base.base.name.clone();
-                eprintln!(
-                    "There is a =>-rule conflict between {} and {}.",
+                warn!(
+                    "There is a =>-rule conflict between {} and {}.\nResolving the conflict by joining contexts.",
                     Rule::get_print_name(&existing_name),
                     Rule::get_print_name(&incoming_name)
                 );
-                eprintln!("Resolving the conflict by joining contexts.");
-                eprintln!();
             }
 
             if self.resolve_right_arrow_conflicts {
@@ -2367,7 +2366,7 @@ impl LeftArrowRuleContainer {
                     if self.report_left_arrow_conflicts {
                         let existing_name =
                             self.base.rule_vector[existing_index].rule().name.clone();
-                        eprint!(
+                        let mut line = format!(
                             "There is a <=-rule conflict between {} and {}.\nE.g. in context ",
                             Rule::get_print_name(&existing_name),
                             Rule::get_print_name(&rule.base.base.name)
@@ -2386,9 +2385,9 @@ impl LeftArrowRuleContainer {
                             {
                                 symbol_pair = "?".to_string();
                             }
-                            eprint!("{} ", symbol_pair);
+                            line.push_str(&format!("{} ", symbol_pair));
                         }
-                        eprintln!();
+                        warn!("{}", line);
                     }
                     if self.resolve_left_arrow_conflicts {
                         // existing.resolvable_conflict(rule):
@@ -2401,7 +2400,7 @@ impl LeftArrowRuleContainer {
                             if self.report_left_arrow_conflicts {
                                 let existing_name =
                                     self.base.rule_vector[existing_index].rule().name.clone();
-                                eprintln!(
+                                warn!(
                                     "Resolving the conflict by restricting the context of {}.",
                                     Rule::get_print_name(&existing_name)
                                 );
@@ -2422,7 +2421,7 @@ impl LeftArrowRuleContainer {
                                 rule.base.base.context.is_subset(cfg, &wbized_existing);
                             if incoming_resolvable {
                                 if self.report_left_arrow_conflicts {
-                                    eprintln!(
+                                    warn!(
                                         "Resolving the conflict by restricting the context of {}.",
                                         rule.base.base.name
                                     );
@@ -2435,12 +2434,9 @@ impl LeftArrowRuleContainer {
                                 };
                                 rule.base.base.context.subtract(cfg, &existing_context);
                             } else if self.report_left_arrow_conflicts {
-                                eprintln!("WARNING! The conflict is unresolvable.");
+                                warn!("The conflict is unresolvable.");
                             }
                         }
-                    }
-                    if self.report_left_arrow_conflicts {
-                        eprintln!();
                     }
                 }
             }
@@ -2795,7 +2791,7 @@ impl TwolCGrammar {
     // intersection of every compiled rule), so a smoke can drive the compiler.
     pub fn compile_and_store(&mut self, cfg: &OstConfig) -> HfstTransducer {
         if !self.be_quiet {
-            eprintln!("Compiling rules.");
+            info!("Compiling rules.");
         }
 
         let verbose = (!self.be_quiet) && self.be_verbose;
@@ -2819,7 +2815,7 @@ impl TwolCGrammar {
             .add_missing_symbols_freely(cfg, &diacritics);
 
         if !self.be_quiet {
-            eprintln!("Storing rules.");
+            info!("Storing rules.");
         }
 
         // DEFERRED: 'compiled_rule_container.store(out, ...)'. Instead intersect

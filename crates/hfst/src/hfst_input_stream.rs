@@ -941,8 +941,8 @@ mod input_impl {
                     ImplementationType::TROPICAL_OPENFST_TYPE
                 }
                 TransducerType::HFST_VERSION_2_UNWEIGHTED_WITHOUT_ALPHABET => {
-                    eprintln!(
-                        "ERROR: version 2 HFST transducer with no alphabet  cannot be processed\nAdd an alphabet with HFST version 2 tool hfst-symbols"
+                    tracing::error!(
+                        "version 2 HFST transducer with no alphabet  cannot be processed\nAdd an alphabet with HFST version 2 tool hfst-symbols"
                     );
                     ImplementationType::ERROR_TYPE
                 }

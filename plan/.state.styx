@@ -58,4 +58,5 @@ assertions (
     {id idiom5.scratch, kind @complete, author "brendan@necessary.nu", at 2026-06-30T15:54:55.01457Z}
     {id idiom5.op-local-scratch, kind @complete, author "brendan@necessary.nu", at 2026-06-30T15:54:57.334131Z}
     {id idiom7.warning-stream-tracing, kind @complete, author "brendan@necessary.nu", at 2026-06-30T16:27:48.331076Z}
+    {id idiom7.lib-logging, kind @complete, author "brendan@necessary.nu", at 2026-06-30T17:10:08.308899Z}
 )

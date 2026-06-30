@@ -1208,10 +1208,11 @@ mod construction_io {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.print-alphabet-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.print-alphabet-fn]
         pub fn print_alphabet(t: &LogVectorFst) {
+            let mut line = String::new();
             for (_l, sym) in t.input_symbols().unwrap().iter() {
-                eprint!("'{}', ", sym);
+                line.push_str(&format!("'{}', ", sym));
             }
-            eprintln!();
+            tracing::debug!("{}", line);
         }
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.get-flag-diacritics-fn]

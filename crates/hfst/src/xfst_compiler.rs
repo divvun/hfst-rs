@@ -40,6 +40,7 @@ use crate::hfst_tropical_transducer_transition_data::SymbolCoder;
 use crate::lexc::LexcCompiler;
 use crate::xre::XreCompiler;
 use std::io::BufRead;
+use tracing::{debug, error, info, warn};
 
 // [spec:hfst:def:xfst-compiler.apply-end-string]
 static APPLY_END_STRING: &str = "<ctrl-d>";
@@ -295,7 +296,7 @@ impl XfstCompiler {
     // @brief Print parts of automaton with epsilon loops
     // @todo unimplemented yet
     pub fn collect_epsilon_loops(&mut self) -> &mut Self {
-        eprintln!("cannot collect epsilon loops");
+        warn!("cannot collect epsilon loops");
         // PROMPT_AND_RETURN_THIS
         self.prompt();
         return self;
@@ -325,7 +326,7 @@ impl XfstCompiler {
 
     // @brief Print file info
     pub fn print_file_info(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        eprintln!("file info not implemented (cf. summarize)");
+        warn!("file info not implemented (cf. summarize)");
         // PROMPT_AND_RETURN_THIS
         self.prompt();
         return self;
@@ -358,7 +359,7 @@ impl XfstCompiler {
 
     // @brief Print properties of network named @a name
     pub fn print_properties_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
-        eprintln!("missing print properties");
+        warn!("missing print properties");
         // PROMPT_AND_RETURN_THIS
         self.prompt();
         return self;
@@ -425,7 +426,7 @@ impl XfstCompiler {
     // @brief Sort top network of the stack
     // @todo HFST automata sort or not by default
     pub fn sort_net(&mut self) -> &mut Self {
-        eprintln!("missing sort net");
+        warn!("missing sort net");
         // PRINT_INFO_PROMPT_AND_RETURN_THIS
         self.print_transducer_info();
         self.prompt();
@@ -435,7 +436,7 @@ impl XfstCompiler {
     // @brief Substring top network of stack
     // @todo unimplementedd
     pub fn substring_net(&mut self) -> &mut Self {
-        eprintln!("missing substring net");
+        warn!("missing substring net");
         // PRINT_INFO_PROMPT_AND_RETURN_THIS
         self.print_transducer_info();
         self.prompt();
@@ -464,7 +465,7 @@ impl XfstCompiler {
             Ok(s) => s,
             Err(e) => {
                 for d in &e.diagnostics {
-                    eprintln!("{}", d.message);
+                    error!("{}", d.message);
                 }
                 return 1;
             }
@@ -510,7 +511,7 @@ impl XfstCompiler {
         // mirror the success path of the C++ wrapper.
         let retval: i32 = 0;
         if retval != 0 {
-            eprintln!("could not close file {}", name);
+            error!("could not close file {}", name);
             self.flush();
             self.xfst_fail();
         }
@@ -523,7 +524,7 @@ impl XfstCompiler {
     pub fn xfst_fopen(&mut self, path: &str, mode: &str) {
         match crate::hfst_data_types::hfst_fopen(path, mode) {
             Err(_) => {
-                eprintln!("could not open file {}", path);
+                error!("could not open file {}", path);
                 self.flush();
                 self.xfst_fail();
             }
@@ -584,26 +585,29 @@ impl XfstCompiler {
                 || t_type == ImplementationType::HFST_OLW_TYPE
             {
                 if self.verbose_ {
-                    eprintln!(
-                        "warning: transducer is in optimized lookup format, 'apply up' is the only operation it supports"
+                    warn!(
+                        "transducer is in optimized lookup format, 'apply up' is the only operation it supports"
                     );
                 }
                 return;
             }
 
             if self.verbose_ {
-                eprint!(
-                    "warning: converting transducer type from {} to {}",
+                let mut line = format!(
+                    "converting transducer type from {} to {}",
                     crate::hfst_data_types::implementation_type_to_format(t_type),
                     crate::hfst_data_types::implementation_type_to_format(self.format_)
                 );
                 if filename.is_some() {
-                    eprint!(" when reading from file '{}'", to_filename(filename));
+                    line.push_str(&format!(
+                        " when reading from file '{}'",
+                        to_filename(filename)
+                    ));
                 }
                 if !HfstTransducer::is_safe_conversion(t_type, self.format_) {
-                    eprint!(" (loss of information is possible)");
+                    line.push_str(" (loss of information is possible)");
                 }
-                eprintln!();
+                warn!("{}", line);
             }
             t.borrow_mut().convert(self.format_, String::new());
         }
@@ -621,7 +625,7 @@ impl XfstCompiler {
 
         match crate::hfst_data_types::hfst_fopen(filename, "r") {
             Err(_) => {
-                eprintln!("Could not open file {}", filename);
+                error!("Could not open file {}", filename);
                 self.flush();
                 self.xfst_fail();
                 return std::ptr::null_mut();
@@ -641,7 +645,7 @@ impl XfstCompiler {
         match result {
             Ok(instream) => instream,
             Err(_) => {
-                eprintln!(
+                error!(
                     "Unable to read transducers from {}",
                     to_filename(Some(filename))
                 );
@@ -680,7 +684,7 @@ impl XfstCompiler {
         // reader lands.
         let _ = definitions;
         if unsafe { (*instream).is_good() } {
-            eprintln!("loading transducers from a binary HFST file is not yet supported");
+            warn!("loading transducers from a binary HFST file is not yet supported");
         }
 
         unsafe {
@@ -698,12 +702,12 @@ impl XfstCompiler {
     fn add_loaded_definition(&mut self, t: NetRef) -> &mut Self {
         let def_name = t.borrow().get_name();
         if def_name.is_empty() {
-            eprintln!("warning: loaded transducer definition has no name, skipping it");
+            warn!("loaded transducer definition has no name, skipping it");
             return self;
         }
         if self.definitions_.contains_key(&def_name) {
-            eprintln!(
-                "warning: a definition named '{}' already exists, overwriting it",
+            warn!(
+                "a definition named '{}' already exists, overwriting it",
                 def_name
             );
             // overwriting drops the previous Rc.
@@ -822,7 +826,7 @@ impl XfstCompiler {
     fn top(&mut self) -> Option<NetRef> {
         if self.stack_.is_empty() {
             // EMPTY_STACK
-            eprintln!("Empty stack.");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
             return None;
@@ -833,7 +837,7 @@ impl XfstCompiler {
             if t.get_type() == ImplementationType::HFST_OL_TYPE
                 || t.get_type() == ImplementationType::HFST_OLW_TYPE
             {
-                eprintln!(
+                warn!(
                     "Operation not supported for optimized lookup format. Consider 'remove-optimization' to convert into ordinary format."
                 );
                 self.prompt();
@@ -904,7 +908,7 @@ impl XfstCompiler {
     // ------------------------------------------------------------------
 
     fn error_message(&self, message: &str) -> &Self {
-        eprintln!("{}", message);
+        error!("{}", message);
         return self;
     }
 
@@ -942,7 +946,7 @@ impl XfstCompiler {
         let name = line[..p].to_string();
         if p >= bytes.len() {
             // *p == '\0': no colon in line (assert(*p != '\0') is a no-op in release)
-            eprintln!("no colon in line");
+            error!("no colon in line");
         }
         // skip the colon, then skip leading whitespace of the value
         let mut q = if p < bytes.len() { p + 1 } else { p };
@@ -1157,7 +1161,7 @@ impl XfstCompiler {
                 | NetworkOp::ExtractUnambiguous
                 | NetworkOp::Ambiguous => {
                     // hxfsterror("unimplemetend ambiguous\n"); return EXIT_FAILURE;
-                    eprint!("unimplemetend ambiguous\n\n");
+                    error!("unimplemetend ambiguous");
                     self.fail_flag_ = true;
                 }
                 NetworkOp::CompileReplaceLower => {
@@ -1282,7 +1286,7 @@ impl XfstCompiler {
             }
             XfstCommand::Source(_path) => {
                 // hxfsterror("source not implemented yywrap\n"); return EXIT_FAILURE;
-                eprint!("source not implemented yywrap\n\n");
+                error!("source not implemented yywrap");
                 self.fail_flag_ = true;
             }
             XfstCommand::Quit => {
@@ -1331,7 +1335,7 @@ impl XfstCompiler {
             XfstCommand::EditProps => {
                 // hxfsterror("NETWORK PROPERTY EDITOR unimplemented\n");
                 // return EXIT_FAILURE;
-                eprint!("NETWORK PROPERTY EDITOR unimplemented\n\n");
+                error!("NETWORK PROPERTY EDITOR unimplemented");
                 self.fail_flag_ = true;
             }
             XfstCommand::Hfst(data) => {
@@ -1634,8 +1638,8 @@ impl XfstCompiler {
 // Output convention: the C++ output() returns *output_ (std::cout by
 // default) and error() returns *error_ (std::cerr by default); get_stream()
 // is the identity on non-Windows and flush() is a no-op there. We mirror that
-// Unix behaviour directly: output() writes to stdout via print!, error()
-// writes to stderr via eprint!, and the print_* methods write their 'stream'
+// Unix behaviour directly: output() writes to stdout via print!, diagnostics
+// go through the tracing macros, and the print_* methods write their 'stream'
 // content to the oss writer passed in (the C++ '*oss' target).
 impl XfstCompiler {
     // @brief Print @a text to stdout
@@ -1661,14 +1665,14 @@ impl XfstCompiler {
     // @brief Execute @c system()
     pub fn system(&mut self, command: &str) -> &mut Self {
         if self.restricted_mode_ {
-            eprint!("Restricted mode (--restricted-mode) is in use, system calls are disabled\n");
+            warn!("Restricted mode (--restricted-mode) is in use, system calls are disabled");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
         }
         let rv = run_shell(command);
         if rv != 0 {
-            eprint!("system {} returned {}\n", command, rv);
+            warn!("system {} returned {}", command, rv);
         }
         self.prompt();
         return self;
@@ -1678,9 +1682,7 @@ impl XfstCompiler {
     pub fn set(&mut self, name: &str, text: &str) -> &mut Self {
         if !self.variables_.contains_key(name) {
             if name == "compose-flag-as-special" {
-                eprint!(
-                    "variable compose-flag-as-special not found, using flag-is-epsilon instead\n"
-                );
+                warn!("variable compose-flag-as-special not found, using flag-is-epsilon instead");
                 self.variables_
                     .insert("flag-is-epsilon".to_string(), text.to_string());
                 if self.verbose_ {
@@ -1689,7 +1691,7 @@ impl XfstCompiler {
                 self.prompt();
                 return self;
             } else {
-                eprint!("no such variable: '{}'\n", name);
+                error!("no such variable: '{}'", name);
                 self.prompt();
                 return self;
             }
@@ -1755,7 +1757,7 @@ impl XfstCompiler {
     // @brief Set variable @c name = @c number
     pub fn set_number(&mut self, name: &str, number: u32) -> &mut Self {
         if !self.variables_.contains_key(name) {
-            eprint!("no such variable: '{}'\n", name);
+            error!("no such variable: '{}'", name);
             self.prompt();
             return self;
         }
@@ -1778,7 +1780,7 @@ impl XfstCompiler {
     // @brief Show named variable
     pub fn show(&mut self, name: &str) -> &mut Self {
         if !self.variables_.contains_key(name) {
-            eprint!("no such variable: '{}'\n", name);
+            error!("no such variable: '{}'", name);
             self.prompt();
             return self;
         }
@@ -2272,8 +2274,8 @@ impl XfstCompiler {
             std::process::id()
         );
         if false || self.verbose_ {
-            eprint!(
-                "Writing net in dot format to temporary file '{}'.\n",
+            debug!(
+                "Writing net in dot format to temporary file '{}'.",
                 dotfilename
             );
         }
@@ -2288,19 +2290,19 @@ impl XfstCompiler {
             crate::hfst_print_dot::print_dot_os(&mut dotfile, &mut *tmp.borrow_mut());
         }
         if false || self.verbose_ {
-            eprint!("Wrote net, closing file and converting into png format.\n");
+            debug!("Wrote net, closing file and converting into png format.");
         }
         let cmd1 = format!("dot -Tpng {} > {} 2> /dev/null", dotfilename, pngfilename);
         if run_shell(&cmd1) != 0 {
-            eprint!("Converting failed.\n");
+            error!("Converting failed.");
             self.xfst_lesser_fail();
         }
         if false || self.verbose_ {
-            eprint!("Converted to png format, viewing the graph.\n");
+            debug!("Converted to png format, viewing the graph.");
         }
         let cmd2 = format!("/usr/bin/xdg-open {} 2> /dev/null &", pngfilename);
         if run_shell(&cmd2) != 0 {
-            eprint!("Viewing failed.\n");
+            error!("Viewing failed.");
             self.xfst_lesser_fail();
         }
         self.prompt();
@@ -2327,7 +2329,7 @@ impl XfstCompiler {
     pub fn print_net_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
         match self.definitions_.get(name).cloned() {
             None => {
-                eprint!("no such defined network: '{}'\n", name);
+                error!("no such defined network: '{}'", name);
                 self.prompt();
                 return self;
             }
@@ -2447,7 +2449,7 @@ impl XfstCompiler {
     // @todo HFST automata do not remember their names
     pub fn name_net(&mut self, name: &str) -> &mut Self {
         if self.stack_.len() < 1 {
-            eprint!("Empty stack.\n");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             return self;
         }
@@ -2461,7 +2463,7 @@ impl XfstCompiler {
 
     // @brief Sekrit HFST raw command mode!
     pub fn hfst(&mut self, data: &str) -> &mut Self {
-        eprint!("HFST: {}\n", data);
+        info!("HFST: {}", data);
         self.prompt();
         return self;
     }
@@ -2569,12 +2571,12 @@ impl XfstCompiler {
     pub fn unknown_command(&mut self, s: &str) -> i32 {
         if self.variables_["quit-on-fail"] == "ON" {
             if self.verbose_ {
-                eprint!("Command {} is not recognised.\n", s);
+                error!("Command {} is not recognised.", s);
                 // fprintf(stderr, "Command %s is not recognised.\n", s);
             }
             return 1;
         }
-        eprint!("Command {} is not recognised.\n", s);
+        error!("Command {} is not recognised.", s);
         // fprintf(stderr, "Command %s is not recognised.\n", s);
         self.prompt();
         return 0;
@@ -2864,9 +2866,8 @@ impl XfstCompiler {
             if self.variables_["show-flags"] == "OFF"
                 && (tmp_upper.has_flag_diacritics() || tmp_lower.has_flag_diacritics())
             {
-                eprint!("warning: longest string may have flag diacritics that are not shown\n");
-                eprint!(
-                    "         but are used in calculating its length (use 'eliminate flags')\n"
+                warn!(
+                    "longest string may have flag diacritics that are not shown\n         but are used in calculating its length (use 'eliminate flags')"
                 );
             }
 
@@ -2949,8 +2950,8 @@ impl XfstCompiler {
                 let cutoff = crate::hfst_data_types::size_t_to_uint(string_to_size_t(
                     &self.variables_["print-words-cycle-cutoff"],
                 ));
-                eprint!(
-                    "warning: transducer is cyclic, limiting the number of cycles to {}\n",
+                warn!(
+                    "transducer is cyclic, limiting the number of cycles to {}",
                     cutoff
                 );
                 if obey_flags_off {
@@ -3166,7 +3167,7 @@ fn is_valid_string(sv: &crate::hfst_symbol_defs::StringVector) -> bool {
                     }
                 }
                 _ => {
-                    eprintln!("ERROR: line: {}", line!());
+                    error!("ERROR: line: {}", line!());
                     panic!(); // for the compiler's peace of mind
                 }
             }
@@ -3463,7 +3464,7 @@ impl XfstCompiler {
     // @todo Unicode ranges are not supported
     pub fn define_list_by_range(&mut self, name: &str, start: &str, end: &str) -> &mut Self {
         if (start.len() > 1) || (end.len() > 1) {
-            eprintln!("unsupported unicode range {}-{}", start, end);
+            warn!("unsupported unicode range {}-{}", start, end);
         }
         let mut l: BTreeSet<String> = BTreeSet::new();
         let start_c = start.as_bytes().first().copied().unwrap_or(0);
@@ -3482,12 +3483,12 @@ impl XfstCompiler {
     // @todo lists are not supportedd by HFST
     pub fn define_list(&mut self, name: &str, list: &str) -> &mut Self {
         if self.definitions_.contains_key(name) {
-            eprintln!(
+            error!(
                 "Error: '{}' has already been defined as a transducer variable.",
                 name
             );
-            eprintln!("It cannot have an incompatible definition as a list.");
-            eprintln!("Please undefine the definition first.");
+            error!("It cannot have an incompatible definition as a list.");
+            error!("Please undefine the definition first.");
             // MAYBE_QUIT
             if self.variables_["quit-on-fail"] == "ON" {
                 self.fail_flag_ = true;
@@ -3515,12 +3516,12 @@ impl XfstCompiler {
         // the variable latest_regex_compiled.
 
         if self.lists_.contains_key(name) {
-            eprintln!(
+            error!(
                 "Error: '{}' has already been defined as a list variable.",
                 name
             );
-            eprintln!("It cannot have an incompatible definition as a transducer.");
-            eprintln!("Please undefine the variable first.");
+            error!("It cannot have an incompatible definition as a transducer.");
+            error!("Please undefine the variable first.");
             // MAYBE_QUIT
             if self.variables_["quit-on-fail"] == "ON" {
                 self.fail_flag_ = true;
@@ -3537,12 +3538,12 @@ impl XfstCompiler {
                         .insert(name.to_string(), xre.to_string());
                 }
                 None => {
-                    eprintln!("Could not define variable '{}'", name);
+                    error!("Could not define variable '{}'", name);
                     self.xfst_fail();
                 }
             }
         } else {
-            eprintln!("Could not define variable '{}'", name);
+            error!("Could not define variable '{}'", name);
             self.xfst_fail();
         }
         self.prompt();
@@ -3595,7 +3596,7 @@ impl XfstCompiler {
         let mut arguments: Vec<String> = Vec::new();
 
         if !Self::extract_function_name(prototype, &mut name) {
-            eprintln!(
+            error!(
                 "Error extracting function name from prototype '{}'",
                 prototype
             );
@@ -3605,7 +3606,7 @@ impl XfstCompiler {
         }
 
         if !Self::extract_function_arguments(prototype, &mut arguments) {
-            eprintln!(
+            error!(
                 "Error extracting function arguments from prototype '{}'",
                 prototype
             );
@@ -3617,7 +3618,7 @@ impl XfstCompiler {
         let xre_converted =
             Self::convert_argument_symbols(&arguments, xre, &name, &mut self.xre_, false);
         if xre_converted.is_empty() {
-            eprintln!("Error parsing function definition '{}'", xre);
+            error!("Error parsing function definition '{}'", xre);
             self.xfst_fail();
             self.prompt();
             return self;
@@ -3631,7 +3632,7 @@ impl XfstCompiler {
             &xre_converted,
         ) {
             // XRE
-            eprintln!("Error when defining function");
+            error!("Error when defining function");
             self.xfst_fail();
             self.prompt();
             return self;
@@ -4163,7 +4164,7 @@ impl XfstCompiler {
                 Some(__ex) => __ex.name.clone(),
                 None => String::new(),
             };
-            eprintln!("error: could not eliminate flag '{}': {}", name, __name);
+            error!("could not eliminate flag '{}': {}", name, __name);
             if self.variables_["quit-on-fail"] == "ON" {
                 self.fail_flag_ = true;
             }
@@ -4198,9 +4199,9 @@ impl XfstCompiler {
     // @brief do some label pushing
     // @todo HFST automata cannot push labels
     pub fn cleanup_net(&mut self) -> &mut Self {
-        eprintln!("cannot cleanup net");
+        warn!("cannot cleanup net");
         if self.stack_.len() < 1 {
-            eprintln!("Empty stack.");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             return self;
         }
@@ -4296,7 +4297,7 @@ impl XfstCompiler {
     // @brief Negate top of stack
     pub fn negate_net(&mut self) -> &mut Self {
         if self.stack_.len() < 1 {
-            eprintln!("Empty stack.");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             return self;
         }
@@ -4315,8 +4316,8 @@ impl XfstCompiler {
                 .downcast_ref::<crate::hfst_exception_defs::TransducerIsNotAutomatonException>()
                 .is_some()
             {
-                eprintln!("Error: Negation is defined only for automata.");
-                eprintln!(
+                error!("Error: Negation is defined only for automata.");
+                error!(
                     "Use expression [[?:?]* - A] instead where A is the transducer to be negated."
                 );
                 self.xfst_lesser_fail();
@@ -4427,7 +4428,7 @@ impl XfstCompiler {
                 } else {
                     let __lvl = (whole_path.len() - 1) as u32;
                     if !Self::return_to_level(&mut whole_path, &mut shortest_path, __lvl) {
-                        eprintln!("FATAL ERROR: could not return to level '{}'", __lvl as i32);
+                        error!("FATAL ERROR: could not return to level '{}'", __lvl as i32);
                         self.ignore_history_after_index(ind);
                         self.prompt();
                         return self;
@@ -4441,7 +4442,7 @@ impl XfstCompiler {
                     continue;
                 } else if !Self::return_to_level(&mut whole_path, &mut shortest_path, level as u32)
                 {
-                    eprintln!("FATAL ERROR: could not return to level '{}'", level);
+                    error!("FATAL ERROR: could not return to level '{}'", level);
                     self.ignore_history_after_index(ind);
                     self.prompt();
                     return self;
@@ -4513,11 +4514,11 @@ impl XfstCompiler {
 
         if Self::is_well_formed_for_compile_replace(&tmp_cp, &mut self.xre_) {
             if self.verbose_ {
-                eprintln!("Network is well-formed.");
+                debug!("Network is well-formed.");
             }
         } else {
             if self.verbose_ {
-                eprintln!("Network is not well-formed.");
+                debug!("Network is not well-formed.");
             }
             self.xfst_lesser_fail();
             self.prompt();
@@ -4558,7 +4559,7 @@ impl XfstCompiler {
                         let Some(mut replacement) =
                             (unsafe { (*xre_ptr).compile(&cross_product_regexp) })
                         else {
-                            eprintln!(
+                            error!(
                                 "Could not compile regular expression in compile-replace: {}.",
                                 cross_product_regexp
                             );
@@ -4581,7 +4582,7 @@ impl XfstCompiler {
                 } else {
                     String::new()
                 };
-                eprintln!("compile_replace threw an error: '{}'", __msg);
+                error!("compile_replace threw an error: '{}'", __msg);
             }
         }
 
@@ -4690,7 +4691,7 @@ impl XfstCompiler {
                     .downcast_ref::<crate::hfst_exception_defs::FunctionNotImplementedException>()
                     .is_some()
                 {
-                    eprintln!("function not available");
+                    error!("function not available");
                     self.xfst_fail();
                     self.stack_.push(result);
                 } else {
@@ -4925,7 +4926,7 @@ impl XfstCompiler {
     pub fn lookup_optimize(&mut self) -> &mut Self {
         if self.stack_.len() < 1 {
             // EMPTY_STACK
-            eprintln!("Empty stack.");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
@@ -4937,7 +4938,7 @@ impl XfstCompiler {
         let to_format: ImplementationType;
         if t_type == ImplementationType::HFST_OL_TYPE || t_type == ImplementationType::HFST_OLW_TYPE
         {
-            eprintln!("Network is already optimized for lookup.");
+            info!("Network is already optimized for lookup.");
             self.prompt();
             return self;
         } else if t_type == ImplementationType::TROPICAL_OPENFST_TYPE
@@ -4949,7 +4950,7 @@ impl XfstCompiler {
         }
 
         if self.verbose_ {
-            eprintln!(
+            debug!(
                 "converting transducer type from {} to {}, this might take a while...",
                 crate::hfst_data_types::implementation_type_to_format(t_type),
                 crate::hfst_data_types::implementation_type_to_format(to_format)
@@ -4975,7 +4976,7 @@ impl XfstCompiler {
     pub fn remove_optimization(&mut self) -> &mut Self {
         if self.stack_.len() < 1 {
             // EMPTY_STACK
-            eprintln!("Empty stack.");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
@@ -4985,20 +4986,20 @@ impl XfstCompiler {
 
         if t_type != ImplementationType::HFST_OL_TYPE && t_type != ImplementationType::HFST_OLW_TYPE
         {
-            eprintln!("Network is already in ordinary format.");
+            info!("Network is already in ordinary format.");
             self.prompt();
             return self;
         }
 
         if self.verbose_ {
-            eprintln!(
+            debug!(
                 "converting transducer type from {} to {}, this might take a while...",
                 crate::hfst_data_types::implementation_type_to_format(t_type),
                 crate::hfst_data_types::implementation_type_to_format(self.format_)
             );
             if !HfstTransducer::is_safe_conversion(t_type, self.format_) {
-                eprintln!(
-                    "warning: converting from weighted to unweighted format, loss of information is possible"
+                warn!(
+                    "converting from weighted to unweighted format, loss of information is possible"
                 );
             }
         }
@@ -5045,7 +5046,7 @@ impl XfstCompiler {
 
         if self.stack_.len() < 1 {
             // EMPTY_STACK
-            eprintln!("Empty stack.");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
@@ -5064,7 +5065,7 @@ impl XfstCompiler {
         if direction == ApplyDirection::APPLY_UP_DIRECTION {
             let ty = top.borrow().get_type();
             if ty == ImplementationType::HFST_OL_TYPE || ty == ImplementationType::HFST_OLW_TYPE {
-                eprintln!(
+                warn!(
                     "Operation not supported for optimized lookup format. Consider 'remove-optimization' to convert into ordinary format."
                 );
                 self.prompt();
@@ -5073,13 +5074,9 @@ impl XfstCompiler {
 
             // lookdown not yet implemented in HFST
             if self.verbose_ {
-                eprintln!(
-                    "warning: apply up not implemented, inverting transducer and performing apply down"
+                warn!(
+                    "apply up not implemented, inverting transducer and performing apply down\nfor faster performance, invert and minimize top network and do apply down instead"
                 );
-                eprintln!(
-                    "for faster performance, invert and minimize top network and do apply down instead"
-                );
-                eprintln!();
             }
             let mut c = HfstTransducer::new_copy(&top.borrow());
             // the user has been warned for possible slow performance
@@ -5112,8 +5109,8 @@ impl XfstCompiler {
             if inf {
                 ol_cutoff = string_to_size_t(&self.variables_["lookup-cycle-cutoff"]);
                 if self.verbose_ {
-                    eprintln!(
-                        "warning: transducer is infinitely ambiguous, limiting number of cycles to {}",
+                    warn!(
+                        "transducer is infinitely ambiguous, limiting number of cycles to {}",
                         ol_cutoff
                     );
                 }
@@ -5205,8 +5202,8 @@ impl XfstCompiler {
         ) {
             cutoff = string_to_size_t(&self.variables_["lookup-cycle-cutoff"]);
             if self.verbose_ {
-                eprintln!(
-                    "warning: lookup is infinitely ambiguous, limiting the number of cycles to {}",
+                warn!(
+                    "lookup is infinitely ambiguous, limiting the number of cycles to {}",
                     cutoff
                 );
             }
@@ -5261,13 +5258,9 @@ impl XfstCompiler {
         };
         // lookdown not yet implemented in HFST
         if self.verbose_ {
-            eprintln!(
-                "warning: apply up not implemented, inverting transducer and performing apply down"
+            warn!(
+                "apply up not implemented, inverting transducer and performing apply down\nfor faster performance, invert and minimize top network and do apply down instead"
             );
-            eprintln!(
-                "for faster performance, invert and minimize top network and do apply down instead"
-            );
-            eprintln!();
         }
         let mut copy = HfstTransducer::new_copy(&t.borrow());
         // the user has been warned for possible slow performance
@@ -5281,7 +5274,7 @@ impl XfstCompiler {
     fn apply_down_line(&mut self, line: &str) -> &mut Self {
         if self.stack_.len() < 1 {
             // EMPTY_STACK
-            eprintln!("Empty stack.");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
@@ -5304,8 +5297,8 @@ impl XfstCompiler {
         {
             ol_cutoff = string_to_size_t(&self.variables_["lookup-cycle-cutoff"]);
             if self.verbose_ {
-                eprintln!(
-                    "warning: transducer is infinitely ambiguous, limiting number of cycles to {}",
+                warn!(
+                    "transducer is infinitely ambiguous, limiting number of cycles to {}",
                     ol_cutoff
                 );
             }
@@ -5316,7 +5309,7 @@ impl XfstCompiler {
 
     fn apply_med_line(&mut self, line: &str) -> &mut Self {
         let _ = line;
-        eprintln!("Missing apply med");
+        warn!("Missing apply med");
         self
     }
 
@@ -5334,7 +5327,7 @@ impl XfstCompiler {
     pub fn write_dot_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
         let _ = oss;
         if self.stack_.len() < 1 {
-            eprintln!("Empty stack.");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
@@ -5342,7 +5335,7 @@ impl XfstCompiler {
         let mut outfile = match std::fs::File::create(name) {
             Ok(f) => f,
             Err(_) => {
-                eprintln!("Could not open file {}", name);
+                error!("Could not open file {}", name);
                 self.xfst_fail();
                 self.prompt();
                 return self;
@@ -5360,7 +5353,7 @@ impl XfstCompiler {
     // @brief Save top networks dot form in @a outfile
     pub fn write_dot(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
         if self.stack_.len() < 1 {
-            eprintln!("Empty stack.");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
@@ -5378,7 +5371,7 @@ impl XfstCompiler {
     // @brief Save top networks prolog form in @a outfile
     pub fn write_prolog(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
         if self.stack_.len() < 1 {
-            eprintln!("Empty stack.");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
@@ -5441,7 +5434,7 @@ impl XfstCompiler {
     // @todo HFST does not support saving name of definition in file
     pub fn write_definition(&mut self, name: &str, outfilename: &str) -> &mut Self {
         if !self.definitions_.contains_key(name) {
-            eprintln!("no such defined network: '{}'", name);
+            error!("no such defined network: '{}'", name);
             self.prompt();
             return self;
         }
@@ -5466,7 +5459,7 @@ impl XfstCompiler {
     // @todo HFST does not support saving name of definition in file
     pub fn write_definitions(&mut self, outfilename: &str) -> &mut Self {
         if self.definitions_.is_empty() {
-            eprintln!("no defined networks");
+            warn!("no defined networks");
             self.prompt();
             return self;
         }
@@ -5489,7 +5482,7 @@ impl XfstCompiler {
     // @brief Save all transducers in stack to @a outfile
     pub fn write_stack(&mut self, outfilename: &str) -> &mut Self {
         if self.stack_.len() < 1 {
-            eprintln!("Empty stack.");
+            warn!("Empty stack.");
             self.xfst_lesser_fail();
             return self;
         }
@@ -5545,7 +5538,7 @@ impl XfstCompiler {
             self.stack_.push(t);
             self.print_transducer_info();
         } else {
-            eprintln!("Error reading regex '{}'.", indata);
+            error!("Error reading regex '{}'.", indata);
             self.xfst_fail();
         }
         self.prompt();
@@ -5555,7 +5548,7 @@ impl XfstCompiler {
     // @brief Read prolog form transducer from @a indata
     pub fn read_prolog(&mut self, indata: &str) -> &mut Self {
         let _ = indata;
-        eprintln!("missing read prolog");
+        warn!("missing read prolog");
         self.print_transducer_info();
         self.prompt();
         self
@@ -5572,7 +5565,7 @@ impl XfstCompiler {
     // @brief Read spaced form transducer from @a indata
     pub fn read_spaced(&mut self, indata: &str) -> &mut Self {
         let _ = indata;
-        eprintln!("missing read spaced");
+        warn!("missing read spaced");
         self.print_transducer_info();
         self.prompt();
         self
@@ -5589,7 +5582,7 @@ impl XfstCompiler {
     // @brief Read text form transducer from @a indata
     pub fn read_text(&mut self, indata: &str) -> &mut Self {
         let _ = indata;
-        eprintln!("missing read text");
+        warn!("missing read text");
         self.print_transducer_info();
         self.prompt();
         self
@@ -5616,7 +5609,7 @@ impl XfstCompiler {
         let indata = match std::fs::read_to_string(filename) {
             Ok(s) => s,
             Err(_) => {
-                eprintln!("could not read lexc file");
+                error!("could not read lexc file");
                 self.xfst_fail();
                 self.prompt();
                 return self;
@@ -5630,7 +5623,7 @@ impl XfstCompiler {
         }
 
         let Some(mut t) = self.lexc_.compile(&indata) else {
-            eprintln!("error compiling file in lexc format");
+            error!("error compiling file in lexc format");
             self.xfst_fail();
             self.prompt();
             return self;
@@ -5651,7 +5644,7 @@ impl XfstCompiler {
         let infile = match std::fs::File::open(filename) {
             Ok(f) => f,
             Err(_) => {
-                eprintln!("could not read att file {}", filename);
+                error!("could not read att file {}", filename);
                 self.xfst_fail();
                 self.prompt();
                 return self;
@@ -5684,7 +5677,7 @@ impl XfstCompiler {
                 self.print_transducer_info();
             }
             Err(_e) => {
-                eprintln!("error reading in att format");
+                error!("error reading in att format");
                 self.xfst_fail();
             }
         }
@@ -5698,10 +5691,9 @@ impl XfstCompiler {
         if self.restricted_mode_ {
             let fn_ = filename.to_string();
             if fn_.contains('/') || fn_.contains('\\') {
-                eprintln!(
-                    "Restricted mode (--restricted-mode) is in use, write and read operations are allowed"
+                warn!(
+                    "Restricted mode (--restricted-mode) is in use, write and read operations are allowed\nonly in current directory (i.e. filenames cannot contain '/' or '\\')"
                 );
-                eprintln!("only in current directory (i.e. filenames cannot contain '/' or '\\')");
                 self.xfst_lesser_fail();
                 self.prompt();
                 return false;
@@ -5721,7 +5713,7 @@ impl XfstCompiler {
         let infile = match std::fs::File::open(filename) {
             Ok(f) => f,
             Err(_) => {
-                eprintln!("Could not open file {}", filename);
+                error!("Could not open file {}", filename);
                 self.xfst_fail();
                 self.prompt();
                 return self;
@@ -5770,7 +5762,7 @@ impl XfstCompiler {
         };
 
         if !self.definitions_.contains_key(variable) {
-            eprintln!("no such definition '{}', cannot substitute", variable);
+            error!("no such definition '{}', cannot substitute", variable);
             // MAYBE_QUIT
             if self.variables_["quit-on-fail"] == "ON" {
                 self.fail_flag_ = true;
@@ -5792,7 +5784,7 @@ impl XfstCompiler {
 
         let mut alpha = top.borrow().get_alphabet();
         if !alpha.contains(&labelstr) {
-            eprintln!("no occurrences of label '{}', cannot substitute", label);
+            error!("no occurrences of label '{}', cannot substitute", label);
             // MAYBE_QUIT
             if self.variables_["quit-on-fail"] == "ON" {
                 self.fail_flag_ = true;
@@ -5808,7 +5800,7 @@ impl XfstCompiler {
                 let isymbol = tr_it.get_input_symbol(fsm.coder());
                 let osymbol = tr_it.get_output_symbol(fsm.coder());
                 if isymbol != osymbol && (isymbol == labelstr || osymbol == labelstr) {
-                    eprintln!(
+                    error!(
                         "label '{}' is used as a symbol on one side of an arc, cannot substitute",
                         label
                     );
@@ -5866,7 +5858,7 @@ impl XfstCompiler {
                         symbol_pairs.insert(sp);
                     }
                     None => {
-                        eprintln!("error: could not substitute with '{}'", list);
+                        error!("could not substitute with '{}'", list);
                         // MAYBE_QUIT
                         if self.variables_["quit-on-fail"] == "ON" {
                             self.fail_flag_ = true;
@@ -5899,7 +5891,7 @@ impl XfstCompiler {
                     }
                 }
                 if !target_label_found {
-                    eprintln!(
+                    error!(
                         "no occurrences of '{}:{}', cannot substitute",
                         target_label.0, target_label.1
                     );
@@ -5911,7 +5903,7 @@ impl XfstCompiler {
                     .substitute_symbol_pair_with_set(&target_label, &symbol_pairs);
             }
             None => {
-                eprintln!("error: could not substitute '{}'", target);
+                error!("could not substitute '{}'", target);
                 // MAYBE_QUIT
                 if self.variables_["quit-on-fail"] == "ON" {
                     self.fail_flag_ = true;
@@ -5935,7 +5927,7 @@ impl XfstCompiler {
 
         let alpha = top.borrow().get_alphabet();
         if !alpha.contains(target) {
-            eprintln!("no occurrences of symbol '{}', cannot substitute", target);
+            error!("no occurrences of symbol '{}', cannot substitute", target);
             // MAYBE_QUIT
             if self.variables_["quit-on-fail"] == "ON" {
                 self.fail_flag_ = true;
@@ -5972,7 +5964,7 @@ impl XfstCompiler {
             self.stack_.push(substituted);
             self.print_transducer_info();
         } else {
-            eprintln!("fatal error in substitution");
+            error!("fatal error in substitution");
             self.fail_flag_ = true;
         }
         self.prompt();
@@ -5983,8 +5975,7 @@ impl XfstCompiler {
     // @todo tests are not implemented
     pub fn test_eq(&mut self, assertion: bool) -> &mut Self {
         if self.stack_.len() < 2 {
-            eprintln!("Not enough networks on stack.");
-            eprintln!("Operation requires at least 2.");
+            warn!("Not enough networks on stack.\nOperation requires at least 2.");
             self.xfst_lesser_fail();
             return self;
         }
@@ -6010,7 +6001,7 @@ impl XfstCompiler {
     // @todo tests are not implemented
     pub fn test_funct(&mut self, assertion: bool) -> &mut Self {
         let _ = assertion;
-        eprintln!("test funct missing");
+        warn!("test funct missing");
         self.prompt();
         self
     }
@@ -6079,7 +6070,7 @@ impl XfstCompiler {
         } else if level == Level::LOWER_LEVEL {
             value = !id.compare(&tmp, false);
         } else {
-            eprintln!("ERROR: argument given to function 'test_uni' not recognized");
+            error!("ERROR: argument given to function 'test_uni' not recognized");
         }
         self.print_bool(value);
         // MAYBE_ASSERT(assertion, value)
@@ -6165,7 +6156,7 @@ impl XfstCompiler {
     // @brief Print the result of \a operation when applied to the whole stack.
     fn test_operation(&mut self, operation: TestOperation, assertion: bool) -> &mut Self {
         if self.stack_.len() < 2 {
-            eprintln!("Not enough networks on stack. Operation requires at least 2.");
+            warn!("Not enough networks on stack. Operation requires at least 2.");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
@@ -6253,7 +6244,7 @@ impl XfstCompiler {
     // @todo tests are not implemented
     pub fn test_unambiguous(&mut self, assertion: bool) -> &mut Self {
         let _ = assertion;
-        eprintln!("test unambiguous missing");
+        warn!("test unambiguous missing");
         self.prompt();
         self
     }

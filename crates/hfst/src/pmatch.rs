@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 use icu::segmenter::GraphemeClusterSegmenter;
+use tracing::{debug, warn};
 
 use crate::hfst_exception_defs::{HfstException, TransducerHeaderException};
 use crate::hfst_flag_diacritics::{FdState, FdTable};
@@ -978,7 +979,7 @@ impl PmatchAlphabet {
                 }
                 let pos: u32;
                 if start_tag_pos.is_empty() {
-                    eprintln!("pmatch: warning: end tag without start tag");
+                    warn!("end tag without start tag");
                     pos = 0;
                 } else {
                     pos = *start_tag_pos.last().unwrap();
@@ -1081,21 +1082,19 @@ impl PmatchContainer {
         let mut properties = Self::parse_hfst3_header(is);
         let transducer_name: String;
         if !properties.contains_key("name") {
-            eprintln!("pmatch: warning: TOP not defined in archive, using first as TOP");
+            warn!("TOP not defined in archive, using first as TOP");
             transducer_name = "TOP".to_string();
         } else {
             transducer_name = properties["name"].clone();
             if transducer_name != "TOP" {
-                eprintln!("pmatch: warning: TOP not defined in archive, using first as TOP");
+                warn!("TOP not defined in archive, using first as TOP");
             }
         }
         let _ = transducer_name;
         if !properties.contains_key("type") {
-            eprintln!("pmatch: warning: type information missing from archive");
+            warn!("type information missing from archive");
         } else if properties["type"] != "HFST_OLW" {
-            eprintln!(
-                "pmatch: warning: archive type isn't weighted optimized-lookup according to header"
-            );
+            warn!("archive type isn't weighted optimized-lookup according to header");
         }
         c.set_properties_map(&properties);
         let header = TransducerHeader::new_istream(is);
@@ -1136,21 +1135,15 @@ impl PmatchContainer {
             properties = Self::parse_hfst3_header(is);
             let transducer_name = properties.get("name").cloned().unwrap_or_default();
             if transducer_name.starts_with("UNCOMPOSE LEFT") {
-                if c.verbose {
-                    eprint!("Reading uncomposer L... ");
-                }
                 c.uncompose_left = Some(Box::new(crate::transducer::Transducer::new_istream(is)));
                 if c.verbose {
-                    eprintln!("{} done", transducer_name);
+                    debug!("Reading uncomposer L... {} done", transducer_name);
                 }
                 c.uncomposable = true;
             } else if transducer_name.starts_with("UNCOMPOSE RIGHT") {
-                if c.verbose {
-                    eprint!("Reading uncomposer R... ");
-                }
                 c.uncompose_right = Some(Box::new(crate::transducer::Transducer::new_istream(is)));
                 if c.verbose {
-                    eprintln!("{} done", transducer_name);
+                    debug!("Reading uncomposer R... {} done", transducer_name);
                 }
                 c.uncomposable = true;
             } else {
@@ -1273,7 +1266,7 @@ impl PmatchContainer {
             let top_index = match top_index {
                 Some(i) => i,
                 None => {
-                    eprintln!("pmatch: warning: TOP not defined in archive, using first as TOP");
+                    warn!("TOP not defined in archive, using first as TOP");
                     0
                 }
             };
@@ -1619,7 +1612,7 @@ impl PmatchContainer {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.process-fn]
     pub fn process(&mut self, input: &str) {
         if self.verbose {
-            eprintln!("PC::processing {}", input);
+            debug!("PC::processing {}", input);
         }
         self.initialize_input(input);
         let mut input_pos: u32 = 0;
@@ -1677,7 +1670,7 @@ impl PmatchContainer {
                         );
                         nonmatching.output = "@_NONMATCHING_@".to_string();
                         if self.verbose {
-                            eprintln!("non-matching {}", nonmatching.input);
+                            debug!("non-matching {}", nonmatching.input);
                         }
                         ls.push(nonmatching);
                         self.locations.push(ls);
@@ -1688,7 +1681,7 @@ impl PmatchContainer {
                     for it in tape_locations.iter() {
                         let l = self.c_locatefy(printable_input_pos, it);
                         if self.verbose {
-                            eprintln!("located? {}:{}", l.input, l.output);
+                            debug!("located? {}:{}", l.input, l.output);
                         }
                         ls.push(l);
                     }
@@ -1707,7 +1700,7 @@ impl PmatchContainer {
             if !self.candidate_found() || input_pos == old_input_pos {
                 // If no input was consumed, we move one position up
                 if self.verbose {
-                    eprintln!("no candidate found");
+                    debug!("no candidate found");
                 }
                 self.copy_to_result_syms(current_input, current_input);
                 input_pos += 1;
@@ -1731,7 +1724,7 @@ impl PmatchContainer {
             );
             nonmatching.output = "@_NONMATCHING_@".to_string();
             if self.verbose {
-                eprintln!("nonmatching somethign or other{}", nonmatching.input);
+                debug!("nonmatching somethign or other{}", nonmatching.input);
             }
             ls.push(nonmatching);
             self.locations.push(ls);
@@ -1763,7 +1756,7 @@ impl PmatchContainer {
         weight_cutoff: Weight,
     ) -> LocationVectorVector {
         if self.verbose {
-            eprintln!("locating {}", input);
+            debug!("locating {}", input);
         }
         self.max_time = time_cutoff;
         self.max_weight = weight_cutoff;
@@ -1795,7 +1788,7 @@ impl PmatchContainer {
             let best_result = self.best_result.clone();
             let kept = self.c_stringify(&best_result);
             let disc = self.c_stringify(&discarded);
-            eprintln!(
+            debug!(
                 "\n\tline {}: conflicting equally weighted matches found, keeping:\n\t{}\n\tdiscarding:\n\t{}\n",
                 self.line_number, kept, disc
             );
@@ -2193,12 +2186,12 @@ impl PmatchContainer {
         let verbose = self.verbose;
         if !self.uncomposable {
             if verbose {
-                eprintln!("uncompose disabled");
+                debug!("uncompose disabled");
             }
             return;
         }
         if verbose {
-            eprintln!("uncomposing left {}", loc.input);
+            debug!("uncomposing left {}", loc.input);
         }
         let middle_left = self
             .uncompose_left
@@ -2207,7 +2200,7 @@ impl PmatchContainer {
             .lookup_fd_str(&loc.input, -1, 0.0);
         if middle_left.is_empty() {
             if verbose {
-                eprintln!("empty midleft compose");
+                debug!("empty midleft compose");
             }
             // ambig problems
             return;
@@ -2221,7 +2214,7 @@ impl PmatchContainer {
                 }
             }
             if verbose {
-                eprintln!("midleft composed {}", mids);
+                debug!("midleft composed {}", mids);
             }
             let middle_right = self
                 .uncompose_right
@@ -2230,7 +2223,7 @@ impl PmatchContainer {
                 .lookup_fd_str(&mids, -1, 0.0);
             if middle_right.is_empty() {
                 if verbose {
-                    eprintln!("empty midright compose");
+                    debug!("empty midright compose");
                 }
                 continue;
             }
@@ -2242,15 +2235,15 @@ impl PmatchContainer {
                     }
                 }
                 if verbose {
-                    eprintln!("midright composed {}", lows);
+                    debug!("midright composed {}", lows);
                 }
                 if lows == loc.output {
                     if verbose {
-                        eprintln!("matched {}", loc.output);
+                        debug!("matched {}", loc.output);
                     }
                     midforms.insert(mids.clone());
                 } else if verbose {
-                    eprintln!("no match {}", loc.output);
+                    debug!("no match {}", loc.output);
                 }
             }
         }
@@ -2767,7 +2760,7 @@ impl PmatchTransducer {
         }
         if !container.try_recurse() {
             if container.verbose {
-                eprintln!("pmatch: out of stack space, truncating result");
+                warn!("out of stack space, truncating result");
             }
             return;
         }

@@ -1569,6 +1569,28 @@ children (
                 id idiom7.lib-logging
                 title "Migrate the ~317 lib eprintln!/eprint! diagnostic sites to `tracing` macros, classified by severity (warn!/error! for warnings+errors, debug!/trace! for verbose/debug traces). Concentrated in xfst_compiler (124), pmatch_compiler (78), lexc (31), pmatch (26), twolc (15), xre (12), backends (~12). Leave stdout DATA output (print!/println!: att/dot, xfst print results, prompts) and the verbose_printf-style UI as-is unless it is genuinely a log line. CLI bins install a shared tracing-subscriber so events render to stderr. Depends on idiom7.warning-stream-tracing (pattern + deps). Oracle: 152 hfst tests + manual CLI spot-check (diagnostics still surface)."
                 deps (idiom7.warning-stream-tracing)
+                log (
+                    {
+                        at 2026-06-30T16:35:00.47327Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-30T17:09:49.373404Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DONE (agent ac8a3d72, foreground; reviewed + independently verified: both crates build, 152+1 tests pass, zero eprintln!/eprint! macro calls remain in crates/hfst/src, stdout print!/println! DATA output untouched, end-to-end spot-check showed a lib tracing::warn! reaching stderr via the subscriber). Operator directive \"all logging should be using tracing\" — migrated all ~317 lib eprintln!/eprint! diagnostic sites to tracing macros classified by severity (~error/warn/info/debug). 317 removed vs 266 tracing events added; the ~51 gap is multi-eprint!-build-one-line sequences correctly merged into single events. Subscriber: a single tracing-subscriber fmt-to-stderr (max_level TRACE, without_time, with_target(false), try_init) installed in hfst_set_program_name (hfst_commandline.rs), which 58/59 bins call at startup — permissive level is behavior-preserving because emit stays gated at the call sites (if !SILENT / if verbose). The 2 bespoke subscriber inits from idiom7.warning-stream-tracing (hfst-eliminate-flags, hfst-remove-epsilons) were removed as redundant. The 59th bin (hfst-optimized-lookup) emits no diagnostics. Added tracing as a dep of hfst-cli (for tracing::Level). Residual risk area (not test-gated for content): the ~51 line-combines' exact wording — mechanically verified (build + 0 eprintln + spot-check) but not every message proofread. Pre-existing unrelated warts left: the CLI bins' unnecessary `unsafe {}` blocks (literal-port style, on HEAD) and dead-store warnings."
+                    }
+
+                    {
+                        at 2026-06-30T17:10:08.308899Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
         )
     }

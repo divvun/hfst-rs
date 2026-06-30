@@ -245,8 +245,8 @@ impl TopologicalSort {
     // [spec:hfst:sem:hfst-transition-graph.topological-sort.set-state-at-distance-fn]
     pub fn set_state_at_distance(&mut self, state: HfstState, distance: u32, overwrite: bool) {
         if state as usize > self.distance_of_state.len() - 1 {
-            eprintln!(
-                "ERROR in TopologicalSort::set_state_at_distance: first argument ({}) is out of range (should be < {})",
+            tracing::error!(
+                "in TopologicalSort::set_state_at_distance: first argument ({}) is out of range (should be < {})",
                 state,
                 self.distance_of_state.len()
             );
@@ -466,13 +466,14 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.print-alphabet-fn]
     pub fn print_alphabet(&self) {
         let first = self.alphabet.iter().next();
+        let mut line = String::new();
         for it in self.alphabet.iter() {
             if Some(it) != first {
-                eprint!(", ");
+                line.push_str(", ");
             }
-            eprint!("{}", it);
+            line.push_str(it);
         }
-        eprintln!();
+        tracing::debug!("{}", line);
     }
 
     /* Get the number of the 'symbol'. */
@@ -2318,7 +2319,7 @@ impl HfstBasicTransducer {
             weight = double_to_float(atof(a(4)));
         }
         if (weight < 0.0) && warn_negs {
-            eprintln!("Negative weight {:.6} found :-(", weight);
+            tracing::warn!("Negative weight {:.6} found :-(", weight);
         }
 
         if n == 1 || n == 2 {

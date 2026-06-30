@@ -495,7 +495,7 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-output-stream.write-transducer-fn]
         pub fn write_transducer(&mut self, transducer: &StdVectorFst) {
             if transducer.input_symbols().is_none() {
-                eprintln!("### Missing Input Symbol Table when writing! ###");
+                tracing::warn!("### Missing Input Symbol Table when writing! ###");
             }
             // When not writing the HFST framing, OpenFST includes both input and
             // output symbol tables; the C++ sets the output table = input table on
@@ -1214,10 +1214,11 @@ mod construction_io {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.print-alphabet-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.print-alphabet-fn]
         pub fn print_alphabet(t: &StdVectorFst) {
+            let mut line = String::new();
             for (_l, sym) in t.input_symbols().unwrap().iter() {
-                eprint!("'{}', ", sym);
+                line.push_str(&format!("'{}', ", sym));
             }
-            eprintln!();
+            tracing::debug!("{}", line);
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-flag-diacritics-fn]
@@ -1419,23 +1420,23 @@ mod construction_io {
             );
 
             if debug {
-                eprint!("New symbols for t1: ");
+                let mut line1 = String::from("New symbols for t1: ");
                 for it in unknown_t1.iter() {
-                    eprint!("'{}', ", it);
+                    line1.push_str(&format!("'{}', ", it));
                 }
-                eprintln!();
-                eprint!("New symbols for t2: ");
+                tracing::debug!("{}", line1);
+                let mut line2 = String::from("New symbols for t2: ");
                 for it in unknown_t2.iter() {
-                    eprint!("'{}', ", it);
+                    line2.push_str(&format!("'{}', ", it));
                 }
-                eprintln!();
+                tracing::debug!("{}", line2);
             }
 
             // 2. add new symbols from t1 to t2's symbol table...
             let mut st2 = t2.input_symbols().unwrap().as_ref().clone();
             for it in unknown_t2.iter() {
                 if st2.add_symbol(it.as_str()) < 3 {
-                    eprintln!("ERROR: string {} got strange number", it);
+                    tracing::error!("string {} got strange number", it);
                     assert!(false);
                 }
             }

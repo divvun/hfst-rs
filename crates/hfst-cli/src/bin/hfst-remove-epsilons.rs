@@ -87,15 +87,6 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         // instream.open();
         // outstream.open();
 
-        if !globals::SILENT {
-            // Route the library's `tracing` warnings to stderr (replaces the former
-            // hfst::set_warning_stream(&std::cerr)). Idempotent across calls.
-            let _ = tracing_subscriber::fmt()
-                .with_writer(std::io::stderr)
-                .without_time()
-                .try_init();
-        }
-
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;

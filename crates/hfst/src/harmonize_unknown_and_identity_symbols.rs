@@ -235,10 +235,10 @@ impl HarmonizeUnknownAndIdentitySymbols {
 // [spec:hfst:sem:harmonize-unknown-and-identity-symbols.hfst.debug-harmonize-print-fn]
 pub fn debug_harmonize_print_set(s: &StringSet) {
     for it in s.iter() {
-        eprintln!("{}", it);
+        tracing::debug!("{}", it);
     }
 }
 
 pub fn debug_harmonize_print_str(s: &str) {
-    eprintln!("{}", s);
+    tracing::debug!("{}", s);
 }

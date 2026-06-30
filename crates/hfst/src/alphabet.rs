@@ -11,7 +11,7 @@
 //! ('has_key'/'has_element' -> 'contains_key'/'contains'). 'std::pair<A,B>' ->
 //! '(A,B)'. The supporting typedefs ('SymbolPair'/'SymbolRange'/
 //! 'SymbolPairVector') and the 'OtherSymbolTransducer' facade are reused from
-//! 'crate::twolc'. The C++ 'std::cerr' diacritic warning becomes 'eprintln!'.
+//! 'crate::twolc'. The C++ 'std::cerr' diacritic warning becomes 'tracing::warn!'.
 //! The '#ifdef TEST_ALPHABET main()' driver is omitted (out of scope).
 
 #![allow(non_snake_case)]
@@ -57,9 +57,11 @@ impl Alphabet {
         if self.diacritics.contains(&input) {
             pair_transducer.disjunct(cfg, &OtherSymbolTransducer::new_pair(cfg, &input, &input));
             if input != output && output != TWOLC_EPSILON && output != TWOLC_UNKNOWN {
-                eprintln!(
-                    "Warning: Diacritic {} in pair {}:{} will correspond 0.",
-                    input, input, output
+                tracing::warn!(
+                    "Diacritic {} in pair {}:{} will correspond 0.",
+                    input,
+                    input,
+                    output
                 );
             }
         } else if input == TWOLC_UNKNOWN && output == TWOLC_UNKNOWN {

@@ -33,6 +33,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use tracing::{error, warn};
+
 use nfst_xre::{
     BinaryOp, ContextMark, MappingKind, MappingPair, MappingSide, ReadKind, ReplaceArrow,
     ReplaceContext, ReplaceRule, RestrContext, SpannedXre, SubstituteWhat, UnaryOp, XreExpr, parse,
@@ -505,10 +507,7 @@ impl XreCompiler {
     pub fn define(&mut self, name: &str, xre: &str) -> bool {
         let Some(tr) = self.compile(xre) else {
             if self.verbose_ {
-                eprintln!(
-                    "error: could not parse '{}', leaving '{}' undefined",
-                    xre, name
-                );
+                error!("could not parse '{}', leaving '{}' undefined", xre, name);
             }
             return false;
         };
@@ -1426,8 +1425,8 @@ fn parse_quoted(s: &str, length: &mut u32) -> String {
             let nxt = qb.get(p + 1).copied().unwrap_or(0);
             match nxt {
                 b'0' | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' => {
-                    eprint!(
-                        "*** XRE unimplemented: parse octal escape in {}",
+                    error!(
+                        "XRE unimplemented: parse octal escape in {}",
                         String::from_utf8_lossy(&qb[p..])
                     );
                     p += 5;
@@ -1457,7 +1456,7 @@ fn parse_quoted(s: &str, length: &mut u32) -> String {
                     p += 2;
                 }
                 b'u' => {
-                    eprint!(
+                    error!(
                         "Unimplemented: parse unicode escapes in {}",
                         String::from_utf8_lossy(&qb[p..])
                     );
@@ -1474,14 +1473,14 @@ fn parse_quoted(s: &str, length: &mut u32) -> String {
                     if 0 < i && i <= 127 {
                         rv.push(i as u8);
                     } else {
-                        eprintln!("*** XRE unimplemented: parse \\x{}", i);
+                        error!("XRE unimplemented: parse \\x{}", i);
                         rv.push(0);
                     }
                     assert!(endp != p);
                     p = endp;
                 }
                 0 => {
-                    eprintln!("End of line after \\ escape");
+                    warn!("End of line after \\ escape");
                     rv.push(0);
                     p += 1;
                 }
@@ -1888,7 +1887,7 @@ impl XreCompiler {
         if has_non_identity_pairs(t) {
             if self.verbose_ {
                 // NB: faithfully reproduces the C++ missing-space concatenation.
-                eprint!("using transducer that is not an automatonin containment\n");
+                warn!("using transducer that is not an automatonin containment");
             }
             self.contains(t) // ..resort to simple containment
         } else {
@@ -1944,14 +1943,14 @@ impl XreCompiler {
         let name2args = self.function_arguments_.get(name);
 
         if name2xre.is_none() || name2args.is_none() {
-            eprintln!("No such function defined: '{}'", name);
+            error!("No such function defined: '{}'", name);
             return false;
         }
 
         let number_of_args = *name2args.unwrap();
 
         if number_of_args as usize != args.len() {
-            eprintln!(
+            error!(
                 "Wrong number of arguments: function '{}' expects {}, {} given",
                 name,
                 number_of_args as i32,
@@ -2007,7 +2006,7 @@ impl XreCompiler {
     fn warn_about_xfst_special_symbol(&self, symbol: &str) {
         if symbol == "all" {
             if self.verbose_ {
-                eprint!("warning: symbol 'all' has no special meaning in hfst\n");
+                warn!("symbol 'all' has no special meaning in hfst");
             }
             return;
         }
@@ -2031,7 +2030,7 @@ impl XreCompiler {
         if !self.verbose_ {
             return;
         }
-        eprintln!("warning: '{} ' is an ordinary symbol in hfst", symbol);
+        warn!("'{} ' is an ordinary symbol in hfst", symbol);
     }
 
     // [spec:hfst:def:xre-utils.hfst.xre.warn-about-special-symbols-in-replace-fn]
@@ -2047,8 +2046,8 @@ impl XreCompiler {
                 && it.as_str() != crate::hfst_symbol_defs::internal_unknown
                 && it.as_str() != crate::hfst_symbol_defs::internal_identity
             {
-                eprintln!(
-                    "warning: using special symbol '{}' in replace rule, use substitute instead",
+                warn!(
+                    "using special symbol '{}' in replace rule, use substitute instead",
                     it
                 );
             }
@@ -2320,7 +2319,7 @@ impl XreCompiler {
 
                 if self.definitions_.contains_key(needle) {
                     if self.verbose_ {
-                        eprint!("using definition as an ordinary label, cannot substitute\n");
+                        warn!("using definition as an ordinary label, cannot substitute");
                     }
                     hay.optimize_with_config(&self.opt_cfg());
                     return hay;

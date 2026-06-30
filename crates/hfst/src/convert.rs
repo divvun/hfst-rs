@@ -1930,7 +1930,7 @@ impl ConvertTransducer {
             } else {
                 state_index = unsafe { (*state).get_first_transition_index() } - 1;
                 if state_index < TRANSITION_TARGET_TABLE_START {
-                    eprintln!("FIXME!");
+                    tracing::error!("FIXME!");
                     // C++ does a bare throw here (no active exception, so it terminates).
                     std::process::abort();
                 }

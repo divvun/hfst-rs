@@ -42,6 +42,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::rc::Rc;
+use tracing::{debug, error, warn};
 
 /// Shared-ownership handle to a node in the PMATCH lazy-evaluation AST.
 ///
@@ -324,7 +325,7 @@ pub trait PmatchObject {
                 ctx.named_object_evaluation_stack_depth() + (1),
             );
             write_compilation_stack_indentation_to_err(ctx);
-            eprint!("Compiling {}...\n", self.get_name());
+            debug!("Compiling {}...", self.get_name());
         }
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.report-time-fn]
@@ -333,7 +334,7 @@ pub trait PmatchObject {
         if ctx.verbose() && self.get_name() != "" {
             let duration = (clock() - self.get_my_timer()) as f64 / CLOCKS_PER_SEC as f64;
             write_compilation_stack_indentation_to_err(ctx);
-            eprintln!(
+            debug!(
                 "{} compiled in {} seconds{}",
                 self.get_name(),
                 duration,
@@ -352,7 +353,7 @@ pub trait PmatchObject {
                 ctx.named_object_evaluation_stack_depth() + (1),
             );
             write_compilation_stack_indentation_to_err(ctx);
-            eprintln!("{} fetched from cache{}", self.get_name(), extra_info);
+            debug!("{} fetched from cache{}", self.get_name(), extra_info);
             ctx.set_named_object_evaluation_stack_depth(
                 ctx.named_object_evaluation_stack_depth() - (1),
             );
@@ -2109,18 +2110,7 @@ pub fn should_colourise() -> bool {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.warn-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.warn-fn]
 pub fn warn(warning: String) {
-    if should_colourise() {
-        eprint!("\u{1b}[01m");
-    }
-    eprint!("hfst-pmatch: ");
-    if should_colourise() {
-        eprint!("\u{1b}[33m");
-    }
-    eprint!("Warning: ");
-    if should_colourise() {
-        eprint!("\u{1b}[0m");
-    }
-    eprint!("{}", warning);
+    warn!("hfst-pmatch: {}", warning);
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.symbol-in-global-context-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.symbol-in-global-context-fn]
@@ -2741,8 +2731,8 @@ impl PmatchObject for PmatchUnaryOperation {
                 retval = tmp;
             } else if ctx.verbose() {
                 write_compilation_stack_indentation_to_err(ctx);
-                eprint!(
-                    "** Warning: ignoring nested context condition when compiling {}\n",
+                debug!(
+                    "** Warning: ignoring nested context condition when compiling {}",
                     ctx.eval_stack_last().unwrap()
                 );
             }
@@ -2769,8 +2759,8 @@ impl PmatchObject for PmatchUnaryOperation {
                 retval = head;
             } else if ctx.verbose() {
                 write_compilation_stack_indentation_to_err(ctx);
-                eprint!(
-                    "** Warning: ignoring nested context condition when compiling {}\n",
+                debug!(
+                    "** Warning: ignoring nested context condition when compiling {}",
                     ctx.eval_stack_last().unwrap()
                 );
             }
@@ -2791,8 +2781,8 @@ impl PmatchObject for PmatchUnaryOperation {
                 retval = tmp;
             } else if ctx.verbose() {
                 write_compilation_stack_indentation_to_err(ctx);
-                eprint!(
-                    "** Warning: ignoring nested context condition when compiling {}\n",
+                debug!(
+                    "** Warning: ignoring nested context condition when compiling {}",
                     ctx.eval_stack_last().unwrap()
                 );
             }
@@ -2818,8 +2808,8 @@ impl PmatchObject for PmatchUnaryOperation {
                 retval = head;
             } else if ctx.verbose() {
                 write_compilation_stack_indentation_to_err(ctx);
-                eprint!(
-                    "** Warning: ignoring nested context condition when compiling {}\n",
+                debug!(
+                    "** Warning: ignoring nested context condition when compiling {}",
                     ctx.eval_stack_last().unwrap()
                 );
             }
@@ -3041,29 +3031,32 @@ pub fn fix_list_overlap(
             let newsym: StringPair = (newlist.clone(), newlist.clone());
             let mut newpairs: StringPairSet = StringPairSet::new();
             newpairs.insert(newsym);
+            let mut optimise_msg = String::new();
             if ctx.verbose() {
-                eprint!(
+                optimise_msg.push_str(&format!(
                     "Automatically optimising:Removing the following symbols from Lst() (line {}):",
                     if lst_line >= 0 {
                         lst_line.to_string()
                     } else {
                         "?".to_string()
                     }
-                );
+                ));
             }
             for i in 0..overlapping_chars.len() {
                 let overlapsym: StringPair =
                     (overlapping_chars[i].clone(), overlapping_chars[i].clone());
                 if ctx.verbose() {
-                    eprint!("\n  '{}' (", overlapping_chars[i]);
-                    print_unicode_codepoints(&mut std::io::stderr(), &overlapping_chars[i]);
-                    eprint!(")");
+                    optimise_msg.push_str(&format!("\n  '{}' (", overlapping_chars[i]));
+                    let mut buf: Vec<u8> = Vec::new();
+                    print_unicode_codepoints(&mut buf, &overlapping_chars[i]);
+                    optimise_msg.push_str(&String::from_utf8_lossy(&buf));
+                    optimise_msg.push(')');
                 }
                 newpairs.insert(overlapsym);
             }
             if ctx.verbose() {
-                eprintln!();
-                eprintln!(
+                debug!("{}", optimise_msg);
+                debug!(
                     "Replacing all {} instances with new list: {} and abovementioned disjunction ",
                     sym, newlist
                 );
@@ -3493,7 +3486,7 @@ pub fn warn_on_nonsubtractable_symbols(ctx: &mut PmatchEvalContext, t: &HfstTran
             continue;
         } else if it.starts_with("@PMATCH") || it.starts_with("@I") || it.starts_with("@L") {
             write_compilation_stack_indentation_to_err(ctx);
-            eprintln!("Warning: subtracting with nonsubtractable symbol {}", it);
+            warn!("subtracting with nonsubtractable symbol {}", it);
         }
     }
 }
@@ -4155,8 +4148,8 @@ impl PmatchObject for PmatchSymbol {
             ctx.used_definitions_insert(self.sym.clone());
         } else {
             if ctx.verbose() {
-                eprint!(
-                    "Warning: interpreting undefined symbol \"{}\" as label on line {}\n",
+                debug!(
+                    "Warning: interpreting undefined symbol \"{}\" as label on line {}",
                     self.sym, self.line_defined
                 );
             }
@@ -4197,8 +4190,8 @@ impl PmatchObject for PmatchSymbol {
             }
         } else {
             if ctx.verbose() {
-                eprint!(
-                    "Warning: interpreting undefined symbol \"{}\" as label on line {}\n",
+                debug!(
+                    "Warning: interpreting undefined symbol \"{}\" as label on line {}",
                     self.sym, self.line_defined
                 );
             }
@@ -4662,7 +4655,7 @@ impl PmatchObject for PmatchFunction {
                 ctx.named_object_evaluation_stack_depth() + (1),
             );
             write_compilation_stack_indentation_to_err(ctx);
-            eprintln!("Evaluating call to {}...", self.name);
+            debug!("Evaluating call to {}...", self.name);
         }
         if funargs.len() != self.args.len() {
             let errstring = format!(
@@ -4693,7 +4686,7 @@ impl PmatchObject for PmatchFunction {
         if ctx.verbose() {
             let duration = (clock() - self.my_timer) as f64 / CLOCKS_PER_SEC as f64;
             write_compilation_stack_indentation_to_err(ctx);
-            eprintln!("Call to {} evaluated in {} seconds", self.name, duration);
+            debug!("Call to {} evaluated in {} seconds", self.name, duration);
             ctx.set_named_object_evaluation_stack_depth(
                 ctx.named_object_evaluation_stack_depth() - (1),
             );
@@ -5089,12 +5082,12 @@ using nearest neighbours",
             let tok: HfstTokenizer = HfstTokenizer::new();
             let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format());
             if ctx.verbose() {
-                eprintln!("Inserting into Like({}):", this_word.word);
+                debug!("Inserting into Like({}):", this_word.word);
             }
 
             for i in 0..top_n.len() {
                 if ctx.verbose() {
-                    eprintln!("  {}", top_n[i].0.word);
+                    debug!("  {}", top_n[i].0.word);
                 }
                 let mut tmp: HfstTransducer =
                     HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format());
@@ -5144,7 +5137,7 @@ using nearest neighbours",
         let comparison_point: Vec<WordVecFloat>;
         if is_negative == true {
             if ctx.verbose() {
-                eprintln!(
+                debug!(
                     "Inserting into Unlike({}, {}):",
                     this_word1.word, this_word2.word
                 );
@@ -5159,7 +5152,7 @@ using nearest neighbours",
             );
         } else {
             if ctx.verbose() {
-                eprintln!(
+                debug!(
                     "Inserting into Like({}, {}):",
                     this_word1.word, this_word2.word
                 );
@@ -5184,7 +5177,7 @@ using nearest neighbours",
         let mut i: usize = 0;
         while i < top_n.len() && i <= nwords as usize {
             if ctx.verbose() {
-                eprintln!("  {}", top_n[i].0.word);
+                debug!("  {}", top_n[i].0.word);
             }
             let mut tmp: HfstTransducer =
                 HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format());
@@ -5253,11 +5246,11 @@ pub fn compile_like_arc_word(ctx: &mut PmatchEvalContext, word: String, nwords: 
         let tok: HfstTokenizer = HfstTokenizer::new();
         let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format());
         if ctx.verbose() {
-            eprintln!("Inserting into Like({}):", word);
+            debug!("Inserting into Like({}):", word);
         }
         for i in 0..top_n.len() {
             if ctx.verbose() {
-                eprintln!("  {}", top_n[i].0.word);
+                debug!("  {}", top_n[i].0.word);
             }
             let mut tmp: HfstTransducer =
                 HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format());
@@ -5287,8 +5280,8 @@ pub fn read_vec(ctx: &mut PmatchEvalContext, filename: String) {
     }
     if ctx.word_vectors_len() != 0 {
         ctx.word_vectors_clear();
-        eprint!(
-            "pmatch: vector model file {} overrides earlier one\n",
+        warn!(
+            "pmatch: vector model file {} overrides earlier one",
             filename
         );
     }
@@ -5296,8 +5289,8 @@ pub fn read_vec(ctx: &mut PmatchEvalContext, filename: String) {
     let infile = match std::fs::File::open(&filename) {
         Ok(f) => f,
         Err(_) => {
-            eprint!(
-                "pmatch: could not open vector file {} for reading\n",
+            error!(
+                "pmatch: could not open vector file {} for reading",
                 filename
             );
             return;
@@ -5306,8 +5299,8 @@ pub fn read_vec(ctx: &mut PmatchEvalContext, filename: String) {
     let mut infile = std::io::BufReader::new(infile);
     let mut all_bytes: Vec<u8> = Vec::new();
     if infile.read_to_end(&mut all_bytes).is_err() {
-        eprint!(
-            "pmatch: could not open vector file {} for reading\n",
+        error!(
+            "pmatch: could not open vector file {} for reading",
             filename
         );
         return;
@@ -5420,9 +5413,9 @@ pub fn read_vec(ctx: &mut PmatchEvalContext, filename: String) {
                 separator = b'\t';
                 pos_opt = line_bytes.iter().position(|&b| b == separator);
                 if pos_opt.is_none() {
-                    eprint!(
-                        "pmatch warning: vector file {} doesn't appear to be tab- or \
-space-separated\n  (reading line {})\n",
+                    warn!(
+                        "pmatch: vector file {} doesn't appear to be tab- or \
+space-separated\n  (reading line {})",
                         filename,
                         words_read + 1
                     );
@@ -5460,8 +5453,8 @@ space-separated\n  (reading line {})\n",
             if ctx.word_vectors_len() != 0
                 && ctx.word_vectors_first_vector_len() != components.len()
             {
-                eprint!(
-                    "pmatch warning: vector file {} appears malformed\n  (reading line {})\n",
+                warn!(
+                    "pmatch: vector file {} appears malformed\n  (reading line {})",
                     filename,
                     words_read + 1
                 );
@@ -5476,9 +5469,9 @@ space-separated\n  (reading line {})\n",
     }
     if ctx.verbose() {
         if ctx.word_vectors_len() == 0 {
-            eprint!("Tried to read word vector file, empty result\n");
+            debug!("Tried to read word vector file, empty result");
         }
-        eprintln!(
+        debug!(
             "Read {} vectors of dimensionality {}",
             ctx.word_vectors_len(),
             ctx.word_vectors_first_vector_len()
@@ -5499,11 +5492,7 @@ space-separated\n  (reading line {})\n",
 // [spec:hfst:def:pmatch-utils.pmatchwarning-fn]
 // [spec:hfst:sem:pmatch-utils.pmatchwarning-fn]
 pub fn pmatchwarning(msg: &str) {
-    if should_colourise() {
-        eprintln!("\x1b[1m\x1b[33m***pmatch warning:\x1b[0m {}", msg);
-    } else {
-        eprintln!("***pmatch warning: {}", msg);
-    }
+    warn!("pmatch: {}", msg);
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.register-lst-line-numbers-from-transducer-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.register-lst-line-numbers-from-transducer-fn]
@@ -5622,7 +5611,7 @@ pub fn compile(
     ctx.set_format(impl_);
     if ctx.verbose() {
         ctx.set_timer(clock());
-        eprintln!();
+        debug!("");
     }
 
     // === SEAM: replaces the bison 'pmatchparse()' call ====================
@@ -5643,7 +5632,7 @@ pub fn compile(
     let mut retval: HashMap<String, HfstTransducer> = HashMap::new();
     for it in ctx.unsatisfied_insertions_snapshot().into_iter() {
         if !ctx.definitions_contains(it.as_str()) {
-            eprint!("Inserted transducer {} was never defined!\n", it);
+            error!("Inserted transducer {} was never defined!", it);
             return retval;
         }
     }
@@ -5651,7 +5640,7 @@ pub fn compile(
         let defs_keys: Vec<String> = ctx.definitions_keys();
         for first in defs_keys.iter() {
             if !ctx.used_definitions_contains(first) && first != "TOP" {
-                eprint!("Warning: {} defined but never used\n", first);
+                debug!("Warning: {} defined but never used", first);
             }
         }
     }
@@ -5664,7 +5653,7 @@ pub fn compile(
     // Our helper for harmonizing all the networks' alphabets with
     // each other
     if ctx.verbose() {
-        eprint!("\nCompiling and harmonizing...\n");
+        debug!("Compiling and harmonizing...");
         ctx.set_timer(clock());
     }
 
@@ -5684,8 +5673,8 @@ pub fn compile(
             {
                 if ctx.verbose() {
                     let second = ctx.definitions_get(first).unwrap();
-                    eprint!(
-                        "\ndefinition...{}={}\n",
+                    debug!(
+                        "definition...{}={}",
                         first,
                         second.borrow().get_name().to_string()
                     );
@@ -5707,7 +5696,7 @@ pub fn compile(
                 // XXX: seems to use the index not the name...)
                 if ctx.uncomposed_contains(first) {
                     if ctx.verbose() {
-                        eprint!("\nUncompose\n");
+                        debug!("Uncompose");
                     }
                     if uncount == 0 {
                         tmp.set_name(&("UNCOMPOSE LEFT ".to_string() + first));
@@ -5718,7 +5707,7 @@ pub fn compile(
                         retval.insert("UNCOMPOSE RIGHT ".to_string() + first, tmp);
                         uncount += 1;
                     } else {
-                        eprint!("Uncompose only works once so far...\n");
+                        warn!("Uncompose only works once so far...");
                         uncount += 1;
                     }
                 } else {
@@ -5736,12 +5725,14 @@ pub fn compile(
         }
     } else {
         if ctx.definitions_len() == 0 {
-            eprint!("warning: pmatch compilation had an empty result\n");
+            warn!("pmatch compilation had an empty result");
             retval.insert("TOP".to_string(), HfstTransducer::new_type(ctx.format()));
         } else if !ctx.definitions_contains("TOP") {
-            eprint!("Pmatch compilation warning: regex or TOP was undefined, using ");
             let first_key = ctx.definitions_keys().into_iter().next().unwrap();
-            eprint!("{} as root\n", first_key);
+            warn!(
+                "Pmatch compilation: regex or TOP was undefined, using {} as root",
+                first_key
+            );
             let mut tmp = ctx
                 .definitions_get(&first_key)
                 .unwrap()
@@ -5765,10 +5756,7 @@ pub fn compile(
     if ctx.verbose() {
         let duration = (clock() - ctx.timer()) as f64 / CLOCKS_PER_SEC as f64;
         ctx.set_timer(clock());
-        eprint!(
-            "Everything compiled and harmonized in {} seconds\n",
-            duration
-        );
+        debug!("Everything compiled and harmonized in {} seconds", duration);
     }
 
     let mut allowed_initial_symbols: StringSet = StringSet::new();
@@ -5787,8 +5775,8 @@ pub fn compile(
     for it in allowed_initial_symbols.iter() {
         if is_special(it) {
             if ctx.verbose() {
-                eprint!(
-                    "Not setting initial symbol list due to special symbol {}\n",
+                debug!(
+                    "Not setting initial symbol list due to special symbol {}",
                     it
                 );
             }
@@ -5799,8 +5787,8 @@ pub fn compile(
     for it in disallowed_initial_symbols.iter() {
         if is_special(it) {
             if ctx.verbose() {
-                eprint!(
-                    "Not setting initial symbol list due to special symbol {}\n",
+                debug!(
+                    "Not setting initial symbol list due to special symbol {}",
                     it
                 );
             }
@@ -5810,8 +5798,8 @@ pub fn compile(
     }
     if allowed_initial_symbols.len() > 200 {
         if ctx.verbose() {
-            eprint!(
-                "Not setting initial symbol list due to excess length: {}\n",
+            debug!(
+                "Not setting initial symbol list due to excess length: {}",
                 allowed_initial_symbols.len()
             );
         }
@@ -5819,8 +5807,8 @@ pub fn compile(
     }
     if disallowed_initial_symbols.len() > 200 {
         if ctx.verbose() {
-            eprint!(
-                "Not setting initial symbol list due to excess length: {}\n",
+            debug!(
+                "Not setting initial symbol list due to excess length: {}",
                 disallowed_initial_symbols.len()
             );
         }
@@ -5883,10 +5871,7 @@ pub fn compile(
             if ctx.verbose() {
                 let duration = (clock() - ctx.timer()) as f64 / CLOCKS_PER_SEC as f64;
                 ctx.set_timer(clock());
-                eprint!(
-                    "Added automatic context separators in {} seconds\n",
-                    duration
-                );
+                debug!("Added automatic context separators in {} seconds", duration);
             }
         }
     }
@@ -5903,13 +5888,17 @@ pub fn compile(
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.write-compilation-stack-indentation-to-err-fn]
 pub fn write_compilation_stack_indentation_to_err(ctx: &mut PmatchEvalContext) {
     // Visually indicate nested definitions
+    let mut indentation = String::new();
     let mut i = 1;
     while i < ctx.named_object_evaluation_stack_depth() {
-        eprint!("|");
+        indentation.push('|');
         i += 1;
     }
     if ctx.named_object_evaluation_stack_depth() > 1 {
-        eprint!(" ");
+        indentation.push(' ');
+    }
+    if !indentation.is_empty() {
+        debug!("{}", indentation);
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-text-fn]
@@ -5919,10 +5908,7 @@ pub fn read_text(filename: String, type_: ImplementationType, spaced_text: bool)
     let mut retval: HfstTransducer = HfstTransducer::new_type(type_);
     match fs::read_to_string(&filename) {
         Err(_) => {
-            eprint!(
-                "Pmatch: could not open text file {} for reading\n",
-                filename
-            );
+            error!("Pmatch: could not open text file {} for reading", filename);
         }
         Ok(contents) => {
             let mut n: usize = 0;
@@ -6286,7 +6272,7 @@ fn build_read_file(ctx: &mut PmatchEvalContext, kind: nfst_pmatch::ReadKind, pat
         ))),
         RK::Prolog => match std::fs::File::open(&filepath) {
             Err(_) => {
-                eprintln!("File cannot be opened.");
+                error!("File cannot be opened.");
                 as_obj(pmb_tc(HfstTransducer::new_type(ctx.format())))
             }
             Ok(f) => {
@@ -6313,7 +6299,7 @@ fn build_read_file(ctx: &mut PmatchEvalContext, kind: nfst_pmatch::ReadKind, pat
                 }
             }
             if regex.is_empty() {
-                eprintln!("Failed to read regex from {}.", filepath);
+                error!("Failed to read regex from {}.", filepath);
             }
             let mut xre_compiler = crate::xre::XreCompiler::new(ctx.format());
             let compiled = xre_compiler
@@ -6444,7 +6430,7 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
                 build_object(ctx, r),
             ),
             B::LeftQuotient => {
-                eprintln!("Left quotient not implemented");
+                warn!("Left quotient not implemented");
                 pmb_empty()
             }
         },
@@ -6610,7 +6596,7 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
             } else if ctx.definitions_contains(name) {
                 ctx.definitions_get(name).unwrap()
             } else {
-                eprintln!(
+                error!(
                     "Insertion of {} is undefined and --ctx.flatten() is in use",
                     name
                 );
@@ -6674,7 +6660,7 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
             let nwords = threshold.unwrap_or(10);
             if *unlike {
                 if rargs.len() < 2 {
-                    eprintln!(
+                    error!(
                         "Unlike() operation takes exactly 2 arguments, got {}",
                         rargs.len()
                     );
@@ -6781,7 +6767,7 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
         PE::Call { name, args } => {
             let sym = name.clone();
             let result = if !ctx.function_names_contains(name) {
-                eprintln!("Function {} hasn't been defined", sym);
+                error!("Function {} hasn't been defined", sym);
                 pmb_string(String::new(), false)
             } else {
                 let mut sym_lookup = sym.clone();
@@ -6840,7 +6826,7 @@ fn report_defined(ctx: &mut PmatchEvalContext, name: &str) {
     if ctx.verbose() {
         let duration = (clock() - ctx.timer()) as f64 / CLOCKS_PER_SEC as f64;
         ctx.set_timer(clock());
-        eprintln!("defined {} in {:.2} seconds", name, duration);
+        debug!("defined {} in {:.2} seconds", name, duration);
     }
 }
 // PMATCH DEFINITION { shadow check + insert }.
@@ -6997,7 +6983,7 @@ impl PmatchCompiler {
             ctx.set_format(self.type_);
             if ctx.verbose() {
                 ctx.set_timer(clock());
-                eprintln!();
+                debug!("");
             }
 
             // ---- bison-replacement walk ------------------------------------
@@ -7018,7 +7004,7 @@ impl PmatchCompiler {
 
             for it in ctx.unsatisfied_insertions_snapshot().into_iter() {
                 if !ctx.definitions_contains(it.as_str()) {
-                    eprintln!("Inserted transducer {} was never defined!", it);
+                    error!("Inserted transducer {} was never defined!", it);
                     ctx.set_data(String::new());
                     ctx.set_len(0);
                     return retval;
@@ -7027,13 +7013,13 @@ impl PmatchCompiler {
             if ctx.verbose() {
                 for (k, _v) in ctx.definitions_snapshot() {
                     if !ctx.used_definitions_contains(&k) && k != "TOP" {
-                        eprintln!("Warning: {} defined but never used", k);
+                        debug!("Warning: {} defined but never used", k);
                     }
                 }
             }
 
             if ctx.verbose() {
-                eprintln!("\nCompiling and harmonizing...");
+                debug!("Compiling and harmonizing...");
                 ctx.set_timer(clock());
             }
 
@@ -7068,7 +7054,7 @@ impl PmatchCompiler {
                                 retval.insert(format!("UNCOMPOSE RIGHT {}", key), tmp);
                                 uncount += 1;
                             } else {
-                                eprintln!("Uncompose only works once so far...");
+                                warn!("Uncompose only works once so far...");
                                 uncount += 1;
                             }
                         } else {
@@ -7082,7 +7068,7 @@ impl PmatchCompiler {
                     v.minimize();
                 }
             } else if ctx.definitions_is_empty() {
-                eprintln!("warning: pmatch compilation had an empty result");
+                warn!("pmatch compilation had an empty result");
                 retval.insert("TOP".to_string(), HfstTransducer::new_type(ctx.format()));
             } else if !ctx.definitions_contains("TOP") {
                 let (first_key, first_obj) = {
@@ -7091,8 +7077,8 @@ impl PmatchCompiler {
                     let (k, v) = it.next().unwrap();
                     (k.clone(), v.clone())
                 };
-                eprintln!(
-                    "Pmatch compilation warning: regex or TOP was undefined, using {} as root",
+                warn!(
+                    "Pmatch compilation: regex or TOP was undefined, using {} as root",
                     first_key
                 );
                 let mut tmp: HfstTransducer = first_obj.borrow_mut().evaluate(ctx);
@@ -7110,7 +7096,7 @@ impl PmatchCompiler {
             if ctx.verbose() {
                 let duration = (clock() - ctx.timer()) as f64 / CLOCKS_PER_SEC as f64;
                 ctx.set_timer(clock());
-                eprintln!("Everything compiled and harmonized in {} seconds", duration);
+                debug!("Everything compiled and harmonized in {} seconds", duration);
             }
 
             let mut allowed_initial_symbols: StringSet = StringSet::new();
@@ -7127,7 +7113,7 @@ impl PmatchCompiler {
             for it in allowed_initial_symbols.iter() {
                 if is_special(it) {
                     if ctx.verbose() {
-                        eprintln!(
+                        debug!(
                             "Not setting initial symbol list due to special symbol {}",
                             it
                         );
@@ -7139,7 +7125,7 @@ impl PmatchCompiler {
             for it in disallowed_initial_symbols.iter() {
                 if is_special(it) {
                     if ctx.verbose() {
-                        eprintln!(
+                        debug!(
                             "Not setting initial symbol list due to special symbol {}",
                             it
                         );
@@ -7150,7 +7136,7 @@ impl PmatchCompiler {
             }
             if allowed_initial_symbols.len() > 200 {
                 if ctx.verbose() {
-                    eprintln!(
+                    debug!(
                         "Not setting initial symbol list due to excess length: {}",
                         allowed_initial_symbols.len()
                     );
@@ -7159,7 +7145,7 @@ impl PmatchCompiler {
             }
             if disallowed_initial_symbols.len() > 200 {
                 if ctx.verbose() {
-                    eprintln!(
+                    debug!(
                         "Not setting initial symbol list due to excess length: {}",
                         disallowed_initial_symbols.len()
                     );
@@ -7246,7 +7232,7 @@ impl PmatchCompiler {
                     if ctx.verbose() {
                         let duration = (clock() - ctx.timer()) as f64 / CLOCKS_PER_SEC as f64;
                         ctx.set_timer(clock());
-                        eprintln!("Added automatic context separators in {} seconds", duration);
+                        debug!("Added automatic context separators in {} seconds", duration);
                     }
                 }
             }

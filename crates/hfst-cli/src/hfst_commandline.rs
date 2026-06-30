@@ -532,6 +532,16 @@ fn set_program_name(argv0: &str) {
 // [spec:hfst:def:hfst-commandline.hfst-set-program-name-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-set-program-name-fn]
 pub fn hfst_set_program_name(argv0: &str, version_vector: &str, wikiname: &str) {
+    // Install the shared `tracing` subscriber once, idempotently. Library
+    // diagnostics are already gated at their call sites (SILENT / verbose), so a
+    // permissive (TRACE) subscriber renders exactly what the code chooses to
+    // emit. Replaces the former hfst::set_warning_stream(&std::cerr).
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .with_writer(std::io::stderr)
+        .without_time()
+        .with_target(false)
+        .try_init();
     set_program_name(argv0);
     globals::set_hfst_tool_version(version_vector);
     globals::set_hfst_tool_wikiname(wikiname);

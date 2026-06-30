@@ -109,10 +109,10 @@ impl SymbolCoder {
             // FAIL
             match self.symbol2number.get(symbol) {
                 None => {
-                    eprintln!("ERROR: No number for the empty symbol\n");
+                    tracing::error!("No number for the empty symbol");
                 }
                 Some(second) => {
-                    eprintln!("ERROR: The empty symbol corresdponds to number {}", second);
+                    tracing::error!("The empty symbol corresdponds to number {}", second);
                 }
             }
             assert!(false);
@@ -218,9 +218,11 @@ impl HfstTropicalTransducerTransitionData {
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.print-transition-data-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.print-transition-data-fn]
     pub fn print_transition_data(&self) {
-        eprintln!(
+        tracing::debug!(
             "{}:{} {}",
-            self.input_number, self.output_number, self.weight
+            self.input_number,
+            self.output_number,
+            self.weight
         );
     }
 

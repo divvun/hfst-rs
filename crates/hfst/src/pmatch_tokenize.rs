@@ -5,7 +5,7 @@
 //! ('PmatchContainer', 'Location', 'LocationVector', 'LocationVectorVector').
 //!
 //! C++ 'std::ostream &' parameters are modelled as '&mut dyn std::io::Write'.
-//! C++ 'std::cerr' diagnostics become 'eprint!'/'eprintln!'.
+//! C++ 'std::cerr' diagnostics become 'tracing' events.
 
 use std::collections::BTreeSet;
 use std::io::Write;
@@ -357,8 +357,8 @@ pub fn is_cg_tag(str: &str) -> bool {
     if u_char_type_is_modifier_letter(cp_after) {
         let is_tag = (utf16.len() as i32) > following_utf16(str, &utf16, i_after);
         if !IS_CG_TAG_MODIFIER_WARNED.load(std::sync::atomic::Ordering::Relaxed) && !is_tag {
-            eprintln!(
-                "WARNING: Skipping modifier letter for baseform letter {} (to avoid this warning, ensure Modifiers are not part of the same Multichar_symbol as their preceding Character)",
+            tracing::warn!(
+                "Skipping modifier letter for baseform letter {} (to avoid this warning, ensure Modifiers are not part of the same Multichar_symbol as their preceding Character)",
                 str
             );
             IS_CG_TAG_MODIFIER_WARNED.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -700,7 +700,7 @@ pub fn print_reading_giellacg(
 pub fn split_at(syms: &StringVector, splitpoints: &SplitPoints) -> StringVector {
     let mut subs: StringVector = Vec::new();
     if splitpoints.len() < 2 {
-        eprintln!("split_at called with ");
+        tracing::warn!("split_at called with ");
         return subs;
     }
     let points: Vec<usize> = splitpoints.iter().copied().collect();
@@ -846,9 +846,10 @@ pub fn print_location_vector_giellacg(
             let form = it[first..last].to_string();
             let mut loc = locate_fullmatch(container, &form, s);
             if loc.is_empty() && s.verbose {
-                eprintln!(
-                    "Warning: The analysis of \"<{}>\" has backtracking around the substring \"<{}>\", but that substring has no analyses.",
-                    locations[0].input, form
+                tracing::warn!(
+                    "The analysis of \"<{}>\" has backtracking around the substring \"<{}>\", but that substring has no analyses.",
+                    locations[0].input,
+                    form
                 );
                 // but push it anyway, since we want exactly one subvector per
                 // splitpoint
