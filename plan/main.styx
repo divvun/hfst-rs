@@ -1577,6 +1577,31 @@ children (
                     }
                 )
             }
+
+            {
+                id idiom6.rename
+                title "Drop the silly `hfst`/`Hfst` prefix from the error foundation: module `hfst_error`→`error`, `HfstError`→`Error`, `HfstResult`→`Result`, `HfstErrorKind`→`ErrorKind`, macros `hfst_err!`/`hfst_bail!`→`err!`/`bail!`. Pure rename of the (so-far dead) foundation; 153 tests unaffected."
+                log (
+                    {
+                        at 2026-06-30T19:34:53.986091Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id idiom6.unify
+                title "Phase A — collapse the ~30 `*Exception` structs into the single `Error` payload. Delete `hfst_exception_defs.rs`; redefine the throw macros to `panic_any(Error::new(ErrorKind::X))`; add `Error::throw()`; rewire every `HFST_THROW!`/`HFST_THROW_MESSAGE!` site (drop the `Exception` suffix), every `catch_unwind` downcast (→ `downcast::<Error>()` + match `.kind`), and the tests/CLI that downcast `*Exception`. Control flow stays panic-based (identical behaviour); the `Exception` nomenclature is gone. Oracle: 153 tests."
+                deps (idiom6.rename)
+            }
+
+            {
+                id idiom6.resultify
+                title "Phase B — leaf-up, replace panic-based control flow with `Result<T, Error>`. Convert throwing fns to return `Result`, `HFST_THROW!`→`bail!`, ripple `?` to callers; remove `panic_any`/`catch_unwind` for the error path (the single `Error` payload makes the transitional bridge trivial: `e.throw()` re-panics, `catch_to_result` re-catches). Non-error C++ `throw bool`/`throw &str` control-flow jumps are out of scope. Public `HfstTransducer` API → `Result`; tests/CLI ripple to `?`/`Err` matching. Oracle: 153 tests."
+                deps (idiom6.unify)
+            }
         )
         log (
             {
@@ -1640,5 +1665,11 @@ children (
                 )
             }
         )
+    }
+
+    {
+        id idiom8
+        title "Stage 8 — drop the C++ trailing-underscore private-field convention. Rename `field_`→`field` across the hfst lib (the port kept C++ member names verbatim), except where the bare name collides with a Rust keyword (`type_`, `match_`, `loop_`, `ref_`, …) — those get a non-underscore rename or stay justified. No behaviour change; 153 tests as oracle. Deps idiom6."
+        deps (idiom6)
     }
 )

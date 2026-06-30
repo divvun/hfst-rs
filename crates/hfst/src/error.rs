@@ -1,55 +1,55 @@
 //! The HFST error type — the `Result`-based replacement for the C++ exception
-//! hierarchy. Every former `Hfst*Exception` becomes a variant of [`HfstErrorKind`]
-//! with the `Exception` suffix dropped; fallible functions return [`HfstResult`]
+//! hierarchy. Every former `Hfst*Exception` becomes a variant of [`ErrorKind`]
+//! with the `Exception` suffix dropped; fallible functions return [`Result`]
 //! and propagate with `?` instead of `panic_any` / `catch_unwind`.
 //!
-//! Construction is via [`HfstError::new`] / [`HfstError::with_message`] or the
-//! [`hfst_bail!`]/[`hfst_err!`] macros. The optional `message` carries the text
-//! the old `HFST_THROW_MESSAGE` attached at a throw site.
+//! Construction is via [`Error::new`] / [`Error::with_message`] or the
+//! [`bail!`]/[`err!`] macros. The optional `message` carries the text the old
+//! `HFST_THROW_MESSAGE` attached at a throw site.
 
-use thiserror::Error;
+use thiserror::Error as ThisError;
 
 use crate::hfst_data_types::ImplementationType;
 
-/// The library's standard `Result`, carrying an [`HfstError`] on failure.
-pub type HfstResult<T> = Result<T, HfstError>;
+/// The library's standard `Result`, carrying an [`Error`] on failure.
+pub type Result<T> = core::result::Result<T, Error>;
 
-/// An error raised by the HFST library: a [`HfstErrorKind`] plus the optional
+/// An error raised by the HFST library: an [`ErrorKind`] plus the optional
 /// contextual message a throw site supplied.
 #[derive(Clone, Debug)]
-pub struct HfstError {
+pub struct Error {
     /// The error condition.
-    pub kind: HfstErrorKind,
+    pub kind: ErrorKind,
     /// Optional context (the old `HFST_THROW_MESSAGE` text), if any.
     pub message: Option<String>,
 }
 
-impl HfstError {
+impl Error {
     /// An error with no extra context.
-    pub fn new(kind: HfstErrorKind) -> Self {
-        HfstError {
+    pub fn new(kind: ErrorKind) -> Self {
+        Error {
             kind,
             message: None,
         }
     }
 
     /// An error carrying a contextual message.
-    pub fn with_message(kind: HfstErrorKind, message: impl Into<String>) -> Self {
-        HfstError {
+    pub fn with_message(kind: ErrorKind, message: impl Into<String>) -> Self {
+        Error {
             kind,
             message: Some(message.into()),
         }
     }
 }
 
-impl From<HfstErrorKind> for HfstError {
-    fn from(kind: HfstErrorKind) -> Self {
-        HfstError::new(kind)
+impl From<ErrorKind> for Error {
+    fn from(kind: ErrorKind) -> Self {
+        Error::new(kind)
     }
 }
 
-impl std::fmt::Display for HfstError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.kind)?;
         if let Some(message) = &self.message {
             write!(f, ": {message}")?;
@@ -58,16 +58,16 @@ impl std::fmt::Display for HfstError {
     }
 }
 
-impl std::error::Error for HfstError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+impl core::error::Error for Error {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         Some(&self.kind)
     }
 }
 
 /// Every distinct error condition the library can raise — one variant per former
 /// `Hfst*Exception`, with the `Exception` suffix dropped.
-#[derive(Clone, Debug, PartialEq, Error)]
-pub enum HfstErrorKind {
+#[derive(Clone, Debug, PartialEq, ThisError)]
+pub enum ErrorKind {
     #[error("transducer type mismatch")]
     HfstTransducerTypeMismatch,
     #[error("implementation type {0:?} is not available")]
@@ -130,25 +130,25 @@ pub enum HfstErrorKind {
     FlagDiacriticsAreNotIdentities,
 }
 
-/// Build an [`HfstError`] without returning it. `hfst_err!(Kind)`,
-/// `hfst_err!(Kind, message)`, or `hfst_err!(Kind(data))`.
+/// Build an [`Error`] without returning it. `err!(Kind)`, `err!(Kind, message)`,
+/// or `err!(Kind(data))`.
 #[macro_export]
-macro_rules! hfst_err {
+macro_rules! err {
     ($kind:ident ( $($arg:expr),* $(,)? )) => {
-        $crate::hfst_error::HfstError::new($crate::hfst_error::HfstErrorKind::$kind($($arg),*))
+        $crate::error::Error::new($crate::error::ErrorKind::$kind($($arg),*))
     };
     ($kind:ident, $msg:expr) => {
-        $crate::hfst_error::HfstError::with_message($crate::hfst_error::HfstErrorKind::$kind, $msg)
+        $crate::error::Error::with_message($crate::error::ErrorKind::$kind, $msg)
     };
     ($kind:ident) => {
-        $crate::hfst_error::HfstError::new($crate::hfst_error::HfstErrorKind::$kind)
+        $crate::error::Error::new($crate::error::ErrorKind::$kind)
     };
 }
 
-/// `return Err(...)` an [`HfstError`]. Same argument forms as [`hfst_err!`].
+/// `return Err(...)` an [`Error`]. Same argument forms as [`err!`].
 #[macro_export]
-macro_rules! hfst_bail {
+macro_rules! bail {
     ($($tt:tt)*) => {
-        return ::core::result::Result::Err($crate::hfst_err!($($tt)*))
+        return ::core::result::Result::Err($crate::err!($($tt)*))
     };
 }
