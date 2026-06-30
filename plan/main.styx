@@ -1609,6 +1609,24 @@ children (
                 id idiom6.resultify
                 title "Phase B — leaf-up, replace panic-based control flow with `Result<T, Error>`. Convert throwing fns to return `Result`, `HFST_THROW!`→`bail!`, ripple `?` to callers; remove `panic_any`/`catch_unwind` for the error path (the single `Error` payload makes the transitional bridge trivial: `e.throw()` re-panics, `catch_to_result` re-catches). Non-error C++ `throw bool`/`throw &str` control-flow jumps are out of scope. Public `HfstTransducer` API → `Result`; tests/CLI ripple to `?`/`Err` matching. Oracle: 153 tests."
                 deps (idiom6.unify)
+                children (
+                    {
+                        id idiom6.resultify.internal-catches
+                        title "Tier 1 — convert the contained internal error-path `catch_unwind` boundaries to `Result` handling WITHOUT changing any public signature: `get_stripped_line`/EndOfStream (hfst_basic_transducer), the `substitute`/FunctionNotImplemented catch (hfst_transducer), pmatch merge/TransducersAreNotAutomata. Throwing internal fn → `Result`, paired `catch_unwind` → `match`. No consumer ripple. Excludes the non-error `throw bool`/`throw &str` control-flow catches in `find_loop`/`random_path` (out of idiom6 scope)."
+                    }
+
+                    {
+                        id idiom6.resultify.facade
+                        title "Tier 2 — convert the public `HfstTransducer` + stream I/O API to return `Result<T, Error>` (~135 throws in hfst_transducer, 29 in hfst_input_stream, 7 in hfst_output_stream). `HFST_THROW!`→`bail!`; ripple `?` to internal callers, all 59 hfst-cli bins, and the tests; replace the xfst/pmatch `catch_unwind` that wrap public ops with `Result` matches. The widest-ripple tier — changes the library's public contract."
+                        deps (idiom6.resultify.internal-catches)
+                    }
+
+                    {
+                        id idiom6.resultify.compilers
+                        title "Tier 3 — convert the remaining compiler/rule throws to `Result`: xre (11), hfst_basic_transducer (25 AT&T/prolog parse), hfst_rules (8), hfst_xerox_rules (8), transducer/HFST-OL (8), convert_* + compose_intersect. Remove the last error-path `panic_any`/`catch_unwind`; the only residual panics are the deliberate non-error `throw bool`/`throw &str` control-flow jumps (documented, out of scope)."
+                        deps (idiom6.resultify.facade)
+                    }
+                )
             }
         )
         log (

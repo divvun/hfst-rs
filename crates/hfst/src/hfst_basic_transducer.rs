@@ -95,24 +95,10 @@ fn is_eof(is: &mut dyn BufRead) -> bool {
 // throw 'EndOfStreamException'. The panic hook is silenced so the caught
 // exception (a 'panic_any') does not print.
 fn catch_get_stripped_line(is: &mut dyn BufRead, linecount: &mut u32) -> Option<String> {
-    let prev = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        HfstBasicTransducer::get_stripped_line(is, linecount)
-    }));
-    std::panic::set_hook(prev);
-    match r {
+    match HfstBasicTransducer::get_stripped_line(is, linecount) {
         Ok(v) => Some(v),
-        Err(e) => {
-            if e.downcast_ref::<crate::error::Error>()
-                .filter(|__e| matches!(__e.kind, crate::error::ErrorKind::EndOfStream))
-                .is_some()
-            {
-                None
-            } else {
-                std::panic::resume_unwind(e)
-            }
-        }
+        Err(e) if matches!(e.kind, crate::error::ErrorKind::EndOfStream) => None,
+        Err(e) => e.throw(),
     }
 }
 
@@ -2392,15 +2378,18 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-stripped-line-fn]
     // [spec:hfst:def:hfst-transition-graph.std.string-get-stripped-line-fn]
     // [spec:hfst:sem:hfst-transition-graph.std.string-get-stripped-line-fn]
-    pub fn get_stripped_line(is: &mut dyn BufRead, linecount: &mut u32) -> String {
+    pub fn get_stripped_line(
+        is: &mut dyn BufRead,
+        linecount: &mut u32,
+    ) -> crate::error::Result<String> {
         let linestr = match bufread_fgets(is) {
-            None => crate::HFST_THROW!(EndOfStream),
+            None => crate::bail!(EndOfStream),
             Some(l) => l,
         };
         *linecount += 1;
 
         let mut s = linestr;
-        Self::strip_newlines(&mut s)
+        Ok(Self::strip_newlines(&mut s))
     }
 
     // Create a graph from prolog format in 'is' (if 'file' is null) or 'file'.
