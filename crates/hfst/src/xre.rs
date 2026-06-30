@@ -137,6 +137,11 @@ pub struct XreCompiler {
     /// hfst-regexp2fst's '--xfst flag-is-epsilon' drives this; threaded into the
     /// 'compose' calls of this compiler's evaluation via [`Self::opt_cfg`].
     pub(crate) flag_is_epsilon_: bool,
+    /// Whether composition treats flag diacritics as ordinary symbols, Xerox-style
+    /// (the former 'xerox_composition' file-static global, default 'false').
+    /// hfst-regexp2fst's '--xerox-composition' drives this; threaded into the
+    /// 'compose' calls of this compiler's evaluation via [`Self::opt_cfg`].
+    pub(crate) xerox_composition_: bool,
     /// Former 'xre_utils.cc' file-scope global 'bool contains_only_comments':
     /// per-compile flag set by 'compile'/'compile_first' and read by
     /// 'contained_only_comments'. Moved onto the instance to remove the
@@ -336,6 +341,7 @@ impl XreCompilerNew for ImplementationType {
             harmonize_flags_: false,
             minimize_result_: true,
             flag_is_epsilon_: false,
+            xerox_composition_: false,
             contains_only_comments_: false,
         }
     }
@@ -355,6 +361,7 @@ impl XreCompilerNew for &XreConstructorArguments {
             harmonize_flags_: false,
             minimize_result_: true,
             flag_is_epsilon_: false,
+            xerox_composition_: false,
             contains_only_comments_: false,
         }
     }
@@ -436,14 +443,22 @@ impl XreCompiler {
         self.flag_is_epsilon_ = flag_is_epsilon;
     }
 
+    /// Set whether composition treats flag diacritics as ordinary symbols,
+    /// Xerox-style (was the 'hfst::set_xerox_composition' file-static global; the
+    /// '--xerox-composition' option of hfst-regexp2fst toggles it).
+    pub fn set_xerox_composition(&mut self, xerox_composition: bool) {
+        self.xerox_composition_ = xerox_composition;
+    }
+
     /// The [`EngineConfig`](crate::hfst_transducer::EngineConfig) this compiler's
-    /// 'optimize' / 'compose' calls run with: the C++ defaults except the two
+    /// 'optimize' / 'compose' calls run with: the C++ defaults except the
     /// engine-policy flags this compiler exposes ('minimization',
-    /// 'flag_is_epsilon_in_composition').
+    /// 'flag_is_epsilon_in_composition', 'xerox_composition').
     pub(crate) fn opt_cfg(&self) -> crate::hfst_transducer::EngineConfig {
         crate::hfst_transducer::EngineConfig {
             minimization: self.minimize_result_,
             flag_is_epsilon_in_composition: self.flag_is_epsilon_,
+            xerox_composition: self.xerox_composition_,
             ..crate::hfst_transducer::EngineConfig::default()
         }
     }
@@ -1034,6 +1049,7 @@ impl XreCompiler {
             harmonize_flags_: self.harmonize_flags_,
             minimize_result_: self.minimize_result_,
             flag_is_epsilon_: self.flag_is_epsilon_,
+            xerox_composition_: self.xerox_composition_,
             contains_only_comments_: false,
         };
 

@@ -81,6 +81,11 @@ pub struct LexcCompiler {
     /// threaded into 'compile_lexical's composes. hfst-lexc-compiler's
     /// '--xfst flag-is-epsilon' toggles it.
     pub(crate) flag_is_epsilon_: bool,
+    /// Whether composition treats flag diacritics as ordinary symbols, Xerox-style
+    /// (the former 'xerox_composition' file-static global, default 'false');
+    /// threaded into 'compile_lexical's composes. hfst-lexc-compiler defaults this
+    /// ON, toggled by its '--xerox-composition' option.
+    pub(crate) xerox_composition_: bool,
 }
 // (followed by a doc-comment roster of every method + lexc-utils helper the
 //  bodies fill — public API, AST-walk driver compile/compile_file, and the
@@ -344,6 +349,7 @@ impl LexcCompiler {
             first_lexicon_: true,
             parseErrors_: false,
             flag_is_epsilon_: false,
+            xerox_composition_: false,
         };
         compiler
             .tokenizer_
@@ -472,11 +478,21 @@ impl LexcCompiler {
         self
     }
 
+    /// Set whether composition treats flag diacritics as ordinary symbols,
+    /// Xerox-style (was the 'hfst::set_xerox_composition' file-static global; the
+    /// '--xerox-composition' option of hfst-lexc-compiler toggles it).
+    pub fn set_xerox_composition(&mut self, value: bool) -> &mut Self {
+        self.xerox_composition_ = value;
+        self
+    }
+
     /// The [`EngineConfig`](crate::hfst_transducer::EngineConfig) the composes in
-    /// 'compile_lexical' run with: C++ defaults except 'flag_is_epsilon_in_composition'.
+    /// 'compile_lexical' run with: C++ defaults except 'flag_is_epsilon_in_composition'
+    /// and 'xerox_composition'.
     fn compose_cfg(&self) -> crate::hfst_transducer::EngineConfig {
         crate::hfst_transducer::EngineConfig {
             flag_is_epsilon_in_composition: self.flag_is_epsilon_,
+            xerox_composition: self.xerox_composition_,
             ..crate::hfst_transducer::EngineConfig::default()
         }
     }

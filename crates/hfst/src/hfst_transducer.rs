@@ -3830,10 +3830,6 @@ pub fn get_flag_path_restriction(
 // -------------------- Shuffle functions --------------------
 //
 
-thread_local! {
-    // A flag to indicate that there was an error during shuffle.
-    static SHUFFLE_FAILED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
 // Possible cases for function code_symbols_for_shuffle.
 // [spec:hfst:def:hfst-transducer.hfst.shuffle-coding]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -3842,30 +3838,33 @@ pub enum ShuffleCoding {
     ENCODE_SECOND_SHUFFLE_ARGUMENT,
     DECODE_AFTER_SHUFFLE,
 }
-thread_local! {
-    // The current case in function code_symbols_for_shuffle.
-    static SHUFFLE_CODING_CASE: std::cell::Cell<ShuffleCoding> =
-        const { std::cell::Cell::new(ShuffleCoding::ENCODE_FIRST_SHUFFLE_ARGUMENT) };
-}
 
 // A function that is given as a parameter to substitute function
 // during the shuffle operation. The purpose of this function is (1)
 // to encode symbols in the two argument transducers so that no symbol
 // is present at both transducers or (2) to decode the symbols
 // in the shuffled transducer back to the original ones.
+//
+// The 'coding_case'/'shuffle_failed' state was process-global in the C++
+// (file-static); it is now passed in as op-local Cells owned by 'shuffle'.
 // [spec:hfst:def:hfst-transducer.hfst.code-symbols-for-shuffle-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.code-symbols-for-shuffle-fn]
-pub fn code_symbols_for_shuffle(sp: &StringPair, sps: &mut StringPairSet) -> bool {
+fn code_symbols_for_shuffle_impl(
+    sp: &StringPair,
+    sps: &mut StringPairSet,
+    coding_case: &std::cell::Cell<ShuffleCoding>,
+    shuffle_failed: &std::cell::Cell<bool>,
+) -> bool {
     // not automaton, shuffle fails
     if sp.0 != sp.1 {
-        SHUFFLE_FAILED.set(true);
+        shuffle_failed.set(true);
         return false;
     }
     // special symbols are not coded, except identities
     if is_epsilon(&sp.0) || is_unknown(&sp.0) {
         return false;
     }
-    let case = SHUFFLE_CODING_CASE.get();
+    let case = coding_case.get();
     match case {
         // substitute each symbol foo in the first argument transducer
         // with a symbol @1foo
@@ -4082,9 +4081,9 @@ impl HfstTransducer {
         self.compose_with_config(another, harmonize, &EngineConfig::default())
     }
 
-    /// 'compose', reading the two engine-policy flags it consults
-    /// ('flag_is_epsilon_in_composition', 'unknown_symbols_in_use') from the supplied
-    /// config. ('xerox_composition' is still a global, toggled by pmatch.)
+    /// 'compose', reading the engine-policy flags it consults
+    /// ('flag_is_epsilon_in_composition', 'unknown_symbols_in_use',
+    /// 'xerox_composition') from the supplied config.
     pub fn compose_with_config(
         &mut self,
         another: &HfstTransducer,
@@ -4119,7 +4118,7 @@ impl HfstTransducer {
         let mut diacritics_added_from_another_to_this: StringSet = StringSet::new();
         let mut diacritics_added_from_this_to_another: StringSet = StringSet::new();
 
-        if get_xerox_composition() {
+        if config.xerox_composition {
             if self.type_ != ImplementationType::XFSM_TYPE {
                 encode_flag_diacritics(self);
                 encode_flag_diacritics(&mut another_copy);
@@ -4192,7 +4191,7 @@ impl HfstTransducer {
         }
 
         // Revert changes made before composition
-        if get_xerox_composition() {
+        if config.xerox_composition {
             if self.type_ != ImplementationType::XFSM_TYPE {
                 decode_flag_diacritics(self);
                 decode_flag_diacritics(&mut another_copy);
@@ -4436,21 +4435,29 @@ impl HfstTransducer {
         let mut this_alphabet: StringSet = this_basic.get_alphabet().clone();
         let mut another_alphabet: StringSet = another_basic.get_alphabet().clone();
 
+        // Op-local state replacing the former process-global shuffle flags.
+        let shuffle_failed = std::cell::Cell::new(false);
+        let coding_case = std::cell::Cell::new(ShuffleCoding::ENCODE_FIRST_SHUFFLE_ARGUMENT);
+
         // Encode first transducer, i.e. prefix each symbol with "@1"
-        SHUFFLE_CODING_CASE.set(ShuffleCoding::ENCODE_FIRST_SHUFFLE_ARGUMENT);
-        this_basic.substitute_with_func(code_symbols_for_shuffle);
+        coding_case.set(ShuffleCoding::ENCODE_FIRST_SHUFFLE_ARGUMENT);
+        this_basic.substitute_with_func(|sp, sps| {
+            code_symbols_for_shuffle_impl(sp, sps, &coding_case, &shuffle_failed)
+        });
         // also remember to remove the unprefixed symbols from the alphabet
         this_basic.remove_symbols_from_alphabet(&this_alphabet);
 
         // Encode second transducer, i.e. prefix each symbol with "@2"
-        SHUFFLE_CODING_CASE.set(ShuffleCoding::ENCODE_SECOND_SHUFFLE_ARGUMENT);
-        another_basic.substitute_with_func(code_symbols_for_shuffle);
+        coding_case.set(ShuffleCoding::ENCODE_SECOND_SHUFFLE_ARGUMENT);
+        another_basic.substitute_with_func(|sp, sps| {
+            code_symbols_for_shuffle_impl(sp, sps, &coding_case, &shuffle_failed)
+        });
         // also remember to remove the unprefixed symbols from the alphabet
         another_basic.remove_symbols_from_alphabet(&another_alphabet);
 
         // See if shuffle failed, i.e. either transducer is not an automaton
-        if SHUFFLE_FAILED.get() {
-            SHUFFLE_FAILED.set(false);
+        if shuffle_failed.get() {
+            shuffle_failed.set(false);
             crate::HFST_THROW_MESSAGE!(
                 TransducersAreNotAutomataException,
                 "HfstTransducer::shuffle(const HfstTransducer&)"
@@ -4492,8 +4499,10 @@ impl HfstTransducer {
 
         // Decode the shuffled transducer, i.e. remove the prefixes
         // "@1" and "@2" from symbols
-        SHUFFLE_CODING_CASE.set(ShuffleCoding::DECODE_AFTER_SHUFFLE);
-        this1_basic.substitute_with_func(code_symbols_for_shuffle);
+        coding_case.set(ShuffleCoding::DECODE_AFTER_SHUFFLE);
+        this1_basic.substitute_with_func(|sp, sps| {
+            code_symbols_for_shuffle_impl(sp, sps, &coding_case, &shuffle_failed)
+        });
         // also remember to remove the prefixed symbols from the alphabet
         this1_basic.remove_symbols_from_alphabet(&this_alphabet);
         this1_basic.remove_symbols_from_alphabet(&another_alphabet);
@@ -5317,6 +5326,11 @@ pub struct EngineConfig {
     // [spec:hfst:def:hfst-transducer.hfst.get-harmonize-smaller-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.get-harmonize-smaller-fn]
     pub harmonize_smaller: bool,
+    // [spec:hfst:def:hfst-transducer.hfst.set-xerox-composition-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.set-xerox-composition-fn]
+    // [spec:hfst:def:hfst-transducer.hfst.get-xerox-composition-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.get-xerox-composition-fn]
+    pub xerox_composition: bool,
 }
 
 impl Default for EngineConfig {
@@ -5329,6 +5343,7 @@ impl Default for EngineConfig {
             encode_weights: false,
             minimization_algorithm: MinimizationAlgorithm::HOPCROFT,
             harmonize_smaller: true,
+            xerox_composition: false,
         }
     }
 }
@@ -5354,20 +5369,6 @@ pub fn set_warning_stream(os: Box<dyn std::io::Write>) {
 pub enum MinimizationAlgorithm {
     HOPCROFT,
     BRZOZOWSKI,
-}
-
-// C++ 'HfstTransducer::set_xerox_composition(bool)' is a static setter, so this
-// flag is mutable at runtime (PMATCH toggles it around replace compositions).
-static XEROX_COMPOSITION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-// [spec:hfst:def:hfst-transducer.hfst.get-xerox-composition-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.get-xerox-composition-fn]
-pub fn get_xerox_composition() -> bool {
-    XEROX_COMPOSITION.load(std::sync::atomic::Ordering::Relaxed)
-}
-// [spec:hfst:def:hfst-transducer.hfst.set-xerox-composition-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.set-xerox-composition-fn]
-pub fn set_xerox_composition(value: bool) {
-    XEROX_COMPOSITION.store(value, std::sync::atomic::Ordering::Relaxed);
 }
 
 // C++ file-static substitution callbacks passed to substitute_with_func; deferred

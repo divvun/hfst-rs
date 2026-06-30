@@ -1448,6 +1448,21 @@ children (
                 id idiom5.op-local-scratch
                 title "Thread the operation-local scratch globals through their owning operations: tropical RNG_STATE (random-path gen), hfst_transducer SHUFFLE_FAILED/SHUFFLE_CODING_CASE (shuffle), log/tropical LOG_SECONDS_IN_HARMONIZE (profiling accumulator). Op-local, bounded. Oracle: 152 hfst tests."
                 priority 3
+                log (
+                    {
+                        at 2026-06-30T15:29:30.233309Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-30T15:53:51.542938Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DONE (agent aa1e367c, foreground; reviewed + independently verified: both crates build, 152 passed/14 skipped incl shuffle_log + test_pmatch which gate the changed ops, no new globals). Cleared the op-local scratch globals AND the two config-flags leftovers in one pass: (1) RNG_STATE (tropical) -> a `struct Rng{state:u64}` (seeded/next) created in extract_random_paths and threaded &mut through random_path/random_path_ (both catch_unwind closures). (2) SHUFFLE_FAILED/SHUFFLE_CODING_CASE (hfst_transducer) -> op-local Cells; code_symbols_for_shuffle became code_symbols_for_shuffle_impl(sp,sps,&coding_case,&shuffle_failed) passed as a closure to substitute_with_func (enabled by the prior commit's fn->impl Fn). (3) LOG_SECONDS_IN_HARMONIZE (log) removed as vestigial — its only reader (get_profile_seconds) had zero callers and tropical already returns 0.0; log's getter now returns 0.0 too, accumulation deleted. (4) the 2 dead hopcroft atomics (OPENFST_TROPICAL/LOG_USE_HOPCROFT) + their set/get fns + pub-use re-exports deleted (fully orphaned since config-flags removed set_minimization_algorithm). (5) xerox_composition folded into EngineConfig (default false): compose_with_config reads config.xerox_composition; xfst_compiler stores into engine_config_ (default ON); pmatch_compiler's cap/tolower/toupper windows build a local EngineConfig{xerox=true} and route their composes through compose_with_config; pmatch.rs:1101 set removed (PmatchContainer::new_from_stream does no composition). Justified scope expansion: XreCompiler + LexcCompiler gained a xerox_composition_ field + set_xerox_composition + opt_cfg/compose_cfg inclusion (mirroring flag_is_epsilon_) so hfst-regexp2fst/-lexc-compiler stay behavior-faithful after the global's deletion; lib default stays false. Remaining lib globals are now only the intentionally-kept owned WARNING_STREAM sinks + 3 out-of-scope stragglers (lexc_utils HLEXC lexer state, convert.rs CONSTRUCTING_TRANSDUCER arena, pmatch_tokenize IS_CG_TAG_MODIFIER_WARNED warn-once)."
+                    }
+                )
             }
         )
         log (

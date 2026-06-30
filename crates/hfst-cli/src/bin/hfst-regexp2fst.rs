@@ -5,7 +5,7 @@
 
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::{HfstTransducer, set_xerox_composition};
+use hfst::hfst_transducer::HfstTransducer;
 use hfst::xre::XreCompiler;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -36,6 +36,9 @@ static mut MINIMIZE_RESULT: bool = true;
 // '--xfst flag-is-epsilon' (was the 'flag_is_epsilon_in_composition' file-static
 // global; now threaded into the XRE compiler via 'set_flag_is_epsilon').
 static mut FLAG_IS_EPSILON: bool = false;
+// '--xerox-composition' (was the 'xerox_composition' file-static global; now
+// threaded into the XRE compiler via 'set_xerox_composition').
+static mut XEROX_COMPOSITION: bool = false;
 
 // [spec:hfst:def:hfst-regexp2fst.print-usage-fn]
 // [spec:hfst:sem:hfst-regexp2fst.print-usage-fn]
@@ -184,9 +187,9 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                 'x' => {
                     let argument = getopt::optarg();
                     if argument == "yes" || argument == "true" || argument == "ON" {
-                        set_xerox_composition(true);
+                        XEROX_COMPOSITION = true;
                     } else if argument == "no" || argument == "false" || argument == "OFF" {
-                        set_xerox_composition(false);
+                        XEROX_COMPOSITION = false;
                     } else {
                         error(
                             1,
@@ -239,6 +242,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         comp.set_flag_harmonization(HARMONIZE_FLAGS);
         comp.set_minimize_result(MINIMIZE_RESULT);
         comp.set_flag_is_epsilon(FLAG_IS_EPSILON);
+        comp.set_xerox_composition(XEROX_COMPOSITION);
         let mut disjunction = HfstTransducer::new_type(OUTPUT_FORMAT);
 
         let mut first_line: Option<String> = None;

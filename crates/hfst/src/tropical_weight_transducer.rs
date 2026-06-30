@@ -78,8 +78,6 @@ impl StdArcLessThan {
     }
 }
 
-/// 'void openfst_tropical_set_hopcroft(bool value);'
-
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream]
 pub struct TropicalWeightInputStream<'a> {
     filename: String,
@@ -121,7 +119,6 @@ mod construction_io {
     // Extra imports needed beyond the skeleton header (integrator: merge/dedupe):
     use std::io::{BufRead, Read, Write};
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
 
     use crate::hfst_exception_defs::{
         NotValidAttFormatException, StreamIsClosedException, SymbolNotFoundException,
@@ -142,9 +139,6 @@ mod construction_io {
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-profile-seconds-fn]
     // (the getter is an associated fn on TropicalWeightTransducer below)
 
-    // 'bool openfst_tropical_use_hopcroft = false;'
-    static OPENFST_TROPICAL_USE_HOPCROFT: AtomicBool = AtomicBool::new(false);
-
     // 'std::ostream * TropicalWeightTransducer::warning_stream = NULL;'
     // Owned warning sink: the C++ kept a non-owning 'std::ostream*'; the literal
     // port modelled that as a '*mut Box<dyn Write>' set from the CLI via
@@ -153,18 +147,6 @@ mod construction_io {
     thread_local! {
         static WARNING_STREAM: std::cell::RefCell<Option<Box<dyn std::io::Write>>> =
             const { std::cell::RefCell::new(None) };
-    }
-
-    // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.openfst-tropical-set-hopcroft-fn]
-    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.openfst-tropical-set-hopcroft-fn]
-    pub fn openfst_tropical_set_hopcroft(value: bool) {
-        OPENFST_TROPICAL_USE_HOPCROFT.store(value, Ordering::Relaxed);
-    }
-
-    /// Reader for the 'openfst_tropical_use_hopcroft' global (added so the
-    /// operations-area 'minimize' can consult the flag — not in the C++ header).
-    pub(crate) fn openfst_tropical_get_hopcroft() -> bool {
-        OPENFST_TROPICAL_USE_HOPCROFT.load(Ordering::Relaxed)
     }
 
     // ---------------------------------------------------------------------------
@@ -1629,10 +1611,6 @@ mod construction_io {
     }
 }
 
-// Re-export the 'hfst::implementations' free function consumed by the facade
-// 'set_minimization_algorithm' (HfstTransducer.cc:246).
-pub use construction_io::openfst_tropical_set_hopcroft;
-
 // ===== operations (workflow body) =====
 mod operations {
     #![allow(unused_imports)]
@@ -2544,25 +2522,24 @@ mod lookup_extract_misc {
         true
     }
 
-    // Tiny thread-local xorshift PRNG replacing the C 'rand()'/'srand()' that the
-    // random-path extraction used (no global C RNG state). Defined here at module
-    // scope, not inside an impl.
-    thread_local! {
-        static RNG_STATE: std::cell::Cell<u64> =
-            const { std::cell::Cell::new(0x9E3779B97F4A7C15) };
+    // Tiny op-local xorshift PRNG replacing the C 'rand()'/'srand()' that the
+    // random-path extraction used (no global C RNG state). Created per
+    // extract_random_paths call and threaded down through random_path.
+    struct Rng {
+        state: u64,
     }
-    fn rand_seed(s: u64) {
-        RNG_STATE.with(|c| c.set(s | 1));
-    }
-    fn rand_next() -> i32 {
-        RNG_STATE.with(|c| {
-            let mut z = c.get();
+    impl Rng {
+        fn seeded(seed: u64) -> Self {
+            Rng { state: seed | 1 }
+        }
+        fn next(&mut self) -> i32 {
+            let mut z = self.state;
             z ^= z >> 12;
             z ^= z << 25;
             z ^= z >> 27;
-            c.set(z);
+            self.state = z;
             ((z.wrapping_mul(0x2545F4914F6CDD1D) >> 33) as i32) & i32::MAX
-        })
+        }
     }
 
     /* Get a random path from transducer 't'.  Faithful to the C++ it signals
@@ -2570,7 +2547,7 @@ mod lookup_extract_misc {
     that `random_path` catches with `catch_unwind`. */
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.random-path-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.random-path-fn]
-    fn random_path_(t: &StdVectorFst) -> HfstTwoLevelPath {
+    fn random_path_(t: &StdVectorFst, rng: &mut Rng) -> HfstTwoLevelPath {
         /* If the transducer is empty, return. */
         if is_minimal_and_empty(t) {
             std::panic::panic_any("transducer is empty");
@@ -2611,7 +2588,7 @@ mod lookup_extract_misc {
 
             /* Go through all transitions in a random order. */
             while !t_transitions.is_empty() {
-                let index = (rand_next() as usize) % t_transitions.len();
+                let index = (rng.next() as usize) % t_transitions.len();
                 let arc = t_transitions[index].clone();
                 t_transitions.remove(index);
 
@@ -2633,7 +2610,7 @@ mod lookup_extract_misc {
 
                 /* If the target state is final, */
                 if t.is_final(t_target).unwrap() {
-                    if (rand_next() % 4) == 0 {
+                    if (rng.next() % 4) == 0 {
                         // randomly return the path so far,
                         path.first += *t.final_weight(t_target).unwrap().unwrap().value();
                         if !is_epsilon_path_accepted && path.second.is_empty() {
@@ -2647,14 +2624,14 @@ mod lookup_extract_misc {
                 /* Give more probability for shorter paths. */
                 if broken[t_target as usize] == 0 {
                     if visited[t_target as usize] == 1 {
-                        if (rand_next() % 4) == 0 {
+                        if (rng.next() % 4) == 0 {
                             broken[t_target as usize] = 1;
                         }
                     }
                 }
 
                 if visited[t_target as usize] == 1 {
-                    if (rand_next() % 4) == 0 {
+                    if (rng.next() % 4) == 0 {
                         broken[t_target as usize] = 1;
                     }
                 }
@@ -2667,12 +2644,12 @@ mod lookup_extract_misc {
     }
 
     /* Try to extract a random path from 't' at most 'max_times' times. */
-    fn random_path(t: &StdVectorFst, mut max_times: u32) -> HfstTwoLevelPath {
+    fn random_path(t: &StdVectorFst, mut max_times: u32, rng: &mut Rng) -> HfstTwoLevelPath {
         while max_times > 0 {
             max_times -= 1;
             let prev = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));
-            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| random_path_(t)));
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| random_path_(t, rng)));
             std::panic::set_hook(prev);
             match r {
                 Ok(p) => return p,
@@ -2796,7 +2773,7 @@ mod lookup_extract_misc {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
-            rand_seed(seed);
+            let mut rng = Rng::seeded(seed);
 
             let mut max_num = max_num;
             while max_num > 0 {
@@ -2804,8 +2781,9 @@ mod lookup_extract_misc {
                 max_num -= 1;
                 let prev = std::panic::take_hook();
                 std::panic::set_hook(Box::new(|_| {}));
-                let r =
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| random_path(t, 5)));
+                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    random_path(t, 5, &mut rng)
+                }));
                 std::panic::set_hook(prev);
 
                 let mut path = match r {
@@ -2833,7 +2811,7 @@ mod lookup_extract_misc {
                     let prev = std::panic::take_hook();
                     std::panic::set_hook(Box::new(|_| {}));
                     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        random_path(t, 5)
+                        random_path(t, 5, &mut rng)
                     }));
                     std::panic::set_hook(prev);
                     if let Ok(p) = r {

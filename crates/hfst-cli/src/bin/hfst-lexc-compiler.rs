@@ -7,7 +7,6 @@
 
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::set_xerox_composition;
 use hfst::lexc::LexcCompiler;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -417,11 +416,11 @@ unsafe fn real_main() -> i32 {
         } else {
             HfstOutputStream::new(FORMAT, true)
         };
-        set_xerox_composition(XEROX_COMPOSITION);
         let mut lexc = LexcCompiler::new_with_flags(FORMAT, WITH_FLAGS, ALIGN_STRINGS);
         lexc.set_minimize_flags(MINIMIZE_FLAGS);
         lexc.set_rename_flags(RENAME_FLAGS);
         lexc.set_flag_is_epsilon(FLAG_IS_EPSILON);
+        lexc.set_xerox_composition(XEROX_COMPOSITION);
         // lexc.with_flags_ = with_flags;
         if globals::SILENT {
             lexc.set_verbosity(0);

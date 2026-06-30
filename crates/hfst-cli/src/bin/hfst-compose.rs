@@ -7,7 +7,7 @@ use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_exception_defs::TransducerTypeMismatchException;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::{EngineConfig, HfstTransducer, set_xerox_composition};
+use hfst::hfst_transducer::{EngineConfig, HfstTransducer};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, conversion_type, convert_transducers, error, extend_options_getenv,
@@ -31,6 +31,9 @@ static mut HARMONIZE: bool = true;
 // '--xfst flag-is-epsilon' (was the 'flag_is_epsilon_in_composition' file-static
 // global in the library; now threaded into compose via EngineConfig).
 static mut FLAG_IS_EPSILON: bool = false;
+// '--xerox-composition' (was the 'xerox_composition' file-static global in the
+// library; now threaded into compose via EngineConfig).
+static mut XEROX_COMPOSITION: bool = false;
 
 // [spec:hfst:def:hfst-compose.print-usage-fn]
 // [spec:hfst:sem:hfst-compose.print-usage-fn]
@@ -129,9 +132,9 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
             } else if c == b'x' as i32 {
                 let argument = getopt::optarg();
                 if argument == "yes" || argument == "true" || argument == "ON" {
-                    set_xerox_composition(true);
+                    XEROX_COMPOSITION = true;
                 } else if argument == "no" || argument == "false" || argument == "OFF" {
-                    set_xerox_composition(false);
+                    XEROX_COMPOSITION = false;
                 } else {
                     let _ = write!(
                         std::io::stderr(),
@@ -310,6 +313,7 @@ unsafe fn compose_streams(
 
             let cfg = EngineConfig {
                 flag_is_epsilon_in_composition: FLAG_IS_EPSILON,
+                xerox_composition: XEROX_COMPOSITION,
                 ..EngineConfig::default()
             };
             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

@@ -1898,9 +1898,12 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.cap-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.cap-fn]
     pub fn cap(&mut self, t: &mut HfstTransducer, side: Side, optional: bool) -> HfstTransducer {
-        let orig_xerox_composition_value: bool = crate::hfst_transducer::get_xerox_composition();
-        // This is to match flags in t with ?'s in "anything"
-        crate::hfst_transducer::set_xerox_composition(true);
+        // This is to match flags in t with ?'s in "anything": these composes run
+        // with Xerox-style composition enabled.
+        let cfg = crate::hfst_transducer::EngineConfig {
+            xerox_composition: true,
+            ..Default::default()
+        };
 
         let mut retval: HfstTransducer;
         let mut cap: HfstTransducer = self.uppercaser_from_transducer(t);
@@ -1934,7 +1937,7 @@ impl PmatchUtilityTransducers {
             continuation.concatenate(&more_caps, true);
             continuation.repeat_star();
             cap.concatenate(&continuation, true);
-            retval.compose(&cap, true);
+            retval.compose_with_config(&cap, true, &cfg);
         } else if side == Side::Upper {
             decap.disjunct(&anything, true);
             let mut continuation: HfstTransducer =
@@ -1947,7 +1950,7 @@ impl PmatchUtilityTransducers {
             continuation.repeat_star();
             retval = HfstTransducer::new_copy(&decap);
             retval.concatenate(&continuation, true);
-            retval.compose(t, true);
+            retval.compose_with_config(t, true, &cfg);
         } else {
             // both
             decap.disjunct(&anything, true);
@@ -1961,7 +1964,7 @@ impl PmatchUtilityTransducers {
             continuation.repeat_star();
             retval = HfstTransducer::new_copy(&decap);
             retval.concatenate(&continuation, true);
-            retval.compose(t, true);
+            retval.compose_with_config(t, true, &cfg);
             let mut continuation2: HfstTransducer =
                 HfstTransducer::new_copy(&anything_but_whitespace_star);
             let mut more_caps: HfstTransducer =
@@ -1972,11 +1975,10 @@ impl PmatchUtilityTransducers {
             continuation2.concatenate(&more_caps, true);
             continuation2.repeat_star();
             cap.concatenate(&continuation2, true);
-            retval.compose(&cap, true);
+            retval.compose_with_config(&cap, true, &cfg);
             retval.output_project();
         }
         retval.minimize();
-        crate::hfst_transducer::set_xerox_composition(orig_xerox_composition_value);
         retval
     }
 
@@ -1990,9 +1992,12 @@ impl PmatchUtilityTransducers {
         side: Side,
         optional: bool,
     ) -> HfstTransducer {
-        let orig_xerox_composition_value: bool = crate::hfst_transducer::get_xerox_composition();
-        // This is to match flags in t with ?'s in "anything"
-        crate::hfst_transducer::set_xerox_composition(true);
+        // This is to match flags in t with ?'s in "anything": these composes run
+        // with Xerox-style composition enabled.
+        let cfg = crate::hfst_transducer::EngineConfig {
+            xerox_composition: true,
+            ..Default::default()
+        };
 
         let mut anything: HfstTransducer =
             HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, t.get_type());
@@ -2005,25 +2010,24 @@ impl PmatchUtilityTransducers {
             lowercase.disjunct(&anything, true);
             lowercase.repeat_star();
             retval = HfstTransducer::new_copy(t);
-            retval.compose(&lowercase, true);
+            retval.compose_with_config(&lowercase, true, &cfg);
         } else if side == Side::Upper {
             retval = self.uppercaser_from_transducer(t);
             retval.disjunct(&anything, true);
             retval.repeat_star();
-            retval.compose(t, true);
+            retval.compose_with_config(t, true, &cfg);
         } else {
             // both
             retval = self.uppercaser_from_transducer(t);
             retval.disjunct(&anything, true);
             retval.repeat_star();
-            retval.compose(t, true);
+            retval.compose_with_config(t, true, &cfg);
             let mut lowercase: HfstTransducer = self.lowercaser_from_transducer(t);
             lowercase.disjunct(&anything, true);
             lowercase.repeat_star();
-            retval.compose(&lowercase, true);
+            retval.compose_with_config(&lowercase, true, &cfg);
         }
         retval.minimize();
-        crate::hfst_transducer::set_xerox_composition(orig_xerox_composition_value);
         retval
     }
 
@@ -2037,9 +2041,12 @@ impl PmatchUtilityTransducers {
         side: Side,
         optional: bool,
     ) -> HfstTransducer {
-        let orig_xerox_composition_value: bool = crate::hfst_transducer::get_xerox_composition();
-        // This is to match flags in t with ?'s in "anything"
-        crate::hfst_transducer::set_xerox_composition(true);
+        // This is to match flags in t with ?'s in "anything": these composes run
+        // with Xerox-style composition enabled.
+        let cfg = crate::hfst_transducer::EngineConfig {
+            xerox_composition: true,
+            ..Default::default()
+        };
 
         let mut anything: HfstTransducer =
             HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, t.get_type());
@@ -2052,25 +2059,24 @@ impl PmatchUtilityTransducers {
             uppercase.disjunct(&anything, true);
             uppercase.repeat_star();
             retval = HfstTransducer::new_copy(t);
-            retval.compose(&uppercase, true);
+            retval.compose_with_config(&uppercase, true, &cfg);
         } else if side == Side::Upper {
             retval = self.lowercaser_from_transducer(t);
             retval.disjunct(&anything, true);
             retval.repeat_star();
-            retval.compose(t, true);
+            retval.compose_with_config(t, true, &cfg);
         } else {
             // both
             retval = self.lowercaser_from_transducer(t);
             retval.disjunct(&anything, true);
             retval.repeat_star();
-            retval.compose(t, true);
+            retval.compose_with_config(t, true, &cfg);
             let mut uppercase: HfstTransducer = self.uppercaser_from_transducer(t);
             uppercase.disjunct(&anything, true);
             uppercase.repeat_star();
-            retval.compose(&uppercase, true);
+            retval.compose_with_config(&uppercase, true, &cfg);
         }
         retval.minimize();
-        crate::hfst_transducer::set_xerox_composition(orig_xerox_composition_value);
         retval
     }
 }

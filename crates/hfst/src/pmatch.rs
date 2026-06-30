@@ -1098,7 +1098,6 @@ impl PmatchContainer {
             );
         }
         c.set_properties_map(&properties);
-        crate::hfst_transducer::set_xerox_composition(c.xerox_composition);
         let header = TransducerHeader::new_istream(is);
         c.alphabet = PmatchAlphabet::new_from_stream(is, header.symbol_count(), &mut c);
         c.orig_symbol_count = c.alphabet.get_orig_symbol_count();

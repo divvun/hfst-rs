@@ -209,7 +209,8 @@ impl XfstCompiler {
         // c.xre_.set_error_stream(...);
         c.lexc_.set_verbosity(if c.verbose_ { 2 } else { 0 });
         // c.lexc_.set_error_stream(...);
-        crate::hfst_transducer::set_xerox_composition(true);
+        // XFST defaults Xerox-style composition ON.
+        c.engine_config_.xerox_composition = true;
         c.variables_.insert("assert".to_string(), "OFF".to_string());
         c.variables_.insert(
             "att-epsilon".to_string(),
@@ -1722,10 +1723,10 @@ impl XfstCompiler {
         }
         if name == "xerox-composition" {
             if text == "ON" {
-                crate::hfst_transducer::set_xerox_composition(true);
+                self.engine_config_.xerox_composition = true;
             }
             if text == "OFF" {
-                crate::hfst_transducer::set_xerox_composition(false);
+                self.engine_config_.xerox_composition = false;
             }
         }
         if name == "flag-is-epsilon" {

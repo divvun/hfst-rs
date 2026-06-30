@@ -81,8 +81,6 @@ impl LogArcLessThan {
     }
 }
 
-/// 'void openfst_log_set_hopcroft(bool value);'
-
 // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-input-stream]
 pub struct LogWeightInputStream<'a> {
     filename: String,
@@ -121,7 +119,6 @@ mod construction_io {
     // Extra imports needed beyond the skeleton header (integrator: merge/dedupe):
     use std::io::{BufRead, Read, Write};
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
 
     use crate::hfst_exception_defs::{
         NotValidAttFormatException, StreamIsClosedException, SymbolNotFoundException,
@@ -136,17 +133,6 @@ mod construction_io {
     // File-static globals from the .cc
     // ---------------------------------------------------------------------------
 
-    // 'float log_seconds_in_harmonize = 0;' — UNLIKE Tropical's 'tropical_seconds'
-    // (which is only live under PROFILE_OPENFST), the Log .cc always accumulates the
-    // time spent inside 'harmonize' here, and 'get_profile_seconds' returns it.
-    // Modelled as a plain global float (C++ semantics) accessed under 'unsafe'.
-    thread_local! {
-        static LOG_SECONDS_IN_HARMONIZE: std::cell::Cell<f32> = const { std::cell::Cell::new(0.0) };
-    }
-
-    // 'bool openfst_log_use_hopcroft = false;'
-    static OPENFST_LOG_USE_HOPCROFT: AtomicBool = AtomicBool::new(false);
-
     // 'std::ostream * LogWeightTransducer::warning_stream = NULL;'
     // (Not present in the Log .cc — mirrored from Tropical for API parity so the
     //  operations-area epsilon-cycle warning path has a sink to consult.)
@@ -156,19 +142,6 @@ mod construction_io {
     thread_local! {
         static WARNING_STREAM: std::cell::RefCell<Option<Box<dyn std::io::Write>>> =
             const { std::cell::RefCell::new(None) };
-    }
-
-    // [spec:hfst:def:log-weight-transducer.hfst.implementations.openfst-log-set-hopcroft-fn]
-    // [spec:hfst:sem:log-weight-transducer.hfst.implementations.openfst-log-set-hopcroft-fn]
-    pub fn openfst_log_set_hopcroft(value: bool) {
-        OPENFST_LOG_USE_HOPCROFT.store(value, Ordering::Relaxed);
-    }
-
-    /// Reader for the 'openfst_log_use_hopcroft' global (added for parity with the
-    /// Tropical port — not in the C++ header). The Log 'minimize' does NOT consult
-    /// this flag (unlike Tropical), so this may be unused.
-    pub(crate) fn openfst_log_get_hopcroft() -> bool {
-        OPENFST_LOG_USE_HOPCROFT.load(Ordering::Relaxed)
     }
 
     // ---------------------------------------------------------------------------
@@ -552,8 +525,8 @@ mod construction_io {
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.get-profile-seconds-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.get-profile-seconds-fn]
         pub fn get_profile_seconds() -> f32 {
-            // Log: 'return log_seconds_in_harmonize;' (accumulated by harmonize).
-            LOG_SECONDS_IN_HARMONIZE.with(|s| s.get())
+            // 'log_seconds_in_harmonize' is 0 unless PROFILE_OPENFST (compiled out).
+            0.0
         }
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.get-warning-stream-fn]
@@ -1446,9 +1419,6 @@ mod construction_io {
             let mut t1 = t1.clone();
             let mut t2 = t2.clone();
 
-            // C++ uses clock()/CLOCKS_PER_SEC (CPU time); we approximate with wall time.
-            let startclock = std::time::Instant::now();
-
             // 1. unknown symbols for t1 and t2
             let mut unknown_t1 = StringSet::new();
             let mut unknown_t2 = StringSet::new();
@@ -1495,10 +1465,6 @@ mod construction_io {
                 h.set_input_symbols(Arc::clone(t2.input_symbols().unwrap()));
                 h
             };
-
-            // log_seconds_in_harmonize += (endclock - startclock) / CLOCKS_PER_SEC;
-            let elapsed = startclock.elapsed().as_secs_f32();
-            LOG_SECONDS_IN_HARMONIZE.with(|s| s.set(s.get() + elapsed));
 
             (harmonized_t1, harmonized_t2)
         }
@@ -1614,10 +1580,6 @@ mod construction_io {
         }
     }
 }
-
-// Re-export the 'hfst::implementations' free function consumed by the facade
-// 'set_minimization_algorithm' (HfstTransducer.cc:251).
-pub use construction_io::openfst_log_set_hopcroft;
 
 // ===== operations (workflow body) =====
 mod operations {
