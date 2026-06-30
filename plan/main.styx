@@ -1698,4 +1698,46 @@ children (
         title "Stage 8 — drop the C++ trailing-underscore private-field convention. Rename `field_`→`field` across the hfst lib (the port kept C++ member names verbatim), except where the bare name collides with a Rust keyword (`type_`, `match_`, `loop_`, `ref_`, …) — those get a non-underscore rename or stay justified. No behaviour change; 153 tests as oracle. Deps idiom6."
         deps (idiom6)
     }
+
+    {
+        id idiom9
+        title "Stage 9 — de-C-shape: idiomatize the libc-FREE-but-C-SHAPED Rust that idiom2's de-libc pass left behind. Audit (2026-06-30, 5-dimension sweep) found ~350-450 distinct actionable sites + a large mechanical tail. OUT OF SCOPE (documented): the load-bearing std::istream/OL byte-reader emulation (fail/eof-bit + ungetc semantics, format-mandated NUL writes), faithful bug-preserving sites (is_fst_file fread bug, remove_transitions cursor, parse_quoted, interior-NUL truncation), and essential index use (OL transition-table walks, MED/DP tables, split-borrow clusters, FST state-id-as-identity). Behaviour-changing sites need a version bump. Oracle: 153 tests. Deps idiom6."
+        deps (idiom6)
+        children (
+            {
+                id idiom9.mechanical
+                title "risk-NONE mechanical sweep (the bulk, ~250+ behaviour-identical sites). Iteration → combinators: `let mut s=0; for x in it {…; s+=1}`→`enumerate()` (~25, densest in hfst_basic_transducer + hfst_xerox_rules), push-loops→`collect`, found-flag+break→`find`/`position`/`any`, xfst stack drain-into-temp-and-restore→`reverse()`/`iter().rev()` (×8), binary buffer walks→`chunks_exact`. Strings → `format!`/`join`/`collect`; `@TAG.…@` substring-by-index peeling → `strip_prefix`/`strip_suffix` (deletes 3 `unsafe as_bytes_mut()` pokes); `chars().take_while(|c| c!=',')`→`split`. Naming → snake_case the hfst_xerox_rules camelCase public API (~24 fns), delete redundant `operator_*` beside Ord/PartialEq (51), `void display()`→Debug/Display (~20), vestigial stream stubs / empty Drop / delete_transducer. Delete dead `format_specifiers.rs`. GUARD: skip the bug-preserving `remove_transitions:2660` cursor, `top_index` first-wins tie, insertion-sort `<`, f32/NaN comparators."
+            }
+
+            {
+                id idiom9.signatures
+                title "out-parameters → return values (P1, ~100 sites, mostly risk-none, module-local). `bool`-success + result through `&mut` → `Option`/`Result`: get_prolog_arc_symbols, extract_weight, marker2weight, strip_quotes_*, the 5 parse_prolog_*/add_att_line, xfst extract_function_name/arguments, is_unknown_or_identity_used. `&mut` accumulators → returned collections (collect_unknown_sets, populate_symbol_set, get_initial_transition_pairs). Spurious `&mut` read-only params → `&` (hfst_rules, pmatch *_from_transducer ×7). Plus the get_/set_ field-passthrough accessor layer (613 methods; PmatchObject ~200 lines ×12 node structs) → expose fields / derive a base. GUARD: hfst_rules::restriction genuinely mutates the caller's transducer."
+                deps (idiom9.mechanical)
+            }
+
+            {
+                id idiom9.sentinels
+                title "sentinel returns → Option + bare typedef → newtype (P2/P3 core; risk REAL, public-API-wide, highest correctness payoff). NO_SYMBOL_NUMBER (= SymbolNumber::MAX, a VALID u16 index — 116 occurrences across transducer/pmatch/ospell) → Option<SymbolNumber>; symbol_from_string/find_key/get_*_symbol → Option. Bare typedefs (SymbolNumber=u16, TransitionTableIndex=u32, Weight=f32, HfstState=u32, …) → newtypes so index/number/state/weight can't be mixed. Folds in the `-1 as u32` label-corruption bug (expand_arcs tropical:1267/log:1262), PushbackReader::get 0xFF/.eof EOF encoding, has_arc -1, is_final f32-as-bool. The `size_t_to_uint`/`double_to_float` narrowing helpers (106 calls) → `try_from`. Lead with tests; ripples to CLI + any C-API. COORDINATE with idiom6.resultify.facade — both rewrite the public contract; ideally one wave."
+                deps (idiom9.signatures)
+            }
+
+            {
+                id idiom9.parsers
+                title "number-parser consolidation (risk: quirk + one REAL perf bug). Hand-rolled atoi/atof/str2int/c_strtol/c_strtod scanners → unified `parse()` + an endptr-aware helper. Fixes the O(n²) longest-prefix reparse in pmatch_compiler c_strtod_str:2095. Sites: string_manipulation:134 (str2int), xfst_compiler:4771 (atoi), xre:1162/1187 (c_strtol/c_strtod, endptr load-bearing), hfst_basic_transducer:45 (atoi/atof). Quirk: hand-rolled variants read a digit PREFIX and ignore trailing garbage where `parse()` rejects it — preserve prefix semantics where callers rely on it."
+                deps (idiom9.mechanical)
+            }
+
+            {
+                id idiom9.control-flow
+                title "throw-as-goto → ControlFlow/Result/Option (4 clusters, ~13 throws / 7 catch boundaries, NON-Error payloads — distinct from idiom6's Error-payload catches). (1) symbol_vector_to_symbol_pair `throw &str`→`Option` (xfst:6334+6342, cleanest, independent); (2) find_loop `throw bool`→`ControlFlow` across the 4-fn DFS + retire the `found_transition` sentinel field (transducer:3101/3114, catch :2337, independent); (3) random_path `throw &str` trio→`Result<_, {Empty,NoPath}>` deleting 3 set_hook dances (tropical:2513-2634, catches :2612/:2744/:2773, quirk — preserve the dedup-retry \"keep old path\" loop); (4) compile-replace/merge `throw &str` (hfst_basic_transducer:4247/4269/4274/4816, catches :4905 + xfst:4551 with the early_return goto-flag) — ENTANGLED with idiom6.resultify (the catch reclassifies to TransducersAreNotAutomata / demotes to a diagnostic); do jointly."
+                deps (idiom9.mechanical)
+            }
+
+            {
+                id idiom9.io-shape
+                title "C-style I/O cleanup (the trigger for this audit). Unify the 3 fgets line-readers — bufread_fgets (hfst_basic_transducer:60) + the verbatim copies in tropical_weight_transducer:929 and log_weight_transducer:917 — into one `read_until(b'\\n', …)` + from_utf8_lossy helper; quirk: drops the C `fgets(buf,255)` 254-byte line chunking (behaviour-equivalent for all real AT&T/prolog/text input; documented version bump). Cursor-getline scans → `slice.split` (generate_model_forms:366, pmatch_compiler:5322/5367/5407). codepoint_to_utf8 `[u8;5]` manual UTF-8 encoder → `char::from_u32` (pmatch_compiler:2375). w_fputs/fwrite_bytes/fmt_* printf-emulators → `write!`/`writeln!` (hfst_basic_transducer:39, hfst_print_dot:34, hfst_print_pckimmo:21-47). EXCLUDES the load-bearing IStream/PushbackReader/OL byte readers (real risk — istream fail/eof semantics; leave)."
+                deps (idiom9.mechanical)
+            }
+        )
+    }
 )
