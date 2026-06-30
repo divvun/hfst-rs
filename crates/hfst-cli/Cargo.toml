@@ -10,3 +10,4 @@ license.workspace = true
 # added as it is ported.
 [dependencies]
 hfst = { workspace = true }
+tracing-subscriber = "0.3.23"

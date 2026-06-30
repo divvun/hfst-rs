@@ -4,7 +4,7 @@
 
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::{self, HfstTransducer};
+use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, is_input_stream_in_ol_format,
@@ -88,9 +88,12 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         // outstream.open();
 
         if !globals::SILENT {
-            // hfst::set_warning_stream(&std::cerr); — route warnings to stderr.
-            let warn: Box<dyn std::io::Write> = Box::new(std::io::stderr());
-            hfst_transducer::set_warning_stream(warn);
+            // Route the library's `tracing` warnings to stderr (replaces the former
+            // hfst::set_warning_stream(&std::cerr)). Idempotent across calls.
+            let _ = tracing_subscriber::fmt()
+                .with_writer(std::io::stderr)
+                .without_time()
+                .try_init();
         }
 
         let mut transducer_n: usize = 0;

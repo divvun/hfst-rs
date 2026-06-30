@@ -1540,4 +1540,36 @@ children (
             }
         )
     }
+
+    {
+        id idiom7
+        title "Stage 7 — adopt `tracing` for all diagnostic logging in the hfst lib. The library must not write diagnostics to stderr directly; it emits `tracing` events (warn!/error!/info!/debug!/trace!) and the application owns the subscriber. DATA output (att/dot writers, lookup results, xfst REPL result text to stdout) and interactive prompts are NOT logging and stay as direct I/O. Oracle: 152 hfst tests."
+        children (
+            {
+                id idiom7.warning-stream-tracing
+                title "Replace the WARNING_STREAM global sink with `tracing`. The per-backend thread_local Option&lt;Box&lt;dyn Write&gt;&gt; (tropical + log) is written at exactly one site — check_epsilon_cycles' \"transducer has epsilon cycles with a negative weight\" warning. Emit `tracing::warn!` there instead; delete the WARNING_STREAM thread_local, set_warning_stream + with_warning_stream (both backends) and the facade set_warning_stream. The 2 CLI callers (hfst-eliminate-flags, hfst-remove-epsilons) drop set_warning_stream and install a tracing-subscriber fmt-to-stderr so the warning still renders. Removes the last per-thread mutable sink; establishes the tracing pattern. Oracle: 152 hfst tests."
+                log (
+                    {
+                        at 2026-06-30T16:16:53.929703Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-30T16:27:48.331076Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id idiom7.lib-logging
+                title "Migrate the ~317 lib eprintln!/eprint! diagnostic sites to `tracing` macros, classified by severity (warn!/error! for warnings+errors, debug!/trace! for verbose/debug traces). Concentrated in xfst_compiler (124), pmatch_compiler (78), lexc (31), pmatch (26), twolc (15), xre (12), backends (~12). Leave stdout DATA output (print!/println!: att/dot, xfst print results, prompts) and the verbose_printf-style UI as-is unless it is genuinely a log line. CLI bins install a shared tracing-subscriber so events render to stderr. Depends on idiom7.warning-stream-tracing (pattern + deps). Oracle: 152 hfst tests + manual CLI spot-check (diagnostics still surface)."
+                deps (idiom7.warning-stream-tracing)
+            }
+        )
+    }
 )

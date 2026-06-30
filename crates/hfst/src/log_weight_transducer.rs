@@ -134,15 +134,6 @@ mod construction_io {
     // ---------------------------------------------------------------------------
 
     // 'std::ostream * LogWeightTransducer::warning_stream = NULL;'
-    // (Not present in the Log .cc — mirrored from Tropical for API parity so the
-    //  operations-area epsilon-cycle warning path has a sink to consult.)
-    // Owned warning sink; see TropicalWeightTransducer::WARNING_STREAM for why the
-    // literal port's '*mut Box<dyn Write>' (leaked + dangling) is now an owned
-    // thread-local.
-    thread_local! {
-        static WARNING_STREAM: std::cell::RefCell<Option<Box<dyn std::io::Write>>> =
-            const { std::cell::RefCell::new(None) };
-    }
 
     // ---------------------------------------------------------------------------
     // Private module helpers (introduced for the port; not in the C++ header).
@@ -527,28 +518,6 @@ mod construction_io {
         pub fn get_profile_seconds() -> f32 {
             // 'log_seconds_in_harmonize' is 0 unless PROFILE_OPENFST (compiled out).
             0.0
-        }
-
-        // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.get-warning-stream-fn]
-        // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.get-warning-stream-fn]
-        //
-        // See TropicalWeightTransducer::with_warning_stream — the owned-sink
-        // equivalent of the C++ '*-returning getter.
-        #[allow(dead_code)]
-        pub(crate) fn with_warning_stream(f: impl FnOnce(&mut dyn std::io::Write)) {
-            WARNING_STREAM.with(|w| {
-                let mut guard = w.borrow_mut();
-                if let Some(s) = guard.as_mut() {
-                    f(&mut **s);
-                }
-            });
-        }
-
-        // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.set-warning-stream-fn]
-        // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.set-warning-stream-fn]
-        #[allow(dead_code)]
-        pub(crate) fn set_warning_stream(os: Box<dyn std::io::Write>) {
-            WARNING_STREAM.with(|w| *w.borrow_mut() = Some(os));
         }
 
         // ---- private symbol-table helpers ----

@@ -17,3 +17,4 @@ nfst-pmatch = { workspace = true }
 nfst-twolc = { workspace = true }
 nfst-xfst = { workspace = true }
 thiserror = "2.0.18"
+tracing = "0.1.44"

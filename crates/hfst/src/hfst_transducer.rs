@@ -5354,15 +5354,6 @@ impl EngineConfig {
     }
 }
 
-// C++ '#if HAVE_OPENFST' branch is taken (OpenFst tropical backend is ported), so
-// this delegates to TropicalWeightTransducer's warning-stream sink. The C++
-// 'std::ostream*' becomes an owned 'Box<dyn Write>' the sink takes ownership of.
-// [spec:hfst:def:hfst-transducer.hfst.set-warning-stream-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.set-warning-stream-fn]
-pub fn set_warning_stream(os: Box<dyn std::io::Write>) {
-    crate::tropical_weight_transducer::TropicalWeightTransducer::set_warning_stream(os);
-}
-
 // C++ 'enum MinimizationAlgorithm { HOPCROFT, BRZOZOWSKI }' (HfstTransducer.h:130).
 // [spec:hfst:def:hfst-transducer.hfst.minimization-algorithm]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

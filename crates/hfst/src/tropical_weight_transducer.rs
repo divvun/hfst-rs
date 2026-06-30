@@ -140,15 +140,6 @@ mod construction_io {
     // (the getter is an associated fn on TropicalWeightTransducer below)
 
     // 'std::ostream * TropicalWeightTransducer::warning_stream = NULL;'
-    // Owned warning sink: the C++ kept a non-owning 'std::ostream*'; the literal
-    // port modelled that as a '*mut Box<dyn Write>' set from the CLI via
-    // 'Box::into_raw' (a leak) and dereferenced later (dangling-risk). It is now
-    // an owned thread-local, dropped when replaced or at thread exit.
-    thread_local! {
-        static WARNING_STREAM: std::cell::RefCell<Option<Box<dyn std::io::Write>>> =
-            const { std::cell::RefCell::new(None) };
-    }
-
     // ---------------------------------------------------------------------------
     // Private module helpers (introduced for the port; not in the C++ header).
     // ---------------------------------------------------------------------------
@@ -534,27 +525,6 @@ mod construction_io {
         pub fn get_profile_seconds() -> f32 {
             // 'tropical_seconds' is 0 unless PROFILE_OPENFST (compiled out).
             0.0
-        }
-
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-warning-stream-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-warning-stream-fn]
-        //
-        // The C++ getter handed back the raw 'std::ostream*' for the caller to
-        // write to; with an owned sink the faithful equivalent is "borrow it and
-        // write", so the getter becomes this scoped accessor (no-op when unset).
-        pub(crate) fn with_warning_stream(f: impl FnOnce(&mut dyn std::io::Write)) {
-            WARNING_STREAM.with(|w| {
-                let mut guard = w.borrow_mut();
-                if let Some(s) = guard.as_mut() {
-                    f(&mut **s);
-                }
-            });
-        }
-
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.set-warning-stream-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.set-warning-stream-fn]
-        pub fn set_warning_stream(os: Box<dyn std::io::Write>) {
-            WARNING_STREAM.with(|w| *w.borrow_mut() = Some(os));
         }
 
         // ---- private symbol-table helpers ----
@@ -1627,19 +1597,14 @@ mod operations {
 
     /// Port of the 'CHECK_EPSILON_CYCLES(x, y)' macro: convert 'x' to an
     /// 'HfstBasicTransducer', and if it has negative-weight epsilon cycles, emit a
-    /// warning to the (file-static) 'warning_stream' if one is set.
-    #[allow(dead_code)]
+    /// 'tracing' warning.
     fn check_epsilon_cycles(x: &StdVectorFst, y: &str) {
         let fsm = crate::convert_transducer_format::ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(x, true);
         if fsm.has_negative_epsilon_cycles() {
-            use std::io::Write;
-            TropicalWeightTransducer::with_warning_stream(|warning_stream| {
-                let _ = writeln!(
-                    warning_stream,
-                    "{}: warning: transducer has epsilon cycles with a negative weight",
-                    y
-                );
-            });
+            tracing::warn!(
+                "{}: transducer has epsilon cycles with a negative weight",
+                y
+            );
         }
     }
 
