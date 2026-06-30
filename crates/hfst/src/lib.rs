@@ -72,9 +72,3 @@ pub mod tropical_weight_transducer;
 pub mod twolc;
 pub mod xfst_compiler;
 pub mod xre;
-
-// Facade global from HfstTransducer.cc (set_encode_weights/get_encode_weights);
-// stubbed at the crate root until the facade lands. C++ default is false.
-pub fn get_encode_weights() -> bool {
-    false
-}

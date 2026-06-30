@@ -13,9 +13,9 @@ fn main() {
     assert_eq!(TWT::number_of_states(&c), TWT::number_of_states(&ab));
 
     // the OpenFST-algorithm wrappers run end to end
-    let det = TWT::determinize(&ab);
+    let det = TWT::determinize(&ab, false);
     assert!(TWT::number_of_states(&det) >= 1);
-    let minz = TWT::minimize(&ab);
+    let minz = TWT::minimize(&ab, false);
     assert!(TWT::number_of_states(&minz) >= 1);
     let nb = TWT::n_best(&ab, 1);
     assert!(TWT::number_of_states(&nb) >= 1);

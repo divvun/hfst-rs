@@ -160,6 +160,10 @@ pub struct XfstCompiler {
     // is false, fail_flag_ will always be false.
     pub fail_flag_: bool,
     pub restricted_mode_: bool,
+    /* Engine-policy flags set by the 'set' command (was a cluster of file-static
+    globals in HfstTransducer.cc). Threaded into the transducer ops this compiler
+    invokes. */
+    pub engine_config_: crate::hfst_transducer::EngineConfig,
 }
 
 impl XfstCompiler {
@@ -197,6 +201,7 @@ impl XfstCompiler {
             quit_requested_: false,
             fail_flag_: false,
             restricted_mode_: false,
+            engine_config_: crate::hfst_transducer::EngineConfig::default(),
         };
         c.xre_.set_expand_definitions(true);
         c.xre_.set_verbosity(c.verbose_);
@@ -1691,22 +1696,20 @@ impl XfstCompiler {
         self.variables_.insert(name.to_string(), text.to_string());
         if name == "hopcroft-min" {
             if text == "ON" {
-                crate::hfst_transducer::set_minimization_algorithm(
-                    crate::hfst_transducer::MinimizationAlgorithm::HOPCROFT,
-                );
+                self.engine_config_.minimization_algorithm =
+                    crate::hfst_transducer::MinimizationAlgorithm::HOPCROFT;
             }
             if text == "OFF" {
-                crate::hfst_transducer::set_minimization_algorithm(
-                    crate::hfst_transducer::MinimizationAlgorithm::BRZOZOWSKI,
-                );
+                self.engine_config_.minimization_algorithm =
+                    crate::hfst_transducer::MinimizationAlgorithm::BRZOZOWSKI;
             }
         }
         if name == "encode-weights" {
             if text == "ON" {
-                crate::hfst_transducer::set_encode_weights(true);
+                self.engine_config_.encode_weights = true;
             }
             if text == "OFF" {
-                crate::hfst_transducer::set_encode_weights(false);
+                self.engine_config_.encode_weights = false;
             }
         }
         if name == "harmonize-flags" {
@@ -1727,19 +1730,17 @@ impl XfstCompiler {
         }
         if name == "flag-is-epsilon" {
             if text == "ON" {
-                crate::hfst_transducer::set_flag_is_epsilon_in_composition(true);
+                self.engine_config_.flag_is_epsilon_in_composition = true;
             }
             if text == "OFF" {
-                crate::hfst_transducer::set_flag_is_epsilon_in_composition(false);
+                self.engine_config_.flag_is_epsilon_in_composition = false;
             }
         }
         if name == "minimal" {
-            if text == "ON" {
-                // hfst::set_minimization(true);
-            }
-            if text == "OFF" {
-                // hfst::set_minimization(false);
-            }
+            // 'set minimal' was left unwired in this port (the C++ would toggle
+            // 'minimization'); the compiler's 'optimize' calls run with the default
+            // config, so this stays a no-op, as before.
+            let _ = text;
         }
 
         if self.verbose_ {
@@ -4075,10 +4076,13 @@ impl XfstCompiler {
                         }
                     }
 
+                    let cfg = self.engine_config_;
                     let __prev_hook = std::panic::take_hook();
                     std::panic::set_hook(Box::new(|_| {}));
                     let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        result.borrow_mut().compose(&t.borrow(), true);
+                        result
+                            .borrow_mut()
+                            .compose_with_config(&t.borrow(), true, &cfg);
                     }));
                     std::panic::set_hook(__prev_hook);
                     if let Err(e) = __res {

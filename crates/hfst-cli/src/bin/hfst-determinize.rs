@@ -4,7 +4,7 @@
 
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::{HfstTransducer, get_encode_weights, set_encode_weights};
+use hfst::hfst_transducer::{EngineConfig, HfstTransducer};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, is_input_stream_in_ol_format,
@@ -113,7 +113,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             } else {
                 verbose_printf(&format!("Determinizing {}...{}\n", inputname, transducer_n));
             }
-            trans.determinize();
+            trans.determinize_with_config(&EngineConfig {
+                encode_weights: ENCODE_WEIGHTS,
+                ..EngineConfig::default()
+            });
             // C: hfst_set_name(trans, trans, "determinize"); the dest and src are
             // the same object, which Rust cannot alias mut+const, so the read side
             // is taken from a copy (name/formula are unchanged by the copy).
@@ -149,11 +152,6 @@ unsafe fn real_main() -> i32 {
         let input_opened = globals::input_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
 
-        let enc = get_encode_weights();
-        if ENCODE_WEIGHTS {
-            set_encode_weights(true);
-        }
-
         verbose_printf(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
@@ -182,10 +180,6 @@ unsafe fn real_main() -> i32 {
         }
 
         let retval = process_stream(&mut instream, &mut outstream);
-
-        if ENCODE_WEIGHTS {
-            set_encode_weights(enc);
-        }
 
         retval
     }

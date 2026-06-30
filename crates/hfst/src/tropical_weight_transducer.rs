@@ -1739,7 +1739,7 @@ mod operations {
         // yields a 'File too big' error.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.minimize-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.minimize-fn]
-        pub fn minimize(t: &StdVectorFst) -> StdVectorFst {
+        pub fn minimize(t: &StdVectorFst, encode_weights: bool) -> StdVectorFst {
             // C++ mutates 't' in place; the skeleton hands us '&StdVectorFst', so we
             // operate on a local clone (the caller-side mutation side effect is lost).
             let mut t = t.clone();
@@ -1754,7 +1754,7 @@ mod operations {
                 TropicalWeightTransducer::add_to_weights(&mut t, -w);
             }
 
-            let encode_type = if crate::get_encode_weights() {
+            let encode_type = if encode_weights {
                 algorithms::EncodeType::EncodeWeightsAndLabels
             } else {
                 algorithms::EncodeType::EncodeLabels
@@ -1775,7 +1775,7 @@ mod operations {
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.determinize-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.determinize-fn]
-        pub fn determinize(t: &StdVectorFst) -> StdVectorFst {
+        pub fn determinize(t: &StdVectorFst, encode_weights: bool) -> StdVectorFst {
             // C++ mutates 't' in place; operate on a local clone.
             let mut t = t.clone();
 
@@ -1788,7 +1788,7 @@ mod operations {
                 TropicalWeightTransducer::add_to_weights(&mut t, -w);
             }
 
-            let encode_type = if crate::get_encode_weights() {
+            let encode_type = if encode_weights {
                 algorithms::EncodeType::EncodeWeightsAndLabels
             } else {
                 algorithms::EncodeType::EncodeLabels
@@ -2215,7 +2215,11 @@ mod operations {
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.are-equivalent-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.are-equivalent-fn]
-        pub fn are_equivalent(one: &StdVectorFst, another: &StdVectorFst) -> bool {
+        pub fn are_equivalent(
+            one: &StdVectorFst,
+            another: &StdVectorFst,
+            encode_weights: bool,
+        ) -> bool {
             let mut a = TropicalWeightTransducer::copy(one);
             let mut b = TropicalWeightTransducer::copy(another);
 
@@ -2225,7 +2229,7 @@ mod operations {
             algorithms::RmEpsilon(&mut a);
             algorithms::RmEpsilon(&mut b);
 
-            let encode_type = if crate::get_encode_weights() {
+            let encode_type = if encode_weights {
                 algorithms::EncodeType::EncodeWeightsAndLabels
             } else {
                 algorithms::EncodeType::EncodeLabels

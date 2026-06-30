@@ -11,8 +11,8 @@ use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_symbol_defs::internal_identity;
 use hfst::hfst_tokenizer::HfstTokenizer;
+use hfst::hfst_transducer::EngineConfig;
 use hfst::hfst_transducer::{HfstTransducer, HfstTransducerVector};
-use hfst::hfst_transducer::{get_encode_weights, set_encode_weights};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, conversion_type, error, extend_options_getenv, hfst_set_program_name,
@@ -315,14 +315,10 @@ unsafe fn compose_streams(
             } else {
                 verbose_printf(&format!("Reading and minimizing rule {}...\n", rule_n));
             }
-            let enc = get_encode_weights();
-            if ENCODE_WEIGHTS {
-                set_encode_weights(true);
-            }
-            rule.minimize();
-            if ENCODE_WEIGHTS {
-                set_encode_weights(enc);
-            }
+            rule.minimize_with_config(&EngineConfig {
+                encode_weights: ENCODE_WEIGHTS,
+                ..EngineConfig::default()
+            });
 
             rules.push(rule);
             rule_n += 1;

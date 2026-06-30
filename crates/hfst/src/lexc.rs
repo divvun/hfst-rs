@@ -76,6 +76,11 @@ pub struct LexcCompiler {
     pub(crate) quiet_: bool,
     pub(crate) first_lexicon_: bool, // folded 'static bool firstLexicon'
     pub parseErrors_: bool,          // public field in C++ header
+    /// Whether composition treats flag diacritics as epsilons (the former
+    /// 'flag_is_epsilon_in_composition' file-static global, default 'false');
+    /// threaded into 'compile_lexical's composes. hfst-lexc-compiler's
+    /// '--xfst flag-is-epsilon' toggles it.
+    pub(crate) flag_is_epsilon_: bool,
 }
 // (followed by a doc-comment roster of every method + lexc-utils helper the
 //  bodies fill — public API, AST-walk driver compile/compile_file, and the
@@ -338,6 +343,7 @@ impl LexcCompiler {
             quiet_: false,
             first_lexicon_: true,
             parseErrors_: false,
+            flag_is_epsilon_: false,
         };
         compiler
             .tokenizer_
@@ -456,6 +462,23 @@ impl LexcCompiler {
     pub fn set_rename_flags(&mut self, value: bool) -> &mut Self {
         self.rename_flags_ = value;
         self
+    }
+
+    /// Set whether composition treats flag diacritics as epsilons (was the
+    /// 'hfst::set_flag_is_epsilon_in_composition' file-static global; the
+    /// '--xfst flag-is-epsilon' option of hfst-lexc-compiler toggles it).
+    pub fn set_flag_is_epsilon(&mut self, value: bool) -> &mut Self {
+        self.flag_is_epsilon_ = value;
+        self
+    }
+
+    /// The [`EngineConfig`](crate::hfst_transducer::EngineConfig) the composes in
+    /// 'compile_lexical' run with: C++ defaults except 'flag_is_epsilon_in_composition'.
+    fn compose_cfg(&self) -> crate::hfst_transducer::EngineConfig {
+        crate::hfst_transducer::EngineConfig {
+            flag_is_epsilon_in_composition: self.flag_is_epsilon_,
+            ..crate::hfst_transducer::EngineConfig::default()
+        }
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.set-warning-fn]
@@ -1420,7 +1443,9 @@ impl LexcCompiler {
         joiners_all.repeat_star();
         joiners_all.optimize();
 
-        lexicons.compose(&joiners_all, true).optimize();
+        lexicons
+            .compose_with_config(&joiners_all, true, &self.compose_cfg())
+            .optimize();
 
         let mut all_substitutions = HfstSymbolSubstitutions::new();
         if self.with_flags_ {
@@ -1536,8 +1561,11 @@ impl LexcCompiler {
             //                        .o.
             // [FLAG1 | FLAG2 ... FLAGN] -> 0 || [FLAG1 | FLAG2 ... FLAGN] _
             let mut filtered_lexicons = inverted_flag_filter;
-            filtered_lexicons.compose(&rv, true);
-            filtered_lexicons.compose(&flag_filter, true).optimize();
+            let cfg = self.compose_cfg();
+            filtered_lexicons.compose_with_config(&rv, true, &cfg);
+            filtered_lexicons
+                .compose_with_config(&flag_filter, true, &cfg)
+                .optimize();
 
             rv.assign(&filtered_lexicons);
         }

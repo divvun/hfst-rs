@@ -7,10 +7,7 @@
 
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::{
-    get_encode_weights, set_encode_weights, set_flag_is_epsilon_in_composition,
-    set_xerox_composition,
-};
+use hfst::hfst_transducer::set_xerox_composition;
 use hfst::lexc::LexcCompiler;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -52,7 +49,9 @@ static mut WARN_UNNECESSARY_ESCAPES: bool = false;
 // Compatibility with Xerox tools is the default
 static mut XEROX_COMPOSITION: bool = true;
 static mut ENCODE_WEIGHTS: bool = false;
-static mut ENC: bool = false;
+// '--xfst flag-is-epsilon' (was the 'flag_is_epsilon_in_composition' file-static
+// global; now threaded into the lexc compiler via 'set_flag_is_epsilon').
+static mut FLAG_IS_EPSILON: bool = false;
 static mut SPLIT_CHARACTERS: bool = false;
 
 fn eput(s: &str) {
@@ -219,7 +218,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                 'X' => {
                     let argument = getopt::optarg();
                     if argument == "flag-is-epsilon" {
-                        set_flag_is_epsilon_in_composition(true);
+                        FLAG_IS_EPSILON = true;
                     } else {
                         eput(&format!(
                             "Error: unknown option to --xfst: '{}'\n",
@@ -382,10 +381,6 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
         // C++ 'delete res' — owned value drops at end of scope.
         outstream.close();
 
-        if ENCODE_WEIGHTS {
-            set_encode_weights(ENC);
-        }
-
         0
     }
 }
@@ -409,11 +404,6 @@ unsafe fn real_main() -> i32 {
             return retval;
         }
         // close buffers, we use streams
-        ENC = get_encode_weights();
-        if ENCODE_WEIGHTS {
-            set_encode_weights(true);
-        }
-
         verbose_printf("Reading from ");
         let lexcfilenames = &*std::ptr::addr_of!(LEXCFILENAMES);
         for i in 0..(LEXCCOUNT as usize) {
@@ -431,6 +421,7 @@ unsafe fn real_main() -> i32 {
         let mut lexc = LexcCompiler::new_with_flags(FORMAT, WITH_FLAGS, ALIGN_STRINGS);
         lexc.set_minimize_flags(MINIMIZE_FLAGS);
         lexc.set_rename_flags(RENAME_FLAGS);
+        lexc.set_flag_is_epsilon(FLAG_IS_EPSILON);
         // lexc.with_flags_ = with_flags;
         if globals::SILENT {
             lexc.set_verbosity(0);

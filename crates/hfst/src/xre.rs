@@ -127,6 +127,16 @@ pub struct XreCompiler {
     /// 'xre_utils.cc' global 'bool harmonize_flags_' (default 'false'): whether
     /// composition harmonizes flag diacritics of its arguments.
     pub(crate) harmonize_flags_: bool,
+    /// Whether 'optimize' on built transducers minimizes (the former
+    /// 'can_minimize' / 'set_minimization' file-static global, default 'true').
+    /// hfst-regexp2fst's no-minimize option drives this; threaded into the
+    /// 'optimize' calls of this compiler's evaluation via [`Self::opt_cfg`].
+    pub(crate) minimize_result_: bool,
+    /// Whether composition treats flag diacritics as epsilons (the former
+    /// 'flag_is_epsilon_in_composition' file-static global, default 'false').
+    /// hfst-regexp2fst's '--xfst flag-is-epsilon' drives this; threaded into the
+    /// 'compose' calls of this compiler's evaluation via [`Self::opt_cfg`].
+    pub(crate) flag_is_epsilon_: bool,
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -327,6 +337,8 @@ impl XreCompilerNew for ImplementationType {
             expand_definitions_: false,
             harmonize_: true,
             harmonize_flags_: false,
+            minimize_result_: true,
+            flag_is_epsilon_: false,
         }
     }
 }
@@ -343,6 +355,8 @@ impl XreCompilerNew for &XreConstructorArguments {
             expand_definitions_: false,
             harmonize_: true,
             harmonize_flags_: false,
+            minimize_result_: true,
+            flag_is_epsilon_: false,
         }
     }
 }
@@ -407,6 +421,32 @@ impl XreCompiler {
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.set-flag-harmonization-fn]
     pub fn set_flag_harmonization(&mut self, harmonize_flags: bool) {
         self.harmonize_flags_ = harmonize_flags;
+    }
+
+    /// Set whether 'optimize' on built transducers minimizes (was the
+    /// 'hfst::set_minimization' file-static global; hfst-regexp2fst's no-minimize
+    /// option toggles it).
+    pub fn set_minimize_result(&mut self, minimize_result: bool) {
+        self.minimize_result_ = minimize_result;
+    }
+
+    /// Set whether composition treats flag diacritics as epsilons (was the
+    /// 'hfst::set_flag_is_epsilon_in_composition' file-static global; the
+    /// '--xfst flag-is-epsilon' option of hfst-regexp2fst toggles it).
+    pub fn set_flag_is_epsilon(&mut self, flag_is_epsilon: bool) {
+        self.flag_is_epsilon_ = flag_is_epsilon;
+    }
+
+    /// The [`EngineConfig`](crate::hfst_transducer::EngineConfig) this compiler's
+    /// 'optimize' / 'compose' calls run with: the C++ defaults except the two
+    /// engine-policy flags this compiler exposes ('minimization',
+    /// 'flag_is_epsilon_in_composition').
+    pub(crate) fn opt_cfg(&self) -> crate::hfst_transducer::EngineConfig {
+        crate::hfst_transducer::EngineConfig {
+            minimization: self.minimize_result_,
+            flag_is_epsilon_in_composition: self.flag_is_epsilon_,
+            ..crate::hfst_transducer::EngineConfig::default()
+        }
     }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.is-definition-fn]
@@ -533,7 +573,7 @@ impl XreCompiler {
                 let first = &exprs[0];
                 *chars_read = first.span.end() as u32;
                 let mut t = self.eval(first);
-                t.optimize();
+                t.optimize_with_config(&self.opt_cfg());
                 Some(t)
             }
             Ok(_) => {
@@ -556,7 +596,7 @@ impl XreCompiler {
         match parse(src) {
             Ok(expr) => {
                 let mut t = self.eval(&expr);
-                t.optimize();
+                t.optimize_with_config(&self.opt_cfg());
                 Some(t)
             }
             Err(_) => {
@@ -594,7 +634,7 @@ impl XreCompiler {
             XreExpr::Group(inner) => {
                 // REGEXP11: [ REGEXP2 ] -> optimize().
                 let mut t = self.eval(inner);
-                t.optimize();
+                t.optimize_with_config(&self.opt_cfg());
                 t
             }
             XreExpr::Optional(inner) => {
@@ -617,7 +657,7 @@ impl XreCompiler {
                 t.set_final_weights(*weight as f32, true);
                 // '[E]::w' optimizes after weighting; bare 'LABEL::w' does not.
                 if matches!(expr.value, XreExpr::Group(_)) {
-                    t.optimize();
+                    t.optimize_with_config(&self.opt_cfg());
                 }
                 t
             }
@@ -788,7 +828,7 @@ impl XreCompiler {
                 }
                 let mut complement = HfstTransducer::identity_pair(self.format_);
                 complement.repeat_star();
-                complement.optimize();
+                complement.optimize_with_config(&self.opt_cfg());
                 complement.subtract(&a, true);
                 complement.prune_alphabet(false);
                 complement
@@ -836,22 +876,22 @@ impl XreCompiler {
                 {
                     left.harmonize_flag_diacritics(&mut right, true);
                 }
-                left.compose(&right, self.harmonize_);
-                left.optimize();
+                left.compose_with_config(&right, self.harmonize_, &self.opt_cfg());
+                left.optimize_with_config(&self.opt_cfg());
                 left
             }
             BinaryOp::CrossProduct => {
                 let mut left = self.eval(l);
                 let right = self.eval(r);
                 left.cross_product(&right, false);
-                left.optimize();
+                left.optimize_with_config(&self.opt_cfg());
                 left
             }
             BinaryOp::LenientCompose => {
                 let mut left = self.eval(l);
                 let right = self.eval(r);
                 left.lenient_composition(&right, false);
-                left.optimize();
+                left.optimize_with_config(&self.opt_cfg());
                 left
             }
             BinaryOp::MergeRight => {
@@ -859,7 +899,7 @@ impl XreCompiler {
                 let mut left = self.eval(l);
                 let right = self.eval(r);
                 let mut res = self.merge_first_to_second(&mut left, right);
-                res.optimize();
+                res.optimize_with_config(&self.opt_cfg());
                 res
             }
             BinaryOp::MergeLeft => {
@@ -867,7 +907,7 @@ impl XreCompiler {
                 let left = self.eval(l);
                 let mut right = self.eval(r);
                 let mut res = self.merge_first_to_second(&mut right, left);
-                res.optimize();
+                res.optimize_with_config(&self.opt_cfg());
                 res
             }
             BinaryOp::Before => {
@@ -890,7 +930,7 @@ impl XreCompiler {
                 let mut left = self.eval(l);
                 let right = self.eval(r);
                 left.intersect(&right, self.harmonize_);
-                left.optimize();
+                left.optimize_with_config(&self.opt_cfg());
                 left.prune_alphabet(false);
                 left
             }
@@ -993,6 +1033,8 @@ impl XreCompiler {
             expand_definitions_: self.expand_definitions_,
             harmonize_: self.harmonize_,
             harmonize_flags_: self.harmonize_flags_,
+            minimize_result_: self.minimize_result_,
+            flag_is_epsilon_: self.flag_is_epsilon_,
         };
 
         // get_function_xre + recursive compile.
@@ -1004,7 +1046,7 @@ impl XreCompiler {
         match parse(&body) {
             Ok(expr) => {
                 let mut t = sub.eval(&expr);
-                t.optimize();
+                t.optimize_with_config(&self.opt_cfg());
                 t
             }
             Err(_) => crate::HFST_THROW_MESSAGE!(
@@ -1106,6 +1148,7 @@ fn has_non_identity_pairs(t: &HfstTransducer) -> bool {
 fn build_symbol_list_transducer(
     symbols: &Vec<String>,
     format: ImplementationType,
+    cfg: &crate::hfst_transducer::EngineConfig,
 ) -> HfstTransducer {
     if symbols.is_empty() {
         return HfstTransducer::new_type(format);
@@ -1123,7 +1166,7 @@ fn build_symbol_list_transducer(
             HfstTransducer::new_symbol_pair(s, s, format)
         };
         retval.disjunct(&tmp, false);
-        retval.optimize();
+        retval.optimize_with_config(cfg);
     }
     retval
 }
@@ -1525,7 +1568,7 @@ fn unescape_enclosing_angle_brackets(t: &mut HfstTransducer) {
         return;
     }
     t.substitute_substitutions(&substitutions);
-    t.optimize();
+    t.optimize_with_config(&crate::hfst_transducer::EngineConfig::default());
 }
 
 // [spec:hfst:def:xre-utils.hfst.xre.get-weight-fn]
@@ -1741,7 +1784,7 @@ impl XreCompiler {
         any.repeat_star().minimize();
         let mut retval = any.clone();
         retval.concatenate(t, true).concatenate(&any, true);
-        retval.optimize();
+        retval.optimize_with_config(&self.opt_cfg());
         retval
     }
 
@@ -1777,11 +1820,11 @@ impl XreCompiler {
         no_t.repeat_star().minimize();
         let one_or_more_t = self.contains(t);
         no_t.subtract(&one_or_more_t, true);
-        no_t.optimize();
+        no_t.optimize_with_config(&self.opt_cfg());
 
         // return [weighted_rule - noT]
         weighted_rule.subtract(&no_t, true);
-        weighted_rule.optimize();
+        weighted_rule.optimize_with_config(&self.opt_cfg());
         weighted_rule
     }
 
@@ -1804,14 +1847,14 @@ impl XreCompiler {
         // t1 = [?+ c ?*]
         let mut t1 = any_plus.clone();
         t1.concatenate(c, true);
-        t1.optimize();
+        t1.optimize_with_config(&self.opt_cfg());
         t1.concatenate(&any_star, true);
-        t1.optimize();
+        t1.optimize_with_config(&self.opt_cfg());
 
         // t2 = [c ?*]
         let mut t2 = c.clone();
         t2.concatenate(&any_star, true);
-        t2.optimize();
+        t2.optimize_with_config(&self.opt_cfg());
 
         // t1 = [[?+ c ?*] & [c ?*]]
         t1.intersect(&t2, true);
@@ -1819,13 +1862,13 @@ impl XreCompiler {
         // t3 = [[c ?+] & c]
         let mut t3 = c.clone();
         t3.concatenate(&any_plus, true);
-        t3.optimize();
+        t3.optimize_with_config(&self.opt_cfg());
         t3.intersect(c, true);
-        t3.optimize();
+        t3.optimize_with_config(&self.opt_cfg());
 
         // t1 = [t1 | t3]
         t1.disjunct(&t3, true);
-        t1.optimize();
+        t1.optimize_with_config(&self.opt_cfg());
 
         // cont_t1 = $[t1]
         let cont_t1 = self.contains(&t1);
@@ -1834,7 +1877,7 @@ impl XreCompiler {
 
         // $[c] - $[t1]
         cont_c.subtract(&cont_t1, true);
-        cont_c.optimize();
+        cont_c.optimize_with_config(&self.opt_cfg());
         cont_c
     }
 
@@ -1848,13 +1891,13 @@ impl XreCompiler {
         let cont_t = self.contains(t);
         let mut neg_t = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt);
         neg_t.repeat_star();
-        neg_t.optimize();
+        neg_t.optimize_with_config(&self.opt_cfg());
         neg_t.subtract(&cont_t, true);
-        neg_t.optimize();
+        neg_t.optimize_with_config(&self.opt_cfg());
 
         let mut retval = self.contains_once(t);
         retval.disjunct(&neg_t, true);
-        retval.optimize();
+        retval.optimize_with_config(&self.opt_cfg());
         retval
     }
 
@@ -1903,7 +1946,7 @@ impl XreCompiler {
             list_definitions: self.list_definitions_.clone(),
             format: self.format_,
         };
-        tr1.optimize();
+        tr1.optimize_with_config(&self.opt_cfg());
         tr2.merge(tr1, &args);
         tr2
     }
@@ -2037,7 +2080,7 @@ impl XreCompiler {
 
     // Driver dispatch arm for 'XreExpr::Replace'.
     // Mirrors the 'REPLACE: PARALLEL_RULES' action (xre_parse.yy:365): returns
-    // the raw 'replace*' result (the REGEXP2-level '.optimize()' is applied by
+    // the raw 'replace*' result (the REGEXP2-level '.optimize_with_config(&self.opt_cfg())' is applied by
     // the driver where the grammar reduces a REPLACE to a REGEXP2).
     fn eval_replace(&mut self, arrow: ReplaceArrow, rules: &Vec<ReplaceRule>) -> HfstTransducer {
         let mut rule_vector: Vec<crate::hfst_xerox_rules::Rule> = Vec::new();
@@ -2182,12 +2225,14 @@ impl XreCompiler {
                     HAS_WEIGHT_BEEN_ZEROED.with(|cc| cc.set(false));
                     t1.transform_weights(zero_weights);
                 }
-                t1.optimize().prune_alphabet(false);
+                t1.optimize_with_config(&self.opt_cfg())
+                    .prune_alphabet(false);
                 if weighted {
                     t2.transform_weights(zero_weights);
                     HAS_WEIGHT_BEEN_ZEROED.with(|cc| cc.set(false));
                 }
-                t2.optimize().prune_alphabet(false);
+                t2.optimize_with_config(&self.opt_cfg())
+                    .prune_alphabet(false);
                 (t1, t2)
             }
             (Some(l), None) => {
@@ -2200,7 +2245,8 @@ impl XreCompiler {
                     t1.transform_weights(zero_weights);
                     HAS_WEIGHT_BEEN_ZEROED.with(|cc| cc.set(false));
                 }
-                t1.optimize().prune_alphabet(false);
+                t1.optimize_with_config(&self.opt_cfg())
+                    .prune_alphabet(false);
                 (
                     t1,
                     HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt),
@@ -2216,7 +2262,8 @@ impl XreCompiler {
                     t1.transform_weights(zero_weights);
                     HAS_WEIGHT_BEEN_ZEROED.with(|cc| cc.set(false));
                 }
-                t1.optimize().prune_alphabet(false);
+                t1.optimize_with_config(&self.opt_cfg())
+                    .prune_alphabet(false);
                 (
                     HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt),
                     t1,
@@ -2286,7 +2333,7 @@ impl XreCompiler {
             // '[ E, a:b, c:d ]  (xre_parse.yy:268)
             SubstituteWhat::Pair { from, to } => {
                 hay.substitute_pair_with_pair(from, to);
-                hay.optimize();
+                hay.optimize_with_config(&self.opt_cfg());
                 hay
             }
             // '[ E, b, x y ]  (xre_parse.yy:276 SUB1 SUB2 SUB3)
@@ -2300,17 +2347,17 @@ impl XreCompiler {
                     if self.verbose_ {
                         eprint!("using definition as an ordinary label, cannot substitute\n");
                     }
-                    hay.optimize();
+                    hay.optimize_with_config(&self.opt_cfg());
                     return hay;
                 }
                 if !hay_alpha.contains(needle) {
-                    hay.optimize();
+                    hay.optimize_with_config(&self.opt_cfg());
                     return hay;
                 }
 
                 // alpha is reassigned to the replacement's alphabet (used both
                 // for the diacritic loop and the final remove-from-alphabet).
-                let mut repl_tr = build_symbol_list_transducer(replacement, fmt);
+                let mut repl_tr = build_symbol_list_transducer(replacement, fmt, &self.opt_cfg());
                 let alpha3 = repl_tr.get_alphabet();
                 let tmp = (needle.clone(), needle.clone());
                 let mut tmp_tr = hay.clone();
@@ -2345,15 +2392,20 @@ impl XreCompiler {
                             replace_tr.insert_freely_pair(&(it.clone(), it.clone()), false);
                         }
                     }
-                    replace_tr.optimize();
-                    tmp_tr.compose(&replace_tr, true).optimize();
-                    tmp_tr.invert().compose(&replace_tr, true).invert();
+                    replace_tr.optimize_with_config(&self.opt_cfg());
+                    tmp_tr
+                        .compose_with_config(&replace_tr, true, &self.opt_cfg())
+                        .optimize_with_config(&self.opt_cfg());
+                    tmp_tr
+                        .invert()
+                        .compose_with_config(&replace_tr, true, &self.opt_cfg())
+                        .invert();
                 }
 
                 if !alpha3.contains(needle) {
                     tmp_tr.remove_from_alphabet(needle.as_str());
                 }
-                tmp_tr.optimize();
+                tmp_tr.optimize_with_config(&self.opt_cfg());
                 tmp_tr
             }
         }
@@ -2399,7 +2451,7 @@ impl XreCompiler {
                     tmp.disjunct_path(&spv, 0.0);
                 }
                 let mut retval = HfstTransducer::new_from_basic(&tmp, self.format_);
-                retval.optimize();
+                retval.optimize_with_config(&self.opt_cfg());
                 retval
             }
             // READ_PROLOG: read_in_prolog_format then build of the compiler format.
@@ -2413,7 +2465,7 @@ impl XreCompiler {
                 let tmp =
                     HfstBasicTransducer::read_in_prolog_format_file(&mut reader, &mut linecount);
                 let mut retval = HfstTransducer::new_from_basic(&tmp, self.format_);
-                retval.optimize();
+                retval.optimize_with_config(&self.opt_cfg());
                 retval
             }
             // READ_RE: read the file content and re-compile it as a regex (the C++

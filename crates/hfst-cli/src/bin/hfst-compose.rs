@@ -7,9 +7,7 @@ use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_exception_defs::TransducerTypeMismatchException;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::{
-    HfstTransducer, set_flag_is_epsilon_in_composition, set_xerox_composition,
-};
+use hfst::hfst_transducer::{EngineConfig, HfstTransducer, set_xerox_composition};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, conversion_type, convert_transducers, error, extend_options_getenv,
@@ -30,6 +28,9 @@ use std::io::Write;
 
 static mut HARMONIZE_FLAGS: bool = false;
 static mut HARMONIZE: bool = true;
+// '--xfst flag-is-epsilon' (was the 'flag_is_epsilon_in_composition' file-static
+// global in the library; now threaded into compose via EngineConfig).
+static mut FLAG_IS_EPSILON: bool = false;
 
 // [spec:hfst:def:hfst-compose.print-usage-fn]
 // [spec:hfst:sem:hfst-compose.print-usage-fn]
@@ -143,7 +144,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
             } else if c == b'X' as i32 {
                 let argument = getopt::optarg();
                 if argument == "flag-is-epsilon" {
-                    set_flag_is_epsilon_in_composition(true);
+                    FLAG_IS_EPSILON = true;
                 } else {
                     let _ = write!(
                         std::io::stderr(),
@@ -307,11 +308,16 @@ unsafe fn compose_streams(
                 }
             }
 
+            let cfg = EngineConfig {
+                flag_is_epsilon_in_composition: FLAG_IS_EPSILON,
+                ..EngineConfig::default()
+            };
             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                first
-                    .as_mut()
-                    .unwrap()
-                    .compose(second.as_ref().unwrap(), HARMONIZE);
+                first.as_mut().unwrap().compose_with_config(
+                    second.as_ref().unwrap(),
+                    HARMONIZE,
+                    &cfg,
+                );
             }));
             if res.is_err() {
                 let e = res.err().unwrap();
@@ -320,10 +326,11 @@ unsafe fn compose_streams(
                 {
                     if globals::ALLOW_TRANSDUCER_CONVERSION {
                         convert_transducers(first.as_mut().unwrap(), second.as_mut().unwrap());
-                        first
-                            .as_mut()
-                            .unwrap()
-                            .compose(second.as_ref().unwrap(), HARMONIZE);
+                        first.as_mut().unwrap().compose_with_config(
+                            second.as_ref().unwrap(),
+                            HARMONIZE,
+                            &cfg,
+                        );
                     } else {
                         error(
                             1,

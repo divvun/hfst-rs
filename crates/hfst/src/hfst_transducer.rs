@@ -1147,6 +1147,29 @@ impl HfstTransducer {
         self
     }
 
+    /// 'apply' threading a single 'bool' through to the backend functor (used to
+    /// pass an engine-policy flag such as 'encode_weights' that the C++ read from a
+    /// file-static global). Mirrors 'apply_n'.
+    pub fn apply_bool(
+        &mut self,
+        tropical_ofst_funct: fn(&StdVectorFst, bool) -> StdVectorFst,
+        log_ofst_funct: fn(&LogFst, bool) -> LogFst,
+        b: bool,
+    ) -> &mut HfstTransducer {
+        match self.type_ {
+            TROPICAL_OPENFST_TYPE => {
+                let temp = tropical_ofst_funct(self.implementation.as_tropical(), b);
+                self.implementation = TransducerImplementation::Tropical(Box::new(temp));
+            }
+            LOG_OPENFST_TYPE => {
+                let temp = log_ofst_funct(self.implementation.as_log(), b);
+                self.implementation = TransducerImplementation::Log(Box::new(temp));
+            }
+            _ => HFST_THROW!(TransducerHasWrongTypeException),
+        }
+        self
+    }
+
     /// 'apply(... , unsigned int n)'.
     pub fn apply_n(
         &mut self,
@@ -1844,6 +1867,9 @@ impl HfstTransducer {
                 crate::tropical_weight_transducer::TropicalWeightTransducer::are_equivalent(
                     one_copy.implementation.as_tropical(),
                     another_copy.implementation.as_tropical(),
+                    // No caller configures equivalence-checking, so the former global
+                    // 'encode_weights' is read at its C++ default (false) here.
+                    false,
                 )
             }
             ImplementationType::LOG_OPENFST_TYPE => {
@@ -2070,36 +2096,57 @@ impl HfstTransducer {
     }
 
     pub fn determinize(&mut self) -> &mut HfstTransducer {
+        self.determinize_with_config(&EngineConfig::default())
+    }
+
+    /// 'determinize', reading 'encode_weights' (the only engine-policy flag this op
+    /// consults) from the supplied config. The tropical backend encodes weights iff
+    /// 'config.encode_weights'; the log backend never did, so it ignores it.
+    pub fn determinize_with_config(&mut self, config: &EngineConfig) -> &mut HfstTransducer {
         self.is_trie = false;
-        self.apply(
-            |t: &StdVectorFst| -> StdVectorFst {
-                crate::tropical_weight_transducer::TropicalWeightTransducer::determinize(t)
+        self.apply_bool(
+            |t: &StdVectorFst, ew: bool| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::determinize(t, ew)
             },
-            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst {
+            |t: &crate::log_weight_transducer::LogFst,
+             _ew: bool|
+             -> crate::log_weight_transducer::LogFst {
                 crate::log_weight_transducer::LogWeightTransducer::determinize(t)
             },
-            false,
+            config.encode_weights,
         )
     }
 
     pub fn minimize(&mut self) -> &mut HfstTransducer {
+        self.minimize_with_config(&EngineConfig::default())
+    }
+
+    /// 'minimize', reading 'encode_weights' from the supplied config (see
+    /// 'determinize_with_config').
+    pub fn minimize_with_config(&mut self, config: &EngineConfig) -> &mut HfstTransducer {
         self.is_trie = false;
-        self.apply(
-            |t: &StdVectorFst| -> StdVectorFst {
-                crate::tropical_weight_transducer::TropicalWeightTransducer::minimize(t)
+        self.apply_bool(
+            |t: &StdVectorFst, ew: bool| -> StdVectorFst {
+                crate::tropical_weight_transducer::TropicalWeightTransducer::minimize(t, ew)
             },
-            |t: &crate::log_weight_transducer::LogFst| -> crate::log_weight_transducer::LogFst {
+            |t: &crate::log_weight_transducer::LogFst,
+             _ew: bool|
+             -> crate::log_weight_transducer::LogFst {
                 crate::log_weight_transducer::LogWeightTransducer::minimize(t)
             },
-            false,
+            config.encode_weights,
         )
     }
 
     pub fn optimize(&mut self) -> &mut HfstTransducer {
-        if get_minimization() {
-            self.minimize()
+        self.optimize_with_config(&EngineConfig::default())
+    }
+
+    pub fn optimize_with_config(&mut self, config: &EngineConfig) -> &mut HfstTransducer {
+        if config.minimization {
+            self.minimize_with_config(config)
         } else {
-            self.determinize()
+            self.determinize_with_config(config)
         }
     }
 
@@ -3263,16 +3310,8 @@ impl HfstTransducer {
         /* In this function, this transducer must always be harmonized
         according to tr, not the other way round. */
         // foma or no harmonization -> use our own copy of tr.
-        let tr_harmonized: HfstTransducer = if harmonize {
-            let harm = get_harmonize_smaller();
-            set_harmonize_smaller(false);
-            let h = self.harmonize_(tr);
-            set_harmonize_smaller(harm);
-            h
-        } else {
-            None
-        }
-        .unwrap_or_else(|| HfstTransducer::new_copy(tr));
+        let tr_harmonized: HfstTransducer = if harmonize { self.harmonize_(tr) } else { None }
+            .unwrap_or_else(|| HfstTransducer::new_copy(tr));
 
         match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
@@ -3560,10 +3599,7 @@ impl HfstTransducer {
         self.insert_missing_symbols_to_alphabet_from(transducer, true);
         transducer.insert_missing_symbols_to_alphabet_from(self, true);
 
-        let harm = get_harmonize_smaller();
-        set_harmonize_smaller(false);
         self.harmonize(transducer, false);
-        set_harmonize_smaller(harm);
 
         // (FOMA branch is #if'd out: HAVE_FOMA is not defined.)
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
@@ -4043,6 +4079,18 @@ impl HfstTransducer {
     }
 
     pub fn compose(&mut self, another: &HfstTransducer, harmonize: bool) -> &mut HfstTransducer {
+        self.compose_with_config(another, harmonize, &EngineConfig::default())
+    }
+
+    /// 'compose', reading the two engine-policy flags it consults
+    /// ('flag_is_epsilon_in_composition', 'unknown_symbols_in_use') from the supplied
+    /// config. ('xerox_composition' is still a global, toggled by pmatch.)
+    pub fn compose_with_config(
+        &mut self,
+        another: &HfstTransducer,
+        harmonize: bool,
+        config: &EngineConfig,
+    ) -> &mut HfstTransducer {
         self.is_trie = false;
 
         if self.type_ != another.type_ {
@@ -4054,7 +4102,7 @@ impl HfstTransducer {
         /* If we want flag diacritcs to be handled in the same way as epsilons
         in composition, we substitute output flags of first transducer with
         epsilons and input flags of second transducer with epsilons. */
-        if get_flag_is_epsilon_in_composition() && self.type_ != ImplementationType::XFSM_TYPE {
+        if config.flag_is_epsilon_in_composition && self.type_ != ImplementationType::XFSM_TYPE {
             let __prev_hook = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));
             let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -4104,7 +4152,7 @@ impl HfstTransducer {
         composition, FOMA and XFSM take care of this by default. */
         if (self.type_ != ImplementationType::FOMA_TYPE
             && self.type_ != ImplementationType::XFSM_TYPE)
-            && get_unknown_symbols_in_use()
+            && config.unknown_symbols_in_use
         {
             self.substitute_symbol("@_IDENTITY_SYMBOL_@", "@_UNKNOWN_SYMBOL_@", false, true);
             another_copy.substitute_symbol(
@@ -4154,13 +4202,13 @@ impl HfstTransducer {
             another_copy.remove_symbols_from_alphabet(&diacritics_added_from_this_to_another);
         }
 
-        if get_flag_is_epsilon_in_composition() && self.type_ != ImplementationType::XFSM_TYPE {
+        if config.flag_is_epsilon_in_composition && self.type_ != ImplementationType::XFSM_TYPE {
             self.substitute_with_func(substitute_one_sided_flags);
         }
 
         if (self.type_ != ImplementationType::FOMA_TYPE
             && self.type_ != ImplementationType::XFSM_TYPE)
-            && get_unknown_symbols_in_use()
+            && config.unknown_symbols_in_use
         {
             self.substitute_with_func(substitute_single_identity_with_the_other_symbol);
             another_copy.substitute_with_func(substitute_unknown_identity_pairs);
@@ -5215,55 +5263,80 @@ impl HfstTransducer {
     }
 }
 
-// ===== integration shims: HfstTransducer.cc file-static globals + accessors =====
-// C++ file-static bools (defaults from HfstTransducer.cc:84-97). 'can_minimize',
-// 'unknown_symbols_in_use' and 'harmonize_smaller' have set/get accessors so they
-// are AtomicBools.
-static CAN_MINIMIZE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
-static UNKNOWN_SYMBOLS_IN_USE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(true);
+// ===== integration shims: HfstTransducer.cc engine-policy config =====
+// The C++ file-static engine-policy flags (HfstTransducer.cc:84-97) are no longer
+// process-global atomics. They live in an owned 'EngineConfig' threaded into the
+// operations that read them; a caller that configures nothing uses
+// 'EngineConfig::default()' (the C++ initial values), so behavior is unchanged.
+// XFST and the CLI tools own an 'EngineConfig' and thread it into their op calls.
+//
+// 'minimize_even_if_already_minimal', 'minimization_algorithm' and 'harmonize_smaller'
+// have no functional consumer in the ported (rustfst-backed) scope — the rustfst
+// 'Minimize' / 'harmonize_' do not branch on them — so they are carried as inert
+// config fields (faithful to the C++ public API and to their already-vestigial
+// state) rather than wired into a backend.
 
-// C++ file-static 'bool minimize_even_if_already_minimal = false;' (a debugging and
-// profiling flag). Default false.
-static MINIMIZE_EVEN_IF_ALREADY_MINIMAL: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-// [spec:hfst:def:hfst-transducer.hfst.set-minimization-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.set-minimization-fn]
-pub fn set_minimization(value: bool) {
-    CAN_MINIMIZE.store(value, std::sync::atomic::Ordering::Relaxed);
+/// Owned engine-policy configuration: the former file-static flags of
+/// HfstTransducer.cc, defaulting to the C++ initial values.
+#[derive(Clone, Copy, Debug)]
+pub struct EngineConfig {
+    // [spec:hfst:def:hfst-transducer.hfst.set-minimization-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.set-minimization-fn]
+    // [spec:hfst:def:hfst-transducer.hfst.get-minimization-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.get-minimization-fn]
+    pub minimization: bool,
+    // [spec:hfst:def:hfst-transducer.hfst.set-minimize-even-if-already-minimal-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.set-minimize-even-if-already-minimal-fn]
+    // [spec:hfst:def:hfst-transducer.hfst.get-minimize-even-if-already-minimal-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.get-minimize-even-if-already-minimal-fn]
+    pub minimize_even_if_already_minimal: bool,
+    // [spec:hfst:def:hfst-transducer.hfst.set-unknown-symbols-in-use-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.set-unknown-symbols-in-use-fn]
+    // [spec:hfst:def:hfst-transducer.hfst.get-unknown-symbols-in-use-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.get-unknown-symbols-in-use-fn]
+    pub unknown_symbols_in_use: bool,
+    // [spec:hfst:def:hfst-transducer.hfst.set-flag-is-epsilon-in-composition-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.set-flag-is-epsilon-in-composition-fn]
+    // [spec:hfst:def:hfst-transducer.hfst.get-flag-is-epsilon-in-composition-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.get-flag-is-epsilon-in-composition-fn]
+    pub flag_is_epsilon_in_composition: bool,
+    // [spec:hfst:def:hfst-transducer.hfst.set-encode-weights-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.set-encode-weights-fn]
+    // [spec:hfst:def:hfst-transducer.hfst.get-encode-weights-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.get-encode-weights-fn]
+    pub encode_weights: bool,
+    // [spec:hfst:def:hfst-transducer.hfst.set-minimization-algorithm-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.set-minimization-algorithm-fn]
+    // [spec:hfst:def:hfst-transducer.hfst.get-minimization-algorithm-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.get-minimization-algorithm-fn]
+    // [spec:hfst:def:hfst-transducer.hfst.minimization-algorithm-get-minimization-algorithm-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.minimization-algorithm-get-minimization-algorithm-fn]
+    pub minimization_algorithm: MinimizationAlgorithm,
+    // [spec:hfst:def:hfst-transducer.hfst.set-harmonize-smaller-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.set-harmonize-smaller-fn]
+    // [spec:hfst:def:hfst-transducer.hfst.get-harmonize-smaller-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.get-harmonize-smaller-fn]
+    pub harmonize_smaller: bool,
 }
 
-// [spec:hfst:def:hfst-transducer.hfst.get-minimization-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.get-minimization-fn]
-pub fn get_minimization() -> bool {
-    CAN_MINIMIZE.load(std::sync::atomic::Ordering::Relaxed)
+impl Default for EngineConfig {
+    fn default() -> Self {
+        EngineConfig {
+            minimization: true,
+            minimize_even_if_already_minimal: false,
+            unknown_symbols_in_use: true,
+            flag_is_epsilon_in_composition: false,
+            encode_weights: false,
+            minimization_algorithm: MinimizationAlgorithm::HOPCROFT,
+            harmonize_smaller: true,
+        }
+    }
 }
 
-// [spec:hfst:def:hfst-transducer.hfst.set-minimize-even-if-already-minimal-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.set-minimize-even-if-already-minimal-fn]
-pub fn set_minimize_even_if_already_minimal(value: bool) {
-    MINIMIZE_EVEN_IF_ALREADY_MINIMAL.store(value, std::sync::atomic::Ordering::Relaxed);
-    // '#if HAVE_XFSM XfsmTransducer::set_minimize_even_if_already_minimal(value)' is
-    // out of scope (XFSM backend not compiled).
-}
-
-// [spec:hfst:def:hfst-transducer.hfst.get-minimize-even-if-already-minimal-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.get-minimize-even-if-already-minimal-fn]
-pub fn get_minimize_even_if_already_minimal() -> bool {
-    MINIMIZE_EVEN_IF_ALREADY_MINIMAL.load(std::sync::atomic::Ordering::Relaxed)
-}
-
-// [spec:hfst:def:hfst-transducer.hfst.set-unknown-symbols-in-use-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.set-unknown-symbols-in-use-fn]
-pub fn set_unknown_symbols_in_use(value: bool) {
-    UNKNOWN_SYMBOLS_IN_USE.store(value, std::sync::atomic::Ordering::Relaxed);
-}
-
-// [spec:hfst:def:hfst-transducer.hfst.get-unknown-symbols-in-use-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.get-unknown-symbols-in-use-fn]
-pub fn get_unknown_symbols_in_use() -> bool {
-    UNKNOWN_SYMBOLS_IN_USE.load(std::sync::atomic::Ordering::Relaxed)
+impl EngineConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
 // C++ '#if HAVE_OPENFST' branch is taken (OpenFst tropical backend is ported), so
@@ -5275,86 +5348,12 @@ pub fn set_warning_stream(os: Box<dyn std::io::Write>) {
     crate::tropical_weight_transducer::TropicalWeightTransducer::set_warning_stream(os);
 }
 
-// C++ 'set_flag_is_epsilon_in_composition(bool)' is a static setter (XFST 'set
-// flag-is-epsilon' toggles it), so this flag is mutable at runtime. The
-// '#if HAVE_XFSM XfsmTransducer::set_compose_flag_as_special(value)' side effect
-// is out of scope (XFSM).
-static FLAG_IS_EPSILON_IN_COMPOSITION: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-// [spec:hfst:def:hfst-transducer.hfst.set-flag-is-epsilon-in-composition-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.set-flag-is-epsilon-in-composition-fn]
-pub fn set_flag_is_epsilon_in_composition(value: bool) {
-    FLAG_IS_EPSILON_IN_COMPOSITION.store(value, std::sync::atomic::Ordering::Relaxed);
-}
-// [spec:hfst:def:hfst-transducer.hfst.get-flag-is-epsilon-in-composition-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.get-flag-is-epsilon-in-composition-fn]
-pub fn get_flag_is_epsilon_in_composition() -> bool {
-    FLAG_IS_EPSILON_IN_COMPOSITION.load(std::sync::atomic::Ordering::Relaxed)
-}
-
-// C++ 'set_encode_weights(bool)' / 'get_encode_weights()' static accessors
-// (XFST 'set encode-weights'). Default false.
-static ENCODE_WEIGHTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-// [spec:hfst:def:hfst-transducer.hfst.set-encode-weights-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.set-encode-weights-fn]
-pub fn set_encode_weights(value: bool) {
-    ENCODE_WEIGHTS.store(value, std::sync::atomic::Ordering::Relaxed);
-}
-// [spec:hfst:def:hfst-transducer.hfst.get-encode-weights-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.get-encode-weights-fn]
-// [spec:hfst:def:tropical-weight-transducer.hfst.get-encode-weights-fn]
-// [spec:hfst:sem:tropical-weight-transducer.hfst.get-encode-weights-fn]
-pub fn get_encode_weights() -> bool {
-    ENCODE_WEIGHTS.load(std::sync::atomic::Ordering::Relaxed)
-}
-
 // C++ 'enum MinimizationAlgorithm { HOPCROFT, BRZOZOWSKI }' (HfstTransducer.h:130).
 // [spec:hfst:def:hfst-transducer.hfst.minimization-algorithm]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MinimizationAlgorithm {
     HOPCROFT,
     BRZOZOWSKI,
-}
-
-// C++ file-static 'MinimizationAlgorithm minimization_algorithm = HOPCROFT;'.
-// Stored as the discriminant in an AtomicU8 so the static setter is runtime-mutable
-// (0 = HOPCROFT, 1 = BRZOZOWSKI).
-static MINIMIZATION_ALGORITHM: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-
-// [spec:hfst:def:hfst-transducer.hfst.set-minimization-algorithm-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.set-minimization-algorithm-fn]
-pub fn set_minimization_algorithm(a: MinimizationAlgorithm) {
-    MINIMIZATION_ALGORITHM.store(
-        match a {
-            MinimizationAlgorithm::HOPCROFT => 0,
-            MinimizationAlgorithm::BRZOZOWSKI => 1,
-        },
-        std::sync::atomic::Ordering::Relaxed,
-    );
-    // SFST is out of scope. OpenFst tropical/log hopcroft flags are wired below.
-    // (In foma, Hopcroft is always used.)
-    if a == MinimizationAlgorithm::HOPCROFT {
-        crate::tropical_weight_transducer::openfst_tropical_set_hopcroft(true);
-    } else {
-        crate::tropical_weight_transducer::openfst_tropical_set_hopcroft(false);
-    }
-    if a == MinimizationAlgorithm::HOPCROFT {
-        crate::log_weight_transducer::openfst_log_set_hopcroft(true);
-    } else {
-        crate::log_weight_transducer::openfst_log_set_hopcroft(false);
-    }
-}
-
-// [spec:hfst:def:hfst-transducer.hfst.get-minimization-algorithm-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.get-minimization-algorithm-fn]
-// [spec:hfst:def:hfst-transducer.hfst.minimization-algorithm-get-minimization-algorithm-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.minimization-algorithm-get-minimization-algorithm-fn]
-pub fn get_minimization_algorithm() -> MinimizationAlgorithm {
-    if MINIMIZATION_ALGORITHM.load(std::sync::atomic::Ordering::Relaxed) == 0 {
-        MinimizationAlgorithm::HOPCROFT
-    } else {
-        MinimizationAlgorithm::BRZOZOWSKI
-    }
 }
 
 // C++ 'HfstTransducer::set_xerox_composition(bool)' is a static setter, so this
@@ -5369,18 +5368,6 @@ pub fn get_xerox_composition() -> bool {
 // [spec:hfst:sem:hfst-transducer.hfst.set-xerox-composition-fn]
 pub fn set_xerox_composition(value: bool) {
     XEROX_COMPOSITION.store(value, std::sync::atomic::Ordering::Relaxed);
-}
-
-static HARMONIZE_SMALLER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
-// [spec:hfst:def:hfst-transducer.hfst.set-harmonize-smaller-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.set-harmonize-smaller-fn]
-fn set_harmonize_smaller(value: bool) {
-    HARMONIZE_SMALLER.store(value, std::sync::atomic::Ordering::Relaxed);
-}
-// [spec:hfst:def:hfst-transducer.hfst.get-harmonize-smaller-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.get-harmonize-smaller-fn]
-fn get_harmonize_smaller() -> bool {
-    HARMONIZE_SMALLER.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 // C++ file-static substitution callbacks passed to substitute_with_func; deferred

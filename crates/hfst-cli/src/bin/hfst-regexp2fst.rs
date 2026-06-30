@@ -5,10 +5,7 @@
 
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::{
-    HfstTransducer, get_encode_weights, set_encode_weights, set_flag_is_epsilon_in_composition,
-    set_minimization, set_xerox_composition,
-};
+use hfst::hfst_transducer::{HfstTransducer, set_xerox_composition};
 use hfst::xre::XreCompiler;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -36,6 +33,9 @@ static mut OUTPUT_FORMAT: ImplementationType = ImplementationType::UNSPECIFIED_T
 static mut HARMONIZE: bool = true;
 static mut HARMONIZE_FLAGS: bool = false;
 static mut MINIMIZE_RESULT: bool = true;
+// '--xfst flag-is-epsilon' (was the 'flag_is_epsilon_in_composition' file-static
+// global; now threaded into the XRE compiler via 'set_flag_is_epsilon').
+static mut FLAG_IS_EPSILON: bool = false;
 
 // [spec:hfst:def:hfst-regexp2fst.print-usage-fn]
 // [spec:hfst:sem:hfst-regexp2fst.print-usage-fn]
@@ -200,7 +200,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                 'X' => {
                     let argument = getopt::optarg();
                     if argument == "flag-is-epsilon" {
-                        set_flag_is_epsilon_in_composition(true);
+                        FLAG_IS_EPSILON = true;
                     } else {
                         error(
                             1,
@@ -237,7 +237,8 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         comp.set_error_stream(());
         comp.set_harmonization(HARMONIZE);
         comp.set_flag_harmonization(HARMONIZE_FLAGS);
-        set_minimization(MINIMIZE_RESULT);
+        comp.set_minimize_result(MINIMIZE_RESULT);
+        comp.set_flag_is_epsilon(FLAG_IS_EPSILON);
         let mut disjunction = HfstTransducer::new_type(OUTPUT_FORMAT);
 
         let mut first_line: Option<String> = None;
@@ -392,11 +393,6 @@ unsafe fn real_main() -> i32 {
             // xredebug = 1;
         }
 
-        let enc = get_encode_weights();
-        if ENCODE_WEIGHTS {
-            set_encode_weights(true);
-        }
-
         // close buffers, we use streams
         let output_opened = globals::output_filename() != "<stdout>";
         verbose_printf(&format!(
@@ -418,10 +414,6 @@ unsafe fn real_main() -> i32 {
             }
         };
         process_stream(&mut outstream, &mut *input);
-
-        if ENCODE_WEIGHTS {
-            set_encode_weights(enc);
-        }
 
         0
     }
