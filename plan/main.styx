@@ -1413,6 +1413,13 @@ children (
                         kind @note
                         text "DONE (agent a012aaec, foreground; reviewed + independently verified). All per-compile thread_local! scratch removed from the compiler modules onto owned instance state; zero thread_local!/static mut remain in pmatch_compiler/xre/twolc/lexc; no new static/Lazy/OnceLock/Mutex introduced. pmatch_compiler.rs: the 3 thread_local! blocks (~12 scalars + ~16 collections + PMATCHNERRS) became a new pub struct PmatchEvalContext; ~120 free-fn accessors became its methods; threaded &mut PmatchEvalContext through PmatchObject::evaluate + evaluate_args/as_string/etc. and ~44 transitive helper fns; stored as a persistent eval_ctx field on PmatchCompiler so define() still reads the table after compile() (matches the thread-locals' persistence). xre.rs: CONTAINS_ONLY_COMMENTS -> XreCompiler.contains_only_comments_ field; HAS_WEIGHT_BEEN_ZEROED deleted (write-only dead — its one-time warning was already unreachable and zero_weights returns 0.0 unconditionally); SUBSTITUTION_FUNCTION_SYMBOL replaced by a closure capturing needle; XRE_CR/XRE_LR made fn-local Cells in the never-called count_lines. twolc.rs: the 5 OtherSymbolTransducer statics -> a per-compile OstConfig threaded by &/&mut through the rule/grammar walk. alphabet.rs: collateral OstConfig threading (5 methods). Scope expansion (justified, behavior-preserving): substitute_with_func/substitute_in_place_func generalized fn -> impl Fn in hfst_transducer.rs + hfst_basic_transducer.rs (3 sigs) so the closure replacement type-checks; all existing fn-pointer callers coerce, no tests touched. Config from fb09541b (EngineConfig, XreCompiler minimize_result_/flag_is_epsilon_, LexcCompiler flag_is_epsilon_) left intact. Oracle: cargo build -p hfst + -p hfst-cli clean; cargo nextest run -p hfst = 152 passed/14 skipped; hfst-cli smoke 1 passed."
                     }
+
+                    {
+                        at 2026-06-30T15:54:55.01457Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -1441,6 +1448,13 @@ children (
                         kind @note
                         text "DONE. Implemented threaded EngineConfig. Deleted the 7 global atomics (CAN_MINIMIZE, UNKNOWN_SYMBOLS_IN_USE, MINIMIZE_EVEN_IF_ALREADY_MINIMAL, FLAG_IS_EPSILON_IN_COMPOSITION, ENCODE_WEIGHTS, MINIMIZATION_ALGORITHM, HARMONIZE_SMALLER) + their free-fn accessors; replaced with a pub struct EngineConfig {minimization, minimize_even_if_already_minimal, unknown_symbols_in_use, flag_is_epsilon_in_composition, encode_weights, minimization_algorithm, harmonize_smaller} (Default = the C++ initial values). Findings that shaped it: (a) encode_weights was ALREADY INERT — the tropical backend read a crate-root const-false stub (lib.rs get_encode_weights), not the real atomic; threading the real value both de-globalizes AND wires it up (\"until the facade lands\"); (b) minimize_even/minimization_algorithm(+hopcroft)/harmonize_smaller are vestigial (no functional consumer in the rustfst-backed scope) → inert config fields, harmonize_smaller save/restore deleted; (c) unknown_symbols_in_use is never set → constant default true. Mechanism: public ops keep their signatures as thin wrappers over EngineConfig::default() (so the 153 tests stay byte-identical), each with an *_with_config twin (optimize/minimize/determinize/compose); a new apply_bool threads encode_weights into the tropical backend minimize/determinize/are_equivalent. The pervasive flags (can_minimize read by ~297 optimize() sites, flag_is_epsilon read by compose) were de-globalized at the COMPILER level rather than threading 297 call sites: XreCompiler gained minimize_result_ + flag_is_epsilon_ fields (opt_cfg()) threaded into its ~40 optimize + 3 compose sites; LexcCompiler gained flag_is_epsilon_ (compose_cfg()) threaded into compile_lexical's 3 composes; XfstCompiler gained engine_config_ (set commands store into it; its compose threads flag_is_epsilon). CLI: hfst-minimize/-determinize/-compose-intersect build an EngineConfig{encode_weights} and call the *_with_config op (this now makes their -w actually work — it was a stub no-op before); hfst-compose threads a CLI-local FLAG_IS_EPSILON; hfst-regexp2fst/-lexc-compiler route --xfst flag-is-epsilon + no-minimize through their compiler setters. encode-weights stays inert (preserved) in regexp2fst/lexc (wiring it would need threading through every compiler minimize/optimize). Oracle: 153 passed (152 hfst + 1 hfst-cli smoke), 14 skipped. NOT done here (separate item): the 2 backend hopcroft atomics (OPENFST_TROPICAL/LOG_USE_HOPCROFT) are now FULLY ORPHANED by deleting minimization_algorithm's side-effect (set_hopcroft has no callers, get_hopcroft never had any) — trivial follow-up removal. xerox_composition still deferred (pmatch-toggled)."
                     }
+
+                    {
+                        at 2026-06-30T15:54:49.844942Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -1461,6 +1475,13 @@ children (
                         author "brendan@necessary.nu"
                         kind @note
                         text "DONE (agent aa1e367c, foreground; reviewed + independently verified: both crates build, 152 passed/14 skipped incl shuffle_log + test_pmatch which gate the changed ops, no new globals). Cleared the op-local scratch globals AND the two config-flags leftovers in one pass: (1) RNG_STATE (tropical) -> a `struct Rng{state:u64}` (seeded/next) created in extract_random_paths and threaded &mut through random_path/random_path_ (both catch_unwind closures). (2) SHUFFLE_FAILED/SHUFFLE_CODING_CASE (hfst_transducer) -> op-local Cells; code_symbols_for_shuffle became code_symbols_for_shuffle_impl(sp,sps,&coding_case,&shuffle_failed) passed as a closure to substitute_with_func (enabled by the prior commit's fn->impl Fn). (3) LOG_SECONDS_IN_HARMONIZE (log) removed as vestigial — its only reader (get_profile_seconds) had zero callers and tropical already returns 0.0; log's getter now returns 0.0 too, accumulation deleted. (4) the 2 dead hopcroft atomics (OPENFST_TROPICAL/LOG_USE_HOPCROFT) + their set/get fns + pub-use re-exports deleted (fully orphaned since config-flags removed set_minimization_algorithm). (5) xerox_composition folded into EngineConfig (default false): compose_with_config reads config.xerox_composition; xfst_compiler stores into engine_config_ (default ON); pmatch_compiler's cap/tolower/toupper windows build a local EngineConfig{xerox=true} and route their composes through compose_with_config; pmatch.rs:1101 set removed (PmatchContainer::new_from_stream does no composition). Justified scope expansion: XreCompiler + LexcCompiler gained a xerox_composition_ field + set_xerox_composition + opt_cfg/compose_cfg inclusion (mirroring flag_is_epsilon_) so hfst-regexp2fst/-lexc-compiler stay behavior-faithful after the global's deletion; lib default stays false. Remaining lib globals are now only the intentionally-kept owned WARNING_STREAM sinks + 3 out-of-scope stragglers (lexc_utils HLEXC lexer state, convert.rs CONSTRUCTING_TRANSDUCER arena, pmatch_tokenize IS_CG_TAG_MODIFIER_WARNED warn-once)."
+                    }
+
+                    {
+                        at 2026-06-30T15:54:57.334131Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
                     }
                 )
             }
