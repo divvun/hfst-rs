@@ -59,7 +59,6 @@ pub mod hfst_transition;
 pub mod hfst_tropical_transducer_transition_data;
 pub mod hfst_xerox_rules;
 pub mod lexc;
-pub mod lexc_utils;
 pub mod log_weight_transducer;
 pub mod ospell;
 pub mod pmatch;

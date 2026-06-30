@@ -45,6 +45,10 @@ pub struct TokenizeSettings {
     pub beam: f32,
     pub tokenize_multichar: bool,
     pub hack_uncompose: bool,
+    /// Per-run dedup for the "skipping modifier letter" warning (was a process
+    /// global 'static bool'). 'Cell' so it can be flipped through the '&self'
+    /// borrow as the settings are threaded immutably through the print chain.
+    pub cg_tag_modifier_warned: std::cell::Cell<bool>,
 }
 
 impl Default for TokenizeSettings {
@@ -61,6 +65,7 @@ impl Default for TokenizeSettings {
             beam: -1.0,
             tokenize_multichar: false,
             hack_uncompose: false,
+            cg_tag_modifier_warned: std::cell::Cell::new(false),
         }
     }
 }
@@ -68,11 +73,6 @@ impl Default for TokenizeSettings {
 const subreading_separator: &str = "#";
 const wtag: &str = "W"; // (C++ note) cg-conv has an argument --wtag, allow
 // changing here as well?
-
-// Only warn once on skipping modifier letters.
-// In C++ this is a file-scope 'static bool'; here it is a process-global atomic.
-static IS_CG_TAG_MODIFIER_WARNED: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
 
 // [spec:hfst:def:pmatch-tokenize.find-first-not-of-def-fn]
 // [spec:hfst:sem:pmatch-tokenize.find-first-not-of-def-fn]
@@ -346,7 +346,7 @@ pub fn u8_first_codepoint_size(c: &[u8]) -> usize {
 /// a modifier – so we skip following modifiers too (c.f. issue 497).
 // [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.is-cg-tag-fn]
 // [spec:hfst:sem:pmatch-tokenize.hfst-ol-tokenize.is-cg-tag-fn]
-pub fn is_cg_tag(str: &str) -> bool {
+pub fn is_cg_tag(str: &str, modifier_warned: &std::cell::Cell<bool>) -> bool {
     // C++ uses an ICU UnicodeString (UTF-16) and a character BreakIterator.
     // We replicate the UTF-16 semantics: indices/lengths are in UTF-16 code
     // units, grapheme boundaries are computed over the same UTF-16 sequence.
@@ -356,13 +356,12 @@ pub fn is_cg_tag(str: &str) -> bool {
     let cp_after = char32_at_utf16(&utf16, i_after);
     if u_char_type_is_modifier_letter(cp_after) {
         let is_tag = (utf16.len() as i32) > following_utf16(str, &utf16, i_after);
-        if !IS_CG_TAG_MODIFIER_WARNED.load(std::sync::atomic::Ordering::Relaxed) && !is_tag {
+        if !modifier_warned.get() && !is_tag {
             tracing::warn!(
                 "Skipping modifier letter for baseform letter {} (to avoid this warning, ensure Modifiers are not part of the same Multichar_symbol as their preceding Character)",
                 str
             );
-            IS_CG_TAG_MODIFIER_WARNED.store(true, std::sync::atomic::Ordering::Relaxed);
-            // warn only once
+            modifier_warned.set(true); // warn only once (per run)
         }
         is_tag
     } else {
@@ -459,7 +458,7 @@ pub fn print_cg_subreading(
         if it == "@PMATCH_BACKTRACK@" {
             continue;
         }
-        let is_tag = is_cg_tag(it);
+        let is_tag = is_cg_tag(it, &s.cg_tag_modifier_warned);
         if in_lemma {
             if is_tag {
                 in_lemma = false;
@@ -533,7 +532,7 @@ pub fn print_cg_subreading_ex(
         if it == "@PMATCH_BACKTRACK@" {
             continue;
         }
-        let is_tag = is_cg_tag(it);
+        let is_tag = is_cg_tag(it, &s.cg_tag_modifier_warned);
         if in_lemma {
             if is_tag {
                 in_lemma = false;

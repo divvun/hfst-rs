@@ -1512,6 +1512,26 @@ children (
                     }
                 )
             }
+
+            {
+                id idiom5.lexer-cgtag-globals
+                title "Remove the last two lib mutable globals: pmatch_tokenize IS_CG_TAG_MODIFIER_WARNED (warn-once AtomicBool) and lexc_utils HLEXC* lexer-state thread_locals. The warn-once moves onto TokenizeSettings as a Cell&lt;bool&gt; (per-run dedup, settings already threaded through the print chain). lexc_utils.rs is entirely dead (no pub items, nothing references the module, #![allow(dead_code)]; the position-tracking exists only because the C++ had a generated lexer the nfst AST-walk port doesn't use) -&gt; delete the file + its mod line. Oracle: 152 hfst tests."
+                log (
+                    {
+                        at 2026-06-30T18:52:27.522342Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DONE. (1) pmatch_tokenize IS_CG_TAG_MODIFIER_WARNED (warn-once AtomicBool) -> a Cell<bool> field 'cg_tag_modifier_warned' on TokenizeSettings (which is already threaded immutably through the whole print chain, so no new plumbing); is_cg_tag now takes &Cell<bool> and both callers (print_cg_subreading + _ex, both already have &TokenizeSettings) pass &s.cg_tag_modifier_warned. Dedup is now per-run instead of per-process (strictly better). (2) lexc_utils.rs deleted entirely (253 lines) + its `pub mod lexc_utils;` line: verified it had zero pub items, nothing referenced lexc_utils:: anywhere, and #![allow(dead_code)] was hiding it; the HLEXC* lexer-position thread_locals + their accessors existed only because the C++ had a generated lexer the nfst AST-walk port doesn't use, and the pure string helpers were already inlined into lexc.rs. MILESTONE: a definitive sweep (static mut / thread_local! / Atomic* / Mutex / RwLock / LazyLock / OnceLock / once_cell) now finds ZERO data-bearing mutable globals in crates/hfst/src (only a descriptive comment in pmatch_compiler.rs). The hfst library is free of mutable global state. Oracle: 152 hfst + 1 hfst-cli tests pass."
+                    }
+
+                    {
+                        at 2026-06-30T18:52:35.95305Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
+            }
         )
         log (
             {
