@@ -1485,6 +1485,33 @@ children (
                     }
                 )
             }
+
+            {
+                id idiom5.convert-arena
+                title "Eliminate the convert.rs raw-pointer/CONSTRUCTING_TRANSDUCER design. Spike finding: the Convert* fst-&gt;OL builder (ConvertTransducer + ConvertFstState/ConvertTransition/ConvertTransitionIndex + the CONSTRUCTING_TRANSDUCER thread_local self-pointer + fst:*const + the lifetime-laundering constructing_transducer()) is DEAD CODE — ConvertTransducer::new has zero callers and nothing is re-exported; the live HfstBasicTransducer-&gt;hfst_ol path runs through convert_ol_transducer.rs's placeholder writer. Delete the dead subsystem (lines ~443-EOF, ~1619 lines) rather than rewrite it: removes all 15 raw-ptr sites + 21 unsafe + the global outright. Gated by the convert/OLW round-trip tests (esp. extract_paths_lookup_nbest_tropical, which converts to OLW and checks lookup results). Oracle: 152 hfst tests."
+                log (
+                    {
+                        at 2026-06-30T17:50:44.136348Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-30T17:51:10.276262Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DONE — resolved by DELETION (the spike found it was dead code, not needing a rewrite). Verified workspace-wide that ConvertTransducer / ConvertFstState / ConvertTransition / ConvertTransitionIndex / constructing_transducer / CONSTRUCTING_TRANSDUCER / fst_state_less / state_set_insert + their helpers (ConvertIdNumberMap, ConvertTransducerAlphabet, ConvertTransitionTableIndices, ConvertTransducerHeader, check_finality, transition_label, place_holder, the ConvertTransitionEntry/ConvertIndexEntry traits) had ZERO external uses and were not re-exported; ConvertTransducer::new had no callers anywhere. The live HfstBasicTransducer->hfst_ol conversion runs through convert_ol_transducer.rs::hfst_basic_transducer_to_hfst_ol using only the placeholder API (StatePlaceholder/TransitionPlaceholder/IndexPlaceholders/write_transitions_from_state_placeholders/HfstOlToBasicStateMap) at the top of convert.rs. Deleted the dead subsystem (convert.rs 2053->434 lines): 0 raw pointers, 0 unsafe, 0 thread_local/global remain; pruned the now-unused imports + the only-dead consts (NO_ID_NUMBER, BIG_STATE_LIMIT) keeping the live NO_STATE_ID (used by tropical/log backends); updated the module doc. The latent UB (the &mut*p / &*p aliasing through the global during construction, plus the unbounded-lifetime constructing_transducer<'a>) is gone with the code. Gate: 152 hfst + 1 hfst-cli tests pass, incl. the strong round-trip extract_paths_lookup_nbest_tropical (convert to OLW + lookup cat/dog/mouse/hippopotamus), proving the live OL path is unaffected."
+                    }
+
+                    {
+                        at 2026-06-30T17:51:18.09784Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
         )
         log (
             {
