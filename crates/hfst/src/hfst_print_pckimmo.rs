@@ -74,8 +74,8 @@ pub fn print_pckimmo(out: &mut dyn Write, t: &crate::hfst_transducer::HfstTransd
     let mut pairs: BTreeSet<(String, String)> = BTreeSet::new();
     for state in mutt.iter() {
         for arc in state.iter() {
-            let first: String = arc.get_input_symbol();
-            let second: String = arc.get_output_symbol();
+            let first: String = arc.get_input_symbol(mutt.coder());
+            let second: String = arc.get_output_symbol(mutt.coder());
             pairs.insert((first, second));
         }
         last += 1;
@@ -152,8 +152,8 @@ pub fn print_pckimmo(out: &mut dyn Write, t: &crate::hfst_transducer::HfstTransd
             transitions.insert(p.clone(), (-1i32) as u32);
         }
         for arc in state.iter() {
-            let first: String = arc.get_input_symbol();
-            let second: String = arc.get_output_symbol();
+            let first: String = arc.get_input_symbol(mutt.coder());
+            let second: String = arc.get_output_symbol(mutt.coder());
             transitions.insert((first, second), arc.get_target_state());
         }
         for (_k, v) in &transitions {

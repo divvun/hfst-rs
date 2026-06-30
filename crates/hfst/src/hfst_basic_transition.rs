@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_tropical_transducer_transition_data::{
-    HfstTropicalTransducerTransitionData, SymbolType, WeightType,
+    HfstTropicalTransducerTransitionData, SymbolCoder, SymbolType, WeightType,
 };
 
 // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition]
@@ -35,11 +35,12 @@ impl HfstBasicTransition {
         isymbol: SymbolType,
         osymbol: SymbolType,
         weight: WeightType,
+        coder: &mut SymbolCoder,
     ) -> Self {
         HfstBasicTransition {
             target_state: s,
             transition_data: HfstTropicalTransducerTransitionData::new_symbols(
-                isymbol, osymbol, weight,
+                isymbol, osymbol, weight, coder,
             ),
         }
     }
@@ -82,26 +83,26 @@ impl HfstBasicTransition {
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-input-symbol-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-input-symbol-fn]
-    pub fn get_input_symbol(&self) -> SymbolType {
-        self.transition_data.get_input_symbol()
+    pub fn get_input_symbol(&self, coder: &SymbolCoder) -> SymbolType {
+        self.transition_data.get_input_symbol(coder)
     }
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.set-input-symbol-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.set-input-symbol-fn]
-    pub fn set_input_symbol(&mut self, symbol: &SymbolType) {
-        self.transition_data.set_input_symbol(symbol);
+    pub fn set_input_symbol(&mut self, symbol: &SymbolType, coder: &mut SymbolCoder) {
+        self.transition_data.set_input_symbol(symbol, coder);
     }
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-output-symbol-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-output-symbol-fn]
-    pub fn get_output_symbol(&self) -> SymbolType {
-        self.transition_data.get_output_symbol()
+    pub fn get_output_symbol(&self, coder: &SymbolCoder) -> SymbolType {
+        self.transition_data.get_output_symbol(coder)
     }
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.set-output-symbol-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.set-output-symbol-fn]
-    pub fn set_output_symbol(&mut self, symbol: &SymbolType) {
-        self.transition_data.set_output_symbol(symbol);
+    pub fn set_output_symbol(&mut self, symbol: &SymbolType, coder: &mut SymbolCoder) {
+        self.transition_data.set_output_symbol(symbol, coder);
     }
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-input-number-fn]

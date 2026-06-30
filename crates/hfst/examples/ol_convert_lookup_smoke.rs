@@ -5,11 +5,14 @@ use hfst::hfst_basic_transition::HfstBasicTransition;
 fn main() {
     // Build a:b / 0.5 with a final state weighted 0.3.
     let mut basic = HfstBasicTransducer::new();
-    basic.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.5),
-        true,
+    let tr = HfstBasicTransition::new_symbols(
+        1,
+        "a".to_string(),
+        "b".to_string(),
+        0.5,
+        basic.coder_mut(),
     );
+    basic.add_transition(0, &tr, true);
     basic.set_final_weight(1, &0.3);
 
     // Convert to the optimized-lookup format and look up "a".
@@ -39,8 +42,8 @@ fn main() {
         1,
         "round-tripped state 0 should have one transition"
     );
-    assert_eq!(t0[0].get_input_symbol(), "a");
-    assert_eq!(t0[0].get_output_symbol(), "b");
+    assert_eq!(t0[0].get_input_symbol(basic2.coder()), "a");
+    assert_eq!(t0[0].get_output_symbol(basic2.coder()), "b");
     assert!(basic2.is_final_state(t0[0].get_target_state()));
     println!("OL -> basic round-trip OK");
 }

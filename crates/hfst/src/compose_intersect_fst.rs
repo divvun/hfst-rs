@@ -33,7 +33,7 @@ use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_exception_defs::HfstException;
-use crate::hfst_tropical_transducer_transition_data::HfstTropicalTransducerTransitionData;
+use crate::hfst_tropical_transducer_transition_data::SymbolCoder;
 
 // HFST_EXCEPTION_CHILD_DECLARATION(StateNotDefined);  (in the .h)
 // HFST_EXCEPTION_CHILD_DEFINITION(StateNotDefined);   (in the .cc)
@@ -71,19 +71,17 @@ impl Transition {
     // [spec:hfst:sem:compose-intersect-fst.hfst.implementations.compose-intersect-fst.transition.transition-fn]
     // [spec:hfst:def:transducer.hfst-ol.transition.transition-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transition.transition-fn]
-    pub fn new_from_basic(t: &HfstBasicTransition) -> Self {
+    pub fn new_from_basic(t: &HfstBasicTransition, coder: &mut SymbolCoder) -> Self {
+        let isym = t.get_transition_data().get_input_symbol(coder);
+        let osym = t.get_transition_data().get_output_symbol(coder);
         let transition = Transition {
-            ilabel: HfstTropicalTransducerTransitionData::get_number(
-                &t.get_transition_data().get_input_symbol(),
-            ) as usize,
-            olabel: HfstTropicalTransducerTransitionData::get_number(
-                &t.get_transition_data().get_output_symbol(),
-            ) as usize,
+            ilabel: coder.get_number(&isym) as usize,
+            olabel: coder.get_number(&osym) as usize,
             weight: t.get_weight(),
             target: t.get_target_state(),
         };
-        assert!(t.get_input_symbol() != "");
-        assert!(t.get_output_symbol() != "");
+        assert!(isym != "");
+        assert!(osym != "");
         transition
     }
 
@@ -194,8 +192,8 @@ impl ComposeIntersectFst {
         let alphabet = this.t.get_alphabet().clone();
 
         for it in alphabet.iter() {
-            this.symbol_set
-                .insert(HfstTropicalTransducerTransitionData::get_number(it) as usize);
+            let n = this.t.coder_mut().get_number(it) as usize;
+            this.symbol_set.insert(n);
         }
 
         let mut source_state: u32 = 0;
@@ -211,35 +209,33 @@ impl ComposeIntersectFst {
                 this.finality_vector.push(f32::INFINITY);
             }
             source_state += 1;
-            // SymbolTransitionMap &symbol_transition_map = transition_map_vector.back();
-            let symbol_transition_map = this.transition_map_vector.last_mut().unwrap();
             let mut identity_found = false;
             for jt in it.iter() {
-                if jt.get_input_symbol() == "@_IDENTITY_SYMBOL_@" {
+                let jt_isym = jt.get_input_symbol(this.t.coder());
+                if jt_isym == "@_IDENTITY_SYMBOL_@" {
                     identity_found = true;
-                    this.identity_transition_vector
-                        .push(Transition::new_from_basic(jt));
+                    let tr = Transition::new_from_basic(jt, this.t.coder_mut());
+                    this.identity_transition_vector.push(tr);
                 } else {
                     let key = if input_keys {
-                        HfstTropicalTransducerTransitionData::get_number(&jt.get_input_symbol())
-                            as usize
+                        this.t.coder_mut().get_number(&jt_isym) as usize
                     } else {
-                        HfstTropicalTransducerTransitionData::get_number(&jt.get_output_symbol())
-                            as usize
+                        let jt_osym = jt.get_output_symbol(this.t.coder());
+                        this.t.coder_mut().get_number(&jt_osym) as usize
                     };
-                    symbol_transition_map
+                    let tr = Transition::new_from_basic(jt, this.t.coder_mut());
+                    this.transition_map_vector
+                        .last_mut()
+                        .unwrap()
                         .entry(key)
                         .or_insert_with(TransitionSet::new)
-                        .insert(&Transition::new_from_basic(jt));
+                        .insert(&tr);
                 }
             }
             if !identity_found {
-                this.identity_transition_vector.push(Transition::new(
-                    0,
-                    HfstTropicalTransducerTransitionData::get_number("@_EPSILON_SYMBOL_@") as usize,
-                    HfstTropicalTransducerTransitionData::get_number("@_EPSILON_SYMBOL_@") as usize,
-                    0.0,
-                ));
+                let eps = this.t.coder_mut().get_number("@_EPSILON_SYMBOL_@") as usize;
+                this.identity_transition_vector
+                    .push(Transition::new(0, eps, eps, 0.0));
             }
         }
 
@@ -260,7 +256,7 @@ impl ComposeIntersectFst {
     // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-symbol-number-fn]
     // [spec:hfst:sem:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-symbol-number-fn]
     pub fn get_symbol_number(&mut self, symbol: &str) -> usize {
-        HfstTropicalTransducerTransitionData::get_number(symbol) as usize
+        self.t.coder_mut().get_number(symbol) as usize
     }
 
     pub fn get_transitions(&mut self, s: HfstState, symbol: usize) -> &TransitionSet {
@@ -318,13 +314,25 @@ impl ComposeIntersectFst {
             crate::HFST_THROW!(StateNotDefined);
         }
         self.identity_transition_vector[s as usize].ilabel
-            == HfstTropicalTransducerTransitionData::get_number("@_IDENTITY_SYMBOL_@") as usize
+            == self.t.coder_mut().get_number("@_IDENTITY_SYMBOL_@") as usize
     }
 
     // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-symbols-fn]
     // [spec:hfst:sem:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-symbols-fn]
     pub fn get_symbols(&self) -> &SymbolSet {
         &self.symbol_set
+    }
+
+    /// This automaton's underlying graph's symbol coding. The compose-intersect
+    /// machinery harmonizes the lexicon's and rules' codings against each other
+    /// before combining their labels (the per-graph-coder replacement for the
+    /// former process-global numbering).
+    pub fn coder(&self) -> &SymbolCoder {
+        self.t.coder()
+    }
+
+    pub fn coder_mut(&mut self) -> &mut SymbolCoder {
+        self.t.coder_mut()
     }
 }
 

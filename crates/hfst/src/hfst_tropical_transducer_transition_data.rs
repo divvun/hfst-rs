@@ -5,15 +5,16 @@
 //! 'HfstTransition'. Symbols are interned to 'unsigned int' numbers via the C++
 //! class-static 'number2symbol_map'/'symbol2number_map'/'max_number' (seeded by
 //! the 'dummy1'/'dummy2' globals). Those three statics are encapsulated in an
-//! owned ['SymbolCoder'] (the divvunspell 'TransducerAlphabet' shape); K1 of the
-//! de-globalization holds a single process-global 'SymbolCoder' instance so the
-//! shared numbering is preserved exactly, and later stages move the coder onto
-//! each transducer. Symbol getters return an owned 'String' (the C++ returns a
-//! 'const std::string&' into the key table; a reference cannot escape the
-//! 'Mutex' guard, so the equal value is cloned out).
+//! owned ['SymbolCoder'] (the divvunspell 'TransducerAlphabet' shape). The
+//! idiom5 de-globalization moves the coder onto each 'HfstBasicTransducer': the
+//! symbol getters/setters and 'new_symbols' take the owning graph's 'SymbolCoder'
+//! explicitly, so resolution and interning go through that per-graph coder and
+//! binary ops harmonize across graphs via 'SymbolCoder::create_translator_from'.
+//! No process-global coder remains. Symbol getters return an owned 'String' (the
+//! C++ returns a 'const std::string&' into the key table; the equal value is
+//! cloned out).
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{LazyLock, Mutex};
 
 use crate::hfst_exception_defs::{EmptyStringException, HfstFatalException};
 
@@ -46,16 +47,15 @@ impl string_comparison {
 
 // The C++ class-static symbol coding (number2symbol_map / symbol2number_map /
 // max_number, seeded by the 'dummy1'/'dummy2' globals) is encapsulated in an
-// owned 'SymbolCoder' modelled on divvunspell's 'TransducerAlphabet'. K1 of the
-// de-globalization keeps a single process-global instance, so the shared
-// numbering is preserved exactly; later stages move the coder onto each
-// transducer (reached via '&self') and harmonize across them.
+// owned 'SymbolCoder' modelled on divvunspell's 'TransducerAlphabet'. The
+// de-globalization keystone (idiom5) moves the coder onto each
+// 'HfstBasicTransducer' (reached via '&self.coder'); resolution and interning go
+// through the owning graph's coder, and binary ops harmonize across graphs via
+// 'SymbolCoder::create_translator_from'. No process-global coder remains.
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.dummy1-fn]
 // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.dummy1-fn]
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.dummy2-fn]
 // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.dummy2-fn]
-static GLOBAL_CODER: LazyLock<Mutex<SymbolCoder>> =
-    LazyLock::new(|| Mutex::new(SymbolCoder::new()));
 
 /// Owned symbol<->number coding (the divvunspell 'TransducerAlphabet' shape):
 /// 'number2symbol' is the key table (index = number), 'symbol2number' its
@@ -83,6 +83,13 @@ impl SymbolCoder {
 
     pub fn get_max_number(&self) -> u32 {
         self.max_number
+    }
+
+    /// The key table (index = number, value = symbol), in number order. Used by
+    /// the harmonization pre-pass to intern every symbol this coder knows into a
+    /// shared coder in a deterministic order.
+    pub fn number2symbol_slice(&self) -> &[SymbolType] {
+        &self.number2symbol
     }
 
     /// Map 'number' back to its symbol (throws if out of range, as the C++ does).
@@ -194,41 +201,19 @@ impl HfstTropicalTransducerTransitionData {
         SymbolType::from("@_IDENTITY_SYMBOL_@")
     }
 
+    // The former class-static accessors 'get_max_number' / 'get_harmonization_vector'
+    // / 'get_reverse_harmonization_vector' / 'get_symbol' / 'get_number' delegated to
+    // a process-global coder; they are gone. The equivalent operations are now
+    // instance methods on ['SymbolCoder'], invoked on the owning graph's
+    // 'self.coder' (idiom5 de-globalization).
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-max-number-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-max-number-fn]
-    pub fn get_max_number() -> u32 {
-        GLOBAL_CODER.lock().unwrap().get_max_number()
-    }
-
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-harmonization-vector-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-harmonization-vector-fn]
-    pub fn get_harmonization_vector(symbols: &Vec<SymbolType>) -> Vec<u32> {
-        GLOBAL_CODER
-            .lock()
-            .unwrap()
-            .get_harmonization_vector(symbols)
-    }
-
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-reverse-harmonization-vector-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-reverse-harmonization-vector-fn]
-    pub fn get_reverse_harmonization_vector(symbols: &BTreeMap<SymbolType, u32>) -> Vec<u32> {
-        GLOBAL_CODER
-            .lock()
-            .unwrap()
-            .get_reverse_harmonization_vector(symbols)
-    }
-
-    /* Get the symbol that is mapped as 'number'. (C++ 'protected'; reached by
-    HfstBasicTransducer etc. via `friend` — here crate-visible.) */
-    pub(crate) fn get_symbol(number: u32) -> String {
-        GLOBAL_CODER.lock().unwrap().get_symbol(number)
-    }
-
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-number-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-number-fn]
-    pub(crate) fn get_number(symbol: &str) -> u32 {
-        GLOBAL_CODER.lock().unwrap().get_number(symbol)
-    }
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.print-transition-data-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.print-transition-data-fn]
@@ -249,7 +234,12 @@ impl HfstTropicalTransducerTransitionData {
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.hfst-tropical-transducer-transition-data-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.hfst-tropical-transducer-transition-data-fn]
-    pub fn new_symbols(isymbol: SymbolType, osymbol: SymbolType, weight: WeightType) -> Self {
+    pub fn new_symbols(
+        isymbol: SymbolType,
+        osymbol: SymbolType,
+        weight: WeightType,
+        coder: &mut SymbolCoder,
+    ) -> Self {
         if isymbol.is_empty() || osymbol.is_empty() {
             crate::HFST_THROW_MESSAGE!(
                 EmptyStringException,
@@ -258,8 +248,8 @@ impl HfstTropicalTransducerTransitionData {
         }
 
         HfstTropicalTransducerTransitionData {
-            input_number: Self::get_number(&isymbol),
-            output_number: Self::get_number(&osymbol),
+            input_number: coder.get_number(&isymbol),
+            output_number: coder.get_number(&osymbol),
             weight,
         }
     }
@@ -272,24 +262,24 @@ impl HfstTropicalTransducerTransitionData {
         }
     }
 
-    pub fn get_input_symbol(&self) -> SymbolType {
-        Self::get_symbol(self.input_number)
+    pub fn get_input_symbol(&self, coder: &SymbolCoder) -> SymbolType {
+        coder.get_symbol(self.input_number)
     }
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-input-symbol-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-input-symbol-fn]
-    pub fn set_input_symbol(&mut self, symbol: &SymbolType) {
-        self.input_number = Self::get_number(symbol);
+    pub fn set_input_symbol(&mut self, symbol: &SymbolType, coder: &mut SymbolCoder) {
+        self.input_number = coder.get_number(symbol);
     }
 
-    pub fn get_output_symbol(&self) -> SymbolType {
-        Self::get_symbol(self.output_number)
+    pub fn get_output_symbol(&self, coder: &SymbolCoder) -> SymbolType {
+        coder.get_symbol(self.output_number)
     }
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-output-symbol-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-output-symbol-fn]
-    pub fn set_output_symbol(&mut self, symbol: &SymbolType) {
-        self.output_number = Self::get_number(symbol);
+    pub fn set_output_symbol(&mut self, symbol: &SymbolType, coder: &mut SymbolCoder) {
+        self.output_number = coder.get_number(symbol);
     }
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-input-number-fn]

@@ -4,11 +4,9 @@ use hfst::hfst_basic_transition::HfstBasicTransition;
 
 fn main() {
     let mut g = HfstBasicTransducer::new();
-    g.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.5),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.5, g.coder_mut());
+    g.add_transition(0, &tr, true);
     g.set_final_weight(1, &0.3);
 
     let mut buf: Vec<u8> = Vec::new();
@@ -32,8 +30,8 @@ fn main() {
     assert!((g2.get_final_weight(1) - 0.3).abs() < 1e-6);
     let trs = g2.transitions(0);
     assert_eq!(trs.len(), 1);
-    assert_eq!(trs[0].get_input_symbol(), "a");
-    assert_eq!(trs[0].get_output_symbol(), "b");
+    assert_eq!(trs[0].get_input_symbol(g2.coder()), "a");
+    assert_eq!(trs[0].get_output_symbol(g2.coder()), "b");
     assert!((trs[0].get_weight() - 0.5).abs() < 1e-6);
     assert_eq!(trs[0].get_target_state(), 1);
     println!("att round-trip (add_att_line) OK");
@@ -55,8 +53,8 @@ fn main() {
         assert!((g3.get_final_weight(1) - 0.3).abs() < 1e-6);
         let t = g3.transitions(0);
         assert_eq!(t.len(), 1);
-        assert_eq!(t[0].get_input_symbol(), "a");
-        assert_eq!(t[0].get_output_symbol(), "b");
+        assert_eq!(t[0].get_input_symbol(g3.coder()), "a");
+        assert_eq!(t[0].get_output_symbol(g3.coder()), "b");
         assert!((t[0].get_weight() - 0.5).abs() < 1e-6);
         println!("att round-trip (read_in_att_format_file) OK");
     }

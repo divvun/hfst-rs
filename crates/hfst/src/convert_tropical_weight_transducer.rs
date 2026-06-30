@@ -29,7 +29,6 @@ use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_exception_defs::{HfstFatalException, MissingOpenFstInputSymbolTableException};
 use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unknown};
-use crate::hfst_tropical_transducer_transition_data::HfstTropicalTransducerTransitionData;
 
 /* Handle symbol tables when converting 't' to 'net'. 'has_hfst_header'
 defines whether `t` is an HFST transducer. */
@@ -134,8 +133,10 @@ impl ConversionFunctions {
         let symbol_vector =
             crate::tropical_weight_transducer::TropicalWeightTransducer::get_symbol_vector(t);
 
-        let harmonization_vector =
-            HfstTropicalTransducerTransitionData::get_harmonization_vector(&symbol_vector);
+        // Intern the OpenFst symbol vector into 'net's own coder, so the arc
+        // numbers below are in 'net's coding (the per-graph-coder replacement for
+        // the former process-global harmonization vector).
+        let harmonization_vector = net.coder_mut().get_harmonization_vector(&symbol_vector);
 
         /* This takes care that initial state is always number zero
         and state number zero (if it is not initial) is some other number
@@ -242,19 +243,17 @@ impl ConversionFunctions {
         st.add_symbol(internal_unknown); // label 1
         st.add_symbol(internal_identity); // label 2
 
-        // Copy the alphabet
+        // Copy the alphabet. The arc labels written below are 'net's own coder
+        // numbers (get_input_number/get_output_number); resolve each alphabet
+        // symbol's label through a clone of that coder so they coincide (and the
+        // tropical->basic round-trip recovers them). The clone interns the few
+        // alphabet-only symbols absent from any arc without disturbing 'net'.
+        let mut coder = net.coder().clone();
         for it in net.get_alphabet().iter() {
             assert!(!it.is_empty());
-            // C++: 'st.AddSymbol(*it, net->get_symbol_number(*it));' — rustfst's
-            // 'SymbolTable::add_symbol' assigns labels sequentially and cannot set
-            // an explicit (possibly sparse) label, so 'get_symbol_number' is still
-            // evaluated for its interning side effect but its value cannot be used
-            // as the label. See the module-level note / deferred list.
-            // 'st.AddSymbol(*it, net->get_symbol_number(*it));' — assign the
-            // symbol's global number as its explicit label so the FST's arc
-            // labels coincide with the basic-transducer symbol numbers (and the
-            // tropical->basic round-trip recovers them).
-            let symbol_number = net.get_symbol_number(it);
+            // C++: 'st.AddSymbol(*it, net->get_symbol_number(*it));' — assign the
+            // symbol's coder number as its explicit label.
+            let symbol_number = coder.get_number(it);
             st.add_symbol_with_key(it.clone(), symbol_number);
         }
 

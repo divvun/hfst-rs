@@ -140,8 +140,8 @@ unsafe fn main_loop(trans: &HfstBasicTransducer) -> i32 {
                     let _ = write!(
                         msg,
                         "{}\t{}\n",
-                        arc.get_input_symbol(),
-                        arc.get_output_symbol()
+                        arc.get_input_symbol(trans.coder()),
+                        arc.get_output_symbol(trans.coder())
                     );
                 }
             }
@@ -152,12 +152,12 @@ unsafe fn main_loop(trans: &HfstBasicTransducer) -> i32 {
             let mut new_paths: BTreeMap<(String, usize), u32> = BTreeMap::new();
             for ((path_str, _), state) in paths.iter() {
                 for arc in trans.index(*state).iter() {
-                    if arc.get_input_symbol() == label {
+                    if arc.get_input_symbol(trans.coder()) == label {
                         let newpath = format!(
                             "{}{}:{} ",
                             path_str,
-                            arc.get_input_symbol(),
-                            arc.get_output_symbol()
+                            arc.get_input_symbol(trans.coder()),
+                            arc.get_output_symbol(trans.coder())
                         );
                         new_paths.insert((newpath, counter), arc.get_target_state());
                         counter += 1;

@@ -76,16 +76,14 @@ fn build_tr1() -> HfstBasicTransducer {
     let mut tr1 = HfstBasicTransducer::new();
     tr1.add_state(1);
     tr1.set_final_weight(1, &0.0);
-    tr1.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(
-            1,
-            "@_UNKNOWN_SYMBOL_@".to_string(),
-            "foo".to_string(),
-            0.0,
-        ),
-        true,
+    let tr = HfstBasicTransition::new_symbols(
+        1,
+        "@_UNKNOWN_SYMBOL_@".to_string(),
+        "foo".to_string(),
+        0.0,
+        tr1.coder_mut(),
     );
+    tr1.add_transition(0, &tr, true);
     tr1
 }
 
@@ -95,21 +93,22 @@ fn build_tr2() -> HfstBasicTransducer {
     tr2.add_state(1);
     tr2.add_state(2);
     tr2.set_final_weight(2, &0.0);
-    tr2.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(
-            1,
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            0.0,
-        ),
-        true,
-    );
-    tr2.add_transition(
+    let tr = HfstBasicTransition::new_symbols(
         1,
-        &HfstBasicTransition::new_symbols(2, "bar".to_string(), "bar".to_string(), 0.0),
-        true,
+        "@_IDENTITY_SYMBOL_@".to_string(),
+        "@_IDENTITY_SYMBOL_@".to_string(),
+        0.0,
+        tr2.coder_mut(),
     );
+    tr2.add_transition(0, &tr, true);
+    let tr = HfstBasicTransition::new_symbols(
+        2,
+        "bar".to_string(),
+        "bar".to_string(),
+        0.0,
+        tr2.coder_mut(),
+    );
+    tr2.add_transition(1, &tr, true);
     tr2
 }
 
@@ -120,41 +119,46 @@ fn build_disj() -> HfstBasicTransducer {
     disj.add_state(2);
     disj.set_final_weight(2, &0.0);
 
-    disj.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(
-            1,
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            0.0,
-        ),
-        true,
-    );
-    disj.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "foo".to_string(), "foo".to_string(), 0.0),
-        true,
-    );
-    disj.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(
-            2,
-            "@_UNKNOWN_SYMBOL_@".to_string(),
-            "foo".to_string(),
-            0.0,
-        ),
-        true,
-    );
-    disj.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(2, "bar".to_string(), "foo".to_string(), 0.0),
-        true,
-    );
-    disj.add_transition(
+    let tr = HfstBasicTransition::new_symbols(
         1,
-        &HfstBasicTransition::new_symbols(2, "bar".to_string(), "bar".to_string(), 0.0),
-        true,
+        "@_IDENTITY_SYMBOL_@".to_string(),
+        "@_IDENTITY_SYMBOL_@".to_string(),
+        0.0,
+        disj.coder_mut(),
     );
+    disj.add_transition(0, &tr, true);
+    let tr = HfstBasicTransition::new_symbols(
+        1,
+        "foo".to_string(),
+        "foo".to_string(),
+        0.0,
+        disj.coder_mut(),
+    );
+    disj.add_transition(0, &tr, true);
+    let tr = HfstBasicTransition::new_symbols(
+        2,
+        "@_UNKNOWN_SYMBOL_@".to_string(),
+        "foo".to_string(),
+        0.0,
+        disj.coder_mut(),
+    );
+    disj.add_transition(0, &tr, true);
+    let tr = HfstBasicTransition::new_symbols(
+        2,
+        "bar".to_string(),
+        "foo".to_string(),
+        0.0,
+        disj.coder_mut(),
+    );
+    disj.add_transition(0, &tr, true);
+    let tr = HfstBasicTransition::new_symbols(
+        2,
+        "bar".to_string(),
+        "bar".to_string(),
+        0.0,
+        disj.coder_mut(),
+    );
+    disj.add_transition(1, &tr, true);
     disj
 }
 

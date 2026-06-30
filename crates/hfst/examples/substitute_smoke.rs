@@ -4,15 +4,13 @@ use hfst::hfst_basic_transition::HfstBasicTransition;
 fn main() {
     // a:b --> substitute input a with x  => x:b
     let mut g = HfstBasicTransducer::new();
-    g.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0, g.coder_mut());
+    g.add_transition(0, &tr, true);
     g.substitute_symbol(&"a".to_string(), &"x".to_string(), true, false);
     let t = g.transitions(0);
-    assert_eq!(t[0].get_input_symbol(), "x");
-    assert_eq!(t[0].get_output_symbol(), "b");
+    assert_eq!(t[0].get_input_symbol(g.coder()), "x");
+    assert_eq!(t[0].get_output_symbol(g.coder()), "b");
     println!("substitute_symbol OK");
 
     // pair substitution: x:b -> c:d
@@ -24,7 +22,8 @@ fn main() {
     // the first new pair both replaces and is appended (bug preserved) -> two arcs
     assert!(
         t.iter()
-            .any(|tr| tr.get_input_symbol() == "c" && tr.get_output_symbol() == "d")
+            .any(|tr| tr.get_input_symbol(g.coder()) == "c"
+                && tr.get_output_symbol(g.coder()) == "d")
     );
     println!("substitute_pair OK ({} transition(s) at state 0)", t.len());
 
@@ -37,25 +36,26 @@ fn main() {
 
     // substitute a:b with a copy of another graph (p:q)
     let mut sub = HfstBasicTransducer::new();
-    sub.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "p".to_string(), "q".to_string(), 0.0),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(1, "p".to_string(), "q".to_string(), 0.0, sub.coder_mut());
+    sub.add_transition(0, &tr, true);
     sub.set_final_weight(1, &0.0);
     let mut host = HfstBasicTransducer::new();
-    host.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0),
-        true,
+    let tr = HfstBasicTransition::new_symbols(
+        1,
+        "a".to_string(),
+        "b".to_string(),
+        0.0,
+        host.coder_mut(),
     );
+    host.add_transition(0, &tr, true);
     host.set_final_weight(1, &0.0);
     host.substitute_pair_with_graph(&("a".to_string(), "b".to_string()), &sub);
     // p:q now appears somewhere in the host's expanded graph
     let found = (0..=host.get_max_state()).any(|s| {
-        host.transitions(s)
-            .iter()
-            .any(|tr| tr.get_input_symbol() == "p" && tr.get_output_symbol() == "q")
+        host.transitions(s).iter().any(|tr| {
+            tr.get_input_symbol(host.coder()) == "p" && tr.get_output_symbol(host.coder()) == "q"
+        })
     });
     assert!(found, "substituting graph not inserted");
     println!(

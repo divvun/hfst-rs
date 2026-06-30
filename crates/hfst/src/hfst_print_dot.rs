@@ -12,6 +12,7 @@ use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unknown};
 use crate::hfst_transducer::HfstTransducer;
+use crate::hfst_tropical_transducer_transition_data::SymbolCoder;
 use crate::string_utils::replace_all;
 
 // '#define DOT_MAX_LABEL_SIZE 64'
@@ -69,9 +70,9 @@ fn trim_to_valid_utf8(inp: &mut Vec<u8>) {
 // accumulated label for that same target. This is the per-arc body shared
 // byte-for-byte by both 'print_dot' overloads (the 'snprintf' family always
 // uses '%.2f' for the arc weight in both functions).
-fn arc_label(old_label: &str, arc: &HfstBasicTransition) -> String {
-    let mut first = arc.get_input_symbol();
-    let mut second = arc.get_output_symbol();
+fn arc_label(old_label: &str, arc: &HfstBasicTransition, coder: &SymbolCoder) -> String {
+    let mut first = arc.get_input_symbol(coder);
+    let mut second = arc.get_output_symbol(coder);
     if first == internal_epsilon {
         first = String::from("00");
     } else if first == internal_identity {
@@ -182,7 +183,7 @@ pub fn print_dot_file(out: &mut dyn Write, t: &mut HfstTransducer) {
                 .entry(arc.get_target_state())
                 .or_default()
                 .clone();
-            let sl = arc_label(&old_label, arc);
+            let sl = arc_label(&old_label, arc, mutt.coder());
             target_labels.insert(arc.get_target_state(), sl);
         } // each arc
         for (key, value) in &target_labels {
@@ -239,7 +240,7 @@ pub fn print_dot_os(out: &mut dyn Write, t: &mut HfstTransducer) {
                 .entry(arc.get_target_state())
                 .or_default()
                 .clone();
-            let sl = arc_label(&old_label, arc);
+            let sl = arc_label(&old_label, arc, mutt.coder());
             target_labels.insert(arc.get_target_state(), sl);
         } // each arc
         for (key, value) in &target_labels {

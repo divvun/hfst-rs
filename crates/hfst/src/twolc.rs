@@ -408,16 +408,14 @@ impl OtherSymbolTransducer {
                 let pairs = OST_CONFIG.with(|c| c.borrow().symbol_pairs.clone());
                 for it in input_symbols.iter() {
                     if pairs.contains(&(it.clone(), output_symbol.clone())) {
-                        fst.add_transition(
-                            0,
-                            &HfstBasicTransition::new_symbols(
-                                target,
-                                it.clone(),
-                                output_symbol.clone(),
-                                0.0,
-                            ),
-                            true,
+                        let tr = HfstBasicTransition::new_symbols(
+                            target,
+                            it.clone(),
+                            output_symbol.clone(),
+                            0.0,
+                            fst.coder_mut(),
                         );
+                        fst.add_transition(0, &tr, true);
                     }
                 }
             } else if output_symbol == HFST_UNKNOWN {
@@ -431,29 +429,25 @@ impl OtherSymbolTransducer {
                 let pairs = OST_CONFIG.with(|c| c.borrow().symbol_pairs.clone());
                 for it in output_symbols.iter() {
                     if pairs.contains(&(input_symbol.clone(), it.clone())) {
-                        fst.add_transition(
-                            0,
-                            &HfstBasicTransition::new_symbols(
-                                target,
-                                input_symbol.clone(),
-                                it.clone(),
-                                0.0,
-                            ),
-                            true,
+                        let tr = HfstBasicTransition::new_symbols(
+                            target,
+                            input_symbol.clone(),
+                            it.clone(),
+                            0.0,
+                            fst.coder_mut(),
                         );
+                        fst.add_transition(0, &tr, true);
                     }
                 }
             } else {
-                fst.add_transition(
-                    0,
-                    &HfstBasicTransition::new_symbols(
-                        target,
-                        input_symbol.clone(),
-                        output_symbol.clone(),
-                        0.0,
-                    ),
-                    true,
+                let tr = HfstBasicTransition::new_symbols(
+                    target,
+                    input_symbol.clone(),
+                    output_symbol.clone(),
+                    0.0,
+                    fst.coder_mut(),
                 );
+                fst.add_transition(0, &tr, true);
             }
             this.transducer = HfstTransducer::new_from_basic(&fst, transducer_type);
         }
@@ -988,18 +982,21 @@ impl OtherSymbolTransducer {
         for s in 0..num_states {
             let mut identity_target: Option<HfstState> = None;
             for jt in basic.index(s as HfstState).iter() {
-                if jt.get_input_symbol() == TWOLC_IDENTITY {
+                if jt.get_input_symbol(basic.coder()) == TWOLC_IDENTITY {
                     identity_target = Some(jt.get_target_state());
                     break;
                 }
             }
             if let Some(target) = identity_target {
                 for kt in missing_diacritics.iter() {
-                    basic.add_transition(
-                        s as HfstState,
-                        &HfstBasicTransition::new_symbols(target, kt.clone(), kt.clone(), 0.0),
-                        true,
+                    let tr = HfstBasicTransition::new_symbols(
+                        target,
+                        kt.clone(),
+                        kt.clone(),
+                        0.0,
+                        basic.coder_mut(),
                     );
+                    basic.add_transition(s as HfstState, &tr, true);
                 }
             }
         }
@@ -1049,26 +1046,27 @@ impl OtherSymbolTransducer {
         let mut fst = HfstBasicTransducer::from_transducer(&universal.transducer);
         let target = fst.add_state_new();
         fst.set_final_weight(target, &0.0);
-        fst.add_transition(
-            0,
-            &HfstBasicTransition::new_symbols(
-                target,
-                TWOLC_IDENTITY.to_string(),
-                TWOLC_IDENTITY.to_string(),
-                0.0,
-            ),
-            true,
+        let tr = HfstBasicTransition::new_symbols(
+            target,
+            TWOLC_IDENTITY.to_string(),
+            TWOLC_IDENTITY.to_string(),
+            0.0,
+            fst.coder_mut(),
         );
+        fst.add_transition(0, &tr, true);
         let pairs = OST_CONFIG.with(|c| c.borrow().symbol_pairs.clone());
         for it in pairs.iter() {
             if it.0 == TWOLC_DIAMOND {
                 continue;
             }
-            fst.add_transition(
-                0,
-                &HfstBasicTransition::new_symbols(target, it.0.clone(), it.1.clone(), 0.0),
-                true,
+            let tr = HfstBasicTransition::new_symbols(
+                target,
+                it.0.clone(),
+                it.1.clone(),
+                0.0,
+                fst.coder_mut(),
             );
+            fst.add_transition(0, &tr, true);
         }
         OtherSymbolTransducer {
             is_broken: false,
@@ -1128,16 +1126,14 @@ impl OtherSymbolTransducer {
         input: &str,
         output: &str,
     ) {
-        center_t.add_transition(
-            source_state as HfstState,
-            &HfstBasicTransition::new_symbols(
-                target_state as HfstState,
-                input.to_string(),
-                output.to_string(),
-                0.0,
-            ),
-            true,
+        let tr = HfstBasicTransition::new_symbols(
+            target_state as HfstState,
+            input.to_string(),
+            output.to_string(),
+            0.0,
+            center_t.coder_mut(),
         );
+        center_t.add_transition(source_state as HfstState, &tr, true);
     }
 
     /// 'static bool has_symbol(const HfstBasicTransducer &t,
@@ -1185,8 +1181,8 @@ impl OtherSymbolTransducer {
                 new_fst.set_final_weight(st, &w);
             }
             for jt in fst.index(st).iter() {
-                let input = jt.get_transition_data().get_input_symbol();
-                let output = jt.get_transition_data().get_output_symbol();
+                let input = jt.get_transition_data().get_input_symbol(fst.coder());
+                let output = jt.get_transition_data().get_output_symbol(fst.coder());
                 let target = jt.get_target_state();
                 if input == HFST_UNKNOWN {
                     Self::add_transition(
@@ -1329,8 +1325,8 @@ impl OtherSymbolTransducer {
         }
         let fst = HfstBasicTransducer::from_transducer(&self.transducer);
         for jt in fst.index(0).iter() {
-            let input = jt.get_transition_data().get_input_symbol();
-            let output = jt.get_transition_data().get_output_symbol();
+            let input = jt.get_transition_data().get_input_symbol(fst.coder());
+            let output = jt.get_transition_data().get_output_symbol(fst.coder());
             pair_container.push((input, output));
         }
     }
@@ -1408,13 +1404,19 @@ fn have_common_string(
     let mut fst1_transition_map: BTreeMap<SymbolPair, HfstState> = BTreeMap::new();
     for it in fst1_transitions.iter() {
         fst1_transition_map.insert(
-            (it.get_input_symbol(), it.get_output_symbol()),
+            (
+                it.get_input_symbol(fst1.coder()),
+                it.get_output_symbol(fst1.coder()),
+            ),
             it.get_target_state(),
         );
     }
 
     for it in fst2_transitions.iter() {
-        let symbol_pair: SymbolPair = (it.get_input_symbol(), it.get_output_symbol());
+        let symbol_pair: SymbolPair = (
+            it.get_input_symbol(fst2.coder()),
+            it.get_output_symbol(fst2.coder()),
+        );
         if let Some(&fst1_target) = fst1_transition_map.get(&symbol_pair) {
             let state_pair: (HfstState, HfstState) = (fst1_target, it.get_target_state());
             if !visited_pairs.contains(&state_pair) {

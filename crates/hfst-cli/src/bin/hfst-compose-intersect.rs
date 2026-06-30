@@ -186,7 +186,7 @@ fn check_all_symbols(lexicon: &HfstTransducer, rule: &HfstTransducer) -> String 
 
     for s in 0..=lexicon_b.get_max_state() {
         for it in lexicon_b.transitions(s).iter() {
-            let output_symbol = it.get_output_symbol();
+            let output_symbol = it.get_output_symbol(lexicon_b.coder());
 
             if !rule_input_symbols.contains(&output_symbol) {
                 return output_symbol;
@@ -209,7 +209,7 @@ fn check_multi_char_symbols(lexicon: &HfstTransducer, rule: &HfstTransducer) -> 
 
     for s in 0..=lexicon_b.get_max_state() {
         for it in lexicon_b.transitions(s).iter() {
-            let output_symbol = it.get_output_symbol();
+            let output_symbol = it.get_output_symbol(lexicon_b.coder());
 
             if !rule_input_symbols.contains(&output_symbol) {
                 if is_special_symbol(&output_symbol) {

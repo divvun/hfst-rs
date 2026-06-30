@@ -920,51 +920,33 @@ fn test1b(type_: ImplementationType) {
     let input1 = HfstTransducer::new_tokenized("aaana", &tok, type_);
 
     let mut bt = HfstBasicTransducer::new();
-    bt.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 0.0),
-        true,
-    );
-    bt.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "x".to_string(), 0.0),
-        true,
-    );
-    bt.add_transition(
-        1,
-        &HfstBasicTransition::new_symbols(2, "a".to_string(), "a".to_string(), 0.0),
-        true,
-    );
-    bt.add_transition(
-        1,
-        &HfstBasicTransition::new_symbols(2, "a".to_string(), "x".to_string(), 0.0),
-        true,
-    );
-    bt.add_transition(
-        2,
-        &HfstBasicTransition::new_symbols(3, "a".to_string(), "a".to_string(), 0.0),
-        true,
-    );
-    bt.add_transition(
-        2,
-        &HfstBasicTransition::new_symbols(3, "a".to_string(), "x".to_string(), 0.0),
-        true,
-    );
-    bt.add_transition(
-        3,
-        &HfstBasicTransition::new_symbols(4, "n".to_string(), "n".to_string(), 0.0),
-        true,
-    );
-    bt.add_transition(
-        4,
-        &HfstBasicTransition::new_symbols(5, "a".to_string(), "a".to_string(), 0.0),
-        true,
-    );
-    bt.add_transition(
-        4,
-        &HfstBasicTransition::new_symbols(5, "a".to_string(), "x".to_string(), 0.0),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 0.0, bt.coder_mut());
+    bt.add_transition(0, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "x".to_string(), 0.0, bt.coder_mut());
+    bt.add_transition(0, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(2, "a".to_string(), "a".to_string(), 0.0, bt.coder_mut());
+    bt.add_transition(1, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(2, "a".to_string(), "x".to_string(), 0.0, bt.coder_mut());
+    bt.add_transition(1, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(3, "a".to_string(), "a".to_string(), 0.0, bt.coder_mut());
+    bt.add_transition(2, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(3, "a".to_string(), "x".to_string(), 0.0, bt.coder_mut());
+    bt.add_transition(2, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(4, "n".to_string(), "n".to_string(), 0.0, bt.coder_mut());
+    bt.add_transition(3, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(5, "a".to_string(), "a".to_string(), 0.0, bt.coder_mut());
+    bt.add_transition(4, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(5, "a".to_string(), "x".to_string(), 0.0, bt.coder_mut());
+    bt.add_transition(4, &tr, true);
     bt.set_final_weight(5, &0.0);
 
     let result1 = HfstTransducer::new_from_basic(&bt, type_);
@@ -2333,31 +2315,25 @@ fn test7h(type_: ImplementationType) {
     let replace_tr = xr::replace_leftmost_longest_match_rule(&rule);
 
     let mut bt = HfstBasicTransducer::new();
-    bt.add_transition(
+    let tr = HfstBasicTransition::new_symbols(
+        1,
+        "@_EPSILON_SYMBOL_@".to_string(),
+        "a".to_string(),
+        0.0,
+        bt.coder_mut(),
+    );
+    bt.add_transition(0, &tr, true);
+    let tr = HfstBasicTransition::new_symbols(
         0,
-        &HfstBasicTransition::new_symbols(
-            1,
-            "@_EPSILON_SYMBOL_@".to_string(),
-            "a".to_string(),
-            0.0,
-        ),
-        true,
+        "@_IDENTITY_SYMBOL_@".to_string(),
+        "@_IDENTITY_SYMBOL_@".to_string(),
+        0.0,
+        bt.coder_mut(),
     );
-    bt.add_transition(
-        1,
-        &HfstBasicTransition::new_symbols(
-            0,
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            0.0,
-        ),
-        true,
-    );
-    bt.add_transition(
-        1,
-        &HfstBasicTransition::new_symbols(0, "a".to_string(), "a".to_string(), 0.0),
-        true,
-    );
+    bt.add_transition(1, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(0, "a".to_string(), "a".to_string(), 0.0, bt.coder_mut());
+    bt.add_transition(1, &tr, true);
     bt.set_final_weight(1, &0.0);
 
     let result1 = HfstTransducer::new_from_basic(&bt, type_);

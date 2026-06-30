@@ -283,8 +283,8 @@ fn sparse_symtable_round_trip(type_: ImplementationType) {
     let mut has_a = false;
     for transitions in basic.iter() {
         for arc in transitions.iter() {
-            assert_ne!(arc.get_input_symbol(), "x");
-            if arc.get_input_symbol() == "a" {
+            assert_ne!(arc.get_input_symbol(basic.coder()), "x");
+            if arc.get_input_symbol(basic.coder()) == "a" {
                 has_a = true;
             }
         }

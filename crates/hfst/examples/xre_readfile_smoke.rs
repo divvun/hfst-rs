@@ -52,11 +52,14 @@ fn main() {
     let pl = tmp("xre_readfile.pl");
     {
         let mut g = HfstBasicTransducer::new();
-        g.add_transition(
-            0,
-            &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0),
-            true,
+        let tr = HfstBasicTransition::new_symbols(
+            1,
+            "a".to_string(),
+            "b".to_string(),
+            0.0,
+            g.coder_mut(),
         );
+        g.add_transition(0, &tr, true);
         g.set_final_weight(1, &0.0);
         let mut buf: Vec<u8> = Vec::new();
         g.write_in_prolog_format_os(&mut buf, "ab", true);

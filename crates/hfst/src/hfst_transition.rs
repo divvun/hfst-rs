@@ -55,20 +55,33 @@ impl TransitionData for HfstTropicalTransducerTransitionData {
         Self::new()
     }
     fn from_symbols(
-        isymbol: Self::SymbolType,
-        osymbol: Self::SymbolType,
-        weight: Self::WeightType,
+        _isymbol: Self::SymbolType,
+        _osymbol: Self::SymbolType,
+        _weight: Self::WeightType,
     ) -> Self {
-        Self::new_symbols(isymbol, osymbol, weight)
+        // The generic 'HfstTransition<C>' path is never instantiated for this data
+        // type (the concrete 'HfstBasicTransition' in 'hfst_basic_transition' is
+        // used everywhere). Symbol interning now requires an owning graph's
+        // 'SymbolCoder', which this coderless trait method cannot supply.
+        unimplemented!(
+            "HfstTransition<HfstTropicalTransducerTransitionData>::from_symbols is never \
+             instantiated; symbol interning routes through a graph's SymbolCoder"
+        )
     }
     fn from_numbers(inumber: u32, onumber: u32, weight: Self::WeightType) -> Self {
         Self::new_numbers(inumber, onumber, weight)
     }
     fn data_get_input_symbol(&self) -> Self::SymbolType {
-        self.get_input_symbol()
+        unimplemented!(
+            "HfstTransition<HfstTropicalTransducerTransitionData>::get_input_symbol is never \
+             instantiated; symbol resolution routes through a graph's SymbolCoder"
+        )
     }
     fn data_get_output_symbol(&self) -> Self::SymbolType {
-        self.get_output_symbol()
+        unimplemented!(
+            "HfstTransition<HfstTropicalTransducerTransitionData>::get_output_symbol is never \
+             instantiated; symbol resolution routes through a graph's SymbolCoder"
+        )
     }
     fn data_get_input_number(&self) -> u32 {
         self.get_input_number()

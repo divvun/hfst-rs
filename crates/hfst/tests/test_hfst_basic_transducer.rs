@@ -70,17 +70,13 @@ fn expect_hfst_exception<F: FnOnce()>(f: F) -> Box<dyn std::any::Any + Send> {
 fn build_abcd() -> (HfstBasicTransducer, u32, u32) {
     let mut t = HfstBasicTransducer::new();
     let s1 = t.add_state_new();
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(s1, "a".to_string(), "b".to_string(), 1.2),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(s1, "a".to_string(), "b".to_string(), 1.2, t.coder_mut());
+    t.add_transition(0, &tr, true);
     let s2 = t.add_state_new();
-    t.add_transition(
-        s1,
-        &HfstBasicTransition::new_symbols(s2, "c".to_string(), "d".to_string(), 0.8),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(s2, "c".to_string(), "d".to_string(), 0.8, t.coder_mut());
+    t.add_transition(s1, &tr, true);
     t.set_final_weight(s2, &1.0);
     (t, s1, s2)
 }
@@ -96,22 +92,18 @@ fn construction() {
 
     let s1 = t.add_state_new();
     assert_eq!(s1, 1);
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(s1, "a".to_string(), "b".to_string(), 1.2),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(s1, "a".to_string(), "b".to_string(), 1.2, t.coder_mut());
+    t.add_transition(0, &tr, true);
     assert!(!t.is_final_state(s1));
 
     let s2 = t.add_state_new();
     // The C++ writes 'assert(s2 = 2)' (assignment, a typo for '=='); s2 already
     // equals 2 from add_state(), so the intended check is s2 == 2.
     assert_eq!(s2, 2);
-    t.add_transition(
-        s1,
-        &HfstBasicTransition::new_symbols(s2, "c".to_string(), "d".to_string(), 0.8),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(s2, "c".to_string(), "d".to_string(), 0.8, t.coder_mut());
+    t.add_transition(s1, &tr, true);
     assert!(!t.is_final_state(s2));
 
     t.set_final_weight(s2, &1.0);
@@ -202,16 +194,12 @@ fn substitute() {
 
     let mut tr = HfstBasicTransducer::new();
     tr.add_state_new();
-    tr.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0),
-        true,
-    );
-    tr.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0),
-        true,
-    );
+    let arc =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0, tr.coder_mut());
+    tr.add_transition(0, &arc, true);
+    let arc =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0, tr.coder_mut());
+    tr.add_transition(0, &arc, true);
     tr.set_final_weight(1, &0.0);
 
     let mut sps: StringPairSet = BTreeSet::new();
@@ -231,11 +219,14 @@ fn empty_string_exception() {
     // add_transition call can run.
     let payload = expect_hfst_exception(|| {
         let mut empty_symbol = HfstBasicTransducer::new();
-        empty_symbol.add_transition(
+        let tr = HfstBasicTransition::new_symbols(
             0,
-            &HfstBasicTransition::new_symbols(0, "".to_string(), "".to_string(), 0.0),
-            true,
+            "".to_string(),
+            "".to_string(),
+            0.0,
+            empty_symbol.coder_mut(),
         );
+        empty_symbol.add_transition(0, &tr, true);
     });
     assert!(
         payload.downcast_ref::<EmptyStringException>().is_some(),
@@ -259,37 +250,36 @@ fn unknown_and_identity_symbols() {
     let mut tr1 = HfstBasicTransducer::new();
     tr1.add_state(1);
     tr1.set_final_weight(1, &0.0);
-    tr1.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(
-            1,
-            "@_UNKNOWN_SYMBOL_@".to_string(),
-            "foo".to_string(),
-            0.0,
-        ),
-        true,
+    let arc = HfstBasicTransition::new_symbols(
+        1,
+        "@_UNKNOWN_SYMBOL_@".to_string(),
+        "foo".to_string(),
+        0.0,
+        tr1.coder_mut(),
     );
+    tr1.add_transition(0, &arc, true);
 
     // tr2 is [ [ ?:? ] [ bar:bar ] ]
     let mut tr2 = HfstBasicTransducer::new();
     tr2.add_state(1);
     tr2.add_state(2);
     tr2.set_final_weight(2, &0.0);
-    tr2.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(
-            1,
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            0.0,
-        ),
-        true,
-    );
-    tr2.add_transition(
+    let arc = HfstBasicTransition::new_symbols(
         1,
-        &HfstBasicTransition::new_symbols(2, "bar".to_string(), "bar".to_string(), 0.0),
-        true,
+        "@_IDENTITY_SYMBOL_@".to_string(),
+        "@_IDENTITY_SYMBOL_@".to_string(),
+        0.0,
+        tr2.coder_mut(),
     );
+    tr2.add_transition(0, &arc, true);
+    let arc = HfstBasicTransition::new_symbols(
+        2,
+        "bar".to_string(),
+        "bar".to_string(),
+        0.0,
+        tr2.coder_mut(),
+    );
+    tr2.add_transition(1, &arc, true);
 
     // Sanity: the constructed graphs have the expected final states.
     assert!(tr1.is_final_state(1));
@@ -314,16 +304,12 @@ fn renumber_states_compacts_in_discovery_order() {
     // 0 -(a:a)-> 2 -(b:b)-> 1(final); state 1 is reached only after state 2.
     let mut t = HfstBasicTransducer::new();
     t.add_state(2);
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(2, "a".to_string(), "a".to_string(), 0.0),
-        true,
-    );
-    t.add_transition(
-        2,
-        &HfstBasicTransition::new_symbols(1, "b".to_string(), "b".to_string(), 0.0),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(2, "a".to_string(), "a".to_string(), 0.0, t.coder_mut());
+    t.add_transition(0, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(1, "b".to_string(), "b".to_string(), 0.0, t.coder_mut());
+    t.add_transition(2, &tr, true);
     t.set_final_weight(1, &0.5);
 
     let r = t.renumber_states();
@@ -335,13 +321,13 @@ fn renumber_states_compacts_in_discovery_order() {
     let s0: Vec<_> = r.iter().next().unwrap().iter().collect();
     assert_eq!(s0.len(), 1);
     assert_eq!(s0[0].get_target_state(), 1);
-    assert_eq!(s0[0].get_input_symbol(), "a");
+    assert_eq!(s0[0].get_input_symbol(r.coder()), "a");
 
     // new id 1 (old state 2): single b:b arc to old state 1, now id 2.
     let s1: Vec<_> = r.iter().nth(1).unwrap().iter().collect();
     assert_eq!(s1.len(), 1);
     assert_eq!(s1[0].get_target_state(), 2);
-    assert_eq!(s1[0].get_input_symbol(), "b");
+    assert_eq!(s1[0].get_input_symbol(r.coder()), "b");
     assert!(!r.is_final_state(1));
 
     // new id 2 (old final state 1): no arcs, final, weight carried over.
@@ -362,16 +348,12 @@ fn kill_paths_drops_matching_arcs() {
     // 0 -(a:a)-> 1(final), 0 -(x:x)-> 2(final)
     let mut t = HfstBasicTransducer::new();
     t.add_state(2);
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 0.0),
-        true,
-    );
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(2, "x".to_string(), "x".to_string(), 0.0),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 0.0, t.coder_mut());
+    t.add_transition(0, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(2, "x".to_string(), "x".to_string(), 0.0, t.coder_mut());
+    t.add_transition(0, &tr, true);
     t.set_final_weight(1, &0.0);
     t.set_final_weight(2, &0.0);
 
@@ -380,13 +362,13 @@ fn kill_paths_drops_matching_arcs() {
     // State 0 keeps only the a:a arc; the x:x arc is gone.
     let s0: Vec<_> = killed.iter().next().unwrap().iter().collect();
     assert_eq!(s0.len(), 1);
-    assert_eq!(s0[0].get_input_symbol(), "a");
+    assert_eq!(s0[0].get_input_symbol(killed.coder()), "a");
 
     // No surviving transition anywhere mentions the killed symbol.
     for transitions in killed.iter() {
         for arc in transitions.iter() {
-            assert_ne!(arc.get_input_symbol(), "x");
-            assert_ne!(arc.get_output_symbol(), "x");
+            assert_ne!(arc.get_input_symbol(killed.coder()), "x");
+            assert_ne!(arc.get_output_symbol(killed.coder()), "x");
         }
     }
 }
@@ -401,16 +383,12 @@ fn input_symbols_used_collects_input_side_only() {
     verbose_print("HfstBasicTransducer: input_symbols_used");
 
     let mut t = HfstBasicTransducer::new();
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "x".to_string(), 0.0),
-        true,
-    );
-    t.add_transition(
-        1,
-        &HfstBasicTransition::new_symbols(2, "b".to_string(), "y".to_string(), 0.0),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "x".to_string(), 0.0, t.coder_mut());
+    t.add_transition(0, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(2, "b".to_string(), "y".to_string(), 0.0, t.coder_mut());
+    t.add_transition(1, &tr, true);
     t.set_final_weight(2, &0.0);
 
     let inputs = t.input_symbols_used();
@@ -431,21 +409,17 @@ fn pair_target_state_with_identity_fallback() {
     verbose_print("HfstBasicTransducer: pair_target_state");
 
     let mut t = HfstBasicTransducer::new();
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0),
-        true,
+    let tr =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0, t.coder_mut());
+    t.add_transition(0, &tr, true);
+    let tr = HfstBasicTransition::new_symbols(
+        2,
+        "@_IDENTITY_SYMBOL_@".to_string(),
+        "@_IDENTITY_SYMBOL_@".to_string(),
+        0.0,
+        t.coder_mut(),
     );
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(
-            2,
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            0.0,
-        ),
-        true,
-    );
+    t.add_transition(0, &tr, true);
     t.set_final_weight(1, &0.0);
     t.set_final_weight(2, &0.0);
 
@@ -472,16 +446,12 @@ fn transform_weights_applies_per_arc_and_final_symbol_aware() {
     verbose_print("HfstBasicTransducer: transform_weights");
 
     let mut t = HfstBasicTransducer::new();
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 1.0),
-        true,
-    );
-    t.add_transition(
-        1,
-        &HfstBasicTransition::new_symbols(2, "b".to_string(), "b".to_string(), 1.0),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 1.0, t.coder_mut());
+    t.add_transition(0, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(2, "b".to_string(), "b".to_string(), 1.0, t.coder_mut());
+    t.add_transition(1, &tr, true);
     t.set_final_weight(2, &0.5);
 
     // +10 only to arcs whose input symbol is "a"; finals (None) get +1.
@@ -512,11 +482,14 @@ fn summarize_counts_states_arcs_and_alphabet() {
 
     let mut t = HfstBasicTransducer::new();
     for (from, to, sym) in [(0, 1, "c"), (1, 2, "a"), (2, 3, "t"), (2, 4, "b")] {
-        t.add_transition(
-            from,
-            &HfstBasicTransition::new_symbols(to, sym.to_string(), sym.to_string(), 0.0),
-            true,
+        let tr = HfstBasicTransition::new_symbols(
+            to,
+            sym.to_string(),
+            sym.to_string(),
+            0.0,
+            t.coder_mut(),
         );
+        t.add_transition(from, &tr, true);
     }
     t.set_final_weight(3, &0.0);
     t.set_final_weight(4, &0.0);
@@ -550,8 +523,8 @@ fn iterating_through() {
                 "{}\t{}\t{}\t{}\t{}",
                 source_state,
                 tr_it.get_target_state(),
-                tr_it.get_input_symbol(),
-                tr_it.get_output_symbol(),
+                tr_it.get_input_symbol(t.coder()),
+                tr_it.get_output_symbol(t.coder()),
                 tr_it.get_weight()
             );
         }

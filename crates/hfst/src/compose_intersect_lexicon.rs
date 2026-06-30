@@ -42,7 +42,6 @@ use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_data_types::size_t_to_uint;
 use crate::hfst_flag_diacritics::FdOperation;
-use crate::hfst_tropical_transducer_transition_data::HfstTropicalTransducerTransitionData;
 
 // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.symbol-transition-map]
 // typedef ComposeIntersectFst::SymbolTransitionMap SymbolTransitionMap;
@@ -111,9 +110,8 @@ impl ComposeIntersectLexicon {
     // { return FdOperation::is_diacritic
     //     (HfstTropicalTransducerTransitionData::get_symbol(hfst::size_t_to_uint(symbol))); }
     fn is_flag_diacritic(&self, symbol: usize) -> bool {
-        FdOperation::is_diacritic(&HfstTropicalTransducerTransitionData::get_symbol(
-            size_t_to_uint(symbol),
-        ))
+        // 'symbol' is a number in the shared (lexicon/canonical) coding.
+        FdOperation::is_diacritic(&self.base.coder().get_symbol(size_t_to_uint(symbol)))
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.clear-all-info-fn]
@@ -264,10 +262,9 @@ impl ComposeIntersectLexicon {
             })
             .collect();
 
+        let epsilon_number = self.base.coder_mut().get_number("@_EPSILON_SYMBOL_@") as usize;
         for (first, second) in entries.iter() {
-            if *first
-                == HfstTropicalTransducerTransitionData::get_number("@_EPSILON_SYMBOL_@") as usize
-            {
+            if *first == epsilon_number {
                 if allow_lexicon_epsilons {
                     self.lexicon_skip_symbol_compose(second, p.1, state);
                     //lexicon_eps_transition_found = true;
@@ -280,14 +277,8 @@ impl ComposeIntersectLexicon {
             }
         }
 
-        self.rule_skip_symbol_compose(
-            rules.get_transitions(
-                p.1,
-                HfstTropicalTransducerTransitionData::get_number("@_EPSILON_SYMBOL_@") as usize,
-            ),
-            p.0,
-            state,
-        );
+        let epsilon_number = self.base.coder_mut().get_number("@_EPSILON_SYMBOL_@") as usize;
+        self.rule_skip_symbol_compose(rules.get_transitions(p.1, epsilon_number), p.0, state);
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.lexicon-skip-symbol-compose-fn]
@@ -346,16 +337,13 @@ impl ComposeIntersectLexicon {
         weight: f32,
         target: HfstState,
     ) {
-        self.result.add_transition(
-            origin,
-            &HfstBasicTransition::new_symbols(
-                target,
-                HfstTropicalTransducerTransitionData::get_symbol(size_t_to_uint(input)),
-                HfstTropicalTransducerTransitionData::get_symbol(size_t_to_uint(output)),
-                weight,
-            ),
-            true,
-        );
+        // 'input'/'output' are numbers in the shared (lexicon/canonical) coding;
+        // resolve them there, then re-intern into the result transducer's coder.
+        let isym = self.base.coder().get_symbol(size_t_to_uint(input));
+        let osym = self.base.coder().get_symbol(size_t_to_uint(output));
+        let tr =
+            HfstBasicTransition::new_symbols(target, isym, osym, weight, self.result.coder_mut());
+        self.result.add_transition(origin, &tr, true);
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.identity-compose-fn]

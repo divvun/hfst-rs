@@ -1396,7 +1396,7 @@ impl LexcCompiler {
         for state in fsm.states_and_transitions() {
             // Go through all transitions
             for tr in state {
-                let alph2 = tr.get_output_symbol();
+                let alph2 = tr.get_output_symbol(fsm.coder());
 
                 if !alph2.starts_with("@@ANOTHER_EPSILON@@")
                     && !alph2.starts_with("$_LEXC_JOINER.")

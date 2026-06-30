@@ -117,14 +117,14 @@ pub fn get_states_and_symbols(
             first_transition += 1;
             // If we don't already have a symbol table, collect symbols
             if harmonizer.is_none() {
-                if FdOperation::is_diacritic(&tr_it.get_input_symbol())
-                    || PmatchAlphabet::is_insertion(&tr_it.get_input_symbol())
-                {
-                    flag_diacritics.insert(tr_it.get_input_symbol());
+                let coder = t.coder();
+                let isym = tr_it.get_input_symbol(coder);
+                if FdOperation::is_diacritic(&isym) || PmatchAlphabet::is_insertion(&isym) {
+                    flag_diacritics.insert(isym);
                 } else {
-                    input_symbols.insert(tr_it.get_input_symbol());
+                    input_symbols.insert(isym);
                 }
-                other_symbols.insert(tr_it.get_output_symbol());
+                other_symbols.insert(tr_it.get_output_symbol(coder));
             }
         }
         state_number += 1;
@@ -197,13 +197,14 @@ pub fn get_states_and_symbols(
         // collect into a temp so the immutable 't' borrow doesn't overlap the
         // mutable 'state_placeholders[state_number]' borrow
         let trs: Vec<HfstBasicTransition> = t.transitions(state_number as u32).clone();
+        let coder = t.coder();
         for tr_it in trs.iter() {
             let in_sym = string_symbol_map
-                .get(&tr_it.get_input_symbol())
+                .get(&tr_it.get_input_symbol(coder))
                 .copied()
                 .unwrap_or(0);
             let out_sym = string_symbol_map
-                .get(&tr_it.get_output_symbol())
+                .get(&tr_it.get_output_symbol(coder))
                 .copied()
                 .unwrap_or(0);
             // add input in case we're seeing it the first time
@@ -297,16 +298,14 @@ impl ConversionFunctions {
                     );
                     agenda.push(target);
                 }
-                basic.add_transition(
-                    current_state,
-                    &HfstBasicTransition::new_symbols(
-                        state_map[&target],
-                        symbols[in_sym as usize].clone(),
-                        symbols[out_sym as usize].clone(),
-                        weight,
-                    ),
-                    true,
+                let arc = HfstBasicTransition::new_symbols(
+                    state_map[&target],
+                    symbols[in_sym as usize].clone(),
+                    symbols[out_sym as usize].clone(),
+                    weight,
+                    basic.coder_mut(),
                 );
+                basic.add_transition(current_state, &arc, true);
             }
         }
 

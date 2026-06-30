@@ -36,6 +36,7 @@ use crate::hfst_output_stream::HfstOutputStream;
 use crate::hfst_symbol_defs::StringSet;
 use crate::hfst_symbol_defs::internal_identity;
 use crate::hfst_transducer::HfstTransducer;
+use crate::hfst_tropical_transducer_transition_data::SymbolCoder;
 use crate::lexc::LexcCompiler;
 use crate::xre::XreCompiler;
 use std::io::BufRead;
@@ -773,7 +774,11 @@ impl XfstCompiler {
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.print-arcs-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.print-arcs-fn]
-    fn print_transitions(&mut self, transitions: &HfstBasicTransitions) -> u32 {
+    fn print_transitions(
+        &mut self,
+        transitions: &HfstBasicTransitions,
+        coder: &SymbolCoder,
+    ) -> u32 {
         let mut first_loop = true;
         let mut arc_number: u32 = 1;
         for transition in transitions.iter() {
@@ -784,8 +789,8 @@ impl XfstCompiler {
                 print!(", ");
             }
             self.flush();
-            let isymbol = transition.get_input_symbol();
-            let osymbol = transition.get_output_symbol();
+            let isymbol = transition.get_input_symbol(coder);
+            let osymbol = transition.get_output_symbol(coder);
 
             if isymbol == osymbol {
                 print!(" {}. {}", arc_number, isymbol);
@@ -1874,7 +1879,10 @@ impl XfstCompiler {
 
         for it in fsm.iter() {
             for tr_it in it.iter() {
-                label_set.insert((tr_it.get_input_symbol(), tr_it.get_output_symbol()));
+                label_set.insert((
+                    tr_it.get_input_symbol(fsm.coder()),
+                    tr_it.get_output_symbol(fsm.coder()),
+                ));
             }
         }
 
@@ -1934,7 +1942,10 @@ impl XfstCompiler {
         for it in fsm.iter() {
             for tr_it in it.iter() {
                 *label_map
-                    .entry((tr_it.get_input_symbol(), tr_it.get_output_symbol()))
+                    .entry((
+                        tr_it.get_input_symbol(fsm.coder()),
+                        tr_it.get_output_symbol(fsm.coder()),
+                    ))
                     .or_insert(0) += 1;
             }
         }
@@ -3046,8 +3057,8 @@ fn is_unknown_or_identity_used_in_transducer(
     let fsm = HfstBasicTransducer::new_from_transducer(t);
     for it in fsm.iter() {
         for tr_it in it.iter() {
-            let istr = tr_it.get_input_symbol();
-            let ostr = tr_it.get_input_symbol();
+            let istr = tr_it.get_input_symbol(fsm.coder());
+            let ostr = tr_it.get_input_symbol(fsm.coder());
             if istr == crate::hfst_symbol_defs::internal_unknown
                 || ostr == crate::hfst_symbol_defs::internal_unknown
             {
@@ -4243,7 +4254,10 @@ impl XfstCompiler {
         let fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
         for it in fsm.iter() {
             for tr_it in it.iter() {
-                label_set.insert((tr_it.get_input_symbol(), tr_it.get_output_symbol()));
+                label_set.insert((
+                    tr_it.get_input_symbol(fsm.coder()),
+                    tr_it.get_output_symbol(fsm.coder()),
+                ));
             }
         }
         let result_type = result.borrow().get_type();
@@ -4388,7 +4402,7 @@ impl XfstCompiler {
         // transitions of current state
         let mut transitions: HfstBasicTransitions = net.index(0).clone();
         // number of arcs in current state
-        let mut number_of_arcs = self.print_transitions(&transitions);
+        let mut number_of_arcs = self.print_transitions(&transitions, net.coder());
 
         // index after which the history added during inspect_net is ignored
         let ind = self.current_history_index();
@@ -4443,8 +4457,8 @@ impl XfstCompiler {
                     let tr = transitions[(number - 1) as usize].clone();
                     print!(
                         "  {}:{} --> ",
-                        tr.get_input_symbol(),
-                        tr.get_output_symbol()
+                        tr.get_input_symbol(net.coder()),
+                        tr.get_output_symbol(net.coder())
                     );
                     Self::append_state_to_paths(
                         &mut whole_path,
@@ -4462,7 +4476,7 @@ impl XfstCompiler {
                 print!(" (final)");
             }
             println!();
-            number_of_arcs = self.print_transitions(&transitions);
+            number_of_arcs = self.print_transitions(&transitions, net.coder());
         } // end of while loop
 
         self.ignore_history_after_index(ind);
@@ -5786,8 +5800,8 @@ impl XfstCompiler {
 
         for it in fsm.iter() {
             for tr_it in it {
-                let isymbol = tr_it.get_input_symbol();
-                let osymbol = tr_it.get_output_symbol();
+                let isymbol = tr_it.get_input_symbol(fsm.coder());
+                let osymbol = tr_it.get_output_symbol(fsm.coder());
                 if isymbol != osymbol && (isymbol == labelstr || osymbol == labelstr) {
                     eprintln!(
                         "label '{}' is used as a symbol on one side of an arc, cannot substitute",
@@ -5871,8 +5885,8 @@ impl XfstCompiler {
                         break;
                     }
                     for tr_it in it {
-                        if target_label.0 == tr_it.get_input_symbol()
-                            && target_label.1 == tr_it.get_output_symbol()
+                        if target_label.0 == tr_it.get_input_symbol(fsm.coder())
+                            && target_label.1 == tr_it.get_output_symbol(fsm.coder())
                         {
                             target_label_found = true;
                             break;

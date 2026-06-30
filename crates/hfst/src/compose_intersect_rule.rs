@@ -31,7 +31,6 @@ use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_data_types::size_t_to_uint;
 use crate::hfst_symbol_defs::StringSet;
-use crate::hfst_tropical_transducer_transition_data::HfstTropicalTransducerTransitionData;
 
 // [spec:hfst:def:compose-intersect-rule.hfst.implementations.compose-intersect-rule]
 pub struct ComposeIntersectRule {
@@ -72,10 +71,10 @@ impl ComposeIntersectRule {
     //     symbols.count(HfstTropicalTransducerTransitionData::get_symbol(hfst::size_t_to_uint(symbol)))
     //   > 0; }
     pub fn known_symbol(&self, symbol: usize) -> bool {
+        // 'symbol' is a number in the shared (lexicon/canonical) coding, which the
+        // rule has been reindexed onto, so its own coder resolves it.
         self.symbols
-            .contains(&HfstTropicalTransducerTransitionData::get_symbol(
-                size_t_to_uint(symbol),
-            ))
+            .contains(&self.base.coder().get_symbol(size_t_to_uint(symbol)))
     }
 
     // -- inherited (public) interface of ComposeIntersectFst, re-exposed by

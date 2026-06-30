@@ -549,11 +549,9 @@ fn function_push_weights() {
     // HFST basic transducer [a:b] with transition weight 0.3, final weight 0.5.
     let mut t = HfstBasicTransducer::new();
     t.add_state(1);
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.3),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.3, t.coder_mut());
+    t.add_transition(0, &tr, true);
     t.set_final_weight(1, &0.5);
 
     // Convert to tropical OpenFst and push weights toward final / initial.
@@ -582,11 +580,9 @@ fn function_set_final_weights_transform_weights(type_: ImplementationType) {
 
     let mut t = HfstBasicTransducer::new();
     t.add_state(1);
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.3),
-        true,
-    );
+    let arc =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.3, t.coder_mut());
+    t.add_transition(0, &arc, true);
     t.set_final_weight(1, &0.5);
 
     let mut tr = HfstTransducer::new_from_basic(&t, type_);
@@ -956,9 +952,9 @@ fn kill_paths_facade_tropical() {
     let mut has_a = false;
     for transitions in killed_basic.iter() {
         for arc in transitions.iter() {
-            assert_ne!(arc.get_input_symbol(), "x");
-            assert_ne!(arc.get_output_symbol(), "x");
-            if arc.get_input_symbol() == "a" {
+            assert_ne!(arc.get_input_symbol(killed_basic.coder()), "x");
+            assert_ne!(arc.get_output_symbol(killed_basic.coder()), "x");
+            if arc.get_input_symbol(killed_basic.coder()) == "a" {
                 has_a = true;
             }
         }
@@ -1040,16 +1036,22 @@ fn affix_guessify_adds_one_guess_state_with_identity_loop() {
 
     let build_input = || {
         let mut basic = HfstBasicTransducer::new();
-        basic.add_transition(
-            0,
-            &HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 0.0),
-            true,
-        );
-        basic.add_transition(
+        let tr = HfstBasicTransition::new_symbols(
             1,
-            &HfstBasicTransition::new_symbols(2, "b".to_string(), "b".to_string(), 0.0),
-            true,
+            "a".to_string(),
+            "a".to_string(),
+            0.0,
+            basic.coder_mut(),
         );
+        basic.add_transition(0, &tr, true);
+        let tr = HfstBasicTransition::new_symbols(
+            2,
+            "b".to_string(),
+            "b".to_string(),
+            0.0,
+            basic.coder_mut(),
+        );
+        basic.add_transition(1, &tr, true);
         basic.set_final_weight(2, &0.0);
         HfstTransducer::new_from_basic(&basic, TROPICAL_OPENFST_TYPE)
     };
@@ -1059,7 +1061,8 @@ fn affix_guessify_adds_one_guess_state_with_identity_loop() {
         let b = HfstBasicTransducer::from_transducer(t);
         b.iter().enumerate().any(|(s, transitions)| {
             transitions.iter().any(|arc| {
-                arc.get_input_symbol() == internal_identity && arc.get_target_state() as usize == s
+                arc.get_input_symbol(b.coder()) == internal_identity
+                    && arc.get_target_state() as usize == s
             })
         })
     };

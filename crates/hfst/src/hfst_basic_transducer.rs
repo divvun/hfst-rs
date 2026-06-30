@@ -299,10 +299,11 @@ pub struct HfstBasicTransducer {
     alphabet: HfstAlphabet,
     /** @brief The name of the graph. */
     pub name: String,
-    /* This graph's own symbol<->number coding (idiom5 keystone K2). Today the
-    arcs still resolve through the process-global coder; K3 switches resolution
-    and interning to this field and harmonizes across graphs on binary ops. */
-    #[allow(dead_code)] // read once K3 routes resolution through it
+    /* This graph's own symbol<->number coding (idiom5 keystone). All tropical
+    symbol resolution (number->string) and interning (string->number) for this
+    graph's arcs goes through it; binary ops harmonize two graphs' codings via
+    'SymbolCoder::create_translator_from'. There is no longer a process-global
+    coder. */
     coder: SymbolCoder,
 }
 
@@ -447,10 +448,10 @@ impl HfstBasicTransducer {
         for it in self.state_vector.iter() {
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data();
-                if !self.alphabet.contains(&data.get_input_symbol()) {
+                if !self.alphabet.contains(&data.get_input_symbol(&self.coder)) {
                     return false;
                 }
-                if !self.alphabet.contains(&data.get_output_symbol()) {
+                if !self.alphabet.contains(&data.get_output_symbol(&self.coder)) {
                     return false;
                 }
             }
@@ -479,8 +480,8 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-symbol-number-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.get-symbol-number-fn]
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.get-symbol-number-fn]
-    pub fn get_symbol_number(&self, symbol: &HfstSymbol) -> u32 {
-        HfstTropicalTransducerTransitionData::get_number(symbol)
+    pub fn get_symbol_number(&mut self, symbol: &HfstSymbol) -> u32 {
+        self.coder.get_number(symbol)
     }
 
     /* For internal optimization: reserve space for 'number_of_states' states. */
@@ -558,10 +559,7 @@ impl HfstBasicTransducer {
         }
 
         let mut symbols_found: Vec<bool> = Vec::new();
-        symbols_found.resize(
-            (HfstTropicalTransducerTransitionData::get_max_number() + 1) as usize,
-            false,
-        );
+        symbols_found.resize((self.coder.get_max_number() + 1) as usize, false);
 
         // Go through all transitions
         for it in self.state_vector.iter() {
@@ -575,8 +573,7 @@ impl HfstBasicTransducer {
         // Remove symbols in 'symbols' from the alphabet if they did not occur.
         for &symbol in symbols.iter() {
             if !symbols_found[symbol as usize] {
-                self.alphabet
-                    .remove(&HfstTropicalTransducerTransitionData::get_symbol(symbol));
+                self.alphabet.remove(&self.coder.get_symbol(symbol));
             }
         }
     }
@@ -590,8 +587,8 @@ impl HfstBasicTransducer {
         for it in self.state_vector.iter() {
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data();
-                retval.insert(data.get_input_symbol());
-                retval.insert(data.get_output_symbol());
+                retval.insert(data.get_input_symbol(&self.coder));
+                retval.insert(data.get_output_symbol(&self.coder));
             }
         }
         retval
@@ -605,7 +602,7 @@ impl HfstBasicTransducer {
         let mut retval = HfstAlphabet::new();
         for it in self.state_vector.iter() {
             for tr_it in it.iter() {
-                retval.insert(tr_it.get_transition_data().get_input_symbol());
+                retval.insert(tr_it.get_transition_data().get_input_symbol(&self.coder));
             }
         }
         retval
@@ -627,11 +624,13 @@ impl HfstBasicTransducer {
     ) -> Option<HfstState> {
         let mut identity_target: Option<HfstState> = None;
         for it in self.transitions(s).iter() {
-            if it.get_input_symbol() == isymbol && it.get_output_symbol() == osymbol {
+            if it.get_input_symbol(&self.coder) == isymbol
+                && it.get_output_symbol(&self.coder) == osymbol
+            {
                 return Some(it.get_target_state());
             }
-            if it.get_input_symbol() == crate::hfst_symbol_defs::internal_identity
-                && it.get_output_symbol() == crate::hfst_symbol_defs::internal_identity
+            if it.get_input_symbol(&self.coder) == crate::hfst_symbol_defs::internal_identity
+                && it.get_output_symbol(&self.coder) == crate::hfst_symbol_defs::internal_identity
             {
                 identity_target = Some(it.get_target_state());
             }
@@ -681,11 +680,14 @@ impl HfstBasicTransducer {
                     rebuilt.insert(arc.get_target_state(), state_count);
                     state_count += 1;
                 }
+                let isym = arc.get_input_symbol(&self.coder);
+                let osym = arc.get_output_symbol(&self.coder);
                 let nu = HfstBasicTransition::new_symbols(
                     rebuilt[&arc.get_target_state()],
-                    arc.get_input_symbol(),
-                    arc.get_output_symbol(),
+                    isym,
+                    osym,
                     arc.get_weight(),
+                    replication.coder_mut(),
                 );
                 let src_rebuilt = rebuilt[&source_state];
                 replication.add_transition(src_rebuilt, &nu, true);
@@ -720,7 +722,9 @@ impl HfstBasicTransducer {
                 state_count += 1;
             }
             for arc in state.iter() {
-                if arc.get_input_symbol() == symbol || arc.get_output_symbol() == symbol {
+                if arc.get_input_symbol(&self.coder) == symbol
+                    || arc.get_output_symbol(&self.coder) == symbol
+                {
                     // killed arc: do not replicate
                     continue;
                 }
@@ -735,11 +739,14 @@ impl HfstBasicTransducer {
                     rebuilt.insert(arc.get_target_state(), state_count);
                     state_count += 1;
                 }
+                let isym = arc.get_input_symbol(&self.coder);
+                let osym = arc.get_output_symbol(&self.coder);
                 let nu = HfstBasicTransition::new_symbols(
                     rebuilt[&arc.get_target_state()],
-                    arc.get_input_symbol(),
-                    arc.get_output_symbol(),
+                    isym,
+                    osym,
                     arc.get_weight(),
+                    replication.coder_mut(),
                 );
                 replication.add_transition(rebuilt[&source_state], &nu, true);
             }
@@ -793,10 +800,16 @@ impl HfstBasicTransducer {
                     rebuilt.insert(target, state_count);
                     state_count += 1;
                 }
-                let isym = arc.get_input_symbol();
-                let osym = arc.get_output_symbol();
+                let isym = arc.get_input_symbol(&self.coder);
+                let osym = arc.get_output_symbol(&self.coder);
                 let nuweight = f(arc.get_weight(), Some(&isym), Some(&osym));
-                let nu = HfstBasicTransition::new_symbols(rebuilt[&target], isym, osym, nuweight);
+                let nu = HfstBasicTransition::new_symbols(
+                    rebuilt[&target],
+                    isym,
+                    osym,
+                    nuweight,
+                    replication.coder_mut(),
+                );
                 replication.add_transition(rebuilt[&source_state], &nu, true);
             }
             source_state += 1;
@@ -846,41 +859,39 @@ impl HfstBasicTransducer {
             for tr_it in transitions {
                 arcs += 1;
                 arcs_here += 1;
-                found_alphabet.insert(tr_it.get_input_symbol());
-                found_alphabet.insert(tr_it.get_output_symbol());
+                let in_sym = tr_it.get_input_symbol(&self.coder);
+                let out_sym = tr_it.get_output_symbol(&self.coder);
+                found_alphabet.insert(in_sym.clone());
+                found_alphabet.insert(out_sym.clone());
 
                 *symbol_pairs
-                    .entry((tr_it.get_input_symbol(), tr_it.get_output_symbol()))
+                    .entry((in_sym.clone(), out_sym.clone()))
                     .or_insert(0) += 1;
 
-                if tr_it.get_input_symbol() != tr_it.get_output_symbol() {
+                if in_sym != out_sym {
                     acceptor = false;
                 }
-                if is_epsilon(&tr_it.get_input_symbol()) && is_epsilon(&tr_it.get_output_symbol()) {
+                if is_epsilon(&in_sym) && is_epsilon(&out_sym) {
                     io_epsilons += 1;
                     input_epsilons += 1;
                     output_epsilons += 1;
                     input_deterministic = false;
                     output_deterministic = false;
-                } else if is_epsilon(&tr_it.get_input_symbol()) {
+                } else if is_epsilon(&in_sym) {
                     input_epsilons += 1;
                     input_deterministic = false;
-                } else if is_epsilon(&tr_it.get_output_symbol()) {
+                } else if is_epsilon(&out_sym) {
                     output_epsilons += 1;
                     output_deterministic = false;
                 }
-                input_ambiguity.entry(tr_it.get_input_symbol()).or_insert(0);
-                output_ambiguity
-                    .entry(tr_it.get_output_symbol())
-                    .or_insert(0);
-                let in_amb = input_ambiguity.get_mut(&tr_it.get_input_symbol()).unwrap();
+                input_ambiguity.entry(in_sym.clone()).or_insert(0);
+                output_ambiguity.entry(out_sym.clone()).or_insert(0);
+                let in_amb = input_ambiguity.get_mut(&in_sym).unwrap();
                 *in_amb += 1;
                 if *in_amb > 1 {
                     input_deterministic = false;
                 }
-                let out_amb = output_ambiguity
-                    .get_mut(&tr_it.get_output_symbol())
-                    .unwrap();
+                let out_amb = output_ambiguity.get_mut(&out_sym).unwrap();
                 *out_amb += 1;
                 if *out_amb > 1 {
                     output_deterministic = false;
@@ -980,6 +991,64 @@ impl HfstBasicTransducer {
         &self.alphabet
     }
 
+    /// This graph's own symbol<->number coding (idiom5 keystone). All tropical
+    /// symbol resolution (number->string) and interning (string->number) for
+    /// this graph's arcs goes through it; binary ops harmonize two graphs'
+    /// codings via [`SymbolCoder::create_translator_from`].
+    pub fn coder(&self) -> &SymbolCoder {
+        &self.coder
+    }
+
+    pub fn coder_mut(&mut self) -> &mut SymbolCoder {
+        &mut self.coder
+    }
+
+    /// Intern this graph's coder symbols *and* its full alphabet into the shared
+    /// `canonical` coder, without changing this graph. Call this for every graph
+    /// participating in a binary op BEFORE [`Self::reindex_into`] so that
+    /// `canonical` already holds a number for every symbol any of them uses; that
+    /// makes the per-graph numbering agree even for alphabet-only symbols (which a
+    /// graph's own coder may lack until interned).
+    pub fn intern_into(&self, canonical: &mut SymbolCoder) {
+        for symbol in self.coder.number2symbol_slice() {
+            if !symbol.is_empty() {
+                canonical.get_number(symbol);
+            }
+        }
+        for symbol in self.alphabet.iter() {
+            if !symbol.is_empty() {
+                canonical.get_number(symbol);
+            }
+        }
+    }
+
+    /// Re-number every arc so its symbols are coded by the shared `canonical`
+    /// coder, then adopt a clone of `canonical` as this graph's own coding. Pair
+    /// with [`Self::intern_into`]: intern *all* participating graphs into one
+    /// `canonical` first, then `reindex_into` each. After that they all share one
+    /// numbering, so their symbol numbers can be combined directly — the
+    /// per-graph-coder replacement for the former process-global numbering,
+    /// applied ONCE at a binary-op boundary.
+    pub fn reindex_into(&mut self, canonical: &mut SymbolCoder) {
+        // translator[old_number] = number of the same symbol in the shared coding.
+        let translator = canonical.create_translator_from(&self.coder);
+        for transitions in self.state_vector.iter_mut() {
+            for i in 0..transitions.len() {
+                let tr = &transitions[i];
+                let new_in = translator[tr.get_input_number() as usize];
+                let new_out = translator[tr.get_output_number() as usize];
+                transitions[i] = HfstBasicTransition::new_numbers(
+                    tr.get_target_state(),
+                    new_in,
+                    new_out,
+                    tr.get_weight(),
+                    false,
+                );
+            }
+        }
+        self.coder = canonical.clone();
+    }
+
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-transition-pairs-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-transition-pairs-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.get-transition-pairs-fn]
@@ -990,8 +1059,8 @@ impl HfstBasicTransducer {
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data();
                 retval.insert(StringPair::from((
-                    data.get_input_symbol(),
-                    data.get_output_symbol(),
+                    data.get_input_symbol(&self.coder),
+                    data.get_output_symbol(&self.coder),
                 )));
             }
         }
@@ -1005,7 +1074,7 @@ impl HfstBasicTransducer {
         for it in self.state_vector.iter() {
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data();
-                retval.insert(data.get_input_symbol());
+                retval.insert(data.get_input_symbol(&self.coder));
             }
         }
         retval
@@ -1018,7 +1087,7 @@ impl HfstBasicTransducer {
         for it in self.state_vector.iter() {
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data();
-                retval.insert(data.get_output_symbol());
+                retval.insert(data.get_output_symbol(&self.coder));
             }
         }
         retval
@@ -1067,8 +1136,8 @@ impl HfstBasicTransducer {
         self.add_state(s);
         self.add_state(transition.get_target_state());
         if add_symbols_to_alphabet {
-            self.alphabet.insert(data.get_input_symbol());
-            self.alphabet.insert(data.get_output_symbol());
+            self.alphabet.insert(data.get_input_symbol(&self.coder));
+            self.alphabet.insert(data.get_output_symbol(&self.coder));
         }
         self.state_vector[s as usize].push(transition.clone());
     }
@@ -1087,14 +1156,17 @@ impl HfstBasicTransducer {
             return;
         }
 
+        let tr_isym = transition.get_input_symbol(&self.coder);
+        let tr_osym = transition.get_output_symbol(&self.coder);
+
         // find the transitions to be removed (indices, ascending)
         let mut indices_to_remove: Vec<usize> = Vec::new();
         {
             let transitions = &self.state_vector[s as usize];
             for (i, it) in transitions.iter().enumerate() {
                 // weight is ignored
-                if it.get_input_symbol() == transition.get_input_symbol()
-                    && it.get_output_symbol() == transition.get_output_symbol()
+                if it.get_input_symbol(&self.coder) == tr_isym
+                    && it.get_output_symbol(&self.coder) == tr_osym
                     && it.get_target_state() == transition.get_target_state()
                 {
                     indices_to_remove.push(i);
@@ -1108,11 +1180,11 @@ impl HfstBasicTransducer {
 
         if remove_symbols_from_alphabet {
             let alpha = self.symbols_used();
-            if !alpha.contains(&transition.get_input_symbol()) {
-                self.remove_symbol_from_alphabet(&transition.get_input_symbol());
+            if !alpha.contains(&tr_isym) {
+                self.remove_symbol_from_alphabet(&tr_isym);
             }
-            if !alpha.contains(&transition.get_output_symbol()) {
-                self.remove_symbol_from_alphabet(&transition.get_output_symbol());
+            if !alpha.contains(&tr_osym) {
+                self.remove_symbol_from_alphabet(&tr_osym);
             }
         }
     }
@@ -1212,7 +1284,14 @@ impl HfstBasicTransducer {
         self.state_vector[s2 as usize] = s1_copy;
 
         // ----- Go through all states -----
-        for it in self.state_vector.iter_mut() {
+        // Split the borrow: interning while iterating state_vector needs both
+        // '&mut state_vector' and '&mut coder'.
+        let Self {
+            state_vector,
+            coder,
+            ..
+        } = self;
+        for it in state_vector.iter_mut() {
             // Go through all transitions
             for i in 0..it.len() {
                 let target = it[i].get_target_state();
@@ -1225,10 +1304,10 @@ impl HfstBasicTransducer {
                 }
 
                 if new_target != target {
-                    let isym = it[i].get_input_symbol();
-                    let osym = it[i].get_output_symbol();
+                    let isym = it[i].get_input_symbol(coder);
+                    let osym = it[i].get_output_symbol(coder);
                     let w = it[i].get_weight();
-                    let tr = HfstBasicTransition::new_symbols(new_target, isym, osym, w);
+                    let tr = HfstBasicTransition::new_symbols(new_target, isym, osym, w, coder);
                     it[i] = tr;
                 }
             }
@@ -1338,21 +1417,21 @@ impl HfstBasicTransducer {
         os: &mut dyn Write,
         data: &HfstTropicalTransducerTransitionData,
     ) {
+        let isym = data.get_input_symbol(&self.coder);
+        let osym = data.get_output_symbol(&self.coder);
         // replace all spaces, epsilons and tabs
-        if data.get_input_symbol() != data.get_output_symbol() {
+        if isym != osym {
             let _ = write!(os, "<");
         }
-        let mut s = data.get_input_symbol();
+        let mut s = isym.clone();
         Self::xfstize_symbol(&mut s);
         let _ = write!(os, "{}", s);
-        if data.get_input_symbol() != data.get_output_symbol()
-            || data.get_output_symbol() == "@_UNKNOWN_SYMBOL_@"
-        {
-            s = data.get_output_symbol();
+        if isym != osym || osym == "@_UNKNOWN_SYMBOL_@" {
+            s = osym.clone();
             Self::xfstize_symbol(&mut s);
             let _ = write!(os, ":{}", s);
         }
-        if data.get_input_symbol() != data.get_output_symbol() {
+        if isym != osym {
             let _ = write!(os, ">");
         }
     }
@@ -1366,21 +1445,21 @@ impl HfstBasicTransducer {
         file: &mut dyn Write,
         data: &HfstTropicalTransducerTransitionData,
     ) {
-        if data.get_input_symbol() != data.get_output_symbol() {
+        let isym = data.get_input_symbol(&self.coder);
+        let osym = data.get_output_symbol(&self.coder);
+        if isym != osym {
             w_fputs(file, "<");
         }
         // replace all spaces, epsilons and tabs
-        let mut s = data.get_input_symbol();
+        let mut s = isym.clone();
         Self::xfstize_symbol(&mut s);
         w_fputs(file, &s);
-        if data.get_input_symbol() != data.get_output_symbol()
-            || data.get_output_symbol() == "@_UNKNOWN_SYMBOL_@"
-        {
-            s = data.get_output_symbol();
+        if isym != osym || osym == "@_UNKNOWN_SYMBOL_@" {
+            s = osym.clone();
             Self::xfstize_symbol(&mut s);
             w_fputs(file, &format!(":{}", s));
         }
-        if data.get_input_symbol() != data.get_output_symbol() {
+        if isym != osym {
             w_fputs(file, ">");
         }
     }
@@ -1470,14 +1549,15 @@ impl HfstBasicTransducer {
     pub fn print_prolog_arc_symbols_file(
         file: &mut dyn Write,
         data: &HfstTropicalTransducerTransitionData,
+        coder: &SymbolCoder,
     ) {
-        let symbol = Self::prologize_symbol(&data.get_input_symbol());
+        let isym = data.get_input_symbol(coder);
+        let osym = data.get_output_symbol(coder);
+        let symbol = Self::prologize_symbol(&isym);
         w_fputs(file, &format!("\"{}\"", symbol));
 
-        if data.get_input_symbol() != data.get_output_symbol()
-            || data.get_input_symbol() == "@_UNKNOWN_SYMBOL_@"
-        {
-            let symbol = Self::prologize_symbol(&data.get_output_symbol());
+        if isym != osym || isym == "@_UNKNOWN_SYMBOL_@" {
+            let symbol = Self::prologize_symbol(&osym);
             w_fputs(file, &format!(":\"{}\"", symbol));
         }
     }
@@ -1485,14 +1565,15 @@ impl HfstBasicTransducer {
     pub fn print_prolog_arc_symbols_os(
         os: &mut dyn Write,
         data: &HfstTropicalTransducerTransitionData,
+        coder: &SymbolCoder,
     ) {
-        let symbol = Self::prologize_symbol(&data.get_input_symbol());
+        let isym = data.get_input_symbol(coder);
+        let osym = data.get_output_symbol(coder);
+        let symbol = Self::prologize_symbol(&isym);
         let _ = write!(os, "\"{}\"", symbol);
 
-        if data.get_input_symbol() != data.get_output_symbol()
-            || data.get_input_symbol() == "@_UNKNOWN_SYMBOL_@"
-        {
-            let symbol = Self::prologize_symbol(&data.get_output_symbol());
+        if isym != osym || isym == "@_UNKNOWN_SYMBOL_@" {
+            let symbol = Self::prologize_symbol(&osym);
             let _ = write!(os, ":\"{}\"", symbol);
         }
     }
@@ -1546,7 +1627,7 @@ impl HfstBasicTransducer {
                     ),
                 );
                 let data = tr_it.get_transition_data();
-                Self::print_prolog_arc_symbols_file(file, data);
+                Self::print_prolog_arc_symbols_file(file, data, &self.coder);
                 if write_weights {
                     w_fputs(file, ", ");
                     Self::write_weight_file(file, data.get_weight());
@@ -1598,7 +1679,7 @@ impl HfstBasicTransducer {
                     tr_it.get_target_state()
                 );
                 let data = tr_it.get_transition_data();
-                Self::print_prolog_arc_symbols_os(os, data);
+                Self::print_prolog_arc_symbols_os(os, data, &self.coder);
                 if write_weights {
                     let _ = write!(os, ", ");
                     Self::write_weight_os(os, data.get_weight());
@@ -1891,11 +1972,9 @@ impl HfstBasicTransducer {
             return false;
         }
 
-        graph.add_transition(
-            source,
-            &HfstBasicTransition::new_symbols(target, isymbol, osymbol, weight),
-            true,
-        );
+        let tr =
+            HfstBasicTransition::new_symbols(target, isymbol, osymbol, weight, graph.coder_mut());
+        graph.add_transition(source, &tr, true);
         true
     }
 
@@ -2087,12 +2166,12 @@ impl HfstBasicTransducer {
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data().clone();
 
-                let mut isymbol = data.get_input_symbol();
+                let mut isymbol = data.get_input_symbol(&self.coder);
                 replace_all(&mut isymbol, " ", "@_SPACE_@");
                 replace_all(&mut isymbol, "@_EPSILON_SYMBOL_@", "@0@");
                 replace_all(&mut isymbol, "\t", "@_TAB_@");
 
-                let mut osymbol = data.get_output_symbol();
+                let mut osymbol = data.get_output_symbol(&self.coder);
                 replace_all(&mut osymbol, " ", "@_SPACE_@");
                 replace_all(&mut osymbol, "@_EPSILON_SYMBOL_@", "@0@");
                 replace_all(&mut osymbol, "\t", "@_TAB_@");
@@ -2131,12 +2210,12 @@ impl HfstBasicTransducer {
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data().clone();
 
-                let mut isymbol = data.get_input_symbol();
+                let mut isymbol = data.get_input_symbol(&self.coder);
                 replace_all(&mut isymbol, " ", "@_SPACE_@");
                 replace_all(&mut isymbol, "@_EPSILON_SYMBOL_@", "@0@");
                 replace_all(&mut isymbol, "\t", "@_TAB_@");
 
-                let mut osymbol = data.get_output_symbol();
+                let mut osymbol = data.get_output_symbol(&self.coder);
                 replace_all(&mut osymbol, " ", "@_SPACE_@");
                 replace_all(&mut osymbol, "@_EPSILON_SYMBOL_@", "@0@");
                 replace_all(&mut osymbol, "\t", "@_TAB_@");
@@ -2268,8 +2347,13 @@ impl HfstBasicTransducer {
                 output_symbol = "@_EPSILON_SYMBOL_@".to_string();
             }
 
-            let tr =
-                HfstBasicTransition::new_symbols(atoi(a(1)), input_symbol, output_symbol, weight);
+            let tr = HfstBasicTransition::new_symbols(
+                atoi(a(1)),
+                input_symbol,
+                output_symbol,
+                weight,
+                self.coder_mut(),
+            );
             self.add_transition(atoi(a(0)), &tr, true);
         } else {
             // line could not be parsed
@@ -2464,15 +2548,17 @@ impl HfstBasicTransducer {
     ) {
         for s in 0..self.state_vector.len() {
             for i in 0..self.state_vector[s].len() {
-                let mut substituting_input_symbol = self.state_vector[s][i].get_input_symbol();
-                let mut substituting_output_symbol = self.state_vector[s][i].get_output_symbol();
+                let mut substituting_input_symbol =
+                    self.state_vector[s][i].get_input_symbol(&self.coder);
+                let mut substituting_output_symbol =
+                    self.state_vector[s][i].get_output_symbol(&self.coder);
                 let mut substitution_made = false;
 
-                if input_side && self.state_vector[s][i].get_input_symbol() == *old_symbol {
+                if input_side && substituting_input_symbol == *old_symbol {
                     substituting_input_symbol = new_symbol.clone();
                     substitution_made = true;
                 }
-                if output_side && self.state_vector[s][i].get_output_symbol() == *old_symbol {
+                if output_side && substituting_output_symbol == *old_symbol {
                     substituting_output_symbol = new_symbol.clone();
                     substitution_made = true;
                 }
@@ -2486,6 +2572,7 @@ impl HfstBasicTransducer {
                         substituting_input_symbol,
                         substituting_output_symbol,
                         weight,
+                        self.coder_mut(),
                     );
                     self.state_vector[s][i] = tr;
                 }
@@ -2509,17 +2596,15 @@ impl HfstBasicTransducer {
 
                 if new_inumber != no_substitution || new_onumber != no_substitution {
                     if new_inumber != no_substitution {
-                        self.add_symbol_to_alphabet(
-                            &HfstTropicalTransducerTransitionData::get_symbol(new_inumber),
-                        );
+                        let sym = self.coder.get_symbol(new_inumber);
+                        self.add_symbol_to_alphabet(&sym);
                     } else {
                         new_inumber = old_inumber;
                     }
 
                     if new_onumber != no_substitution {
-                        self.add_symbol_to_alphabet(
-                            &HfstTropicalTransducerTransitionData::get_symbol(new_onumber),
-                        );
+                        let sym = self.coder.get_symbol(new_onumber);
+                        self.add_symbol_to_alphabet(&sym);
                     } else {
                         new_onumber = old_onumber;
                     }
@@ -2552,12 +2637,10 @@ impl HfstBasicTransducer {
                     let new_input_number = subst.0;
                     let new_output_number = subst.1;
 
-                    self.add_symbol_to_alphabet(&HfstTropicalTransducerTransitionData::get_symbol(
-                        new_input_number,
-                    ));
-                    self.add_symbol_to_alphabet(&HfstTropicalTransducerTransitionData::get_symbol(
-                        new_output_number,
-                    ));
+                    let in_sym = self.coder.get_symbol(new_input_number);
+                    self.add_symbol_to_alphabet(&in_sym);
+                    let out_sym = self.coder.get_symbol(new_output_number);
+                    self.add_symbol_to_alphabet(&out_sym);
 
                     let target = self.state_vector[s][i].get_target_state();
                     let weight = self.state_vector[s][i].get_weight();
@@ -2580,8 +2663,8 @@ impl HfstBasicTransducer {
     // [spec:hfst:def:hfst-transition-graph.remove-transitions-fn]
     // [spec:hfst:sem:hfst-transition-graph.remove-transitions-fn]
     pub fn remove_transitions(&mut self, sp: &HfstSymbolPair) {
-        let in_match = HfstTropicalTransducerTransitionData::get_number(&sp.0);
-        let out_match = HfstTropicalTransducerTransitionData::get_number(&sp.1);
+        let in_match = self.coder.get_number(&sp.0);
+        let out_match = self.coder.get_number(&sp.1);
 
         let mut in_match_used = false;
         let mut out_match_used = false;
@@ -2630,8 +2713,8 @@ impl HfstBasicTransducer {
             return;
         }
 
-        let old_input_number = HfstTropicalTransducerTransitionData::get_number(&old_sp.0);
-        let old_output_number = HfstTropicalTransducerTransitionData::get_number(&old_sp.1);
+        let old_input_number = self.coder.get_number(&old_sp.0);
+        let old_output_number = self.coder.get_number(&old_sp.1);
 
         let mut substitution_performed = false;
 
@@ -2648,25 +2731,19 @@ impl HfstBasicTransducer {
 
                     // change the transition to the first substituting pair
                     let first = new_sps.iter().next().unwrap();
-                    let tr = HfstBasicTransition::new_numbers(
-                        target,
-                        HfstTropicalTransducerTransitionData::get_number(&first.0),
-                        HfstTropicalTransducerTransitionData::get_number(&first.1),
-                        weight,
-                        true,
-                    );
+                    let first_in = self.coder.get_number(&first.0);
+                    let first_out = self.coder.get_number(&first.1);
+                    let tr =
+                        HfstBasicTransition::new_numbers(target, first_in, first_out, weight, true);
                     self.state_vector[s][i] = tr;
 
                     // schedule the rest (C++ iterates from begin, so all of
                     // new_sps incl. the first are appended).
                     for sp in new_sps.iter() {
-                        let tr2 = HfstBasicTransition::new_numbers(
-                            target,
-                            HfstTropicalTransducerTransitionData::get_number(&sp.0),
-                            HfstTropicalTransducerTransitionData::get_number(&sp.1),
-                            weight,
-                            true,
-                        );
+                        let sp_in = self.coder.get_number(&sp.0);
+                        let sp_out = self.coder.get_number(&sp.1);
+                        let tr2 =
+                            HfstBasicTransition::new_numbers(target, sp_in, sp_out, weight, true);
                         new_transitions.push(tr2);
                     }
                 }
@@ -2697,8 +2774,8 @@ impl HfstBasicTransducer {
 
             for i in 0..self.state_vector[s].len() {
                 let transition_symbol_pair = (
-                    self.state_vector[s][i].get_input_symbol(),
-                    self.state_vector[s][i].get_output_symbol(),
+                    self.state_vector[s][i].get_input_symbol(&self.coder),
+                    self.state_vector[s][i].get_output_symbol(&self.coder),
                 );
                 let mut substituting_transitions: HfstSymbolPairSet = BTreeSet::new();
 
@@ -2723,8 +2800,13 @@ impl HfstBasicTransducer {
                         );
                     }
 
-                    let tr =
-                        HfstBasicTransition::new_symbols(target, fi.clone(), fo.clone(), weight);
+                    let tr = HfstBasicTransition::new_symbols(
+                        target,
+                        fi.clone(),
+                        fo.clone(),
+                        weight,
+                        self.coder_mut(),
+                    );
                     self.state_vector[s][i] = tr;
 
                     self.add_symbol_to_alphabet(&fi);
@@ -2744,6 +2826,7 @@ impl HfstBasicTransducer {
                             sp.0.clone(),
                             sp.1.clone(),
                             weight,
+                            self.coder_mut(),
                         );
                         new_transitions.push(tr2);
                         self.add_symbol_to_alphabet(&sp.0);
@@ -2813,15 +2896,10 @@ impl HfstBasicTransducer {
 
         // substitutions_[from_symbol] = to_symbol
         let mut substitutions_: Vec<u32> = Vec::new();
-        let st: usize = HfstTropicalTransducerTransitionData::get_max_number() as usize
-            + substitutions.len()
-            + 1;
+        let st: usize = self.coder.get_max_number() as usize + substitutions.len() + 1;
         let no_substitution = size_t_to_uint(st);
 
-        substitutions_.resize(
-            (HfstTropicalTransducerTransitionData::get_max_number() + 1) as usize,
-            no_substitution,
-        );
+        substitutions_.resize((self.coder.get_max_number() + 1) as usize, no_substitution);
         for (first, second) in substitutions.iter() {
             let from_symbol = self.get_symbol_number(first);
             let to_symbol = self.get_symbol_number(second);
@@ -2945,7 +3023,9 @@ impl HfstBasicTransducer {
 
             for i in 0..self.state_vector[s].len() {
                 let data = self.state_vector[s][i].get_transition_data().clone();
-                if data.get_input_symbol() == sp.0 && data.get_output_symbol() == sp.1 {
+                if data.get_input_symbol(&self.coder) == sp.0
+                    && data.get_output_symbol(&self.coder) == sp.1
+                {
                     substitutions.push(substitution_data::new(
                         s as HfstState,
                         self.state_vector[s][i].get_target_state(),
@@ -2982,6 +3062,7 @@ impl HfstBasicTransducer {
             HfstTropicalTransducerTransitionData::get_epsilon(),
             HfstTropicalTransducerTransitionData::get_epsilon(),
             sub.weight,
+            self.coder_mut(),
         );
         self.add_transition(sub.origin_state, &epsilon_transition, true);
 
@@ -2993,15 +3074,21 @@ impl HfstBasicTransducer {
         // the same map fails the borrow check. The graphs are distinct from `self`
         // (aliasing self would be UB in the C++ too); read-only deref.
         let graph_ref = unsafe { &*sub.substituting_graph };
+        // The substituting graph has its own coder; resolve its arc symbols
+        // through *its* coding, then re-intern them into this graph's coder.
+        let graph_coder = graph_ref.coder();
         let mut source_state: HfstState = 0;
         for it in graph_ref.state_vector.iter() {
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data();
+                let isym = data.get_input_symbol(graph_coder);
+                let osym = data.get_output_symbol(graph_coder);
                 let transition = HfstBasicTransition::new_symbols(
                     tr_it.get_target_state() + offset,
-                    data.get_input_symbol(),
-                    data.get_output_symbol(),
+                    isym,
+                    osym,
                     data.get_weight(),
+                    self.coder_mut(),
                 );
                 self.add_transition(source_state + offset, &transition, true);
             }
@@ -3015,6 +3102,7 @@ impl HfstBasicTransducer {
                 HfstTropicalTransducerTransitionData::get_epsilon(),
                 HfstTropicalTransducerTransitionData::get_epsilon(),
                 *v,
+                self.coder_mut(),
             );
             self.add_transition(*k + offset, &epsilon_transition, true);
         }
@@ -3041,11 +3129,15 @@ impl HfstBasicTransducer {
             for i in 0..self.state_vector[state].len() {
                 let data = self.state_vector[state][i].get_transition_data().clone();
                 if data.get_weight() != 0.0 {
+                    let target = self.state_vector[state][i].get_target_state();
+                    let isym = data.get_input_symbol(&self.coder);
+                    let osym = data.get_output_symbol(&self.coder);
                     new_transitions.push(HfstBasicTransition::new_symbols(
-                        self.state_vector[state][i].get_target_state(),
-                        data.get_input_symbol(),
-                        data.get_output_symbol(),
+                        target,
+                        isym,
+                        osym,
                         data.get_weight(),
+                        self.coder_mut(),
                     ));
                     old_indices.push(i);
                 }
@@ -3060,17 +3152,22 @@ impl HfstBasicTransducer {
             for it in new_transitions.iter() {
                 let new_state = self.add_state_new();
                 let marker = Self::weight2marker(it.get_weight());
+                let it_target = it.get_target_state();
+                let it_isym = it.get_input_symbol(&self.coder);
+                let it_osym = it.get_output_symbol(&self.coder);
                 let marker_transition = HfstBasicTransition::new_symbols(
-                    it.get_target_state(),
+                    it_target,
                     marker.clone(),
                     marker,
                     0.0,
+                    self.coder_mut(),
                 );
                 let new_transition = HfstBasicTransition::new_symbols(
                     new_state,
-                    it.get_input_symbol(),
-                    it.get_output_symbol(),
+                    it_isym,
+                    it_osym,
                     0.0,
+                    self.coder_mut(),
                 );
                 let source_state = size_t_to_uint(state);
                 self.add_transition(source_state, &new_transition, true);
@@ -3091,8 +3188,13 @@ impl HfstBasicTransducer {
                 let new_state = self.add_state_new();
                 self.set_final_weight(new_state, &0.0);
                 let marker = Self::weight2marker(v);
-                let epsilon_transition =
-                    HfstBasicTransition::new_symbols(new_state, marker.clone(), marker, 0.0);
+                let epsilon_transition = HfstBasicTransition::new_symbols(
+                    new_state,
+                    marker.clone(),
+                    marker,
+                    0.0,
+                    self.coder_mut(),
+                );
                 self.add_transition(k, &epsilon_transition, true);
                 final_states_to_remove.insert(k);
             }
@@ -3133,19 +3235,23 @@ impl HfstBasicTransducer {
 
             for i in 0..self.state_vector[state].len() {
                 let data = self.state_vector[state][i].get_transition_data().clone();
+                let isym = data.get_input_symbol(&self.coder);
+                let osym = data.get_output_symbol(&self.coder);
                 let mut weight: f32 = 0.0;
-                if !Self::marker2weight(&data.get_input_symbol(), &mut weight)
-                    && Self::marker2weight(&data.get_output_symbol(), &mut weight)
+                if !Self::marker2weight(&isym, &mut weight)
+                    && Self::marker2weight(&osym, &mut weight)
                 {
+                    let target = self.state_vector[state][i].get_target_state();
                     new_transitions.push(HfstBasicTransition::new_symbols(
-                        self.state_vector[state][i].get_target_state(),
-                        data.get_input_symbol(),
+                        target,
+                        isym,
                         crate::hfst_symbol_defs::internal_epsilon.to_string(),
                         weight,
+                        self.coder_mut(),
                     ));
                     old_indices.push(i);
-                } else if Self::marker2weight(&data.get_input_symbol(), &mut weight)
-                    && Self::marker2weight(&data.get_output_symbol(), &mut weight)
+                } else if Self::marker2weight(&isym, &mut weight)
+                    && Self::marker2weight(&osym, &mut weight)
                 {
                     old_indices.push(i);
                 }
@@ -3226,6 +3332,7 @@ impl HfstBasicTransducer {
                 symbol_pair.0.clone(),
                 symbol_pair.1.clone(),
                 weight,
+                self.coder_mut(),
             );
             self.state_vector[s].push(tr);
         }
@@ -3258,6 +3365,7 @@ impl HfstBasicTransducer {
                     symbol_pair.0.clone(),
                     symbol_pair.1.clone(),
                     weight,
+                    self.coder_mut(),
                 );
                 self.state_vector[s].push(tr);
             }
@@ -3303,7 +3411,9 @@ impl HfstBasicTransducer {
 
             for tr_it in tr.iter() {
                 let data = tr_it.get_transition_data();
-                if data.get_input_symbol() == spv[*it].0 && data.get_output_symbol() == spv[*it].1 {
+                if data.get_input_symbol(&self.coder) == spv[*it].0
+                    && data.get_output_symbol(&self.coder) == spv[*it].1
+                {
                     transition_found = true;
                     next_state = tr_it.get_target_state();
                     break;
@@ -3317,6 +3427,7 @@ impl HfstBasicTransducer {
                     spv[*it].0.clone(),
                     spv[*it].1.clone(),
                     0.0,
+                    self.coder_mut(),
                 );
                 self.add_transition(current_state, &transition, true);
             }
@@ -3367,10 +3478,12 @@ impl HfstBasicTransducer {
 
             for i in 0..self.state_vector[s].len() {
                 let data = self.state_vector[s][i].get_transition_data().clone();
-                if data.get_input_symbol() != data.get_output_symbol() {
+                let isym = data.get_input_symbol(&self.coder);
+                let osym = data.get_output_symbol(&self.coder);
+                if isym != osym {
                     crate::HFST_THROW!(TransducersAreNotAutomataException);
                 }
-                symbols_present.insert(data.get_input_symbol());
+                symbols_present.insert(isym);
             }
 
             let alpha_snapshot: Vec<HfstSymbol> = self.alphabet.iter().cloned().collect();
@@ -3381,6 +3494,7 @@ impl HfstBasicTransducer {
                         alpha_it.clone(),
                         alpha_it.clone(),
                         0.0,
+                        self.coder_mut(),
                     );
                     self.add_transition(current_state, &tr, true);
                 }
@@ -3428,8 +3542,8 @@ impl HfstBasicTransducer {
         // (1) Go through all states and transitions
         for s in 0..self.state_vector.len() {
             for i in 0..self.state_vector[s].len() {
-                let isym = self.state_vector[s][i].get_input_symbol();
-                let osym = self.state_vector[s][i].get_output_symbol();
+                let isym = self.state_vector[s][i].get_input_symbol(&self.coder);
+                let osym = self.state_vector[s][i].get_output_symbol(&self.coder);
                 if Self::purge_symbol(&isym, flag) || Self::purge_symbol(&osym, flag) {
                     let target = self.state_vector[s][i].get_target_state();
                     let weight = self.state_vector[s][i].get_weight();
@@ -3438,6 +3552,7 @@ impl HfstBasicTransducer {
                         "@_EPSILON_SYMBOL_@".to_string(),
                         "@_EPSILON_SYMBOL_@".to_string(),
                         weight,
+                        self.coder_mut(),
                     );
                     self.state_vector[s][i] = tr;
                 }
@@ -3492,8 +3607,8 @@ impl HfstBasicTransducer {
             let mut old_indices: Vec<usize> = Vec::new();
 
             for j in 0..self.state_vector[s].len() {
-                let istr = self.state_vector[s][j].get_input_symbol();
-                let ostr = self.state_vector[s][j].get_output_symbol();
+                let istr = self.state_vector[s][j].get_input_symbol(&self.coder);
+                let ostr = self.state_vector[s][j].get_output_symbol(&self.coder);
                 let map_in_found = substitution_map.contains_key(&istr);
                 let map_out_found = substitution_map.contains_key(&ostr);
 
@@ -3668,8 +3783,8 @@ impl HfstBasicTransducer {
 
         let transitions = self.index(state);
         for transition in transitions.iter() {
-            if is_epsilon(&transition.get_input_symbol())
-                && is_epsilon(&transition.get_output_symbol())
+            if is_epsilon(&transition.get_input_symbol(&self.coder))
+                && is_epsilon(&transition.get_output_symbol(&self.coder))
                 && self.has_negative_epsilon_cycles_recursive(
                     transition.get_target_state(),
                     total_weight + transition.get_weight(),
@@ -3689,8 +3804,8 @@ impl HfstBasicTransducer {
         let mut has_negative_epsilon_transitions = false;
         for it in self.state_vector.iter() {
             for tr_it in it.iter() {
-                if is_epsilon(&tr_it.get_input_symbol())
-                    && is_epsilon(&tr_it.get_output_symbol())
+                if is_epsilon(&tr_it.get_input_symbol(&self.coder))
+                    && is_epsilon(&tr_it.get_output_symbol(&self.coder))
                     && tr_it.get_weight() < 0.0
                 {
                     has_negative_epsilon_transitions = true;
@@ -3726,8 +3841,8 @@ impl HfstBasicTransducer {
         let transitions = self.index(state);
         for transition in transitions.iter() {
             // Diacritics are also treated as epsilons (may yield false positives).
-            if is_epsilon(&transition.get_input_symbol())
-                || FdOperation::is_diacritic(&transition.get_input_symbol())
+            if is_epsilon(&transition.get_input_symbol(&self.coder))
+                || FdOperation::is_diacritic(&transition.get_input_symbol(&self.coder))
             {
                 epsilon_path_states.insert(state);
                 if epsilon_path_states.contains(&transition.get_target_state()) {
@@ -3806,9 +3921,9 @@ impl HfstBasicTransducer {
         let transitions = self.index(state);
         for transition in transitions.iter() {
             // CASE 1: input epsilons (and flags) do not consume a path symbol.
-            let possible_flag =
-                Self::is_possible_flag(transition.get_input_symbol(), fds, obey_flags);
-            if is_epsilon(&transition.get_input_symbol()) || possible_flag {
+            let in_sym = transition.get_input_symbol(&self.coder);
+            let possible_flag = Self::is_possible_flag(in_sym.clone(), fds, obey_flags);
+            if is_epsilon(&in_sym) || possible_flag {
                 epsilon_path_states.insert(state);
                 if epsilon_path_states.contains(&transition.get_target_state()) {
                     return true;
@@ -3831,10 +3946,9 @@ impl HfstBasicTransducer {
             // CASE 2: other input symbols consume a path symbol.
             else if !only_epsilons {
                 let mut continu = false;
-                if transition.get_input_symbol() == s.second[*index as usize] {
+                if in_sym == s.second[*index as usize] {
                     continu = true;
-                } else if (transition.get_input_symbol() == "@_UNKNOWN_SYMBOL_@"
-                    || transition.get_input_symbol() == "@_IDENTITY_SYMBOL_@")
+                } else if (in_sym == "@_UNKNOWN_SYMBOL_@" || in_sym == "@_IDENTITY_SYMBOL_@")
                     && !self.alphabet.contains(&s.second[*index as usize])
                 {
                     continu = true;
@@ -3980,8 +4094,9 @@ impl HfstBasicTransducer {
         alphabet: &StringSet,
         input_symbol_consumed: &mut bool,
         fds_so_far: Option<&mut StringVector>,
+        coder: &SymbolCoder,
     ) -> bool {
-        let isymbol = transition.get_input_symbol();
+        let isymbol = transition.get_input_symbol(coder);
 
         // If we are not at the end of lookup_path,
         if !(lookup_index == lookup_path.len() as u32) {
@@ -4068,20 +4183,22 @@ impl HfstBasicTransducer {
                 alphabet,
                 &mut input_symbol_consumed,
                 flag_diacritic_path.as_mut().map(|r| &mut **r),
+                &self.coder,
             ) {
                 let istr;
                 let ostr;
+                let tr_isym = transition.get_input_symbol(&self.coder);
                 // identity symbol is replaced with the lookup symbol
-                if is_identity(&transition.get_input_symbol()) {
+                if is_identity(&tr_isym) {
                     istr = lookup_path[lookup_index as usize].clone();
                     ostr = istr.clone();
                 } else {
-                    if is_unknown(&transition.get_input_symbol()) {
+                    if is_unknown(&tr_isym) {
                         istr = lookup_path[lookup_index as usize].clone();
                     } else {
-                        istr = transition.get_input_symbol();
+                        istr = tr_isym;
                     }
-                    ostr = transition.get_output_symbol();
+                    ostr = transition.get_output_symbol(&self.coder);
                 }
 
                 Self::push_back_to_two_level_path(
@@ -4151,9 +4268,13 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-transition-end-fn]
     // [spec:hfst:def:hfst-transition-graph.check-regexp-transition-end-fn]
     // [spec:hfst:sem:hfst-transition-graph.check-regexp-transition-end-fn]
-    pub fn check_regexp_transition_end(tr: &HfstBasicTransition, input_side: bool) -> bool {
-        let istr = tr.get_input_symbol();
-        let ostr = tr.get_output_symbol();
+    pub fn check_regexp_transition_end(
+        tr: &HfstBasicTransition,
+        input_side: bool,
+        coder: &SymbolCoder,
+    ) -> bool {
+        let istr = tr.get_input_symbol(coder);
+        let ostr = tr.get_output_symbol(coder);
 
         if input_side && is_epsilon(&istr) {
         } else if !input_side && is_epsilon(&ostr) {
@@ -4194,19 +4315,19 @@ impl HfstBasicTransducer {
         let transitions = self.index(s);
         for transition in transitions.iter() {
             // closing bracket
-            if Self::check_regexp_transition_end(transition, input_side) {
+            if Self::check_regexp_transition_end(transition, input_side, &self.coder) {
                 // cannot lead to a state already visited
                 Self::check_regexp_state_for_cycle(transition.get_target_state(), states_visited);
                 path.push((
-                    transition.get_input_symbol(),
-                    transition.get_output_symbol(),
+                    transition.get_input_symbol(&self.coder),
+                    transition.get_output_symbol(&self.coder),
                 ));
                 full_paths.push((transition.get_target_state(), path.clone()));
                 path.pop();
             } else {
                 path.push((
-                    transition.get_input_symbol(),
-                    transition.get_output_symbol(),
+                    transition.get_input_symbol(&self.coder),
+                    transition.get_output_symbol(&self.coder),
                 ));
                 self.find_regexp_paths(
                     transition.get_target_state(),
@@ -4229,8 +4350,8 @@ impl HfstBasicTransducer {
     ) {
         let transitions = self.index(s);
         for transition in transitions.iter() {
-            let istr = transition.get_input_symbol();
-            let ostr = transition.get_output_symbol();
+            let istr = transition.get_input_symbol(&self.coder);
+            let ostr = transition.get_output_symbol(&self.coder);
             if (input_side && istr == "^[") || (!input_side && ostr == "^[") {
                 let mut states_visited: BTreeSet<HfstState> = BTreeSet::new();
                 states_visited.insert(s);
@@ -4278,15 +4399,21 @@ impl HfstBasicTransducer {
         graph: &HfstBasicTransducer,
     ) {
         let offset = self.add_state_new();
+        // 'graph' has its own coder; resolve its arc symbols through *its* coding,
+        // then re-intern them into this graph's coder.
+        let graph_coder = graph.coder();
         let mut source_state: u32 = 0;
         for it in graph.state_vector.iter() {
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data();
+                let isym = data.get_input_symbol(graph_coder);
+                let osym = data.get_output_symbol(graph_coder);
                 let transition = HfstBasicTransition::new_symbols(
                     tr_it.get_target_state() + offset,
-                    data.get_input_symbol(),
-                    data.get_output_symbol(),
+                    isym,
+                    osym,
                     data.get_weight(),
+                    self.coder_mut(),
                 );
                 self.add_transition(source_state + offset, &transition, true);
             }
@@ -4305,6 +4432,7 @@ impl HfstBasicTransducer {
                 HfstTropicalTransducerTransitionData::get_epsilon(),
                 HfstTropicalTransducerTransitionData::get_epsilon(),
                 v,
+                self.coder_mut(),
             );
             self.add_transition(k + offset, &epsilon_transition, true);
         }
@@ -4315,6 +4443,7 @@ impl HfstBasicTransducer {
             HfstTropicalTransducerTransitionData::get_epsilon(),
             HfstTropicalTransducerTransitionData::get_epsilon(),
             0.0,
+            self.coder_mut(),
         );
         self.add_transition(state1, &epsilon_transition, true);
     }
@@ -4426,16 +4555,17 @@ impl HfstBasicTransducer {
         );
         // the sum of weights is copied to the resulting intersection
         let transition_weight = tr1.get_weight() + tr2.get_weight();
-        intersection.add_transition(
-            state,
-            &HfstBasicTransition::new_symbols(
-                retval,
-                tr1.get_input_symbol(),
-                tr1.get_output_symbol(),
-                transition_weight,
-            ),
-            true,
+        // tr1's labels resolve through graph1's coder; re-intern into the result.
+        let isym = tr1.get_input_symbol(graph1.coder());
+        let osym = tr1.get_output_symbol(graph1.coder());
+        let tr = HfstBasicTransition::new_symbols(
+            retval,
+            isym,
+            osym,
+            transition_weight,
+            intersection.coder_mut(),
         );
+        intersection.add_transition(state, &tr, true);
         if was_new_state && (graph1.is_final_state(target1) && graph2.is_final_state(target2)) {
             let final_weight = graph1.get_final_weight(target1) + graph2.get_final_weight(target2);
             intersection.set_final_weight(retval, &final_weight);
@@ -4561,16 +4691,16 @@ impl HfstBasicTransducer {
             result,
             &mut was_new_state,
         );
-        result.add_transition(
-            result_state,
-            &HfstBasicTransition::new_symbols(
-                retval,
-                graph_transition.get_input_symbol(),
-                graph_transition.get_output_symbol(),
-                graph_transition.get_weight(),
-            ),
-            true,
+        let isym = graph_transition.get_input_symbol(graph.coder());
+        let osym = graph_transition.get_output_symbol(graph.coder());
+        let tr = HfstBasicTransition::new_symbols(
+            retval,
+            isym,
+            osym,
+            graph_transition.get_weight(),
+            result.coder_mut(),
         );
+        result.add_transition(result_state, &tr, true);
         if was_new_state
             && (graph.is_final_state(graph_target) && merger.is_final_state(merger_target))
         {
@@ -4609,28 +4739,28 @@ impl HfstBasicTransducer {
 
         // testing: add a marker
         let extra_state = result.add_state_new();
-        result.add_transition(
-            result_state,
-            &HfstBasicTransition::new_symbols(
-                extra_state,
-                format!("@{}@", graph_transition.get_input_symbol()),
-                format!("@{}@", graph_transition.get_output_symbol()),
-                0.0,
-            ),
-            true,
-        );
-        markers_added.insert(format!("@{}@", graph_transition.get_input_symbol()));
-
-        result.add_transition(
+        let graph_isym = graph_transition.get_input_symbol(graph.coder());
+        let graph_osym = graph_transition.get_output_symbol(graph.coder());
+        let marker_tr = HfstBasicTransition::new_symbols(
             extra_state,
-            &HfstBasicTransition::new_symbols(
-                retval,
-                merger_transition.get_input_symbol(),
-                merger_transition.get_output_symbol(),
-                transition_weight,
-            ),
-            true,
+            format!("@{}@", graph_isym),
+            format!("@{}@", graph_osym),
+            0.0,
+            result.coder_mut(),
         );
+        result.add_transition(result_state, &marker_tr, true);
+        markers_added.insert(format!("@{}@", graph_isym));
+
+        let merger_isym = merger_transition.get_input_symbol(merger.coder());
+        let merger_osym = merger_transition.get_output_symbol(merger.coder());
+        let merger_tr = HfstBasicTransition::new_symbols(
+            retval,
+            merger_isym,
+            merger_osym,
+            transition_weight,
+            result.coder_mut(),
+        );
+        result.add_transition(extra_state, &merger_tr, true);
         if was_new_state
             && (graph.is_final_state(graph_target) && merger.is_final_state(merger_target))
         {
@@ -4648,9 +4778,10 @@ impl HfstBasicTransducer {
     pub fn is_list_symbol(
         transition_data: &HfstTropicalTransducerTransitionData,
         list_symbols: &BTreeMap<String, BTreeSet<String>>,
+        coder: &SymbolCoder,
     ) -> bool {
-        let isymbol = transition_data.get_input_symbol();
-        let osymbol = transition_data.get_output_symbol();
+        let isymbol = transition_data.get_input_symbol(coder);
+        let osymbol = transition_data.get_output_symbol(coder);
 
         if isymbol != osymbol {
             panic!("is_list_symbol: input and output symbols must be the same");
@@ -4687,13 +4818,14 @@ impl HfstBasicTransducer {
             let graph_transition_data = graph_transition.get_transition_data();
 
             // List symbols must be checked separately.
-            if Self::is_list_symbol(graph_transition_data, list_symbols) {
-                let symbol_list = &list_symbols[&graph_transition_data.get_input_symbol()];
+            if Self::is_list_symbol(graph_transition_data, list_symbols, graph.coder()) {
+                let symbol_list =
+                    &list_symbols[&graph_transition_data.get_input_symbol(graph.coder())];
                 let mut list_match_found = false;
                 for merger_transition in merger_transitions.iter() {
                     let merger_transition_data = merger_transition.get_transition_data();
-                    let isymbol = merger_transition_data.get_input_symbol();
-                    let osymbol = merger_transition_data.get_output_symbol();
+                    let isymbol = merger_transition_data.get_input_symbol(merger.coder());
+                    let osymbol = merger_transition_data.get_output_symbol(merger.coder());
 
                     if isymbol != osymbol {
                         panic!("find_matches_for_merge: input and output symbols must be the same");

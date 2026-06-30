@@ -324,11 +324,14 @@ fn get_transducer(tokenized_pair_string: &StringPairVector) -> HfstTransducer {
     let mut s: HfstState = 0;
     for it in tokenized_pair_string.iter() {
         let target = t.add_state_new();
-        t.add_transition(
-            s,
-            &HfstBasicTransition::new_symbols(target, it.0.clone(), it.1.clone(), 0.0),
-            true,
+        let tr = HfstBasicTransition::new_symbols(
+            target,
+            it.0.clone(),
+            it.1.clone(),
+            0.0,
+            t.coder_mut(),
         );
+        t.add_transition(s, &tr, true);
         s = target;
     }
     t.set_final_weight(s, &0.0);

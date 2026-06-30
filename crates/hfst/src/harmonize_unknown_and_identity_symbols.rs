@@ -8,6 +8,7 @@
 
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
+use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_flag_diacritics::FdOperation;
 use crate::hfst_symbol_defs::StringSet;
 use crate::pmatch::PmatchAlphabet;
@@ -99,10 +100,11 @@ impl HarmonizeUnknownAndIdentitySymbols {
     // [spec:hfst:def:harmonize-unknown-and-identity-symbols.hfst.harmonize-unknown-and-identity-symbols.populate-symbol-set-fn]
     // [spec:hfst:sem:harmonize-unknown-and-identity-symbols.hfst.harmonize-unknown-and-identity-symbols.populate-symbol-set-fn]
     pub fn populate_symbol_set(t: &HfstBasicTransducer, s: &mut StringSet) {
+        let coder = t.coder();
         for it in t.state_vector.iter() {
             for jt in it.iter() {
-                s.insert(jt.get_input_symbol());
-                s.insert(jt.get_output_symbol());
+                s.insert(jt.get_input_symbol(coder));
+                s.insert(jt.get_output_symbol(coder));
             }
         }
     }
@@ -123,21 +125,32 @@ impl HarmonizeUnknownAndIdentitySymbols {
         }
 
         for s in 0..t.state_vector.len() {
-            let mut added_transitions: Vec<HfstBasicTransition> = Vec::new();
-
-            for j in 0..t.state_vector[s].len() {
-                if t.state_vector[s][j].get_input_symbol() == Self::identity {
-                    assert!(t.state_vector[s][j].get_output_symbol() == Self::identity);
-                    let target = t.state_vector[s][j].get_target_state();
-                    let weight = t.state_vector[s][j].get_weight();
-                    for kt in missing_symbols.iter() {
-                        added_transitions.push(HfstBasicTransition::new_symbols(
-                            target,
-                            kt.clone(),
-                            kt.clone(),
-                            weight,
-                        ));
+            // Capture the identity transitions' target/weight via the immutable
+            // coder borrow first, so the build pass below can take 't.coder_mut()'.
+            let mut identity_targets: Vec<(HfstState, f32)> = Vec::new();
+            {
+                let coder = t.coder();
+                for j in 0..t.state_vector[s].len() {
+                    if t.state_vector[s][j].get_input_symbol(coder) == Self::identity {
+                        assert!(t.state_vector[s][j].get_output_symbol(coder) == Self::identity);
+                        let target = t.state_vector[s][j].get_target_state();
+                        let weight = t.state_vector[s][j].get_weight();
+                        identity_targets.push((target, weight));
                     }
+                }
+            }
+
+            let mut added_transitions: Vec<HfstBasicTransition> = Vec::new();
+            let coder = t.coder_mut();
+            for (target, weight) in identity_targets {
+                for kt in missing_symbols.iter() {
+                    added_transitions.push(HfstBasicTransition::new_symbols(
+                        target,
+                        kt.clone(),
+                        kt.clone(),
+                        weight,
+                        coder,
+                    ));
                 }
             }
             t.state_vector[s].extend(added_transitions);
@@ -152,14 +165,26 @@ impl HarmonizeUnknownAndIdentitySymbols {
         }
 
         for s in 0..t.state_vector.len() {
+            // Read every transition's symbols/target/weight via the immutable
+            // coder borrow first; the build pass below takes 't.coder_mut()'.
+            let arc_data: Vec<(String, String, HfstState, f32)> = {
+                let coder = t.coder();
+                t.state_vector[s]
+                    .iter()
+                    .map(|tr| {
+                        (
+                            tr.get_input_symbol(coder),
+                            tr.get_output_symbol(coder),
+                            tr.get_target_state(),
+                            tr.get_weight(),
+                        )
+                    })
+                    .collect()
+            };
+
             let mut added_transitions: Vec<HfstBasicTransition> = Vec::new();
-
-            for j in 0..t.state_vector[s].len() {
-                let isym = t.state_vector[s][j].get_input_symbol();
-                let osym = t.state_vector[s][j].get_output_symbol();
-                let target = t.state_vector[s][j].get_target_state();
-                let weight = t.state_vector[s][j].get_weight();
-
+            let coder = t.coder_mut();
+            for (isym, osym, target, weight) in arc_data {
                 if isym == Self::unknown {
                     assert!(osym != Self::identity);
                     for kt in missing_symbols.iter() {
@@ -168,6 +193,7 @@ impl HarmonizeUnknownAndIdentitySymbols {
                             kt.clone(),
                             osym.clone(),
                             weight,
+                            coder,
                         ));
                     }
                 }
@@ -179,6 +205,7 @@ impl HarmonizeUnknownAndIdentitySymbols {
                             isym.clone(),
                             kt.clone(),
                             weight,
+                            coder,
                         ));
                     }
                 }
@@ -193,6 +220,7 @@ impl HarmonizeUnknownAndIdentitySymbols {
                                 lt.clone(),
                                 kt.clone(),
                                 weight,
+                                coder,
                             ));
                         }
                     }

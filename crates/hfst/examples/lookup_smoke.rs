@@ -6,11 +6,9 @@ use std::collections::BTreeSet;
 fn main() {
     // a:b / 0.5, final state weight 0.3
     let mut g = HfstBasicTransducer::new();
-    g.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.5),
-        true,
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.5, g.coder_mut());
+    g.add_transition(0, &tr, true);
     g.set_final_weight(1, &0.3);
 
     let path = vec!["a".to_string()];

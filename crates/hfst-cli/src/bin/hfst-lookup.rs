@@ -1464,7 +1464,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
                 let basic = trans.get_basic_transducer();
                 for it in basic.iter() {
                     for tr_it in it.iter() {
-                        let mcs = tr_it.get_input_symbol();
+                        let mcs = tr_it.get_input_symbol(basic.coder());
                         symbols_seen.insert(mcs.clone());
                         if mcs == internal_unknown || mcs == internal_identity {
                             id_or_unk_seen = true;

@@ -78,46 +78,26 @@ fn build_t() -> HfstBasicTransducer {
     let fd1 = "@U.FEATURE.FOO@".to_string();
     let fd2 = "@U.FEATURE.BAR@".to_string();
 
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(s1, fd1.clone(), fd1.clone(), 0.0),
-        true,
-    );
-    t.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(s2, "a".to_string(), "a".to_string(), 0.0),
-        true,
-    );
-    t.add_transition(
-        s1,
-        &HfstBasicTransition::new_symbols(s3, "b".to_string(), "b".to_string(), 0.0),
-        true,
-    );
-    t.add_transition(
-        s2,
-        &HfstBasicTransition::new_symbols(s3, fd2.clone(), fd2.clone(), 0.0),
-        true,
-    );
-    t.add_transition(
-        s3,
-        &HfstBasicTransition::new_symbols(s4, "c".to_string(), "c".to_string(), 0.0),
-        true,
-    );
-    t.add_transition(
-        s3,
-        &HfstBasicTransition::new_symbols(s5, "d".to_string(), "d".to_string(), 0.0),
-        true,
-    );
-    t.add_transition(
-        s4,
-        &HfstBasicTransition::new_symbols(s6, fd2.clone(), fd2.clone(), 0.0),
-        true,
-    );
-    t.add_transition(
-        s5,
-        &HfstBasicTransition::new_symbols(s6, fd1.clone(), fd1.clone(), 0.0),
-        true,
-    );
+    let tr = HfstBasicTransition::new_symbols(s1, fd1.clone(), fd1.clone(), 0.0, t.coder_mut());
+    t.add_transition(0, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(s2, "a".to_string(), "a".to_string(), 0.0, t.coder_mut());
+    t.add_transition(0, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(s3, "b".to_string(), "b".to_string(), 0.0, t.coder_mut());
+    t.add_transition(s1, &tr, true);
+    let tr = HfstBasicTransition::new_symbols(s3, fd2.clone(), fd2.clone(), 0.0, t.coder_mut());
+    t.add_transition(s2, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(s4, "c".to_string(), "c".to_string(), 0.0, t.coder_mut());
+    t.add_transition(s3, &tr, true);
+    let tr =
+        HfstBasicTransition::new_symbols(s5, "d".to_string(), "d".to_string(), 0.0, t.coder_mut());
+    t.add_transition(s3, &tr, true);
+    let tr = HfstBasicTransition::new_symbols(s6, fd2.clone(), fd2.clone(), 0.0, t.coder_mut());
+    t.add_transition(s4, &tr, true);
+    let tr = HfstBasicTransition::new_symbols(s6, fd1.clone(), fd1.clone(), 0.0, t.coder_mut());
+    t.add_transition(s5, &tr, true);
     t
 }
 

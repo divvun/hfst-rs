@@ -149,16 +149,14 @@ impl ConversionFunctions {
                     if arc.olabel == 0 {
                         ostring = internal_epsilon.to_string();
                     }
-                    net.add_transition(
-                        origin as HfstState,
-                        &HfstBasicTransition::new_symbols(
-                            target as HfstState,
-                            istring,
-                            ostring,
-                            *arc.weight.value(),
-                        ),
-                        true,
+                    let new_tr = HfstBasicTransition::new_symbols(
+                        target as HfstState,
+                        istring,
+                        ostring,
+                        *arc.weight.value(),
+                        net.coder_mut(),
                     );
+                    net.add_transition(origin as HfstState, &new_tr, true);
                 }
                 if t.is_final(s).unwrap() {
                     // Set the state as final
@@ -199,16 +197,14 @@ impl ConversionFunctions {
                     if arc.olabel == 0 {
                         ostring = internal_epsilon.to_string();
                     }
-                    net.add_transition(
-                        origin as HfstState,
-                        &HfstBasicTransition::new_symbols(
-                            target as HfstState,
-                            istring,
-                            ostring,
-                            *arc.weight.value(),
-                        ),
-                        true,
+                    let new_tr = HfstBasicTransition::new_symbols(
+                        target as HfstState,
+                        istring,
+                        ostring,
+                        *arc.weight.value(),
+                        net.coder_mut(),
                     );
+                    net.add_transition(origin as HfstState, &new_tr, true);
                 }
                 if t.is_final(s).unwrap() {
                     let fw = *t.final_weight(s).unwrap().unwrap().value();
@@ -284,12 +280,13 @@ impl ConversionFunctions {
         // 'hfst_state_to_state_id(source_state, ...)' always resolves to state 0.
         // Replicated verbatim from the C++ ('unsigned int source_state = 0;').
         let source_state: u32 = 0;
+        let coder = net.coder();
         for it in net.iter() {
             // Go through the set of transitions in each state
             for tr_it in it.iter() {
                 // Copy the transition
-                let ilabel = st.add_symbol(tr_it.get_input_symbol());
-                let olabel = st.add_symbol(tr_it.get_output_symbol());
+                let ilabel = st.add_symbol(tr_it.get_input_symbol(coder));
+                let olabel = st.add_symbol(tr_it.get_output_symbol(coder));
                 let origin = Self::hfst_state_to_state_id(source_state, &mut state_map, &mut t);
                 let nextstate =
                     Self::hfst_state_to_state_id(tr_it.get_target_state(), &mut state_map, &mut t);
@@ -313,11 +310,15 @@ impl ConversionFunctions {
             }
         }
 
-        // Add also symbols that do not occur in transitions
+        // Add also symbols that do not occur in transitions. Resolve each
+        // alphabet symbol's label through a clone of 'net's coder (mirrors the
+        // tropical convert); 'get_symbol_number' needs '&mut self', and the
+        // clone interns alphabet-only symbols without disturbing 'net'.
+        let mut coder = net.coder().clone();
         for it in net.get_alphabet().iter() {
             // explicit-label add so the FST labels match the basic-transducer
             // symbol numbers (see the tropical convert for the rationale).
-            let symbol_number = net.get_symbol_number(it);
+            let symbol_number = coder.get_number(it);
             st.add_symbol_with_key(it.clone(), symbol_number);
         }
 

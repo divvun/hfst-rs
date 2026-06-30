@@ -1538,6 +1538,21 @@ impl HfstTransducer {
 
                 this_basic.harmonize(&mut another_basic);
 
+                // The two graphs carry independent symbol codings; reindex both
+                // onto one shared coder so that, after each is converted back to an
+                // OpenFst transducer, identical symbols carry identical labels (the
+                // per-graph-coder replacement for the former process-global
+                // numbering on which the subsequent binary op relies). Intern every
+                // symbol of BOTH graphs (coder + full alphabet) into the shared
+                // coder FIRST, so even alphabet-only symbols agree before either
+                // graph adopts the coding.
+                let mut canonical =
+                    crate::hfst_tropical_transducer_transition_data::SymbolCoder::new();
+                this_basic.intern_into(&mut canonical);
+                another_basic.intern_into(&mut canonical);
+                this_basic.reindex_into(&mut canonical);
+                another_basic.reindex_into(&mut canonical);
+
                 self.convert_to_hfst_transducer(this_basic);
                 let another_harmonized =
                     HfstTransducer::from_basic_transducer(&another_basic, self.type_);
@@ -1592,6 +1607,19 @@ impl HfstTransducer {
                 let mut another_basic = another.convert_to_basic_transducer();
 
                 this_basic.harmonize(&mut another_basic);
+
+                // Reindex both graphs onto one shared symbol coding so that, after
+                // each is converted back to an OpenFst transducer, identical symbols
+                // carry identical labels for the subsequent binary op (the
+                // per-graph-coder replacement for the former process-global numbering).
+                // Intern both graphs' symbols (coder + alphabet) into the shared
+                // coder first so alphabet-only symbols agree too.
+                let mut canonical =
+                    crate::hfst_tropical_transducer_transition_data::SymbolCoder::new();
+                this_basic.intern_into(&mut canonical);
+                another_basic.intern_into(&mut canonical);
+                this_basic.reindex_into(&mut canonical);
+                another_basic.reindex_into(&mut canonical);
 
                 self.convert_to_hfst_transducer(this_basic);
                 another.convert_to_hfst_transducer(another_basic);
@@ -3061,16 +3089,14 @@ impl HfstTransducer {
             let mut s: u32 = 0;
             while s <= (basic.get_max_state() as u32) {
                 for missing_flag in missing_flags.iter() {
-                    basic.add_transition(
+                    let tr = HfstBasicTransition::new_symbols(
                         s,
-                        &HfstBasicTransition::new_symbols(
-                            s,
-                            missing_flag.clone(),
-                            missing_flag.clone(),
-                            0.0,
-                        ),
-                        true,
+                        missing_flag.clone(),
+                        missing_flag.clone(),
+                        0.0,
+                        basic.coder_mut(),
                     );
+                    basic.add_transition(s, &tr, true);
                 }
                 s += 1;
             }
@@ -3096,8 +3122,8 @@ impl HfstTransducer {
 
         for states in basic_fst.state_vector.iter() {
             for transition in states.iter() {
-                let istr = transition.get_input_symbol();
-                let ostr = transition.get_output_symbol();
+                let istr = transition.get_input_symbol(basic_fst.coder());
+                let ostr = transition.get_output_symbol(basic_fst.coder());
                 let istr_is_flag = FdOperation::is_diacritic(&istr);
                 let ostr_is_flag = FdOperation::is_diacritic(&ostr);
 
@@ -3116,11 +3142,14 @@ impl HfstTransducer {
                         crate::hfst_symbol_defs::internal_epsilon.to_string()
                     };
 
-                    basic_fst_copy.add_transition(
-                        s,
-                        &HfstBasicTransition::new_symbols(new_state, in_, out, 0.0 /*?*/),
-                        true,
+                    let tr = HfstBasicTransition::new_symbols(
+                        new_state,
+                        in_,
+                        out,
+                        0.0, /*?*/
+                        basic_fst_copy.coder_mut(),
                     );
+                    basic_fst_copy.add_transition(s, &tr, true);
 
                     in_ = if ostr_is_flag {
                         ostr.clone()
@@ -3129,27 +3158,23 @@ impl HfstTransducer {
                     };
                     out = ostr.clone();
 
-                    basic_fst_copy.add_transition(
-                        new_state,
-                        &HfstBasicTransition::new_symbols(
-                            transition.get_target_state(),
-                            in_,
-                            out,
-                            transition.get_weight(), /*?*/
-                        ),
-                        true,
+                    let tr = HfstBasicTransition::new_symbols(
+                        transition.get_target_state(),
+                        in_,
+                        out,
+                        transition.get_weight(), /*?*/
+                        basic_fst_copy.coder_mut(),
                     );
+                    basic_fst_copy.add_transition(new_state, &tr, true);
                 } else {
-                    basic_fst_copy.add_transition(
-                        s,
-                        &HfstBasicTransition::new_symbols(
-                            transition.get_target_state(),
-                            istr.clone(),
-                            ostr.clone(),
-                            transition.get_weight(),
-                        ),
-                        true,
+                    let tr = HfstBasicTransition::new_symbols(
+                        transition.get_target_state(),
+                        istr.clone(),
+                        ostr.clone(),
+                        transition.get_weight(),
+                        basic_fst_copy.coder_mut(),
                     );
+                    basic_fst_copy.add_transition(s, &tr, true);
                 }
             }
 
@@ -3691,27 +3716,23 @@ pub fn get_flag_path_restriction(
     basic_restriction.set_final_weight(start_state, &0.0);
     basic_restriction.set_final_weight(seen_2_state, &0.0);
 
-    basic_restriction.add_transition(
+    let tr = HfstBasicTransition::new_symbols(
         start_state,
-        &HfstBasicTransition::new_symbols(
-            start_state,
-            internal_identity.to_string(),
-            internal_identity.to_string(),
-            0.0,
-        ),
-        true,
+        internal_identity.to_string(),
+        internal_identity.to_string(),
+        0.0,
+        basic_restriction.coder_mut(),
     );
+    basic_restriction.add_transition(start_state, &tr, true);
 
-    basic_restriction.add_transition(
-        seen_2_state,
-        &HfstBasicTransition::new_symbols(
-            start_state,
-            internal_identity.to_string(),
-            internal_identity.to_string(),
-            0.0,
-        ),
-        true,
+    let tr = HfstBasicTransition::new_symbols(
+        start_state,
+        internal_identity.to_string(),
+        internal_identity.to_string(),
+        0.0,
+        basic_restriction.coder_mut(),
     );
+    basic_restriction.add_transition(seen_2_state, &tr, true);
 
     // All _1_flags are allowed as long as no _2_flags with no
     // intervening symbols were observed.
@@ -3724,11 +3745,14 @@ pub fn get_flag_path_restriction(
             b[n - 1] = b'$';
         }
 
-        basic_restriction.add_transition(
+        let tr = HfstBasicTransition::new_symbols(
             start_state,
-            &HfstBasicTransition::new_symbols(start_state, dollar_flag.clone(), dollar_flag, 0.0),
-            true,
+            dollar_flag.clone(),
+            dollar_flag,
+            0.0,
+            basic_restriction.coder_mut(),
         );
+        basic_restriction.add_transition(start_state, &tr, true);
     }
 
     // If _2_flags are observed, _1_flags are illegal before an
@@ -3742,22 +3766,23 @@ pub fn get_flag_path_restriction(
             b[n - 1] = b'$';
         }
 
-        basic_restriction.add_transition(
-            start_state,
-            &HfstBasicTransition::new_symbols(
-                seen_2_state,
-                dollar_flag.clone(),
-                dollar_flag.clone(),
-                0.0,
-            ),
-            true,
-        );
-
-        basic_restriction.add_transition(
+        let tr = HfstBasicTransition::new_symbols(
             seen_2_state,
-            &HfstBasicTransition::new_symbols(seen_2_state, dollar_flag.clone(), dollar_flag, 0.0),
-            true,
+            dollar_flag.clone(),
+            dollar_flag.clone(),
+            0.0,
+            basic_restriction.coder_mut(),
         );
+        basic_restriction.add_transition(start_state, &tr, true);
+
+        let tr = HfstBasicTransition::new_symbols(
+            seen_2_state,
+            dollar_flag.clone(),
+            dollar_flag,
+            0.0,
+            basic_restriction.coder_mut(),
+        );
+        basic_restriction.add_transition(seen_2_state, &tr, true);
     }
 
     let restriction = HfstTransducer::from_basic(&basic_restriction, type_);
@@ -4565,14 +4590,27 @@ impl HfstTransducer {
             // [spec:hfst:def:hfst-transducer.hfst.rule-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.rule-fn]
             // implementations::ComposeIntersectRule rule(rule_fst);
+            //
+            // The lexicon and rule basic transducers each carry their own symbol
+            // coding; reindex both onto one shared `canonical` coder ONCE so their
+            // symbol numbers can be combined directly in the lazy product (the
+            // per-graph-coder replacement for the former process-global numbering).
+            let mut canonical = crate::hfst_tropical_transducer_transition_data::SymbolCoder::new();
+            let mut rule_basic = HfstBasicTransducer::from_transducer(&rule_fst);
+            let mut lexicon_basic = HfstBasicTransducer::from_transducer(&harmonized_lexicon);
+            lexicon_basic.intern_into(&mut canonical);
+            rule_basic.intern_into(&mut canonical);
+            lexicon_basic.reindex_into(&mut canonical);
+            rule_basic.reindex_into(&mut canonical);
+
             let mut rule = crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
-                &HfstBasicTransducer::from_transducer(&rule_fst),
+                &rule_basic,
             );
 
             // Create a ComposeIntersectLexicon from *harmonized_lexicon.
             let mut lexicon =
                 crate::compose_intersect_lexicon::ComposeIntersectLexicon::new_from_transducer(
-                    &HfstBasicTransducer::from_transducer(&harmonized_lexicon),
+                    &lexicon_basic,
                 );
 
             let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut rule);
@@ -4615,28 +4653,17 @@ impl HfstTransducer {
             // ComposeIntersectRule * second_rule = new ComposeIntersectRule(second_rule_fst);
             // ComposeIntersectRulePair * rules =
             //     new ComposeIntersectRulePair(first_rule, second_rule);
-            let first_rule: Box<
-                dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject,
-            > = Box::new(
-                crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
-                    &HfstBasicTransducer::from_transducer(&first_rule_fst),
-                ),
-            );
-            let second_rule: Box<
-                dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject,
-            > = Box::new(
-                crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
-                    &HfstBasicTransducer::from_transducer(&second_rule_fst),
-                ),
-            );
-            let mut rules: Box<dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject> =
-                Box::new(
-                    crate::compose_intersect_rule_pair::ComposeIntersectRulePair::new(
-                        first_rule,
-                        second_rule,
-                    ),
-                );
-
+            //
+            // Reindex the lexicon and every rule basic transducer onto one shared
+            // `canonical` coder ONCE so their symbol numbers can be combined
+            // directly in the lazy product (the per-graph-coder replacement for the
+            // former process-global numbering). Build every basic transducer first,
+            // intern them ALL into the shared coder, then reindex each — so even
+            // alphabet-only symbols agree across all of them.
+            let mut lexicon_basic = HfstBasicTransducer::from_transducer(&harmonized_lexicon);
+            let mut first_rule_basic = HfstBasicTransducer::from_transducer(&first_rule_fst);
+            let mut second_rule_basic = HfstBasicTransducer::from_transducer(&second_rule_fst);
+            let mut extra_rule_basics: Vec<HfstBasicTransducer> = Vec::new();
             for it in &v[2..] {
                 let mut rule_fst = it.clone();
                 if convert_to_openfst {
@@ -4650,14 +4677,53 @@ impl HfstTransducer {
                         &("@#@".to_string(), internal_epsilon.to_string()),
                     );
                 }
+                extra_rule_basics.push(HfstBasicTransducer::from_transducer(&rule_fst));
+            }
 
+            let mut canonical = crate::hfst_tropical_transducer_transition_data::SymbolCoder::new();
+            lexicon_basic.intern_into(&mut canonical);
+            first_rule_basic.intern_into(&mut canonical);
+            second_rule_basic.intern_into(&mut canonical);
+            for rb in extra_rule_basics.iter() {
+                rb.intern_into(&mut canonical);
+            }
+            lexicon_basic.reindex_into(&mut canonical);
+            first_rule_basic.reindex_into(&mut canonical);
+            second_rule_basic.reindex_into(&mut canonical);
+            for rb in extra_rule_basics.iter_mut() {
+                rb.reindex_into(&mut canonical);
+            }
+
+            let first_rule: Box<
+                dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject,
+            > = Box::new(
+                crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
+                    &first_rule_basic,
+                ),
+            );
+            let second_rule: Box<
+                dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject,
+            > = Box::new(
+                crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
+                    &second_rule_basic,
+                ),
+            );
+            let mut rules: Box<dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject> =
+                Box::new(
+                    crate::compose_intersect_rule_pair::ComposeIntersectRulePair::new(
+                        first_rule,
+                        second_rule,
+                    ),
+                );
+
+            for rule_basic in extra_rule_basics.iter() {
                 // rules = new ComposeIntersectRulePair(
                 //     new ComposeIntersectRule(rule_fst), rules);
                 let new_rule: Box<
                     dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject,
                 > = Box::new(
                     crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
-                        &HfstBasicTransducer::from_transducer(&rule_fst),
+                        rule_basic,
                     ),
                 );
                 rules = Box::new(
@@ -4670,7 +4736,7 @@ impl HfstTransducer {
             // Create a ComposeIntersectLexicon from *harmonized_lexicon.
             let mut lexicon =
                 crate::compose_intersect_lexicon::ComposeIntersectLexicon::new_from_transducer(
-                    &HfstBasicTransducer::from_transducer(&harmonized_lexicon),
+                    &lexicon_basic,
                 );
             let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut *rules);
 
@@ -4938,46 +5004,38 @@ impl HfstTransducer {
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.universal-pair-fn]
     pub fn universal_pair(type_: ImplementationType) -> HfstTransducer {
         let mut bt = HfstBasicTransducer::new();
-        bt.add_transition(
-            0,
-            &HfstBasicTransition::new_symbols(
-                1,
-                "@_IDENTITY_SYMBOL_@".to_string(),
-                "@_IDENTITY_SYMBOL_@".to_string(),
-                0.0,
-            ),
-            true,
+        let tr = HfstBasicTransition::new_symbols(
+            1,
+            "@_IDENTITY_SYMBOL_@".to_string(),
+            "@_IDENTITY_SYMBOL_@".to_string(),
+            0.0,
+            bt.coder_mut(),
         );
-        bt.add_transition(
-            0,
-            &HfstBasicTransition::new_symbols(
-                1,
-                "@_UNKNOWN_SYMBOL_@".to_string(),
-                "@_UNKNOWN_SYMBOL_@".to_string(),
-                0.0,
-            ),
-            true,
+        bt.add_transition(0, &tr, true);
+        let tr = HfstBasicTransition::new_symbols(
+            1,
+            "@_UNKNOWN_SYMBOL_@".to_string(),
+            "@_UNKNOWN_SYMBOL_@".to_string(),
+            0.0,
+            bt.coder_mut(),
         );
-        bt.add_transition(
-            0,
-            &HfstBasicTransition::new_symbols(
-                1,
-                "@_UNKNOWN_SYMBOL_@".to_string(),
-                "@_EPSILON_SYMBOL_@".to_string(),
-                0.0,
-            ),
-            true,
+        bt.add_transition(0, &tr, true);
+        let tr = HfstBasicTransition::new_symbols(
+            1,
+            "@_UNKNOWN_SYMBOL_@".to_string(),
+            "@_EPSILON_SYMBOL_@".to_string(),
+            0.0,
+            bt.coder_mut(),
         );
-        bt.add_transition(
-            0,
-            &HfstBasicTransition::new_symbols(
-                1,
-                "@_EPSILON_SYMBOL_@".to_string(),
-                "@_UNKNOWN_SYMBOL_@".to_string(),
-                0.0,
-            ),
-            true,
+        bt.add_transition(0, &tr, true);
+        let tr = HfstBasicTransition::new_symbols(
+            1,
+            "@_EPSILON_SYMBOL_@".to_string(),
+            "@_UNKNOWN_SYMBOL_@".to_string(),
+            0.0,
+            bt.coder_mut(),
         );
+        bt.add_transition(0, &tr, true);
         bt.set_final_weight(1, &0.0);
 
         let Retval = HfstTransducer::new_from_basic_transducer(&bt, type_);
@@ -4989,16 +5047,14 @@ impl HfstTransducer {
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.identity-pair-fn]
     pub fn identity_pair(type_: ImplementationType) -> HfstTransducer {
         let mut bt = HfstBasicTransducer::new();
-        bt.add_transition(
-            0,
-            &HfstBasicTransition::new_symbols(
-                1,
-                "@_IDENTITY_SYMBOL_@".to_string(),
-                "@_IDENTITY_SYMBOL_@".to_string(),
-                0.0,
-            ),
-            true,
+        let tr = HfstBasicTransition::new_symbols(
+            1,
+            "@_IDENTITY_SYMBOL_@".to_string(),
+            "@_IDENTITY_SYMBOL_@".to_string(),
+            0.0,
+            bt.coder_mut(),
         );
+        bt.add_transition(0, &tr, true);
         bt.set_final_weight(1, &0.0);
 
         let Retval = HfstTransducer::new_from_basic_transducer(&bt, type_);
@@ -5540,26 +5596,26 @@ fn rename_flag_diacritics(fst: &mut HfstTransducer, suffix: &str) {
 
     for states in basic_fst.state_vector.iter() {
         for transition in states.iter() {
-            let isym = if FdOperation::is_diacritic(&transition.get_input_symbol()) {
-                add_suffix_to_feature_name(&transition.get_input_symbol(), suffix)
+            let input_symbol = transition.get_input_symbol(basic_fst.coder());
+            let output_symbol = transition.get_output_symbol(basic_fst.coder());
+            let isym = if FdOperation::is_diacritic(&input_symbol) {
+                add_suffix_to_feature_name(&input_symbol, suffix)
             } else {
-                transition.get_input_symbol()
+                input_symbol
             };
-            let osym = if FdOperation::is_diacritic(&transition.get_output_symbol()) {
-                add_suffix_to_feature_name(&transition.get_output_symbol(), suffix)
+            let osym = if FdOperation::is_diacritic(&output_symbol) {
+                add_suffix_to_feature_name(&output_symbol, suffix)
             } else {
-                transition.get_output_symbol()
+                output_symbol
             };
-            basic_fst_copy.add_transition(
-                s,
-                &HfstBasicTransition::new_symbols(
-                    transition.get_target_state(),
-                    isym,
-                    osym,
-                    transition.get_weight(),
-                ),
-                true,
+            let tr = HfstBasicTransition::new_symbols(
+                transition.get_target_state(),
+                isym,
+                osym,
+                transition.get_weight(),
+                basic_fst_copy.coder_mut(),
             );
+            basic_fst_copy.add_transition(s, &tr, true);
         }
 
         if basic_fst.is_final_state(s) {
@@ -5582,26 +5638,26 @@ fn encode_flag_diacritics(fst: &mut HfstTransducer) {
 
     for states in basic_fst.state_vector.iter() {
         for transition in states.iter() {
-            let isym = if FdOperation::is_diacritic(&transition.get_input_symbol()) {
-                encode_flag(&transition.get_input_symbol())
+            let input_symbol = transition.get_input_symbol(basic_fst.coder());
+            let output_symbol = transition.get_output_symbol(basic_fst.coder());
+            let isym = if FdOperation::is_diacritic(&input_symbol) {
+                encode_flag(&input_symbol)
             } else {
-                transition.get_input_symbol()
+                input_symbol
             };
-            let osym = if FdOperation::is_diacritic(&transition.get_output_symbol()) {
-                encode_flag(&transition.get_output_symbol())
+            let osym = if FdOperation::is_diacritic(&output_symbol) {
+                encode_flag(&output_symbol)
             } else {
-                transition.get_output_symbol()
+                output_symbol
             };
-            basic_fst_copy.add_transition(
-                s,
-                &HfstBasicTransition::new_symbols(
-                    transition.get_target_state(),
-                    isym,
-                    osym,
-                    transition.get_weight(),
-                ),
-                true,
+            let tr = HfstBasicTransition::new_symbols(
+                transition.get_target_state(),
+                isym,
+                osym,
+                transition.get_weight(),
+                basic_fst_copy.coder_mut(),
             );
+            basic_fst_copy.add_transition(s, &tr, true);
         }
 
         if basic_fst.is_final_state(s) {
@@ -5649,26 +5705,27 @@ fn decode_flag_diacritics(fst: &mut HfstTransducer) {
 
     for states in basic_fst.state_vector.iter() {
         for transition in states.iter() {
-            let mut istr = decode_flag(&transition.get_input_symbol());
+            let input_symbol = transition.get_input_symbol(basic_fst.coder());
+            let output_symbol = transition.get_output_symbol(basic_fst.coder());
+
+            let mut istr = decode_flag(&input_symbol);
             if !FdOperation::is_diacritic(&istr) {
-                istr = transition.get_input_symbol();
+                istr = input_symbol;
             }
 
-            let mut ostr = decode_flag(&transition.get_output_symbol());
+            let mut ostr = decode_flag(&output_symbol);
             if !FdOperation::is_diacritic(&ostr) {
-                ostr = transition.get_output_symbol();
+                ostr = output_symbol;
             }
 
-            basic_fst_copy.add_transition(
-                s,
-                &HfstBasicTransition::new_symbols(
-                    transition.get_target_state(),
-                    istr,
-                    ostr,
-                    transition.get_weight(),
-                ),
-                true,
+            let tr = HfstBasicTransition::new_symbols(
+                transition.get_target_state(),
+                istr,
+                ostr,
+                transition.get_weight(),
+                basic_fst_copy.coder_mut(),
             );
+            basic_fst_copy.add_transition(s, &tr, true);
         }
 
         if basic_fst.is_final_state(s) {

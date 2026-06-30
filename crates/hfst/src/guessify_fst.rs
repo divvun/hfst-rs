@@ -226,16 +226,14 @@ pub fn guessify_analyzer(
 
     let mut s: HfstState = 0;
     while s <= basic_guesser.get_max_state() {
-        basic_guesser.add_transition(
-            s,
-            &HfstBasicTransition::new_symbols(
-                sink_state,
-                my_default().to_string(),
-                my_default().to_string(),
-                penalty,
-            ),
-            true,
+        let arc = HfstBasicTransition::new_symbols(
+            sink_state,
+            my_default().to_string(),
+            my_default().to_string(),
+            penalty,
+            basic_guesser.coder_mut(),
         );
+        basic_guesser.add_transition(s, &arc, true);
         s += 1;
     }
 
@@ -246,18 +244,16 @@ pub fn guessify_analyzer(
     let mut s: HfstState = 0;
     while s <= basic_guesser.get_max_state() {
         if basic_guesser.index(s).len() == 1
-            && basic_guesser.index(s)[0].get_input_symbol() == my_default()
+            && basic_guesser.index(s)[0].get_input_symbol(basic_guesser.coder()) == my_default()
         {
-            basic_guesser.add_transition(
-                s,
-                &HfstBasicTransition::new_symbols(
-                    sink_state,
-                    "a".to_string(),
-                    "a".to_string(),
-                    penalty,
-                ),
-                true,
+            let arc = HfstBasicTransition::new_symbols(
+                sink_state,
+                "a".to_string(),
+                "a".to_string(),
+                penalty,
+                basic_guesser.coder_mut(),
             );
+            basic_guesser.add_transition(s, &arc, true);
         }
         s += 1;
     }
@@ -339,11 +335,17 @@ pub fn affix_guessify(
                 internal_identity.to_string(),
                 internal_identity.to_string(),
                 weight,
+                repl.coder_mut(),
             );
             repl.add_transition(guess_state, &guess_arc, true);
             for x in alpha.iter() {
-                let x_arc =
-                    HfstBasicTransition::new_symbols(guess_state, x.clone(), x.clone(), weight);
+                let x_arc = HfstBasicTransition::new_symbols(
+                    guess_state,
+                    x.clone(),
+                    x.clone(),
+                    weight,
+                    repl.coder_mut(),
+                );
                 repl.add_transition(guess_state, &x_arc, true);
             }
             for s in 0..=mutt.get_max_state() {
@@ -357,19 +359,28 @@ pub fn affix_guessify(
                     internal_identity.to_string(),
                     internal_identity.to_string(),
                     weight,
+                    repl.coder_mut(),
                 );
                 repl.add_transition(guess_state, &guess_arc, true);
                 for x in alpha.iter() {
-                    let x_arc = HfstBasicTransition::new_symbols(d, x.clone(), x.clone(), weight);
+                    let x_arc = HfstBasicTransition::new_symbols(
+                        d,
+                        x.clone(),
+                        x.clone(),
+                        weight,
+                        repl.coder_mut(),
+                    );
                     repl.add_transition(guess_state, &x_arc, true);
                 }
                 for arc in mutt.transitions(s).iter() {
-                    let newarc = HfstBasicTransition::new_symbols(
-                        arc.get_target_state() + 1,
-                        arc.get_input_symbol(),
-                        arc.get_output_symbol(),
-                        arc.get_weight(),
-                    );
+                    // Cross-graph copy: read arc symbols via 'mutt's coder, then
+                    // build the new transition into 'repl' via 'repl's coder.
+                    let target = arc.get_target_state() + 1;
+                    let isym = arc.get_input_symbol(mutt.coder());
+                    let osym = arc.get_output_symbol(mutt.coder());
+                    let w = arc.get_weight();
+                    let newarc =
+                        HfstBasicTransition::new_symbols(target, isym, osym, w, repl.coder_mut());
                     repl.add_transition(d, &newarc, true);
                 }
             }
@@ -384,6 +395,7 @@ pub fn affix_guessify(
                 internal_identity.to_string(),
                 internal_identity.to_string(),
                 weight,
+                repl.coder_mut(),
             );
             repl.add_transition(guess_state, &guess_arc, true);
             let max_state = repl.get_max_state();
@@ -393,6 +405,7 @@ pub fn affix_guessify(
                     internal_identity.to_string(),
                     internal_identity.to_string(),
                     weight,
+                    repl.coder_mut(),
                 );
                 repl.add_transition(s, &newarc, true);
             }

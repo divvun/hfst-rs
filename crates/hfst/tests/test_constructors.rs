@@ -94,11 +94,14 @@ fn conversion_from_basic(type_: ImplementationType) {
 
     let mut basic = HfstBasicTransducer::new();
     basic.add_state(1);
-    basic.add_transition(
-        0,
-        &HfstBasicTransition::new_symbols(1, "foo".to_string(), "bar".to_string(), 0.0),
-        true,
+    let tr = HfstBasicTransition::new_symbols(
+        1,
+        "foo".to_string(),
+        "bar".to_string(),
+        0.0,
+        basic.coder_mut(),
     );
+    basic.add_transition(0, &tr, true);
     basic.set_final_weight(1, &0.0);
 
     let foobar_basic = HfstTransducer::new_from_basic(&basic, type_);
