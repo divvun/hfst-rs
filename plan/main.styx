@@ -1369,4 +1369,41 @@ children (
             }
         )
     }
+
+    {
+        id idiom6
+        title "Stage 6 — replace the exception model with a proper Result. HFST_THROW/HFST_THROW_MESSAGE + panic_any/catch_unwind + the ~30 *Exception structs become Result<T, HfstError> with a thiserror error enum; drop the \"Exception\" nomenclature entirely. ~382 throw sites + 24 catch sites + 443 naming refs across ~24 files. Oracle: 151 hfst tests. Foundational for the idiom5 keystone's coding errors. Deps idiom4."
+        priority 3
+        deps (idiom4)
+        children (
+            {
+                id idiom6.foundation
+                title "Establish the error foundation: a hand-rolled HfstError { kind: HfstErrorKind, message: Option<String> } + enum HfstErrorKind (one variant per former Hfst*Exception, \"Exception\" suffix dropped), impl Display + std::error::Error, pub type HfstResult<T>, and hfst_bail!/hfst_err! macros. Introduced alongside the existing exceptions (allow dead_code) as the migration target; no throw sites converted yet. 151 hfst tests unaffected."
+                priority 3
+                log (
+                    {
+                        at 2026-06-30T01:49:52.788659Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-30T01:54:30.890999Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+        )
+        log (
+            {
+                at 2026-06-30T01:49:38.229346Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Operator directive (2026-06-30): replace HFST_THROW/HFST_THROW_MESSAGE + panic_any/catch_unwind + the ~30 Hfst*Exception structs with a proper Result<T, HfstError>, and DROP the \"Exception\" nomenclature entirely. Surface: 154 HFST_THROW + 106 HFST_THROW_MESSAGE + 107 direct panic_any (~382 throw sites) + 24 catch_unwind across ~24 files; 443 Exception identifier refs. Design (hand-rolled, no thiserror — avoids a network dep, matches house minimal-dep style; mirrors divvunspell's TransducerError intent): pub struct HfstError { kind: HfstErrorKind, message: Option<String> } + enum HfstErrorKind with one variant per former exception (suffix dropped: FunctionNotImplemented, TransducerTypeMismatch, ImplementationTypeNotAvailable(ImplementationType), NotValidAttFormat, Fatal [was HfstFatal], ...), impl Display/Error, pub type HfstResult<T>; ergonomic hfst_bail!(Kind) / hfst_bail!(Kind, msg) macros that `return Err(...)`. Migration = leaf-up, staged by subsystem with the 151 tests as oracle: convert deepest throwing fns to return HfstResult, ripple `?` to callers; a bridge (panic_to_result at catch boundaries, or .expect() at not-yet-converted callers) keeps each stage green. Sequenced as foundational for the idiom5 symbol-coding keystone (its get_symbol throws today): do the error model, then K2/K3 uses Result. K1 of the keystone (SymbolCoder/FormatCoder encapsulation) is banked."
+            }
+        )
+    }
 )
