@@ -1350,6 +1350,13 @@ children (
                         kind @decision
                         text "Design fixed by operator redirect to ~/git/divvun/divvunspell (their production Rust FST lib = house style). Pattern: TransducerAlphabet is OWNED BY EACH TRANSDUCER, reached via the Transducer trait's alphabet(&self)->&TransducerAlphabet / alphabet_mut(&mut self). It holds key_table: Vec<SmolStr> (number->symbol) + string_to_symbol: HashMap (symbol->number) + identity/unknown/operations. add_symbol(&mut self,&str) interns. Cross-transducer ops harmonize via create_translator_from(&mut self, other)->Vec<SymbolNumber>, remapping the other's numbering into self's and extending self's alphabet. NO global static, NO threaded &mut Context param, NO shared Rc handle. Mapping to the HFST port: HfstBasicTransducer already owns alphabet: HfstAlphabet (a symbol SET); enrich the per-transducer coding so the arc's input_number/output_number resolve against the OWNING graph's coder; move HfstTropicalTransducerTransitionData::get_symbol/get_number (static, ~80 sites: hfst_basic_transducer, both weight transducers, all convert_*, compose_intersect_*, hfst_basic_transition) to instance access through &self; harmonize on binary ops (leverage HFST's existing harmonize machinery). Stage as: K1 extract global coding into an owned SymbolCoder struct (refactor, test-green); K2 thread it onto the transducers as a field; K3 switch resolution to per-transducer + harmonize, delete the globals. 151 hfst tests gate each stage. See memory divvunspell-coding-pattern."
                     }
+
+                    {
+                        at 2026-06-30T01:15:01.041923Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
                 )
             }
         )

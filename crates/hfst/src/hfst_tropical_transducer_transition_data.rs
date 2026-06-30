@@ -2,12 +2,14 @@
 //! 'libhfst/src/implementations/HfstTropicalTransducerTransitionData.{h,cc}'.
 //!
 //! One implementation of the transition-data template parameter 'C' used by
-//! 'HfstTransition'. Symbols are interned to 'unsigned int' numbers via two
-//! process-global 'static' maps (shared by every transducer using this data
-//! type); those are ported as module-level 'LazyLock<Mutex<…>>', seeded by the
-//! two initializer structs exactly as the C++ global 'dummy1'/'dummy2' objects
-//! seed them. Symbol getters return an owned 'String' (the C++ returns a
-//! 'const std::string&' into the static vector; a reference cannot escape the
+//! 'HfstTransition'. Symbols are interned to 'unsigned int' numbers via the C++
+//! class-static 'number2symbol_map'/'symbol2number_map'/'max_number' (seeded by
+//! the 'dummy1'/'dummy2' globals). Those three statics are encapsulated in an
+//! owned ['SymbolCoder'] (the divvunspell 'TransducerAlphabet' shape); K1 of the
+//! de-globalization holds a single process-global 'SymbolCoder' instance so the
+//! shared numbering is preserved exactly, and later stages move the coder onto
+//! each transducer. Symbol getters return an owned 'String' (the C++ returns a
+//! 'const std::string&' into the key table; a reference cannot escape the
 //! 'Mutex' guard, so the equal value is cloned out).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -42,23 +44,112 @@ impl string_comparison {
     }
 }
 
-// Static members of HfstTropicalTransducerTransitionData, seeded by the
-// initializer structs below (the C++ global 'dummy1'/'dummy2').
+// The C++ class-static symbol coding (number2symbol_map / symbol2number_map /
+// max_number, seeded by the 'dummy1'/'dummy2' globals) is encapsulated in an
+// owned 'SymbolCoder' modelled on divvunspell's 'TransducerAlphabet'. K1 of the
+// de-globalization keeps a single process-global instance, so the shared
+// numbering is preserved exactly; later stages move the coder onto each
+// transducer (reached via '&self') and harmonize across them.
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.dummy1-fn]
 // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.dummy1-fn]
-static NUMBER2SYMBOL_MAP: LazyLock<Mutex<Number2SymbolVector>> = LazyLock::new(|| {
-    let mut vect = Number2SymbolVector::new();
-    Number2SymbolVectorInitializer::new(&mut vect);
-    Mutex::new(vect)
-});
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.dummy2-fn]
 // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.dummy2-fn]
-static SYMBOL2NUMBER_MAP: LazyLock<Mutex<Symbol2NumberMap>> = LazyLock::new(|| {
-    let mut map = Symbol2NumberMap::new();
-    Symbol2NumberMapInitializer::new(&mut map);
-    Mutex::new(map)
-});
-static MAX_NUMBER: Mutex<u32> = Mutex::new(2);
+static GLOBAL_CODER: LazyLock<Mutex<SymbolCoder>> =
+    LazyLock::new(|| Mutex::new(SymbolCoder::new()));
+
+/// Owned symbol<->number coding (the divvunspell 'TransducerAlphabet' shape):
+/// 'number2symbol' is the key table (index = number), 'symbol2number' its
+/// inverse, and 'max_number' the highest number assigned. Seeded with the three
+/// special symbols (epsilon/unknown/identity) at 0/1/2.
+#[derive(Clone, Debug)]
+pub struct SymbolCoder {
+    number2symbol: Number2SymbolVector,
+    symbol2number: Symbol2NumberMap,
+    max_number: u32,
+}
+
+impl SymbolCoder {
+    pub fn new() -> Self {
+        let mut number2symbol = Number2SymbolVector::new();
+        Number2SymbolVectorInitializer::new(&mut number2symbol);
+        let mut symbol2number = Symbol2NumberMap::new();
+        Symbol2NumberMapInitializer::new(&mut symbol2number);
+        SymbolCoder {
+            number2symbol,
+            symbol2number,
+            max_number: 2,
+        }
+    }
+
+    pub fn get_max_number(&self) -> u32 {
+        self.max_number
+    }
+
+    /// Map 'number' back to its symbol (throws if out of range, as the C++ does).
+    pub fn get_symbol(&self, number: u32) -> String {
+        if number as usize >= self.number2symbol.len() {
+            let mut message = String::from("HfstTropicalTransducerTransitionData: number ");
+            message.push_str(&number.to_string());
+            message.push_str(" is not mapped to any symbol");
+            crate::HFST_THROW_MESSAGE!(HfstFatalException, message);
+        }
+        self.number2symbol[number as usize].clone()
+    }
+
+    /// Map 'symbol' to its number, interning a fresh number if unseen.
+    pub fn get_number(&mut self, symbol: &str) -> u32 {
+        if symbol.is_empty() {
+            // FAIL
+            match self.symbol2number.get(symbol) {
+                None => {
+                    eprintln!("ERROR: No number for the empty symbol\n");
+                }
+                Some(second) => {
+                    eprintln!("ERROR: The empty symbol corresdponds to number {}", second);
+                }
+            }
+            assert!(false);
+        }
+        if let Some(second) = self.symbol2number.get(symbol) {
+            return *second;
+        }
+        self.max_number += 1;
+        let new_max = self.max_number;
+        self.symbol2number.insert(symbol.to_string(), new_max);
+        self.number2symbol.push(symbol.to_string());
+        new_max
+    }
+
+    pub fn get_harmonization_vector(&mut self, symbols: &[SymbolType]) -> Vec<u32> {
+        let mut harmv: Vec<u32> = vec![0; symbols.len()];
+        for i in 0..symbols.len() {
+            if symbols[i] != "" {
+                harmv[i] = self.get_number(&symbols[i]);
+            }
+        }
+        harmv
+    }
+
+    pub fn get_reverse_harmonization_vector(
+        &self,
+        symbols: &BTreeMap<SymbolType, u32>,
+    ) -> Vec<u32> {
+        let mut harmv: Vec<u32> = vec![0; (self.max_number + 1) as usize];
+        for i in 0..harmv.len() {
+            let sym = self.get_symbol(i as u32);
+            if let Some(second) = symbols.get(&sym) {
+                harmv[i] = *second;
+            }
+        }
+        harmv
+    }
+}
+
+impl Default for SymbolCoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data]
 #[derive(Clone, Debug)]
@@ -91,85 +182,37 @@ impl HfstTropicalTransducerTransitionData {
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-max-number-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-max-number-fn]
     pub fn get_max_number() -> u32 {
-        *MAX_NUMBER.lock().unwrap()
+        GLOBAL_CODER.lock().unwrap().get_max_number()
     }
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-harmonization-vector-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-harmonization-vector-fn]
     pub fn get_harmonization_vector(symbols: &Vec<SymbolType>) -> Vec<u32> {
-        let mut harmv: Vec<u32> = Vec::new();
-        harmv.reserve(symbols.len());
-        harmv.resize(symbols.len(), 0);
-        for i in 0..symbols.len() {
-            if symbols[i] != "" {
-                harmv[i] = Self::get_number(&symbols[i]);
-            }
-        }
-        harmv
+        GLOBAL_CODER
+            .lock()
+            .unwrap()
+            .get_harmonization_vector(symbols)
     }
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-reverse-harmonization-vector-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-reverse-harmonization-vector-fn]
     pub fn get_reverse_harmonization_vector(symbols: &BTreeMap<SymbolType, u32>) -> Vec<u32> {
-        let max_number = *MAX_NUMBER.lock().unwrap();
-        let mut harmv: Vec<u32> = Vec::new();
-        harmv.reserve((max_number + 1) as usize);
-        harmv.resize((max_number + 1) as usize, 0);
-        for i in 0..harmv.len() {
-            let sym = Self::get_symbol(i as u32);
-            if let Some(second) = symbols.get(&sym) {
-                harmv[i] = *second;
-            }
-        }
-        harmv
+        GLOBAL_CODER
+            .lock()
+            .unwrap()
+            .get_reverse_harmonization_vector(symbols)
     }
 
     /* Get the symbol that is mapped as 'number'. (C++ 'protected'; reached by
     HfstBasicTransducer etc. via `friend` — here crate-visible.) */
     pub(crate) fn get_symbol(number: u32) -> String {
-        let map = NUMBER2SYMBOL_MAP.lock().unwrap();
-        if number as usize >= map.len() {
-            drop(map);
-            let mut message = String::from("HfstTropicalTransducerTransitionData: number ");
-            message.push_str(&number.to_string());
-            message.push_str(" is not mapped to any symbol");
-            crate::HFST_THROW_MESSAGE!(HfstFatalException, message);
-        }
-        map[number as usize].clone()
+        GLOBAL_CODER.lock().unwrap().get_symbol(number)
     }
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-number-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-number-fn]
     pub(crate) fn get_number(symbol: &str) -> u32 {
-        if symbol.is_empty() {
-            // FAIL
-            match SYMBOL2NUMBER_MAP.lock().unwrap().get(symbol) {
-                None => {
-                    eprintln!("ERROR: No number for the empty symbol\n");
-                }
-                Some(second) => {
-                    eprintln!("ERROR: The empty symbol corresdponds to number {}", second);
-                }
-            }
-            assert!(false);
-        }
-
-        {
-            let map = SYMBOL2NUMBER_MAP.lock().unwrap();
-            if let Some(second) = map.get(symbol) {
-                return *second;
-            }
-        }
-        let mut max = MAX_NUMBER.lock().unwrap();
-        *max += 1;
-        let new_max = *max;
-        drop(max);
-        SYMBOL2NUMBER_MAP
-            .lock()
-            .unwrap()
-            .insert(symbol.to_string(), new_max);
-        NUMBER2SYMBOL_MAP.lock().unwrap().push(symbol.to_string());
-        new_max
+        GLOBAL_CODER.lock().unwrap().get_number(symbol)
     }
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.print-transition-data-fn]
