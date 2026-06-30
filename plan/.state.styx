@@ -55,4 +55,5 @@ assertions (
     {id idiom6.foundation, kind @complete, author "brendan@necessary.nu", at 2026-06-30T01:54:30.890999Z}
     {id idiom5.xfst-lexc-flag, kind @complete, author "brendan@necessary.nu", at 2026-06-30T11:34:06.146425Z}
     {id idiom5.config-flags, kind @doing, author "brendan@necessary.nu", at 2026-06-30T12:16:03.427979Z}
+    {id idiom5.scratch, kind @doing, author "brendan@necessary.nu", at 2026-06-30T13:51:25.942823Z}
 )

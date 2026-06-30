@@ -137,6 +137,11 @@ pub struct XreCompiler {
     /// hfst-regexp2fst's '--xfst flag-is-epsilon' drives this; threaded into the
     /// 'compose' calls of this compiler's evaluation via [`Self::opt_cfg`].
     pub(crate) flag_is_epsilon_: bool,
+    /// Former 'xre_utils.cc' file-scope global 'bool contains_only_comments':
+    /// per-compile flag set by 'compile'/'compile_first' and read by
+    /// 'contained_only_comments'. Moved onto the instance to remove the
+    /// thread-global mutable state.
+    pub(crate) contains_only_comments_: bool,
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -287,14 +292,6 @@ use crate::hfst_exception_defs::HfstException;
 use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unknown};
 use crate::hfst_xerox_rules::{after, before};
 
-// Former xre_utils.cc file-scope global 'bool contains_only_comments'. The
-// skeleton did not fold this onto the instance, so it stays a (thread-local)
-// global exactly as in C++; set by compile()/compile_first(), read by
-// contained_only_comments().
-thread_local! {
-    static CONTAINS_ONLY_COMMENTS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
 // Classification of a ':' pair side. The nfst-xre parser only ever produces a
 // halfarc atom (Symbol/Epsilon/Any/BoundaryMarker), a Curly, or a 'Group([E])'
 // on each side of a Pair; 'None' from the classifier means "bracketed
@@ -339,6 +336,7 @@ impl XreCompilerNew for ImplementationType {
             harmonize_flags_: false,
             minimize_result_: true,
             flag_is_epsilon_: false,
+            contains_only_comments_: false,
         }
     }
 }
@@ -357,6 +355,7 @@ impl XreCompilerNew for &XreConstructorArguments {
             harmonize_flags_: false,
             minimize_result_: true,
             flag_is_epsilon_: false,
+            contains_only_comments_: false,
         }
     }
 }
@@ -540,7 +539,7 @@ impl XreCompiler {
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.contained-only-comments-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.contained-only-comments-fn]
     pub fn contained_only_comments(&self) -> bool {
-        CONTAINS_ONLY_COMMENTS.with(|c| c.get())
+        self.contains_only_comments_
     }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.compile-fn]
@@ -567,7 +566,7 @@ impl XreCompiler {
         expression: &str,
         chars_read: &mut u32,
     ) -> Option<HfstTransducer> {
-        CONTAINS_ONLY_COMMENTS.with(|c| c.set(false));
+        self.contains_only_comments_ = false;
         match parse_all(expression) {
             Ok(exprs) if !exprs.is_empty() => {
                 let first = &exprs[0];
@@ -577,7 +576,7 @@ impl XreCompiler {
                 Some(t)
             }
             Ok(_) => {
-                CONTAINS_ONLY_COMMENTS.with(|c| c.set(true));
+                self.contains_only_comments_ = true;
                 *chars_read = 0;
                 None
             }
@@ -592,7 +591,7 @@ impl XreCompiler {
     // or comments-only (the latter also flips the contains_only_comments flag,
     // matching the 'XRE: (empty) { contains_only_comments = true; }' action).
     fn compile_impl(&mut self, src: &str) -> Option<HfstTransducer> {
-        CONTAINS_ONLY_COMMENTS.with(|c| c.set(false));
+        self.contains_only_comments_ = false;
         match parse(src) {
             Ok(expr) => {
                 let mut t = self.eval(&expr);
@@ -604,7 +603,7 @@ impl XreCompiler {
                 // parse error.
                 if let Ok(exprs) = parse_all(src) {
                     if exprs.is_empty() {
-                        CONTAINS_ONLY_COMMENTS.with(|c| c.set(true));
+                        self.contains_only_comments_ = true;
                     }
                 }
                 None
@@ -1035,6 +1034,7 @@ impl XreCompiler {
             harmonize_flags_: self.harmonize_flags_,
             minimize_result_: self.minimize_result_,
             flag_is_epsilon_: self.flag_is_epsilon_,
+            contains_only_comments_: false,
         };
 
         // get_function_xre + recursive compile.
@@ -1080,16 +1080,6 @@ impl XreCompiler {
 // colliding with the skeleton's / sibling's 'use' imports in this same module.
 // =====================================================================
 
-// ---- former xre_parse.yy file-scope globals (folded onto thread-locals) ----
-
-thread_local! {
-    // xre_parse.yy:40 'bool has_weight_been_zeroed'
-    static HAS_WEIGHT_BEEN_ZEROED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    // xre_utils.cc:201 'std::string substitution_function_symbol'
-    static SUBSTITUTION_FUNCTION_SYMBOL: std::cell::RefCell<String> =
-        const { std::cell::RefCell::new(String::new()) };
-}
-
 // xre_parse.yy:51 'bool is_weighted()'
 fn is_weighted(format: ImplementationType) -> bool {
     format == ImplementationType::TROPICAL_OPENFST_TYPE
@@ -1097,36 +1087,13 @@ fn is_weighted(format: ImplementationType) -> bool {
 }
 
 // xre_parse.yy:41 'float zero_weights(float f)'.
-// NOTE: the C++ emits a one-time "ignoring weights in rule context" warning
-// here; 'transform_weights' takes a bare 'fn(f32)->f32' that cannot read the
-// instance 'verbose_', so the warning is dropped. The weight-zeroing behaviour
-// is preserved exactly.
-fn zero_weights(f: f32) -> f32 {
-    HAS_WEIGHT_BEEN_ZEROED.with(|c| {
-        if !c.get() && f != 0.0 {
-            c.set(true);
-        }
-    });
+// NOTE: the C++ keeps a 'has_weight_been_zeroed' flag solely to emit a one-time
+// "ignoring weights in rule context" warning; 'transform_weights' takes a bare
+// 'fn(f32)->f32' that cannot read the instance 'verbose_', so that warning is
+// dropped. The flag was therefore write-only dead state and is removed entirely;
+// the weight-zeroing behaviour (always returning 0.0) is preserved exactly.
+fn zero_weights(_f: f32) -> f32 {
     0.0
-}
-
-// [spec:hfst:def:xre-utils.hfst.xre.set-substitution-function-symbol-fn]
-// [spec:hfst:sem:xre-utils.hfst.xre.set-substitution-function-symbol-fn]
-fn set_substitution_function_symbol(symbol: &str) {
-    SUBSTITUTION_FUNCTION_SYMBOL.with(|s| {
-        *s.borrow_mut() = symbol.to_string();
-    });
-}
-
-// [spec:hfst:def:xre-utils.hfst.xre.substitution-function-fn]
-// [spec:hfst:sem:xre-utils.hfst.xre.substitution-function-fn]
-fn substitution_function(p: &(String, String), sps: &mut BTreeSet<(String, String)>) -> bool {
-    let sym = SUBSTITUTION_FUNCTION_SYMBOL.with(|s| s.borrow().clone());
-    if p.0 == sym || p.1 == sym {
-        sps.insert((sym.clone(), sym));
-        return true;
-    }
-    false
 }
 
 // [spec:hfst:def:xre-utils.hfst.xre.has-non-identity-pairs-fn]
@@ -1179,13 +1146,6 @@ fn build_symbol_list_transducer(
 // 'String'; C 'strtol'/'strtod' are mirrored by the byte-level 'c_strtol' /
 // 'c_strtod' below (each returns the parsed value plus the index of the first
 // unconsumed byte, i.e. the C 'endptr').
-
-// Former 'hfst::xre::cr' / 'hfst::xre::lr' line/char counters, touched only by
-// 'count_lines'. They live as thread-locals exactly as the C++ globals did.
-thread_local! {
-    static XRE_CR: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
-    static XRE_LR: std::cell::Cell<u32> = const { std::cell::Cell::new(1) };
-}
 
 // Mirror of C 'strtol(b + start, &endptr, 10)'. Returns '(value, endptr_index)';
 // on no conversion returns '(0, start)' just like 'strtol'.
@@ -1296,22 +1256,27 @@ fn strip_newline(s: &str) -> String {
 // [spec:hfst:def:xre-utils.hfst.xre.count-lines-fn]
 // [spec:hfst:sem:xre-utils.hfst.xre.count-lines-fn]
 // xre_utils.cc:282. Advances the 'lr'/'cr' counters over a chunk of input.
+// The former 'hfst::xre::cr'/'lr' file-scope counters are now function-local
+// (this faithful port is never driven by the nfst parser), removing the
+// thread-global mutable state.
 fn count_lines(s: &str) {
+    let cr = std::cell::Cell::new(0u32);
+    let lr = std::cell::Cell::new(1u32);
     let b = s.as_bytes();
     let mut i: usize = 0;
     while i < b.len() && b[i] != 0 {
         if b[i] == b'\n' {
-            XRE_LR.with(|c| c.set(c.get() + 1));
+            lr.set(lr.get() + 1);
         } else if b[i] == b'\r' {
             i += 1;
             if i < b.len() && b[i] == b'\n' {
-                XRE_CR.with(|c| c.set(c.get() + 1));
+                cr.set(cr.get() + 1);
             } else {
                 i -= 1;
             }
-            XRE_LR.with(|c| c.set(c.get() + 1));
+            lr.set(lr.get() + 1);
         }
-        XRE_CR.with(|c| c.set(c.get() + 1));
+        cr.set(cr.get() + 1);
         i += 1;
     }
 }
@@ -2222,14 +2187,12 @@ impl XreCompiler {
                     std::panic::panic_any("Contexts need to be automata".to_string());
                 }
                 if weighted {
-                    HAS_WEIGHT_BEEN_ZEROED.with(|cc| cc.set(false));
                     t1.transform_weights(zero_weights);
                 }
                 t1.optimize_with_config(&self.opt_cfg())
                     .prune_alphabet(false);
                 if weighted {
                     t2.transform_weights(zero_weights);
-                    HAS_WEIGHT_BEEN_ZEROED.with(|cc| cc.set(false));
                 }
                 t2.optimize_with_config(&self.opt_cfg())
                     .prune_alphabet(false);
@@ -2241,9 +2204,7 @@ impl XreCompiler {
                     std::panic::panic_any("Contexts need to be automata".to_string());
                 }
                 if weighted {
-                    HAS_WEIGHT_BEEN_ZEROED.with(|cc| cc.set(false));
                     t1.transform_weights(zero_weights);
-                    HAS_WEIGHT_BEEN_ZEROED.with(|cc| cc.set(false));
                 }
                 t1.optimize_with_config(&self.opt_cfg())
                     .prune_alphabet(false);
@@ -2258,9 +2219,7 @@ impl XreCompiler {
                     std::panic::panic_any("Contexts need to be automata".to_string());
                 }
                 if weighted {
-                    HAS_WEIGHT_BEEN_ZEROED.with(|cc| cc.set(false));
                     t1.transform_weights(zero_weights);
-                    HAS_WEIGHT_BEEN_ZEROED.with(|cc| cc.set(false));
                 }
                 t1.optimize_with_config(&self.opt_cfg())
                     .prune_alphabet(false);
@@ -2368,9 +2327,17 @@ impl XreCompiler {
                     empty_replace_transducer = true;
                 }
                 if empty_replace_transducer {
-                    // substitute all transitions {b:a, a:b, b:b} with b:b
-                    set_substitution_function_symbol(needle);
-                    tmp_tr.substitute_with_func(substitution_function);
+                    // substitute all transitions {b:a, a:b, b:b} with b:b. The
+                    // former 'substitution_function_symbol' global is captured by
+                    // this closure instead.
+                    let needle_sym = needle.to_string();
+                    tmp_tr.substitute_with_func(|p, sps| {
+                        if p.0 == needle_sym || p.1 == needle_sym {
+                            sps.insert((needle_sym.clone(), needle_sym.clone()));
+                            return true;
+                        }
+                        false
+                    });
                 }
                 // substitute b with x | y (no harmonization)
                 tmp_tr.substitute_pair_with_transducer(&tmp, &mut repl_tr, false);

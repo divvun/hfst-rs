@@ -21,7 +21,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::twolc::{
-    OtherSymbolTransducer, SymbolPair, SymbolPairVector, SymbolRange, TWOLC_EPSILON, TWOLC_UNKNOWN,
+    OstConfig, OtherSymbolTransducer, SymbolPair, SymbolPairVector, SymbolRange, TWOLC_EPSILON,
+    TWOLC_UNKNOWN,
 };
 
 // [spec:hfst:def:alphabet.alphabet]
@@ -40,7 +41,7 @@ impl Alphabet {
 
     // 'const OtherSymbolTransducer &Alphabet::compute(const SymbolPair &pair)'.
     // (No [spec] annotation in the C++ source.)
-    fn compute(&mut self, pair: &SymbolPair) -> &OtherSymbolTransducer {
+    fn compute(&mut self, cfg: &OstConfig, pair: &SymbolPair) -> &OtherSymbolTransducer {
         if !self.sets.contains_key(&pair.0) {
             self.define_singleton_set(&pair.0);
         }
@@ -51,10 +52,10 @@ impl Alphabet {
         let input = pair.0.clone();
         let output = pair.1.clone();
 
-        let mut pair_transducer = OtherSymbolTransducer::new();
+        let mut pair_transducer = OtherSymbolTransducer::new(cfg);
 
         if self.diacritics.contains(&input) {
-            pair_transducer.disjunct(&OtherSymbolTransducer::new_pair(&input, &input));
+            pair_transducer.disjunct(cfg, &OtherSymbolTransducer::new_pair(cfg, &input, &input));
             if input != output && output != TWOLC_EPSILON && output != TWOLC_UNKNOWN {
                 eprintln!(
                     "Warning: Diacritic {} in pair {}:{} will correspond 0.",
@@ -68,9 +69,9 @@ impl Alphabet {
                     continue;
                 }
 
-                pair_transducer.disjunct(&OtherSymbolTransducer::new_pair(&it.0, &it.1));
+                pair_transducer.disjunct(cfg, &OtherSymbolTransducer::new_pair(cfg, &it.0, &it.1));
             }
-            pair_transducer.disjunct(&OtherSymbolTransducer::new_symbol(TWOLC_UNKNOWN));
+            pair_transducer.disjunct(cfg, &OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN));
         } else if input == TWOLC_UNKNOWN {
             self.output_symbols.insert(pair.1.clone());
             let output_set = self.sets[&output].clone();
@@ -82,7 +83,8 @@ impl Alphabet {
                     }
 
                     if *it == jt.1 {
-                        pair_transducer.disjunct(&OtherSymbolTransducer::new_pair(&jt.0, &jt.1));
+                        pair_transducer
+                            .disjunct(cfg, &OtherSymbolTransducer::new_pair(cfg, &jt.0, &jt.1));
                     }
                 }
             }
@@ -97,7 +99,8 @@ impl Alphabet {
                     }
 
                     if *it == jt.0 {
-                        pair_transducer.disjunct(&OtherSymbolTransducer::new_pair(&jt.0, &jt.1));
+                        pair_transducer
+                            .disjunct(cfg, &OtherSymbolTransducer::new_pair(cfg, &jt.0, &jt.1));
                     }
                 }
             }
@@ -108,7 +111,8 @@ impl Alphabet {
             for it in input_set.iter() {
                 for jt in output_set.iter() {
                     if self.is_pair(it, jt) {
-                        pair_transducer.disjunct(&OtherSymbolTransducer::new_pair(it, jt));
+                        pair_transducer
+                            .disjunct(cfg, &OtherSymbolTransducer::new_pair(cfg, it, jt));
                     }
                 }
             }
@@ -172,8 +176,8 @@ impl Alphabet {
 
     // [spec:hfst:def:alphabet.alphabet.alphabet-done-fn]
     // [spec:hfst:sem:alphabet.alphabet.alphabet-done-fn]
-    pub fn alphabet_done(&self) {
-        OtherSymbolTransducer::set_symbol_pairs(&self.alphabet_set);
+    pub fn alphabet_done(&self, cfg: &mut OstConfig) {
+        OtherSymbolTransducer::set_symbol_pairs(cfg, &self.alphabet_set);
     }
 
     // [spec:hfst:def:alphabet.alphabet.define-diacritics-fn]
@@ -196,29 +200,33 @@ impl Alphabet {
 
     // [spec:hfst:def:alphabet.alphabet.is-empty-pair-fn]
     // [spec:hfst:sem:alphabet.alphabet.is-empty-pair-fn]
-    pub fn is_empty_pair(&mut self, pair: &SymbolPair) -> bool {
+    pub fn is_empty_pair(&mut self, cfg: &OstConfig, pair: &SymbolPair) -> bool {
         assert!(self.is_pair(&pair.0, &pair.1));
         // 'alphabet[pair]' (std::map::operator[]) default-constructs a missing
         // value; mirror that so a never-computed pair yields an empty fst.
         self.alphabet
             .entry(pair.clone())
-            .or_insert_with(OtherSymbolTransducer::new)
+            .or_insert_with(|| OtherSymbolTransducer::new(cfg))
             .is_empty()
     }
 
     // 'const OtherSymbolTransducer &Alphabet::get_transducer(const SymbolPair
     // &pair)'. (No [spec] annotation in the C++ source.)
-    pub fn get_transducer(&mut self, pair: &SymbolPair) -> &OtherSymbolTransducer {
+    pub fn get_transducer(&mut self, cfg: &OstConfig, pair: &SymbolPair) -> &OtherSymbolTransducer {
         if self.alphabet.contains_key(pair) {
             return &self.alphabet[pair];
         }
-        self.compute(pair)
+        self.compute(cfg, pair)
     }
 
     // [spec:hfst:def:alphabet.alphabet.get-symbol-pair-vector-fn]
     // [spec:hfst:sem:alphabet.alphabet.get-symbol-pair-vector-fn]
-    pub fn get_symbol_pair_vector(&mut self, pair: &SymbolPair) -> SymbolPairVector {
-        let result_fst = self.get_transducer(pair).clone();
+    pub fn get_symbol_pair_vector(
+        &mut self,
+        cfg: &OstConfig,
+        pair: &SymbolPair,
+    ) -> SymbolPairVector {
+        let result_fst = self.get_transducer(cfg, pair).clone();
         let mut result = SymbolPairVector::new();
         result_fst.get_initial_transition_pairs(&mut result);
         result

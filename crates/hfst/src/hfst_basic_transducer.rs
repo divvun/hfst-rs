@@ -2767,7 +2767,7 @@ impl HfstBasicTransducer {
     /* In-place substitution by a user function. */
     fn substitute_in_place_func(
         &mut self,
-        func: fn(&HfstSymbolPair, &mut HfstSymbolPairSet) -> bool,
+        func: impl Fn(&HfstSymbolPair, &mut HfstSymbolPairSet) -> bool,
     ) {
         for s in 0..self.state_vector.len() {
             let mut new_transitions: HfstBasicTransitions = Vec::new();
@@ -2988,7 +2988,7 @@ impl HfstBasicTransducer {
     /** @brief Substitute all transitions with a set defined by function 'func'. */
     pub fn substitute_with_func(
         &mut self,
-        func: fn(&HfstSymbolPair, &mut HfstSymbolPairSet) -> bool,
+        func: impl Fn(&HfstSymbolPair, &mut HfstSymbolPairSet) -> bool,
     ) -> &mut Self {
         self.substitute_in_place_func(func);
         self

@@ -1399,6 +1399,21 @@ children (
                 id idiom5.scratch
                 title "Move the per-compile thread_local scratch of PmatchCompiler/XreCompiler/LexcCompiler/TwolcCompiler onto private instance fields (delete the thread_local! blocks; thread access via &self/&mut self / a &mut compiler eval-context through the recursive evaluation). Does NOT touch config flags. Oracle: 152 hfst tests."
                 priority 3
+                log (
+                    {
+                        at 2026-06-30T13:51:25.942823Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-30T15:19:04.42473Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DONE (agent a012aaec, foreground; reviewed + independently verified). All per-compile thread_local! scratch removed from the compiler modules onto owned instance state; zero thread_local!/static mut remain in pmatch_compiler/xre/twolc/lexc; no new static/Lazy/OnceLock/Mutex introduced. pmatch_compiler.rs: the 3 thread_local! blocks (~12 scalars + ~16 collections + PMATCHNERRS) became a new pub struct PmatchEvalContext; ~120 free-fn accessors became its methods; threaded &mut PmatchEvalContext through PmatchObject::evaluate + evaluate_args/as_string/etc. and ~44 transitive helper fns; stored as a persistent eval_ctx field on PmatchCompiler so define() still reads the table after compile() (matches the thread-locals' persistence). xre.rs: CONTAINS_ONLY_COMMENTS -> XreCompiler.contains_only_comments_ field; HAS_WEIGHT_BEEN_ZEROED deleted (write-only dead — its one-time warning was already unreachable and zero_weights returns 0.0 unconditionally); SUBSTITUTION_FUNCTION_SYMBOL replaced by a closure capturing needle; XRE_CR/XRE_LR made fn-local Cells in the never-called count_lines. twolc.rs: the 5 OtherSymbolTransducer statics -> a per-compile OstConfig threaded by &/&mut through the rule/grammar walk. alphabet.rs: collateral OstConfig threading (5 methods). Scope expansion (justified, behavior-preserving): substitute_with_func/substitute_in_place_func generalized fn -> impl Fn in hfst_transducer.rs + hfst_basic_transducer.rs (3 sigs) so the closure replacement type-checks; all existing fn-pointer callers coerce, no tests touched. Config from fb09541b (EngineConfig, XreCompiler minimize_result_/flag_is_epsilon_, LexcCompiler flag_is_epsilon_) left intact. Oracle: cargo build -p hfst + -p hfst-cli clean; cargo nextest run -p hfst = 152 passed/14 skipped; hfst-cli smoke 1 passed."
+                    }
+                )
             }
 
             {

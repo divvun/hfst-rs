@@ -3364,7 +3364,7 @@ impl HfstTransducer {
 
     pub fn substitute_with_func(
         &mut self,
-        func: fn(&StringPair, &mut StringPairSet) -> bool,
+        func: impl Fn(&StringPair, &mut StringPairSet) -> bool,
     ) -> &mut HfstTransducer {
         // (XFSM_TYPE branch is #if'd out: HAVE_XFSM is not defined.)
         let mut net = self.convert_to_basic_transducer();
