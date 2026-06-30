@@ -389,13 +389,13 @@ mod input_impl {
         // 'read_transducer' is deferred (rustfst exposes only the whole-buffer
         // 'load'), so for those types we read the payload directly off the owned
         // reader and rebuild the fst here.
-        pub fn read_transducer(&mut self, t: &mut HfstTransducer) {
+        pub fn read_transducer(&mut self, t: &mut HfstTransducer) -> crate::error::Result<()> {
             if self.type_ != ImplementationType::XFSM_TYPE {
                 if self.input_stream_active {
                     // first transducer in the stream
                     self.input_stream_active = false;
                     if self.stream_eof() {
-                        crate::HFST_THROW!(EndOfStream);
+                        crate::bail!(EndOfStream);
                     }
                     // C++ re-opens the backend stream by filename and skips the
                     // already-read header bytes here ('ignore(bytes_to_skip)'). In
@@ -403,12 +403,12 @@ mod input_impl {
                     // header from the one reader, so there is nothing to skip.
                 } else {
                     if self.stream_eof() {
-                        crate::HFST_THROW!(EndOfStream);
+                        crate::bail!(EndOfStream);
                     }
                     let current_type = self.get_type();
                     let stype = self.stream_fst_type();
                     if stype != current_type {
-                        crate::HFST_THROW_MESSAGE!(
+                        crate::bail!(
                             TransducerTypeMismatch,
                             "HfstInputStream contains HfstTransducers whose type is not the same"
                         );
@@ -431,7 +431,7 @@ mod input_impl {
                     let bytes = self.read_remaining_bytes();
                     let (fst, consumed) = match StdVectorFst::load_prefix(&bytes) {
                         Ok(fc) => fc,
-                        Err(_) => crate::HFST_THROW_MESSAGE!(
+                        Err(_) => crate::bail!(
                             NotTransducerStream,
                             "could not read TROPICAL_OPENFST transducer payload"
                         ),
@@ -467,7 +467,7 @@ mod input_impl {
                     let bytes = self.read_remaining_bytes();
                     let (fst, consumed) = match LogFst::load_prefix(&bytes) {
                         Ok(fc) => fc,
-                        Err(_) => crate::HFST_THROW_MESSAGE!(
+                        Err(_) => crate::bail!(
                             NotTransducerStream,
                             "could not read LOG_OPENFST transducer payload"
                         ),
@@ -489,7 +489,7 @@ mod input_impl {
 
                     if self.hfst_version_2_weighted_transducer {
                         // this should not happen
-                        crate::HFST_THROW_MESSAGE!(Fatal, "not transducer stream");
+                        crate::bail!(Fatal, "not transducer stream");
                     }
                 }
                 ImplementationType::FOMA_TYPE => {
@@ -518,7 +518,7 @@ mod input_impl {
                 // case ERROR_TYPE: default:
                 _ => {
                     debug_error("#1");
-                    crate::HFST_THROW!(NotTransducerStream);
+                    crate::bail!(NotTransducerStream);
                 }
             }
 
@@ -534,6 +534,7 @@ mod input_impl {
                     t.set_property(&k, &v);
                 }
             }
+            Ok(())
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.guess-fst-type-fn]

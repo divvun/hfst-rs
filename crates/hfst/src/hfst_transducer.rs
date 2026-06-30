@@ -562,7 +562,13 @@ impl HfstTransducer {
             props: BTreeMap::new(),
             implementation: TransducerImplementation::None,
         };
-        instream.read_transducer(&mut t);
+        // Read errors are recoverable (the input stream API returns them as
+        // `Result`); this facade constructor keeps its infallible signature for
+        // now, so a bad read re-raises here exactly as the C++ `read_transducer`
+        // throw did. Propagating `Result` to the 67 callers is a later step.
+        if let Err(e) = instream.read_transducer(&mut t) {
+            e.throw();
+        }
         t
     }
 
