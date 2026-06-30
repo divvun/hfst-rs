@@ -150,11 +150,12 @@ mod construction_io {
     // 'std::ostream * LogWeightTransducer::warning_stream = NULL;'
     // (Not present in the Log .cc — mirrored from Tropical for API parity so the
     //  operations-area epsilon-cycle warning path has a sink to consult.)
-    // Non-owning warning sink (the caller owns the stream); the *mut Box<dyn Write>
-    // value is a later concern, but the global is now a safe thread-local Cell.
+    // Owned warning sink; see TropicalWeightTransducer::WARNING_STREAM for why the
+    // literal port's '*mut Box<dyn Write>' (leaked + dangling) is now an owned
+    // thread-local.
     thread_local! {
-        static WARNING_STREAM: std::cell::Cell<*mut Box<dyn std::io::Write>> =
-            const { std::cell::Cell::new(std::ptr::null_mut()) };
+        static WARNING_STREAM: std::cell::RefCell<Option<Box<dyn std::io::Write>>> =
+            const { std::cell::RefCell::new(None) };
     }
 
     // [spec:hfst:def:log-weight-transducer.hfst.implementations.openfst-log-set-hopcroft-fn]
@@ -557,14 +558,24 @@ mod construction_io {
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.get-warning-stream-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.get-warning-stream-fn]
-        pub fn get_warning_stream() -> *mut Box<dyn std::io::Write> {
-            WARNING_STREAM.with(|w| w.get())
+        //
+        // See TropicalWeightTransducer::with_warning_stream — the owned-sink
+        // equivalent of the C++ '*-returning getter.
+        #[allow(dead_code)]
+        pub(crate) fn with_warning_stream(f: impl FnOnce(&mut dyn std::io::Write)) {
+            WARNING_STREAM.with(|w| {
+                let mut guard = w.borrow_mut();
+                if let Some(s) = guard.as_mut() {
+                    f(&mut **s);
+                }
+            });
         }
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.set-warning-stream-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.set-warning-stream-fn]
-        pub fn set_warning_stream(os: *mut Box<dyn std::io::Write>) {
-            WARNING_STREAM.with(|w| w.set(os));
+        #[allow(dead_code)]
+        pub(crate) fn set_warning_stream(os: Box<dyn std::io::Write>) {
+            WARNING_STREAM.with(|w| *w.borrow_mut() = Some(os));
         }
 
         // ---- private symbol-table helpers ----

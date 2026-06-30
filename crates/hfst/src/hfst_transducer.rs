@@ -5227,18 +5227,12 @@ pub fn get_unknown_symbols_in_use() -> bool {
 }
 
 // C++ '#if HAVE_OPENFST' branch is taken (OpenFst tropical backend is ported), so
-// these delegate to TropicalWeightTransducer's warning-stream globals. The std::ostream*
-// is modelled as a raw pointer to a boxed std::io::Write, matching that port.
+// this delegates to TropicalWeightTransducer's warning-stream sink. The C++
+// 'std::ostream*' becomes an owned 'Box<dyn Write>' the sink takes ownership of.
 // [spec:hfst:def:hfst-transducer.hfst.set-warning-stream-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.set-warning-stream-fn]
-pub fn set_warning_stream(os: *mut Box<dyn std::io::Write>) {
+pub fn set_warning_stream(os: Box<dyn std::io::Write>) {
     crate::tropical_weight_transducer::TropicalWeightTransducer::set_warning_stream(os);
-}
-
-// [spec:hfst:def:hfst-transducer.hfst.get-warning-stream-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.get-warning-stream-fn]
-pub fn get_warning_stream() -> *mut Box<dyn std::io::Write> {
-    crate::tropical_weight_transducer::TropicalWeightTransducer::get_warning_stream()
 }
 
 // C++ 'set_flag_is_epsilon_in_composition(bool)' is a static setter (XFST 'set

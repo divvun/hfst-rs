@@ -1248,4 +1248,41 @@ children (
             }
         )
     }
+
+    {
+        id idiom5
+        title "Stage 5 — de-globalize the hfst library + eliminate UB. Remove all global mutable state (thread it through an explicit context / fold onto owning instances) and remove every raw pointer unless absolutely necessary AND proven UB-free. Supersedes the [dec:hfst:idiomatize-staging] deferral of symbol-coding de-singletonization to Stage 3+. Oracle: 151 hfst tests. Deps idiom4."
+        priority 3
+        deps (idiom4)
+        children (
+            {
+                id idiom5.warning-stream
+                title "Eliminate the WARNING_STREAM UB: the per-backend thread_local Cell<*mut Box<dyn Write>> is set from the CLI via Box::into_raw (leak) and deref'd later (dangling-risk). Replace with an owned thread_local RefCell<Option<Box<dyn Write>>>; set_warning_stream takes Box<dyn Write>; drop the get_warning_stream raw-ptr API; route the tropical warning write through an owned accessor. Update the 2 CLI callers (drop Box::into_raw)."
+                priority 3
+                log (
+                    {
+                        at 2026-06-30T00:23:15.343727Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-06-30T00:27:52.319428Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+        )
+        log (
+            {
+                at 2026-06-30T00:23:05.615262Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Operator directive (2026-06-30): remove ALL global mutable state in the hfst library and eliminate the UB; no raw pointers unless absolutely necessary AND proven UB-free. Operator chose \"Everything — thread context through\" over keeping the safe data-bearing singletons. This SUPERSEDES the [dec:hfst:idiomatize-staging] deferral of symbol-coding de-singletonization to \"Stage 3+\". Landscape (measured): static mut = 0 already. Global mutable state populations: (A) data-bearing singletons — tropical symbol-coding NUMBER2SYMBOL/SYMBOL2NUMBER/MAX_NUMBER (~80 call sites across hfst_basic_transducer, both weight transducers, all convert_*, compose_intersect_*, hfst_basic_transition — the deepest change in the port), convert-format coding (NUMBER_TO_STRING/STRING_TO_NUMBER), diacritic registry (DIACRITIC_* — a deterministic memo-cache), exception slot (HFST_EXCEPTION — write-on-throw, ~0 real readers); (B) read-mostly config atomics in hfst_transducer.rs (CAN_MINIMIZE/ENCODE_WEIGHTS/MINIMIZATION_ALGORITHM/...); (C) per-compile scratch thread_locals (pmatch_compiler/xre/lexc_utils/twolc). Raw-pointer/UB landscape: 54 raw-ptr sites, genuine UB at WARNING_STREAM (leaked *mut Box<dyn Write> deref'd later) and HfstInputStream lifetime hole (open_hfst_input_stream returns *mut, erases the File borrow). Wave plan: warning-stream(UB) -> rawptr(convertible islands) -> convert-arena(convert.rs FST builder) -> input-stream(owned-File lifetime) -> scratch(thread_local->instance) -> small-globals(exception/diacritic/config) -> symbol-coding(KEYSTONE: thread coding context; has an internal fork — full &mut Context API param vs Rc<RefCell<Coder>> shared handle — resolve at that wave) -> gate. Each wave keeps 151 hfst tests green and commits separately."
+            }
+        )
+    }
 )

@@ -90,7 +90,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         if !globals::SILENT {
             // hfst::set_warning_stream(&std::cerr); — route warnings to stderr.
             let warn: Box<dyn std::io::Write> = Box::new(std::io::stderr());
-            hfst_transducer::set_warning_stream(Box::into_raw(Box::new(warn)));
+            hfst_transducer::set_warning_stream(warn);
         }
 
         let mut transducer_n: usize = 0;

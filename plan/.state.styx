@@ -39,4 +39,5 @@ assertions (
     {id idiom4.cli-globals, kind @doing, author "brendan@necessary.nu", at 2026-06-29T22:51:19.552486Z}
     {id idiom4.lib, kind @complete, author "brendan@necessary.nu", at 2026-06-29T23:46:49.341466Z}
     {id idiom4.gate, kind @complete, author "brendan@necessary.nu", at 2026-06-29T23:46:51.392884Z}
+    {id idiom5.warning-stream, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:27:52.319428Z}
 )
