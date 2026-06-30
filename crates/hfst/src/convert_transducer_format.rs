@@ -1,13 +1,13 @@
 //! Port of 'libhfst/src/implementations/ConvertTransducerFormat.{h,cc}'.
 //!
-//! This file is the *base* of the conversion machinery: the session-global
-//! number↔string coding ('number_to_string_vector' / 'string_to_number_map',
-//! seeded with the three special symbols by the global 'dummy3'/'dummy4'
-//! objects) and the harmonization helpers built on it, plus the typedefs
-//! ('StateId', 'String2NumberMap', 'NumberVector'). The two C++ 'static' members
-//! are encapsulated in an owned ['FormatCoder'] (the same K1 treatment as the
-//! tropical 'SymbolCoder'); a single process-global instance preserves the
-//! shared session numbering until a later stage moves it onto the conversion.
+//! This file is the *base* of the conversion machinery: the number↔string coding
+//! ('number_to_string_vector' / 'string_to_number_map', seeded with the three
+//! special symbols by the global 'dummy3'/'dummy4' objects) and the harmonization
+//! helpers built on it, plus the typedefs ('StateId', 'String2NumberMap',
+//! 'NumberVector'). The two C++ 'static' members are an owned ['FormatCoder'] (the
+//! same shape as the tropical 'SymbolCoder'); the de-globalization keystone
+//! removed the process-global instance, so a 'FormatCoder' is constructed where
+//! one is needed rather than shared process-wide.
 //!
 //! Deferred to higher layers (facade + backends):
 //!   * 'hfst_transducer_to_hfst_basic_transducer' (the type-dispatch) needs the
@@ -18,7 +18,6 @@
 //!   * the 'MAIN_TEST' 'main'.
 
 use std::collections::BTreeMap;
-use std::sync::{LazyLock, Mutex};
 
 use crate::hfst_data_types::{StringVector, size_t_to_uint};
 use crate::hfst_exception_defs::FunctionNotImplementedException;
@@ -33,25 +32,19 @@ pub type String2NumberMap = BTreeMap<String, u32>;
 // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.number-vector]
 pub type NumberVector = Vec<u32>;
 
-// Static members of 'ConversionFunctions', seeded by the initializer structs
-// below (the C++ global 'dummy3'/'dummy4').
-//
-// 'get_number' is the only function that touches both statics; it always locks
-// the map first and the vector second, and nothing locks them the other way
-// round, so the pair is deadlock-free.
+// The C++ static members of 'ConversionFunctions' are seeded by the initializer
+// structs below (the C++ global 'dummy3'/'dummy4').
 
-/* The number↔string coding common to all transducers during a session. The two
-C++ statics (number_to_string_vector / string_to_number_map, seeded by the
-'dummy3'/'dummy4' globals) are encapsulated in an owned 'FormatCoder' — the same
-K1 treatment the tropical coding gets in SymbolCoder. A single process-global
-instance preserves the shared session numbering exactly; later stages move it
-onto the conversion path. */
+/* The C++ 'number_to_string_vector' / 'string_to_number_map' statics (the
+'dummy3'/'dummy4' session globals) are gone: their former 'ConversionFunctions'
+static accessors had no remaining callers once the de-globalization keystone
+routed the tropical conversion through each graph's own coder. The coding lives
+on as the owned 'FormatCoder' below, constructed where a format coder is needed
+rather than shared process-wide. */
 // [spec:hfst:def:convert-transducer-format.hfst.implementations.dummy3-fn]
 // [spec:hfst:sem:convert-transducer-format.hfst.implementations.dummy3-fn]
 // [spec:hfst:def:convert-transducer-format.hfst.implementations.dummy4-fn]
 // [spec:hfst:sem:convert-transducer-format.hfst.implementations.dummy4-fn]
-static GLOBAL_FORMAT_CODER: LazyLock<Mutex<FormatCoder>> =
-    LazyLock::new(|| Mutex::new(FormatCoder::new()));
 
 /// Owned number↔string coding for format conversion: 'number_to_string' is the
 /// key table (index = number) and 'string_to_number' its inverse. Seeded with
@@ -153,34 +146,6 @@ impl ConversionFunctions {
             return retval;
         }
         crate::HFST_THROW!(FunctionNotImplementedException)
-    }
-
-    /* Get the string that is represented by 'number' in the number-to-string
-    vector. If `number` is not found, return the empty string. */
-    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.get-string-fn]
-    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.get-string-fn]
-    pub fn get_string(number: u32) -> String {
-        GLOBAL_FORMAT_CODER.lock().unwrap().get_string(number)
-    }
-
-    /* Get the number that represents 'str' in the string-to-number map.
-    If `str` is not found, add it to the next free index. */
-    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.get-number-fn]
-    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.get-number-fn]
-    pub fn get_number(str: &str) -> u32 {
-        GLOBAL_FORMAT_CODER.lock().unwrap().get_number(str)
-    }
-
-    /* Get a vector that tells how a transducer that follows the
-    number-to-symbol encoding of `coding` should be harmonized so that it will
-    follow the one of number_to_string_vector. */
-    // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.get-harmonization-vector-fn]
-    // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.get-harmonization-vector-fn]
-    pub fn get_harmonization_vector(coding_vector: &StringVector) -> NumberVector {
-        GLOBAL_FORMAT_CODER
-            .lock()
-            .unwrap()
-            .get_harmonization_vector(coding_vector)
     }
 }
 
