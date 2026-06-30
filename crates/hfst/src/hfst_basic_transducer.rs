@@ -32,7 +32,7 @@ use crate::hfst_symbol_defs::{
     StringPairVector, StringSet, is_epsilon, is_identity, is_unknown,
 };
 use crate::hfst_tropical_transducer_transition_data::{
-    HfstTropicalTransducerTransitionData, SymbolType, WeightType,
+    HfstTropicalTransducerTransitionData, SymbolCoder, SymbolType, WeightType,
 };
 use crate::string_utils::replace_all;
 
@@ -299,6 +299,11 @@ pub struct HfstBasicTransducer {
     alphabet: HfstAlphabet,
     /** @brief The name of the graph. */
     pub name: String,
+    /* This graph's own symbol<->number coding (idiom5 keystone K2). Today the
+    arcs still resolve through the process-global coder; K3 switches resolution
+    and interning to this field and harmonizes across graphs on binary ops. */
+    #[allow(dead_code)] // read once K3 routes resolution through it
+    coder: SymbolCoder,
 }
 
 // Where a substituting copy of a graph is inserted (origin/target state, weight,
@@ -403,6 +408,7 @@ impl HfstBasicTransducer {
             final_weight_map: FinalWeightMap::new(),
             alphabet,
             name: String::new(),
+            coder: SymbolCoder::new(),
         }
     }
 
@@ -2287,6 +2293,7 @@ impl HfstBasicTransducer {
             final_weight_map: FinalWeightMap::new(),
             alphabet,
             name: String::new(),
+            coder: SymbolCoder::new(),
         };
         let mut linecount: u32 = 0;
         let read = Self::read_in_att_format_file(file, "@0@", &mut linecount, false);

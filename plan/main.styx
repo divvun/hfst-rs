@@ -1357,6 +1357,13 @@ children (
                         kind @status
                         text "Todo → Doing (nplan_start)"
                     }
+
+                    {
+                        at 2026-06-30T02:07:18.652188Z
+                        author "brendan@necessary.nu"
+                        kind @blocker
+                        text "K2/K3 analysis (Explore, high-effort): the global tropical numbering is load-bearing for the algebra, unlike divvunspell's read-only model. Arcs store only u32; binary ops combine numbers across transducers DIRECTLY. Site map: 36 direct static-accessor calls — 17 in HfstBasicTransducer methods (have &self → self.coder), 17 in compose-intersect wrappers (hold a transducer → reachable), 2 in HfstBasicTransition::new_from_basic (class B — no graph, needs coder param); PLUS ~100 transition-data instance-method calls (.get_input_symbol/.get_output_symbol/.set_*/new_symbols) on HfstBasicTransition/HfstTropicalTransducerTransitionData — these have NO owning graph, so their signatures must gain a &SymbolCoder param and ALL ~100 callers ripple. 3 harmonization bottlenecks where per-transducer coders break correctness without an explicit translate/renumber: compose_intersect_lexicon.rs:334 (combines lexicon ilabel + rule olabel), convert_tropical_weight_transducer.rs:138-195 (OpenFst→HFST via get_harmonization_vector), hfst_transducer.rs:4532 (harmonize_ contract). So K3 = one big coherent change: add coder field + populate from each transducer's symbols (a renumber pass, since arcs hold global numbers) + retarget the 36 accessor sites + thread &SymbolCoder through the transition methods to ~100 callers + implement harmonize-renumber at the 3 bottlenecks. The 151 tests (compose/intersect/xerox-rules exercise binary ops) gate it. Highest-risk, largest change in the port; no clean small committable sub-step (field + sig-change + caller-ripple interlock). K1 (encapsulation) is banked."
+                    }
                 )
             }
         )
