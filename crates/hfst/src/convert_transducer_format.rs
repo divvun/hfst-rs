@@ -144,7 +144,9 @@ impl ConversionFunctions {
             retval.name = t.get_name();
             return retval;
         }
-        crate::HFST_THROW!(FunctionNotImplemented)
+        unimplemented!(
+            "hfst_transducer_to_hfst_basic_transducer: not implemented for this transducer type"
+        )
     }
 }
 

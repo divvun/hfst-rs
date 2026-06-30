@@ -4645,76 +4645,51 @@ impl XfstCompiler {
         self.stack_.pop();
         let result_op = result.clone();
 
-        let __prev_hook = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_| {}));
-        let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-            match operation {
-                UnaryOperation::DETERMINIZE_NET => {
-                    result_op.borrow_mut().determinize();
-                }
-                UnaryOperation::EPSILON_REMOVE_NET => {
-                    result_op.borrow_mut().remove_epsilons();
-                }
-                UnaryOperation::INVERT_NET => {
-                    result_op.borrow_mut().invert();
-                }
-                UnaryOperation::LOWER_SIDE_NET => {
-                    result_op.borrow_mut().output_project();
-                }
-                UnaryOperation::UPPER_SIDE_NET => {
-                    result_op.borrow_mut().input_project();
-                }
-                UnaryOperation::ZERO_PLUS_NET => {
-                    result_op.borrow_mut().repeat_star();
-                }
-                UnaryOperation::ONE_PLUS_NET => {
-                    result_op.borrow_mut().repeat_plus();
-                }
-                UnaryOperation::OPTIONAL_NET => {
-                    result_op.borrow_mut().optionalize();
-                }
-                UnaryOperation::REVERSE_NET => {
-                    result_op.borrow_mut().reverse();
-                }
-                UnaryOperation::MINIMIZE_NET => {
-                    // implicit minimization requested, do not use optimize()
-                    result_op.borrow_mut().minimize();
-                }
-                UnaryOperation::PRUNE_NET_ => {
-                    result_op.borrow_mut().prune();
-                }
+        match operation {
+            UnaryOperation::DETERMINIZE_NET => {
+                result_op.borrow_mut().determinize();
             }
-
-            if operation != UnaryOperation::MINIMIZE_NET
-                && operation != UnaryOperation::DETERMINIZE_NET
-                && operation != UnaryOperation::EPSILON_REMOVE_NET
-            {
-                result_op.borrow_mut().optimize();
+            UnaryOperation::EPSILON_REMOVE_NET => {
+                result_op.borrow_mut().remove_epsilons();
             }
-        }));
-        std::panic::set_hook(__prev_hook);
-
-        match __res {
-            Ok(()) => {
-                self.stack_.push(result);
-                self.print_transducer_info();
+            UnaryOperation::INVERT_NET => {
+                result_op.borrow_mut().invert();
             }
-            Err(__e) => {
-                if __e
-                    .downcast_ref::<crate::error::Error>()
-                    .filter(|__e| {
-                        matches!(__e.kind, crate::error::ErrorKind::FunctionNotImplemented)
-                    })
-                    .is_some()
-                {
-                    error!("function not available");
-                    self.xfst_fail();
-                    self.stack_.push(result);
-                } else {
-                    std::panic::resume_unwind(__e);
-                }
+            UnaryOperation::LOWER_SIDE_NET => {
+                result_op.borrow_mut().output_project();
+            }
+            UnaryOperation::UPPER_SIDE_NET => {
+                result_op.borrow_mut().input_project();
+            }
+            UnaryOperation::ZERO_PLUS_NET => {
+                result_op.borrow_mut().repeat_star();
+            }
+            UnaryOperation::ONE_PLUS_NET => {
+                result_op.borrow_mut().repeat_plus();
+            }
+            UnaryOperation::OPTIONAL_NET => {
+                result_op.borrow_mut().optionalize();
+            }
+            UnaryOperation::REVERSE_NET => {
+                result_op.borrow_mut().reverse();
+            }
+            UnaryOperation::MINIMIZE_NET => {
+                // implicit minimization requested, do not use optimize()
+                result_op.borrow_mut().minimize();
+            }
+            UnaryOperation::PRUNE_NET_ => {
+                result_op.borrow_mut().prune();
             }
         }
+
+        if operation != UnaryOperation::MINIMIZE_NET
+            && operation != UnaryOperation::DETERMINIZE_NET
+            && operation != UnaryOperation::EPSILON_REMOVE_NET
+        {
+            result_op.borrow_mut().optimize();
+        }
+        self.stack_.push(result);
+        self.print_transducer_info();
 
         self.prompt();
         self

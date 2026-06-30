@@ -81,8 +81,6 @@ pub enum ErrorKind {
     HfstTransducerTypeMismatch,
     #[error("implementation type {0:?} is not available")]
     ImplementationTypeNotAvailable(ImplementationType),
-    #[error("function not implemented")]
-    FunctionNotImplemented,
     #[error("stream is not readable")]
     StreamNotReadable,
     #[error("stream cannot be written")]

@@ -156,27 +156,8 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             let trans = HfstTransducer::new_from_stream(instream);
             let mutt = HfstBasicTransducer::new_from_transducer(&trans);
             let initial_state: u32 = 0; // mutt.get_initial_state();
-            let mut transducer_alphabet: StringSet = StringSet::new();
-            #[allow(unused_assignments)]
-            let mut transducer_knows_alphabet = false;
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| trans.get_alphabet())) {
-                Ok(alpha) => {
-                    transducer_alphabet = alpha;
-                    transducer_knows_alphabet = true;
-                }
-                Err(e) => {
-                    if e.downcast_ref::<hfst::error::Error>()
-                        .filter(|__e| {
-                            matches!(__e.kind, hfst::error::ErrorKind::FunctionNotImplemented)
-                        })
-                        .is_some()
-                    {
-                        transducer_knows_alphabet = false;
-                    } else {
-                        std::panic::resume_unwind(e);
-                    }
-                }
-            }
+            let transducer_alphabet: StringSet = trans.get_alphabet();
+            let transducer_knows_alphabet = true;
             //let expanded = true;
             #[allow(unused_assignments)]
             let mut is_mutable = true;

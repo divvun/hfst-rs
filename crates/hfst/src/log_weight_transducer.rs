@@ -1675,7 +1675,7 @@ mod operations {
             fst::ShortestPath(*t, n_best_fst, (size_t)n);
             return n_best_fst; */
             // in openfst 1.8 LogFst does not have necessary algebra for shortest paths
-            crate::HFST_THROW!(FunctionNotImplemented)
+            unimplemented!("n_best: not implemented for this transducer type")
         }
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.repeat-star-fn]
@@ -2371,7 +2371,7 @@ mod lookup_extract_misc {
             max_num: i32,
         ) {
             let _ = (t, results, max_num);
-            crate::HFST_THROW!(FunctionNotImplemented);
+            unimplemented!("extract_random_paths: not implemented for this transducer type");
         }
 
         // ---- substitute ----------------------------------------------------------

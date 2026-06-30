@@ -199,33 +199,8 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             let trans = HfstTransducer::new_from_stream(instream);
             let mutt = HfstBasicTransducer::new_from_transducer(&trans);
             // unsigned int initial_state = 0; // mutt.get_initial_state();
-            let mut transducer_alphabet = StringSet::new();
-            let transducer_knows_alphabet;
-            // C wraps get_alphabet in try/catch on FunctionNotImplementedException;
-            // the Rust facade throws via panic_any, so catch_unwind reproduces it.
-            let prev = std::panic::take_hook();
-            std::panic::set_hook(Box::new(|_| {}));
-            let caught =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| trans.get_alphabet()));
-            std::panic::set_hook(prev);
-            match caught {
-                Ok(alpha) => {
-                    transducer_alphabet = alpha;
-                    transducer_knows_alphabet = true;
-                }
-                Err(e) => {
-                    if e.downcast_ref::<hfst::error::Error>()
-                        .filter(|__e| {
-                            matches!(__e.kind, hfst::error::ErrorKind::FunctionNotImplemented)
-                        })
-                        .is_some()
-                    {
-                        transducer_knows_alphabet = false;
-                    } else {
-                        std::panic::resume_unwind(e);
-                    }
-                }
-            }
+            let transducer_alphabet = trans.get_alphabet();
+            let transducer_knows_alphabet = true;
             let found_alphabet: StringSet = mutt.symbols_used();
             if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
                 emit(

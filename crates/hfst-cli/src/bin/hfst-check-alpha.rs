@@ -124,51 +124,13 @@ unsafe fn process_stream(
             // read first alphas
             let first = HfstTransducer::new_from_stream(firststream);
             let mutt: HfstBasicTransducer = first.get_basic_transducer();
-            let mut first_transducer_alphabet: StringSet = StringSet::new();
-            #[allow(unused_assignments)]
-            let mut transducer_knows_alphabet = false;
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| first.get_alphabet())) {
-                Ok(alpha) => {
-                    first_transducer_alphabet = alpha;
-                    transducer_knows_alphabet = true;
-                }
-                Err(e) => {
-                    if e.downcast_ref::<hfst::error::Error>()
-                        .filter(|__e| {
-                            matches!(__e.kind, hfst::error::ErrorKind::FunctionNotImplemented)
-                        })
-                        .is_some()
-                    {
-                        transducer_knows_alphabet = false;
-                    } else {
-                        std::panic::resume_unwind(e);
-                    }
-                }
-            }
+            let first_transducer_alphabet: StringSet = first.get_alphabet();
+            let transducer_knows_alphabet = true;
             let first_found_alphabet: StringSet = mutt.symbols_used();
             // read second alphas
             let second = HfstTransducer::new_from_stream(secondstream);
             let secondmutt: HfstBasicTransducer = second.get_basic_transducer();
-            let mut second_transducer_alphabet: StringSet = StringSet::new();
-            transducer_knows_alphabet = false;
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| second.get_alphabet())) {
-                Ok(alpha) => {
-                    second_transducer_alphabet = alpha;
-                    transducer_knows_alphabet = true;
-                }
-                Err(e) => {
-                    if e.downcast_ref::<hfst::error::Error>()
-                        .filter(|__e| {
-                            matches!(__e.kind, hfst::error::ErrorKind::FunctionNotImplemented)
-                        })
-                        .is_some()
-                    {
-                        transducer_knows_alphabet = false;
-                    } else {
-                        std::panic::resume_unwind(e);
-                    }
-                }
-            }
+            let second_transducer_alphabet: StringSet = second.get_alphabet();
             let second_found_alphabet: StringSet = secondmutt.symbols_used();
             // match
             let _ = write!(out, "Actual alphabet differences:\n");
