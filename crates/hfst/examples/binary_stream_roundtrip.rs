@@ -95,7 +95,8 @@ fn read_att_facade() {
         ImplementationType::TROPICAL_OPENFST_TYPE,
         "@_EPSILON_SYMBOL_@",
         false,
-    );
+    )
+    .expect("written [a:b] AT&T file reads back as a valid transducer");
     assert_eq!(t.get_type(), ImplementationType::TROPICAL_OPENFST_TYPE);
 
     let expected =

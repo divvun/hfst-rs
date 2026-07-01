@@ -50,7 +50,8 @@ fn main() {
     {
         let mut reader = std::io::Cursor::new(text.into_bytes());
         let mut lc: u32 = 0;
-        let g3 = HfstBasicTransducer::read_in_prolog_format_file(&mut reader, &mut lc);
+        let g3 = HfstBasicTransducer::read_in_prolog_format_file(&mut reader, &mut lc)
+            .expect("round-tripped Prolog text reads back as a valid transducer");
 
         assert_eq!(g3.name, "foo");
         assert_eq!(g3.get_max_state(), 1);

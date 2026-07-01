@@ -4844,7 +4844,7 @@ impl HfstTransducer {
         type_: ImplementationType,
         epsilon_symbol: &str,
         warn_negs: bool,
-    ) -> &'a mut HfstTransducer {
+    ) -> crate::error::Result<&'a mut HfstTransducer> {
         if type_ == XFSM_TYPE {
             unimplemented!("read_in_att_format_filename: not implemented for this transducer type");
         }
@@ -4853,7 +4853,7 @@ impl HfstTransducer {
             Err(_) => {
                 // [spec:hfst:def:hfst-transducer.hfst.message-fn]
                 // [spec:hfst:sem:hfst-transducer.hfst.message-fn]
-                HFST_THROW_MESSAGE!(StreamNotReadable, filename);
+                crate::bail!(StreamNotReadable, filename);
             }
         };
         HfstTokenizer::check_utf8_correctness(epsilon_symbol);
@@ -4869,12 +4869,12 @@ impl HfstTransducer {
         type_: ImplementationType,
         epsilon_symbol: &str,
         warn_negs: bool,
-    ) -> &'a mut HfstTransducer {
+    ) -> crate::error::Result<&'a mut HfstTransducer> {
         if type_ == XFSM_TYPE {
             unimplemented!("read_in_att_format_file: not implemented for this transducer type");
         }
         if !Self::is_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         HfstTokenizer::check_utf8_correctness(epsilon_symbol);
 
@@ -4884,11 +4884,13 @@ impl HfstTransducer {
             epsilon_symbol,
             &mut foo,
             warn_negs,
-        );
+        )?;
         // C++ 'new HfstTransducer(net, type)' returned by reference; 'Box::leak'
         // mirrors the heap allocation the caller takes ownership of / deletes.
         let _ = foo;
-        Box::leak(Box::new(HfstTransducer::new_from_basic(&net, type_)))
+        Ok(Box::leak(Box::new(HfstTransducer::new_from_basic(
+            &net, type_,
+        ))))
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.universal-pair-fn]

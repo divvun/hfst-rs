@@ -18,7 +18,8 @@ fn main() {
         ImplementationType::TROPICAL_OPENFST_TYPE,
         "@_EPSILON_SYMBOL_@",
         false,
-    );
+    )
+    .expect("written two-path AT&T file reads back as a valid transducer");
 
     // Before pruning: both "a" and "b" are present.
     let mut before: HfstTwoLevelPaths = BTreeSet::new();

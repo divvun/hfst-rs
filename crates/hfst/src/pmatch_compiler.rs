@@ -5631,7 +5631,10 @@ pub fn compile(
     match nfst_pmatch::parse(&expanded_script) {
         Ok(parsed) => {
             for statement in &parsed.value.statements {
-                build_statement(ctx, statement);
+                if let Err(e) = build_statement(ctx, statement) {
+                    error!("{}", e);
+                    ctx.set_pmatchnerrs(ctx.pmatchnerrs() + 1);
+                }
             }
         }
         Err(_) => {
@@ -6228,40 +6231,50 @@ fn path_of(ctx: &mut PmatchEvalContext, path: &str) -> String {
 }
 // STRINGLIKE: QUOTED_LITERAL -> PmatchString, CURLY_LITERAL -> PmatchString
 // (multichar), SYMBOL -> PmatchSymbol (no used_definitions / empty-check).
-fn build_stringlike(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -> ObjRef {
+fn build_stringlike(
+    ctx: &mut PmatchEvalContext,
+    e: &nfst_pmatch::SpannedExpr,
+) -> crate::error::Result<ObjRef> {
     use nfst_pmatch::PmatchExpr as PE;
-    match &e.value {
+    Ok(match &e.value {
         PE::QuotedLiteral(s) => pmb_string(s.clone(), false),
         PE::CurlyLiteral(s) => pmb_string(s.clone(), true),
         PE::Symbol(s) => pmb_symbol(s.clone()),
-        _ => build_object(ctx, e),
-    }
+        _ => build_object(ctx, e)?,
+    })
 }
 // CONCATENATED_STRING_LIST: right-folded Concatenate of STRINGLIKEs.
 fn build_concatenated_string_list(
     ctx: &mut PmatchEvalContext,
     items: &[nfst_pmatch::SpannedExpr],
-) -> ObjRef {
+) -> crate::error::Result<ObjRef> {
     let mut iter = items.iter().rev();
     let last = iter.next().expect("non-empty string list");
-    let mut acc = build_stringlike(ctx, last);
+    let mut acc = build_stringlike(ctx, last)?;
     for it in iter {
-        acc = pmb_binary(PmatchBinaryOp::Concatenate, build_stringlike(ctx, it), acc);
+        acc = pmb_binary(PmatchBinaryOp::Concatenate, build_stringlike(ctx, it)?, acc);
     }
-    acc
+    Ok(acc)
 }
 // MappingSide -> object: Expr -> build, Dotted([..]) -> PmatchEpsilonArc,
 // Dotted([. E .]) -> build.
-fn side_to_obj(ctx: &mut PmatchEvalContext, side: &nfst_pmatch::MappingSide) -> ObjRef {
+fn side_to_obj(
+    ctx: &mut PmatchEvalContext,
+    side: &nfst_pmatch::MappingSide,
+) -> crate::error::Result<ObjRef> {
     use nfst_pmatch::MappingSide as MS;
-    match side {
-        MS::Expr(e) => build_object(ctx, e),
+    Ok(match side {
+        MS::Expr(e) => build_object(ctx, e)?,
         MS::Dotted(None) => pmb_epsilon_arc(),
-        MS::Dotted(Some(e)) => build_object(ctx, e),
-    }
+        MS::Dotted(Some(e)) => build_object(ctx, e)?,
+    })
 }
 // READ_FROM productions: eagerly load the named file into a container.
-fn build_read_file(ctx: &mut PmatchEvalContext, kind: nfst_pmatch::ReadKind, path: &str) -> ObjRef {
+fn build_read_file(
+    ctx: &mut PmatchEvalContext,
+    kind: nfst_pmatch::ReadKind,
+    path: &str,
+) -> crate::error::Result<ObjRef> {
     use nfst_pmatch::ReadKind as RK;
     let filepath = path_of(ctx, path);
     match kind {
@@ -6270,21 +6283,21 @@ fn build_read_file(ctx: &mut PmatchEvalContext, kind: nfst_pmatch::ReadKind, pat
             // facade; mirror the structure as far as it goes.
             let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(&filepath);
             instream.close();
-            as_obj(pmb_tc(HfstTransducer::new_type(ctx.format())))
+            Ok(as_obj(pmb_tc(HfstTransducer::new_type(ctx.format()))))
         }
-        RK::Text => as_obj(pmb_tc(read_text(
+        RK::Text => Ok(as_obj(pmb_tc(read_text(
             filepath,
             ImplementationType::TROPICAL_OPENFST_TYPE,
             false,
-        ))),
-        RK::Spaced => as_obj(pmb_tc(read_spaced_text(
+        )))),
+        RK::Spaced => Ok(as_obj(pmb_tc(read_spaced_text(
             filepath,
             ImplementationType::TROPICAL_OPENFST_TYPE,
-        ))),
+        )))),
         RK::Prolog => match std::fs::File::open(&filepath) {
             Err(_) => {
                 error!("File cannot be opened.");
-                as_obj(pmb_tc(HfstTransducer::new_type(ctx.format())))
+                Ok(as_obj(pmb_tc(HfstTransducer::new_type(ctx.format()))))
             }
             Ok(f) => {
                 let mut reader = std::io::BufReader::new(f);
@@ -6293,13 +6306,13 @@ fn build_read_file(ctx: &mut PmatchEvalContext, kind: nfst_pmatch::ReadKind, pat
                     crate::hfst_basic_transducer::HfstBasicTransducer::read_in_prolog_format_file(
                         &mut reader,
                         &mut linecount,
-                    );
+                    )?;
                 let mut t = Box::new(HfstTransducer::new_from_basic_transducer(
                     &tmp,
                     ctx.format(),
                 ));
                 t.minimize();
-                as_obj(pmb_tc(*t))
+                Ok(as_obj(pmb_tc(*t)))
             }
         },
         RK::Regex => {
@@ -6316,15 +6329,18 @@ fn build_read_file(ctx: &mut PmatchEvalContext, kind: nfst_pmatch::ReadKind, pat
             let compiled = xre_compiler
                 .compile(&regex)
                 .unwrap_or_else(|| HfstTransducer::new_type(ctx.format()));
-            as_obj(pmb_tc(compiled))
+            Ok(as_obj(pmb_tc(compiled)))
         }
     }
 }
 /// Build a 'PmatchObject*' AST node from an 'nfst-pmatch' expression node.
-pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -> ObjRef {
+pub fn build_object(
+    ctx: &mut PmatchEvalContext,
+    e: &nfst_pmatch::SpannedExpr,
+) -> crate::error::Result<ObjRef> {
     use nfst_pmatch::BinaryOp as B;
     use nfst_pmatch::PmatchExpr as PE;
-    match &e.value {
+    Ok(match &e.value {
         // ---- atoms ---------------------------------------------------------
         PE::Symbol(s) => {
             let sym = s.clone();
@@ -6351,116 +6367,116 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
         PE::Binary(op, l, r) => match op {
             B::Concatenate => pmb_binary(
                 PmatchBinaryOp::Concatenate,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::Compose => pmb_binary(
                 PmatchBinaryOp::Compose,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::LenientCompose => pmb_binary(
                 PmatchBinaryOp::LenientCompose,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::CrossProduct => pmb_binary(
                 PmatchBinaryOp::CrossProduct,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::MergeRight => pmb_binary(
                 PmatchBinaryOp::Merge,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::MergeLeft => {
                 // .<m. swaps the operands: Merge($3, $1).
-                let lo = build_object(ctx, l);
-                let ro = build_object(ctx, r);
+                let lo = build_object(ctx, l)?;
+                let ro = build_object(ctx, r)?;
                 pmb_binary(PmatchBinaryOp::Merge, ro, lo)
             }
             B::Before => pmb_binary(
                 PmatchBinaryOp::Before,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::After => pmb_binary(
                 PmatchBinaryOp::After,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::Shuffle => pmb_binary(
                 PmatchBinaryOp::Shuffle,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::Union => pmb_binary(
                 PmatchBinaryOp::Disjunct,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::Intersect => pmb_binary(
                 PmatchBinaryOp::Intersect,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::Subtract => pmb_binary(
                 PmatchBinaryOp::Subtract,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::UpperSubtract => pmb_binary(
                 PmatchBinaryOp::UpperSubtract,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::LowerSubtract => pmb_binary(
                 PmatchBinaryOp::LowerSubtract,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::UpperPriorityUnion => pmb_binary(
                 PmatchBinaryOp::UpperPriorityUnion,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::LowerPriorityUnion => pmb_binary(
                 PmatchBinaryOp::LowerPriorityUnion,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::Ignoring => pmb_binary(
                 PmatchBinaryOp::InsertFreely,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::IgnoreInternally => pmb_binary(
                 PmatchBinaryOp::IgnoreInternally,
-                build_object(ctx, l),
-                build_object(ctx, r),
+                build_object(ctx, l)?,
+                build_object(ctx, r)?,
             ),
             B::LeftQuotient => {
                 warn!("Left quotient not implemented");
                 pmb_empty()
             }
         },
-        PE::Unary(op, inner) => pmb_unary(map_unop(*op), build_object(ctx, inner)),
+        PE::Unary(op, inner) => pmb_unary(map_unop(*op), build_object(ctx, inner)?),
 
         // ---- grouping / weight / pair --------------------------------------
-        PE::Group(inner) => build_object(ctx, inner),
-        PE::Optional(inner) => pmb_unary(PmatchUnaryOp::Optionalize, build_object(ctx, inner)),
+        PE::Group(inner) => build_object(ctx, inner)?,
+        PE::Optional(inner) => pmb_unary(PmatchUnaryOp::Optionalize, build_object(ctx, inner)?),
         PE::BracketedDotted(inner) => match inner {
-            Some(b) => build_object(ctx, b),
+            Some(b) => build_object(ctx, b)?,
             None => pmb_epsilon_arc(),
         },
         PE::Pair { upper, lower } => pmb_binary(
             PmatchBinaryOp::CrossProduct,
-            build_object(ctx, upper),
-            build_object(ctx, lower),
+            build_object(ctx, upper)?,
+            build_object(ctx, lower)?,
         ),
         PE::Weighted { expr, weight } => {
-            let obj = build_object(ctx, expr);
+            let obj = build_object(ctx, expr)?;
             obj.borrow_mut()
                 .set_weight(obj.borrow().get_weight() + *weight);
             obj
@@ -6469,22 +6485,22 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
         // ---- catenate N ----------------------------------------------------
         PE::RepeatN(inner, n) => pmb_numeric(
             PmatchNumericOp::RepeatN,
-            build_object(ctx, inner),
+            build_object(ctx, inner)?,
             vec![*n as i32],
         ),
         PE::RepeatNPlus(inner, n) => pmb_numeric(
             PmatchNumericOp::RepeatNPlus,
-            build_object(ctx, inner),
+            build_object(ctx, inner)?,
             vec![*n as i32 + 1],
         ),
         PE::RepeatNMinus(inner, n) => pmb_numeric(
             PmatchNumericOp::RepeatNMinus,
-            build_object(ctx, inner),
+            build_object(ctx, inner)?,
             vec![*n as i32 - 1],
         ),
         PE::RepeatNToK(inner, n, k) => pmb_numeric(
             PmatchNumericOp::RepeatNToK,
-            build_object(ctx, inner),
+            build_object(ctx, inner)?,
             vec![*n as i32, *k as i32],
         ),
 
@@ -6499,16 +6515,16 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
                     use nfst_pmatch::MappingKind as MK;
                     let pair: PairRef = match &mp.kind {
                         MK::Plain { lower } => {
-                            pmb_object_pair(side_to_obj(ctx, &mp.upper), side_to_obj(ctx, lower))
+                            pmb_object_pair(side_to_obj(ctx, &mp.upper)?, side_to_obj(ctx, lower)?)
                         }
                         MK::Markup { pre, post } => {
-                            let loa = side_to_obj(ctx, &mp.upper);
+                            let loa = side_to_obj(ctx, &mp.upper)?;
                             let lom = match pre {
-                                Some(s) => side_to_obj(ctx, s),
+                                Some(s) => side_to_obj(ctx, s)?,
                                 None => pmb_epsilon_arc(),
                             };
                             let rom = match post {
-                                Some(s) => side_to_obj(ctx, s),
+                                Some(s) => side_to_obj(ctx, s)?,
                                 None => pmb_epsilon_arc(),
                             };
                             pmb_markup_container(loa, lom, rom)
@@ -6522,11 +6538,11 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
                         let mut context: MappingPairVector = Vec::new();
                         for c in ctxs.items.iter() {
                             let l = match &c.left {
-                                Some(e) => build_object(ctx, e),
+                                Some(e) => build_object(ctx, e)?,
                                 None => pmb_epsilon_arc(),
                             };
                             let r = match &c.right {
-                                Some(e) => build_object(ctx, e),
+                                Some(e) => build_object(ctx, e)?,
                                 None => pmb_epsilon_arc(),
                             };
                             context.push(pmb_object_pair(l, r));
@@ -6558,11 +6574,11 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
             })))
         }
         PE::Restriction { body, contexts } => {
-            let left = build_object(ctx, body);
+            let left = build_object(ctx, body)?;
             let mut ctxs: MappingPairVector = Vec::new();
             for rc in contexts.iter() {
                 let l: ObjRef = match &rc.left {
-                    Some(e) => build_object(ctx, e),
+                    Some(e) => build_object(ctx, e)?,
                     None => {
                         if rc.right.is_some() {
                             pmb_epsilon_arc()
@@ -6572,7 +6588,7 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
                     }
                 };
                 let r: ObjRef = match &rc.right {
-                    Some(e) => build_object(ctx, e),
+                    Some(e) => build_object(ctx, e)?,
                     None => {
                         if rc.left.is_some() {
                             pmb_epsilon_arc()
@@ -6636,7 +6652,7 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
             // AddDelimiters(Concatenate(body, make_end_tag(ctx, name)))
             let cat = pmb_binary(
                 PmatchBinaryOp::Concatenate,
-                build_object(ctx, body),
+                build_object(ctx, body)?,
                 as_obj(make_end_tag(ctx, name.clone())),
             );
             pmb_unary(PmatchUnaryOp::AddDelimiters, cat)
@@ -6645,21 +6661,23 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
             // Concatenate(Concatenate(entry, body), exit)
             let entry = make_with_tag_entry(name.clone(), value.clone());
             let exit = make_with_tag_exit(name.clone());
-            let inner = pmb_binary(PmatchBinaryOp::Concatenate, entry, build_object(ctx, body));
+            let inner = pmb_binary(PmatchBinaryOp::Concatenate, entry, build_object(ctx, body)?);
             pmb_binary(PmatchBinaryOp::Concatenate, inner, exit)
         }
         PE::Counter(name) => as_obj(make_counter(ctx, name.clone())),
-        PE::CaseOp { op, side, body } => pmb_unary(map_caseop(*op, *side), build_object(ctx, body)),
+        PE::CaseOp { op, side, body } => {
+            pmb_unary(map_caseop(*op, *side), build_object(ctx, body)?)
+        }
         PE::DefineWrapper(inner) => {
-            pmb_unary(PmatchUnaryOp::AddDelimiters, build_object(ctx, inner))
+            pmb_unary(PmatchUnaryOp::AddDelimiters, build_object(ctx, inner)?)
         }
         PE::Explode(items) => pmb_unary(
             PmatchUnaryOp::Explode,
-            build_concatenated_string_list(ctx, items),
+            build_concatenated_string_list(ctx, items)?,
         ),
         PE::Implode(items) => pmb_unary(
             PmatchUnaryOp::Implode,
-            build_concatenated_string_list(ctx, items),
+            build_concatenated_string_list(ctx, items)?,
         ),
         PE::Like {
             args,
@@ -6687,14 +6705,14 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
                 }
             }
         }
-        PE::Lst(inner) => pmb_unary(PmatchUnaryOp::MakeList, build_object(ctx, inner)),
-        PE::Exc(inner) => pmb_unary(PmatchUnaryOp::MakeExcList, build_object(ctx, inner)),
-        PE::Sigma(inner) => pmb_unary(PmatchUnaryOp::MakeSigma, build_object(ctx, inner)),
+        PE::Lst(inner) => pmb_unary(PmatchUnaryOp::MakeList, build_object(ctx, inner)?),
+        PE::Exc(inner) => pmb_unary(PmatchUnaryOp::MakeExcList, build_object(ctx, inner)?),
+        PE::Sigma(inner) => pmb_unary(PmatchUnaryOp::MakeSigma, build_object(ctx, inner)?),
         PE::Interpolate(items) => {
             // FUNCALL_ARGLIST is in reverse source order; replicate.
             let mut argvec: Vec<ObjRef> = Vec::new();
             for it in items.iter().rev() {
-                argvec.push(build_object(ctx, it));
+                argvec.push(build_object(ctx, it)?);
             }
             as_obj(Rc::new(RefCell::new(PmatchBuiltinFunction {
                 name: String::new(),
@@ -6708,14 +6726,14 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
         }
         PE::Substitute(a, b, c) => pmb_ternary(
             PmatchTernaryOp::Substitute,
-            build_object(ctx, a),
-            build_object(ctx, b),
-            build_object(ctx, c),
+            build_object(ctx, a)?,
+            build_object(ctx, b)?,
+            build_object(ctx, c)?,
         ),
         PE::Uncompose(a, b, c) => {
-            let left = build_stringlike(ctx, a);
-            let middle = build_stringlike(ctx, b);
-            let right = build_stringlike(ctx, c);
+            let left = build_stringlike(ctx, a)?;
+            let middle = build_stringlike(ctx, b)?;
+            let right = build_stringlike(ctx, c)?;
             let middle_str = middle.borrow_mut().as_string(ctx);
             ctx.uncomposed_insert(middle_str.clone());
             ctx.used_definitions_insert(middle_str);
@@ -6727,29 +6745,29 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
 
         // ---- context conditions --------------------------------------------
         PE::Lc(inner) => {
-            let retval = pmb_unary(PmatchUnaryOp::LC, build_object(ctx, inner));
+            let retval = pmb_unary(PmatchUnaryOp::LC, build_object(ctx, inner)?);
             ctx.set_need_delimiters(true);
             retval
         }
         PE::Rc(inner) => {
-            let retval = pmb_unary(PmatchUnaryOp::RC, build_object(ctx, inner));
+            let retval = pmb_unary(PmatchUnaryOp::RC, build_object(ctx, inner)?);
             ctx.set_need_delimiters(true);
             retval
         }
         PE::Nlc(inner) => {
-            let retval = pmb_unary(PmatchUnaryOp::NLC, build_object(ctx, inner));
+            let retval = pmb_unary(PmatchUnaryOp::NLC, build_object(ctx, inner)?);
             ctx.set_need_delimiters(true);
             retval
         }
         PE::Nrc(inner) => {
-            let retval = pmb_unary(PmatchUnaryOp::NRC, build_object(ctx, inner));
+            let retval = pmb_unary(PmatchUnaryOp::NRC, build_object(ctx, inner)?);
             ctx.set_need_delimiters(true);
             retval
         }
         PE::OrContext(items) => {
             let mut result: Option<ObjRef> = None;
             for it in items.iter() {
-                let obj = build_object(ctx, it);
+                let obj = build_object(ctx, it)?;
                 result = match result {
                     None => Some(obj),
                     Some(prev) => Some(pmb_binary(PmatchBinaryOp::Disjunct, prev, obj)),
@@ -6764,7 +6782,7 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
         PE::AndContext(items) => {
             let mut result: Option<ObjRef> = None;
             for it in items.iter() {
-                let obj = build_object(ctx, it);
+                let obj = build_object(ctx, it)?;
                 result = match result {
                     None => Some(obj),
                     Some(prev) => Some(pmb_binary(PmatchBinaryOp::Concatenate, prev, obj)),
@@ -6785,7 +6803,7 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
                 let fun = symbol_from_global_context(ctx, &mut sym_lookup).unwrap();
                 let mut argvec: Vec<ObjRef> = Vec::new();
                 for a in args.iter().rev() {
-                    argvec.push(build_object(ctx, a));
+                    argvec.push(build_object(ctx, a)?);
                 }
                 as_obj(Rc::new(RefCell::new(PmatchFuncall {
                     name: String::new(),
@@ -6802,7 +6820,7 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
         }
 
         // ---- file references -----------------------------------------------
-        PE::ReadFile { kind, path } => build_read_file(ctx, *kind, path),
+        PE::ReadFile { kind, path } => build_read_file(ctx, *kind, path)?,
         PE::ReadLexc(path) => {
             let filepath = path_of(ctx, path);
             as_obj(pmb_tc(HfstTransducer::read_lexc(
@@ -6816,21 +6834,24 @@ pub fn build_object(ctx: &mut PmatchEvalContext, e: &nfst_pmatch::SpannedExpr) -
             read_vec(ctx, filepath);
             pmb_empty()
         }
-    }
+    })
 }
 // EXPRESSION1: EXPRESSION2 END_OF_WEIGHTED_EXPRESSION { weight += w; wrap in
 // AddDelimiters if need_delimiters; reset need_delimiters. } The trailing
 // weight is folded into a 'Weighted' node by nfst, so only the delimiter wrap
 // remains here.
-fn build_expression1(ctx: &mut PmatchEvalContext, body: &nfst_pmatch::SpannedExpr) -> ObjRef {
-    let obj = build_object(ctx, body);
+fn build_expression1(
+    ctx: &mut PmatchEvalContext,
+    body: &nfst_pmatch::SpannedExpr,
+) -> crate::error::Result<ObjRef> {
+    let obj = build_object(ctx, body)?;
     let result = if ctx.need_delimiters() {
         pmb_unary(PmatchUnaryOp::AddDelimiters, obj)
     } else {
         obj
     };
     ctx.set_need_delimiters(false);
-    result
+    Ok(result)
 }
 // PMATCH DEFINITION verbose timer report.
 fn report_defined(ctx: &mut PmatchEvalContext, name: &str) {
@@ -6856,19 +6877,19 @@ fn insert_definition(ctx: &mut PmatchEvalContext, name: String, obj: ObjRef) {
 pub fn build_statement(
     ctx: &mut PmatchEvalContext,
     s: &nfst_pmatch::Spanned<nfst_pmatch::PmatchStatement>,
-) {
+) -> crate::error::Result<()> {
     use nfst_pmatch::PmatchStatement as PS;
     use nfst_pmatch::VariableValue;
     match &s.value {
         PS::Define { name, params, body } => match params {
             None => {
-                let obj = build_expression1(ctx, body);
+                let obj = build_expression1(ctx, body)?;
                 obj.borrow_mut().set_name(name.clone());
                 report_defined(ctx, name);
                 insert_definition(ctx, name.clone(), obj);
             }
             Some(args) => {
-                let root = build_expression1(ctx, body);
+                let root = build_expression1(ctx, body)?;
                 // The C++ ARGLIST is in reverse source order; replicate.
                 let fun = Rc::new(RefCell::new(PmatchFunction {
                     name: String::new(),
@@ -6886,7 +6907,7 @@ pub fn build_statement(
             }
         },
         PS::DefIns { name, body } => {
-            let body_obj = build_expression1(ctx, body);
+            let body_obj = build_expression1(ctx, body)?;
             body_obj.borrow_mut().set_name(name.clone());
             ctx.def_insed_expressions_insert(name.clone(), body_obj);
             let def_value = pmb_string(ins_transition(name), false);
@@ -6894,7 +6915,7 @@ pub fn build_statement(
             insert_definition(ctx, name.clone(), def_value);
         }
         PS::RegexTop { body } => {
-            let obj = build_expression1(ctx, body);
+            let obj = build_expression1(ctx, body)?;
             obj.borrow_mut().set_name("TOP".to_string());
             report_defined(ctx, "TOP");
             insert_definition(ctx, "TOP".to_string(), obj);
@@ -6909,7 +6930,7 @@ pub fn build_statement(
         PS::ListDefinition { name, body } => {
             // DEFINED_LIST: the name lands on the inner body, the stored value
             // is the MakeSigma wrapper.
-            let inner = build_expression1(ctx, body);
+            let inner = build_expression1(ctx, body)?;
             inner.borrow_mut().set_name(name.clone());
             let value = pmb_unary(PmatchUnaryOp::MakeSigma, inner);
             report_defined(ctx, name);
@@ -6920,6 +6941,7 @@ pub fn build_statement(
             read_vec(ctx, filepath);
         }
     }
+    Ok(())
 }
 // [spec:hfst:def:pmatch-compiler.hfst.pmatch.pmatch-compiler.pmatch-compiler-fn]
 // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.pmatch-compiler-fn]
@@ -7001,7 +7023,12 @@ impl PmatchCompiler {
             match nfst_pmatch::parse(&expanded_script) {
                 Ok(file) => {
                     for stmt in &file.value.statements {
-                        build_statement(ctx, stmt);
+                        if let Err(e) = build_statement(ctx, stmt) {
+                            error!("{}", e);
+                            ctx.set_data(String::new());
+                            ctx.set_len(0);
+                            return HashMap::new();
+                        }
                     }
                 }
                 Err(_e) => {

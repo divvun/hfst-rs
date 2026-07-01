@@ -471,7 +471,10 @@ impl XfstCompiler {
             }
         };
         for c in &script.value.commands {
-            self.eval_command(&c.value);
+            if let Err(e) = self.eval_command(&c.value) {
+                error!("{}", e);
+                return 1;
+            }
             // QUIT action returned EXIT_SUCCESS immediately.
             if self.quit_requested_ {
                 return 0;
@@ -989,7 +992,7 @@ impl XfstCompiler {
     // @brief Dispatch a single XfstCommand parsed by nfst-xfst, calling the
     // corresponding ported command-handler method 1:1. Each arm mirrors the
     // bison action of the matching grammar production in xfst-parser.yy.
-    fn eval_command(&mut self, cmd: &nfst_xfst::XfstCommand) {
+    fn eval_command(&mut self, cmd: &nfst_xfst::XfstCommand) -> crate::error::Result<()> {
         use nfst_xfst::{ApplyKind, NetworkOp, ReadCmd, RedirectKind, SubstituteCmd, XfstCommand};
         match cmd {
             // ── regex / define ──────────────────────────────
@@ -999,12 +1002,12 @@ impl XfstCompiler {
                 if self.latest_regex_compiled.is_some() {
                     self.latest_regex_compiled = None;
                 }
-                let compiled = self.compile_spanned_xre(xre);
+                let compiled = self.compile_spanned_xre(xre)?;
                 self.latest_regex_compiled = Some(compiled);
                 self.read_regex("");
             }
             XfstCommand::Define { name, body } => {
-                let tr = self.compile_spanned_xre(body);
+                let tr = self.compile_spanned_xre(body)?;
                 self.define_transducer(name, tr);
                 self.prompt();
             }
@@ -1326,7 +1329,7 @@ impl XfstCompiler {
                 if let XfstCommand::Test(kind) = &inner.value {
                     self.eval_test(*kind, true);
                 } else {
-                    self.eval_command(&inner.value);
+                    self.eval_command(&inner.value)?;
                 }
             }
             XfstCommand::AddProps(content) => {
@@ -1368,7 +1371,7 @@ impl XfstCompiler {
                                         self.write_att(&mut f);
                                     }
                                     _ => {
-                                        self.eval_command(inner);
+                                        self.eval_command(inner)?;
                                     }
                                 }
                             }
@@ -1406,13 +1409,14 @@ impl XfstCompiler {
                                 self.load_definitions(path);
                             }
                             _ => {
-                                self.eval_command(inner);
+                                self.eval_command(inner)?;
                             }
                         }
                     }
                 }
             }
         }
+        Ok(())
     }
 
     // @brief Compile a fully-parsed SpannedXre into a transducer by walking
@@ -1420,10 +1424,10 @@ impl XfstCompiler {
     // The XreCompiler::compile string entry point parses then walks the tree;
     // here the tree is already parsed, so we walk it directly and optimize,
     // returning a shared handle just like xre_.compile.
-    fn compile_spanned_xre(&mut self, xre: &nfst_xre::SpannedXre) -> NetRef {
-        let mut t = self.xre_.eval(xre);
+    fn compile_spanned_xre(&mut self, xre: &nfst_xre::SpannedXre) -> crate::error::Result<NetRef> {
+        let mut t = self.xre_.eval(xre)?;
         t.optimize();
-        Rc::new(RefCell::new(t))
+        Ok(Rc::new(RefCell::new(t)))
     }
 
     // @brief Dispatch a parsed PrintCmd to the corresponding print_* method,
@@ -5646,22 +5650,20 @@ impl XfstCompiler {
         let att_eps = self.variables_["att-epsilon"].clone();
         let att_eps_default = att_eps == "@0@ | @_EPSILON_SYMBOL_@";
         let fmt = self.format_;
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let r: &mut HfstTransducer = if att_eps_default {
-                HfstTransducer::read_in_att_format_file(
-                    &mut reader,
-                    fmt,
-                    crate::hfst_symbol_defs::internal_epsilon,
-                    false,
-                )
-            } else {
-                HfstTransducer::read_in_att_format_file(&mut reader, fmt, &att_eps, false) // XXX
-            };
-            // recover ownership of the heap transducer the reader leaked (Box::leak)
-            unsafe { *Box::from_raw(std::ptr::from_mut(r)) }
-        }));
+        let result = if att_eps_default {
+            HfstTransducer::read_in_att_format_file(
+                &mut reader,
+                fmt,
+                crate::hfst_symbol_defs::internal_epsilon,
+                false,
+            )
+        } else {
+            HfstTransducer::read_in_att_format_file(&mut reader, fmt, &att_eps, false)
+        };
         match result {
-            Ok(tmp) => {
+            Ok(r) => {
+                // recover ownership of the heap transducer the reader leaked (Box::leak)
+                let tmp = unsafe { *Box::from_raw(std::ptr::from_mut(r)) };
                 let net = Rc::new(RefCell::new(tmp));
                 net.borrow_mut().optimize();
                 self.stack_.push(net);

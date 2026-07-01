@@ -190,19 +190,10 @@ fn run_not_valid_att_format(type_: ImplementationType) {
     std::fs::write(&path, "0 1 a b 0.4\n1 c d\n").unwrap();
     let path_str = path.to_str().unwrap().to_string();
 
-    let payload = expect_hfst_exception(|| {
-        let _t = HfstTransducer::read_in_att_format_filename(
-            &path_str,
-            type_,
-            "@_EPSILON_SYMBOL_@",
-            false,
-        );
-    });
+    let r =
+        HfstTransducer::read_in_att_format_filename(&path_str, type_, "@_EPSILON_SYMBOL_@", false);
     assert!(
-        payload
-            .downcast_ref::<hfst::error::Error>()
-            .filter(|__e| matches!(__e.kind, hfst::error::ErrorKind::NotValidAttFormat))
-            .is_some(),
+        matches!(&r, Err(e) if matches!(e.kind, hfst::error::ErrorKind::NotValidAttFormat)),
         "expected NotValidAttFormatException"
     );
 

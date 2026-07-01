@@ -46,7 +46,8 @@ fn main() {
             "@_EPSILON_SYMBOL_@",
             &mut lc,
             false,
-        );
+        )
+        .expect("round-tripped AT&T text reads back as a valid transducer");
 
         assert_eq!(g3.get_max_state(), 1);
         assert!(g3.is_final_state(1));

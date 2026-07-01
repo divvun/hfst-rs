@@ -260,7 +260,14 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
 
                 // C: catches NotValidPrologFormatException; the Rust readers
                 // panic_any rather than throw, so the catch arm is not reproduced.
-                let fsm = HfstBasicTransducer::read_in_prolog_format_file(input, &mut linecount);
+                let fsm =
+                    match HfstBasicTransducer::read_in_prolog_format_file(input, &mut linecount) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            hfst_error(1, 0, &format!("{}", e));
+                            return 1;
+                        }
+                    };
 
                 if CHECK_NEGATIVE_EPSILON_CYCLES {
                     verbose_printf(
@@ -291,12 +298,18 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 while !is_eof(input) {
                     // C: HfstTransducer(inputfile, type, epsilon, warn) — read the
                     // basic graph from the AT&T file then build the typed transducer.
-                    let net = HfstBasicTransducer::read_in_att_format_file(
+                    let net = match HfstBasicTransducer::read_in_att_format_file(
                         input,
                         &epsilonname,
                         &mut linecount,
                         WARN_NEGATIVE_WEIGHTS,
-                    );
+                    ) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            hfst_error(1, 0, &format!("{}", e));
+                            return 1;
+                        }
+                    };
                     let t = HfstTransducer::new_from_basic(&net, OUTPUT_FORMAT);
                     transducers.push(t);
                 }
@@ -311,12 +324,18 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 // C: catches NotValidAttFormatException; the Rust readers panic_any
                 // rather than throw, so the catch arm is not reproduced here.
                 // C: HfstTransducer(inputfile, type, epsilon, linecount, warn).
-                let net = HfstBasicTransducer::read_in_att_format_file(
+                let net = match HfstBasicTransducer::read_in_att_format_file(
                     input,
                     &epsilonname,
                     &mut linecount,
                     WARN_NEGATIVE_WEIGHTS,
-                );
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        hfst_error(1, 0, &format!("{}", e));
+                        return 1;
+                    }
+                };
                 let mut t = HfstTransducer::new_from_basic(&net, OUTPUT_FORMAT);
                 hfst_set_name(&mut t, &inputfilename, "text");
                 hfst_set_formula(&mut t, &inputfilename, "T");

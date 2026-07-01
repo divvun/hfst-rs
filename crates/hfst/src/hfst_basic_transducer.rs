@@ -2352,7 +2352,7 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.hfst-basic-transducer-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.hfst-transition-graph-fn]
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.hfst-transition-graph-fn]
-    pub fn new_from_file(file: &mut dyn BufRead) -> Self {
+    pub fn new_from_file(file: &mut dyn BufRead) -> crate::error::Result<Self> {
         let mut alphabet = HfstAlphabet::new();
         Self::initialize_alphabet(&mut alphabet);
         let mut state_vector = HfstBasicStates::new();
@@ -2365,10 +2365,10 @@ impl HfstBasicTransducer {
             coder: SymbolCoder::new(),
         };
         let mut linecount: u32 = 0;
-        let read = Self::read_in_att_format_file(file, "@0@", &mut linecount, false);
+        let read = Self::read_in_att_format_file(file, "@0@", &mut linecount, false)?;
         retval.assign(&read);
         retval.name = String::new();
-        retval
+        Ok(retval)
     }
 
     // Try to get a line from 'is' (if 'file' is null) or 'file'. On success,
@@ -2397,14 +2397,17 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.read-in-prolog-format-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst-transition-graph-read-in-prolog-format-fn]
     // [spec:hfst:sem:hfst-transition-graph.hfst-transition-graph-read-in-prolog-format-fn]
-    pub fn read_in_prolog_format(is: &mut dyn BufRead, linecount: &mut u32) -> HfstBasicTransducer {
+    pub fn read_in_prolog_format(
+        is: &mut dyn BufRead,
+        linecount: &mut u32,
+    ) -> crate::error::Result<HfstBasicTransducer> {
         let mut retval = HfstBasicTransducer::new();
         let mut linestr: String;
 
         loop {
             match catch_get_stripped_line(is, linecount) {
                 Some(l) => linestr = l,
-                None => crate::HFST_THROW!(NotValidPrologFormat),
+                None => crate::bail!(NotValidPrologFormat),
             }
 
             if linestr.len() != 0 && linestr.as_bytes()[0] == b'#' {
@@ -2417,7 +2420,7 @@ impl HfstBasicTransducer {
         if !Self::parse_prolog_network_line(&linestr, &mut retval) {
             let mut message = String::from("first line not valid prolog: ");
             message.push_str(&linestr);
-            crate::HFST_THROW_MESSAGE!(NotValidPrologFormat, message);
+            crate::bail!(NotValidPrologFormat, message);
         }
 
         loop {
@@ -2426,10 +2429,10 @@ impl HfstBasicTransducer {
                     linestr = l;
                     if linestr.is_empty() {
                         // prolog separator
-                        return retval;
+                        return Ok(retval);
                     }
                 }
-                None => return retval,
+                None => return Ok(retval),
             }
 
             if !(Self::parse_prolog_arc_line(&linestr, &mut retval)
@@ -2438,7 +2441,7 @@ impl HfstBasicTransducer {
             {
                 let mut message = String::from("line not valid prolog: ");
                 message.push_str(&linestr);
-                crate::HFST_THROW_MESSAGE!(NotValidPrologFormat, message);
+                crate::bail!(NotValidPrologFormat, message);
             }
         }
     }
@@ -2446,14 +2449,14 @@ impl HfstBasicTransducer {
     pub fn read_in_prolog_format_is(
         is: &mut dyn BufRead,
         linecount: &mut u32,
-    ) -> HfstBasicTransducer {
+    ) -> crate::error::Result<HfstBasicTransducer> {
         Self::read_in_prolog_format(is, linecount)
     }
 
     pub fn read_in_prolog_format_file(
         file: &mut dyn BufRead,
         linecount: &mut u32,
-    ) -> HfstBasicTransducer {
+    ) -> crate::error::Result<HfstBasicTransducer> {
         Self::read_in_prolog_format(file, linecount)
     }
 
@@ -2467,9 +2470,9 @@ impl HfstBasicTransducer {
         epsilon_symbol: &str,
         linecount: &mut u32,
         warn_negs: bool,
-    ) -> HfstBasicTransducer {
+    ) -> crate::error::Result<HfstBasicTransducer> {
         if is_eof(is) {
-            crate::HFST_THROW!(EndOfStream);
+            crate::bail!(EndOfStream);
         }
 
         let mut retval = HfstBasicTransducer::new();
@@ -2495,15 +2498,15 @@ impl HfstBasicTransducer {
 
             if bytes[0] == b'-' {
                 // transducer separator line is "--"
-                return retval;
+                return Ok(retval);
             }
 
             if !retval.add_att_line(&line, epsilon_symbol, warn_negs) {
                 let message = line.clone();
-                crate::HFST_THROW_MESSAGE!(NotValidAttFormat, message);
+                crate::bail!(NotValidAttFormat, message);
             }
         }
-        retval
+        Ok(retval)
     }
 
     pub fn read_in_att_format_is(
@@ -2511,7 +2514,7 @@ impl HfstBasicTransducer {
         epsilon_symbol: &str,
         linecount: &mut u32,
         warn_negs: bool,
-    ) -> HfstBasicTransducer {
+    ) -> crate::error::Result<HfstBasicTransducer> {
         Self::read_in_att_format(is, epsilon_symbol, linecount, warn_negs)
     }
 
@@ -2520,7 +2523,7 @@ impl HfstBasicTransducer {
         epsilon_symbol: &str,
         linecount: &mut u32,
         warn_negs: bool,
-    ) -> HfstBasicTransducer {
+    ) -> crate::error::Result<HfstBasicTransducer> {
         Self::read_in_att_format(file, epsilon_symbol, linecount, warn_negs)
     }
 

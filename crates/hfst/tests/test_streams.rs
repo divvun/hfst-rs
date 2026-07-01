@@ -86,15 +86,18 @@ fn construction_from_att_format(type_: ImplementationType) {
     let mut reader = std::io::BufReader::new(std::io::Cursor::new(bytes));
 
     let transducers_read = std::cell::Cell::new(0u32);
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    // The reader now signals end-of-stream by returning Err (the C++ throw); read
+    // until the first Err, then assert the same count the catch path checked.
+    let result: std::result::Result<(), hfst::error::Error> = (|| {
         while !reader.fill_buf().map(|b| b.is_empty()).unwrap_or(true) {
-            let t = HfstTransducer::read_in_att_format_file(&mut reader, type_, "<eps>", false);
+            let t = HfstTransducer::read_in_att_format_file(&mut reader, type_, "<eps>", false)?;
             // Reclaim the Box::leak-ed heap transducer and drop it (the C++ stack
             // object t is destroyed at the end of each loop iteration).
             drop(unsafe { Box::from_raw(t as *mut HfstTransducer) });
             transducers_read.set(transducers_read.get() + 1);
         }
-    }));
+        Ok(())
+    })();
 
     if result.is_err() {
         assert_eq!(transducers_read.get(), 4);

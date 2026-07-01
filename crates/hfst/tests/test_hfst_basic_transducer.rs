@@ -145,17 +145,11 @@ fn exceptions() {
 
     let bytes = std::fs::read(&path).unwrap();
 
-    let payload = expect_hfst_exception(|| {
-        let mut reader = std::io::Cursor::new(bytes.clone());
-        let mut linecount: u32 = 0;
-        let _foo =
-            HfstBasicTransducer::read_in_att_format_file(&mut reader, "@0@", &mut linecount, false);
-    });
+    let mut reader = std::io::Cursor::new(bytes);
+    let mut linecount: u32 = 0;
+    let r = HfstBasicTransducer::read_in_att_format_file(&mut reader, "@0@", &mut linecount, false);
     assert!(
-        payload
-            .downcast_ref::<hfst::error::Error>()
-            .filter(|__e| matches!(__e.kind, hfst::error::ErrorKind::NotValidAttFormat))
-            .is_some(),
+        matches!(&r, Err(e) if matches!(e.kind, hfst::error::ErrorKind::NotValidAttFormat)),
         "expected NotValidAttFormatException"
     );
 
