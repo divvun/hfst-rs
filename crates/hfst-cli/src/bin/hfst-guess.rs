@@ -284,10 +284,16 @@ unsafe fn real_main() -> i32 {
         // "<inputfilename> is not a valid transducer file"; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         // The C opens an ofstream on outfilename or uses std::cout; the
@@ -304,7 +310,13 @@ unsafe fn real_main() -> i32 {
         // (the C wraps the HfstTransducer ctor in try/catch reporting "Error
         // when reading guesser from file <inputfilename>"; the Rust ctor panics
         // rather than throwing, so that catch arm is not reproduced here.)
-        let mut guesser = HfstTransducer::new_from_stream(&mut instream);
+        let mut guesser = match HfstTransducer::new_from_stream(&mut instream) {
+            Ok(t) => t,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
 
         if !is_guesser(&guesser) {
             error(
@@ -327,13 +339,31 @@ unsafe fn real_main() -> i32 {
                     globals::input_filename()
                 ));
 
-                generator = Some(compile_generator_from_guesser(&guesser));
+                generator = Some(match compile_generator_from_guesser(&guesser) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                });
             } else {
-                generator = Some(HfstTransducer::new_from_stream(&mut instream));
+                generator = Some(match HfstTransducer::new_from_stream(&mut instream) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                });
             }
         }
 
-        let mut tokenizer = get_alphabet_string_tokenizer(&mut guesser);
+        let mut tokenizer = match get_alphabet_string_tokenizer(&mut guesser) {
+            Ok(t) => t,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
 
         let mut model_forms: StringVectorVector = StringVectorVector::new();
 
@@ -362,21 +392,33 @@ unsafe fn real_main() -> i32 {
             };
 
             let mut guesses =
-                get_guesses(&line, &mut guesser, MAX_NUMBER_OF_GUESSES, &mut tokenizer);
+                match get_guesses(&line, &mut guesser, MAX_NUMBER_OF_GUESSES, &mut tokenizer) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
 
             if GENERATE_MODEL_FORMS {
                 // make scan-build happy, this should not happen
                 let gen_tr = generator
                     .as_mut()
                     .unwrap_or_else(|| panic!("Error: generator has a NULL value."));
-                let paradigms = get_paradigms(
+                let paradigms = match get_paradigms(
                     &line,
                     &guesses,
                     gen_tr,
                     &model_forms,
                     MAX_NUMBER_OF_FORMS,
                     GENERATE_THRESHOLD,
-                );
+                ) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
 
                 for it in &paradigms {
                     let _ = write!(out, "{}\n", string_vector_to_string(it));

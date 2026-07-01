@@ -1037,7 +1037,12 @@ impl LexcCompiler {
     }
 
     /// Construct transducer 'nameJoiner XRE contJoiner' and add it to the trie.
-    pub fn add_xre_entry(&mut self, regexp: &str, continuation: &str, weight: f64) -> &mut Self {
+    pub fn add_xre_entry(
+        &mut self,
+        regexp: &str,
+        continuation: &str,
+        weight: f64,
+    ) -> crate::error::Result<&mut Self> {
         self.currentEntries_ += 1;
         self.totalEntries_ += 1;
         self.continuations_.insert(continuation.to_string());
@@ -1055,10 +1060,10 @@ impl LexcCompiler {
         let Some(mut new_paths) = self.xre_.compile(regexp) else {
             self.error_at_current_token("Unable to parse regular expression");
             self.parseErrors_ = true;
-            return self;
+            return Ok(self);
         };
-        new_paths.optimize();
-        let new_alphabets = new_paths.get_alphabet();
+        new_paths.optimize()?;
+        let new_alphabets = new_paths.get_alphabet()?;
         for new_alpha in &new_alphabets {
             if self.alphabets_.contains(new_alpha) {
                 continue;
@@ -1091,11 +1096,13 @@ impl LexcCompiler {
         self.tokenizer_.add_multichar_symbol(&regex_key);
 
         let format = self.format_;
-        let entry = self
-            .regexps_
-            .entry(regex_key.clone())
-            .or_insert_with(|| HfstTransducer::new_type(format));
-        entry.disjunct(&new_paths, true).optimize();
+        let entry = match self.regexps_.entry(regex_key.clone()) {
+            std::collections::btree_map::Entry::Occupied(e) => e.into_mut(),
+            std::collections::btree_map::Entry::Vacant(e) => {
+                e.insert(HfstTransducer::new_type(format)?)
+            }
+        };
+        entry.disjunct(&new_paths, true)?.optimize()?;
 
         if !self.quiet_ && (self.currentEntries_ % 10000) == 0 {
             info!("{}...", self.currentEntries_);
@@ -1119,7 +1126,7 @@ impl LexcCompiler {
         );
         let w = double_to_float(weight);
         self.stringsTrie_.disjunct_path(&new_vector, w);
-        self
+        Ok(self)
     }
 
     pub fn add_xre_definition(&mut self, definition_name: &str, xre: &str) -> &mut Self {
@@ -1221,10 +1228,10 @@ impl LexcCompiler {
     /// after every source has been parsed. Multi-file flow: call 'parse' on each
     /// source into one compiler, then 'compile_lexical' once. Returns '&mut self'
     /// to mirror the C++ 'LexcCompiler &' chaining return.
-    pub fn parse(&mut self, lexc_source: &str) -> &mut Self {
+    pub fn parse(&mut self, lexc_source: &str) -> crate::error::Result<&mut Self> {
         match nfst_lexc::parse(lexc_source) {
             Ok(ast) => {
-                self.compile_file(&ast.value);
+                self.compile_file(&ast.value)?;
                 // mirrors 'xre_.remove_defined_multichar_symbols()' in parse()
                 self.xre_.remove_defined_multichar_symbols();
             }
@@ -1233,7 +1240,7 @@ impl LexcCompiler {
                 self.parseErrors_ = true;
             }
         }
-        self
+        Ok(self)
     }
 
     /// PUBLIC entry point: parse a single 'lexc_source' into 'self', then run
@@ -1242,8 +1249,8 @@ impl LexcCompiler {
     /// that pairing for the single-source case. Returns None on parse error
     /// (the C++ 'compileLexical' null contract expressed as an Option).
     pub fn compile(&mut self, lexc_source: &str) -> Option<HfstTransducer> {
-        self.parse(lexc_source);
-        self.compile_lexical()
+        self.parse(lexc_source).ok();
+        self.compile_lexical().ok().flatten()
     }
 
     /// Walk the typed AST, dispatching each section/entry to the matching
@@ -1251,7 +1258,7 @@ impl LexcCompiler {
     /// semantic actions ('handle_multichar' / 'handle_noflag' /
     /// 'handle_definition' / 'handle_lexicon_name' / 'handle_string_entry' /
     /// 'handle_string_pair_entry' / 'handle_regexp_entry').
-    pub fn compile_file(&mut self, ast: &LexcFile) {
+    pub fn compile_file(&mut self, ast: &LexcFile) -> crate::error::Result<()> {
         for mc in &ast.multichars {
             self.add_alphabet(&mc.value.0);
         }
@@ -1291,11 +1298,12 @@ impl LexcCompiler {
                     }
                     EntrySpec::Regex(xre) => {
                         let r = nfst_xre::pretty_print(xre);
-                        self.add_xre_entry(&r, &e.continuation, weight);
+                        self.add_xre_entry(&r, &e.continuation, weight)?;
                     }
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -1313,24 +1321,24 @@ impl LexcCompiler {
     // 'COLOUR_*' '#define's are inlined as literal ANSI escapes to avoid a
     // duplicate module-scope definition with the lexc-utils body (which owns
     // 'should_colourise').
-    pub fn compile_lexical(&mut self) -> Option<HfstTransducer> {
+    pub fn compile_lexical(&mut self) -> crate::error::Result<Option<HfstTransducer>> {
         if self.parseErrors_ {
             error!("compilation aborted due to previous errors");
-            return None;
+            return Ok(None);
         }
         let mut warnings_generated = false;
         self.print_connectedness(&mut warnings_generated);
         if warnings_generated && self.treat_warnings_as_errors_ {
             error!("missing or unused LEXICONs (see above) and -Werror has been enabled");
-            return None;
+            return Ok(None);
         }
 
-        let mut lexicons = HfstTransducer::new_from_basic(&self.stringsTrie_, self.format_);
+        let mut lexicons = HfstTransducer::new_from_basic(&self.stringsTrie_, self.format_)?;
 
-        lexicons.optimize();
+        lexicons.optimize()?;
 
         // repeat star to overgenerate
-        lexicons.repeat_star().optimize();
+        lexicons.repeat_star()?.optimize()?;
 
         let mut small_substitutions = HfstSymbolSubstitutions::new();
         small_substitutions.insert("@0@".to_string(), "@_EPSILON_SYMBOL_@".to_string());
@@ -1340,8 +1348,8 @@ impl LexcCompiler {
         );
         small_substitutions.insert("@ZERO@".to_string(), "0".to_string());
 
-        lexicons.substitute_symbol_substitutions(&small_substitutions);
-        lexicons.prune_alphabet(true);
+        lexicons.substitute_symbol_substitutions(&small_substitutions)?;
+        lexicons.prune_alphabet(true)?;
 
         let mut joiners_trie = HfstBasicTransducer::new();
 
@@ -1350,15 +1358,15 @@ impl LexcCompiler {
         if !self.with_flags_ {
             let start_joiner = joiner_encode(&self.initialLexiconName_);
             let start =
-                HfstTransducer::new_tokenized(&start_joiner, &self.tokenizer_, self.format_);
+                HfstTransducer::new_tokenized(&start_joiner, &self.tokenizer_, self.format_)?;
             let end_string = joiner_encode("#");
-            let end = HfstTransducer::new_tokenized(&end_string, &self.tokenizer_, self.format_);
+            let end = HfstTransducer::new_tokenized(&end_string, &self.tokenizer_, self.format_)?;
             // lexicons = start.concatenate(lexicons).concatenate(end).optimize();
             let mut bracketed = start;
             bracketed
-                .concatenate(&lexicons, true)
-                .concatenate(&end, true)
-                .optimize();
+                .concatenate(&lexicons, true)?
+                .concatenate(&end, true)?
+                .optimize()?;
             lexicons = bracketed;
 
             for s in &self.lexiconNames_ {
@@ -1384,8 +1392,8 @@ impl LexcCompiler {
             let root_p = flag_joiner_encode(&self.initialLexiconName_, false);
             let root_r = flag_joiner_encode(&self.initialLexiconName_, true);
 
-            let start_p = HfstTransducer::new_tokenized(&root_p, &self.tokenizer_, self.format_);
-            let _start_r = HfstTransducer::new_tokenized(&root_r, &self.tokenizer_, self.format_);
+            let start_p = HfstTransducer::new_tokenized(&root_p, &self.tokenizer_, self.format_)?;
+            let _start_r = HfstTransducer::new_tokenized(&root_r, &self.tokenizer_, self.format_)?;
 
             let end_string_p = flag_joiner_encode("#", false);
             let end_string_r = flag_joiner_encode("#", true);
@@ -1394,16 +1402,16 @@ impl LexcCompiler {
             self.tokenizer_.add_multichar_symbol(&end_string_r);
 
             let _end_p =
-                HfstTransducer::new_tokenized(&end_string_p, &self.tokenizer_, self.format_);
+                HfstTransducer::new_tokenized(&end_string_p, &self.tokenizer_, self.format_)?;
             let end_r =
-                HfstTransducer::new_tokenized(&end_string_r, &self.tokenizer_, self.format_);
+                HfstTransducer::new_tokenized(&end_string_r, &self.tokenizer_, self.format_)?;
 
             // lexicons = startP.concatenate(lexicons).concatenate(endR).optimize();
             let mut bracketed = start_p;
             bracketed
-                .concatenate(&lexicons, true)
-                .concatenate(&end_r, true)
-                .optimize();
+                .concatenate(&lexicons, true)?
+                .concatenate(&end_r, true)?
+                .optimize()?;
             lexicons = bracketed;
 
             for s in &self.lexiconNames_ {
@@ -1446,14 +1454,14 @@ impl LexcCompiler {
             joiners_trie.disjunct_path(&new_vector, 0.0f32);
         }
 
-        let mut joiners_all = HfstTransducer::new_from_basic(&joiners_trie, self.format_);
+        let mut joiners_all = HfstTransducer::new_from_basic(&joiners_trie, self.format_)?;
 
-        joiners_all.repeat_star();
-        joiners_all.optimize();
+        joiners_all.repeat_star()?;
+        joiners_all.optimize()?;
 
         lexicons
-            .compose_with_config(&joiners_all, true, &self.compose_cfg())
-            .optimize();
+            .compose_with_config(&joiners_all, true, &self.compose_cfg())?
+            .optimize()?;
 
         let mut all_substitutions = HfstSymbolSubstitutions::new();
         if self.with_flags_ {
@@ -1462,9 +1470,9 @@ impl LexcCompiler {
             }
             let mut fake_flags_to_real_flags = HfstSymbolSubstitutions::new();
             // Change fake flags to real flags
-            lexicons.prune_alphabet(true);
+            lexicons.prune_alphabet(true)?;
 
-            let transducer_alphabet = lexicons.get_alphabet();
+            let transducer_alphabet = lexicons.get_alphabet()?;
             for s in &transducer_alphabet {
                 if s.starts_with('$') && s.ends_with('$') && s.len() > 2 {
                     let alph = s.replace('$', "@");
@@ -1477,9 +1485,9 @@ impl LexcCompiler {
         }
 
         lexicons
-            .substitute_symbol_substitutions(&all_substitutions)
-            .optimize();
-        lexicons.prune_alphabet(true);
+            .substitute_symbol_substitutions(&all_substitutions)?
+            .optimize()?;
+        lexicons.prune_alphabet(true)?;
 
         // replace reg exp key with transducers
         if self.verbose_ {
@@ -1496,9 +1504,9 @@ impl LexcCompiler {
             }
         }
         lexicons
-            .substitute_symbol_substitutions(&fake_regexpr_to_real)
-            .optimize();
-        lexicons.prune_alphabet(true);
+            .substitute_symbol_substitutions(&fake_regexpr_to_real)?
+            .optimize()?;
+        lexicons.prune_alphabet(true)?;
 
         let mut reg_mark_to_tr: crate::hfst_basic_transducer::SubstMap = BTreeMap::new();
 
@@ -1514,17 +1522,17 @@ impl LexcCompiler {
         }
 
         let mut lexicons_basic = HfstBasicTransducer::from_transducer(&lexicons);
-        lexicons_basic.substitute_subst_map(&mut reg_mark_to_tr, true);
+        lexicons_basic.substitute_subst_map(&mut reg_mark_to_tr, true)?;
 
         lexicons_basic.prune_alphabet(true);
 
-        let mut rv = HfstTransducer::new_from_basic(&lexicons_basic, self.format_);
+        let mut rv = HfstTransducer::new_from_basic(&lexicons_basic, self.format_)?;
 
         // Preserve only first flag of consecutive P and R lexname flag series,
         // e.g. change P.LEXNAME.1 R.LEXNAME.1 P.LEXNAME.2 R.LEXNAME.2 into
         // P.LEXNAME.1
         if self.with_flags_ {
-            let transducer_alphabet = rv.get_alphabet();
+            let transducer_alphabet = rv.get_alphabet()?;
             let mut flag_d: StringSet = BTreeSet::new();
             for s in &transducer_alphabet {
                 if s.starts_with("@P.LEXNAME") || s.starts_with("@R.LEXNAME") {
@@ -1556,9 +1564,9 @@ impl LexcCompiler {
             let mut xre_comp = XreCompiler::new(self.format_);
 
             let mut flag_filter = xre_comp.compile(&flag_remover_regexp).unwrap();
-            flag_filter.optimize();
+            flag_filter.optimize()?;
             let mut inverted_flag_filter = flag_filter.clone();
-            inverted_flag_filter.invert().optimize();
+            inverted_flag_filter.invert()?.optimize()?;
 
             // [ [FLAG1 | FLAG2 ... FLAGN] -> 0 || [FLAG1 | FLAG2 ... FLAGN] _
             // ].inv
@@ -1568,17 +1576,17 @@ impl LexcCompiler {
             // [FLAG1 | FLAG2 ... FLAGN] -> 0 || [FLAG1 | FLAG2 ... FLAGN] _
             let mut filtered_lexicons = inverted_flag_filter;
             let cfg = self.compose_cfg();
-            filtered_lexicons.compose_with_config(&rv, true, &cfg);
+            filtered_lexicons.compose_with_config(&rv, true, &cfg)?;
             filtered_lexicons
-                .compose_with_config(&flag_filter, true, &cfg)
-                .optimize();
+                .compose_with_config(&flag_filter, true, &cfg)?
+                .optimize()?;
 
-            rv.assign(&filtered_lexicons);
+            rv.assign(&filtered_lexicons)?;
         }
 
-        rv.optimize();
+        rv.optimize()?;
 
-        Some(rv)
+        Ok(Some(rv))
     }
 
     // Port of 'LexcCompiler::printConnectedness(bool &warnings_generated)'

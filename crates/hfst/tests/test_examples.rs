@@ -162,19 +162,20 @@ fn build_disj() -> HfstBasicTransducer {
 }
 
 // --- Block 1a: expanding unknowns (the disjunct/minimize oracle).
-fn run_expanding_unknowns(type_: ImplementationType) {
+fn run_expanding_unknowns(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     verbose_print("expanding unknowns", type_);
 
-    let mut tr1 = HfstTransducer::new_from_basic(&build_tr1(), type_);
-    let tr2 = HfstTransducer::new_from_basic(&build_tr2(), type_);
-    let disj = HfstTransducer::new_from_basic(&build_disj(), type_);
+    let mut tr1 = HfstTransducer::new_from_basic(&build_tr1(), type_)?;
+    let tr2 = HfstTransducer::new_from_basic(&build_tr2(), type_)?;
+    let disj = HfstTransducer::new_from_basic(&build_disj(), type_)?;
 
     // Tr1.disjunct(Tr2).minimize(); C++ disjunct/compare default harmonize=true.
-    tr1.disjunct(&tr2, true).minimize();
+    tr1.disjunct(&tr2, true)?.minimize()?;
     // Tr1 is expanded to [ @_UNKNOWN_SYMBOL_@:foo | bar:foo ]
     // Tr2 is expanded to
     // [ [ @_IDENTITY_SYMBOL_@:@_IDENTITY_SYMBOL_@ | foo:foo ] [ bar:bar ] ]
-    assert!(tr1.compare(&disj, true));
+    assert!(tr1.compare(&disj, true)?);
+    Ok(())
 }
 
 // --- Block 1b: NotValidAttFormatException.
@@ -205,9 +206,10 @@ fn run_not_valid_att_format(type_: ImplementationType) {
 // =====================================================================
 
 #[test]
-fn expanding_unknowns_tropical() {
+fn expanding_unknowns_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    run_expanding_unknowns(TROPICAL_OPENFST_TYPE);
+    run_expanding_unknowns(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
@@ -221,9 +223,10 @@ fn not_valid_att_format_tropical() {
 // =====================================================================
 
 #[test]
-fn expanding_unknowns_log() {
+fn expanding_unknowns_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    run_expanding_unknowns(LOG_OPENFST_TYPE);
+    run_expanding_unknowns(LOG_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]

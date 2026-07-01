@@ -223,10 +223,16 @@ unsafe fn compose_streams(
         }
 
         let output_opened = globals::output_filename() != "<stdout>";
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), output_type, true)
         } else {
             HfstOutputStream::new(output_type, true)
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         let mut first: Option<HfstTransducer> = None;
@@ -235,11 +241,23 @@ unsafe fn compose_streams(
         let mut transducer_n_second: usize = 0; // transducers read from second stream
         while continue_reading {
             if firststream.is_good() {
-                first = Some(HfstTransducer::new_from_stream(firststream));
+                first = Some(match HfstTransducer::new_from_stream(firststream) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                });
                 transducer_n_first += 1;
             }
             if secondstream.is_good() {
-                second = Some(HfstTransducer::new_from_stream(secondstream));
+                second = Some(match HfstTransducer::new_from_stream(secondstream) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                });
                 transducer_n_second += 1;
             }
             let firstname = hfst_get_name(first.as_ref().unwrap(), &globals::first_filename());
@@ -269,29 +287,31 @@ unsafe fn compose_streams(
                         );
                     }
                 } else {
-                    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        first
-                            .as_mut()
-                            .unwrap()
-                            .harmonize_flag_diacritics(second.as_mut().unwrap(), true);
-                    }));
-                    if res.is_err() {
-                        let e = res.err().unwrap();
-                        if e.downcast_ref::<hfst::error::Error>()
-                            .filter(|__e| {
-                                matches!(__e.kind, hfst::error::ErrorKind::TransducerTypeMismatch)
-                            })
-                            .is_some()
-                        {
+                    let harmonize_res = first
+                        .as_mut()
+                        .expect("first transducer is present")
+                        .harmonize_flag_diacritics(
+                            second.as_mut().expect("second transducer is present"),
+                            true,
+                        );
+                    if let Err(e) = harmonize_res {
+                        if matches!(e.kind, hfst::error::ErrorKind::TransducerTypeMismatch) {
                             if globals::ALLOW_TRANSDUCER_CONVERSION {
                                 convert_transducers(
-                                    first.as_mut().unwrap(),
-                                    second.as_mut().unwrap(),
+                                    first.as_mut().expect("first transducer is present"),
+                                    second.as_mut().expect("second transducer is present"),
                                 );
-                                first
+                                if let Err(e2) = first
                                     .as_mut()
-                                    .unwrap()
-                                    .harmonize_flag_diacritics(second.as_mut().unwrap(), true);
+                                    .expect("first transducer is present")
+                                    .harmonize_flag_diacritics(
+                                        second.as_mut().expect("second transducer is present"),
+                                        true,
+                                    )
+                                {
+                                    error(1, 0, &format!("{e2}"));
+                                    return 1;
+                                }
                             } else {
                                 error(
                                     1,
@@ -305,9 +325,11 @@ unsafe fn compose_streams(
                                         hfst_strformat(secondstream.get_type())
                                     ),
                                 );
+                                return 1;
                             }
                         } else {
-                            std::panic::resume_unwind(e);
+                            error(1, 0, &format!("{e}"));
+                            return 1;
                         }
                     }
                 }
@@ -318,28 +340,34 @@ unsafe fn compose_streams(
                 xerox_composition: XEROX_COMPOSITION,
                 ..EngineConfig::default()
             };
-            let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                first.as_mut().unwrap().compose_with_config(
-                    second.as_ref().unwrap(),
+            let compose_res = first
+                .as_mut()
+                .expect("first transducer is present")
+                .compose_with_config(
+                    second.as_ref().expect("second transducer is present"),
                     HARMONIZE,
                     &cfg,
-                );
-            }));
-            if res.is_err() {
-                let e = res.err().unwrap();
-                if e.downcast_ref::<hfst::error::Error>()
-                    .filter(|__e| {
-                        matches!(__e.kind, hfst::error::ErrorKind::TransducerTypeMismatch)
-                    })
-                    .is_some()
-                {
+                )
+                .map(|_| ());
+            if let Err(e) = compose_res {
+                if matches!(e.kind, hfst::error::ErrorKind::TransducerTypeMismatch) {
                     if globals::ALLOW_TRANSDUCER_CONVERSION {
-                        convert_transducers(first.as_mut().unwrap(), second.as_mut().unwrap());
-                        first.as_mut().unwrap().compose_with_config(
-                            second.as_ref().unwrap(),
-                            HARMONIZE,
-                            &cfg,
+                        convert_transducers(
+                            first.as_mut().expect("first transducer is present"),
+                            second.as_mut().expect("second transducer is present"),
                         );
+                        if let Err(e2) = first
+                            .as_mut()
+                            .expect("first transducer is present")
+                            .compose_with_config(
+                                second.as_ref().expect("second transducer is present"),
+                                HARMONIZE,
+                                &cfg,
+                            )
+                        {
+                            error(1, 0, &format!("{e2}"));
+                            return 1;
+                        }
                     } else {
                         error(
                             1,
@@ -353,9 +381,11 @@ unsafe fn compose_streams(
                                 hfst_strformat(secondstream.get_type())
                             ),
                         );
+                        return 1;
                     }
                 } else {
-                    std::panic::resume_unwind(e);
+                    error(1, 0, &format!("{e}"));
+                    return 1;
                 }
             }
 
@@ -368,7 +398,11 @@ unsafe fn compose_streams(
             let second_ref = second.as_ref().unwrap();
             hfst_set_formula_binary(first.as_mut().unwrap(), &first_copy, second_ref, "\u{2218}");
 
-            outstream.redirect(first.as_mut().unwrap());
+            if let Err(e) = outstream.redirect(first.as_mut().expect("first transducer is present"))
+            {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
 
             continue_reading = (firststream.is_good() && secondstream.is_good())
                 || (firststream.is_good() && (transducer_n_second == 1))
@@ -413,7 +447,10 @@ unsafe fn compose_streams(
 
         firststream.close();
         secondstream.close();
-        outstream.flush();
+        if let Err(e) = outstream.flush() {
+            error(1, 0, &format!("{e}"));
+            return 1;
+        }
         outstream.close();
 
         0
@@ -450,15 +487,27 @@ unsafe fn real_main() -> i32 {
         // (the C wraps the ctors in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
-        let mut firststream = if first_opened {
+        let mut firststream = match if first_opened {
             HfstInputStream::new_filename(&globals::first_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
-        let mut secondstream = if second_opened {
+        let mut secondstream = match if second_opened {
             HfstInputStream::new_filename(&globals::second_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if is_input_stream_in_ol_format(&firststream, "hfst-compose")

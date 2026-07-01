@@ -371,9 +371,9 @@ mod construction_io {
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-input-stream.read-transducer-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-input-stream.read-transducer-fn]
-        pub fn read_transducer(&mut self) -> LogVectorFst {
+        pub fn read_transducer(&mut self) -> crate::error::Result<LogVectorFst> {
             if self.is_eof() {
-                crate::HFST_THROW!(StreamIsClosed);
+                crate::bail!(StreamIsClosed);
             }
             // rustfst has no streaming istream read, so read the remaining bytes
             // and 'load_prefix' one FST from the front (it reports how many bytes
@@ -382,7 +382,7 @@ mod construction_io {
             let (fst, consumed) = match LogVectorFst::load_prefix(&bytes) {
                 Ok(x) => x,
                 Err(_) => {
-                    crate::HFST_THROW_MESSAGE!(
+                    crate::bail!(
                         TransducerHasWrongType,
                         "could not read LOG_OPENFST transducer payload"
                     )
@@ -391,7 +391,7 @@ mod construction_io {
             for &b in bytes[consumed..].iter().rev() {
                 self.input_stream.putback(b);
             }
-            fst
+            Ok(fst)
         }
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-input-stream.stream-get-fn]
@@ -903,7 +903,9 @@ mod construction_io {
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.read-in-att-format-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.read-in-att-format-fn]
-        pub fn read_in_att_format(ifile: &mut dyn std::io::BufRead) -> LogVectorFst {
+        pub fn read_in_att_format(
+            ifile: &mut dyn std::io::BufRead,
+        ) -> crate::error::Result<LogVectorFst> {
             let mut t = LogVectorFst::new();
             let mut st = Self::create_symbol_table(String::new());
 
@@ -937,7 +939,7 @@ mod construction_io {
 
                 if !bytes.is_empty() && bytes[0] == b'-' {
                     // transducer separator
-                    return t;
+                    return Ok(t);
                 }
 
                 // sscanf("%s\t%s\t%s\t%s\t%s", ...) — %s splits on whitespace.
@@ -978,12 +980,12 @@ mod construction_io {
                 } else {
                     // line could not be parsed
                     let message = line_str.to_string();
-                    crate::HFST_THROW_MESSAGE!(NotValidAttFormat, message);
+                    crate::bail!(NotValidAttFormat, message);
                 }
             }
 
             t.set_input_symbols(Arc::new(st));
-            t
+            Ok(t)
         }
 
         // ---- alphabet / symbol-table handling ----
@@ -1119,11 +1121,11 @@ mod construction_io {
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.get-symbol-number-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.get-symbol-number-fn]
-        pub fn get_symbol_number(t: &LogVectorFst, symbol: &str) -> u32 {
+        pub fn get_symbol_number(t: &LogVectorFst, symbol: &str) -> crate::error::Result<u32> {
             assert!(t.input_symbols().is_some());
             match t.input_symbols().unwrap().get_label(symbol) {
-                None => crate::HFST_THROW!(SymbolNotFound),
-                Some(i) => i,
+                None => crate::bail!(SymbolNotFound),
+                Some(i) => Ok(i),
             }
         }
 
@@ -1151,7 +1153,9 @@ mod construction_io {
 
             let alphabet = Self::get_alphabet(t);
             for it in alphabet.iter() {
-                let symbol_number = Self::get_symbol_number(t, it);
+                let symbol_number = Self::get_symbol_number(t, it).expect(
+                    "symbol enumerated from this transducer's own symbol table is present in it",
+                );
                 symbol_vector[symbol_number as usize] = it.clone();
             }
             symbol_vector

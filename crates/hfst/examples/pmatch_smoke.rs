@@ -9,9 +9,9 @@ const SRC: &str = "\
 Define TOP [{cat} | {dog}] ;
 ";
 
-fn main() {
+fn main() -> hfst::error::Result<()> {
     let mut c = PmatchCompiler::new(TROPICAL_OPENFST_TYPE);
-    let defs = c.compile(SRC);
+    let defs = c.compile(SRC)?;
     assert!(!defs.is_empty(), "pmatch compile produced no transducers");
 
     let top = defs.get("TOP").expect("no TOP in pmatch result");
@@ -19,4 +19,5 @@ fn main() {
     assert!(states >= 1, "expected a non-empty TOP transducer");
 
     println!("pmatch OK: Define TOP [cat|dog] -> {states} states");
+    Ok(())
 }

@@ -451,10 +451,24 @@ unsafe fn string_to_utf8(p: &str) -> Vec<String> {
 unsafe fn read_matcher_stream(instream: &mut HfstInputStream) -> i32 {
     unsafe {
         let mut transducer_n: usize = 0;
-        MATCHER = Box::into_raw(Box::new(HfstTransducer::new_type(instream.get_type())));
+        MATCHER = Box::into_raw(Box::new(
+            match HfstTransducer::new_type(instream.get_type()) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            },
+        ));
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = HfstTransducer::new_from_stream(instream);
+            let mut trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let mut inputname = trans.get_name();
             if inputname.is_empty() {
                 inputname = INPUTFILENAME.clone();
@@ -470,10 +484,20 @@ unsafe fn read_matcher_stream(instream: &mut HfstInputStream) -> i32 {
             if transducer_n > 1 {
                 verbose_printf("and disjuncting...\n");
             }
-            (*MATCHER).disjunct(trans.input_project(), true);
+            if let Err(e) = trans.input_project() {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+            if let Err(e) = (*MATCHER).disjunct(&trans, true) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
         verbose_printf("minimising matchers...\n");
-        (*MATCHER).minimize();
+        if let Err(e) = (*MATCHER).minimize() {
+            error(1, 0, &format!("{e}"));
+            return 1;
+        }
         instream.close();
         0
     }
@@ -481,7 +505,13 @@ unsafe fn read_matcher_stream(instream: &mut HfstInputStream) -> i32 {
 
 unsafe fn read_matcher(expression: &str) {
     unsafe {
-        MATCHER = Box::into_raw(Box::new(HfstTransducer::new_type(FORMAT)));
+        MATCHER = Box::into_raw(Box::new(match HfstTransducer::new_type(FORMAT) {
+            Ok(t) => t,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
+        }));
         if DIALECT_XEROX {
             let mut comp = XreCompiler::new(FORMAT);
             verbose_printf(&format!(
@@ -489,20 +519,40 @@ unsafe fn read_matcher(expression: &str) {
                 expression
             ));
             let mut trans = comp.compile(expression).unwrap();
-            (*MATCHER).disjunct(trans.input_project(), true);
+            if let Err(e) = trans.input_project() {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
+            if let Err(e) = (*MATCHER).disjunct(&trans, true) {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
         } else if DIALECT_FIXED_STRINGS {
             verbose_printf(&format!(
                 "parsing {} as fixed string of UTF-8 symbols...\n",
                 expression
             ));
             let t = HfstTokenizer::new();
-            let trans = HfstTransducer::new_tokenized_pair(expression, expression, &t, FORMAT);
-            (*MATCHER).disjunct(&trans, true);
+            let trans = match HfstTransducer::new_tokenized_pair(expression, expression, &t, FORMAT)
+            {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            };
+            if let Err(e) = (*MATCHER).disjunct(&trans, true) {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
         } else {
             error(1, 0, "dialect unsupported");
         }
         verbose_printf("minimizing...\n");
-        (*MATCHER).minimize();
+        if let Err(e) = (*MATCHER).minimize() {
+            error(1, 0, &format!("{e}"));
+            return;
+        }
         if globals::VERBOSE {
             verbose_printf("Resulting FSM:\n");
             // C: std::cerr << *matcher;
@@ -517,45 +567,133 @@ unsafe fn extend_matcher_with_options() {
     unsafe {
         if globals::COLOUR == ColourTristate::COLOUR_ALWAYS {
             verbose_printf("Adding color codes to match boundaries...\n");
-            let color_start = HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "[31m", FORMAT);
-            let color_end = HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "[00m", FORMAT);
+            let color_start =
+                match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "[31m", FORMAT) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return;
+                    }
+                };
+            let color_end =
+                match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "[00m", FORMAT) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return;
+                    }
+                };
             let mut coloured = color_start;
-            coloured.concatenate(&*MATCHER, true);
-            coloured.concatenate(&color_end, true);
+            if let Err(e) = coloured.concatenate(&*MATCHER, true) {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
+            if let Err(e) = coloured.concatenate(&color_end, true) {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
             MATCHER = Box::into_raw(Box::new(coloured));
         } else {
             // bracket matches for now
             verbose_printf("Adding brackets to match boundaries...\n");
-            let color_start = HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "{{{", FORMAT);
-            let color_end = HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "}}}", FORMAT);
+            let color_start =
+                match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "{{{", FORMAT) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return;
+                    }
+                };
+            let color_end =
+                match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "}}}", FORMAT) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return;
+                    }
+                };
             let mut coloured = color_start;
-            coloured.concatenate(&*MATCHER, true);
-            coloured.concatenate(&color_end, true);
+            if let Err(e) = coloured.concatenate(&*MATCHER, true) {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
+            if let Err(e) = coloured.concatenate(&color_end, true) {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
             MATCHER = Box::into_raw(Box::new(coloured));
         }
         if MATCH_WORD {
             verbose_printf("Delimiting matcher to word boundaries (currently space)...\n");
-            let non_word_char_left = HfstTransducer::new_symbol(" ", FORMAT);
-            let non_word_char_right = HfstTransducer::new_symbol(" ", FORMAT);
+            let non_word_char_left = match HfstTransducer::new_symbol(" ", FORMAT) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            };
+            let non_word_char_right = match HfstTransducer::new_symbol(" ", FORMAT) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            };
             let mut word_bounded = non_word_char_left;
-            word_bounded.concatenate(&*MATCHER, true);
-            word_bounded.concatenate(&non_word_char_right, true);
+            if let Err(e) = word_bounded.concatenate(&*MATCHER, true) {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
+            if let Err(e) = word_bounded.concatenate(&non_word_char_right, true) {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
             MATCHER = Box::into_raw(Box::new(word_bounded));
         }
         if !MATCH_FULL_LINE {
             verbose_printf("Extending matcher for repetitions and rest...\n");
-            let mut left_any = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", FORMAT);
-            let mut right_any = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", FORMAT);
-            left_any.repeat_star();
-            right_any.repeat_star();
+            let mut left_any = match HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", FORMAT) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            };
+            let mut right_any = match HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", FORMAT) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            };
+            if let Err(e) = left_any.repeat_star() {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
+            if let Err(e) = right_any.repeat_star() {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
             let mut one_match = left_any;
-            one_match.concatenate(&*MATCHER, true);
-            one_match.concatenate(&right_any, true);
+            if let Err(e) = one_match.concatenate(&*MATCHER, true) {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
+            if let Err(e) = one_match.concatenate(&right_any, true) {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
             MATCHER = Box::into_raw(Box::new(one_match));
-            (*MATCHER).repeat_plus();
+            if let Err(e) = (*MATCHER).repeat_plus() {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
         }
         verbose_printf("Minimising extended matcher...\n");
-        (*MATCHER).minimize();
+        if let Err(e) = (*MATCHER).minimize() {
+            error(1, 0, &format!("{e}"));
+            return;
+        }
         if globals::VERBOSE {
             verbose_printf("Resulting FSM:\n");
             hfst::hfst_transducer::operator_shl_os(&mut std::io::stderr(), &*MATCHER);
@@ -594,7 +732,10 @@ unsafe fn print_match_line(path: &HfstOneLevelPath, out: &mut dyn Write) {
 unsafe fn print_match_transducer(path: &HfstTransducer, out: &mut dyn Write) {
     unsafe {
         let mut p: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
-        path.extract_paths(&mut p, 1, -1);
+        if let Err(e) = path.extract_paths(&mut p, 1, -1) {
+            error(1, 0, &format!("{e}"));
+            return;
+        }
         if PRINT_ONLY_MATCHING_FILENAMES || PRINT_ONLY_UNMATCHING_FILENAMES {
             return;
         }
@@ -651,14 +792,46 @@ unsafe fn match_lines(infile: &mut dyn BufRead, infilename: &str, out: &mut dyn 
                 continue;
             }
             let line_str = line;
-            let mut line_trans =
-                HfstTransducer::new_tokenized_pair(&line_str, &line_str, &tokeniser, FORMAT);
+            let mut line_trans = match HfstTransducer::new_tokenized_pair(
+                &line_str, &line_str, &tokeniser, FORMAT,
+            ) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return false;
+                }
+            };
             verbose_printf("composing...\n");
-            let mut results_t = HfstTransducer::new_copy(&line_trans);
-            results_t.compose(&*MATCHER, true);
-            results_t.output_project();
-            let empty = HfstTransducer::new_type(FORMAT);
-            if results_t.compare_default(&empty) {
+            let mut results_t = match HfstTransducer::new_copy(&line_trans) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return false;
+                }
+            };
+            if let Err(e) = results_t.compose(&*MATCHER, true) {
+                error(1, 0, &format!("{e}"));
+                return false;
+            }
+            if let Err(e) = results_t.output_project() {
+                error(1, 0, &format!("{e}"));
+                return false;
+            }
+            let empty = match HfstTransducer::new_type(FORMAT) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return false;
+                }
+            };
+            let is_empty = match results_t.compare_default(&empty) {
+                Ok(b) => b,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return false;
+                }
+            };
+            if is_empty {
                 verbose_printf("no matches\n");
                 if INVERT_MATCHES {
                     print_match_transducer(&line_trans, &mut *out);
@@ -689,10 +862,15 @@ unsafe fn match_lines(infile: &mut dyn BufRead, infilename: &str, out: &mut dyn 
 unsafe fn optimise_matcher() {
     unsafe {
         verbose_printf("Optimising...\n");
-        OPTIMISED_MATCHER = Box::into_raw(Box::new(HfstTransducer::convert_static(
-            &*MATCHER,
-            ImplementationType::HFST_OL_TYPE,
-        )));
+        OPTIMISED_MATCHER = Box::into_raw(Box::new(
+            match HfstTransducer::convert_static(&*MATCHER, ImplementationType::HFST_OL_TYPE) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            },
+        ));
     }
 }
 

@@ -106,43 +106,44 @@ fn build_t() -> HfstBasicTransducer {
 // compare equal after minimization (the identity symbol expands to cover a/b).
 // The intermediate ab_flag transducer is dead code in the C++ (never asserted
 // on) but is ported faithfully because concatenate(id) reads id.
-fn identities_with_flags(type_: ImplementationType) {
+fn identities_with_flags(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     verbose_print("Identitites with flags", type_);
 
-    let mut id = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", type_);
-    id.repeat_star();
-    let mut ab_flag = HfstTransducer::new_symbol_pair("a", "b", type_);
-    let flag = HfstTransducer::new_symbol("@U.F.A@", type_);
-    ab_flag.disjunct(&flag, true);
+    let mut id = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", type_)?;
+    id.repeat_star()?;
+    let mut ab_flag = HfstTransducer::new_symbol_pair("a", "b", type_)?;
+    let flag = HfstTransducer::new_symbol("@U.F.A@", type_)?;
+    ab_flag.disjunct(&flag, true)?;
 
-    ab_flag.concatenate(&id, true);
-    id.minimize();
+    ab_flag.concatenate(&id, true)?;
+    id.minimize()?;
 
-    let a_tr = HfstTransducer::new_symbol("a", type_);
-    let b_tr = HfstTransducer::new_symbol("b", type_);
-    let mut abid = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", type_);
-    abid.disjunct(&a_tr, true);
-    abid.disjunct(&b_tr, true);
-    abid.repeat_star();
-    abid.minimize();
+    let a_tr = HfstTransducer::new_symbol("a", type_)?;
+    let b_tr = HfstTransducer::new_symbol("b", type_)?;
+    let mut abid = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", type_)?;
+    abid.disjunct(&a_tr, true)?;
+    abid.disjunct(&b_tr, true)?;
+    abid.repeat_star()?;
+    abid.minimize()?;
 
     // C++ compare(another) defaults to harmonize=true.
-    assert!(abid.compare_default(&id));
+    assert!(abid.compare_default(&id)?);
+    Ok(())
 }
 
 // --- "Unification flags".
 // Converts the basic transducer t to an HfstTransducer of the given type,
 // extracts paths with flags filtered, and asserts exactly the two unifying
 // strings "ac" and "bd" survive.
-fn unification_flags(type_: ImplementationType) {
+fn unification_flags(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     verbose_print("Unification flags", type_);
 
     let t = build_t();
-    let tr = HfstTransducer::new_from_basic(&t, type_);
+    let tr = HfstTransducer::new_from_basic(&t, type_)?;
     let mut results: HfstTwoLevelPaths = BTreeSet::new();
 
     // C++ extract_paths_fd(results) defaults: max_num=-1, cycles=-1, filter_fd=true.
-    tr.extract_paths_fd(&mut results, -1, -1, true);
+    tr.extract_paths_fd(&mut results, -1, -1, true)?;
 
     assert_eq!(results.len(), 2);
 
@@ -159,6 +160,7 @@ fn unification_flags(type_: ImplementationType) {
 
     assert!(result_strings.contains(&("ac".to_string(), "ac".to_string())));
     assert!(result_strings.contains(&("bd".to_string(), "bd".to_string())));
+    Ok(())
 }
 
 // =====================================================================
@@ -166,15 +168,17 @@ fn unification_flags(type_: ImplementationType) {
 // =====================================================================
 
 #[test]
-fn identities_with_flags_tropical() {
+fn identities_with_flags_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    identities_with_flags(TROPICAL_OPENFST_TYPE);
+    identities_with_flags(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn unification_flags_tropical() {
+fn unification_flags_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    unification_flags(TROPICAL_OPENFST_TYPE);
+    unification_flags(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 // =====================================================================
@@ -194,7 +198,8 @@ fn unification_flags_tropical() {
 // this because LOG was commented out of the types array.
 #[test]
 #[ignore = "PORT DISCREPANCY: LOG basic->log conversion hardcodes source_state=0 (faithfully ported C++ bug), so all transitions originate at state 0 and only the direct 0->s6 flag transitions remain; extract_paths_fd no longer yields ac/bd and the contains(ac) assertion fails; never exercised by C++ (LOG commented out of types array)"]
-fn unification_flags_log() {
+fn unification_flags_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    unification_flags(LOG_OPENFST_TYPE);
+    unification_flags(LOG_OPENFST_TYPE)?;
+    Ok(())
 }

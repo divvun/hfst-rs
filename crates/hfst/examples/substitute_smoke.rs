@@ -1,14 +1,14 @@
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 
-fn main() {
+fn main() -> hfst::error::Result<()> {
     // a:b --> substitute input a with x  => x:b
     let mut g = HfstBasicTransducer::new();
     let tr =
         HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0, g.coder_mut());
     g.add_transition(0, &tr, true);
     g.substitute_symbol(&"a".to_string(), &"x".to_string(), true, false);
-    let t = g.transitions(0);
+    let t = g.transitions(0)?;
     assert_eq!(t[0].get_input_symbol(g.coder()), "x");
     assert_eq!(t[0].get_output_symbol(g.coder()), "b");
     println!("substitute_symbol OK");
@@ -18,7 +18,7 @@ fn main() {
         &("x".to_string(), "b".to_string()),
         &("c".to_string(), "d".to_string()),
     );
-    let t = g.transitions(0);
+    let t = g.transitions(0)?;
     // the first new pair both replaces and is appended (bug preserved) -> two arcs
     assert!(
         t.iter()
@@ -53,13 +53,18 @@ fn main() {
     host.substitute_pair_with_graph(&("a".to_string(), "b".to_string()), &sub);
     // p:q now appears somewhere in the host's expanded graph
     let found = (0..=host.get_max_state()).any(|s| {
-        host.transitions(s).iter().any(|tr| {
-            tr.get_input_symbol(host.coder()) == "p" && tr.get_output_symbol(host.coder()) == "q"
-        })
+        host.transitions(s)
+            .expect("state s is within 0..=get_max_state so its transition list exists")
+            .iter()
+            .any(|tr| {
+                tr.get_input_symbol(host.coder()) == "p"
+                    && tr.get_output_symbol(host.coder()) == "q"
+            })
     });
     assert!(found, "substituting graph not inserted");
     println!(
         "substitute_pair_with_graph OK (max_state={})",
         host.get_max_state()
     );
+    Ok(())
 }

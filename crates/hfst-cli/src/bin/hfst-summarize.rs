@@ -153,10 +153,22 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             } else {
                 verbose_printf(&format!("Summarizing... {}\n", transducer_n));
             }
-            let trans = HfstTransducer::new_from_stream(instream);
+            let trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let mutt = HfstBasicTransducer::new_from_transducer(&trans);
             let initial_state: u32 = 0; // mutt.get_initial_state();
-            let transducer_alphabet: StringSet = trans.get_alphabet();
+            let transducer_alphabet: StringSet = match trans.get_alphabet() {
+                Ok(a) => a,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let transducer_knows_alphabet = true;
             //let expanded = true;
             #[allow(unused_assignments)]
@@ -392,7 +404,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                 }
                 // ADDED
                 if trans.get_type() == ImplementationType::TROPICAL_OPENFST_TYPE {
-                    let ss = trans.get_first_input_symbols();
+                    let ss = match trans.get_first_input_symbols() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
+                    };
                     let _ = write!(out, "first input symbols:\n");
                     first = true;
                     for s in ss.iter() {
@@ -464,10 +482,17 @@ unsafe fn real_main() -> i32 {
         // (the C wraps the ctor in try/catch on HfstException; on a bad file the
         // Rust ctor currently panics rather than throwing, so the catch arm that
         // reports "%s is not a valid transducer file" is not reproduced here.)
-        let mut instream = if input_opened {
+        let instream_result = if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        };
+        let mut instream = match instream_result {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
         let retval = process_stream(&mut instream);
         let _ = retval;

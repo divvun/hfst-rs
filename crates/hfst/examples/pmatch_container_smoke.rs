@@ -7,15 +7,15 @@ use hfst::pmatch_compiler::PmatchCompiler;
 
 const SRC: &str = "Define TOP [{cat} | {dog}] EndTag(animal) ;\n";
 
-fn main() {
+fn main() -> hfst::error::Result<()> {
     // Compile to the TOP transducer.
     let mut compiler = PmatchCompiler::new(TROPICAL_OPENFST_TYPE);
-    let defs = compiler.compile(SRC);
+    let defs = compiler.compile(SRC)?;
     let top = defs.get("TOP").expect("no TOP in pmatch result");
     let top_owned = top.clone();
 
     // Build a runtime container straight from the in-memory transducer.
-    let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_owned]);
+    let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_owned])?;
 
     // Match: the runtime tags recognised input. We assert it runs and that the
     // recognised word survives in the output.
@@ -33,4 +33,5 @@ fn main() {
     );
 
     println!("pmatch container (from in-memory transducer) OK");
+    Ok(())
 }

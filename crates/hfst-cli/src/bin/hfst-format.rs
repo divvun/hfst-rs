@@ -227,23 +227,29 @@ unsafe fn parse_options(args: &mut Vec<String>) -> ImplementationType {
         } else {
             None
         };
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if globals::input_filename().is_empty() {
-                if remaining == 0 {
-                    globals::set_input_filename("<stdin>");
-                    let is = HfstInputStream::new();
-                    return is.get_type();
-                } else if remaining == 1 {
-                    globals::set_input_filename(free_arg.clone().unwrap());
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+            || -> Result<ImplementationType, hfst::error::Error> {
+                if globals::input_filename().is_empty() {
+                    if remaining == 0 {
+                        globals::set_input_filename("<stdin>");
+                        let is = HfstInputStream::new()?;
+                        return Ok(is.get_type());
+                    } else if remaining == 1 {
+                        globals::set_input_filename(
+                            free_arg
+                                .clone()
+                                .expect("free_arg is Some when exactly one free argument remains"),
+                        );
+                    }
                 }
-            }
-            let is = HfstInputStream::new_filename(&globals::input_filename());
-            is.get_type()
-        }));
+                let is = HfstInputStream::new_filename(&globals::input_filename())?;
+                Ok(is.get_type())
+            },
+        ));
 
         match result {
-            Ok(t) => t,
-            Err(_) => {
+            Ok(Ok(t)) => t,
+            Ok(Err(_)) | Err(_) => {
                 fput_stderr("ERROR: The file/stream does not contain transducers.\n");
                 std::process::exit(1);
             }

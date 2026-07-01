@@ -251,7 +251,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut orig = HfstTransducer::new_from_stream(instream);
+            let mut orig = match HfstTransducer::new_from_stream(instream) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
 
             let inputname = hfst_get_name(&orig, &globals::input_filename());
             if transducer_n == 1 {
@@ -262,16 +268,26 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             // C wraps the conversion in try/catch on HfstException; the Rust
             // conversion currently panics rather than throwing, so the catch arm
             // is not reproduced here.
-            orig.convert(OUTPUT_TYPE, OPTIONS.clone());
+            if let Err(e) = orig.convert(OUTPUT_TYPE, OPTIONS.clone()) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
             // C: hfst_set_name(orig, orig, "convert"); the dest and src are the
             // same object, which Rust cannot alias mut+const, so the read side is
             // taken from a copy (name/formula are unchanged by the copy).
             let src = orig.clone();
             hfst_set_name_unary(&mut orig, &src, "convert");
             hfst_set_formula_unary(&mut orig, &src, "Id");
-            outstream.redirect(&mut orig);
+            if let Err(e) = outstream.redirect(&mut orig) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
-        outstream.flush(); // needed for xfsm transducers whose writing is delayed
+        if let Err(e) = outstream.flush() {
+            // needed for xfsm transducers whose writing is delayed
+            error(1, 0, &format!("{e}"));
+            return 1;
+        }
         instream.close();
         outstream.close();
         0
@@ -332,16 +348,28 @@ unsafe fn real_main() -> i32 {
         // ImplementationTypeNotAvailableException and HfstException; the Rust
         // ctor currently panics rather than throwing, so the catch arms are not
         // reproduced here.)
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), OUTPUT_TYPE, HFST_FORMAT)
         } else {
             HfstOutputStream::new(OUTPUT_TYPE, HFST_FORMAT)
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         process_stream(&mut instream, &mut outstream)

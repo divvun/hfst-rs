@@ -346,7 +346,13 @@ unsafe fn real_main() -> i32 {
         // currently panics rather than throwing, so that catch arm is not
         // reproduced here.
         let mut instream = IStream::new(&mut file as &mut dyn std::io::Read);
-        let mut container = PmatchContainer::new_from_stream(&mut instream);
+        let mut container = match PmatchContainer::new_from_stream(&mut instream) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("hfst-pmatch: {e}");
+                return 1;
+            }
+        };
         container.set_verbose(globals::VERBOSE);
         if EXTRACT_PATTERNS != VarVal::NotDefined {
             container.set_extract_patterns(EXTRACT_PATTERNS == VarVal::On);

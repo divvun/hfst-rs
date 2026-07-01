@@ -141,7 +141,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = HfstTransducer::new_from_stream(instream);
+            let mut trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let inputname = hfst_get_name(&trans, &globals::input_filename());
             if transducer_n == 1 {
                 if !FROM_INFINITY && !TO_INFINITY {
@@ -176,7 +182,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             }
 
             if !FROM_INFINITY && !TO_INFINITY {
-                trans.repeat_n_to_k(AT_LEAST as u32, AT_MOST as u32);
+                if let Err(e) = trans.repeat_n_to_k(AT_LEAST as u32, AT_MOST as u32) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
                 let composed_name = format!("repeat-{}-to-{}", AT_LEAST, AT_MOST);
                 let src = trans.clone();
                 hfst_set_name_unary(&mut trans, &src, &composed_name);
@@ -184,13 +193,19 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 let src = trans.clone();
                 hfst_set_formula_unary(&mut trans, &src, &composed_name);
             } else if FROM_INFINITY && TO_INFINITY {
-                trans.repeat_star();
+                if let Err(e) = trans.repeat_star() {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
                 let src = trans.clone();
                 hfst_set_name_unary(&mut trans, &src, "repeat-star");
                 let src = trans.clone();
                 hfst_set_formula_unary(&mut trans, &src, "\u{22c6}");
             } else if !FROM_INFINITY && TO_INFINITY {
-                trans.repeat_n_plus(AT_LEAST as u32);
+                if let Err(e) = trans.repeat_n_plus(AT_LEAST as u32) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
                 let composed_name = format!("repeat-{}-plus", AT_LEAST);
                 let src = trans.clone();
                 hfst_set_name_unary(&mut trans, &src, &composed_name);
@@ -200,7 +215,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             } else if FROM_INFINITY && !TO_INFINITY {
                 error(1, 0, &format!("Repeating *..{}?", AT_MOST));
             }
-            outstream.redirect(&mut trans);
+            if let Err(e) = outstream.redirect(&mut trans) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
         instream.close();
         outstream.close();
@@ -254,20 +272,32 @@ unsafe fn real_main() -> i32 {
         }
 
         // here starts the buffer handling part
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
 
         let type_ = instream.get_type();
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        } {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-repeat") {

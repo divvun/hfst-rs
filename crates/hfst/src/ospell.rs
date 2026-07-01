@@ -343,7 +343,10 @@ pub struct Speller<'a> {
 impl<'a> Speller<'a> {
     // [spec:hfst:def:transducer.hfst-ol.speller.speller-fn]
     // [spec:hfst:sem:transducer.hfst-ol.speller.speller-fn]
-    pub fn new(mutator_ptr: &'a Transducer, lexicon_ptr: &'a Transducer) -> Self {
+    pub fn new(
+        mutator_ptr: &'a Transducer,
+        lexicon_ptr: &'a Transducer,
+    ) -> crate::error::Result<Self> {
         let symbol_table = lexicon_ptr.get_symbol_table().clone();
         let mut speller = Speller {
             mutator: mutator_ptr,
@@ -353,8 +356,8 @@ impl<'a> Speller<'a> {
             alphabet_translator: SymbolNumberVector::new(),
             symbol_table,
         };
-        speller.build_alphabet_translator();
-        speller
+        speller.build_alphabet_translator()?;
+        Ok(speller)
     }
 
     // [spec:hfst:def:ospell.hfst-ol.speller.init-input-fn]
@@ -369,7 +372,7 @@ impl<'a> Speller<'a> {
     // [spec:hfst:sem:ospell.hfst-ol.speller.build-alphabet-translator-fn]
     // [spec:hfst:def:transducer.hfst-ol.speller.build-alphabet-translator-fn]
     // [spec:hfst:sem:transducer.hfst-ol.speller.build-alphabet-translator-fn]
-    pub fn build_alphabet_translator(&mut self) {
+    pub fn build_alphabet_translator(&mut self) -> crate::error::Result<()> {
         let mutator = self.mutator;
         let lexicon = self.lexicon;
         let from = mutator.get_alphabet();
@@ -387,7 +390,7 @@ impl<'a> Speller<'a> {
             if !to_symbols.contains_key(&from_keys[i]) {
                 let name = from_keys[i].clone();
                 if name != "" {
-                    crate::err!(AlphabetTranslation, from_keys[i].clone()).throw()
+                    crate::bail!(AlphabetTranslation, from_keys[i].clone())
                 }
             }
             // translator at i points to lexicon's symbol for mutator's string
@@ -395,6 +398,7 @@ impl<'a> Speller<'a> {
             self.alphabet_translator
                 .push(to_symbols.get(&from_keys[i]).copied().unwrap_or(0));
         }
+        Ok(())
     }
 
     // [spec:hfst:def:ospell.hfst-ol.speller.lexicon-epsilons-fn]

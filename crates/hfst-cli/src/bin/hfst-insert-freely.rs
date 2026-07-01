@@ -143,14 +143,23 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = HfstTransducer::new_from_stream(instream);
+            let mut trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let _inputname = hfst_get_name(&trans, &globals::input_filename());
             if transducer_n == 1 {
                 // If harmonize is true, then identity and unknown symbols in the
                 // transducer will be expanded by the symbols in symbol pair.
                 // Otherwise they aren't.
                 let pair = SYMBOL_PAIR.as_ref().expect("symbol pair must be set");
-                trans.insert_freely_pair(pair, HARMONISE_FLAGS);
+                if let Err(e) = trans.insert_freely_pair(pair, HARMONISE_FLAGS) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
                 // C: hfst_set_name(trans, trans, "insert-freely") and
                 // hfst_set_formula(trans, trans, "Id"); dest and src are the
                 // same object, so the read side is taken from a copy.
@@ -158,7 +167,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 hfst_set_name_unary(&mut trans, &src, "insert-freely");
                 hfst_set_formula_unary(&mut trans, &src, "Id");
             }
-            outstream.redirect(&mut trans);
+            if let Err(e) = outstream.redirect(&mut trans) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
         instream.close();
         outstream.close();
@@ -193,20 +205,32 @@ unsafe fn real_main() -> i32 {
         ));
 
         // here starts the buffer handling part
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
 
         let type_ = instream.get_type();
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-insert-freely") {

@@ -585,7 +585,7 @@ impl XreCompiler {
                 let first = &exprs[0];
                 *chars_read = first.span.end() as u32;
                 let mut t = self.eval(first).ok()?;
-                t.optimize_with_config(&self.opt_cfg());
+                t.optimize_with_config(&self.opt_cfg()).ok()?;
                 Some(t)
             }
             Ok(_) => {
@@ -608,7 +608,7 @@ impl XreCompiler {
         match parse(src) {
             Ok(expr) => {
                 let mut t = self.eval(&expr).ok()?;
-                t.optimize_with_config(&self.opt_cfg());
+                t.optimize_with_config(&self.opt_cfg()).ok()?;
                 Some(t)
             }
             Err(_) => {
@@ -633,11 +633,11 @@ impl XreCompiler {
         let fmt = self.format_;
         Ok(match &e.value {
             // ---- atoms (LABEL: HALFARC) ----
-            XreExpr::Symbol(s) => self.label_from_halfarc(s),
-            XreExpr::Epsilon => self.label_from_halfarc(internal_epsilon),
-            XreExpr::Any => self.label_from_halfarc(internal_unknown),
-            XreExpr::BoundaryMarker => self.label_from_halfarc(".#."),
-            XreExpr::Curly(c) => self.xfst_curly_label_to_transducer(c, c),
+            XreExpr::Symbol(s) => self.label_from_halfarc(s)?,
+            XreExpr::Epsilon => self.label_from_halfarc(internal_epsilon)?,
+            XreExpr::Any => self.label_from_halfarc(internal_unknown)?,
+            XreExpr::BoundaryMarker => self.label_from_halfarc(".#.")?,
+            XreExpr::Curly(c) => self.xfst_curly_label_to_transducer(c, c)?,
 
             // ---- pair ('upper:lower') ----
             XreExpr::Pair { upper, lower } => self.eval_pair(upper, lower)?,
@@ -646,13 +646,13 @@ impl XreCompiler {
             XreExpr::Group(inner) => {
                 // REGEXP11: [ REGEXP2 ] -> optimize().
                 let mut t = self.eval(inner)?;
-                t.optimize_with_config(&self.opt_cfg());
+                t.optimize_with_config(&self.opt_cfg())?;
                 t
             }
             XreExpr::Optional(inner) => {
                 // REGEXP11: ( REGEXP2 ) -> optionalize().
                 let mut t = self.eval(inner)?;
-                t.optionalize();
+                t.optionalize()?;
                 t
             }
             XreExpr::BracketedDotted(opt) => match opt {
@@ -660,16 +660,16 @@ impl XreCompiler {
                 // epsilon (it only carries replace semantics in mapping
                 // position, which is handled by MappingSide::Dotted).
                 Some(inner) => self.eval(inner)?,
-                None => HfstTransducer::new_symbol(internal_epsilon, fmt),
+                None => HfstTransducer::new_symbol(internal_epsilon, fmt)?,
             },
 
             // ---- weighted ('E::w') ----
             XreExpr::Weighted { expr, weight } => {
                 let mut t = self.eval(expr)?;
-                t.set_final_weights(*weight as f32, true);
+                t.set_final_weights(*weight as f32, true)?;
                 // '[E]::w' optimizes after weighting; bare 'LABEL::w' does not.
                 if matches!(expr.value, XreExpr::Group(_)) {
-                    t.optimize_with_config(&self.opt_cfg());
+                    t.optimize_with_config(&self.opt_cfg())?;
                 }
                 t
             }
@@ -681,37 +681,34 @@ impl XreCompiler {
             // ---- repetition ----
             XreExpr::RepeatN(inner, n) => {
                 let mut t = self.eval(inner)?;
-                t.repeat_n(*n);
+                t.repeat_n(*n)?;
                 t
             }
             XreExpr::RepeatNPlus(inner, n) => {
                 // REGEXP9: repeat_n_plus($2 + 1).
                 let mut t = self.eval(inner)?;
-                t.repeat_n_plus(n.wrapping_add(1));
+                t.repeat_n_plus(n.wrapping_add(1))?;
                 t
             }
             XreExpr::RepeatNMinus(inner, n) => {
                 // REGEXP9: repeat_n_minus($2 - 1).
                 let mut t = self.eval(inner)?;
-                t.repeat_n_minus(n.wrapping_sub(1));
+                t.repeat_n_minus(n.wrapping_sub(1))?;
                 t
             }
             XreExpr::RepeatNToK(inner, n, k) => {
                 let mut t = self.eval(inner)?;
-                t.repeat_n_to_k(*n, *k);
+                t.repeat_n_to_k(*n, *k)?;
                 t
             }
 
             // ---- containment with explicit weight ('$::w E') ----
             XreExpr::ContainmentWithWeight { expr, weight } => {
                 let t = self.eval(expr)?;
-                if !t.is_automaton() {
-                    crate::HFST_THROW_MESSAGE!(
-                        Hfst,
-                        "Containment with weight only works with automata"
-                    );
+                if !t.is_automaton()? {
+                    crate::bail!(Hfst, "Containment with weight only works with automata");
                 }
-                self.contains_with_weight(&t, *weight as f32)
+                self.contains_with_weight(&t, *weight as f32)?
             }
 
             // ---- function call ----
@@ -727,7 +724,7 @@ impl XreCompiler {
 
     // LABEL: HALFARC. '?' (internal_unknown) becomes a single identity arc;
     // anything else is definition-expanded (gated on expand_definitions_).
-    fn label_from_halfarc(&self, sym: &str) -> HfstTransducer {
+    fn label_from_halfarc(&self, sym: &str) -> crate::error::Result<HfstTransducer> {
         if sym == internal_unknown {
             HfstTransducer::new_symbol(internal_identity, self.format_)
         } else {
@@ -746,56 +743,56 @@ impl XreCompiler {
         Ok(
             match (xre_pair_side_kind(upper), xre_pair_side_kind(lower)) {
                 (Some(XrePairSide::Half(a)), Some(XrePairSide::Half(b))) => {
-                    self.xfst_label_to_transducer(&a, &b)
+                    self.xfst_label_to_transducer(&a, &b)?
                 }
                 (Some(XrePairSide::Half(a)), Some(XrePairSide::Curly(c))) => {
-                    let mut up = self.xfst_label_to_transducer(&a, &a);
-                    let lo = self.xfst_curly_label_to_transducer(&c, &c);
-                    up.cross_product(&lo, false);
+                    let mut up = self.xfst_label_to_transducer(&a, &a)?;
+                    let lo = self.xfst_curly_label_to_transducer(&c, &c)?;
+                    up.cross_product(&lo, false)?;
                     up
                 }
                 (Some(XrePairSide::Curly(c)), Some(XrePairSide::Half(a))) => {
-                    let mut up = self.xfst_curly_label_to_transducer(&c, &c);
-                    let lo = self.xfst_label_to_transducer(&a, &a);
-                    up.cross_product(&lo, false);
+                    let mut up = self.xfst_curly_label_to_transducer(&c, &c)?;
+                    let lo = self.xfst_label_to_transducer(&a, &a)?;
+                    up.cross_product(&lo, false)?;
                     up
                 }
                 (Some(XrePairSide::Curly(c1)), Some(XrePairSide::Curly(c2))) => {
-                    self.xfst_curly_label_to_transducer(&c1, &c2)
+                    self.xfst_curly_label_to_transducer(&c1, &c2)?
                 }
                 (Some(XrePairSide::Half(a)), None) => {
                     // HALFARC : [F]  -> expand_definition(a) x eval(F)
-                    let mut up = self.expand_definition_sym(&a);
+                    let mut up = self.expand_definition_sym(&a)?;
                     let lo = self.eval(lower)?;
-                    up.cross_product(&lo, false);
+                    up.cross_product(&lo, false)?;
                     up
                 }
                 (None, Some(XrePairSide::Half(b))) => {
                     // [E] : HALFARC  -> eval(E) x expand_definition(b)
                     let mut up = self.eval(upper)?;
-                    let lo = self.expand_definition_sym(&b);
-                    up.cross_product(&lo, false);
+                    let lo = self.expand_definition_sym(&b)?;
+                    up.cross_product(&lo, false)?;
                     up
                 }
                 (Some(XrePairSide::Curly(c)), None) => {
                     // {c} : [F]  -> grammar computes eval(F).cross_product(curly).
-                    let cur = self.xfst_curly_label_to_transducer(&c, &c);
+                    let cur = self.xfst_curly_label_to_transducer(&c, &c)?;
                     let mut lo = self.eval(lower)?;
-                    lo.cross_product(&cur, false);
+                    lo.cross_product(&cur, false)?;
                     lo
                 }
                 (None, Some(XrePairSide::Curly(c))) => {
                     // [E] : {c}  -> eval(E) x curly
                     let mut up = self.eval(upper)?;
-                    let lo = self.xfst_curly_label_to_transducer(&c, &c);
-                    up.cross_product(&lo, false);
+                    let lo = self.xfst_curly_label_to_transducer(&c, &c)?;
+                    up.cross_product(&lo, false)?;
                     up
                 }
                 (None, None) => {
                     // [E] : [F]  -> eval(E) x eval(F)
                     let mut up = self.eval(upper)?;
                     let lo = self.eval(lower)?;
-                    up.cross_product(&lo, false);
+                    up.cross_product(&lo, false)?;
                     up
                 }
             },
@@ -811,74 +808,71 @@ impl XreCompiler {
         Ok(match op {
             UnaryOp::Star => {
                 let mut t = self.eval(inner)?;
-                t.repeat_star();
+                t.repeat_star()?;
                 t
             }
             UnaryOp::Plus => {
                 let mut t = self.eval(inner)?;
-                t.repeat_plus();
+                t.repeat_plus()?;
                 t
             }
             UnaryOp::Reverse => {
                 let mut t = self.eval(inner)?;
-                t.reverse();
+                t.reverse()?;
                 t
             }
             UnaryOp::Invert => {
                 let mut t = self.eval(inner)?;
-                t.invert();
+                t.invert()?;
                 t
             }
             UnaryOp::UpperProject => {
                 let mut t = self.eval(inner)?;
-                t.input_project();
+                t.input_project()?;
                 t
             }
             UnaryOp::LowerProject => {
                 let mut t = self.eval(inner)?;
-                t.output_project();
+                t.output_project()?;
                 t
             }
             UnaryOp::Complement => {
                 // ~A : [?:?]* - A, only for automata.
                 let a = self.eval(inner)?;
-                if !a.is_automaton() {
-                    crate::HFST_THROW_MESSAGE!(
-                        Hfst,
-                        "Complement operator ~ is defined only for automata"
-                    );
+                if !a.is_automaton()? {
+                    crate::bail!(Hfst, "Complement operator ~ is defined only for automata");
                 }
                 let mut complement = HfstTransducer::identity_pair(self.format_);
-                complement.repeat_star();
-                complement.optimize_with_config(&self.opt_cfg());
-                complement.subtract(&a, true);
-                complement.prune_alphabet(false);
+                complement.repeat_star()?;
+                complement.optimize_with_config(&self.opt_cfg())?;
+                complement.subtract(&a, true)?;
+                complement.prune_alphabet(false)?;
                 complement
             }
             UnaryOp::TermComplement => {
                 // \A : [?] - A
                 let a = self.eval(inner)?;
-                let mut any = HfstTransducer::new_symbol(internal_identity, self.format_);
-                any.subtract(&a, true);
+                let mut any = HfstTransducer::new_symbol(internal_identity, self.format_)?;
+                any.subtract(&a, true)?;
                 any
             }
             UnaryOp::Containment => {
                 // $A : transducers fall back to simple containment; automata use
                 // the weighted-rule path with weight 0.
                 let a = self.eval(inner)?;
-                if !a.is_automaton() {
-                    self.contains(&a)
+                if !a.is_automaton()? {
+                    self.contains(&a)?
                 } else {
-                    self.contains_with_weight(&a, 0.0)
+                    self.contains_with_weight(&a, 0.0)?
                 }
             }
             UnaryOp::ContainmentOnce => {
                 let a = self.eval(inner)?;
-                self.contains_once(&a)
+                self.contains_once(&a)?
             }
             UnaryOp::ContainmentOpt => {
                 let a = self.eval(inner)?;
-                self.contains_once_optional(&a)
+                self.contains_once_optional(&a)?
             }
         })
     }
@@ -901,111 +895,111 @@ impl XreCompiler {
                     && left.has_flag_diacritics()
                     && right.has_flag_diacritics()
                 {
-                    left.harmonize_flag_diacritics(&mut right, true);
+                    left.harmonize_flag_diacritics(&mut right, true)?;
                 }
-                left.compose_with_config(&right, self.harmonize_, &self.opt_cfg());
-                left.optimize_with_config(&self.opt_cfg());
+                left.compose_with_config(&right, self.harmonize_, &self.opt_cfg())?;
+                left.optimize_with_config(&self.opt_cfg())?;
                 left
             }
             BinaryOp::CrossProduct => {
                 let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
-                left.cross_product(&right, false);
-                left.optimize_with_config(&self.opt_cfg());
+                left.cross_product(&right, false)?;
+                left.optimize_with_config(&self.opt_cfg())?;
                 left
             }
             BinaryOp::LenientCompose => {
                 let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
-                left.lenient_composition(&right, false);
-                left.optimize_with_config(&self.opt_cfg());
+                left.lenient_composition(&right, false)?;
+                left.optimize_with_config(&self.opt_cfg())?;
                 left
             }
             BinaryOp::MergeRight => {
                 // .m>. : merge left into right.
                 let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
-                let mut res = self.merge_first_to_second(&mut left, right);
-                res.optimize_with_config(&self.opt_cfg());
+                let mut res = self.merge_first_to_second(&mut left, right)?;
+                res.optimize_with_config(&self.opt_cfg())?;
                 res
             }
             BinaryOp::MergeLeft => {
                 // .<m. : merge right into left.
                 let left = self.eval(l)?;
                 let mut right = self.eval(r)?;
-                let mut res = self.merge_first_to_second(&mut right, left);
-                res.optimize_with_config(&self.opt_cfg());
+                let mut res = self.merge_first_to_second(&mut right, left)?;
+                res.optimize_with_config(&self.opt_cfg())?;
                 res
             }
             BinaryOp::Before => {
                 let left = self.eval(l)?;
                 let right = self.eval(r)?;
-                before(&left, &right)
+                before(&left, &right)?
             }
             BinaryOp::After => {
                 let left = self.eval(l)?;
                 let right = self.eval(r)?;
-                after(&left, &right)
+                after(&left, &right)?
             }
             BinaryOp::Union => {
                 let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
-                left.disjunct(&right, self.harmonize_);
+                left.disjunct(&right, self.harmonize_)?;
                 left
             }
             BinaryOp::Intersect => {
                 let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
-                left.intersect(&right, self.harmonize_);
-                left.optimize_with_config(&self.opt_cfg());
-                left.prune_alphabet(false);
+                left.intersect(&right, self.harmonize_)?;
+                left.optimize_with_config(&self.opt_cfg())?;
+                left.prune_alphabet(false)?;
                 left
             }
             BinaryOp::Subtract => {
                 let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
-                left.subtract(&right, self.harmonize_);
-                left.prune_alphabet(false);
+                left.subtract(&right, self.harmonize_)?;
+                left.prune_alphabet(false)?;
                 left
             }
             BinaryOp::UpperPriorityUnion => {
                 let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
-                left.priority_union(&right);
+                left.priority_union(&right)?;
                 left
             }
             BinaryOp::LowerPriorityUnion => {
                 // invert both, priority_union, invert back.
                 let mut left = self.eval(l)?;
                 let mut right = self.eval(r)?;
-                right.invert();
-                left.invert();
-                left.priority_union(&right);
-                left.invert();
+                right.invert()?;
+                left.invert()?;
+                left.priority_union(&right)?;
+                left.invert()?;
                 left
             }
             BinaryOp::Concatenate => {
                 let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
-                left.concatenate(&right, self.harmonize_);
+                left.concatenate(&right, self.harmonize_)?;
                 left
             }
             BinaryOp::Ignoring => {
                 // harmonize (force), then insert_freely without harmonization.
                 let mut left = self.eval(l)?;
                 let mut right = self.eval(r)?;
-                left.harmonize(&mut right, true);
-                left.insert_freely(&right, false);
+                left.harmonize(&mut right, true)?;
+                left.insert_freely(&right, false)?;
                 left
             }
             // Operators the C++ grammar rejects with xreerror + YYABORT.
-            BinaryOp::Shuffle => crate::HFST_THROW_MESSAGE!(Hfst, "No shuffle"),
-            BinaryOp::UpperSubtract => crate::HFST_THROW_MESSAGE!(Hfst, "No upper minus"),
-            BinaryOp::LowerSubtract => crate::HFST_THROW_MESSAGE!(Hfst, "No lower minus"),
+            BinaryOp::Shuffle => crate::bail!(Hfst, "No shuffle"),
+            BinaryOp::UpperSubtract => crate::bail!(Hfst, "No upper minus"),
+            BinaryOp::LowerSubtract => crate::bail!(Hfst, "No lower minus"),
             BinaryOp::IgnoreInternally => {
-                crate::HFST_THROW_MESSAGE!(Hfst, "No ignoring internally")
+                crate::bail!(Hfst, "No ignoring internally")
             }
-            BinaryOp::LeftQuotient => crate::HFST_THROW_MESSAGE!(Hfst, "No left quotient"),
+            BinaryOp::LeftQuotient => crate::bail!(Hfst, "No left quotient"),
         })
     }
 
@@ -1032,14 +1026,14 @@ impl XreCompiler {
         let expected = match self.function_arguments_.get(&fname) {
             Some(n) => *n,
             None => {
-                crate::HFST_THROW_MESSAGE!(Hfst, format!("No such function defined: '{}'", name))
+                crate::bail!(Hfst, format!("No such function defined: '{}'", name))
             }
         };
         if !self.function_definitions_.contains_key(&fname) {
-            crate::HFST_THROW_MESSAGE!(Hfst, format!("No such function defined: '{}'", name));
+            crate::bail!(Hfst, format!("No such function defined: '{}'", name));
         }
         if expected as usize != n_args {
-            crate::HFST_THROW_MESSAGE!(
+            crate::bail!(
                 Hfst,
                 format!(
                     "Wrong number of arguments: function '{}' expects {}, {} given",
@@ -1078,13 +1072,10 @@ impl XreCompiler {
         Ok(match parse(&body) {
             Ok(expr) => {
                 let mut t = sub.eval(&expr)?;
-                t.optimize_with_config(&self.opt_cfg());
+                t.optimize_with_config(&self.opt_cfg())?;
                 t
             }
-            Err(_) => crate::HFST_THROW_MESSAGE!(
-                Hfst,
-                format!("Could not parse body of function '{}'", name)
-            ),
+            Err(_) => crate::bail!(Hfst, format!("Could not parse body of function '{}'", name)),
         })
     }
 }
@@ -1148,26 +1139,26 @@ fn build_symbol_list_transducer(
     symbols: &Vec<String>,
     format: ImplementationType,
     cfg: &crate::hfst_transducer::EngineConfig,
-) -> HfstTransducer {
+) -> crate::error::Result<HfstTransducer> {
     if symbols.is_empty() {
         return HfstTransducer::new_type(format);
     }
     let first = &symbols[0];
     let mut retval = if first.as_str() == crate::hfst_symbol_defs::internal_unknown {
-        HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, format)
+        HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, format)?
     } else {
-        HfstTransducer::new_symbol_pair(first, first, format)
+        HfstTransducer::new_symbol_pair(first, first, format)?
     };
     for s in symbols.iter().skip(1) {
         let tmp = if s.as_str() == crate::hfst_symbol_defs::internal_unknown {
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, format)
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, format)?
         } else {
-            HfstTransducer::new_symbol_pair(s, s, format)
+            HfstTransducer::new_symbol_pair(s, s, format)?
         };
-        retval.disjunct(&tmp, false);
-        retval.optimize_with_config(cfg);
+        retval.disjunct(&tmp, false)?;
+        retval.optimize_with_config(cfg)?;
     }
-    retval
+    Ok(retval)
 }
 
 // ---- former xre_utils.cc string / lexer-support free helpers ----
@@ -1554,18 +1545,19 @@ fn escape_enclosing_angle_brackets(s: &str) -> String {
 // [spec:hfst:def:xre-utils.hfst.xre.unescape-enclosing-angle-brackets-fn]
 // [spec:hfst:sem:xre-utils.hfst.xre.unescape-enclosing-angle-brackets-fn]
 // xre_utils.cc:591. Reverses the "@_<...>_@" wrapping for every alphabet symbol.
-fn unescape_enclosing_angle_brackets(t: &mut HfstTransducer) {
+fn unescape_enclosing_angle_brackets(t: &mut HfstTransducer) -> crate::error::Result<()> {
     let mut substitutions: crate::hfst_symbol_defs::HfstSymbolSubstitutions =
         crate::hfst_symbol_defs::HfstSymbolSubstitutions::new();
-    let alpha = t.get_alphabet();
+    let alpha = t.get_alphabet()?;
     for it in alpha.iter() {
         insert_angle_bracket_substitutions(it, &mut substitutions);
     }
     if substitutions.is_empty() {
-        return;
+        return Ok(());
     }
-    t.substitute_substitutions(&substitutions);
-    t.optimize_with_config(&crate::hfst_transducer::EngineConfig::default());
+    t.substitute_substitutions(&substitutions)?;
+    t.optimize_with_config(&crate::hfst_transducer::EngineConfig::default())?;
+    Ok(())
 }
 
 // [spec:hfst:def:xre-utils.hfst.xre.get-weight-fn]
@@ -1605,11 +1597,11 @@ impl XreCompiler {
     // ----------------------------------------------------------------
 
     // xre_utils.cc:837 'HfstTransducer* expand_definition(const char* symbol)'
-    fn expand_definition_sym(&self, symbol: &str) -> HfstTransducer {
+    fn expand_definition_sym(&self, symbol: &str) -> crate::error::Result<HfstTransducer> {
         if self.expand_definitions_ {
             for (k, v) in self.definitions_.iter() {
                 if k.as_str() == symbol {
-                    return v.clone();
+                    return Ok(v.clone());
                 }
             }
         }
@@ -1619,24 +1611,29 @@ impl XreCompiler {
     // [spec:hfst:def:xre-utils.hfst.xre.expand-definition-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.expand-definition-fn]
     // xre_utils.cc:857 'HfstTransducer* expand_definition(HfstTransducer*, const char*)'
-    fn expand_definition_tr(&self, tr: &mut HfstTransducer, symbol: &str) {
+    fn expand_definition_tr(
+        &self,
+        tr: &mut HfstTransducer,
+        symbol: &str,
+    ) -> crate::error::Result<()> {
         if self.expand_definitions_ {
             for (k, v) in self.definitions_.iter() {
                 if k.as_str() == symbol {
-                    let alpha = v.get_alphabet();
+                    let alpha = v.get_alphabet()?;
                     let mut v_clone = v.clone();
                     tr.substitute_pair_with_transducer(
                         &(symbol.to_string(), symbol.to_string()),
                         &mut v_clone,
                         false, // do not harmonize
-                    );
+                    )?;
                     if !alpha.contains(symbol) {
-                        tr.remove_from_alphabet(symbol);
+                        tr.remove_from_alphabet(symbol)?;
                     }
                     break;
                 }
             }
         }
+        Ok(())
     }
 
     // ----------------------------------------------------------------
@@ -1646,7 +1643,11 @@ impl XreCompiler {
     // [spec:hfst:def:xre-utils.hfst.xre.xfst-label-to-transducer-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.xfst-label-to-transducer-fn]
     // xre_utils.cc:959
-    fn xfst_label_to_transducer(&self, input: &str, output: &str) -> HfstTransducer {
+    fn xfst_label_to_transducer(
+        &self,
+        input: &str,
+        output: &str,
+    ) -> crate::error::Result<HfstTransducer> {
         let fmt = self.format_;
         let input_is_definition = self.definitions_.contains_key(input);
         let output_is_definition = self.definitions_.contains_key(output);
@@ -1659,60 +1660,64 @@ impl XreCompiler {
             let tmp;
             if input_is_unknown {
                 retval =
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt);
-                tmp = self.expand_definition_sym(output);
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt)?;
+                tmp = self.expand_definition_sym(output)?;
             } else if output_is_unknown {
-                tmp = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt);
-                retval = self.expand_definition_sym(input);
+                tmp = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt)?;
+                retval = self.expand_definition_sym(input)?;
             } else {
-                retval = self.expand_definition_sym(input);
-                tmp = self.expand_definition_sym(output);
+                retval = self.expand_definition_sym(input)?;
+                tmp = self.expand_definition_sym(output)?;
             }
-            retval.cross_product(&tmp, true);
-            return retval;
+            retval.cross_product(&tmp, true)?;
+            return Ok(retval);
         }
 
         // no definitions
-        if input_is_unknown && output_is_unknown {
+        Ok(if input_is_unknown && output_is_unknown {
             let mut retval = HfstTransducer::new_symbol_pair(
                 crate::hfst_symbol_defs::internal_unknown,
                 crate::hfst_symbol_defs::internal_unknown,
                 fmt,
-            );
+            )?;
             let id = HfstTransducer::new_symbol_pair(
                 crate::hfst_symbol_defs::internal_identity,
                 crate::hfst_symbol_defs::internal_identity,
                 fmt,
-            );
-            retval.disjunct(&id, true).minimize();
+            )?;
+            retval.disjunct(&id, true)?.minimize()?;
             retval
         } else if input_is_unknown {
             let mut retval = HfstTransducer::new_symbol_pair(
                 crate::hfst_symbol_defs::internal_unknown,
                 output,
                 fmt,
-            );
-            let output_tr = HfstTransducer::new_symbol_pair(output, output, fmt);
-            retval.disjunct(&output_tr, true).minimize();
+            )?;
+            let output_tr = HfstTransducer::new_symbol_pair(output, output, fmt)?;
+            retval.disjunct(&output_tr, true)?.minimize()?;
             retval
         } else if output_is_unknown {
             let mut retval = HfstTransducer::new_symbol_pair(
                 input,
                 crate::hfst_symbol_defs::internal_unknown,
                 fmt,
-            );
-            let input_tr = HfstTransducer::new_symbol_pair(input, input, fmt);
-            retval.disjunct(&input_tr, true).minimize();
+            )?;
+            let input_tr = HfstTransducer::new_symbol_pair(input, input, fmt)?;
+            retval.disjunct(&input_tr, true)?.minimize()?;
             retval
         } else {
-            HfstTransducer::new_symbol_pair(input, output, fmt)
-        }
+            HfstTransducer::new_symbol_pair(input, output, fmt)?
+        })
     }
 
     // [spec:hfst:def:xre-utils.hfst.xre.xfst-curly-label-to-transducer-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.xfst-curly-label-to-transducer-fn]
     // xre_utils.cc:897
-    fn xfst_curly_label_to_transducer(&self, input: &str, output: &str) -> HfstTransducer {
+    fn xfst_curly_label_to_transducer(
+        &self,
+        input: &str,
+        output: &str,
+    ) -> crate::error::Result<HfstTransducer> {
         let fmt = self.format_;
         let mut retval;
 
@@ -1724,18 +1729,18 @@ impl XreCompiler {
                 crate::hfst_symbol_defs::internal_unknown,
                 &first_token,
                 fmt,
-            );
+            )?;
             for it in sv.iter() {
-                let tmp = HfstTransducer::new_symbol_pair(it, &first_token, fmt);
-                retval.disjunct(&tmp, false);
+                let tmp = HfstTransducer::new_symbol_pair(it, &first_token, fmt)?;
+                retval.disjunct(&tmp, false)?;
             }
             for it in sv.iter().skip(1) {
                 let tmp = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     it,
                     fmt,
-                );
-                retval.concatenate(&tmp, false);
+                )?;
+                retval.concatenate(&tmp, false)?;
             }
         } else if output == crate::hfst_symbol_defs::internal_unknown {
             let tok = crate::hfst_tokenizer::HfstTokenizer::new();
@@ -1745,27 +1750,27 @@ impl XreCompiler {
                 &first_token,
                 crate::hfst_symbol_defs::internal_unknown,
                 fmt,
-            );
+            )?;
             for it in sv.iter() {
-                let tmp = HfstTransducer::new_symbol_pair(&first_token, it, fmt);
-                retval.disjunct(&tmp, false);
+                let tmp = HfstTransducer::new_symbol_pair(&first_token, it, fmt)?;
+                retval.disjunct(&tmp, false)?;
             }
             for it in sv.iter().skip(1) {
                 let tmp = HfstTransducer::new_symbol_pair(
                     it,
                     crate::hfst_symbol_defs::internal_epsilon,
                     fmt,
-                );
-                retval.concatenate(&tmp, false);
+                )?;
+                retval.concatenate(&tmp, false)?;
             }
         } else {
             let mut tok = crate::hfst_tokenizer::HfstTokenizer::new();
             tok.add_multichar_symbol(crate::hfst_symbol_defs::internal_epsilon);
-            retval = HfstTransducer::new_tokenized_pair(input, output, &tok, fmt);
+            retval = HfstTransducer::new_tokenized_pair(input, output, &tok, fmt)?;
         }
 
-        retval.minimize(); // it should be safe to minimize
-        retval
+        retval.minimize()?; // it should be safe to minimize
+        Ok(retval)
     }
 
     // ----------------------------------------------------------------
@@ -1775,26 +1780,30 @@ impl XreCompiler {
     // [spec:hfst:def:xre-utils.hfst.xre.contains-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.contains-fn]
     // xre_utils.cc:1082 — [?*] t [?*]
-    fn contains(&self, t: &HfstTransducer) -> HfstTransducer {
+    fn contains(&self, t: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
         let mut any =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, self.format_);
-        any.repeat_star().minimize();
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, self.format_)?;
+        any.repeat_star()?.minimize()?;
         let mut retval = any.clone();
-        retval.concatenate(t, true).concatenate(&any, true);
-        retval.optimize_with_config(&self.opt_cfg());
-        retval
+        retval.concatenate(t, true)?.concatenate(&any, true)?;
+        retval.optimize_with_config(&self.opt_cfg())?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:xre-utils.hfst.xre.contains-with-weight-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.contains-with-weight-fn]
     // xre_utils.cc:1097 — [ 0::weight -> 0 || _ [t] ] - [?* - $[t]]
-    fn contains_with_weight(&self, t: &HfstTransducer, weight: f32) -> HfstTransducer {
+    fn contains_with_weight(
+        &self,
+        t: &HfstTransducer,
+        weight: f32,
+    ) -> crate::error::Result<HfstTransducer> {
         let fmt = self.format_;
 
         let mut weighted_epsilon =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt);
-        weighted_epsilon.set_final_weights(weight, false);
-        let epsilon = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt);
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?;
+        weighted_epsilon.set_final_weights(weight, false)?;
+        let epsilon = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?;
 
         // mapping: 0::weight -> 0
         let mut mapping_pair_vector: Vec<(HfstTransducer, HfstTransducer)> = Vec::new();
@@ -1808,99 +1817,103 @@ impl XreCompiler {
             &mapping_pair_vector,
             &context_pair_vector,
             crate::hfst_xerox_rules::ReplaceType::REPL_UP,
-        );
-        let mut weighted_rule = crate::hfst_xerox_rules::replace_rule(&rule, false);
+        )?;
+        let mut weighted_rule = crate::hfst_xerox_rules::replace_rule(&rule, false)?;
 
         // noT = ?* - $[t]
         let mut no_t =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, t.get_type());
-        no_t.repeat_star().minimize();
-        let one_or_more_t = self.contains(t);
-        no_t.subtract(&one_or_more_t, true);
-        no_t.optimize_with_config(&self.opt_cfg());
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, t.get_type())?;
+        no_t.repeat_star()?.minimize()?;
+        let one_or_more_t = self.contains(t)?;
+        no_t.subtract(&one_or_more_t, true)?;
+        no_t.optimize_with_config(&self.opt_cfg())?;
 
         // return [weighted_rule - noT]
-        weighted_rule.subtract(&no_t, true);
-        weighted_rule.optimize_with_config(&self.opt_cfg());
-        weighted_rule
+        weighted_rule.subtract(&no_t, true)?;
+        weighted_rule.optimize_with_config(&self.opt_cfg())?;
+        Ok(weighted_rule)
     }
 
     // [spec:hfst:def:xre-utils.hfst.xre.contains-once-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.contains-once-fn]
     // xre_utils.cc:1142
-    pub fn contains_once(&self, c: &HfstTransducer) -> HfstTransducer {
+    pub fn contains_once(&self, c: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
         let fmt = self.format_;
 
         // any_star = [?*]
         let mut any_star =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt);
-        any_star.repeat_star().minimize();
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt)?;
+        any_star.repeat_star()?.minimize()?;
 
         // any_plus = [?+]
         let mut any_plus =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt);
-        any_plus.repeat_plus().minimize();
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt)?;
+        any_plus.repeat_plus()?.minimize()?;
 
         // t1 = [?+ c ?*]
         let mut t1 = any_plus.clone();
-        t1.concatenate(c, true);
-        t1.optimize_with_config(&self.opt_cfg());
-        t1.concatenate(&any_star, true);
-        t1.optimize_with_config(&self.opt_cfg());
+        t1.concatenate(c, true)?;
+        t1.optimize_with_config(&self.opt_cfg())?;
+        t1.concatenate(&any_star, true)?;
+        t1.optimize_with_config(&self.opt_cfg())?;
 
         // t2 = [c ?*]
         let mut t2 = c.clone();
-        t2.concatenate(&any_star, true);
-        t2.optimize_with_config(&self.opt_cfg());
+        t2.concatenate(&any_star, true)?;
+        t2.optimize_with_config(&self.opt_cfg())?;
 
         // t1 = [[?+ c ?*] & [c ?*]]
-        t1.intersect(&t2, true);
+        t1.intersect(&t2, true)?;
 
         // t3 = [[c ?+] & c]
         let mut t3 = c.clone();
-        t3.concatenate(&any_plus, true);
-        t3.optimize_with_config(&self.opt_cfg());
-        t3.intersect(c, true);
-        t3.optimize_with_config(&self.opt_cfg());
+        t3.concatenate(&any_plus, true)?;
+        t3.optimize_with_config(&self.opt_cfg())?;
+        t3.intersect(c, true)?;
+        t3.optimize_with_config(&self.opt_cfg())?;
 
         // t1 = [t1 | t3]
-        t1.disjunct(&t3, true);
-        t1.optimize_with_config(&self.opt_cfg());
+        t1.disjunct(&t3, true)?;
+        t1.optimize_with_config(&self.opt_cfg())?;
 
         // cont_t1 = $[t1]
-        let cont_t1 = self.contains(&t1);
+        let cont_t1 = self.contains(&t1)?;
         // cont_c = $[c]
-        let mut cont_c = self.contains(c);
+        let mut cont_c = self.contains(c)?;
 
         // $[c] - $[t1]
-        cont_c.subtract(&cont_t1, true);
-        cont_c.optimize_with_config(&self.opt_cfg());
-        cont_c
+        cont_c.subtract(&cont_t1, true)?;
+        cont_c.optimize_with_config(&self.opt_cfg())?;
+        Ok(cont_c)
     }
 
     // [spec:hfst:def:xre-utils.hfst.xre.contains-once-optional-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.contains-once-optional-fn]
     // xre_utils.cc:1194
-    pub fn contains_once_optional(&self, t: &HfstTransducer) -> HfstTransducer {
+    pub fn contains_once_optional(
+        &self,
+        t: &HfstTransducer,
+    ) -> crate::error::Result<HfstTransducer> {
         let fmt = self.format_;
 
         // neg_t = ~$[t]
-        let cont_t = self.contains(t);
-        let mut neg_t = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt);
-        neg_t.repeat_star();
-        neg_t.optimize_with_config(&self.opt_cfg());
-        neg_t.subtract(&cont_t, true);
-        neg_t.optimize_with_config(&self.opt_cfg());
+        let cont_t = self.contains(t)?;
+        let mut neg_t =
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt)?;
+        neg_t.repeat_star()?;
+        neg_t.optimize_with_config(&self.opt_cfg())?;
+        neg_t.subtract(&cont_t, true)?;
+        neg_t.optimize_with_config(&self.opt_cfg())?;
 
-        let mut retval = self.contains_once(t);
-        retval.disjunct(&neg_t, true);
-        retval.optimize_with_config(&self.opt_cfg());
-        retval
+        let mut retval = self.contains_once(t)?;
+        retval.disjunct(&neg_t, true)?;
+        retval.optimize_with_config(&self.opt_cfg())?;
+        Ok(retval)
     }
 
     // Driver dispatch for the '$ E' (CONTAINMENT REGEXP8) production
     // (xre_parse.yy:896). Exposed so the unary '$' arm can call it.
-    fn eval_containment(&mut self, t: &HfstTransducer) -> HfstTransducer {
+    fn eval_containment(&mut self, t: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
         if has_non_identity_pairs(t) {
             if self.verbose_ {
                 // NB: faithfully reproduces the C++ missing-space concatenation.
@@ -1923,7 +1936,7 @@ impl XreCompiler {
         if has_non_identity_pairs(&t) {
             std::panic::panic_any("Containment with weight only works with automata".to_string());
         }
-        Ok(self.contains_with_weight(&t, weight as f32))
+        self.contains_with_weight(&t, weight as f32)
     }
 
     // ----------------------------------------------------------------
@@ -1937,7 +1950,7 @@ impl XreCompiler {
         &self,
         tr1: &mut HfstTransducer,
         mut tr2: HfstTransducer,
-    ) -> HfstTransducer {
+    ) -> crate::error::Result<HfstTransducer> {
         // Merge operation creates an XreCompiler that needs this information
         // below; otherwise it would overwrite all of it.
         let args = XreConstructorArguments {
@@ -1947,9 +1960,9 @@ impl XreCompiler {
             list_definitions: self.list_definitions_.clone(),
             format: self.format_,
         };
-        tr1.optimize_with_config(&self.opt_cfg());
-        tr2.merge(tr1, &args);
-        tr2
+        tr1.optimize_with_config(&self.opt_cfg())?;
+        tr2.merge(tr1, &args)?;
+        Ok(tr2)
     }
 
     // ----------------------------------------------------------------
@@ -2056,11 +2069,14 @@ impl XreCompiler {
 
     // [spec:hfst:def:xre-utils.hfst.xre.warn-about-special-symbols-in-replace-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.warn-about-special-symbols-in-replace-fn]
-    fn warn_about_special_symbols_in_replace(&self, t: &HfstTransducer) {
+    fn warn_about_special_symbols_in_replace(
+        &self,
+        t: &HfstTransducer,
+    ) -> crate::error::Result<()> {
         if !self.verbose_ {
-            return;
+            return Ok(());
         }
-        let alphabet = t.get_alphabet();
+        let alphabet = t.get_alphabet()?;
         for it in alphabet.iter() {
             if HfstTransducer::is_special_symbol(it)
                 && it.as_str() != crate::hfst_symbol_defs::internal_epsilon
@@ -2073,6 +2089,7 @@ impl XreCompiler {
                 );
             }
         }
+        Ok(())
     }
 
     // ----------------------------------------------------------------
@@ -2096,28 +2113,28 @@ impl XreCompiler {
 
         Ok(match arrow {
             ReplaceArrow::Right => {
-                crate::hfst_xerox_rules::replace_rule_vector(&rule_vector, false)
+                crate::hfst_xerox_rules::replace_rule_vector(&rule_vector, false)?
             }
             ReplaceArrow::OptionalRight => {
-                crate::hfst_xerox_rules::replace_rule_vector(&rule_vector, true)
+                crate::hfst_xerox_rules::replace_rule_vector(&rule_vector, true)?
             }
             ReplaceArrow::Left => {
-                crate::hfst_xerox_rules::replace_left_rule_vector(&rule_vector, false)
+                crate::hfst_xerox_rules::replace_left_rule_vector(&rule_vector, false)?
             }
             ReplaceArrow::OptionalLeft => {
-                crate::hfst_xerox_rules::replace_left_rule_vector(&rule_vector, true)
+                crate::hfst_xerox_rules::replace_left_rule_vector(&rule_vector, true)?
             }
             ReplaceArrow::RtlLongest => {
-                crate::hfst_xerox_rules::replace_rightmost_longest_match_rule_vector(&rule_vector)
+                crate::hfst_xerox_rules::replace_rightmost_longest_match_rule_vector(&rule_vector)?
             }
             ReplaceArrow::RtlShortest => {
-                crate::hfst_xerox_rules::replace_rightmost_shortest_match_rule_vector(&rule_vector)
+                crate::hfst_xerox_rules::replace_rightmost_shortest_match_rule_vector(&rule_vector)?
             }
             ReplaceArrow::LtrLongest => {
-                crate::hfst_xerox_rules::replace_leftmost_longest_match_rule_vector(&rule_vector)
+                crate::hfst_xerox_rules::replace_leftmost_longest_match_rule_vector(&rule_vector)?
             }
             ReplaceArrow::LtrShortest => {
-                crate::hfst_xerox_rules::replace_leftmost_shortest_match_rule_vector(&rule_vector)
+                crate::hfst_xerox_rules::replace_leftmost_shortest_match_rule_vector(&rule_vector)?
             }
             // E_REPLACE_RIGHT_MARKUP / no replace left-right arrow in the
             // xfst grammar: 'xreerror("Unhandled arrow stuff I suppose")'.
@@ -2138,7 +2155,7 @@ impl XreCompiler {
         }
 
         Ok(match &rule.contexts {
-            None => crate::hfst_xerox_rules::Rule::new_mapping(&mapping_pair_vector),
+            None => crate::hfst_xerox_rules::Rule::new_mapping(&mapping_pair_vector)?,
             Some(ctxs) => {
                 // CONTEXT_MARK -> ReplaceType (xre_parse.yy:673)
                 let repl_type = match ctxs.mark {
@@ -2156,7 +2173,7 @@ impl XreCompiler {
                     &mapping_pair_vector,
                     &context_vector,
                     repl_type,
-                )
+                )?
             }
         })
     }
@@ -2186,21 +2203,21 @@ impl XreCompiler {
                 let left_mark = match pre {
                     Some(s) => self.eval_mapping_side(s)?,
                     None => {
-                        HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)
+                        HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?
                     }
                 };
                 let right_mark = match post {
                     Some(s) => self.eval_mapping_side(s)?,
                     None => {
-                        HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)
+                        HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?
                     }
                 };
                 let marks = (left_mark, right_mark);
-                let tmp_mapping_pair = (upper, HfstTransducer::new_type(fmt));
+                let tmp_mapping_pair = (upper, HfstTransducer::new_type(fmt)?);
                 crate::hfst_xerox_rules::create_mapping_for_mark_up_replace(
                     &tmp_mapping_pair,
                     &marks,
-                )
+                )?
             }
         })
     }
@@ -2210,7 +2227,7 @@ impl XreCompiler {
         Ok(match side {
             MappingSide::Expr(e) => self.eval(&**e)?,
             MappingSide::Dotted(None) => {
-                HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, self.format_)
+                HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, self.format_)?
             }
             MappingSide::Dotted(Some(e)) => self.eval(&**e)?,
         })
@@ -2236,15 +2253,15 @@ impl XreCompiler {
                     std::panic::panic_any("Contexts need to be automata".to_string());
                 }
                 if weighted {
-                    t1.transform_weights(zero_weights);
+                    t1.transform_weights(zero_weights)?;
                 }
-                t1.optimize_with_config(&self.opt_cfg())
-                    .prune_alphabet(false);
+                t1.optimize_with_config(&self.opt_cfg())?
+                    .prune_alphabet(false)?;
                 if weighted {
-                    t2.transform_weights(zero_weights);
+                    t2.transform_weights(zero_weights)?;
                 }
-                t2.optimize_with_config(&self.opt_cfg())
-                    .prune_alphabet(false);
+                t2.optimize_with_config(&self.opt_cfg())?
+                    .prune_alphabet(false)?;
                 (t1, t2)
             }
             (Some(l), None) => {
@@ -2253,13 +2270,13 @@ impl XreCompiler {
                     std::panic::panic_any("Contexts need to be automata".to_string());
                 }
                 if weighted {
-                    t1.transform_weights(zero_weights);
+                    t1.transform_weights(zero_weights)?;
                 }
-                t1.optimize_with_config(&self.opt_cfg())
-                    .prune_alphabet(false);
+                t1.optimize_with_config(&self.opt_cfg())?
+                    .prune_alphabet(false)?;
                 (
                     t1,
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt),
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?,
                 )
             }
             (None, Some(r)) => {
@@ -2268,18 +2285,18 @@ impl XreCompiler {
                     std::panic::panic_any("Contexts need to be automata".to_string());
                 }
                 if weighted {
-                    t1.transform_weights(zero_weights);
+                    t1.transform_weights(zero_weights)?;
                 }
-                t1.optimize_with_config(&self.opt_cfg())
-                    .prune_alphabet(false);
+                t1.optimize_with_config(&self.opt_cfg())?
+                    .prune_alphabet(false)?;
                 (
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt),
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?,
                     t1,
                 )
             }
             (None, None) => {
                 let epsilon =
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt);
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?;
                 (epsilon.clone(), epsilon)
             }
         })
@@ -2304,7 +2321,7 @@ impl XreCompiler {
         Ok(crate::hfst_xerox_rules::restriction(
             &center,
             &context_vector,
-        ))
+        )?)
     }
 
     // xre_parse.yy RESTR_CONTEXT alternatives. One missing side -> 0 (epsilon),
@@ -2320,17 +2337,20 @@ impl XreCompiler {
                 let t1 = self.eval(&**l)?;
                 (
                     t1,
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt),
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?,
                 )
             }
             (None, Some(r)) => {
                 let t1 = self.eval(&**r)?;
                 (
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt),
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?,
                     t1,
                 )
             }
-            (None, None) => (HfstTransducer::new_type(fmt), HfstTransducer::new_type(fmt)),
+            (None, None) => (
+                HfstTransducer::new_type(fmt)?,
+                HfstTransducer::new_type(fmt)?,
+            ),
         })
     }
 
@@ -2350,8 +2370,8 @@ impl XreCompiler {
         Ok(match what {
             // '[ E, a:b, c:d ]  (xre_parse.yy:268)
             SubstituteWhat::Pair { from, to } => {
-                hay.substitute_pair_with_pair(from, to);
-                hay.optimize_with_config(&self.opt_cfg());
+                hay.substitute_pair_with_pair(from, to)?;
+                hay.optimize_with_config(&self.opt_cfg())?;
                 hay
             }
             // '[ E, b, x y ]  (xre_parse.yy:276 SUB1 SUB2 SUB3)
@@ -2359,30 +2379,30 @@ impl XreCompiler {
                 needle,
                 replacement,
             } => {
-                let hay_alpha = hay.get_alphabet();
+                let hay_alpha = hay.get_alphabet()?;
 
                 if self.definitions_.contains_key(needle) {
                     if self.verbose_ {
                         warn!("using definition as an ordinary label, cannot substitute");
                     }
-                    hay.optimize_with_config(&self.opt_cfg());
+                    hay.optimize_with_config(&self.opt_cfg())?;
                     return Ok(hay);
                 }
                 if !hay_alpha.contains(needle) {
-                    hay.optimize_with_config(&self.opt_cfg());
+                    hay.optimize_with_config(&self.opt_cfg())?;
                     return Ok(hay);
                 }
 
                 // alpha is reassigned to the replacement's alphabet (used both
                 // for the diacritic loop and the final remove-from-alphabet).
-                let mut repl_tr = build_symbol_list_transducer(replacement, fmt, &self.opt_cfg());
-                let alpha3 = repl_tr.get_alphabet();
+                let mut repl_tr = build_symbol_list_transducer(replacement, fmt, &self.opt_cfg())?;
+                let alpha3 = repl_tr.get_alphabet()?;
                 let tmp = (needle.clone(), needle.clone());
                 let mut tmp_tr = hay.clone();
 
-                let empty = HfstTransducer::new_type(fmt);
+                let empty = HfstTransducer::new_type(fmt)?;
                 let mut empty_replace_transducer = false;
-                if empty.compare(&repl_tr, true) {
+                if empty.compare(&repl_tr, true)? {
                     empty_replace_transducer = true;
                 }
                 if empty_replace_transducer {
@@ -2396,42 +2416,42 @@ impl XreCompiler {
                             return true;
                         }
                         false
-                    });
+                    })?;
                 }
                 // substitute b with x | y (no harmonization)
-                tmp_tr.substitute_pair_with_transducer(&tmp, &mut repl_tr, false);
+                tmp_tr.substitute_pair_with_transducer(&tmp, &mut repl_tr, false)?;
 
                 if !empty_replace_transducer {
                     // [[a:b].i .o. b -> x|y].i (handles b appearing on the left side)
                     let mapping_pair = (
-                        HfstTransducer::new_symbol_pair(needle, needle, fmt),
+                        HfstTransducer::new_symbol_pair(needle, needle, fmt)?,
                         repl_tr.clone(),
                     );
                     let mut mapping_pair_vector: Vec<(HfstTransducer, HfstTransducer)> = Vec::new();
                     mapping_pair_vector.push(mapping_pair);
-                    let rule = crate::hfst_xerox_rules::Rule::new_mapping(&mapping_pair_vector);
-                    let mut replace_tr = crate::hfst_xerox_rules::replace_rule(&rule, false);
+                    let rule = crate::hfst_xerox_rules::Rule::new_mapping(&mapping_pair_vector)?;
+                    let mut replace_tr = crate::hfst_xerox_rules::replace_rule(&rule, false)?;
 
                     // allow flag diacritics to be replaced with themselves
                     for it in alpha3.iter() {
                         if crate::hfst_flag_diacritics::FdOperation::is_diacritic(it) {
-                            replace_tr.insert_freely_pair(&(it.clone(), it.clone()), false);
+                            replace_tr.insert_freely_pair(&(it.clone(), it.clone()), false)?;
                         }
                     }
-                    replace_tr.optimize_with_config(&self.opt_cfg());
+                    replace_tr.optimize_with_config(&self.opt_cfg())?;
                     tmp_tr
-                        .compose_with_config(&replace_tr, true, &self.opt_cfg())
-                        .optimize_with_config(&self.opt_cfg());
+                        .compose_with_config(&replace_tr, true, &self.opt_cfg())?
+                        .optimize_with_config(&self.opt_cfg())?;
                     tmp_tr
-                        .invert()
-                        .compose_with_config(&replace_tr, true, &self.opt_cfg())
-                        .invert();
+                        .invert()?
+                        .compose_with_config(&replace_tr, true, &self.opt_cfg())?
+                        .invert()?;
                 }
 
                 if !alpha3.contains(needle) {
-                    tmp_tr.remove_from_alphabet(needle.as_str());
+                    tmp_tr.remove_from_alphabet(needle.as_str())?;
                 }
-                tmp_tr.optimize_with_config(&self.opt_cfg());
+                tmp_tr.optimize_with_config(&self.opt_cfg())?;
                 tmp_tr
             }
         })
@@ -2457,8 +2477,8 @@ impl XreCompiler {
         match kind {
             // READ_BIN: HfstInputStream instream(path); new HfstTransducer(instream);
             ReadKind::Binary => {
-                let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(path);
-                let retval = HfstTransducer::new_from_stream(&mut instream);
+                let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(path)?;
+                let retval = HfstTransducer::new_from_stream(&mut instream)?;
                 instream.close();
                 Ok(retval)
             }
@@ -2480,8 +2500,8 @@ impl XreCompiler {
                     };
                     tmp.disjunct_path(&spv, 0.0);
                 }
-                let mut retval = HfstTransducer::new_from_basic(&tmp, self.format_);
-                retval.optimize_with_config(&self.opt_cfg());
+                let mut retval = HfstTransducer::new_from_basic(&tmp, self.format_)?;
+                retval.optimize_with_config(&self.opt_cfg())?;
                 Ok(retval)
             }
             // READ_PROLOG: read_in_prolog_format then build of the compiler format.
@@ -2494,8 +2514,8 @@ impl XreCompiler {
                 let mut linecount: u32 = 0;
                 let tmp =
                     HfstBasicTransducer::read_in_prolog_format_file(&mut reader, &mut linecount)?;
-                let mut retval = HfstTransducer::new_from_basic(&tmp, self.format_);
-                retval.optimize_with_config(&self.opt_cfg());
+                let mut retval = HfstTransducer::new_from_basic(&tmp, self.format_)?;
+                retval.optimize_with_config(&self.opt_cfg())?;
                 Ok(retval)
             }
             // READ_RE: read the file content and re-compile it as a regex (the C++

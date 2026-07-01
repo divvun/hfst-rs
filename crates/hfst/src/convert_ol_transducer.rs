@@ -104,7 +104,9 @@ pub fn get_states_and_symbols(
     while state_number < t.state_vector.len() {
         let mut final_w: Weight = 0.0;
         if t.is_final_state(state_number as u32) {
-            final_w = t.get_final_weight(state_number as u32);
+            final_w = t
+                .get_final_weight(state_number as u32)
+                .expect("state was confirmed final via is_final_state");
         }
         state_placeholders.push(StatePlaceholder::new(
             state_number as u32,
@@ -113,7 +115,11 @@ pub fn get_states_and_symbols(
             final_w,
         ));
         first_transition += 1; // there's a padding entry between states
-        for tr_it in t.transitions(state_number as u32).iter() {
+        for tr_it in t
+            .transitions(state_number as u32)
+            .expect("state_number is within state_vector bounds")
+            .iter()
+        {
             first_transition += 1;
             // If we don't already have a symbol table, collect symbols
             if harmonizer.is_none() {
@@ -196,7 +202,10 @@ pub fn get_states_and_symbols(
     while state_number < t.state_vector.len() {
         // collect into a temp so the immutable 't' borrow doesn't overlap the
         // mutable 'state_placeholders[state_number]' borrow
-        let trs: Vec<HfstBasicTransition> = t.transitions(state_number as u32).clone();
+        let trs: Vec<HfstBasicTransition> = t
+            .transitions(state_number as u32)
+            .expect("state_number is within state_vector bounds")
+            .clone();
         let coder = t.coder();
         for tr_it in trs.iter() {
             let in_sym = string_symbol_map
@@ -223,18 +232,20 @@ impl ConversionFunctions {
     // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn]
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn]
-    pub fn hfst_ol_to_hfst_transducer(t: &Transducer) -> crate::hfst_transducer::HfstTransducer {
+    pub fn hfst_ol_to_hfst_transducer(
+        t: &Transducer,
+    ) -> crate::error::Result<crate::hfst_transducer::HfstTransducer> {
         use crate::hfst_data_types::ImplementationType::*;
         let type_ = if t.is_weighted() {
             HFST_OLW_TYPE
         } else {
             HFST_OL_TYPE
         };
-        let mut retval = crate::hfst_transducer::HfstTransducer::new_type(type_);
+        let mut retval = crate::hfst_transducer::HfstTransducer::new_type(type_)?;
         retval.implementation = crate::hfst_transducer::TransducerImplementation::HfstOl(Box::new(
-            Transducer::copy(t, t.is_weighted()),
+            Transducer::copy(t, t.is_weighted())?,
         ));
-        retval
+        Ok(retval)
     }
 
     /* And the reverse: convert 't' to OL if needed and hand back its backend. */
@@ -323,7 +334,7 @@ impl ConversionFunctions {
         weighted: bool,
         options: &str,
         harmonizer_ol: Option<&Transducer>,
-    ) -> Transducer {
+    ) -> crate::error::Result<Transducer> {
         let packing_aggression: f32 = 0.85;
         let floor_jump_threshold: i32 = 4; // a packing aggression parameter
 
@@ -425,7 +436,7 @@ impl ConversionFunctions {
                 let idx = used_indices.get_target(i).0 as usize;
                 let sym = used_indices.get_target(i).1;
                 let target = state_placeholders[idx].first_transition
-                    + state_placeholders[idx].symbol_offset(sym, &flag_symbols)
+                    + state_placeholders[idx].symbol_offset(sym, &flag_symbols)?
                     + TA_OFFSET;
                 windex_table.append(TransitionWIndex::new_values(sym, target));
             }
@@ -457,6 +468,11 @@ impl ConversionFunctions {
             wtransition_table.size(),
             weighted,
         );
-        Transducer::new_from_tables_weighted(&header, &alphabet, windex_table, wtransition_table)
+        Ok(Transducer::new_from_tables_weighted(
+            &header,
+            &alphabet,
+            windex_table,
+            wtransition_table,
+        ))
     }
 }

@@ -94,11 +94,14 @@ fn is_eof(is: &mut dyn BufRead) -> bool {
 // 'get_stripped_line' wrapped in the C++ try/catch: returns None when it would
 // throw 'EndOfStreamException'. The panic hook is silenced so the caught
 // exception (a 'panic_any') does not print.
-fn catch_get_stripped_line(is: &mut dyn BufRead, linecount: &mut u32) -> Option<String> {
+fn catch_get_stripped_line(
+    is: &mut dyn BufRead,
+    linecount: &mut u32,
+) -> crate::error::Result<Option<String>> {
     match HfstBasicTransducer::get_stripped_line(is, linecount) {
-        Ok(v) => Some(v),
-        Err(e) if matches!(e.kind, crate::error::ErrorKind::EndOfStream) => None,
-        Err(e) => e.throw(),
+        Ok(v) => Ok(Some(v)),
+        Err(e) if matches!(e.kind, crate::error::ErrorKind::EndOfStream) => Ok(None),
+        Err(e) => Err(e),
     }
 }
 
@@ -558,7 +561,12 @@ impl HfstBasicTransducer {
         // Remove symbols in 'symbols' from the alphabet if they did not occur.
         for &symbol in symbols.iter() {
             if !symbols_found[symbol as usize] {
-                self.alphabet.remove(&self.coder.get_symbol(symbol));
+                self.alphabet.remove(
+                    &self
+                        .coder
+                        .get_symbol(symbol)
+                        .expect("symbols are numbers drawn from this transducer's own coder"),
+                );
             }
         }
     }
@@ -608,7 +616,11 @@ impl HfstBasicTransducer {
         known_symbols: &BTreeSet<String>,
     ) -> Option<HfstState> {
         let mut identity_target: Option<HfstState> = None;
-        for it in self.transitions(s).iter() {
+        for it in self
+            .transitions(s)
+            .expect("s is a valid state of this transducer")
+            .iter()
+        {
             if it.get_input_symbol(&self.coder) == isymbol
                 && it.get_output_symbol(&self.coder) == osymbol
             {
@@ -648,7 +660,12 @@ impl HfstBasicTransducer {
             if !rebuilt.contains_key(&source_state) {
                 replication.add_state(state_count);
                 if self.is_final_state(source_state) {
-                    replication.set_final_weight(state_count, &self.get_final_weight(source_state));
+                    replication.set_final_weight(
+                        state_count,
+                        &self
+                            .get_final_weight(source_state)
+                            .expect("state was confirmed final via is_final_state"),
+                    );
                 }
                 rebuilt.insert(source_state, state_count);
                 state_count += 1;
@@ -659,7 +676,9 @@ impl HfstBasicTransducer {
                     if self.is_final_state(arc.get_target_state()) {
                         replication.set_final_weight(
                             state_count,
-                            &self.get_final_weight(arc.get_target_state()),
+                            &self
+                                .get_final_weight(arc.get_target_state())
+                                .expect("state was confirmed final via is_final_state"),
                         );
                     }
                     rebuilt.insert(arc.get_target_state(), state_count);
@@ -694,14 +713,24 @@ impl HfstBasicTransducer {
         let mut rebuilt: BTreeMap<HfstState, HfstState> = BTreeMap::new();
         rebuilt.insert(0, 0);
         if self.is_final_state(0) {
-            replication.set_final_weight(0, &self.get_final_weight(0));
+            replication.set_final_weight(
+                0,
+                &self
+                    .get_final_weight(0)
+                    .expect("state was confirmed final via is_final_state"),
+            );
         }
         let mut source_state: HfstState = 0;
         for state in self.iter() {
             if !rebuilt.contains_key(&source_state) {
                 replication.add_state(state_count);
                 if self.is_final_state(source_state) {
-                    replication.set_final_weight(state_count, &self.get_final_weight(source_state));
+                    replication.set_final_weight(
+                        state_count,
+                        &self
+                            .get_final_weight(source_state)
+                            .expect("state was confirmed final via is_final_state"),
+                    );
                 }
                 rebuilt.insert(source_state, state_count);
                 state_count += 1;
@@ -718,7 +747,9 @@ impl HfstBasicTransducer {
                     if self.is_final_state(arc.get_target_state()) {
                         replication.set_final_weight(
                             state_count,
-                            &self.get_final_weight(arc.get_target_state()),
+                            &self
+                                .get_final_weight(arc.get_target_state())
+                                .expect("state was confirmed final via is_final_state"),
                         );
                     }
                     rebuilt.insert(arc.get_target_state(), state_count);
@@ -757,7 +788,15 @@ impl HfstBasicTransducer {
         let mut rebuilt: BTreeMap<HfstState, HfstState> = BTreeMap::new();
         rebuilt.insert(0, 0);
         if self.is_final_state(0) {
-            replication.set_final_weight(0, &f(self.get_final_weight(0), None, None));
+            replication.set_final_weight(
+                0,
+                &f(
+                    self.get_final_weight(0)
+                        .expect("state was confirmed final via is_final_state"),
+                    None,
+                    None,
+                ),
+            );
         }
         let mut source_state: HfstState = 0;
         for state in self.iter() {
@@ -766,7 +805,12 @@ impl HfstBasicTransducer {
                 if self.is_final_state(source_state) {
                     replication.set_final_weight(
                         state_count,
-                        &f(self.get_final_weight(source_state), None, None),
+                        &f(
+                            self.get_final_weight(source_state)
+                                .expect("state was confirmed final via is_final_state"),
+                            None,
+                            None,
+                        ),
                     );
                 }
                 rebuilt.insert(source_state, state_count);
@@ -779,7 +823,12 @@ impl HfstBasicTransducer {
                     if self.is_final_state(target) {
                         replication.set_final_weight(
                             state_count,
-                            &f(self.get_final_weight(target), None, None),
+                            &f(
+                                self.get_final_weight(target)
+                                    .expect("state was confirmed final via is_final_state"),
+                                None,
+                                None,
+                            ),
                         );
                     }
                     rebuilt.insert(target, state_count);
@@ -1186,14 +1235,14 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-final-weight-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.get-final-weight-fn]
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.get-final-weight-fn]
-    pub fn get_final_weight(&self, s: HfstState) -> WeightType {
+    pub fn get_final_weight(&self, s: HfstState) -> crate::error::Result<WeightType> {
         if s > self.get_max_state() {
-            crate::HFST_THROW!(StateIndexOutOfBounds);
+            crate::bail!(StateIndexOutOfBounds);
         }
         if let Some(w) = self.final_weight_map.get(&s) {
-            return *w;
+            return Ok(*w);
         }
-        crate::HFST_THROW!(StateIsNotFinal)
+        crate::bail!(StateIsNotFinal)
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.set-final-weight-fn]
@@ -1236,24 +1285,27 @@ impl HfstBasicTransducer {
 
     /** @brief Get the transitions of state 's' ('operator[]'). Throws
     `StateIndexOutOfBoundsException` if the state does not exist. */
-    pub fn index(&self, s: HfstState) -> &HfstBasicTransitions {
+    pub fn index(&self, s: HfstState) -> crate::error::Result<&HfstBasicTransitions> {
         if s as usize >= self.state_vector.len() {
-            crate::HFST_THROW!(StateIndexOutOfBounds);
+            crate::bail!(StateIndexOutOfBounds);
         }
-        &self.state_vector[s as usize]
+        Ok(&self.state_vector[s as usize])
     }
 
     /** @brief Alternative name for 'operator[]'. */
-    pub fn transitions(&self, s: HfstState) -> &HfstBasicTransitions {
+    pub fn transitions(&self, s: HfstState) -> crate::error::Result<&HfstBasicTransitions> {
         self.index(s)
     }
 
     /** @brief Get mutable transitions. */
-    pub fn transitions_mut(&mut self, s: HfstState) -> &mut HfstBasicTransitions {
+    pub fn transitions_mut(
+        &mut self,
+        s: HfstState,
+    ) -> crate::error::Result<&mut HfstBasicTransitions> {
         if s as usize >= self.state_vector.len() {
-            crate::HFST_THROW!(StateIndexOutOfBounds);
+            crate::bail!(StateIndexOutOfBounds);
         }
-        &mut self.state_vector[s as usize]
+        Ok(&mut self.state_vector[s as usize])
     }
 
     // --- Reading and writing in AT&T format (helpers) ---
@@ -1573,13 +1625,13 @@ impl HfstBasicTransducer {
         file: &mut dyn Write,
         name: &str,
         write_weights: bool,
-    ) {
+    ) -> crate::error::Result<()> {
         let mut source_state: u32 = 0;
         let identifier = name;
         // Print the name.
         if name.contains(',') {
             let msg = "no commas allowed in the name of prolog networks".to_string();
-            crate::HFST_THROW_MESSAGE!(Hfst, msg);
+            crate::bail!(Hfst, msg);
         }
         w_fputs(file, &format!("network({}).\n", identifier));
 
@@ -1631,16 +1683,22 @@ impl HfstBasicTransducer {
             }
             w_fputs(file, ").\n");
         }
+        Ok(())
     }
 
     /** @brief Write the graph in prolog format to ostream 'os'. */
-    pub fn write_in_prolog_format_os(&self, os: &mut dyn Write, name: &str, write_weights: bool) {
+    pub fn write_in_prolog_format_os(
+        &self,
+        os: &mut dyn Write,
+        name: &str,
+        write_weights: bool,
+    ) -> crate::error::Result<()> {
         let mut source_state: u32 = 0;
 
         // Print the name.
         if name.contains(',') {
             let msg = "no commas allowed in the name of prolog networks".to_string();
-            crate::HFST_THROW_MESSAGE!(Hfst, msg);
+            crate::bail!(Hfst, msg);
         }
         let _ = writeln!(os, "network({}).", name);
 
@@ -1683,6 +1741,7 @@ impl HfstBasicTransducer {
             }
             let _ = writeln!(os, ").");
         }
+        Ok(())
     }
 
     // If 'str' is of format ".+", change it to .+ and return true. Else false.
@@ -2180,7 +2239,11 @@ impl HfstBasicTransducer {
                 let _ = write!(os, "{}", source_state);
                 if write_weights {
                     let _ = write!(os, "\t");
-                    Self::write_weight_os(os, self.get_final_weight(source_state));
+                    Self::write_weight_os(
+                        os,
+                        self.get_final_weight(source_state)
+                            .expect("state was confirmed final via is_final_state"),
+                    );
                 }
                 let _ = write!(os, "\n");
             }
@@ -2226,7 +2289,11 @@ impl HfstBasicTransducer {
                 w_fputs(file, &format!("{}", source_state));
                 if write_weights {
                     w_fputs(file, "\t");
-                    Self::write_weight_file(file, self.get_final_weight(source_state));
+                    Self::write_weight_file(
+                        file,
+                        self.get_final_weight(source_state)
+                            .expect("state was confirmed final via is_final_state"),
+                    );
                 }
                 w_fputs(file, "\n");
             }
@@ -2270,7 +2337,11 @@ impl HfstBasicTransducer {
                     if write_weights {
                         w_fputs(
                             file,
-                            &format!("\t{:.6}", self.get_final_weight(source_state)),
+                            &format!(
+                                "\t{:.6}",
+                                self.get_final_weight(source_state)
+                                    .expect("state was confirmed final via is_final_state")
+                            ),
                         );
                     }
                     w_fputs(file, "\n");
@@ -2405,7 +2476,7 @@ impl HfstBasicTransducer {
         let mut linestr: String;
 
         loop {
-            match catch_get_stripped_line(is, linecount) {
+            match catch_get_stripped_line(is, linecount)? {
                 Some(l) => linestr = l,
                 None => crate::bail!(NotValidPrologFormat),
             }
@@ -2424,7 +2495,7 @@ impl HfstBasicTransducer {
         }
 
         loop {
-            match catch_get_stripped_line(is, linecount) {
+            match catch_get_stripped_line(is, linecount)? {
                 Some(l) => {
                     linestr = l;
                     if linestr.is_empty() {
@@ -2587,14 +2658,20 @@ impl HfstBasicTransducer {
 
                 if new_inumber != no_substitution || new_onumber != no_substitution {
                     if new_inumber != no_substitution {
-                        let sym = self.coder.get_symbol(new_inumber);
+                        let sym = self
+                            .coder
+                            .get_symbol(new_inumber)
+                            .expect("substitution target number was interned by this coder");
                         self.add_symbol_to_alphabet(&sym);
                     } else {
                         new_inumber = old_inumber;
                     }
 
                     if new_onumber != no_substitution {
-                        let sym = self.coder.get_symbol(new_onumber);
+                        let sym = self
+                            .coder
+                            .get_symbol(new_onumber)
+                            .expect("substitution target number was interned by this coder");
                         self.add_symbol_to_alphabet(&sym);
                     } else {
                         new_onumber = old_onumber;
@@ -2628,9 +2705,15 @@ impl HfstBasicTransducer {
                     let new_input_number = subst.0;
                     let new_output_number = subst.1;
 
-                    let in_sym = self.coder.get_symbol(new_input_number);
+                    let in_sym = self
+                        .coder
+                        .get_symbol(new_input_number)
+                        .expect("substitution target number was interned by this coder");
                     self.add_symbol_to_alphabet(&in_sym);
-                    let out_sym = self.coder.get_symbol(new_output_number);
+                    let out_sym = self
+                        .coder
+                        .get_symbol(new_output_number)
+                        .expect("substitution target number was interned by this coder");
                     self.add_symbol_to_alphabet(&out_sym);
 
                     let target = self.state_vector[s][i].get_target_state();
@@ -2759,7 +2842,7 @@ impl HfstBasicTransducer {
     fn substitute_in_place_func(
         &mut self,
         func: impl Fn(&HfstSymbolPair, &mut HfstSymbolPairSet) -> bool,
-    ) {
+    ) -> crate::error::Result<()> {
         for s in 0..self.state_vector.len() {
             let mut new_transitions: HfstBasicTransitions = Vec::new();
 
@@ -2785,7 +2868,7 @@ impl HfstBasicTransducer {
                     if !HfstTropicalTransducerTransitionData::is_valid_symbol(&fi)
                         || !HfstTropicalTransducerTransitionData::is_valid_symbol(&fo)
                     {
-                        crate::HFST_THROW_MESSAGE!(EmptyString, "HfstBasicTransducer::substitute");
+                        crate::bail!(EmptyString, "HfstBasicTransducer::substitute");
                     }
 
                     let tr = HfstBasicTransition::new_symbols(
@@ -2804,10 +2887,7 @@ impl HfstBasicTransducer {
                         if !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.0)
                             || !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1)
                         {
-                            crate::HFST_THROW_MESSAGE!(
-                                EmptyString,
-                                "HfstBasicTransducer::substitute"
-                            );
+                            crate::bail!(EmptyString, "HfstBasicTransducer::substitute");
                         }
                         let tr2 = HfstBasicTransition::new_symbols(
                             target,
@@ -2827,6 +2907,7 @@ impl HfstBasicTransducer {
                 self.state_vector[s].push(new_transition.clone());
             }
         }
+        Ok(())
     }
 
     // --- Substitution (public) ---
@@ -2838,20 +2919,20 @@ impl HfstBasicTransducer {
         new_symbol: &HfstSymbol,
         input_side: bool,
         output_side: bool,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         if !HfstTropicalTransducerTransitionData::is_valid_symbol(old_symbol)
             || !HfstTropicalTransducerTransitionData::is_valid_symbol(new_symbol)
         {
-            crate::HFST_THROW_MESSAGE!(EmptyString, "HfstBasicTransducer::substitute");
+            crate::bail!(EmptyString, "HfstBasicTransducer::substitute");
         }
 
         // If a symbol is substituted with itself, do nothing.
         if old_symbol == new_symbol {
-            return self;
+            return Ok(self);
         }
         // If the old symbol is not known to the graph, do nothing.
         if !self.alphabet.contains(old_symbol) {
-            return self;
+            return Ok(self);
         }
 
         // Remove the substituted symbol from the alphabet if both sides.
@@ -2864,7 +2945,7 @@ impl HfstBasicTransducer {
 
         self.substitute_in_place(old_symbol, new_symbol, input_side, output_side);
 
-        self
+        Ok(self)
     }
 
     pub fn substitute_symbols(&mut self, substitutions: &HfstSymbolSubstitutions) -> &mut Self {
@@ -2932,24 +3013,24 @@ impl HfstBasicTransducer {
         &mut self,
         sp: &HfstSymbolPair,
         sps: &HfstSymbolPairSet,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         if !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.0)
             || !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1)
         {
-            crate::HFST_THROW_MESSAGE!(EmptyString, "HfstBasicTransducer::substitute");
+            crate::bail!(EmptyString, "HfstBasicTransducer::substitute");
         }
 
         for sp in sps.iter() {
             if !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.0)
                 || !HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1)
             {
-                crate::HFST_THROW_MESSAGE!(EmptyString, "HfstBasicTransducer::substitute");
+                crate::bail!(EmptyString, "HfstBasicTransducer::substitute");
             }
         }
 
         self.substitute_in_place_pair_set(sp, sps);
 
-        self
+        Ok(self)
     }
 
     /** @brief Substitute all transitions 'old_pair' with 'new_pair'. */
@@ -2957,29 +3038,29 @@ impl HfstBasicTransducer {
         &mut self,
         old_pair: &HfstSymbolPair,
         new_pair: &HfstSymbolPair,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         if !HfstTropicalTransducerTransitionData::is_valid_symbol(&old_pair.0)
             || !HfstTropicalTransducerTransitionData::is_valid_symbol(&new_pair.0)
             || !HfstTropicalTransducerTransitionData::is_valid_symbol(&old_pair.1)
             || !HfstTropicalTransducerTransitionData::is_valid_symbol(&new_pair.1)
         {
-            crate::HFST_THROW_MESSAGE!(EmptyString, "HfstBasicTransducer::substitute");
+            crate::bail!(EmptyString, "HfstBasicTransducer::substitute");
         }
 
         let mut new_pair_set: StringPairSet = BTreeSet::new();
         new_pair_set.insert(new_pair.clone());
         self.substitute_in_place_pair_set(old_pair, &new_pair_set);
 
-        self
+        Ok(self)
     }
 
     /** @brief Substitute all transitions with a set defined by function 'func'. */
     pub fn substitute_with_func(
         &mut self,
         func: impl Fn(&HfstSymbolPair, &mut HfstSymbolPairSet) -> bool,
-    ) -> &mut Self {
-        self.substitute_in_place_func(func);
-        self
+    ) -> crate::error::Result<&mut Self> {
+        self.substitute_in_place_func(func)?;
+        Ok(self)
     }
 
     /** @brief Substitute transitions 'sp' with a copy of 'graph'. */
@@ -2987,11 +3068,11 @@ impl HfstBasicTransducer {
         &mut self,
         sp: &HfstSymbolPair,
         graph: &HfstBasicTransducer,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         if !(HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.0)
             && HfstTropicalTransducerTransitionData::is_valid_symbol(&sp.1))
         {
-            crate::HFST_THROW_MESSAGE!(
+            crate::bail!(
                 EmptyString,
                 "HfstBasicTransducer::substitute(const HfstSymbolPair&, const HfstBasicTransducer&)"
             );
@@ -2999,7 +3080,7 @@ impl HfstBasicTransducer {
 
         // If neither symbol is known to the graph, do nothing.
         if !self.alphabet.contains(&sp.0) && !self.alphabet.contains(&sp.1) {
-            return self;
+            return Ok(self);
         }
 
         let graph_ptr = graph as *const HfstBasicTransducer;
@@ -3033,7 +3114,7 @@ impl HfstBasicTransducer {
         for substitution in substitutions.iter() {
             self.add_substitution(substitution);
         }
-        self
+        Ok(self)
     }
 
     /* Add a copy of the substituting graph with epsilon transitions between
@@ -3273,7 +3354,7 @@ impl HfstBasicTransducer {
         &mut self,
         old_symbol_pair: &StringPair,
         new_symbol_pair: &StringPair,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         self.substitute_pair(old_symbol_pair, new_symbol_pair)
     }
 
@@ -3281,7 +3362,7 @@ impl HfstBasicTransducer {
         &mut self,
         old_symbol_pair: &StringPair,
         new_symbol_pair_set: &StringPairSet,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         self.substitute_pair_with_set(old_symbol_pair, new_symbol_pair_set)
     }
 
@@ -3289,7 +3370,7 @@ impl HfstBasicTransducer {
         &mut self,
         symbol_pair: &StringPair,
         transducer: &HfstBasicTransducer,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         self.substitute_pair_with_graph(symbol_pair, transducer)
     }
 
@@ -3300,11 +3381,11 @@ impl HfstBasicTransducer {
         &mut self,
         symbol_pair: &HfstSymbolPair,
         weight: WeightType,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         if !(HfstTropicalTransducerTransitionData::is_valid_symbol(&symbol_pair.0)
             && HfstTropicalTransducerTransitionData::is_valid_symbol(&symbol_pair.1))
         {
-            crate::HFST_THROW_MESSAGE!(
+            crate::bail!(
                 EmptyString,
                 "HfstBasicTransducer::insert_freely(const HfstSymbolPair&, W)"
             );
@@ -3324,7 +3405,7 @@ impl HfstBasicTransducer {
             );
             self.state_vector[s].push(tr);
         }
-        self
+        Ok(self)
     }
 
     /** @brief Insert freely any of the pairs in 'symbol_pairs'. */
@@ -3332,12 +3413,12 @@ impl HfstBasicTransducer {
         &mut self,
         symbol_pairs: &HfstSymbolPairSet,
         weight: WeightType,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         for symbol_pair in symbol_pairs.iter() {
             if !(HfstTropicalTransducerTransitionData::is_valid_symbol(&symbol_pair.0)
                 && HfstTropicalTransducerTransitionData::is_valid_symbol(&symbol_pair.1))
             {
-                crate::HFST_THROW_MESSAGE!(
+                crate::bail!(
                     EmptyString,
                     "HfstBasicTransducer::insert_freely(const HfstSymbolPairSet&, W)"
                 );
@@ -3358,11 +3439,14 @@ impl HfstBasicTransducer {
                 self.state_vector[s].push(tr);
             }
         }
-        self
+        Ok(self)
     }
 
     /** @brief Insert freely any number of 'graph' in this graph. */
-    pub fn insert_freely_graph(&mut self, graph: &HfstBasicTransducer) -> &mut Self {
+    pub fn insert_freely_graph(
+        &mut self,
+        graph: &HfstBasicTransducer,
+    ) -> crate::error::Result<&mut Self> {
         let marker_this = HfstTropicalTransducerTransitionData::get_marker(&self.alphabet);
         let marker_graph = HfstTropicalTransducerTransitionData::get_marker(&self.alphabet);
         let mut marker = marker_this;
@@ -3375,11 +3459,11 @@ impl HfstBasicTransducer {
         // [spec:hfst:def:hfst-transition-graph.marker-pair-fn]
         // [spec:hfst:sem:hfst-transition-graph.marker-pair-fn]
         let marker_pair = (marker.clone(), marker.clone());
-        self.insert_freely_pair(&marker_pair, 0.0);
-        self.substitute_pair_with_graph(&marker_pair, graph);
+        self.insert_freely_pair(&marker_pair, 0.0)?;
+        self.substitute_pair_with_graph(&marker_pair, graph)?;
         self.alphabet.remove(&marker); // (C++ flags this line as needing a fix)
 
-        self
+        Ok(self)
     }
 
     // --- Disjunction ---
@@ -3432,7 +3516,9 @@ impl HfstBasicTransducer {
         let final_state = self.disjunct(spv, &mut it, Self::INITIAL_STATE);
 
         if self.is_final_state(final_state) {
-            let old_weight = self.get_final_weight(final_state);
+            let old_weight = self
+                .get_final_weight(final_state)
+                .expect("state was confirmed final via is_final_state");
             if old_weight < weight {
                 return self; // smaller-weight path remains
             }
@@ -3457,7 +3543,7 @@ impl HfstBasicTransducer {
     }
 
     /** @brief Make the graph complete (add a failure state). */
-    pub fn complete(&mut self) -> &mut Self {
+    pub fn complete(&mut self) -> crate::error::Result<&mut Self> {
         let failure_state = self.add_state_new();
         let mut current_state: HfstState = 0;
 
@@ -3469,7 +3555,7 @@ impl HfstBasicTransducer {
                 let isym = data.get_input_symbol(&self.coder);
                 let osym = data.get_output_symbol(&self.coder);
                 if isym != osym {
-                    crate::HFST_THROW!(TransducersAreNotAutomata);
+                    crate::bail!(TransducersAreNotAutomata);
                 }
                 symbols_present.insert(isym);
             }
@@ -3489,7 +3575,7 @@ impl HfstBasicTransducer {
             }
             current_state += 1;
         }
-        self
+        Ok(self)
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-flags-fn]
@@ -3569,11 +3655,11 @@ impl HfstBasicTransducer {
         &mut self,
         substitution_map: &mut SubstMap,
         harmonize: bool,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         let mut symbol_found = false;
         for (first, _) in substitution_map.iter() {
             if !HfstTropicalTransducerTransitionData::is_valid_symbol(first) {
-                crate::HFST_THROW_MESSAGE!(
+                crate::bail!(
                     EmptyString,
                     "HfstBasicTransducer::substitute (const std::map<HfstSymbol, HfstBasicTransducer> &)"
                 );
@@ -3585,7 +3671,7 @@ impl HfstBasicTransducer {
 
         // If none of the symbols is known to the graph, do nothing.
         if !symbol_found {
-            return self;
+            return Ok(self);
         }
 
         let mut substitutions_performed_for_symbols: StringSet = BTreeSet::new();
@@ -3606,13 +3692,15 @@ impl HfstBasicTransducer {
                     let msg = "symbol to be substituted must not occur only on one side of \
                                transition"
                         .to_string();
-                    crate::HFST_THROW_MESSAGE!(Hfst, msg);
+                    crate::bail!(Hfst, msg);
                 } else {
                     let target = self.state_vector[s][j].get_target_state();
                     let weight = self.state_vector[s][j].get_weight();
                     // raw pointer into the map value (the substituting graph)
-                    let graph_ptr =
-                        substitution_map.get(&istr).unwrap() as *const HfstBasicTransducer;
+                    let graph_ptr = substitution_map
+                        .get(&istr)
+                        .expect("istr was just confirmed present via contains_key")
+                        as *const HfstBasicTransducer;
                     substitutions.push(substitution_data::new(
                         s as HfstState,
                         target,
@@ -3641,7 +3729,9 @@ impl HfstBasicTransducer {
         // Harmonize the resulting and the substituting graphs, if needed.
         if harmonize {
             for sym_it in substitutions_performed_for_symbols.iter() {
-                let graph = substitution_map.get_mut(sym_it).unwrap();
+                let graph = substitution_map
+                    .get_mut(sym_it)
+                    .expect("sym_it is a key drawn from substitution_map");
                 self.harmonize(graph);
             }
         }
@@ -3650,7 +3740,7 @@ impl HfstBasicTransducer {
         for substitution in substitutions.iter() {
             self.add_substitution(substitution);
         }
-        self
+        Ok(self)
     }
 
     // --- Topological sort / path sizes ---
@@ -3769,7 +3859,9 @@ impl HfstBasicTransducer {
         }
         state_weights.insert(state, total_weight);
 
-        let transitions = self.index(state);
+        let transitions = self
+            .index(state)
+            .expect("state is a valid state reached during the walk");
         for transition in transitions.iter() {
             if is_epsilon(&transition.get_input_symbol(&self.coder))
                 && is_epsilon(&transition.get_output_symbol(&self.coder))
@@ -3826,7 +3918,9 @@ impl HfstBasicTransducer {
             return false;
         }
 
-        let transitions = self.index(state);
+        let transitions = self
+            .index(state)
+            .expect("state is a valid state reached during the walk");
         for transition in transitions.iter() {
             // Diacritics are also treated as epsilons (may yield false positives).
             if is_epsilon(&transition.get_input_symbol(&self.coder))
@@ -3906,7 +4000,9 @@ impl HfstBasicTransducer {
             only_epsilons = true;
         }
 
-        let transitions = self.index(state);
+        let transitions = self
+            .index(state)
+            .expect("state is a valid state reached during the walk");
         for transition in transitions.iter() {
             // CASE 1: input epsilons (and flags) do not consume a path symbol.
             let in_sym = transition.get_input_symbol(&self.coder);
@@ -4156,12 +4252,15 @@ impl HfstBasicTransducer {
             Self::add_to_results(
                 results,
                 path_so_far,
-                self.get_final_weight(state),
+                self.get_final_weight(state)
+                    .expect("state was confirmed final via is_final_state"),
                 max_weight,
             );
         }
 
-        let transitions = self.index(state);
+        let transitions = self
+            .index(state)
+            .expect("state is a valid state reached during the walk");
         for transition in transitions.iter() {
             let mut input_symbol_consumed = false;
             if Self::is_possible_transition(
@@ -4300,7 +4399,9 @@ impl HfstBasicTransducer {
         Self::check_regexp_state_for_cycle(s, states_visited);
         states_visited.insert(s);
 
-        let transitions = self.index(s);
+        let transitions = self
+            .index(s)
+            .expect("s is a valid state reached during the walk");
         for transition in transitions.iter() {
             // closing bracket
             if Self::check_regexp_transition_end(transition, input_side, &self.coder) {
@@ -4336,7 +4437,9 @@ impl HfstBasicTransducer {
         full_paths: &mut HfstReplacements,
         input_side: bool,
     ) {
-        let transitions = self.index(s);
+        let transitions = self
+            .index(s)
+            .expect("s is a valid state reached during the walk");
         for transition in transitions.iter() {
             let istr = transition.get_input_symbol(&self.coder);
             let ostr = transition.get_output_symbol(&self.coder);
@@ -4555,7 +4658,12 @@ impl HfstBasicTransducer {
         );
         intersection.add_transition(state, &tr, true);
         if was_new_state && (graph1.is_final_state(target1) && graph2.is_final_state(target2)) {
-            let final_weight = graph1.get_final_weight(target1) + graph2.get_final_weight(target2);
+            let final_weight = graph1
+                .get_final_weight(target1)
+                .expect("state was confirmed final via is_final_state")
+                + graph2
+                    .get_final_weight(target2)
+                    .expect("state was confirmed final via is_final_state");
             intersection.set_final_weight(retval, &final_weight);
         }
         retval
@@ -4639,7 +4747,14 @@ impl HfstBasicTransducer {
         state_map.insert((0, 0), 0); // initial states
 
         if graph1.is_final_state(0) && graph2.is_final_state(0) {
-            let final_weight = graph1.get_final_weight(0).min(graph2.get_final_weight(0));
+            let final_weight = graph1
+                .get_final_weight(0)
+                .expect("state was confirmed final via is_final_state")
+                .min(
+                    graph2
+                        .get_final_weight(0)
+                        .expect("state was confirmed final via is_final_state"),
+                );
             retval.set_final_weight(0, &final_weight);
         }
 
@@ -4692,8 +4807,12 @@ impl HfstBasicTransducer {
         if was_new_state
             && (graph.is_final_state(graph_target) && merger.is_final_state(merger_target))
         {
-            let final_weight =
-                graph.get_final_weight(graph_target) + merger.get_final_weight(merger_target);
+            let final_weight = graph
+                .get_final_weight(graph_target)
+                .expect("state was confirmed final via is_final_state")
+                + merger
+                    .get_final_weight(merger_target)
+                    .expect("state was confirmed final via is_final_state");
             result.set_final_weight(retval, &final_weight);
         }
         retval
@@ -4752,8 +4871,12 @@ impl HfstBasicTransducer {
         if was_new_state
             && (graph.is_final_state(graph_target) && merger.is_final_state(merger_target))
         {
-            let final_weight =
-                graph.get_final_weight(graph_target) + merger.get_final_weight(merger_target);
+            let final_weight = graph
+                .get_final_weight(graph_target)
+                .expect("state was confirmed final via is_final_state")
+                + merger
+                    .get_final_weight(merger_target)
+                    .expect("state was confirmed final via is_final_state");
             result.set_final_weight(retval, &final_weight);
         }
         retval
@@ -4888,7 +5011,7 @@ impl HfstBasicTransducer {
         merger: &mut HfstBasicTransducer,
         list_symbols: &BTreeMap<String, BTreeSet<String>>,
         markers_added: &mut BTreeSet<String>,
-    ) -> HfstBasicTransducer {
+    ) -> crate::error::Result<HfstBasicTransducer> {
         let mut result = HfstBasicTransducer::new();
         let mut state_map: StateMap = BTreeMap::new();
         let mut agenda: BTreeSet<HfstState> = BTreeSet::new();
@@ -4897,7 +5020,7 @@ impl HfstBasicTransducer {
         state_map.insert((0, 0), 0); // initial states
 
         if graph.is_final_state(0) && merger.is_final_state(0) {
-            let final_weight = graph.get_final_weight(0) + merger.get_final_weight(0);
+            let final_weight = graph.get_final_weight(0)? + merger.get_final_weight(0)?;
             result.set_final_weight(0, &final_weight);
         }
 
@@ -4928,10 +5051,10 @@ impl HfstBasicTransducer {
             } else {
                 std::panic::resume_unwind(e)
             };
-            crate::HFST_THROW_MESSAGE!(TransducersAreNotAutomata, msg);
+            crate::bail!(TransducersAreNotAutomata, msg);
         }
 
-        result
+        Ok(result)
     }
 }
 

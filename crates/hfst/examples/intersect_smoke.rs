@@ -6,7 +6,7 @@ fn arc(g: &mut HfstBasicTransducer, from: u32, to: u32, i: &str, o: &str) {
     g.add_transition(from, &tr, true);
 }
 
-fn main() {
+fn main() -> hfst::error::Result<()> {
     // g1 = [a:a]
     let mut g1 = HfstBasicTransducer::new();
     arc(&mut g1, 0, 1, "a", "a");
@@ -21,10 +21,11 @@ fn main() {
     let result = HfstBasicTransducer::intersect(&mut g1, &mut g2);
 
     // intersection keeps only a:a (the common transition)
-    let t = result.transitions(0);
+    let t = result.transitions(0)?;
     assert_eq!(t.len(), 1, "expected one transition, got {}", t.len());
     assert_eq!(t[0].get_input_symbol(result.coder()), "a");
     assert_eq!(t[0].get_output_symbol(result.coder()), "a");
     assert!(result.is_final_state(t[0].get_target_state()));
     println!("intersect OK (only a:a kept)");
+    Ok(())
 }

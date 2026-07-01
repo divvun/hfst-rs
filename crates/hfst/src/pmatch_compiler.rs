@@ -380,19 +380,23 @@ pub trait PmatchObject {
         &mut self,
         allowed: &mut StringSet,
         disallowed: &mut StringSet,
-    ) {
+    ) -> crate::error::Result<()> {
+        Ok(())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.get-real-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.get-real-initial-symbols-fn]
-    fn get_real_initial_symbols(&mut self) -> StringSet {
-        StringSet::new()
+    fn get_real_initial_symbols(&mut self) -> crate::error::Result<StringSet> {
+        Ok(StringSet::new())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.get-real-initial-symbols-from-right-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.get-real-initial-symbols-from-right-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.get-real-initial-symbols-from-right-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-real-initial-symbols-from-right-fn]
-    fn get_real_initial_symbols_from_right(&mut self, ctx: &mut PmatchEvalContext) -> StringSet {
-        StringSet::new()
+    fn get_real_initial_symbols_from_right(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<StringSet> {
+        Ok(StringSet::new())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.is-left-concatenation-with-context-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.is-left-concatenation-with-context-fn]
@@ -419,32 +423,45 @@ pub trait PmatchObject {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.get-initial-symbols-from-unary-root-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.get-initial-symbols-from-unary-root-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-initial-symbols-from-unary-root-fn]
-    fn get_initial_symbols_from_unary_root(&mut self, ctx: &mut PmatchEvalContext) -> StringSet {
-        StringSet::new()
+    fn get_initial_symbols_from_unary_root(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<StringSet> {
+        Ok(StringSet::new())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.get-initial-rc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.get-initial-rc-initial-symbols-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.get-initial-rc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-initial-rc-initial-symbols-fn]
-    fn get_initial_RC_initial_symbols(&mut self, ctx: &mut PmatchEvalContext) -> StringSet {
-        StringSet::new()
+    fn get_initial_RC_initial_symbols(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<StringSet> {
+        Ok(StringSet::new())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-initial-nrc-initial-symbols-fn]
-    fn get_initial_NRC_initial_symbols(&mut self, ctx: &mut PmatchEvalContext) -> StringSet {
-        StringSet::new()
+    fn get_initial_NRC_initial_symbols(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<StringSet> {
+        Ok(StringSet::new())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.expand-ins-arcs-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.expand-ins-arcs-fn]
     fn expand_Ins_arcs(&mut self, ss: &mut StringSet) {}
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-fn]
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer;
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer>;
     /// The C++ overload 'evaluate(std::vector<PmatchObject*> args)' (base
     /// default).
-    fn evaluate_args(&mut self, ctx: &mut PmatchEvalContext, args: Vec<ObjRef>) -> HfstTransducer {
+    fn evaluate_args(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+        args: Vec<ObjRef>,
+    ) -> crate::error::Result<HfstTransducer> {
         self.evaluate(ctx)
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-as-arg-fn]
@@ -649,7 +666,10 @@ pub trait PmatchObjectPairBase {
     fn set_right(&mut self, r: ObjRef) {}
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object-pair.evaluate-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object-pair.evaluate-pair-fn]
-    fn evaluate_pair(&mut self, ctx: &mut PmatchEvalContext) -> TransducerPointerPair {
+    fn evaluate_pair(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<TransducerPointerPair> {
         panic!("evaluate_pair called on a PmatchObject that is not a pair")
     }
 }
@@ -1495,9 +1515,12 @@ impl PmatchEvalContext {
     // The cache is constructed on first use. The utility methods invoked inside
     // 'f' never re-enter 'with_utils', so the '&mut self' borrow held across 'f'
     // cannot double-borrow.
-    fn with_utils<R>(&mut self, f: impl FnOnce(&mut PmatchUtilityTransducers) -> R) -> R {
+    fn with_utils<R>(
+        &mut self,
+        f: impl FnOnce(&mut PmatchUtilityTransducers) -> crate::error::Result<R>,
+    ) -> crate::error::Result<R> {
         if self.utils_.is_none() {
-            self.utils_ = Some(PmatchUtilityTransducers::new());
+            self.utils_ = Some(PmatchUtilityTransducers::new()?);
         }
         f(self.utils_.as_mut().unwrap())
     }
@@ -1510,7 +1533,9 @@ impl PmatchEvalContext {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-minimization-guard-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-minimization-guard-fn]
-    fn make_minimization_guard(&mut self) -> Rc<RefCell<PmatchTransducerContainer>> {
+    fn make_minimization_guard(
+        &mut self,
+    ) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
         let mut guard = String::new();
         if self.minimization_guard_count_ == 0 {
             guard.push_str(internal_epsilon);
@@ -1554,16 +1579,19 @@ pub fn add_to_pmatch_symbols(symbols: StringSet) {
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.acceptor-from-cstr-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.acceptor-from-cstr-fn]
-pub fn acceptor_from_cstr(strings: &[&str], type_: ImplementationType) -> HfstTransducer {
-    let mut retval: HfstTransducer = HfstTransducer::new_type(type_);
+pub fn acceptor_from_cstr(
+    strings: &[&str],
+    type_: ImplementationType,
+) -> crate::error::Result<HfstTransducer> {
+    let mut retval: HfstTransducer = HfstTransducer::new_type(type_)?;
     let mut i = 0;
     while i < array_len(strings) {
-        let tmp = HfstTransducer::new_symbol(strings[i], type_);
-        retval.disjunct(&tmp, true);
+        let tmp = HfstTransducer::new_symbol(strings[i], type_)?;
+        retval.disjunct(&tmp, true)?;
         i += 1;
     }
-    retval.minimize();
-    retval
+    retval.minimize()?;
+    Ok(retval)
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.array-len-fn]
@@ -1594,113 +1622,121 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.pmatch-utility-transducers-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.pmatch-utility-transducers-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.pmatch-utility-transducers-fn]
-    pub fn new() -> PmatchUtilityTransducers {
+    pub fn new() -> crate::error::Result<PmatchUtilityTransducers> {
         let mut retval = PmatchUtilityTransducers {
             latin1_acceptor: PmatchUtilityTransducers::make_latin1_acceptor(
                 ImplementationType::TROPICAL_OPENFST_TYPE,
-            ),
+            )?,
             latin1_alpha_acceptor: PmatchUtilityTransducers::make_latin1_alpha_acceptor(
                 ImplementationType::TROPICAL_OPENFST_TYPE,
-            ),
+            )?,
             latin1_lowercase_acceptor: PmatchUtilityTransducers::make_latin1_lowercase_acceptor(
                 ImplementationType::TROPICAL_OPENFST_TYPE,
-            ),
+            )?,
             latin1_uppercase_acceptor: PmatchUtilityTransducers::make_latin1_uppercase_acceptor(
                 ImplementationType::TROPICAL_OPENFST_TYPE,
-            ),
+            )?,
             combining_accent_acceptor: PmatchUtilityTransducers::make_combining_accent_acceptor(
                 ImplementationType::TROPICAL_OPENFST_TYPE,
-            ),
+            )?,
             latin1_numeral_acceptor: PmatchUtilityTransducers::make_latin1_numeral_acceptor(
                 ImplementationType::TROPICAL_OPENFST_TYPE,
-            ),
+            )?,
             latin1_punct_acceptor: PmatchUtilityTransducers::make_latin1_punct_acceptor(
                 ImplementationType::TROPICAL_OPENFST_TYPE,
-            ),
+            )?,
             latin1_whitespace_acceptor: PmatchUtilityTransducers::make_latin1_whitespace_acceptor(
                 ImplementationType::TROPICAL_OPENFST_TYPE,
-            ),
-            capify: HfstTransducer::new_type(ImplementationType::TROPICAL_OPENFST_TYPE),
-            lowerfy: HfstTransducer::new_type(ImplementationType::TROPICAL_OPENFST_TYPE),
+            )?,
+            capify: HfstTransducer::new_type(ImplementationType::TROPICAL_OPENFST_TYPE)?,
+            lowerfy: HfstTransducer::new_type(ImplementationType::TROPICAL_OPENFST_TYPE)?,
         };
-        retval.lowerfy = retval.make_lowerfy(ImplementationType::TROPICAL_OPENFST_TYPE);
-        retval.capify = retval.make_capify(ImplementationType::TROPICAL_OPENFST_TYPE);
-        retval
+        retval.lowerfy = retval.make_lowerfy(ImplementationType::TROPICAL_OPENFST_TYPE)?;
+        retval.capify = retval.make_capify(ImplementationType::TROPICAL_OPENFST_TYPE)?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-acceptor-fn]
-    pub fn make_latin1_acceptor(type_: ImplementationType) -> HfstTransducer {
+    pub fn make_latin1_acceptor(type_: ImplementationType) -> crate::error::Result<HfstTransducer> {
         let mut retval: HfstTransducer = PmatchUtilityTransducers::make_latin1_alpha_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
-        );
+        )?;
         let mut tmp: HfstTransducer = PmatchUtilityTransducers::make_latin1_numeral_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
-        );
-        retval.disjunct(&tmp, true);
+        )?;
+        retval.disjunct(&tmp, true)?;
         tmp = PmatchUtilityTransducers::make_latin1_punct_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
-        );
-        retval.disjunct(&tmp, true);
+        )?;
+        retval.disjunct(&tmp, true)?;
         tmp = PmatchUtilityTransducers::make_latin1_whitespace_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
-        );
-        retval.disjunct(&tmp, true);
-        retval.minimize();
-        retval
+        )?;
+        retval.disjunct(&tmp, true)?;
+        retval.minimize()?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
-    pub fn make_latin1_alpha_acceptor(type_: ImplementationType) -> HfstTransducer {
+    pub fn make_latin1_alpha_acceptor(
+        type_: ImplementationType,
+    ) -> crate::error::Result<HfstTransducer> {
         let mut retval: HfstTransducer = PmatchUtilityTransducers::make_latin1_lowercase_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
-        );
+        )?;
         let tmp: HfstTransducer = PmatchUtilityTransducers::make_latin1_uppercase_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
-        );
-        retval.disjunct(&tmp, true);
-        retval.minimize();
-        retval
+        )?;
+        retval.disjunct(&tmp, true)?;
+        retval.minimize()?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
-    pub fn make_latin1_lowercase_acceptor(type_: ImplementationType) -> HfstTransducer {
-        let mut retval: HfstTransducer = acceptor_from_cstr(latin1_lower, type_);
+    pub fn make_latin1_lowercase_acceptor(
+        type_: ImplementationType,
+    ) -> crate::error::Result<HfstTransducer> {
+        let mut retval: HfstTransducer = acceptor_from_cstr(latin1_lower, type_)?;
         let tmp: HfstTransducer = PmatchUtilityTransducers::make_combining_accent_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
-        );
-        retval.disjunct(&tmp, true);
-        retval.minimize();
-        retval
+        )?;
+        retval.disjunct(&tmp, true)?;
+        retval.minimize()?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
-    pub fn make_latin1_uppercase_acceptor(type_: ImplementationType) -> HfstTransducer {
-        let mut retval: HfstTransducer = acceptor_from_cstr(latin1_upper, type_);
+    pub fn make_latin1_uppercase_acceptor(
+        type_: ImplementationType,
+    ) -> crate::error::Result<HfstTransducer> {
+        let mut retval: HfstTransducer = acceptor_from_cstr(latin1_upper, type_)?;
         let tmp: HfstTransducer = PmatchUtilityTransducers::make_combining_accent_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
-        );
-        retval.disjunct(&tmp, true);
-        retval.minimize();
-        retval
+        )?;
+        retval.disjunct(&tmp, true)?;
+        retval.minimize()?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
-    pub fn make_combining_accent_acceptor(type_: ImplementationType) -> HfstTransducer {
+    pub fn make_combining_accent_acceptor(
+        type_: ImplementationType,
+    ) -> crate::error::Result<HfstTransducer> {
         acceptor_from_cstr(combining_accents, type_)
     }
 
@@ -1708,21 +1744,25 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
-    pub fn make_latin1_numeral_acceptor(type_: ImplementationType) -> HfstTransducer {
-        let mut retval: HfstTransducer = HfstTransducer::new_type(type_);
+    pub fn make_latin1_numeral_acceptor(
+        type_: ImplementationType,
+    ) -> crate::error::Result<HfstTransducer> {
+        let mut retval: HfstTransducer = HfstTransducer::new_type(type_)?;
         let num: String = "0123456789".to_string();
         for it in num.chars() {
-            retval.disjunct(&HfstTransducer::new_symbol(&it.to_string(), type_), true);
+            retval.disjunct(&HfstTransducer::new_symbol(&it.to_string(), type_)?, true)?;
         }
         // retval->minimize(); ?
-        retval
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
-    pub fn make_latin1_punct_acceptor(type_: ImplementationType) -> HfstTransducer {
+    pub fn make_latin1_punct_acceptor(
+        type_: ImplementationType,
+    ) -> crate::error::Result<HfstTransducer> {
         acceptor_from_cstr(latin1_punct, type_)
     }
 
@@ -1730,7 +1770,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
-    pub fn make_latin1_whitespace_acceptor(type_: ImplementationType) -> HfstTransducer {
+    pub fn make_latin1_whitespace_acceptor(
+        type_: ImplementationType,
+    ) -> crate::error::Result<HfstTransducer> {
         acceptor_from_cstr(latin1_whitespace, type_)
     }
 
@@ -1738,44 +1780,52 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-capify-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-capify-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-capify-fn]
-    pub fn make_capify(&mut self, type_: ImplementationType) -> HfstTransducer {
-        let mut retval: HfstTransducer = HfstTransducer::new_type(type_);
+    pub fn make_capify(
+        &mut self,
+        type_: ImplementationType,
+    ) -> crate::error::Result<HfstTransducer> {
+        let mut retval: HfstTransducer = HfstTransducer::new_type(type_)?;
         let tok: HfstTokenizer = HfstTokenizer::new();
         let mut i: usize = 0;
         while i < array_len(latin1_upper) {
             retval.disjunct(
-                &HfstTransducer::new_tokenized_pair(latin1_lower[i], latin1_upper[i], &tok, type_),
+                &HfstTransducer::new_tokenized_pair(latin1_lower[i], latin1_upper[i], &tok, type_)?,
                 true,
-            );
+            )?;
             i += 1;
         }
-        let mut accents: HfstTransducer = HfstTransducer::new_copy(&self.combining_accent_acceptor);
-        accents.optionalize();
-        retval.concatenate(&accents, true);
-        retval.minimize();
-        retval
+        let mut accents: HfstTransducer =
+            HfstTransducer::new_copy(&self.combining_accent_acceptor)?;
+        accents.optionalize()?;
+        retval.concatenate(&accents, true)?;
+        retval.minimize()?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-lowerfy-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-lowerfy-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-lowerfy-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-lowerfy-fn]
-    pub fn make_lowerfy(&mut self, type_: ImplementationType) -> HfstTransducer {
-        let mut retval: HfstTransducer = HfstTransducer::new_type(type_);
+    pub fn make_lowerfy(
+        &mut self,
+        type_: ImplementationType,
+    ) -> crate::error::Result<HfstTransducer> {
+        let mut retval: HfstTransducer = HfstTransducer::new_type(type_)?;
         let tok: HfstTokenizer = HfstTokenizer::new();
         let mut i: usize = 0;
         while i < array_len(latin1_upper) {
             retval.disjunct(
-                &HfstTransducer::new_tokenized_pair(latin1_upper[i], latin1_lower[i], &tok, type_),
+                &HfstTransducer::new_tokenized_pair(latin1_upper[i], latin1_lower[i], &tok, type_)?,
                 true,
-            );
+            )?;
             i += 1;
         }
-        let mut accents: HfstTransducer = HfstTransducer::new_copy(&self.combining_accent_acceptor);
-        accents.optionalize();
-        retval.concatenate(&accents, true);
-        retval.minimize();
-        retval
+        let mut accents: HfstTransducer =
+            HfstTransducer::new_copy(&self.combining_accent_acceptor)?;
+        accents.optionalize()?;
+        retval.concatenate(&accents, true)?;
+        retval.minimize()?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.get-lowercase-acceptor-from-transducer-fn]
@@ -1785,20 +1835,20 @@ impl PmatchUtilityTransducers {
     pub fn get_lowercase_acceptor_from_transducer(
         &mut self,
         t: &mut HfstTransducer,
-    ) -> HfstTransducer {
-        let mut lowercase: HfstTransducer = HfstTransducer::new_type(t.get_type());
-        let ss: StringSet = t.get_alphabet();
+    ) -> crate::error::Result<HfstTransducer> {
+        let mut lowercase: HfstTransducer = HfstTransducer::new_type(t.get_type())?;
+        let ss: StringSet = t.get_alphabet()?;
         for it in ss.iter() {
             let us: Vec<char> = it.chars().collect();
             if us.len() == 1 {
                 if icu::properties::CodePointSetData::new::<icu::properties::props::Lowercase>()
                     .contains(us[0])
                 {
-                    lowercase.disjunct(&HfstTransducer::new_symbol(it, t.get_type()), true);
+                    lowercase.disjunct(&HfstTransducer::new_symbol(it, t.get_type())?, true)?;
                 }
             }
         }
-        lowercase
+        Ok(lowercase)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.get-uppercase-acceptor-from-transducer-fn]
@@ -1808,29 +1858,32 @@ impl PmatchUtilityTransducers {
     pub fn get_uppercase_acceptor_from_transducer(
         &mut self,
         t: &mut HfstTransducer,
-    ) -> HfstTransducer {
-        let mut uppercase: HfstTransducer = HfstTransducer::new_type(t.get_type());
-        let ss: StringSet = t.get_alphabet();
+    ) -> crate::error::Result<HfstTransducer> {
+        let mut uppercase: HfstTransducer = HfstTransducer::new_type(t.get_type())?;
+        let ss: StringSet = t.get_alphabet()?;
         for it in ss.iter() {
             let us: Vec<char> = it.chars().collect();
             if us.len() == 1 {
                 if icu::properties::CodePointSetData::new::<icu::properties::props::Uppercase>()
                     .contains(us[0])
                 {
-                    uppercase.disjunct(&HfstTransducer::new_symbol(it, t.get_type()), true);
+                    uppercase.disjunct(&HfstTransducer::new_symbol(it, t.get_type())?, true)?;
                 }
             }
         }
-        uppercase
+        Ok(uppercase)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.lowercaser-from-transducer-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.lowercaser-from-transducer-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.lowercaser-from-transducer-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.lowercaser-from-transducer-fn]
-    pub fn lowercaser_from_transducer(&mut self, t: &mut HfstTransducer) -> HfstTransducer {
-        let mut lowercase: HfstTransducer = HfstTransducer::new_type(t.get_type());
-        let ss: StringSet = t.get_alphabet();
+    pub fn lowercaser_from_transducer(
+        &mut self,
+        t: &mut HfstTransducer,
+    ) -> crate::error::Result<HfstTransducer> {
+        let mut lowercase: HfstTransducer = HfstTransducer::new_type(t.get_type())?;
+        let ss: StringSet = t.get_alphabet()?;
         let mut uppercases_seen: StringSet = StringSet::new();
         for it in ss.iter() {
             let us: Vec<char> = it.chars().collect();
@@ -1850,22 +1903,25 @@ impl PmatchUtilityTransducers {
                         .lowercase_to_string(it, &icu::locale::LanguageIdentifier::UNKNOWN)
                         .into_owned();
                     lowercase.disjunct(
-                        &HfstTransducer::new_symbol_pair(&upper, &lower, t.get_type()),
+                        &HfstTransducer::new_symbol_pair(&upper, &lower, t.get_type())?,
                         true,
-                    );
+                    )?;
                 }
             }
         }
-        lowercase
+        Ok(lowercase)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.uppercaser-from-transducer-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.uppercaser-from-transducer-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.uppercaser-from-transducer-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.uppercaser-from-transducer-fn]
-    pub fn uppercaser_from_transducer(&mut self, t: &mut HfstTransducer) -> HfstTransducer {
-        let mut uppercase: HfstTransducer = HfstTransducer::new_type(t.get_type());
-        let ss: StringSet = t.get_alphabet();
+    pub fn uppercaser_from_transducer(
+        &mut self,
+        t: &mut HfstTransducer,
+    ) -> crate::error::Result<HfstTransducer> {
+        let mut uppercase: HfstTransducer = HfstTransducer::new_type(t.get_type())?;
+        let ss: StringSet = t.get_alphabet()?;
         let mut uppercases_seen: StringSet = StringSet::new();
         for it in ss.iter() {
             let us: Vec<char> = it.chars().collect();
@@ -1885,20 +1941,25 @@ impl PmatchUtilityTransducers {
                         .lowercase_to_string(it, &icu::locale::LanguageIdentifier::UNKNOWN)
                         .into_owned();
                     uppercase.disjunct(
-                        &HfstTransducer::new_symbol_pair(&lower, &upper, t.get_type()),
+                        &HfstTransducer::new_symbol_pair(&lower, &upper, t.get_type())?,
                         true,
-                    );
+                    )?;
                 }
             }
         }
-        uppercase
+        Ok(uppercase)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.cap-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.cap-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.cap-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.cap-fn]
-    pub fn cap(&mut self, t: &mut HfstTransducer, side: Side, optional: bool) -> HfstTransducer {
+    pub fn cap(
+        &mut self,
+        t: &mut HfstTransducer,
+        side: Side,
+        optional: bool,
+    ) -> crate::error::Result<HfstTransducer> {
         // This is to match flags in t with ?'s in "anything": these composes run
         // with Xerox-style composition enabled.
         let cfg = crate::hfst_transducer::EngineConfig {
@@ -1907,80 +1968,80 @@ impl PmatchUtilityTransducers {
         };
 
         let mut retval: HfstTransducer;
-        let mut cap: HfstTransducer = self.uppercaser_from_transducer(t);
-        let mut decap: HfstTransducer = HfstTransducer::new_copy(&cap);
-        decap.invert();
+        let mut cap: HfstTransducer = self.uppercaser_from_transducer(t)?;
+        let mut decap: HfstTransducer = HfstTransducer::new_copy(&cap)?;
+        decap.invert()?;
         let mut anything: HfstTransducer = HfstTransducer::identity_pair(t.get_type());
-        let mut anything_but_whitespace_star: HfstTransducer = HfstTransducer::new_copy(&anything);
-        anything_but_whitespace_star.subtract(&self.latin1_whitespace_acceptor, true);
-        anything_but_whitespace_star.repeat_star();
+        let mut anything_but_whitespace_star: HfstTransducer = HfstTransducer::new_copy(&anything)?;
+        anything_but_whitespace_star.subtract(&self.latin1_whitespace_acceptor, true)?;
+        anything_but_whitespace_star.repeat_star()?;
         if optional == false {
             // don't let lowercased first letters through
-            anything.subtract(&self.get_lowercase_acceptor_from_transducer(t), true);
+            anything.subtract(&self.get_lowercase_acceptor_from_transducer(t)?, true)?;
         }
         // As in the regexp
         // [[[["A":"a" [[\" "]* (" " "A":"a")]* ] .o. [{ab ad}:{ef eh}].u]] .o.
         //   [{ab ad}:{ef eh}] ] .o. [[{ab ad}:{ef eh}].l] .o.
         //   ["e":"E" [[\" "]+ (" " "e":"E")]*]
         if side == Side::Lower {
-            retval = HfstTransducer::new_copy(t);
-            cap.disjunct(&anything, true);
+            retval = HfstTransducer::new_copy(t)?;
+            cap.disjunct(&anything, true)?;
             // Cap is the first letter to either capitalize or accept if it's not a
             // lowercase letter
             let mut continuation: HfstTransducer =
-                HfstTransducer::new_copy(&anything_but_whitespace_star);
+                HfstTransducer::new_copy(&anything_but_whitespace_star)?;
             // continuation is the rest of the first word
             let mut more_caps: HfstTransducer =
-                HfstTransducer::new_copy(&self.latin1_whitespace_acceptor);
+                HfstTransducer::new_copy(&self.latin1_whitespace_acceptor)?;
             // more_caps is more words to capitalize
-            more_caps.concatenate(&cap, true);
-            more_caps.optionalize();
-            continuation.concatenate(&more_caps, true);
-            continuation.repeat_star();
-            cap.concatenate(&continuation, true);
-            retval.compose_with_config(&cap, true, &cfg);
+            more_caps.concatenate(&cap, true)?;
+            more_caps.optionalize()?;
+            continuation.concatenate(&more_caps, true)?;
+            continuation.repeat_star()?;
+            cap.concatenate(&continuation, true)?;
+            retval.compose_with_config(&cap, true, &cfg)?;
         } else if side == Side::Upper {
-            decap.disjunct(&anything, true);
+            decap.disjunct(&anything, true)?;
             let mut continuation: HfstTransducer =
-                HfstTransducer::new_copy(&anything_but_whitespace_star);
+                HfstTransducer::new_copy(&anything_but_whitespace_star)?;
             let mut more_decaps: HfstTransducer =
-                HfstTransducer::new_copy(&self.latin1_whitespace_acceptor);
-            more_decaps.concatenate(&decap, true);
-            more_decaps.optionalize();
-            continuation.concatenate(&more_decaps, true);
-            continuation.repeat_star();
-            retval = HfstTransducer::new_copy(&decap);
-            retval.concatenate(&continuation, true);
-            retval.compose_with_config(t, true, &cfg);
+                HfstTransducer::new_copy(&self.latin1_whitespace_acceptor)?;
+            more_decaps.concatenate(&decap, true)?;
+            more_decaps.optionalize()?;
+            continuation.concatenate(&more_decaps, true)?;
+            continuation.repeat_star()?;
+            retval = HfstTransducer::new_copy(&decap)?;
+            retval.concatenate(&continuation, true)?;
+            retval.compose_with_config(t, true, &cfg)?;
         } else {
             // both
-            decap.disjunct(&anything, true);
+            decap.disjunct(&anything, true)?;
             let mut continuation: HfstTransducer =
-                HfstTransducer::new_copy(&anything_but_whitespace_star);
+                HfstTransducer::new_copy(&anything_but_whitespace_star)?;
             let mut more_decaps: HfstTransducer =
-                HfstTransducer::new_copy(&self.latin1_whitespace_acceptor);
-            more_decaps.concatenate(&decap, true);
-            more_decaps.optionalize();
-            continuation.concatenate(&more_decaps, true);
-            continuation.repeat_star();
-            retval = HfstTransducer::new_copy(&decap);
-            retval.concatenate(&continuation, true);
-            retval.compose_with_config(t, true, &cfg);
+                HfstTransducer::new_copy(&self.latin1_whitespace_acceptor)?;
+            more_decaps.concatenate(&decap, true)?;
+            more_decaps.optionalize()?;
+            continuation.concatenate(&more_decaps, true)?;
+            continuation.repeat_star()?;
+            retval = HfstTransducer::new_copy(&decap)?;
+            retval.concatenate(&continuation, true)?;
+            retval.compose_with_config(t, true, &cfg)?;
             let mut continuation2: HfstTransducer =
-                HfstTransducer::new_copy(&anything_but_whitespace_star);
+                HfstTransducer::new_copy(&anything_but_whitespace_star)?;
             let mut more_caps: HfstTransducer =
-                HfstTransducer::new_copy(&self.latin1_whitespace_acceptor);
-            cap.disjunct(&anything, true);
-            more_caps.concatenate(&cap, true);
-            more_caps.optionalize();
-            continuation2.concatenate(&more_caps, true);
-            continuation2.repeat_star();
-            cap.concatenate(&continuation2, true);
-            retval.compose_with_config(&cap, true, &cfg);
-            retval.output_project();
+                HfstTransducer::new_copy(&self.latin1_whitespace_acceptor)?;
+            cap.disjunct(&anything, true)?;
+            more_caps.concatenate(&cap, true)?;
+            more_caps.optionalize()?;
+            continuation2.concatenate(&more_caps, true)?;
+            continuation2.repeat_star()?;
+            cap.concatenate(&continuation2, true)?;
+            retval.compose_with_config(&cap, true, &cfg)?;
+            retval.output_project()?;
         }
-        retval.minimize();
-        retval
+        retval.minimize()?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.tolower-fn]
@@ -1992,7 +2053,7 @@ impl PmatchUtilityTransducers {
         t: &mut HfstTransducer,
         side: Side,
         optional: bool,
-    ) -> HfstTransducer {
+    ) -> crate::error::Result<HfstTransducer> {
         // This is to match flags in t with ?'s in "anything": these composes run
         // with Xerox-style composition enabled.
         let cfg = crate::hfst_transducer::EngineConfig {
@@ -2001,35 +2062,35 @@ impl PmatchUtilityTransducers {
         };
 
         let mut anything: HfstTransducer =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, t.get_type());
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, t.get_type())?;
         if optional == false {
-            anything.subtract(&self.get_uppercase_acceptor_from_transducer(t), true);
+            anything.subtract(&self.get_uppercase_acceptor_from_transducer(t)?, true)?;
         }
         let mut retval: HfstTransducer;
         if side == Side::Lower {
-            let mut lowercase: HfstTransducer = self.lowercaser_from_transducer(t);
-            lowercase.disjunct(&anything, true);
-            lowercase.repeat_star();
-            retval = HfstTransducer::new_copy(t);
-            retval.compose_with_config(&lowercase, true, &cfg);
+            let mut lowercase: HfstTransducer = self.lowercaser_from_transducer(t)?;
+            lowercase.disjunct(&anything, true)?;
+            lowercase.repeat_star()?;
+            retval = HfstTransducer::new_copy(t)?;
+            retval.compose_with_config(&lowercase, true, &cfg)?;
         } else if side == Side::Upper {
-            retval = self.uppercaser_from_transducer(t);
-            retval.disjunct(&anything, true);
-            retval.repeat_star();
-            retval.compose_with_config(t, true, &cfg);
+            retval = self.uppercaser_from_transducer(t)?;
+            retval.disjunct(&anything, true)?;
+            retval.repeat_star()?;
+            retval.compose_with_config(t, true, &cfg)?;
         } else {
             // both
-            retval = self.uppercaser_from_transducer(t);
-            retval.disjunct(&anything, true);
-            retval.repeat_star();
-            retval.compose_with_config(t, true, &cfg);
-            let mut lowercase: HfstTransducer = self.lowercaser_from_transducer(t);
-            lowercase.disjunct(&anything, true);
-            lowercase.repeat_star();
-            retval.compose_with_config(&lowercase, true, &cfg);
+            retval = self.uppercaser_from_transducer(t)?;
+            retval.disjunct(&anything, true)?;
+            retval.repeat_star()?;
+            retval.compose_with_config(t, true, &cfg)?;
+            let mut lowercase: HfstTransducer = self.lowercaser_from_transducer(t)?;
+            lowercase.disjunct(&anything, true)?;
+            lowercase.repeat_star()?;
+            retval.compose_with_config(&lowercase, true, &cfg)?;
         }
-        retval.minimize();
-        retval
+        retval.minimize()?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.toupper-fn]
@@ -2041,7 +2102,7 @@ impl PmatchUtilityTransducers {
         t: &mut HfstTransducer,
         side: Side,
         optional: bool,
-    ) -> HfstTransducer {
+    ) -> crate::error::Result<HfstTransducer> {
         // This is to match flags in t with ?'s in "anything": these composes run
         // with Xerox-style composition enabled.
         let cfg = crate::hfst_transducer::EngineConfig {
@@ -2050,35 +2111,35 @@ impl PmatchUtilityTransducers {
         };
 
         let mut anything: HfstTransducer =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, t.get_type());
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, t.get_type())?;
         if optional == false {
-            anything.subtract(&self.get_lowercase_acceptor_from_transducer(t), true);
+            anything.subtract(&self.get_lowercase_acceptor_from_transducer(t)?, true)?;
         }
         let mut retval: HfstTransducer;
         if side == Side::Lower {
-            let mut uppercase: HfstTransducer = self.uppercaser_from_transducer(t);
-            uppercase.disjunct(&anything, true);
-            uppercase.repeat_star();
-            retval = HfstTransducer::new_copy(t);
-            retval.compose_with_config(&uppercase, true, &cfg);
+            let mut uppercase: HfstTransducer = self.uppercaser_from_transducer(t)?;
+            uppercase.disjunct(&anything, true)?;
+            uppercase.repeat_star()?;
+            retval = HfstTransducer::new_copy(t)?;
+            retval.compose_with_config(&uppercase, true, &cfg)?;
         } else if side == Side::Upper {
-            retval = self.lowercaser_from_transducer(t);
-            retval.disjunct(&anything, true);
-            retval.repeat_star();
-            retval.compose_with_config(t, true, &cfg);
+            retval = self.lowercaser_from_transducer(t)?;
+            retval.disjunct(&anything, true)?;
+            retval.repeat_star()?;
+            retval.compose_with_config(t, true, &cfg)?;
         } else {
             // both
-            retval = self.lowercaser_from_transducer(t);
-            retval.disjunct(&anything, true);
-            retval.repeat_star();
-            retval.compose_with_config(t, true, &cfg);
-            let mut uppercase: HfstTransducer = self.uppercaser_from_transducer(t);
-            uppercase.disjunct(&anything, true);
-            uppercase.repeat_star();
-            retval.compose_with_config(&uppercase, true, &cfg);
+            retval = self.lowercaser_from_transducer(t)?;
+            retval.disjunct(&anything, true)?;
+            retval.repeat_star()?;
+            retval.compose_with_config(t, true, &cfg)?;
+            let mut uppercase: HfstTransducer = self.uppercaser_from_transducer(t)?;
+            uppercase.disjunct(&anything, true)?;
+            uppercase.repeat_star()?;
+            retval.compose_with_config(&uppercase, true, &cfg)?;
         }
-        retval.minimize();
-        retval
+        retval.minimize()?;
+        Ok(retval)
     }
 }
 
@@ -2173,20 +2234,20 @@ pub fn get_Ins_transition(s: &str) -> String {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.add-pmatch-delimiters-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.add-pmatch-delimiters-fn]
-pub fn add_pmatch_delimiters(regex: &HfstTransducer) -> HfstTransducer {
+pub fn add_pmatch_delimiters(regex: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
     let mut delimited_regex =
-        HfstTransducer::new_symbol_pair(internal_epsilon, ENTRY_SYMBOL, regex.get_type());
-    delimited_regex.concatenate(regex, true);
-    let exit = HfstTransducer::new_symbol_pair(internal_epsilon, EXIT_SYMBOL, regex.get_type());
-    delimited_regex.concatenate(&exit, true);
-    delimited_regex
+        HfstTransducer::new_symbol_pair(internal_epsilon, ENTRY_SYMBOL, regex.get_type())?;
+    delimited_regex.concatenate(regex, true)?;
+    let exit = HfstTransducer::new_symbol_pair(internal_epsilon, EXIT_SYMBOL, regex.get_type())?;
+    delimited_regex.concatenate(&exit, true)?;
+    Ok(delimited_regex)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-end-tag-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-end-tag-fn]
 pub fn make_end_tag(
     ctx: &mut PmatchEvalContext,
     tag: String,
-) -> Rc<RefCell<PmatchTransducerContainer>> {
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, format!("@PMATCH_ENDTAG_{}@", tag))
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-capture-tag-fn]
@@ -2194,7 +2255,7 @@ pub fn make_end_tag(
 pub fn make_capture_tag(
     ctx: &mut PmatchEvalContext,
     tag: String,
-) -> Rc<RefCell<PmatchTransducerContainer>> {
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, format!("@PMATCH_CAPTURE_{}@", tag))
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-captured-tag-fn]
@@ -2202,7 +2263,7 @@ pub fn make_capture_tag(
 pub fn make_captured_tag(
     ctx: &mut PmatchEvalContext,
     tag: String,
-) -> Rc<RefCell<PmatchTransducerContainer>> {
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, format!("@PMATCH_CAPTURED_{}@", tag))
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-with-tag-entry-fn]
@@ -2238,26 +2299,29 @@ pub fn make_with_tag_exit(key: String) -> ObjRef {
 pub fn make_counter(
     ctx: &mut PmatchEvalContext,
     name: String,
-) -> Rc<RefCell<PmatchTransducerContainer>> {
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, format!("@PMATCH_COUNTER_{}@", name))
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.get-non-special-alphabet-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-non-special-alphabet-fn]
-pub fn get_non_special_alphabet(t: &HfstTransducer) -> StringSet {
+pub fn get_non_special_alphabet(t: &HfstTransducer) -> crate::error::Result<StringSet> {
     let mut retval: StringSet = StringSet::new();
-    let alphabet = t.get_alphabet();
+    let alphabet = t.get_alphabet()?;
     for it in alphabet.iter() {
         if PmatchAlphabet::is_printable(it) {
             retval.insert(it.clone());
         }
     }
-    retval
+    Ok(retval)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-list-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-list-fn]
-pub fn make_list(t: &HfstTransducer, f: ImplementationType) -> HfstTransducer {
+pub fn make_list(
+    t: &HfstTransducer,
+    f: ImplementationType,
+) -> crate::error::Result<HfstTransducer> {
     let mut transition = String::from("@L.");
-    let alphabet = get_non_special_alphabet(t);
+    let alphabet = get_non_special_alphabet(t)?;
     for it in alphabet.iter() {
         transition.push_str(it);
         transition.push_str("_");
@@ -2267,9 +2331,12 @@ pub fn make_list(t: &HfstTransducer, f: ImplementationType) -> HfstTransducer {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-exc-list-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-exc-list-fn]
-pub fn make_exc_list(t: &HfstTransducer, f: ImplementationType) -> HfstTransducer {
+pub fn make_exc_list(
+    t: &HfstTransducer,
+    f: ImplementationType,
+) -> crate::error::Result<HfstTransducer> {
     let mut transition = String::from("@X.");
-    let alphabet = get_non_special_alphabet(t);
+    let alphabet = get_non_special_alphabet(t)?;
     for it in alphabet.iter() {
         transition.push_str(it);
         transition.push_str("_");
@@ -2279,21 +2346,24 @@ pub fn make_exc_list(t: &HfstTransducer, f: ImplementationType) -> HfstTransduce
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-sigma-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-sigma-fn]
-pub fn make_sigma(ctx: &mut PmatchEvalContext, t: &HfstTransducer) -> HfstTransducer {
-    let mut retval = HfstTransducer::new_type(ctx.format());
-    let alphabet = get_non_special_alphabet(t);
+pub fn make_sigma(
+    ctx: &mut PmatchEvalContext,
+    t: &HfstTransducer,
+) -> crate::error::Result<HfstTransducer> {
+    let mut retval = HfstTransducer::new_type(ctx.format())?;
+    let alphabet = get_non_special_alphabet(t)?;
     for it in alphabet.iter() {
-        retval.disjunct(&HfstTransducer::new_symbol(it, ctx.format()), true);
+        retval.disjunct(&HfstTransducer::new_symbol(it, ctx.format())?, true)?;
     }
-    retval
+    Ok(retval)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.epsilon-to-symbol-container-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.epsilon-to-symbol-container-fn]
 pub fn epsilon_to_symbol_container(
     ctx: &mut PmatchEvalContext,
     s: String,
-) -> Rc<RefCell<PmatchTransducerContainer>> {
-    let tmp = HfstTransducer::new_symbol_pair(internal_epsilon, &s, ctx.format());
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+    let tmp = HfstTransducer::new_symbol_pair(internal_epsilon, &s, ctx.format())?;
     let container = PmatchTransducerContainer {
         name: String::new(),
         weight: 0.0,
@@ -2302,51 +2372,69 @@ pub fn epsilon_to_symbol_container(
         cache: None,
         t: tmp,
     };
-    Rc::new(RefCell::new(container))
+    Ok(Rc::new(RefCell::new(container)))
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-rc-entry-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-rc-entry-fn]
-pub fn make_rc_entry(ctx: &mut PmatchEvalContext) -> Rc<RefCell<PmatchTransducerContainer>> {
+pub fn make_rc_entry(
+    ctx: &mut PmatchEvalContext,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, RC_ENTRY_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-lc-entry-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-lc-entry-fn]
-pub fn make_lc_entry(ctx: &mut PmatchEvalContext) -> Rc<RefCell<PmatchTransducerContainer>> {
+pub fn make_lc_entry(
+    ctx: &mut PmatchEvalContext,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, LC_ENTRY_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-nrc-entry-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-nrc-entry-fn]
-pub fn make_nrc_entry(ctx: &mut PmatchEvalContext) -> Rc<RefCell<PmatchTransducerContainer>> {
+pub fn make_nrc_entry(
+    ctx: &mut PmatchEvalContext,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, NRC_ENTRY_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-nlc-entry-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-nlc-entry-fn]
-pub fn make_nlc_entry(ctx: &mut PmatchEvalContext) -> Rc<RefCell<PmatchTransducerContainer>> {
+pub fn make_nlc_entry(
+    ctx: &mut PmatchEvalContext,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, NLC_ENTRY_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-rc-exit-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-rc-exit-fn]
-pub fn make_rc_exit(ctx: &mut PmatchEvalContext) -> Rc<RefCell<PmatchTransducerContainer>> {
+pub fn make_rc_exit(
+    ctx: &mut PmatchEvalContext,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, RC_EXIT_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-lc-exit-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-lc-exit-fn]
-pub fn make_lc_exit(ctx: &mut PmatchEvalContext) -> Rc<RefCell<PmatchTransducerContainer>> {
+pub fn make_lc_exit(
+    ctx: &mut PmatchEvalContext,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, LC_EXIT_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-nrc-exit-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-nrc-exit-fn]
-pub fn make_nrc_exit(ctx: &mut PmatchEvalContext) -> Rc<RefCell<PmatchTransducerContainer>> {
+pub fn make_nrc_exit(
+    ctx: &mut PmatchEvalContext,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, NRC_EXIT_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-nlc-exit-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-nlc-exit-fn]
-pub fn make_nlc_exit(ctx: &mut PmatchEvalContext) -> Rc<RefCell<PmatchTransducerContainer>> {
+pub fn make_nlc_exit(
+    ctx: &mut PmatchEvalContext,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, NLC_EXIT_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-passthrough-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-passthrough-fn]
-pub fn make_passthrough(ctx: &mut PmatchEvalContext) -> Rc<RefCell<PmatchTransducerContainer>> {
+pub fn make_passthrough(
+    ctx: &mut PmatchEvalContext,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     epsilon_to_symbol_container(ctx, PASSTHROUGH_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.get-delimited-fn]
@@ -2414,7 +2502,10 @@ pub fn codepoint_to_utf8(codepoint: u32) -> String {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.parse-range-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.parse-range-fn]
-pub fn parse_range(ctx: &mut PmatchEvalContext, s: &str) -> Rc<RefCell<PmatchTransducerContainer>> {
+pub fn parse_range(
+    ctx: &mut PmatchEvalContext,
+    s: &str,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
     // Reads one codepoint at the cursor: a '\uXXXX' / '\UXXXXXXXX' hex escape, or
     // the next UTF-8 character. Advances the byte cursor past what it consumed.
     fn read_codepoint(bytes: &[u8], quoted: &str, i: &mut usize) -> u32 {
@@ -2436,7 +2527,7 @@ pub fn parse_range(ctx: &mut PmatchEvalContext, s: &str) -> Rc<RefCell<PmatchTra
     let quoted = get_delimited(s, '"');
     let bytes = quoted.as_bytes();
     let mut i = 0usize;
-    let mut retval = HfstTransducer::new_type(ctx.format());
+    let mut retval = HfstTransducer::new_type(ctx.format())?;
     while i < bytes.len() {
         let mut codepoint1 = read_codepoint(bytes, &quoted, &mut i);
         if i >= bytes.len() || bytes[i] != b'-' {
@@ -2455,9 +2546,9 @@ pub fn parse_range(ctx: &mut PmatchEvalContext, s: &str) -> Rc<RefCell<PmatchTra
         }
         while codepoint1 <= codepoint2 {
             retval.disjunct(
-                &HfstTransducer::new_symbol(&codepoint_to_utf8(codepoint1), ctx.format()),
+                &HfstTransducer::new_symbol(&codepoint_to_utf8(codepoint1), ctx.format())?,
                 true,
-            );
+            )?;
             codepoint1 += 1;
         }
     }
@@ -2469,7 +2560,7 @@ pub fn parse_range(ctx: &mut PmatchEvalContext, s: &str) -> Rc<RefCell<PmatchTra
         cache: None,
         t: retval,
     };
-    Rc::new(RefCell::new(container))
+    Ok(Rc::new(RefCell::new(container)))
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.get-size-info-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-size-info-fn]
@@ -2523,7 +2614,7 @@ impl PmatchObject for PmatchUnaryOperation {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
@@ -2541,11 +2632,11 @@ impl PmatchObject for PmatchUnaryOperation {
                 whole_string += it;
             }
             let mut retval = if whole_string.len() > 0 {
-                HfstTransducer::new_symbol(&whole_string, ctx.format())
+                HfstTransducer::new_symbol(&whole_string, ctx.format())?
             } else {
-                HfstTransducer::new_type(ctx.format())
+                HfstTransducer::new_type(ctx.format())?
             };
-            retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true);
+            retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
             if self.cache.is_none() && self.should_use_cache(ctx) == true {
                 self.cache = Some(retval);
                 self.report_time(
@@ -2555,7 +2646,7 @@ impl PmatchObject for PmatchUnaryOperation {
                 return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
             }
             self.report_time(ctx, String::new());
-            return retval;
+            return Ok(retval);
         } else if self.op == PmatchUnaryOp::Explode {
             let mut strings: StringVector = StringVector::new();
             self.root
@@ -2567,167 +2658,167 @@ impl PmatchObject for PmatchUnaryOperation {
             }
             let tok = crate::hfst_tokenizer::HfstTokenizer::new();
             let mut retval = if whole_string.len() > 0 {
-                HfstTransducer::new_tokenized(&whole_string, &tok, ctx.format())
+                HfstTransducer::new_tokenized(&whole_string, &tok, ctx.format())?
             } else {
-                HfstTransducer::new_type(ctx.format())
+                HfstTransducer::new_type(ctx.format())?
             };
-            retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true);
+            retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
             if self.cache.is_none() && self.should_use_cache(ctx) == true {
                 self.cache = Some(retval);
                 return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
             }
             self.report_time(ctx, String::new());
-            return retval;
+            return Ok(retval);
         }
 
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
-        let mut retval: HfstTransducer = self.root.borrow_mut().evaluate(ctx);
+        let mut retval: HfstTransducer = self.root.borrow_mut().evaluate(ctx)?;
         if self.op == PmatchUnaryOp::AddDelimiters {
-            retval = add_pmatch_delimiters(&retval);
+            retval = add_pmatch_delimiters(&retval)?;
         } else if self.op == PmatchUnaryOp::Optionalize {
-            retval.optionalize();
+            retval.optionalize()?;
         } else if self.op == PmatchUnaryOp::RepeatStar {
-            retval.repeat_star();
+            retval.repeat_star()?;
         } else if self.op == PmatchUnaryOp::RepeatPlus {
-            retval.repeat_plus();
+            retval.repeat_plus()?;
         } else if self.op == PmatchUnaryOp::Reverse {
-            retval.reverse();
+            retval.reverse()?;
         } else if self.op == PmatchUnaryOp::Invert {
-            retval.invert();
+            retval.invert()?;
         } else if self.op == PmatchUnaryOp::InputProject {
-            retval.input_project();
+            retval.input_project()?;
         } else if self.op == PmatchUnaryOp::OutputProject {
-            retval.output_project();
+            retval.output_project()?;
         } else if self.op == PmatchUnaryOp::Complement {
             // Defined here only for automata, so can project to input
             let mut complement = HfstTransducer::new_symbol(
                 crate::hfst_symbol_defs::internal_identity,
                 ctx.format(),
-            );
-            complement.repeat_star();
-            complement.subtract(&retval, true);
+            )?;
+            complement.repeat_star()?;
+            complement.subtract(&retval, true)?;
             retval = complement;
         } else if self.op == PmatchUnaryOp::Containment {
             let mut any = HfstTransducer::new_symbol(
                 crate::hfst_symbol_defs::internal_identity,
                 ctx.format(),
-            );
-            any.repeat_star();
-            let mut left = HfstTransducer::new_copy(&any);
-            left.concatenate(&retval, true);
-            left.concatenate(&any, true);
+            )?;
+            any.repeat_star()?;
+            let mut left = HfstTransducer::new_copy(&any)?;
+            left.concatenate(&retval, true)?;
+            left.concatenate(&any, true)?;
             retval = left;
         } else if self.op == PmatchUnaryOp::ContainmentOnce {
             let mut xre_comp = crate::xre::XreCompiler::new(ctx.format());
-            retval = xre_comp.contains_once(&retval);
+            retval = xre_comp.contains_once(&retval)?;
         } else if self.op == PmatchUnaryOp::ContainmentOptional {
             let mut xre_comp = crate::xre::XreCompiler::new(ctx.format());
-            retval = xre_comp.contains_once_optional(&retval);
+            retval = xre_comp.contains_once_optional(&retval)?;
         } else if self.op == PmatchUnaryOp::TermComplement {
             let mut any = HfstTransducer::new_symbol(
                 crate::hfst_symbol_defs::internal_identity,
                 ctx.format(),
-            );
-            let alphabet: StringSet = get_non_special_alphabet(&retval);
+            )?;
+            let alphabet: StringSet = get_non_special_alphabet(&retval)?;
             for it in alphabet.iter() {
-                let symbol = HfstTransducer::new_symbol(it, ctx.format());
-                any.subtract(&symbol, true);
+                let symbol = HfstTransducer::new_symbol(it, ctx.format())?;
+                any.subtract(&symbol, true)?;
             }
             retval = any;
         } else if self.op == PmatchUnaryOp::Cap {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Both, false));
+            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Both, false))?;
         } else if self.op == PmatchUnaryOp::OptCap {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Both, true));
+            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Both, true))?;
         } else if self.op == PmatchUnaryOp::ToLower {
-            retval = ctx.with_utils(|u| u.tolower(&mut retval, Side::Both, false));
+            retval = ctx.with_utils(|u| u.tolower(&mut retval, Side::Both, false))?;
         } else if self.op == PmatchUnaryOp::ToUpper {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Both, false));
+            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Both, false))?;
         } else if self.op == PmatchUnaryOp::OptToLower {
-            let mut tmp = ctx.with_utils(|u| u.tolower(&mut retval, Side::Both, true));
-            tmp.disjunct(&retval, true);
+            let mut tmp = ctx.with_utils(|u| u.tolower(&mut retval, Side::Both, true))?;
+            tmp.disjunct(&retval, true)?;
             retval = tmp;
         } else if self.op == PmatchUnaryOp::OptToUpper {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Both, true));
+            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Both, true))?;
         } else if self.op == PmatchUnaryOp::AnyCase {
             let (toupper, tolower) = ctx.with_utils(|u| {
-                (
-                    u.toupper(&mut retval, Side::Both, true),
-                    u.tolower(&mut retval, Side::Both, true),
-                )
-            });
-            retval.disjunct(&toupper, true);
-            retval.disjunct(&tolower, true);
+                Ok((
+                    u.toupper(&mut retval, Side::Both, true)?,
+                    u.tolower(&mut retval, Side::Both, true)?,
+                ))
+            })?;
+            retval.disjunct(&toupper, true)?;
+            retval.disjunct(&tolower, true)?;
         } else if self.op == PmatchUnaryOp::CapUpper {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Upper, false));
+            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Upper, false))?;
         } else if self.op == PmatchUnaryOp::OptCapUpper {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Upper, true));
+            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Upper, true))?;
         } else if self.op == PmatchUnaryOp::ToLowerUpper {
-            retval = ctx.with_utils(|u| u.tolower(&mut retval, Side::Upper, false));
+            retval = ctx.with_utils(|u| u.tolower(&mut retval, Side::Upper, false))?;
         } else if self.op == PmatchUnaryOp::ToUpperUpper {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Upper, false));
+            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Upper, false))?;
         } else if self.op == PmatchUnaryOp::OptToLowerUpper {
-            let mut tmp = ctx.with_utils(|u| u.tolower(&mut retval, Side::Upper, true));
-            tmp.disjunct(&retval, true);
+            let mut tmp = ctx.with_utils(|u| u.tolower(&mut retval, Side::Upper, true))?;
+            tmp.disjunct(&retval, true)?;
             retval = tmp;
         } else if self.op == PmatchUnaryOp::OptToUpperUpper {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Upper, true));
+            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Upper, true))?;
         } else if self.op == PmatchUnaryOp::AnyCaseUpper {
             let (toupper, tolower) = ctx.with_utils(|u| {
-                (
-                    u.toupper(&mut retval, Side::Upper, true),
-                    u.tolower(&mut retval, Side::Upper, true),
-                )
-            });
-            retval.disjunct(&toupper, true);
-            retval.disjunct(&tolower, true);
+                Ok((
+                    u.toupper(&mut retval, Side::Upper, true)?,
+                    u.tolower(&mut retval, Side::Upper, true)?,
+                ))
+            })?;
+            retval.disjunct(&toupper, true)?;
+            retval.disjunct(&tolower, true)?;
         } else if self.op == PmatchUnaryOp::CapLower {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Lower, false));
+            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Lower, false))?;
         } else if self.op == PmatchUnaryOp::OptCapLower {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Lower, true));
+            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Lower, true))?;
         } else if self.op == PmatchUnaryOp::ToLowerLower {
-            retval = ctx.with_utils(|u| u.tolower(&mut retval, Side::Lower, false));
+            retval = ctx.with_utils(|u| u.tolower(&mut retval, Side::Lower, false))?;
         } else if self.op == PmatchUnaryOp::ToUpperLower {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Lower, false));
+            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Lower, false))?;
         } else if self.op == PmatchUnaryOp::OptToLowerLower {
-            let mut tmp = ctx.with_utils(|u| u.tolower(&mut retval, Side::Lower, true));
-            tmp.disjunct(&retval, true);
+            let mut tmp = ctx.with_utils(|u| u.tolower(&mut retval, Side::Lower, true))?;
+            tmp.disjunct(&retval, true)?;
             retval = tmp;
         } else if self.op == PmatchUnaryOp::OptToUpperLower {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Lower, true));
+            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Lower, true))?;
         } else if self.op == PmatchUnaryOp::AnyCaseLower {
             let (toupper, tolower) = ctx.with_utils(|u| {
-                (
-                    u.toupper(&mut retval, Side::Lower, true),
-                    u.tolower(&mut retval, Side::Lower, true),
-                )
-            });
-            retval.disjunct(&toupper, true);
-            retval.disjunct(&tolower, true);
+                Ok((
+                    u.toupper(&mut retval, Side::Lower, true)?,
+                    u.tolower(&mut retval, Side::Lower, true)?,
+                ))
+            })?;
+            retval.disjunct(&toupper, true)?;
+            retval.disjunct(&tolower, true)?;
         } else if self.op == PmatchUnaryOp::MakeSigma {
-            retval = make_sigma(ctx, &retval);
+            retval = make_sigma(ctx, &retval)?;
         } else if self.op == PmatchUnaryOp::MakeList {
-            let tmp = make_list(&retval, ctx.format());
-            register_lst_line_numbers_from_transducer(ctx, &tmp, self.line_defined);
+            let tmp = make_list(&retval, ctx.format())?;
+            register_lst_line_numbers_from_transducer(ctx, &tmp, self.line_defined)?;
             retval = tmp;
         } else if self.op == PmatchUnaryOp::MakeExcList {
-            retval = make_exc_list(&retval, ctx.format());
+            retval = make_exc_list(&retval, ctx.format())?;
         } else if self.op == PmatchUnaryOp::LC {
-            if !transducer_has_context_symbol(&retval) {
-                retval.reverse();
+            if !transducer_has_context_symbol(&retval)? {
+                retval.reverse()?;
                 let mut tmp = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     LC_ENTRY_SYMBOL,
                     ctx.format(),
-                );
-                tmp.concatenate(&retval, true);
+                )?;
+                tmp.concatenate(&retval, true)?;
                 let lc_exit = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     LC_EXIT_SYMBOL,
                     ctx.format(),
-                );
-                tmp.concatenate(&lc_exit, true);
+                )?;
+                tmp.concatenate(&lc_exit, true)?;
                 retval = tmp;
             } else if ctx.verbose() {
                 write_compilation_stack_indentation_to_err(ctx);
@@ -2737,25 +2828,25 @@ impl PmatchObject for PmatchUnaryOperation {
                 );
             }
         } else if self.op == PmatchUnaryOp::NLC {
-            if !transducer_has_context_symbol(&retval) {
-                retval.reverse();
-                let tmp = ctx.make_minimization_guard();
-                let mut head = tmp.borrow_mut().evaluate(ctx);
-                let passthrough = HfstTransducer::new_symbol(PASSTHROUGH_SYMBOL, ctx.format());
+            if !transducer_has_context_symbol(&retval)? {
+                retval.reverse()?;
+                let tmp = ctx.make_minimization_guard()?;
+                let mut head = tmp.borrow_mut().evaluate(ctx)?;
+                let passthrough = HfstTransducer::new_symbol(PASSTHROUGH_SYMBOL, ctx.format())?;
                 let mut nlc_entry = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     NLC_ENTRY_SYMBOL,
                     ctx.format(),
-                );
+                )?;
                 let nlc_exit = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     NLC_EXIT_SYMBOL,
                     ctx.format(),
-                );
-                nlc_entry.concatenate(&retval, true);
-                nlc_entry.concatenate(&nlc_exit, true);
-                nlc_entry.disjunct(&passthrough, true);
-                head.concatenate(&nlc_entry, true);
+                )?;
+                nlc_entry.concatenate(&retval, true)?;
+                nlc_entry.concatenate(&nlc_exit, true)?;
+                nlc_entry.disjunct(&passthrough, true)?;
+                head.concatenate(&nlc_entry, true)?;
                 retval = head;
             } else if ctx.verbose() {
                 write_compilation_stack_indentation_to_err(ctx);
@@ -2765,19 +2856,19 @@ impl PmatchObject for PmatchUnaryOperation {
                 );
             }
         } else if self.op == PmatchUnaryOp::RC {
-            if !transducer_has_context_symbol(&retval) {
+            if !transducer_has_context_symbol(&retval)? {
                 let mut tmp = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     RC_ENTRY_SYMBOL,
                     ctx.format(),
-                );
-                tmp.concatenate(&retval, true);
+                )?;
+                tmp.concatenate(&retval, true)?;
                 let rc_exit = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     RC_EXIT_SYMBOL,
                     ctx.format(),
-                );
-                tmp.concatenate(&rc_exit, true);
+                )?;
+                tmp.concatenate(&rc_exit, true)?;
                 retval = tmp;
             } else if ctx.verbose() {
                 write_compilation_stack_indentation_to_err(ctx);
@@ -2787,24 +2878,24 @@ impl PmatchObject for PmatchUnaryOperation {
                 );
             }
         } else if self.op == PmatchUnaryOp::NRC {
-            if !transducer_has_context_symbol(&retval) {
-                let tmp = ctx.make_minimization_guard();
-                let mut head = tmp.borrow_mut().evaluate(ctx);
-                let passthrough = HfstTransducer::new_symbol(PASSTHROUGH_SYMBOL, ctx.format());
+            if !transducer_has_context_symbol(&retval)? {
+                let tmp = ctx.make_minimization_guard()?;
+                let mut head = tmp.borrow_mut().evaluate(ctx)?;
+                let passthrough = HfstTransducer::new_symbol(PASSTHROUGH_SYMBOL, ctx.format())?;
                 let mut nrc_entry = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     NRC_ENTRY_SYMBOL,
                     ctx.format(),
-                );
+                )?;
                 let nrc_exit = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     NRC_EXIT_SYMBOL,
                     ctx.format(),
-                );
-                nrc_entry.concatenate(&retval, true);
-                nrc_entry.concatenate(&nrc_exit, true);
-                nrc_entry.disjunct(&passthrough, true);
-                head.concatenate(&nrc_entry, true);
+                )?;
+                nrc_entry.concatenate(&retval, true)?;
+                nrc_entry.concatenate(&nrc_exit, true)?;
+                nrc_entry.disjunct(&passthrough, true)?;
+                head.concatenate(&nrc_entry, true)?;
                 retval = head;
             } else if ctx.verbose() {
                 write_compilation_stack_indentation_to_err(ctx);
@@ -2814,14 +2905,17 @@ impl PmatchObject for PmatchUnaryOperation {
                 );
             }
         }
-        retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true);
+        retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
 
         if self.name != "" {
             ctx.eval_stack_pop();
         }
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(retval);
-            self.cache.as_mut().unwrap().minimize();
+            self.cache
+                .as_mut()
+                .expect("cache populated above")
+                .minimize()?;
             self.report_time(
                 ctx,
                 " with ".to_string() + &get_size_info(self.cache.as_ref().unwrap()),
@@ -2829,14 +2923,17 @@ impl PmatchObject for PmatchUnaryOperation {
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
         self.report_time(ctx, String::new());
-        return retval;
+        return Ok(retval);
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
-    fn get_initial_symbols_from_unary_root(&mut self, ctx: &mut PmatchEvalContext) -> StringSet {
+    fn get_initial_symbols_from_unary_root(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<StringSet> {
         PmatchObject_get_real_initial_symbols(ctx, &mut *self.root.borrow_mut())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.is-context-fn]
@@ -2860,29 +2957,35 @@ impl PmatchObject for PmatchUnaryOperation {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.get-initial-rc-initial-symbols-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-rc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-rc-initial-symbols-fn]
-    fn get_initial_RC_initial_symbols(&mut self, ctx: &mut PmatchEvalContext) -> StringSet {
+    fn get_initial_RC_initial_symbols(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<StringSet> {
         if self.op == PmatchUnaryOp::RC {
-            let tmp: HfstTransducer = self.root.borrow_mut().evaluate(ctx);
-            return tmp.get_initial_input_symbols();
+            let tmp: HfstTransducer = self.root.borrow_mut().evaluate(ctx)?;
+            return Ok(tmp.get_initial_input_symbols());
         }
         if self.op == PmatchUnaryOp::AddDelimiters {
             return self.root.borrow_mut().get_initial_RC_initial_symbols(ctx);
         }
-        StringSet::new()
+        Ok(StringSet::new())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
-    fn get_initial_NRC_initial_symbols(&mut self, ctx: &mut PmatchEvalContext) -> StringSet {
+    fn get_initial_NRC_initial_symbols(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<StringSet> {
         if self.op == PmatchUnaryOp::NRC {
-            let tmp: HfstTransducer = self.root.borrow_mut().evaluate(ctx);
-            return tmp.get_initial_input_symbols();
+            let tmp: HfstTransducer = self.root.borrow_mut().evaluate(ctx)?;
+            return Ok(tmp.get_initial_input_symbols());
         }
         if self.op == PmatchUnaryOp::AddDelimiters {
             return self.root.borrow_mut().get_initial_NRC_initial_symbols(ctx);
         }
-        StringSet::new()
+        Ok(StringSet::new())
     }
 }
 
@@ -2923,7 +3026,7 @@ impl PmatchObject for PmatchNumericOperation {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
@@ -2932,28 +3035,31 @@ impl PmatchObject for PmatchNumericOperation {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
-        let mut tmp: HfstTransducer = self.root.borrow_mut().evaluate(ctx);
+        let mut tmp: HfstTransducer = self.root.borrow_mut().evaluate(ctx)?;
         if self.op == PmatchNumericOp::RepeatN {
-            tmp.repeat_n(self.values[0] as u32);
+            tmp.repeat_n(self.values[0] as u32)?;
         } else if self.op == PmatchNumericOp::RepeatNPlus {
-            tmp.repeat_n_plus(self.values[0] as u32);
+            tmp.repeat_n_plus(self.values[0] as u32)?;
         } else if self.op == PmatchNumericOp::RepeatNMinus {
-            tmp.repeat_n_minus(self.values[0] as u32);
+            tmp.repeat_n_minus(self.values[0] as u32)?;
         } else if self.op == PmatchNumericOp::RepeatNToK {
-            tmp.repeat_n_to_k(self.values[0] as u32, self.values[1] as u32);
+            tmp.repeat_n_to_k(self.values[0] as u32, self.values[1] as u32)?;
         }
-        tmp.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true);
+        tmp.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
         if self.name != "" {
             ctx.eval_stack_pop();
         }
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(tmp);
-            self.cache.as_mut().unwrap().minimize();
+            self.cache
+                .as_mut()
+                .expect("cache populated above")
+                .minimize()?;
             self.report_time(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
         self.report_time(ctx, String::new());
-        return tmp;
+        return Ok(tmp);
     }
 }
 // Pass a map from Lst() symbol to line number. Emits one warning per Lst()
@@ -2967,7 +3073,7 @@ pub fn fix_list_overlap(
     list_set: &StringSet,
     literal_set: &StringSet,
     lst_line_map: &BTreeMap<String, i32>,
-) {
+) -> crate::error::Result<()> {
     {
         for sym in list_set.iter() {
             if !sym.starts_with("@L.") {
@@ -3062,10 +3168,11 @@ pub fn fix_list_overlap(
                 );
             }
             let oldsym: StringPair = (sym.clone(), sym.clone());
-            lhs.substitute_pair_with_pair_set(&oldsym, &newpairs);
-            rhs.substitute_pair_with_pair_set(&oldsym, &newpairs);
+            lhs.substitute_pair_with_pair_set(&oldsym, &newpairs)?;
+            rhs.substitute_pair_with_pair_set(&oldsym, &newpairs)?;
         }
     }
+    Ok(())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.evaluate-fn]
@@ -3103,7 +3210,7 @@ impl PmatchObject for PmatchBinaryOperation {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
@@ -3129,13 +3236,15 @@ impl PmatchObject for PmatchBinaryOperation {
                     .borrow_mut()
                     .collect_strings_into(ctx, &mut strings);
                 let tok = crate::hfst_tokenizer::HfstTokenizer::new();
-                let mut retval = HfstTransducer::new_type(ctx.format());
+                let mut retval = HfstTransducer::new_type(ctx.format())?;
                 for it in strings.iter() {
                     let spv = tok.tokenize(it, false); // XXX
-                    retval.disjunct_spv(&spv);
+                    retval.disjunct_spv(&spv)?;
                 }
-                retval
-                    .set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true);
+                retval.set_final_weights(
+                    crate::hfst_data_types::double_to_float(self.weight),
+                    true,
+                )?;
                 if self.cache.is_none() && self.should_use_cache(ctx) == true {
                     self.cache = Some(retval);
                     // No minimization because we did it the clever way!
@@ -3146,7 +3255,7 @@ impl PmatchObject for PmatchBinaryOperation {
                     return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
                 }
                 self.report_time(ctx, String::new());
-                return retval;
+                return Ok(retval);
             }
         }
 
@@ -3154,149 +3263,129 @@ impl PmatchObject for PmatchBinaryOperation {
             ctx.eval_stack_push(self.name.clone());
         }
         // General cases
-        let mut lhs: HfstTransducer = self.left.borrow_mut().evaluate(ctx);
-        let mut rhs: HfstTransducer = self.right.borrow_mut().evaluate(ctx);
+        let mut lhs: HfstTransducer = self.left.borrow_mut().evaluate(ctx)?;
+        let mut rhs: HfstTransducer = self.right.borrow_mut().evaluate(ctx)?;
         match self.op {
             PmatchBinaryOp::Concatenate => {
-                lhs.concatenate(&rhs, true);
+                lhs.concatenate(&rhs, true)?;
             }
             PmatchBinaryOp::Compose => {
-                lhs.compose(&rhs, true);
+                lhs.compose(&rhs, true)?;
             }
             PmatchBinaryOp::CrossProduct => {
-                lhs.cross_product(&rhs, true);
+                lhs.cross_product(&rhs, true)?;
             }
             PmatchBinaryOp::LenientCompose => {
-                lhs.lenient_composition(&rhs, true);
+                lhs.lenient_composition(&rhs, true)?;
             }
             PmatchBinaryOp::Disjunct => {
-                let lhs_syms = lhs.get_alphabet();
-                let rhs_syms = rhs.get_alphabet();
+                let lhs_syms = lhs.get_alphabet()?;
+                let rhs_syms = rhs.get_alphabet()?;
                 let lst_lines = ctx.lst_line_map_snapshot();
-                fix_list_overlap(ctx, &mut lhs, &mut rhs, &lhs_syms, &rhs_syms, &lst_lines);
-                fix_list_overlap(ctx, &mut rhs, &mut lhs, &rhs_syms, &lhs_syms, &lst_lines);
-                lhs.disjunct(&rhs, true);
+                fix_list_overlap(ctx, &mut lhs, &mut rhs, &lhs_syms, &rhs_syms, &lst_lines)?;
+                fix_list_overlap(ctx, &mut rhs, &mut lhs, &rhs_syms, &lhs_syms, &lst_lines)?;
+                lhs.disjunct(&rhs, true)?;
             }
             PmatchBinaryOp::Intersect => {
-                lhs.intersect(&rhs, true);
+                lhs.intersect(&rhs, true)?;
             }
             PmatchBinaryOp::Subtract => {
                 if ctx.verbose() {
-                    warn_on_nonsubtractable_symbols(ctx, &lhs);
-                    warn_on_nonsubtractable_symbols(ctx, &rhs);
+                    warn_on_nonsubtractable_symbols(ctx, &lhs)?;
+                    warn_on_nonsubtractable_symbols(ctx, &rhs)?;
                 }
-                lhs.subtract(&rhs, true);
+                lhs.subtract(&rhs, true)?;
             }
             PmatchBinaryOp::UpperSubtract => {
                 ctx.pmatcherror("Upper subtraction not implemented.");
-                return lhs;
+                return Ok(lhs);
             }
             PmatchBinaryOp::LowerSubtract => {
                 ctx.pmatcherror("Lower subtraction not implemented.");
-                return lhs;
+                return Ok(lhs);
             }
             PmatchBinaryOp::UpperPriorityUnion => {
-                lhs.priority_union(&rhs);
+                lhs.priority_union(&rhs)?;
             }
             PmatchBinaryOp::LowerPriorityUnion => {
-                lhs.invert();
-                rhs.invert();
-                lhs.priority_union(&rhs);
-                lhs.invert();
+                lhs.invert()?;
+                rhs.invert()?;
+                lhs.priority_union(&rhs)?;
+                lhs.invert()?;
             }
             PmatchBinaryOp::Shuffle => {
-                let __prev_hook = std::panic::take_hook();
-                std::panic::set_hook(Box::new(|_| {}));
-                let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    lhs.shuffle(&rhs, true);
-                }));
-                std::panic::set_hook(__prev_hook);
+                let __res = lhs.shuffle(&rhs, true).map(|_| ());
                 if let Err(e) = __res {
-                    if e.downcast_ref::<crate::error::Error>()
-                        .filter(|__e| {
-                            matches!(__e.kind, crate::error::ErrorKind::TransducersAreNotAutomata)
-                        })
-                        .is_some()
-                    {
+                    if matches!(e.kind, crate::error::ErrorKind::TransducersAreNotAutomata) {
                         pmatchwarning(
                             "tried to shuffle with non-automaton transducers,\n    shuffling with their input projection instead.",
                         );
-                        lhs.input_project();
-                        rhs.input_project();
-                        lhs.shuffle(&rhs, true);
+                        lhs.input_project()?;
+                        rhs.input_project()?;
+                        lhs.shuffle(&rhs, true)?;
                     } else {
-                        std::panic::resume_unwind(e);
+                        return Err(e);
                     }
                 }
             }
             PmatchBinaryOp::Before => {
-                lhs = crate::hfst_xerox_rules::before(&lhs, &rhs);
+                lhs = crate::hfst_xerox_rules::before(&lhs, &rhs)?;
             }
             PmatchBinaryOp::After => {
-                lhs = crate::hfst_xerox_rules::after(&lhs, &rhs);
+                lhs = crate::hfst_xerox_rules::after(&lhs, &rhs)?;
             }
             PmatchBinaryOp::InsertFreely => {
-                lhs.insert_freely(&rhs, false);
+                lhs.insert_freely(&rhs, false)?;
             }
             PmatchBinaryOp::IgnoreInternally => {
-                let right_part: HfstTransducer = HfstTransducer::new_copy(&lhs);
-                let mut middle_part: HfstTransducer = HfstTransducer::new_copy(&lhs);
-                middle_part.disjunct(&rhs, true);
-                middle_part.repeat_star();
-                lhs.concatenate(&middle_part, true);
-                lhs.concatenate(&right_part, true);
+                let right_part: HfstTransducer = HfstTransducer::new_copy(&lhs)?;
+                let mut middle_part: HfstTransducer = HfstTransducer::new_copy(&lhs)?;
+                middle_part.disjunct(&rhs, true)?;
+                middle_part.repeat_star()?;
+                lhs.concatenate(&middle_part, true)?;
+                lhs.concatenate(&right_part, true)?;
             }
             PmatchBinaryOp::Merge => {
                 let fmt = ctx.format();
-                let __prev_hook = std::panic::take_hook();
-                std::panic::set_hook(Box::new(|_| {}));
-                let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    // hfst::xre::merge_first_to_second(lhs, rhs)
-                    let args = crate::xre::XreConstructorArguments::new(
-                        BTreeMap::new(),
-                        BTreeMap::new(),
-                        BTreeMap::new(),
-                        BTreeMap::new(),
-                        fmt,
-                    );
-                    lhs.optimize();
-                    rhs.merge(&lhs, &args);
-                }));
-                std::panic::set_hook(__prev_hook);
+                // hfst::xre::merge_first_to_second(lhs, rhs)
+                let args = crate::xre::XreConstructorArguments::new(
+                    BTreeMap::new(),
+                    BTreeMap::new(),
+                    BTreeMap::new(),
+                    BTreeMap::new(),
+                    fmt,
+                );
+                lhs.optimize()?;
+                let __res = rhs.merge(&lhs, &args).map(|_| ());
                 match __res {
                     Ok(()) => {
                         // NB: mirrors the C++ aliasing (lhs now becomes rhs).
-                        lhs = std::mem::replace(&mut rhs, HfstTransducer::new_type(ctx.format()));
+                        lhs = std::mem::replace(&mut rhs, HfstTransducer::new_type(ctx.format())?);
                     }
                     Err(e) => {
-                        if e.downcast_ref::<crate::error::Error>()
-                            .filter(|__e| {
-                                matches!(
-                                    __e.kind,
-                                    crate::error::ErrorKind::TransducersAreNotAutomata
-                                )
-                            })
-                            .is_some()
-                        {
+                        if matches!(e.kind, crate::error::ErrorKind::TransducersAreNotAutomata) {
                             ctx.pmatcherror(
                                 "Error: transducers must be automata in merge operation.",
                             );
                             unreachable!("pmatcherror panics");
                         } else {
-                            std::panic::resume_unwind(e);
+                            return Err(e);
                         }
                     }
                 }
             }
         }
         drop(rhs);
-        lhs.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true);
+        lhs.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
         if self.name != "" {
             ctx.eval_stack_pop();
         }
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(lhs);
-            self.cache.as_mut().unwrap().minimize();
+            self.cache
+                .as_mut()
+                .expect("cache populated above")
+                .minimize()?;
             self.report_time(
                 ctx,
                 format!(" with {}", get_size_info(self.cache.as_ref().unwrap())),
@@ -3304,14 +3393,17 @@ impl PmatchObject for PmatchBinaryOperation {
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
         self.report_time(ctx, String::new());
-        return lhs;
+        return Ok(lhs);
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
-    fn get_real_initial_symbols_from_right(&mut self, ctx: &mut PmatchEvalContext) -> StringSet {
+    fn get_real_initial_symbols_from_right(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<StringSet> {
         PmatchObject_get_real_initial_symbols(ctx, &mut *self.right.borrow_mut())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.is-left-concatenation-with-context-fn]
@@ -3325,13 +3417,19 @@ impl PmatchObject for PmatchBinaryOperation {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.get-initial-rc-initial-symbols-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-initial-rc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-initial-rc-initial-symbols-fn]
-    fn get_initial_RC_initial_symbols(&mut self, ctx: &mut PmatchEvalContext) -> StringSet {
+    fn get_initial_RC_initial_symbols(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<StringSet> {
         let mut retval: StringSet = StringSet::new();
         if self.op == PmatchBinaryOp::Concatenate {
-            let left_ss: StringSet = self.left.borrow_mut().get_initial_RC_initial_symbols(ctx);
+            let left_ss: StringSet = self.left.borrow_mut().get_initial_RC_initial_symbols(ctx)?;
             let mut right_ss: StringSet = StringSet::new();
             if self.right.borrow_mut().is_context() || self.right.borrow_mut().is_delimiter() {
-                right_ss = self.right.borrow_mut().get_initial_NRC_initial_symbols(ctx);
+                right_ss = self
+                    .right
+                    .borrow_mut()
+                    .get_initial_NRC_initial_symbols(ctx)?;
             }
             for it in left_ss.iter() {
                 retval.insert(it.clone());
@@ -3339,21 +3437,30 @@ impl PmatchObject for PmatchBinaryOperation {
             for it in right_ss.iter() {
                 retval.insert(it.clone());
             }
-            return retval;
+            return Ok(retval);
         }
-        retval
+        Ok(retval)
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-initial-nrc-initial-symbols-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-initial-nrc-initial-symbols-fn]
-    fn get_initial_NRC_initial_symbols(&mut self, ctx: &mut PmatchEvalContext) -> StringSet {
+    fn get_initial_NRC_initial_symbols(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<StringSet> {
         let mut retval: StringSet = StringSet::new();
         if self.op == PmatchBinaryOp::Concatenate {
-            let left_ss: StringSet = self.left.borrow_mut().get_initial_NRC_initial_symbols(ctx);
+            let left_ss: StringSet = self
+                .left
+                .borrow_mut()
+                .get_initial_NRC_initial_symbols(ctx)?;
             let mut right_ss: StringSet = StringSet::new();
             if self.right.borrow_mut().is_context() || self.right.borrow_mut().is_delimiter() {
-                right_ss = self.right.borrow_mut().get_initial_NRC_initial_symbols(ctx);
+                right_ss = self
+                    .right
+                    .borrow_mut()
+                    .get_initial_NRC_initial_symbols(ctx)?;
             }
             for it in left_ss.iter() {
                 retval.insert(it.clone());
@@ -3361,9 +3468,9 @@ impl PmatchObject for PmatchBinaryOperation {
             for it in right_ss.iter() {
                 retval.insert(it.clone());
             }
-            return retval;
+            return Ok(retval);
         }
-        retval
+        Ok(retval)
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.collect-strings-into-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.collect-strings-into-fn]
@@ -3438,7 +3545,7 @@ impl PmatchObject for PmatchTernaryOperation {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
@@ -3447,24 +3554,27 @@ impl PmatchObject for PmatchTernaryOperation {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
-        let mut retval: HfstTransducer = self.left.borrow_mut().evaluate(ctx);
+        let mut retval: HfstTransducer = self.left.borrow_mut().evaluate(ctx)?;
         if self.op == PmatchTernaryOp::Substitute {
             let middle_pair: StringPair = self.middle.borrow_mut().as_string_pair(ctx);
             let right_pair: StringPair = self.right.borrow_mut().as_string_pair(ctx);
             if right_pair.0 != "" || right_pair.1 != "" {
-                retval.substitute_pair_with_pair(&middle_pair, &right_pair);
+                retval.substitute_pair_with_pair(&middle_pair, &right_pair)?;
             } else {
-                let mut tmp: HfstTransducer = self.right.borrow_mut().evaluate(ctx);
-                retval.substitute_pair_with_transducer(&middle_pair, &mut tmp, true);
+                let mut tmp: HfstTransducer = self.right.borrow_mut().evaluate(ctx)?;
+                retval.substitute_pair_with_transducer(&middle_pair, &mut tmp, true)?;
             }
         } else if self.op == PmatchTernaryOp::Uncompose {
-            let _unc_left: HfstTransducer = self.middle.borrow_mut().evaluate(ctx);
-            let _unc_right: HfstTransducer = self.right.borrow_mut().evaluate(ctx);
+            let _unc_left: HfstTransducer = self.middle.borrow_mut().evaluate(ctx)?;
+            let _unc_right: HfstTransducer = self.right.borrow_mut().evaluate(ctx)?;
         }
-        retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true);
+        retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(retval);
-            self.cache.as_mut().unwrap().minimize();
+            self.cache
+                .as_mut()
+                .expect("cache populated above")
+                .minimize()?;
             self.report_time(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
@@ -3472,26 +3582,29 @@ impl PmatchObject for PmatchTernaryOperation {
         if self.name != "" {
             ctx.eval_stack_pop();
         }
-        return retval;
+        return Ok(retval);
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.transducer-has-context-symbol-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.transducer-has-context-symbol-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.transducer-has-context-symbol-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.transducer-has-context-symbol-fn]
-pub fn transducer_has_context_symbol(t: &HfstTransducer) -> bool {
-    let ss: StringSet = t.get_alphabet();
-    ss.contains(LC_ENTRY_SYMBOL)
+pub fn transducer_has_context_symbol(t: &HfstTransducer) -> crate::error::Result<bool> {
+    let ss: StringSet = t.get_alphabet()?;
+    Ok(ss.contains(LC_ENTRY_SYMBOL)
         || ss.contains(NLC_ENTRY_SYMBOL)
         || ss.contains(RC_ENTRY_SYMBOL)
-        || ss.contains(NRC_ENTRY_SYMBOL)
+        || ss.contains(NRC_ENTRY_SYMBOL))
 }
 // [spec:hfst:def:pmatch-utils.hfst.warn-on-nonsubtractable-symbols-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.warn-on-nonsubtractable-symbols-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.warn-on-nonsubtractable-symbols-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.warn-on-nonsubtractable-symbols-fn]
-pub fn warn_on_nonsubtractable_symbols(ctx: &mut PmatchEvalContext, t: &HfstTransducer) {
-    let alphabet: StringSet = t.get_alphabet();
+pub fn warn_on_nonsubtractable_symbols(
+    ctx: &mut PmatchEvalContext,
+    t: &HfstTransducer,
+) -> crate::error::Result<()> {
+    let alphabet: StringSet = t.get_alphabet()?;
     for it in alphabet.iter() {
         if it.len() < 3 {
             continue;
@@ -3500,6 +3613,7 @@ pub fn warn_on_nonsubtractable_symbols(ctx: &mut PmatchEvalContext, t: &HfstTran
             warn!("subtracting with nonsubtractable symbol {}", it);
         }
     }
+    Ok(())
 }
 
 // ===== body: replace-restriction-containers =====
@@ -3539,48 +3653,51 @@ impl PmatchObject for PmatchParallelRulesContainer {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
         self.start_timing(ctx);
         let mut retval: HfstTransducer = match self.arrow {
-            ReplaceArrow::E_REPLACE_RIGHT => replace_rule_vector(&self.make_mappings(ctx), false),
+            ReplaceArrow::E_REPLACE_RIGHT => replace_rule_vector(&self.make_mappings(ctx)?, false)?,
             ReplaceArrow::E_OPTIONAL_REPLACE_RIGHT => {
-                replace_rule_vector(&self.make_mappings(ctx), true)
+                replace_rule_vector(&self.make_mappings(ctx)?, true)?
             }
             ReplaceArrow::E_REPLACE_LEFT => {
-                replace_left_rule_vector(&self.make_mappings(ctx), false)
+                replace_left_rule_vector(&self.make_mappings(ctx)?, false)?
             }
             ReplaceArrow::E_OPTIONAL_REPLACE_LEFT => {
-                replace_left_rule_vector(&self.make_mappings(ctx), true)
+                replace_left_rule_vector(&self.make_mappings(ctx)?, true)?
             }
             ReplaceArrow::E_RTL_LONGEST_MATCH => {
-                replace_rightmost_longest_match_rule_vector(&self.make_mappings(ctx))
+                replace_rightmost_longest_match_rule_vector(&self.make_mappings(ctx)?)?
             }
             ReplaceArrow::E_RTL_SHORTEST_MATCH => {
-                replace_rightmost_shortest_match_rule_vector(&self.make_mappings(ctx))
+                replace_rightmost_shortest_match_rule_vector(&self.make_mappings(ctx)?)?
             }
             ReplaceArrow::E_LTR_LONGEST_MATCH => {
-                replace_leftmost_longest_match_rule_vector(&self.make_mappings(ctx))
+                replace_leftmost_longest_match_rule_vector(&self.make_mappings(ctx)?)?
             }
             ReplaceArrow::E_LTR_SHORTEST_MATCH => {
-                replace_leftmost_shortest_match_rule_vector(&self.make_mappings(ctx))
+                replace_leftmost_shortest_match_rule_vector(&self.make_mappings(ctx)?)?
             }
             ReplaceArrow::E_REPLACE_RIGHT_MARKUP => {
                 ctx.pmatcherror("Unrecognized arrow type");
                 return HfstTransducer::new_type(ctx.format());
             }
         };
-        retval.set_final_weights(double_to_float(self.weight), true);
+        retval.set_final_weights(double_to_float(self.weight), true)?;
         self.report_time(ctx, String::new());
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(retval);
-            self.cache.as_mut().unwrap().minimize();
+            self.cache
+                .as_mut()
+                .expect("cache populated above")
+                .minimize()?;
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
-        retval
+        Ok(retval)
     }
 }
 impl PmatchParallelRulesContainer {
@@ -3588,13 +3705,16 @@ impl PmatchParallelRulesContainer {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-parallel-rules-container.make-mappings-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.make-mappings-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.make-mappings-fn]
-    pub fn make_mappings(&mut self, ctx: &mut PmatchEvalContext) -> Vec<Rule> {
+    pub fn make_mappings(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<Vec<Rule>> {
         let mut retval: Vec<Rule> = Vec::new();
         for it in self.rules.iter() {
-            retval.push(it.borrow_mut().make_mapping(ctx));
+            retval.push(it.borrow_mut().make_mapping(ctx)?);
         }
 
-        retval
+        Ok(retval)
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-replace-rule-container.evaluate-fn]
@@ -3633,44 +3753,47 @@ impl PmatchObject for PmatchReplaceRuleContainer {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
         self.start_timing(ctx);
         let mut retval: HfstTransducer = match self.arrow {
-            ReplaceArrow::E_REPLACE_RIGHT => replace_rule(&self.make_mapping(ctx), false),
-            ReplaceArrow::E_OPTIONAL_REPLACE_RIGHT => replace_rule(&self.make_mapping(ctx), true),
-            ReplaceArrow::E_REPLACE_LEFT => replace_left_rule(&self.make_mapping(ctx), false),
+            ReplaceArrow::E_REPLACE_RIGHT => replace_rule(&self.make_mapping(ctx)?, false)?,
+            ReplaceArrow::E_OPTIONAL_REPLACE_RIGHT => replace_rule(&self.make_mapping(ctx)?, true)?,
+            ReplaceArrow::E_REPLACE_LEFT => replace_left_rule(&self.make_mapping(ctx)?, false)?,
             ReplaceArrow::E_OPTIONAL_REPLACE_LEFT => {
-                replace_left_rule(&self.make_mapping(ctx), true)
+                replace_left_rule(&self.make_mapping(ctx)?, true)?
             }
             ReplaceArrow::E_RTL_LONGEST_MATCH => {
-                replace_rightmost_longest_match_rule(&self.make_mapping(ctx))
+                replace_rightmost_longest_match_rule(&self.make_mapping(ctx)?)?
             }
             ReplaceArrow::E_RTL_SHORTEST_MATCH => {
-                replace_rightmost_shortest_match_rule(&self.make_mapping(ctx))
+                replace_rightmost_shortest_match_rule(&self.make_mapping(ctx)?)?
             }
             ReplaceArrow::E_LTR_LONGEST_MATCH => {
-                replace_leftmost_longest_match_rule(&self.make_mapping(ctx))
+                replace_leftmost_longest_match_rule(&self.make_mapping(ctx)?)?
             }
             ReplaceArrow::E_LTR_SHORTEST_MATCH => {
-                replace_leftmost_shortest_match_rule(&self.make_mapping(ctx))
+                replace_leftmost_shortest_match_rule(&self.make_mapping(ctx)?)?
             }
             ReplaceArrow::E_REPLACE_RIGHT_MARKUP => {
                 ctx.pmatcherror("Unrecognized arrow");
                 return HfstTransducer::new_type(ctx.format());
             }
         };
-        retval.set_final_weights(double_to_float(self.weight), true);
+        retval.set_final_weights(double_to_float(self.weight), true)?;
         self.report_time(ctx, String::new());
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(retval);
-            self.cache.as_mut().unwrap().minimize();
+            self.cache
+                .as_mut()
+                .expect("cache populated above")
+                .minimize()?;
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
-        retval
+        Ok(retval)
     }
 }
 impl PmatchReplaceRuleContainer {
@@ -3678,13 +3801,13 @@ impl PmatchReplaceRuleContainer {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-replace-rule-container.make-mapping-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.make-mapping-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.make-mapping-fn]
-    pub fn make_mapping(&mut self, ctx: &mut PmatchEvalContext) -> Rule {
+    pub fn make_mapping(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<Rule> {
         let mut pair_vector: HfstTransducerPairVector = Vec::new();
         for it in self.mapping.iter() {
-            let pp: TransducerPointerPair = it.borrow_mut().evaluate_pair(ctx);
+            let pp: TransducerPointerPair = it.borrow_mut().evaluate_pair(ctx)?;
             let p: HfstTransducerPair = (
-                HfstTransducer::new_copy(&pp.0),
-                HfstTransducer::new_copy(&pp.1),
+                HfstTransducer::new_copy(&pp.0)?,
+                HfstTransducer::new_copy(&pp.1)?,
             );
             pair_vector.push(p);
         }
@@ -3693,10 +3816,10 @@ impl PmatchReplaceRuleContainer {
         }
         let mut context_vector: HfstTransducerPairVector = Vec::new();
         for it in self.context.iter() {
-            let pp: TransducerPointerPair = it.borrow_mut().evaluate_pair(ctx);
+            let pp: TransducerPointerPair = it.borrow_mut().evaluate_pair(ctx)?;
             let p: HfstTransducerPair = (
-                HfstTransducer::new_copy(&pp.0),
-                HfstTransducer::new_copy(&pp.1),
+                HfstTransducer::new_copy(&pp.0)?,
+                HfstTransducer::new_copy(&pp.1)?,
             );
             context_vector.push(p);
         }
@@ -3739,7 +3862,7 @@ impl PmatchObject for PmatchRestrictionContainer {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
@@ -3747,23 +3870,26 @@ impl PmatchObject for PmatchRestrictionContainer {
         self.start_timing(ctx);
         let mut pair_vector: HfstTransducerPairVector = Vec::new();
         for it in self.contexts.iter() {
-            let pp: TransducerPointerPair = it.borrow_mut().evaluate_pair(ctx);
+            let pp: TransducerPointerPair = it.borrow_mut().evaluate_pair(ctx)?;
             let p: HfstTransducerPair = (
-                HfstTransducer::new_copy(&pp.0),
-                HfstTransducer::new_copy(&pp.1),
+                HfstTransducer::new_copy(&pp.0)?,
+                HfstTransducer::new_copy(&pp.1)?,
             );
             pair_vector.push(p);
         }
-        let l: HfstTransducer = self.left.borrow_mut().evaluate(ctx);
-        let mut retval: HfstTransducer = restriction(&l, &pair_vector);
-        retval.set_final_weights(double_to_float(self.weight), true);
+        let l: HfstTransducer = self.left.borrow_mut().evaluate(ctx)?;
+        let mut retval: HfstTransducer = restriction(&l, &pair_vector)?;
+        retval.set_final_weights(double_to_float(self.weight), true)?;
         self.report_time(ctx, String::new());
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(retval);
-            self.cache.as_mut().unwrap().minimize();
+            self.cache
+                .as_mut()
+                .expect("cache populated above")
+                .minimize()?;
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
-        retval
+        Ok(retval)
     }
 }
 impl PmatchObjectPairBase for PmatchObjectPair {
@@ -3782,10 +3908,13 @@ impl PmatchObjectPairBase for PmatchObjectPair {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object-pair.evaluate-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object-pair.evaluate-pair-fn]
-    fn evaluate_pair(&mut self, ctx: &mut PmatchEvalContext) -> TransducerPointerPair {
-        let first = self.left.borrow_mut().evaluate(ctx);
-        let second = self.right.borrow_mut().evaluate(ctx);
-        (first, second)
+    fn evaluate_pair(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<TransducerPointerPair> {
+        let first = self.left.borrow_mut().evaluate(ctx)?;
+        let second = self.right.borrow_mut().evaluate(ctx)?;
+        Ok((first, second))
     }
 }
 impl PmatchObjectPairBase for PmatchMarkupContainer {
@@ -3806,24 +3935,27 @@ impl PmatchObjectPairBase for PmatchMarkupContainer {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-markup-container.evaluate-pair-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-markup-container.evaluate-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-markup-container.evaluate-pair-fn]
-    fn evaluate_pair(&mut self, ctx: &mut PmatchEvalContext) -> TransducerPointerPair {
-        let loa = self.left_of_arrow.borrow_mut().evaluate(ctx);
-        let lom = self.left.borrow_mut().evaluate(ctx);
-        let rom = self.right.borrow_mut().evaluate(ctx);
+    fn evaluate_pair(
+        &mut self,
+        ctx: &mut PmatchEvalContext,
+    ) -> crate::error::Result<TransducerPointerPair> {
+        let loa = self.left_of_arrow.borrow_mut().evaluate(ctx)?;
+        let lom = self.left.borrow_mut().evaluate(ctx)?;
+        let rom = self.right.borrow_mut().evaluate(ctx)?;
         let tmpMappingPair: HfstTransducerPair = (
-            HfstTransducer::new_copy(&loa),
-            HfstTransducer::new_type(ctx.format()),
+            HfstTransducer::new_copy(&loa)?,
+            HfstTransducer::new_type(ctx.format())?,
         );
         let marks: HfstTransducerPair = (
-            HfstTransducer::new_copy(&lom),
-            HfstTransducer::new_copy(&rom),
+            HfstTransducer::new_copy(&lom)?,
+            HfstTransducer::new_copy(&rom)?,
         );
         let MappingPair: HfstTransducerPair =
-            create_mapping_for_mark_up_replace(&tmpMappingPair, &marks);
-        (
-            HfstTransducer::new_copy(&MappingPair.0),
-            HfstTransducer::new_copy(&MappingPair.1),
-        )
+            create_mapping_for_mark_up_replace(&tmpMappingPair, &marks)?;
+        Ok((
+            HfstTransducer::new_copy(&MappingPair.0)?,
+            HfstTransducer::new_copy(&MappingPair.1)?,
+        ))
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-mapping-pairs-container.evaluate-fn]
@@ -3862,7 +3994,7 @@ impl PmatchObject for PmatchMappingPairsContainer {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         ctx.pmatcherror("Should never happen\n");
         unreachable!()
     }
@@ -3903,7 +4035,7 @@ impl PmatchObject for PmatchContextsContainer {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         ctx.pmatcherror("Should never happen\n");
         unreachable!()
     }
@@ -3920,22 +4052,22 @@ pub fn PmatchObject_evaluate_args(
     ctx: &mut PmatchEvalContext,
     this: &mut dyn PmatchObject,
     args: Vec<ObjRef>,
-) -> HfstTransducer {
+) -> crate::error::Result<HfstTransducer> {
     if args.len() == 0 {
         if this.should_use_cache(ctx) {
             if this.get_cache().is_none() {
                 this.start_timing(ctx);
-                let c = this.evaluate(ctx);
+                let c = this.evaluate(ctx)?;
                 this.set_cache(c);
                 this.report_time(ctx, String::new());
             }
             return HfstTransducer::new_copy(this.get_cache().unwrap());
         } else {
             this.start_timing(ctx);
-            let mut retval = this.evaluate(ctx);
-            retval.minimize();
+            let mut retval = this.evaluate(ctx)?;
+            retval.minimize()?;
             this.report_time(ctx, String::new());
-            return retval;
+            return Ok(retval);
         }
     } else {
         let errstring = format!(
@@ -3952,7 +4084,7 @@ pub fn PmatchObject_expand_Ins_arcs(
     ctx: &mut PmatchEvalContext,
     this: &mut dyn PmatchObject,
     ss: &mut StringSet,
-) {
+) -> crate::error::Result<()> {
     {
         let mut did_no_expansions = false;
         let mut expansions_done: StringSet = StringSet::new();
@@ -3980,12 +4112,12 @@ pub fn PmatchObject_expand_Ins_arcs(
                                 ctx.def_insed_expressions_get(&ins_name)
                                     .unwrap()
                                     .borrow_mut()
-                                    .collect_initial_symbols_into(&mut allowed, &mut disallowed);
+                                    .collect_initial_symbols_into(&mut allowed, &mut disallowed)?;
                             } else {
                                 ctx.definitions_get(&ins_name)
                                     .unwrap()
                                     .borrow_mut()
-                                    .collect_initial_symbols_into(&mut allowed, &mut disallowed);
+                                    .collect_initial_symbols_into(&mut allowed, &mut disallowed)?;
                             }
                             if allowed.len() != 0 {
                                 for s in allowed.iter() {
@@ -4006,22 +4138,23 @@ pub fn PmatchObject_expand_Ins_arcs(
             ss.insert(s.clone());
         }
     }
+    Ok(())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.get-real-initial-symbols-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-real-initial-symbols-fn]
 pub fn PmatchObject_get_real_initial_symbols(
     ctx: &mut PmatchEvalContext,
     this: &mut dyn PmatchObject,
-) -> StringSet {
+) -> crate::error::Result<StringSet> {
     if this.is_left_concatenation_with_context() {
         return this.get_real_initial_symbols_from_right(ctx);
     }
     if this.is_delimiter() {
         return this.get_initial_symbols_from_unary_root(ctx);
     }
-    let tmp: HfstTransducer = this.evaluate(ctx);
+    let tmp: HfstTransducer = this.evaluate(ctx)?;
     let retval: StringSet = tmp.get_initial_input_symbols();
-    retval
+    Ok(retval)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.collect-initial-symbols-into-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.collect-initial-symbols-into-fn]
@@ -4030,27 +4163,27 @@ pub fn PmatchObject_collect_initial_symbols_into(
     this: &mut dyn PmatchObject,
     allowed_initial_symbols: &mut StringSet,
     disallowed_initial_symbols: &mut StringSet,
-) {
+) -> crate::error::Result<()> {
     {
         // One or neither of allowed_initial_symbols and disallowed_initial_symbols
         // will have some symbols inserted to it.
 
-        let mut allowed: StringSet = this.get_real_initial_symbols();
-        let mut required: StringSet = this.get_initial_RC_initial_symbols(ctx);
-        let mut disallowed: StringSet = this.get_initial_NRC_initial_symbols(ctx);
+        let mut allowed: StringSet = this.get_real_initial_symbols()?;
+        let mut required: StringSet = this.get_initial_RC_initial_symbols(ctx)?;
+        let mut disallowed: StringSet = this.get_initial_NRC_initial_symbols(ctx)?;
 
         // The first input symbols collected in this way may include:
         // - insertion arcs
         // - unknown, identity, default
         // - symbols after flag diacritics
         // - symbols from contexts
-        PmatchObject_expand_Ins_arcs(ctx, this, &mut allowed);
-        PmatchObject_expand_Ins_arcs(ctx, this, &mut required);
-        PmatchObject_expand_Ins_arcs(ctx, this, &mut disallowed);
+        PmatchObject_expand_Ins_arcs(ctx, this, &mut allowed)?;
+        PmatchObject_expand_Ins_arcs(ctx, this, &mut required)?;
+        PmatchObject_expand_Ins_arcs(ctx, this, &mut disallowed)?;
 
         if allowed.len() == 0 {
             // Probably something went wrong, we'll just not make no judgement
-            return;
+            return Ok(());
         }
 
         if string_set_has_meta_arc(&mut allowed) {
@@ -4061,16 +4194,16 @@ pub fn PmatchObject_collect_initial_symbols_into(
                         allowed_initial_symbols.insert(it.clone());
                     }
                 }
-                return;
+                return Ok(());
             } else {
                 // Anything goes except what is disallowed
                 if disallowed.len() == 0 || string_set_has_meta_arc(&mut disallowed) {
-                    return;
+                    return Ok(());
                 } else {
                     for s in disallowed.iter() {
                         disallowed_initial_symbols.insert(s.clone());
                     }
-                    return;
+                    return Ok(());
                 }
             }
         }
@@ -4084,7 +4217,7 @@ pub fn PmatchObject_collect_initial_symbols_into(
                     allowed_initial_symbols.insert(it.clone());
                 }
             }
-            return;
+            return Ok(());
         }
 
         // Now we can assume that there is a genuine RC constraint.
@@ -4095,6 +4228,7 @@ pub fn PmatchObject_collect_initial_symbols_into(
             }
         }
     }
+    Ok(())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-symbol.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-symbol.evaluate-fn]
@@ -4132,7 +4266,7 @@ impl PmatchObject for PmatchSymbol {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
@@ -4142,19 +4276,19 @@ impl PmatchObject for PmatchSymbol {
             retval = symbol_from_local_context(ctx, &mut self.sym)
                 .unwrap()
                 .borrow_mut()
-                .evaluate(ctx);
+                .evaluate(ctx)?;
         } else if symbol_in_global_context(ctx, &mut self.sym) {
             if ctx.flatten() && ctx.def_insed_expressions_contains(&self.sym) {
                 retval = ctx
                     .def_insed_expressions_get(&self.sym)
                     .unwrap()
                     .borrow_mut()
-                    .evaluate(ctx);
+                    .evaluate(ctx)?;
             } else {
                 retval = symbol_from_global_context(ctx, &mut self.sym)
                     .unwrap()
                     .borrow_mut()
-                    .evaluate(ctx);
+                    .evaluate(ctx)?;
             }
             ctx.used_definitions_insert(self.sym.clone());
         } else {
@@ -4164,15 +4298,15 @@ impl PmatchObject for PmatchSymbol {
                     self.sym, self.line_defined
                 );
             }
-            retval = HfstTransducer::new_symbol(&self.sym, ctx.format());
+            retval = HfstTransducer::new_symbol(&self.sym, ctx.format())?;
         }
-        retval.set_final_weights(double_to_float(self.weight), true);
-        retval.minimize();
+        retval.set_final_weights(double_to_float(self.weight), true)?;
+        retval.minimize()?;
         self.report_time(ctx, String::new());
         if self.name != "" {
             ctx.eval_stack_pop();
         }
-        retval
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-symbol.evaluate-as-arg-fn]
@@ -4279,7 +4413,7 @@ impl PmatchObject for PmatchString {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
@@ -4287,19 +4421,22 @@ impl PmatchObject for PmatchString {
         self.start_timing(ctx);
         let mut tmp: HfstTransducer = if self.multichar {
             let tok = HfstTokenizer::new();
-            HfstTransducer::new_tokenized(&self.string, &tok, ctx.format())
+            HfstTransducer::new_tokenized(&self.string, &tok, ctx.format())?
         } else {
-            HfstTransducer::new_symbol(&self.string, ctx.format())
+            HfstTransducer::new_symbol(&self.string, ctx.format())?
         };
-        tmp.set_final_weights(double_to_float(self.weight), true);
+        tmp.set_final_weights(double_to_float(self.weight), true)?;
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(tmp);
-            self.cache.as_mut().unwrap().minimize();
+            self.cache
+                .as_mut()
+                .expect("cache populated above")
+                .minimize()?;
             self.report_time(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
         self.report_time(ctx, String::new());
-        return tmp;
+        return Ok(tmp);
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.collect-strings-into-fn]
@@ -4376,13 +4513,13 @@ impl PmatchObject for PmatchQuestionMark {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         self.start_timing(ctx);
         let mut retval: HfstTransducer =
-            HfstTransducer::new_symbol(internal_identity, ctx.format());
-        retval.set_final_weights(double_to_float(self.weight), true);
+            HfstTransducer::new_symbol(internal_identity, ctx.format())?;
+        retval.set_final_weights(double_to_float(self.weight), true)?;
         self.report_time(ctx, String::new());
-        retval
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-fn]
@@ -4432,7 +4569,7 @@ impl PmatchObject for PmatchAcceptor {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         self.start_timing(ctx);
         let mut retval: HfstTransducer = match self.set {
             PmatchPredefined::Alpha => {
@@ -4441,9 +4578,9 @@ impl PmatchObject for PmatchAcceptor {
                     .as_str()
                     == "on"
                 {
-                    HfstTransducer::new_symbol("@UNICODE_ALPHA@", ctx.format())
+                    HfstTransducer::new_symbol("@UNICODE_ALPHA@", ctx.format())?
                 } else {
-                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_alpha_acceptor))
+                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_alpha_acceptor))?
                 }
             }
             PmatchPredefined::UppercaseAlpha => {
@@ -4452,9 +4589,9 @@ impl PmatchObject for PmatchAcceptor {
                     .as_str()
                     == "on"
                 {
-                    HfstTransducer::new_symbol("@UNICODE_UPPERALPHA@", ctx.format())
+                    HfstTransducer::new_symbol("@UNICODE_UPPERALPHA@", ctx.format())?
                 } else {
-                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_uppercase_acceptor))
+                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_uppercase_acceptor))?
                 }
             }
             PmatchPredefined::LowercaseAlpha => {
@@ -4463,16 +4600,16 @@ impl PmatchObject for PmatchAcceptor {
                     .as_str()
                     == "on"
                 {
-                    HfstTransducer::new_symbol("@UNICODE_LOWERALPHA@", ctx.format())
+                    HfstTransducer::new_symbol("@UNICODE_LOWERALPHA@", ctx.format())?
                 } else {
-                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_lowercase_acceptor))
+                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_lowercase_acceptor))?
                 }
             }
             PmatchPredefined::Numeral => {
-                ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_numeral_acceptor))
+                ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_numeral_acceptor))?
             }
             PmatchPredefined::Punctuation => {
-                ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_punct_acceptor))
+                ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_punct_acceptor))?
             }
             PmatchPredefined::Whitespace => {
                 if ctx
@@ -4480,15 +4617,15 @@ impl PmatchObject for PmatchAcceptor {
                     .as_str()
                     == "on"
                 {
-                    HfstTransducer::new_symbol("@UNICODE_WHITESPACE@", ctx.format())
+                    HfstTransducer::new_symbol("@UNICODE_WHITESPACE@", ctx.format())?
                 } else {
-                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_whitespace_acceptor))
+                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_whitespace_acceptor))?
                 }
             }
         };
-        retval.set_final_weights(double_to_float(self.weight), true);
+        retval.set_final_weights(double_to_float(self.weight), true)?;
         self.report_time(ctx, String::new());
-        retval
+        Ok(retval)
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-empty.evaluate-fn]
@@ -4525,7 +4662,7 @@ impl PmatchObject for PmatchEmpty {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         HfstTransducer::new_type(ctx.format())
     }
 }
@@ -4563,7 +4700,7 @@ impl PmatchObject for PmatchEpsilonArc {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         HfstTransducer::new_symbol(internal_epsilon, ctx.format())
     }
 
@@ -4607,16 +4744,16 @@ impl PmatchObject for PmatchTransducerContainer {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.t.get_type() != ctx.format() {
-            self.t.convert(ctx.format(), String::new());
+            self.t.convert(ctx.format(), String::new())?;
         }
-        let mut retval = HfstTransducer::new_copy(&self.t);
-        retval.set_final_weights(double_to_float(self.weight), true);
+        let mut retval = HfstTransducer::new_copy(&self.t)?;
+        retval.set_final_weights(double_to_float(self.weight), true)?;
         if self.name != "" {
             retval.set_name(&self.name);
         }
-        retval
+        Ok(retval)
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-function.evaluate-fn]
@@ -4659,7 +4796,7 @@ impl PmatchObject for PmatchFunction {
         &mut self,
         ctx: &mut PmatchEvalContext,
         funargs: Vec<ObjRef>,
-    ) -> HfstTransducer {
+    ) -> crate::error::Result<HfstTransducer> {
         if ctx.verbose() {
             self.my_timer = clock();
             ctx.set_named_object_evaluation_stack_depth(
@@ -4688,11 +4825,11 @@ impl PmatchObject for PmatchFunction {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
-        let mut retval: HfstTransducer = self.root.borrow_mut().evaluate(ctx);
+        let mut retval: HfstTransducer = self.root.borrow_mut().evaluate(ctx)?;
         if self.name != "" {
             ctx.eval_stack_pop();
         }
-        retval.set_final_weights(double_to_float(self.weight), true);
+        retval.set_final_weights(double_to_float(self.weight), true)?;
         ctx.call_stack_pop();
         if ctx.verbose() {
             let duration = (clock() - self.my_timer) as f64 / CLOCKS_PER_SEC as f64;
@@ -4702,10 +4839,10 @@ impl PmatchObject for PmatchFunction {
                 ctx.named_object_evaluation_stack_depth() - (1),
             );
         }
-        retval
+        Ok(retval)
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         let funargs: Vec<ObjRef> = Vec::new();
         self.evaluate_args(ctx, funargs)
     }
@@ -4746,7 +4883,7 @@ impl PmatchObject for PmatchFuncall {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
@@ -4800,12 +4937,12 @@ impl PmatchObject for PmatchBuiltinFunction {
         self.cache = Some(cache);
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> HfstTransducer {
+    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
         self.start_timing(ctx);
-        let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format());
+        let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format())?;
         if self.type_ == PmatchBuiltin::Interpolate {
             if self.args.len() < 3 {
                 let errstring = format!(
@@ -4816,20 +4953,20 @@ impl PmatchObject for PmatchBuiltinFunction {
             }
             // arguments are in reverse order after parsing
             let n = self.args.len();
-            retval = self.args[n - 2].borrow_mut().evaluate(ctx);
-            let interpolator: HfstTransducer = self.args[n - 1].borrow_mut().evaluate(ctx);
+            retval = self.args[n - 2].borrow_mut().evaluate(ctx)?;
+            let interpolator: HfstTransducer = self.args[n - 1].borrow_mut().evaluate(ctx)?;
             for i in (0..(n - 2)).rev() {
-                let tmp: HfstTransducer = self.args[i].borrow_mut().evaluate(ctx);
-                retval.concatenate(&interpolator, true);
-                retval.concatenate(&tmp, true);
+                let tmp: HfstTransducer = self.args[i].borrow_mut().evaluate(ctx)?;
+                retval.concatenate(&interpolator, true)?;
+                retval.concatenate(&tmp, true)?;
             }
         }
-        retval.set_final_weights(double_to_float(self.weight), true);
+        retval.set_final_weights(double_to_float(self.weight), true)?;
         self.report_time(ctx, String::new());
         if self.name != "" {
             ctx.eval_stack_pop();
         }
-        retval
+        Ok(retval)
     }
 }
 
@@ -5015,7 +5152,7 @@ pub fn compile_like_arc(
     word2: String,
     nwords: u32,
     is_negative: bool,
-) -> ObjRef {
+) -> crate::error::Result<ObjRef> {
     {
         let mut this_word1: WordVector = WordVector::default();
         let mut this_word2: WordVector = WordVector::default();
@@ -5071,7 +5208,7 @@ pub fn compile_like_arc(
                 left: as_obj(word1_o),
                 right: as_obj(word2_o),
             }));
-            return as_obj(binop);
+            return Ok(as_obj(binop));
         }
 
         if this_word1.word.is_empty() || this_word2.word.is_empty() {
@@ -5091,7 +5228,7 @@ using nearest neighbours",
                 &mut this_word,
             );
             let tok: HfstTokenizer = HfstTokenizer::new();
-            let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format());
+            let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format())?;
             if ctx.verbose() {
                 debug!("Inserting into Like({}):", this_word.word);
             }
@@ -5101,11 +5238,11 @@ using nearest neighbours",
                     debug!("  {}", top_n[i].0.word);
                 }
                 let mut tmp: HfstTransducer =
-                    HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format());
+                    HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format())?;
                 if ctx.include_cosine_distances() {
-                    tmp.set_final_weights(top_n[i].1, false);
+                    tmp.set_final_weights(top_n[i].1, false)?;
                 }
-                retval.disjunct(&tmp, true);
+                retval.disjunct(&tmp, true)?;
             }
             let container = Rc::new(RefCell::new(PmatchTransducerContainer {
                 name: String::new(),
@@ -5115,7 +5252,7 @@ using nearest neighbours",
                 cache: None,
                 t: retval,
             }));
-            return as_obj(container);
+            return Ok(as_obj(container));
         }
 
         if ctx.variables_entry_or_default("vector-similarity-projection-factor") != "1.0" {
@@ -5184,18 +5321,18 @@ using nearest neighbours",
             is_negative,
         );
         let tok: HfstTokenizer = HfstTokenizer::new();
-        let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format());
+        let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format())?;
         let mut i: usize = 0;
         while i < top_n.len() && i <= nwords as usize {
             if ctx.verbose() {
                 debug!("  {}", top_n[i].0.word);
             }
             let mut tmp: HfstTransducer =
-                HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format());
+                HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format())?;
             if ctx.include_cosine_distances() {
-                tmp.set_final_weights(top_n[i].1, false);
+                tmp.set_final_weights(top_n[i].1, false)?;
             }
-            retval.disjunct(&tmp, true);
+            retval.disjunct(&tmp, true)?;
             // if (include_cosine_distances) {
             //     for (size_t j = i + 1; j < word_vectors.size() && j <= nwords;
             //     ++j) {
@@ -5218,13 +5355,17 @@ using nearest neighbours",
             cache: None,
             t: retval,
         }));
-        as_obj(container)
+        Ok(as_obj(container))
     }
 }
 // Single-word Like()
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-like-arc-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-like-arc-fn]
-pub fn compile_like_arc_word(ctx: &mut PmatchEvalContext, word: String, nwords: u32) -> ObjRef {
+pub fn compile_like_arc_word(
+    ctx: &mut PmatchEvalContext,
+    word: String,
+    nwords: u32,
+) -> crate::error::Result<ObjRef> {
     {
         let mut this_word: WordVector = WordVector::default();
         for it in ctx.word_vectors_snapshot().iter() {
@@ -5245,7 +5386,7 @@ pub fn compile_like_arc_word(ctx: &mut PmatchEvalContext, word: String, nwords: 
                 multichar: true,
             }));
             pmatchwarning("no matches for argument to Like() operation");
-            return as_obj(word_o);
+            return Ok(as_obj(word_o));
         }
 
         let top_n: Vec<(WordVector, WordVecFloat)> = get_top_n(
@@ -5255,7 +5396,7 @@ pub fn compile_like_arc_word(ctx: &mut PmatchEvalContext, word: String, nwords: 
         );
 
         let tok: HfstTokenizer = HfstTokenizer::new();
-        let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format());
+        let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format())?;
         if ctx.verbose() {
             debug!("Inserting into Like({}):", word);
         }
@@ -5264,11 +5405,11 @@ pub fn compile_like_arc_word(ctx: &mut PmatchEvalContext, word: String, nwords: 
                 debug!("  {}", top_n[i].0.word);
             }
             let mut tmp: HfstTransducer =
-                HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format());
+                HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format())?;
             if ctx.include_cosine_distances() {
-                tmp.set_final_weights(top_n[i].1, false);
+                tmp.set_final_weights(top_n[i].1, false)?;
             }
-            retval.disjunct(&tmp, true);
+            retval.disjunct(&tmp, true)?;
         }
         let container = Rc::new(RefCell::new(PmatchTransducerContainer {
             name: String::new(),
@@ -5278,7 +5419,7 @@ pub fn compile_like_arc_word(ctx: &mut PmatchEvalContext, word: String, nwords: 
             cache: None,
             t: retval,
         }));
-        as_obj(container)
+        Ok(as_obj(container))
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-vec-fn]
@@ -5511,11 +5652,11 @@ pub fn register_lst_line_numbers_from_transducer(
     ctx: &mut PmatchEvalContext,
     t: &HfstTransducer,
     line: i32,
-) {
+) -> crate::error::Result<()> {
     if line <= 0 {
-        return;
+        return Ok(());
     }
-    let ss: StringSet = t.get_alphabet();
+    let ss: StringSet = t.get_alphabet()?;
     for it in ss.iter() {
         if it.find("@L.") == Some(0) {
             // Keep first occurrence if seen before.
@@ -5524,6 +5665,7 @@ pub fn register_lst_line_numbers_from_transducer(
             }
         }
     }
+    Ok(())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.expand-includes-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.expand-includes-fn]
@@ -5598,7 +5740,7 @@ pub fn compile(
     do_flatten: bool,
     do_include_cosine_distances: bool,
     includedir_: String,
-) -> HashMap<String, HfstTransducer> {
+) -> crate::error::Result<HashMap<String, HfstTransducer>> {
     // lock here?
     let mut ctx_owned = PmatchEvalContext::new();
     let ctx = &mut ctx_owned;
@@ -5616,7 +5758,7 @@ pub fn compile(
             key.clone(),
             as_obj(PmatchTransducerContainer::new(HfstTransducer::new_copy(
                 value,
-            ))),
+            )?)),
         );
     }
     ctx.set_format(impl_);
@@ -5647,7 +5789,7 @@ pub fn compile(
     for it in ctx.unsatisfied_insertions_snapshot().into_iter() {
         if !ctx.definitions_contains(it.as_str()) {
             error!("Inserted transducer {} was never defined!", it);
-            return retval;
+            return Ok(retval);
         }
     }
     if ctx.verbose() {
@@ -5662,7 +5804,7 @@ pub fn compile(
     if ctx.pmatchnerrs() != 0 {
         ctx.set_data(String::new());
         ctx.set_len(0);
-        return retval;
+        return Ok(retval);
     }
     // Our helper for harmonizing all the networks' alphabets with
     // each other
@@ -5676,7 +5818,7 @@ pub fn compile(
         || ctx.def_insed_expressions_len() > 0
         || ctx.uncomposed_len() > 0
     {
-        let mut dummy = HfstTransducer::new_type(ctx.format());
+        let mut dummy = HfstTransducer::new_type(ctx.format())?;
         // We keep TOP and any inserted transducers
         let defs_keys: Vec<String> = ctx.definitions_keys();
         for first in defs_keys.iter() {
@@ -5697,15 +5839,15 @@ pub fn compile(
                     ctx.def_insed_expressions_get(first)
                         .unwrap()
                         .borrow_mut()
-                        .evaluate(ctx)
+                        .evaluate(ctx)?
                 } else {
                     ctx.definitions_get(first)
                         .unwrap()
                         .borrow_mut()
-                        .evaluate(ctx)
+                        .evaluate(ctx)?
                 };
-                tmp.minimize();
-                dummy.harmonize(&mut tmp, true);
+                tmp.minimize()?;
+                dummy.harmonize(&mut tmp, true)?;
                 // This is what it will be called in the archive
                 // XXX: seems to use the index not the name...)
                 if ctx.uncomposed_contains(first) {
@@ -5734,13 +5876,13 @@ pub fn compile(
         // Now that dummy is harmonized with everything, we harmonize
         // everything with dummy and minimize the results
         for second in retval.values_mut() {
-            second.harmonize(&mut dummy, true);
-            second.minimize();
+            second.harmonize(&mut dummy, true)?;
+            second.minimize()?;
         }
     } else {
         if ctx.definitions_len() == 0 {
             warn!("pmatch compilation had an empty result");
-            retval.insert("TOP".to_string(), HfstTransducer::new_type(ctx.format()));
+            retval.insert("TOP".to_string(), HfstTransducer::new_type(ctx.format())?);
         } else if !ctx.definitions_contains("TOP") {
             let first_key = ctx.definitions_keys().into_iter().next().unwrap();
             warn!(
@@ -5751,8 +5893,8 @@ pub fn compile(
                 .definitions_get(&first_key)
                 .unwrap()
                 .borrow_mut()
-                .evaluate(ctx);
-            tmp.minimize();
+                .evaluate(ctx)?;
+            tmp.minimize()?;
             tmp.set_name("TOP");
             retval.insert("TOP".to_string(), tmp);
         } else {
@@ -5760,8 +5902,8 @@ pub fn compile(
                 .definitions_get("TOP")
                 .unwrap()
                 .borrow_mut()
-                .evaluate(ctx);
-            tmp.minimize();
+                .evaluate(ctx)?;
+            tmp.minimize()?;
             tmp.set_name("TOP");
             retval.insert("TOP".to_string(), tmp);
         }
@@ -5781,7 +5923,7 @@ pub fn compile(
         .collect_initial_symbols_into(
             &mut allowed_initial_symbols,
             &mut disallowed_initial_symbols,
-        );
+        )?;
     let mut initial_symbols_list = String::new();
     let mut disallowed_initial_symbols_list = String::new();
     // Use this to bail out if there's something suspicious in the final lists
@@ -5839,49 +5981,53 @@ pub fn compile(
     }
     if ctx.variables_get("need-separators").as_deref() == Some("on") {
         let whitespace_acc =
-            ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_whitespace_acceptor));
-        let punct_acc = ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_punct_acceptor));
-        let mut not_whitespace = HfstTransducer::new_symbol(internal_identity, ctx.format());
-        not_whitespace.subtract(&whitespace_acc, true);
-        let mut anything = HfstTransducer::new_symbol(internal_identity, ctx.format());
-        anything.repeat_star();
-        let mut begins_and_ends_with_non_whitespace = HfstTransducer::new_copy(&not_whitespace);
-        begins_and_ends_with_non_whitespace.concatenate(&anything, true);
-        begins_and_ends_with_non_whitespace.concatenate(&not_whitespace, true);
-        begins_and_ends_with_non_whitespace.compose(retval.get("TOP").unwrap(), true);
-        let mut is_single_non_whitespace = HfstTransducer::new_copy(&not_whitespace);
-        is_single_non_whitespace.compose(retval.get("TOP").unwrap(), true);
-        let empty = HfstTransducer::new_type(ctx.format());
-        if begins_and_ends_with_non_whitespace.compare(&empty, true) == false
-            || is_single_non_whitespace.compare(&empty, true) == false
+            ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_whitespace_acceptor))?;
+        let punct_acc = ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_punct_acceptor))?;
+        let mut not_whitespace = HfstTransducer::new_symbol(internal_identity, ctx.format())?;
+        not_whitespace.subtract(&whitespace_acc, true)?;
+        let mut anything = HfstTransducer::new_symbol(internal_identity, ctx.format())?;
+        anything.repeat_star()?;
+        let mut begins_and_ends_with_non_whitespace = HfstTransducer::new_copy(&not_whitespace)?;
+        begins_and_ends_with_non_whitespace.concatenate(&anything, true)?;
+        begins_and_ends_with_non_whitespace.concatenate(&not_whitespace, true)?;
+        begins_and_ends_with_non_whitespace
+            .compose(retval.get("TOP").expect("TOP defined above"), true)?;
+        let mut is_single_non_whitespace = HfstTransducer::new_copy(&not_whitespace)?;
+        is_single_non_whitespace.compose(retval.get("TOP").expect("TOP defined above"), true)?;
+        let empty = HfstTransducer::new_type(ctx.format())?;
+        if begins_and_ends_with_non_whitespace.compare(&empty, true)? == false
+            || is_single_non_whitespace.compare(&empty, true)? == false
         {
-            let mut whitespace_punct_context = HfstTransducer::new_copy(&whitespace_acc);
-            whitespace_punct_context.disjunct(&punct_acc, true);
+            let mut whitespace_punct_context = HfstTransducer::new_copy(&whitespace_acc)?;
+            whitespace_punct_context.disjunct(&punct_acc, true)?;
             whitespace_punct_context.disjunct(
-                &HfstTransducer::new_symbol("@BOUNDARY@", ctx.format()),
+                &HfstTransducer::new_symbol("@BOUNDARY@", ctx.format())?,
                 true,
-            );
+            )?;
             let mut top_with_boundaries: HfstTransducer =
-                HfstTransducer::new_symbol_pair(internal_epsilon, LC_ENTRY_SYMBOL, ctx.format());
-            top_with_boundaries.concatenate(&whitespace_punct_context, true);
+                HfstTransducer::new_symbol_pair(internal_epsilon, LC_ENTRY_SYMBOL, ctx.format())?;
+            top_with_boundaries.concatenate(&whitespace_punct_context, true)?;
             top_with_boundaries.concatenate(
-                &HfstTransducer::new_symbol_pair(internal_epsilon, LC_EXIT_SYMBOL, ctx.format()),
+                &HfstTransducer::new_symbol_pair(internal_epsilon, LC_EXIT_SYMBOL, ctx.format())?,
                 true,
-            );
+            )?;
             let mut rc =
-                HfstTransducer::new_symbol_pair(internal_epsilon, RC_ENTRY_SYMBOL, ctx.format());
-            rc.concatenate(&whitespace_punct_context, true);
+                HfstTransducer::new_symbol_pair(internal_epsilon, RC_ENTRY_SYMBOL, ctx.format())?;
+            rc.concatenate(&whitespace_punct_context, true)?;
             rc.concatenate(
-                &HfstTransducer::new_symbol_pair(internal_epsilon, RC_EXIT_SYMBOL, ctx.format()),
+                &HfstTransducer::new_symbol_pair(internal_epsilon, RC_EXIT_SYMBOL, ctx.format())?,
                 true,
-            );
-            top_with_boundaries.concatenate(retval.get("TOP").unwrap(), true);
-            top_with_boundaries.concatenate(&rc, true);
+            )?;
+            top_with_boundaries.concatenate(retval.get("TOP").expect("TOP defined above"), true)?;
+            top_with_boundaries.concatenate(&rc, true)?;
             retval.insert(
                 "TOP".to_string(),
-                add_pmatch_delimiters(&top_with_boundaries),
+                add_pmatch_delimiters(&top_with_boundaries)?,
             );
-            retval.get_mut("TOP").unwrap().minimize();
+            retval
+                .get_mut("TOP")
+                .expect("TOP defined above")
+                .minimize()?;
             if ctx.verbose() {
                 let duration = (clock() - ctx.timer()) as f64 / CLOCKS_PER_SEC as f64;
                 ctx.set_timer(clock());
@@ -5896,7 +6042,7 @@ pub fn compile(
     }
     ctx.set_data(String::new());
     ctx.set_len(0);
-    retval
+    Ok(retval)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.write-compilation-stack-indentation-to-err-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.write-compilation-stack-indentation-to-err-fn]
@@ -5917,9 +6063,13 @@ pub fn write_compilation_stack_indentation_to_err(ctx: &mut PmatchEvalContext) {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-text-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-text-fn]
-pub fn read_text(filename: String, type_: ImplementationType, spaced_text: bool) -> HfstTransducer {
+pub fn read_text(
+    filename: String,
+    type_: ImplementationType,
+    spaced_text: bool,
+) -> crate::error::Result<HfstTransducer> {
     let tok = HfstTokenizer::new();
-    let mut retval: HfstTransducer = HfstTransducer::new_type(type_);
+    let mut retval: HfstTransducer = HfstTransducer::new_type(type_)?;
     match fs::read_to_string(&filename) {
         Err(_) => {
             error!("Pmatch: could not open text file {} for reading", filename);
@@ -5934,17 +6084,20 @@ pub fn read_text(filename: String, type_: ImplementationType, spaced_text: bool)
                         let _spv = HfstTokenizer::tokenize_space_separated(&line);
                     } else {
                         let spv = tok.tokenize(&line, false); // XXX
-                        retval.disjunct_spv(&spv);
+                        retval.disjunct_spv(&spv)?;
                     }
                 }
             }
         }
     }
-    retval
+    Ok(retval)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-spaced-text-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-spaced-text-fn]
-pub fn read_spaced_text(filename: String, type_: ImplementationType) -> HfstTransducer {
+pub fn read_spaced_text(
+    filename: String,
+    type_: ImplementationType,
+) -> crate::error::Result<HfstTransducer> {
     read_text(filename, type_, true)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.path-from-filename-fn]
@@ -6281,23 +6434,23 @@ fn build_read_file(
         RK::Binary => {
             // HfstInputStream-backed binary reading is deferred in the Rust
             // facade; mirror the structure as far as it goes.
-            let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(&filepath);
+            let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(&filepath)?;
             instream.close();
-            Ok(as_obj(pmb_tc(HfstTransducer::new_type(ctx.format()))))
+            Ok(as_obj(pmb_tc(HfstTransducer::new_type(ctx.format())?)))
         }
         RK::Text => Ok(as_obj(pmb_tc(read_text(
             filepath,
             ImplementationType::TROPICAL_OPENFST_TYPE,
             false,
-        )))),
+        )?))),
         RK::Spaced => Ok(as_obj(pmb_tc(read_spaced_text(
             filepath,
             ImplementationType::TROPICAL_OPENFST_TYPE,
-        )))),
+        )?))),
         RK::Prolog => match std::fs::File::open(&filepath) {
             Err(_) => {
                 error!("File cannot be opened.");
-                Ok(as_obj(pmb_tc(HfstTransducer::new_type(ctx.format()))))
+                Ok(as_obj(pmb_tc(HfstTransducer::new_type(ctx.format())?)))
             }
             Ok(f) => {
                 let mut reader = std::io::BufReader::new(f);
@@ -6311,7 +6464,7 @@ fn build_read_file(
                     &tmp,
                     ctx.format(),
                 ));
-                t.minimize();
+                t.minimize()?;
                 Ok(as_obj(pmb_tc(*t)))
             }
         },
@@ -6326,9 +6479,10 @@ fn build_read_file(
                 error!("Failed to read regex from {}.", filepath);
             }
             let mut xre_compiler = crate::xre::XreCompiler::new(ctx.format());
-            let compiled = xre_compiler
-                .compile(&regex)
-                .unwrap_or_else(|| HfstTransducer::new_type(ctx.format()));
+            let compiled = match xre_compiler.compile(&regex) {
+                Some(t) => t,
+                None => HfstTransducer::new_type(ctx.format())?,
+            };
             Ok(as_obj(pmb_tc(compiled)))
         }
     }
@@ -6360,7 +6514,7 @@ pub fn build_object(
         PE::Acceptor(a) => pmb_acceptor(map_acceptor(*a)),
         PE::CharacterRange { from, to } => {
             let raw = format!("\"{}-{}\"", from, to);
-            as_obj(parse_range(ctx, &raw))
+            as_obj(parse_range(ctx, &raw)?)
         }
 
         // ---- operators -----------------------------------------------------
@@ -6631,13 +6785,13 @@ pub fn build_object(
             }
         }
         PE::EndTag(name) => {
-            let retval = as_obj(make_end_tag(ctx, name.clone()));
+            let retval = as_obj(make_end_tag(ctx, name.clone())?);
             ctx.set_need_delimiters(true);
             retval
         }
         PE::Capture(name) => {
-            let retval = as_obj(make_capture_tag(ctx, name.clone()));
-            let captured = make_captured_tag(ctx, name.clone());
+            let retval = as_obj(make_capture_tag(ctx, name.clone())?);
+            let captured = make_captured_tag(ctx, name.clone())?;
             if ctx.definitions_contains(name) {
                 warn(format!(
                     "definition of {} on line {} shadows earlier definition\n",
@@ -6653,7 +6807,7 @@ pub fn build_object(
             let cat = pmb_binary(
                 PmatchBinaryOp::Concatenate,
                 build_object(ctx, body)?,
-                as_obj(make_end_tag(ctx, name.clone())),
+                as_obj(make_end_tag(ctx, name.clone())?),
             );
             pmb_unary(PmatchUnaryOp::AddDelimiters, cat)
         }
@@ -6664,7 +6818,7 @@ pub fn build_object(
             let inner = pmb_binary(PmatchBinaryOp::Concatenate, entry, build_object(ctx, body)?);
             pmb_binary(PmatchBinaryOp::Concatenate, inner, exit)
         }
-        PE::Counter(name) => as_obj(make_counter(ctx, name.clone())),
+        PE::Counter(name) => as_obj(make_counter(ctx, name.clone())?),
         PE::CaseOp { op, side, body } => {
             pmb_unary(map_caseop(*op, *side), build_object(ctx, body)?)
         }
@@ -6695,13 +6849,13 @@ pub fn build_object(
                     );
                     pmb_empty()
                 } else {
-                    compile_like_arc(ctx, rargs[1].clone(), rargs[0].clone(), nwords, true)
+                    compile_like_arc(ctx, rargs[1].clone(), rargs[0].clone(), nwords, true)?
                 }
             } else {
                 match rargs.len() {
-                    0 => compile_like_arc_word(ctx, String::new(), 10),
-                    1 => compile_like_arc_word(ctx, rargs[0].clone(), nwords),
-                    _ => compile_like_arc(ctx, rargs[0].clone(), rargs[1].clone(), nwords, false),
+                    0 => compile_like_arc_word(ctx, String::new(), 10)?,
+                    1 => compile_like_arc_word(ctx, rargs[0].clone(), nwords)?,
+                    _ => compile_like_arc(ctx, rargs[0].clone(), rargs[1].clone(), nwords, false)?,
                 }
             }
         }
@@ -6827,7 +6981,7 @@ pub fn build_object(
                 &filepath,
                 ctx.format(),
                 ctx.verbose(),
-            )))
+            )?))
         }
         PE::ReadVec(path) => {
             let filepath = path_of(ctx, path);
@@ -6989,21 +7143,22 @@ impl PmatchCompiler {
     //
     // Reads the global 'definitions' map (populated by 'compile') and stores the
     // evaluated transducer into the member 'definitions_', mirroring the C++.
-    pub fn define(&mut self, name: &str, pmatch: &str) {
-        self.compile(pmatch);
+    pub fn define(&mut self, name: &str, pmatch: &str) -> crate::error::Result<()> {
+        self.compile(pmatch)?;
         let ctx = &mut self.eval_ctx;
         if ctx.definitions_contains(name) {
             let obj = ctx.definitions_get(name).unwrap();
-            let evaluated = obj.borrow_mut().evaluate(ctx);
+            let evaluated = obj.borrow_mut().evaluate(ctx)?;
             self.definitions_.insert(name.to_string(), evaluated);
         }
+        Ok(())
     }
 
     // [spec:hfst:def:pmatch-compiler.hfst.pmatch.pmatch-compiler.compile-fn]
     // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.compile-fn]
     // Mirrors 'hfst::pmatch::compile', with the bison 'pmatchparse()' step
     // replaced by a walk over the 'nfst-pmatch' AST (the sanctioned deviation).
-    pub fn compile(&mut self, src: &str) -> HashMap<String, HfstTransducer> {
+    pub fn compile(&mut self, src: &str) -> crate::error::Result<HashMap<String, HfstTransducer>> {
         {
             let ctx = &mut self.eval_ctx;
             ctx.init_globals();
@@ -7027,14 +7182,14 @@ impl PmatchCompiler {
                             error!("{}", e);
                             ctx.set_data(String::new());
                             ctx.set_len(0);
-                            return HashMap::new();
+                            return Ok(HashMap::new());
                         }
                     }
                 }
                 Err(_e) => {
                     ctx.set_data(String::new());
                     ctx.set_len(0);
-                    return HashMap::new();
+                    return Ok(HashMap::new());
                 }
             }
 
@@ -7045,7 +7200,7 @@ impl PmatchCompiler {
                     error!("Inserted transducer {} was never defined!", it);
                     ctx.set_data(String::new());
                     ctx.set_len(0);
-                    return retval;
+                    return Ok(retval);
                 }
             }
             if ctx.verbose() {
@@ -7066,7 +7221,7 @@ impl PmatchCompiler {
                 || !ctx.def_insed_expressions_is_empty()
                 || !ctx.uncomposed_is_empty()
             {
-                let mut dummy = HfstTransducer::new_type(ctx.format());
+                let mut dummy = HfstTransducer::new_type(ctx.format())?;
                 let keys: Vec<String> = ctx.definitions_keys();
                 for key in &keys {
                     if key == "TOP"
@@ -7079,9 +7234,9 @@ impl PmatchCompiler {
                         } else {
                             ctx.definitions_get(key).unwrap()
                         };
-                        let mut tmp: HfstTransducer = obj_ptr.borrow_mut().evaluate(ctx);
-                        tmp.minimize();
-                        dummy.harmonize(&mut tmp, false);
+                        let mut tmp: HfstTransducer = obj_ptr.borrow_mut().evaluate(ctx)?;
+                        tmp.minimize()?;
+                        dummy.harmonize(&mut tmp, false)?;
                         if ctx.uncomposed_contains(key) {
                             if uncount == 0 {
                                 tmp.set_name(&format!("UNCOMPOSE LEFT {}", key));
@@ -7102,12 +7257,12 @@ impl PmatchCompiler {
                     }
                 }
                 for v in retval.values_mut() {
-                    v.harmonize(&mut dummy, false);
-                    v.minimize();
+                    v.harmonize(&mut dummy, false)?;
+                    v.minimize()?;
                 }
             } else if ctx.definitions_is_empty() {
                 warn!("pmatch compilation had an empty result");
-                retval.insert("TOP".to_string(), HfstTransducer::new_type(ctx.format()));
+                retval.insert("TOP".to_string(), HfstTransducer::new_type(ctx.format())?);
             } else if !ctx.definitions_contains("TOP") {
                 let (first_key, first_obj) = {
                     let snap = ctx.definitions_snapshot();
@@ -7119,14 +7274,14 @@ impl PmatchCompiler {
                     "Pmatch compilation: regex or TOP was undefined, using {} as root",
                     first_key
                 );
-                let mut tmp: HfstTransducer = first_obj.borrow_mut().evaluate(ctx);
-                tmp.minimize();
+                let mut tmp: HfstTransducer = first_obj.borrow_mut().evaluate(ctx)?;
+                tmp.minimize()?;
                 tmp.set_name("TOP");
                 retval.insert("TOP".to_string(), tmp);
             } else {
                 let top_obj = ctx.definitions_get("TOP").unwrap();
-                let mut tmp: HfstTransducer = top_obj.borrow_mut().evaluate(ctx);
-                tmp.minimize();
+                let mut tmp: HfstTransducer = top_obj.borrow_mut().evaluate(ctx)?;
+                tmp.minimize()?;
                 tmp.set_name("TOP");
                 retval.insert("TOP".to_string(), tmp);
             }
@@ -7143,7 +7298,7 @@ impl PmatchCompiler {
                 top.borrow_mut().collect_initial_symbols_into(
                     &mut allowed_initial_symbols,
                     &mut disallowed_initial_symbols,
-                );
+                )?;
             }
             let mut initial_symbols_list = String::new();
             let mut disallowed_initial_symbols_list = String::new();
@@ -7202,70 +7357,73 @@ impl PmatchCompiler {
 
             if ctx.variables_get("need-separators").as_deref() == Some("on") {
                 let whitespace_acc =
-                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_whitespace_acceptor));
+                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_whitespace_acceptor))?;
                 let punct_acc =
-                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_punct_acceptor));
+                    ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_punct_acceptor))?;
                 let mut not_whitespace = HfstTransducer::new_symbol(
                     crate::hfst_symbol_defs::internal_identity,
                     ctx.format(),
-                );
-                not_whitespace.subtract(&whitespace_acc, true);
+                )?;
+                not_whitespace.subtract(&whitespace_acc, true)?;
                 let mut anything = HfstTransducer::new_symbol(
                     crate::hfst_symbol_defs::internal_identity,
                     ctx.format(),
-                );
-                anything.repeat_star();
+                )?;
+                anything.repeat_star()?;
                 let mut begins_and_ends_with_non_whitespace =
                     HfstTransducer::new_from_transducer(&not_whitespace);
-                begins_and_ends_with_non_whitespace.concatenate(&anything, true);
-                begins_and_ends_with_non_whitespace.concatenate(&not_whitespace, true);
-                begins_and_ends_with_non_whitespace.compose(retval.get("TOP").unwrap(), true);
+                begins_and_ends_with_non_whitespace.concatenate(&anything, true)?;
+                begins_and_ends_with_non_whitespace.concatenate(&not_whitespace, true)?;
+                begins_and_ends_with_non_whitespace
+                    .compose(retval.get("TOP").expect("TOP defined above"), true)?;
                 let mut is_single_non_whitespace =
                     HfstTransducer::new_from_transducer(&not_whitespace);
-                is_single_non_whitespace.compose(retval.get("TOP").unwrap(), true);
-                let empty = HfstTransducer::new_type(ctx.format());
-                if !begins_and_ends_with_non_whitespace.compare(&empty, true)
-                    || !is_single_non_whitespace.compare(&empty, true)
+                is_single_non_whitespace
+                    .compose(retval.get("TOP").expect("TOP defined above"), true)?;
+                let empty = HfstTransducer::new_type(ctx.format())?;
+                if !begins_and_ends_with_non_whitespace.compare(&empty, true)?
+                    || !is_single_non_whitespace.compare(&empty, true)?
                 {
                     let mut whitespace_punct_context =
                         HfstTransducer::new_from_transducer(&whitespace_acc);
-                    whitespace_punct_context.disjunct(&punct_acc, true);
+                    whitespace_punct_context.disjunct(&punct_acc, true)?;
                     whitespace_punct_context.disjunct(
-                        &HfstTransducer::new_symbol("@BOUNDARY@", ctx.format()),
+                        &HfstTransducer::new_symbol("@BOUNDARY@", ctx.format())?,
                         true,
-                    );
+                    )?;
                     let mut top_with_boundaries = HfstTransducer::new_symbol_pair(
                         crate::hfst_symbol_defs::internal_epsilon,
                         LC_ENTRY_SYMBOL,
                         ctx.format(),
-                    );
-                    top_with_boundaries.concatenate(&whitespace_punct_context, true);
+                    )?;
+                    top_with_boundaries.concatenate(&whitespace_punct_context, true)?;
                     top_with_boundaries.concatenate(
                         &HfstTransducer::new_symbol_pair(
                             crate::hfst_symbol_defs::internal_epsilon,
                             LC_EXIT_SYMBOL,
                             ctx.format(),
-                        ),
+                        )?,
                         true,
-                    );
+                    )?;
                     let mut rc = HfstTransducer::new_symbol_pair(
                         crate::hfst_symbol_defs::internal_epsilon,
                         RC_ENTRY_SYMBOL,
                         ctx.format(),
-                    );
-                    rc.concatenate(&whitespace_punct_context, true);
+                    )?;
+                    rc.concatenate(&whitespace_punct_context, true)?;
                     rc.concatenate(
                         &HfstTransducer::new_symbol_pair(
                             crate::hfst_symbol_defs::internal_epsilon,
                             RC_EXIT_SYMBOL,
                             ctx.format(),
-                        ),
+                        )?,
                         true,
-                    );
-                    top_with_boundaries.concatenate(retval.get("TOP").unwrap(), true);
-                    top_with_boundaries.concatenate(&rc, true);
-                    let mut new_top = add_pmatch_delimiters(&top_with_boundaries);
-                    new_top.minimize();
+                    )?;
+                    top_with_boundaries
+                        .concatenate(retval.get("TOP").expect("TOP defined above"), true)?;
+                    top_with_boundaries.concatenate(&rc, true)?;
+                    let mut new_top = add_pmatch_delimiters(&top_with_boundaries)?;
+                    new_top.minimize()?;
                     retval.insert("TOP".to_string(), new_top);
                     if ctx.verbose() {
                         let duration = (clock() - ctx.timer()) as f64 / CLOCKS_PER_SEC as f64;
@@ -7282,7 +7440,7 @@ impl PmatchCompiler {
             }
             ctx.set_data(String::new());
             ctx.set_len(0);
-            retval
+            Ok(retval)
         }
     }
 

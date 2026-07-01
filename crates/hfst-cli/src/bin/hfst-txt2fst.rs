@@ -253,8 +253,14 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     // the Rust foundation panics rather than throwing, so the catch
                     // arm is not reproduced here.
                     let mut t = HfstTransducer::prolog_file_to_xfsm_transducer(&inputfilename);
-                    outstream.redirect(&mut t);
-                    outstream.flush();
+                    if let Err(e) = outstream.redirect(&mut t) {
+                        hfst_error(1, 0, &format!("{}", e));
+                        return 1;
+                    }
+                    if let Err(e) = outstream.flush() {
+                        hfst_error(1, 0, &format!("{}", e));
+                        return 1;
+                    }
                     break;
                 }
 
@@ -286,10 +292,19 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     }
                 }
 
-                let mut t = HfstTransducer::new_from_basic(&fsm, OUTPUT_FORMAT);
+                let mut t = match HfstTransducer::new_from_basic(&fsm, OUTPUT_FORMAT) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        hfst_error(1, 0, &format!("{}", e));
+                        return 1;
+                    }
+                };
                 hfst_set_name(&mut t, &inputfilename, "text");
                 hfst_set_formula(&mut t, &inputfilename, "T");
-                outstream.redirect(&mut t);
+                if let Err(e) = outstream.redirect(&mut t) {
+                    hfst_error(1, 0, &format!("{}", e));
+                    return 1;
+                }
             } else if DISJUNCT_MULTIPLE_TRANSDUCERS {
                 let mut transducers: Vec<HfstTransducer> = Vec::new();
                 // C: catches NotValidAttFormatException and prints an error; the
@@ -310,16 +325,34 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                             return 1;
                         }
                     };
-                    let t = HfstTransducer::new_from_basic(&net, OUTPUT_FORMAT);
+                    let t = match HfstTransducer::new_from_basic(&net, OUTPUT_FORMAT) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            hfst_error(1, 0, &format!("{}", e));
+                            return 1;
+                        }
+                    };
                     transducers.push(t);
                 }
-                let mut joined = HfstTransducer::new_type(OUTPUT_FORMAT);
+                let mut joined = match HfstTransducer::new_type(OUTPUT_FORMAT) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        hfst_error(1, 0, &format!("{}", e));
+                        return 1;
+                    }
+                };
                 for it in transducers.iter() {
-                    joined.disjunct(it, true);
+                    if let Err(e) = joined.disjunct(it, true) {
+                        hfst_error(1, 0, &format!("{}", e));
+                        return 1;
+                    }
                 }
                 // joined.remove_epsilons(); // remove epsilons from the unioned
                 // transducers
-                outstream.redirect(&mut joined);
+                if let Err(e) = outstream.redirect(&mut joined) {
+                    hfst_error(1, 0, &format!("{}", e));
+                    return 1;
+                }
             } else {
                 // C: catches NotValidAttFormatException; the Rust readers panic_any
                 // rather than throw, so the catch arm is not reproduced here.
@@ -336,7 +369,13 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                         return 1;
                     }
                 };
-                let mut t = HfstTransducer::new_from_basic(&net, OUTPUT_FORMAT);
+                let mut t = match HfstTransducer::new_from_basic(&net, OUTPUT_FORMAT) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        hfst_error(1, 0, &format!("{}", e));
+                        return 1;
+                    }
+                };
                 hfst_set_name(&mut t, &inputfilename, "text");
                 hfst_set_formula(&mut t, &inputfilename, "T");
                 if CHECK_NEGATIVE_EPSILON_CYCLES {
@@ -356,7 +395,10 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                         verbose_printf("No epsilon cycles with a negative weight detected...\n");
                     }
                 }
-                outstream.redirect(&mut t);
+                if let Err(e) = outstream.redirect(&mut t) {
+                    hfst_error(1, 0, &format!("{}", e));
+                    return 1;
+                }
             }
         }
         outstream.close();
@@ -446,10 +488,16 @@ unsafe fn real_main() -> i32 {
         }
 
         // here starts the buffer handling part
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), OUTPUT_FORMAT, true)
         } else {
             HfstOutputStream::new(OUTPUT_FORMAT, true)
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                hfst_error(1, 0, &format!("{}", e));
+                return 1;
+            }
         };
         let mut input = match globals::input_reader() {
             Ok(r) => r,

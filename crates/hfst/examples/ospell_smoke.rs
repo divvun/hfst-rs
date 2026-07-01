@@ -3,7 +3,7 @@ use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::ospell::Speller;
 
-fn main() {
+fn main() -> hfst::error::Result<()> {
     // A tiny "lexicon" accepting exactly the identity path c:c a:a t:t -> "cat".
     let mut basic = HfstBasicTransducer::new();
     let tr = HfstBasicTransition::new_symbols(
@@ -32,10 +32,10 @@ fn main() {
     basic.add_transition(2, &tr, true);
     basic.set_final_weight(3, &0.0);
 
-    let ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&basic, true, "", None);
+    let ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&basic, true, "", None)?;
 
     // Use the identity transducer as both mutator and lexicon.
-    let mut speller = Speller::new(&ol, &ol);
+    let mut speller = Speller::new(&ol, &ol)?;
 
     // check(): is the word in the lexicon?
     assert!(speller.check("cat"), "cat should be in the lexicon");
@@ -50,4 +50,5 @@ fn main() {
     assert_eq!(top.0, "cat");
     assert!((top.1 - 0.0).abs() < 1e-6, "weight was {}", top.1);
     println!("Speller::correct OK (cat -> {} @ {})", top.0, top.1);
+    Ok(())
 }

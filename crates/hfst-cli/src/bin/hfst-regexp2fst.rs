@@ -243,7 +243,13 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         comp.set_minimize_result(MINIMIZE_RESULT);
         comp.set_flag_is_epsilon(FLAG_IS_EPSILON);
         comp.set_xerox_composition(XEROX_COMPOSITION);
-        let mut disjunction = HfstTransducer::new_type(OUTPUT_FORMAT);
+        let mut disjunction = match HfstTransducer::new_type(OUTPUT_FORMAT) {
+            Ok(t) => t,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
 
         let mut first_line: Option<String> = None;
 
@@ -295,10 +301,16 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 offset += chars_read as usize;
                 if let Some(mut compiled) = compiled {
                     if DISJUNCT_EXPRESSIONS {
-                        disjunction.disjunct(&compiled, HARMONIZE);
+                        if let Err(e) = disjunction.disjunct(&compiled, HARMONIZE) {
+                            error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
                     } else {
                         hfst_set_name(&mut compiled, "?", "xre");
-                        outstream.redirect(&mut compiled);
+                        if let Err(e) = outstream.redirect(&mut compiled) {
+                            error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
                     }
                     // C: delete compiled; -> owned, drops here.
                 }
@@ -356,10 +368,16 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 input_contains_only_whitespace_or_comments = false;
 
                 if DISJUNCT_EXPRESSIONS {
-                    disjunction.disjunct(&compiled, HARMONIZE);
+                    if let Err(e) = disjunction.disjunct(&compiled, HARMONIZE) {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                 } else {
                     hfst_set_name(&mut compiled, "?", "xre");
-                    outstream.redirect(&mut compiled);
+                    if let Err(e) = outstream.redirect(&mut compiled) {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                 }
                 // C: delete compiled; -> owned, drops here.
             }
@@ -368,7 +386,10 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         if DISJUNCT_EXPRESSIONS {
             // Both branches of the C++ if/else set the same name.
             hfst_set_name(&mut disjunction, "?", "xre");
-            outstream.redirect(&mut disjunction);
+            if let Err(e) = outstream.redirect(&mut disjunction) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
         // C: free(line); free(first_line); -> owned String/Option, drop here.
         drop(first_line);
@@ -405,10 +426,16 @@ unsafe fn real_main() -> i32 {
             globals::output_filename()
         ));
         // here starts the buffer handling part
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), OUTPUT_FORMAT, true)
         } else {
             HfstOutputStream::new(OUTPUT_FORMAT, true)
+        } {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("hfst-regexp2fst: cannot open output: {e}");
+                return 1;
+            }
         };
         let mut input = match globals::input_reader() {
             Ok(r) => r,

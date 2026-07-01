@@ -36,7 +36,7 @@
 //!   -> ['ComposeIntersectFst::START']; the pair's own 'START' static -> the
 //!   'ComposeIntersectRulePair::START' associated const (also 0).
 //! * 'hfst::size_t_to_uint' -> ['crate::hfst_data_types::size_t_to_uint'].
-//! * 'HFST_THROW(StateNotDefined)' -> 'crate::HFST_THROW!(StateNotDefined)' with the
+//! * 'HFST_THROW(StateNotDefined)' -> 'crate::bail!(StateNotDefined)' with the
 //!   'StateNotDefined' child exception owned by 'compose_intersect_fst'.
 //! * The merge-join in 'compute_transition_set' holds 'const TransitionSet &'s into
 //!   'fst1' / 'fst2' while calling the *self*-mutating 'get_state'; since 'get_state'
@@ -97,25 +97,33 @@ pub type StateTransitionVector = Vec<SymbolTransitionMap>;
 /// calls on the same pointer — see the per-impl notes below for how the
 /// non-virtual dispatch is reproduced.
 pub trait ComposeIntersectRuleObject {
-    fn get_transitions(&mut self, s: HfstState, symbol: usize) -> &TransitionSet;
-    fn get_final_weight(&self, s: HfstState) -> f32;
+    fn get_transitions(
+        &mut self,
+        s: HfstState,
+        symbol: usize,
+    ) -> crate::error::Result<&TransitionSet>;
+    fn get_final_weight(&self, s: HfstState) -> crate::error::Result<f32>;
     fn get_symbols(&self) -> &SymbolSet;
-    fn known_symbol(&self, symbol: usize) -> bool;
+    fn known_symbol(&self, symbol: usize) -> crate::error::Result<bool>;
 }
 
 // 'ComposeIntersectRule' used through a 'ComposeIntersectRule *' — the non-pair
 // case. Delegates to its inherent (inherited-from-'ComposeIntersectFst') methods.
 impl ComposeIntersectRuleObject for ComposeIntersectRule {
-    fn get_transitions(&mut self, s: HfstState, symbol: usize) -> &TransitionSet {
+    fn get_transitions(
+        &mut self,
+        s: HfstState,
+        symbol: usize,
+    ) -> crate::error::Result<&TransitionSet> {
         ComposeIntersectRule::get_transitions(self, s, symbol)
     }
-    fn get_final_weight(&self, s: HfstState) -> f32 {
+    fn get_final_weight(&self, s: HfstState) -> crate::error::Result<f32> {
         ComposeIntersectRule::get_final_weight(self, s)
     }
     fn get_symbols(&self) -> &SymbolSet {
         ComposeIntersectRule::get_symbols(self)
     }
-    fn known_symbol(&self, symbol: usize) -> bool {
+    fn known_symbol(&self, symbol: usize) -> crate::error::Result<bool> {
         ComposeIntersectRule::known_symbol(self, symbol)
     }
 }
@@ -198,14 +206,18 @@ impl ComposeIntersectRulePair {
     //   if (! transitions_computed(s,symbol)) { compute_transition_set(s,symbol); }
     //   return state_transition_vector[s][symbol];
     // }
-    pub fn get_transitions(&mut self, s: HfstState, symbol: usize) -> &TransitionSet {
+    pub fn get_transitions(
+        &mut self,
+        s: HfstState,
+        symbol: usize,
+    ) -> crate::error::Result<&TransitionSet> {
         if !self.has_state(s) {
-            crate::HFST_THROW!(StateNotDefined);
+            crate::bail!(StateNotDefined);
         }
         if !self.transitions_computed(s, symbol) {
-            self.compute_transition_set(s, symbol);
+            self.compute_transition_set(s, symbol)?;
         }
-        &self.state_transition_vector[s as usize][&symbol]
+        Ok(&self.state_transition_vector[s as usize][&symbol])
     }
 
     // [spec:hfst:def:compose-intersect-rule-pair.hfst.implementations.compose-intersect-rule-pair.has-state-fn]
@@ -296,12 +308,12 @@ impl ComposeIntersectRulePair {
     //   return fst1->get_final_weight(state_pair.first) +
     //          fst2->get_final_weight(state_pair.second);
     // }
-    pub fn get_final_weight(&self, s: HfstState) -> f32 {
+    pub fn get_final_weight(&self, s: HfstState) -> crate::error::Result<f32> {
         if !self.has_state(s) {
-            crate::HFST_THROW!(StateNotDefined);
+            crate::bail!(StateNotDefined);
         }
         let state_pair = self.state_pair_vector[s as usize];
-        self.fst1.get_final_weight(state_pair.0) + self.fst2.get_final_weight(state_pair.1)
+        Ok(self.fst1.get_final_weight(state_pair.0)? + self.fst2.get_final_weight(state_pair.1)?)
     }
 
     // [spec:hfst:def:compose-intersect-rule-pair.hfst.implementations.compose-intersect-rule-pair.compute-transition-set-fn]
@@ -335,7 +347,11 @@ impl ComposeIntersectRulePair {
     //   }
     //   state_transition_vector[state][symbol] = transitions;
     // }
-    fn compute_transition_set(&mut self, state: HfstState, symbol: usize) {
+    fn compute_transition_set(
+        &mut self,
+        state: HfstState,
+        symbol: usize,
+    ) -> crate::error::Result<()> {
         let state_pair = self.state_pair_vector[state as usize];
 
         // Snapshot the two component transition sets (sorted-vector order ==
@@ -343,13 +359,13 @@ impl ComposeIntersectRulePair {
         // self-mutating 'get_state' can run inside the merge below.
         let fst1_transitions: Vec<Transition> = self
             .fst1
-            .get_transitions(state_pair.0, symbol)
+            .get_transitions(state_pair.0, symbol)?
             .begin()
             .cloned()
             .collect();
         let fst2_transitions: Vec<Transition> = self
             .fst2
-            .get_transitions(state_pair.1, symbol)
+            .get_transitions(state_pair.1, symbol)?
             .begin()
             .cloned()
             .collect();
@@ -379,6 +395,7 @@ impl ComposeIntersectRulePair {
         }
         // state_transition_vector[state][symbol] = transitions;
         self.state_transition_vector[state as usize].insert(symbol, transitions);
+        Ok(())
     }
 }
 
@@ -387,16 +404,20 @@ impl ComposeIntersectRulePair {
 // 'get_final_weight' are the overrides; 'get_symbols' is inherited and returns the
 // 'symbol_set' assigned in the constructor.
 impl ComposeIntersectRuleObject for ComposeIntersectRulePair {
-    fn get_transitions(&mut self, s: HfstState, symbol: usize) -> &TransitionSet {
+    fn get_transitions(
+        &mut self,
+        s: HfstState,
+        symbol: usize,
+    ) -> crate::error::Result<&TransitionSet> {
         ComposeIntersectRulePair::get_transitions(self, s, symbol)
     }
-    fn get_final_weight(&self, s: HfstState) -> f32 {
+    fn get_final_weight(&self, s: HfstState) -> crate::error::Result<f32> {
         ComposeIntersectRulePair::get_final_weight(self, s)
     }
     fn get_symbols(&self) -> &SymbolSet {
         &self.symbol_set
     }
-    fn known_symbol(&self, _symbol: usize) -> bool {
+    fn known_symbol(&self, _symbol: usize) -> crate::error::Result<bool> {
         // 'known_symbol' is the *non-virtual* 'ComposeIntersectRule::known_symbol',
         // so calling it through a 'ComposeIntersectRule *' that actually points at a
         // 'ComposeIntersectRulePair' reads the pair's *inherited* 'symbols' StringSet.
@@ -404,6 +425,6 @@ impl ComposeIntersectRuleObject for ComposeIntersectRulePair {
         // numeric 'symbol_set'), so 'symbols.count(...) > 0' is always false. The
         // flattened port has no 'symbols' field on the pair, so this returns 'false'
         // unconditionally — bug-for-bug identical.
-        false
+        Ok(false)
     }
 }

@@ -103,29 +103,29 @@ pub fn expand_equivalences(
     mut trans: HfstTransducer,
     pairs: &[(String, String)],
     level: FsaLevel,
-) -> HfstTransducer {
+) -> crate::error::Result<HfstTransducer> {
     let mut extensions =
-        HfstTransducer::new_symbol_pair(internal_identity, internal_identity, trans.get_type());
+        HfstTransducer::new_symbol_pair(internal_identity, internal_identity, trans.get_type())?;
     for (from, to) in pairs {
-        let remap = HfstTransducer::new_symbol_pair(from, to, extensions.get_type());
-        extensions.disjunct(&remap, true);
+        let remap = HfstTransducer::new_symbol_pair(from, to, extensions.get_type())?;
+        extensions.disjunct(&remap, true)?;
     }
-    extensions.minimize().repeat_star().minimize();
-    match level {
+    extensions.minimize()?.repeat_star()?.minimize()?;
+    Ok(match level {
         FsaLevel::Both => {
-            trans.compose(&extensions, true);
+            trans.compose(&extensions, true)?;
             // C: trans = extensions->invert().compose(trans);
-            extensions.invert().compose(&trans, true);
+            extensions.invert()?.compose(&trans, true)?;
             extensions
         }
         FsaLevel::First => {
             // C: trans = extensions->invert().compose(trans);
-            extensions.invert().compose(&trans, true);
+            extensions.invert()?.compose(&trans, true)?;
             extensions
         }
         FsaLevel::Second => {
-            trans.compose(&extensions, true);
+            trans.compose(&extensions, true)?;
             trans
         }
-    }
+    })
 }

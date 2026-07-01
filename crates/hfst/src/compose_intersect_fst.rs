@@ -22,7 +22,7 @@
 //!   on the 'std::map' may insert; the others are declared non-const in the .h);
 //!   they are ported with '&mut self'. ('get_final_weight', 'get_symbols',
 //!   'is_known_symbol' stay '&self'.)
-//! * 'HFST_THROW(StateNotDefined)' -> 'crate::HFST_THROW!(StateNotDefined)'; the
+//! * 'HFST_THROW(StateNotDefined)' -> 'crate::bail!(StateNotDefined)'; the
 //!   'StateNotDefined' child exception (declared/defined in the '.cc') is
 //!   reproduced here with the same shape as 'hfst_exception_child!'.
 
@@ -35,7 +35,7 @@ use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_tropical_transducer_transition_data::SymbolCoder;
 
 // The compose-intersect `StateNotDefined` signal (a C++ `HfstException` child)
-// is now `crate::error::ErrorKind::StateNotDefined`; `HFST_THROW!(StateNotDefined)`
+// is now `crate::error::ErrorKind::StateNotDefined`; `crate::bail!(StateNotDefined)`
 // raises it via the unified `Error` payload.
 // [spec:hfst:def:compose-intersect-fst.state-not-defined]
 
@@ -185,8 +185,11 @@ impl ComposeIntersectFst {
         for it in states.iter() {
             this.transition_map_vector.push(SymbolTransitionMap::new());
             if this.t.is_final_state(source_state) {
-                this.finality_vector
-                    .push(this.t.get_final_weight(source_state));
+                this.finality_vector.push(
+                    this.t
+                        .get_final_weight(source_state)
+                        .expect("state was confirmed final via is_final_state"),
+                );
             } else {
                 this.finality_vector.push(f32::INFINITY);
             }
@@ -228,11 +231,11 @@ impl ComposeIntersectFst {
 
     // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-final-weight-fn]
     // [spec:hfst:sem:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-final-weight-fn]
-    pub fn get_final_weight(&self, s: HfstState) -> f32 {
+    pub fn get_final_weight(&self, s: HfstState) -> crate::error::Result<f32> {
         if s as usize >= self.transition_map_vector.len() {
-            crate::HFST_THROW!(StateNotDefined);
+            crate::bail!(StateNotDefined);
         }
-        self.finality_vector[s as usize]
+        Ok(self.finality_vector[s as usize])
     }
 
     // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-symbol-number-fn]
@@ -241,9 +244,13 @@ impl ComposeIntersectFst {
         self.t.coder_mut().get_number(symbol) as usize
     }
 
-    pub fn get_transitions(&mut self, s: HfstState, symbol: usize) -> &TransitionSet {
+    pub fn get_transitions(
+        &mut self,
+        s: HfstState,
+        symbol: usize,
+    ) -> crate::error::Result<&TransitionSet> {
         if s as usize >= self.transition_map_vector.len() {
-            crate::HFST_THROW!(StateNotDefined);
+            crate::bail!(StateNotDefined);
         }
         // if (transition_map_vector.at(s).find(symbol) ==
         //     transition_map_vector.at(s).end())
@@ -251,12 +258,12 @@ impl ComposeIntersectFst {
             .get(&symbol)
             .is_none()
         {
-            if self.is_known_symbol(symbol) || !self.has_identity_transition(s) {
+            if self.is_known_symbol(symbol) || !self.has_identity_transition(s)? {
                 // return transition_map_vector.at(s)[symbol] = TransitionSet();
                 self.transition_map_vector[s as usize].insert(symbol, TransitionSet::new());
-                return &self.transition_map_vector[s as usize][&symbol];
+                return Ok(&self.transition_map_vector[s as usize][&symbol]);
             } else {
-                let identity_transition = self.get_identity_transition(s);
+                let identity_transition = self.get_identity_transition(s)?;
                 self.transition_map_vector[s as usize].insert(symbol, TransitionSet::new());
                 self.transition_map_vector[s as usize]
                     .get_mut(&symbol)
@@ -267,11 +274,11 @@ impl ComposeIntersectFst {
                         symbol,
                         identity_transition.weight,
                     ));
-                return &self.transition_map_vector[s as usize][&symbol];
+                return Ok(&self.transition_map_vector[s as usize][&symbol]);
             }
         }
         // return transition_map_vector.at(s)[symbol];
-        &self.transition_map_vector[s as usize][&symbol]
+        Ok(&self.transition_map_vector[s as usize][&symbol])
     }
 
     // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.is-known-symbol-fn]
@@ -282,21 +289,21 @@ impl ComposeIntersectFst {
 
     // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-identity-transition-fn]
     // [spec:hfst:sem:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-identity-transition-fn]
-    pub fn get_identity_transition(&mut self, s: HfstState) -> Transition {
+    pub fn get_identity_transition(&mut self, s: HfstState) -> crate::error::Result<Transition> {
         if s as usize >= self.transition_map_vector.len() {
-            crate::HFST_THROW!(StateNotDefined);
+            crate::bail!(StateNotDefined);
         }
-        self.identity_transition_vector[s as usize].clone()
+        Ok(self.identity_transition_vector[s as usize].clone())
     }
 
     // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.has-identity-transition-fn]
     // [spec:hfst:sem:compose-intersect-fst.hfst.implementations.compose-intersect-fst.has-identity-transition-fn]
-    pub fn has_identity_transition(&mut self, s: HfstState) -> bool {
+    pub fn has_identity_transition(&mut self, s: HfstState) -> crate::error::Result<bool> {
         if s as usize >= self.transition_map_vector.len() {
-            crate::HFST_THROW!(StateNotDefined);
+            crate::bail!(StateNotDefined);
         }
-        self.identity_transition_vector[s as usize].ilabel
-            == self.t.coder_mut().get_number("@_IDENTITY_SYMBOL_@") as usize
+        Ok(self.identity_transition_vector[s as usize].ilabel
+            == self.t.coder_mut().get_number("@_IDENTITY_SYMBOL_@") as usize)
     }
 
     // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-symbols-fn]

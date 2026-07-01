@@ -320,7 +320,7 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-getstring-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.stream-getstring-fn]
-        fn stream_getstring(&mut self) -> String {
+        fn stream_getstring(&mut self) -> crate::error::Result<String> {
             // The C++ stream is byte-oriented (std::string of bytes); stream_get
             // hands back one byte per call as a 0-255 char. Collect the raw bytes
             // up to the NUL terminator and decode once as UTF-8. Pushing each
@@ -332,14 +332,14 @@ mod input_impl {
             loop {
                 let c = self.stream_get();
                 if self.stream_eof() {
-                    crate::HFST_THROW!(EndOfStream);
+                    crate::bail!(EndOfStream);
                 }
                 if c == '\0' {
                     break;
                 }
                 bytes.push(c as u8);
             }
-            String::from_utf8_lossy(&bytes).into_owned()
+            Ok(String::from_utf8_lossy(&bytes).into_owned())
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-eof-fn]
@@ -406,7 +406,7 @@ mod input_impl {
                         crate::bail!(EndOfStream);
                     }
                     let current_type = self.get_type();
-                    let stype = self.stream_fst_type();
+                    let stype = self.stream_fst_type()?;
                     if stype != current_type {
                         crate::bail!(
                             TransducerTypeMismatch,
@@ -448,7 +448,7 @@ mod input_impl {
                         let net = ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
                             t.implementation.as_tropical(),
                             false,
-                        );
+                        )?;
                         t.implementation = TransducerImplementation::Tropical(Box::new(
                             ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(&net),
                         ));
@@ -481,7 +481,7 @@ mod input_impl {
                         let net = ConversionFunctions::log_ofst_to_hfst_basic_transducer(
                             t.implementation.as_log(),
                             false,
-                        );
+                        )?;
                         t.implementation = TransducerImplementation::Log(Box::new(
                             ConversionFunctions::hfst_basic_transducer_to_log_ofst(&net),
                         ));
@@ -508,11 +508,11 @@ mod input_impl {
                         unsafe { &mut *std::ptr::addr_of_mut!(*self.reader) };
                     let is = IStream::new(reader);
                     let mut ol_in = HfstOlBackendInputStream::new_istream(is, weighted);
-                    let tr = ol_in.read_transducer(false);
+                    let tr = ol_in.read_transducer(false)?;
                     t.implementation = TransducerImplementation::HfstOl(Box::new(tr));
                     if t.get_type() != self.type_ {
                         // weights need to be added or removed
-                        t.convert(self.type_, String::new());
+                        t.convert(self.type_, String::new())?;
                     }
                 }
                 // case ERROR_TYPE: default:
@@ -539,19 +539,19 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.guess-fst-type-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.guess-fst-type-fn]
-        fn guess_fst_type(&mut self, bytes_read: &mut i32) -> TransducerType {
+        fn guess_fst_type(&mut self, bytes_read: &mut i32) -> crate::error::Result<TransducerType> {
             *bytes_read = 0;
 
             let c = self.stream_peek();
 
-            match c as u8 {
+            Ok(match c as u8 {
                 0xd6 => {
                     // OpenFst
                     let mut chars_read = [0 as char; 26];
                     for i in 0..26usize {
                         chars_read[i] = self.stream_get();
                         if self.stream_eof() {
-                            crate::HFST_THROW!(EndOfStream);
+                            crate::bail!(EndOfStream);
                         }
                     }
                     let mut i: i32 = 25;
@@ -567,7 +567,7 @@ mod input_impl {
                         // log
                         TransducerType::OPENFST_LOG_
                     } else {
-                        crate::HFST_THROW!(NotTransducerStream)
+                        crate::bail!(NotTransducerStream)
                     }
                 }
                 b'#' => {
@@ -578,23 +578,23 @@ mod input_impl {
                     // native foma (gz magic number is 1F 8B 08)
                     let c0 = self.stream_get();
                     if self.stream_eof() {
-                        crate::HFST_THROW!(EndOfStream);
+                        crate::bail!(EndOfStream);
                     }
                     let c1 = self.stream_get();
                     if self.stream_eof() {
-                        crate::HFST_THROW!(EndOfStream);
+                        crate::bail!(EndOfStream);
                     }
                     let c2 = self.stream_get();
                     if self.stream_eof() {
-                        crate::HFST_THROW!(EndOfStream);
+                        crate::bail!(EndOfStream);
                     }
                     self.stream_unget(c2);
                     self.stream_unget(c1);
                     self.stream_unget(c0);
                     if (c0 as u8) == 0x1f && (c1 as u8) == 0x8b && (c2 as u8) == 0x08 {
-                        crate::HFST_THROW!(FileIsInGzFormat)
+                        crate::bail!(FileIsInGzFormat)
                     } else {
-                        crate::HFST_THROW!(NotTransducerStream)
+                        crate::bail!(NotTransducerStream)
                     }
                 }
                 b'a' => {
@@ -611,14 +611,14 @@ mod input_impl {
                     *bytes_read = 4;
                     let c5 = self.stream_get();
                     if c5 == 'A' {
-                        return TransducerType::HFST_VERSION_2_UNWEIGHTED_WITHOUT_ALPHABET;
+                        return Ok(TransducerType::HFST_VERSION_2_UNWEIGHTED_WITHOUT_ALPHABET);
                     }
                     if c5 == 'a' {
                         self.stream_unget(c5);
-                        return TransducerType::HFST_VERSION_2_UNWEIGHTED;
+                        return Ok(TransducerType::HFST_VERSION_2_UNWEIGHTED);
                     } else {
                         debug_error("#3");
-                        crate::HFST_THROW!(NotTransducerStream)
+                        crate::bail!(NotTransducerStream)
                     }
                 }
                 b'A' => {
@@ -627,7 +627,7 @@ mod input_impl {
                     *bytes_read = 1;
                     let c2 = self.stream_peek();
                     if c2 == 'a' {
-                        return TransducerType::HFST_VERSION_2_UNWEIGHTED_WITHOUT_ALPHABET;
+                        return Ok(TransducerType::HFST_VERSION_2_UNWEIGHTED_WITHOUT_ALPHABET);
                     }
                     if (c2 as u8) == 0xd6 {
                         TransducerType::HFST_VERSION_2_WEIGHTED
@@ -637,21 +637,25 @@ mod input_impl {
                 }
                 0 => TransducerType::XFSM_,
                 _ => TransducerType::ERROR_TYPE_,
-            }
+            })
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.process-header-data-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.process-header-data-fn]
-        fn process_header_data(&mut self, header_data: &mut StringPairVector, _warnings: bool) {
+        fn process_header_data(
+            &mut self,
+            header_data: &mut StringPairVector,
+            _warnings: bool,
+        ) -> crate::error::Result<()> {
             if header_data.len() < 2 {
-                crate::HFST_THROW_MESSAGE!(TransducerHeader, "Hfst header has too few attributes");
+                crate::bail!(TransducerHeader, "Hfst header has too few attributes");
             }
 
             // (1) first pair "version", "3.0"
             if !(("version" == header_data[0].0.as_str())
                 && (("3.0" == header_data[0].1.as_str()) || ("3.3" == header_data[0].1.as_str())))
             {
-                crate::HFST_THROW_MESSAGE!(
+                crate::bail!(
                     TransducerHeader,
                     "Hfst header: transducer version not recognised"
                 );
@@ -659,10 +663,7 @@ mod input_impl {
 
             // (2) second pair "type", (valid type field)
             if !("type" == header_data[1].0.as_str()) {
-                crate::HFST_THROW_MESSAGE!(
-                    TransducerHeader,
-                    "Hfst header: transducer type not given"
-                );
+                crate::bail!(TransducerHeader, "Hfst header: transducer type not given");
             }
 
             if "SFST" == header_data[1].1.as_str() {
@@ -682,14 +683,14 @@ mod input_impl {
             } else if "HFST_OLW" == header_data[1].1.as_str() {
                 self.type_ = ImplementationType::HFST_OLW_TYPE;
             } else {
-                crate::HFST_THROW_MESSAGE!(
+                crate::bail!(
                     TransducerHeader,
                     "Hfst header: transducer type not recognised"
                 );
             }
 
             if header_data.len() == 2 {
-                return;
+                return Ok(());
             }
 
             // (3) third optional pair "name", (string)
@@ -699,6 +700,7 @@ mod input_impl {
             for prop in header_data.iter() {
                 self.props.insert(prop.0.clone(), prop.1.clone());
             }
+            Ok(())
         }
 
         /* Try to read a hfst header. If successful, return true and the number
@@ -710,75 +712,78 @@ mod input_impl {
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.read-hfst-header-fn]
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.read-hfst-header-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.read-hfst-header-fn]
-        fn read_hfst_header(&mut self, bytes_read: &mut i32) -> bool {
+        fn read_hfst_header(&mut self, bytes_read: &mut i32) -> crate::error::Result<bool> {
             let c = self.stream_peek();
 
             if c != 'H' {
                 *bytes_read = 0;
-                return false;
+                return Ok(false);
             }
             let mut header_bytes: i32 = 0;
             // try to read an HFST version 3.0 header
             if self.read_library_header(&mut header_bytes) {
                 let mut size_bytes: i32 = 0;
-                let header_size = self.get_header_size(&mut size_bytes); // throws error
-                let mut header_info = self.get_header_data(header_size);
-                self.process_header_data(&mut header_info, false); // throws error
+                let header_size = self.get_header_size(&mut size_bytes)?; // throws error
+                let mut header_info = self.get_header_data(header_size)?;
+                self.process_header_data(&mut header_info, false)?; // throws error
 
                 *bytes_read = header_bytes + size_bytes + header_size;
-                return true;
+                return Ok(true);
             }
             header_bytes = 0;
             // try to read a pre-release HFST version 3.0 header
             if self.read_library_header_old(&mut header_bytes) {
                 let mut type_bytes: i32 = 0;
-                self.type_ = self.get_fst_type_old(&mut type_bytes); // throws error
+                self.type_ = self.get_fst_type_old(&mut type_bytes)?; // throws error
                 if self.type_ == ImplementationType::ERROR_TYPE {
-                    crate::HFST_THROW!(NotTransducerStream);
+                    crate::bail!(NotTransducerStream);
                 }
                 *bytes_read = header_bytes + type_bytes;
 
-                return true;
+                return Ok(true);
             }
-            false
+            Ok(false)
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.get-fst-type-old-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.get-fst-type-old-fn]
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.get-fst-type-old-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.get-fst-type-old-fn]
-        fn get_fst_type_old(&mut self, bytes_read: &mut i32) -> ImplementationType {
-            let fst_type = self.stream_getstring();
+        fn get_fst_type_old(
+            &mut self,
+            bytes_read: &mut i32,
+        ) -> crate::error::Result<ImplementationType> {
+            let fst_type = self.stream_getstring()?;
             if self.stream_eof() {
                 debug_error("#5");
                 //HFST_THROW(NotTransducerStreamException);
-                crate::HFST_THROW!(EndOfStream);
+                crate::bail!(EndOfStream);
             }
             if fst_type == "SFST_TYPE" {
                 *bytes_read = 10;
-                return ImplementationType::SFST_TYPE;
+                return Ok(ImplementationType::SFST_TYPE);
             }
             if fst_type == "FOMA_TYPE" {
                 *bytes_read = 10;
-                return ImplementationType::FOMA_TYPE;
+                return Ok(ImplementationType::FOMA_TYPE);
             }
             if fst_type == "TROPICAL_OPENFST_TYPE" {
                 *bytes_read = 19;
-                return ImplementationType::TROPICAL_OPENFST_TYPE;
+                return Ok(ImplementationType::TROPICAL_OPENFST_TYPE);
             }
             if fst_type == "LOG_OPENFST_TYPE" {
                 *bytes_read = 14;
-                return ImplementationType::LOG_OPENFST_TYPE;
+                return Ok(ImplementationType::LOG_OPENFST_TYPE);
             }
             if fst_type == "HFST_OL_TYPE" {
                 *bytes_read = 13;
-                return ImplementationType::HFST_OL_TYPE;
+                return Ok(ImplementationType::HFST_OL_TYPE);
             }
             if fst_type == "HFST_OLW_TYPE" {
                 *bytes_read = 14;
-                return ImplementationType::HFST_OLW_TYPE;
+                return Ok(ImplementationType::HFST_OLW_TYPE);
             }
-            ImplementationType::ERROR_TYPE
+            Ok(ImplementationType::ERROR_TYPE)
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.read-library-header-old-fn]
@@ -854,47 +859,47 @@ mod input_impl {
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.get-header-size-fn]
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.get-header-size-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.get-header-size-fn]
-        fn get_header_size(&mut self, bytes_read: &mut i32) -> i32 {
+        fn get_header_size(&mut self, bytes_read: &mut i32) -> crate::error::Result<i32> {
             let mut header_size: u16 = 0;
             self.stream_get_ushort_ref(&mut header_size);
             let c = self.stream_get();
             if c != (0 as char) {
                 debug_error("#6");
-                crate::HFST_THROW_MESSAGE!(
+                crate::bail!(
                     NotTransducerStream,
                     "HFST header: header size could not be read"
                 );
             }
             *bytes_read = 3;
 
-            header_size as i32
+            Ok(header_size as i32)
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.get-header-data-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.get-header-data-fn]
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.get-header-data-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.get-header-data-fn]
-        fn get_header_data(&mut self, header_size: i32) -> StringPairVector {
+        fn get_header_data(&mut self, header_size: i32) -> crate::error::Result<StringPairVector> {
             let mut retval: StringPairVector = StringPairVector::new();
             let mut bytes_read: i32 = 0;
 
             loop {
-                let str1 = self.stream_getstring();
-                let str2 = self.stream_getstring();
+                let str1 = self.stream_getstring()?;
+                let str2 = self.stream_getstring()?;
 
                 bytes_read = bytes_read + (str1.len() as i32) + (str2.len() as i32) + 2;
 
                 if bytes_read > header_size {
                     debug_error("#7");
 
-                    crate::HFST_THROW_MESSAGE!(
+                    crate::bail!(
                         NotTransducerStream,
                         "HFST header: FATAL: more bytes read than the header contains"
                     );
                 }
                 if self.stream_eof() {
                     debug_error("#8");
-                    crate::HFST_THROW_MESSAGE!(
+                    crate::bail!(
                         NotTransducerStream,
                         "HFST header: FATAL: stream ended before the header could be read"
                     );
@@ -905,7 +910,7 @@ mod input_impl {
                     break;
                 }
             }
-            retval
+            Ok(retval)
         }
 
         /* The implementation type of the first transducer in the stream. */
@@ -913,22 +918,22 @@ mod input_impl {
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.stream-fst-type-fn]
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-fst-type-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.stream-fst-type-fn]
-        fn stream_fst_type(&mut self) -> ImplementationType {
+        fn stream_fst_type(&mut self) -> crate::error::Result<ImplementationType> {
             let mut bytes_read: i32 = 0;
 
             // whether the stream contains an HFST version 3.0 transducer
-            if self.read_hfst_header(&mut bytes_read) {
+            if self.read_hfst_header(&mut bytes_read)? {
                 self.has_hfst_header = true;
                 self.bytes_to_skip = bytes_read as u32;
-                return self.type_;
+                return Ok(self.type_);
             }
 
             // whether the stream contains an HFST version <3.0 transducer
             // or a native SFST, OpenFst, foma or xfsm transducer
-            let transducer_type = self.guess_fst_type(&mut bytes_read);
+            let transducer_type = self.guess_fst_type(&mut bytes_read)?;
             self.bytes_to_skip = bytes_read as u32;
 
-            match transducer_type {
+            Ok(match transducer_type {
                 TransducerType::HFST_VERSION_2_WEIGHTED => {
                     self.hfst_version_2_weighted_transducer = true;
                     ImplementationType::TROPICAL_OPENFST_TYPE
@@ -946,14 +951,17 @@ mod input_impl {
                 TransducerType::FOMA_ => ImplementationType::FOMA_TYPE,
                 TransducerType::XFSM_ => ImplementationType::XFSM_TYPE,
                 TransducerType::ERROR_TYPE_ => ImplementationType::ERROR_TYPE,
-            }
+            })
         }
 
         /// Shared constructor body: own 'inner', probe the header, validate the
         /// type. (The C++ constructors differ only in how 'input_stream' is seeded
         /// and in re-constructing a per-type backend stream, which this port builds
         /// transiently at read time.)
-        fn new_with_reader(inner: Box<dyn Read + 'a>, filename: String) -> Self {
+        fn new_with_reader(
+            inner: Box<dyn Read + 'a>,
+            filename: String,
+        ) -> crate::error::Result<Self> {
             let mut this = HfstInputStream {
                 implementation: StreamImplementation::default(),
                 type_: ImplementationType::ERROR_TYPE,
@@ -968,12 +976,12 @@ mod input_impl {
             };
 
             if this.stream_eof() {
-                crate::HFST_THROW!(EndOfStream);
+                crate::bail!(EndOfStream);
             }
-            this.type_ = this.stream_fst_type();
+            this.type_ = this.stream_fst_type()?;
 
             if !HfstTransducer::is_lean_implementation_type_available(this.type_) {
-                crate::err!(ImplementationTypeNotAvailable(this.type_)).throw();
+                crate::bail!(ImplementationTypeNotAvailable(this.type_));
             }
 
             // C++ 'switch (type)' constructs the per-type backend stream here. We
@@ -995,14 +1003,11 @@ mod input_impl {
                 }
                 _ => {
                     debug_error("#10");
-                    crate::HFST_THROW_MESSAGE!(
-                        NotTransducerStream,
-                        "transducer type not recognised"
-                    );
+                    crate::bail!(NotTransducerStream, "transducer type not recognised");
                 }
             }
 
-            this
+            Ok(this)
         }
 
         /* Open a transducer stream to stdin.
@@ -1010,7 +1015,7 @@ mod input_impl {
         the type of the first transducer in the stream. */
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.hfst-input-stream-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.hfst-input-stream-fn]
-        pub fn new() -> Self {
+        pub fn new() -> crate::error::Result<Self> {
             // C++ 'input_stream = &std::cin;'
             Self::new_with_reader(Box::new(std::io::stdin()), String::new())
         }
@@ -1019,7 +1024,7 @@ mod input_impl {
         //        HfstInputStream a const char*
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.hfst-input-stream-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.hfst-input-stream-fn]
-        pub fn new_filename(filename: &str) -> Self {
+        pub fn new_filename(filename: &str) -> crate::error::Result<Self> {
             // The CLI passes the sentinel "<stdin>" (and "") for standard input;
             // route those to stdin rather than opening a file literally named
             // "<stdin>".
@@ -1027,7 +1032,7 @@ mod input_impl {
                 let f = match File::open(filename) {
                     Ok(f) => f,
                     Err(_) => {
-                        crate::HFST_THROW_MESSAGE!(NotTransducerStream, "file could not be opened")
+                        crate::bail!(NotTransducerStream, "file could not be opened")
                     }
                 };
                 Self::new_with_reader(Box::new(BufReader::new(f)), filename.to_string())
@@ -1037,7 +1042,7 @@ mod input_impl {
         }
 
         // HfstInputStream(std::istream &is)
-        pub fn new_istream(is: IStream<'a>) -> Self {
+        pub fn new_istream(is: IStream<'a>) -> crate::error::Result<Self> {
             // C++ 'input_stream = &is;' — adopt the (possibly borrowed) stream as
             // this 'HfstInputStream's source, then probe its first transducer's
             // header in 'new_with_reader' exactly like the other constructors. The

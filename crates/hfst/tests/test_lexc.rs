@@ -53,17 +53,17 @@ fn fixture_path(name: &str) -> String {
 
 // C++: cat | dog | mouse, each built with a default tokenizer (no multichar
 // symbols) and disjuncted into an initially empty transducer.
-fn build_animals(type_: ImplementationType) -> HfstTransducer {
+fn build_animals(type_: ImplementationType) -> Result<HfstTransducer, hfst::error::Error> {
     let tok = HfstTokenizer::new();
-    let cat = HfstTransducer::new_tokenized("cat", &tok, type_);
-    let dog = HfstTransducer::new_tokenized("dog", &tok, type_);
-    let mouse = HfstTransducer::new_tokenized("mouse", &tok, type_);
+    let cat = HfstTransducer::new_tokenized("cat", &tok, type_)?;
+    let dog = HfstTransducer::new_tokenized("dog", &tok, type_)?;
+    let mouse = HfstTransducer::new_tokenized("mouse", &tok, type_)?;
 
-    let mut animals = HfstTransducer::new_type(type_);
-    animals.disjunct(&cat, true);
-    animals.disjunct(&dog, true);
-    animals.disjunct(&mouse, true);
-    animals
+    let mut animals = HfstTransducer::new_type(type_)?;
+    animals.disjunct(&cat, true)?;
+    animals.disjunct(&dog, true)?;
+    animals.disjunct(&mouse, true)?;
+    Ok(animals)
 }
 
 // Mirrors C++ "LexcCompiler compiler(type); compiler.parse(filename);
@@ -81,25 +81,27 @@ fn parse_and_compile(filename: &str, type_: ImplementationType) -> Option<HfstTr
 }
 
 // (1) A file in valid lexc format: parse + compileLexical, then compare.
-fn valid_file_parse(type_: ImplementationType) {
+fn valid_file_parse(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     let parsed = parse_and_compile(&fixture_path("test_lexc.lexc"), type_);
     assert!(
         parsed.is_some(),
         "compileLexical() returned 0 for a valid file"
     );
-    let parsed = parsed.unwrap();
+    let parsed = parsed.expect("valid lexc file must compile to a transducer");
 
-    let animals = build_animals(type_);
-    assert!(animals.compare_default(&parsed));
+    let animals = build_animals(type_)?;
+    assert!(animals.compare_default(&parsed)?);
+    Ok(())
 }
 
 // (1) The same valid file via HfstTransducer::read_lexc. C++ catches
 // FunctionNotImplementedException and asserts false; for TROPICAL/LOG read_lexc
 // does not throw it.
-fn valid_file_read_lexc(type_: ImplementationType) {
-    let animals = build_animals(type_);
-    let rlexc = HfstTransducer::read_lexc(&fixture_path("test_lexc.lexc"), type_, false);
-    assert!(animals.compare_default(&rlexc));
+fn valid_file_read_lexc(type_: ImplementationType) -> Result<(), hfst::error::Error> {
+    let animals = build_animals(type_)?;
+    let rlexc = HfstTransducer::read_lexc(&fixture_path("test_lexc.lexc"), type_, false)?;
+    assert!(animals.compare_default(&rlexc)?);
+    Ok(())
 }
 
 // (2) A file that does not follow lexc format: compileLexical returns 0.
@@ -125,15 +127,17 @@ fn missing_file_parse(type_: ImplementationType) {
 // =====================================================================
 
 #[test]
-fn valid_file_parse_tropical() {
+fn valid_file_parse_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    valid_file_parse(TROPICAL_OPENFST_TYPE);
+    valid_file_parse(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn valid_file_read_lexc_tropical() {
+fn valid_file_read_lexc_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    valid_file_read_lexc(TROPICAL_OPENFST_TYPE);
+    valid_file_read_lexc(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
@@ -162,9 +166,10 @@ fn missing_file_parse_tropical() {
 // never exercised it.
 #[test]
 #[ignore = "PORT DISCREPANCY: LOG disjunct/harmonize converts log->basic (log_ofst_to_hfst_basic_transducer) which emits an empty-symbol transition, throwing EmptyStringException; LOG was commented out in the C++ array"]
-fn valid_file_parse_log() {
+fn valid_file_parse_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    valid_file_parse(LOG_OPENFST_TYPE);
+    valid_file_parse(LOG_OPENFST_TYPE)?;
+    Ok(())
 }
 
 // read_lexc itself is now fixed (the tropical case passes); the LOG case falls
@@ -173,9 +178,10 @@ fn valid_file_parse_log() {
 // throws EmptyStringException. Same root cause as valid_file_parse_log.
 #[test]
 #[ignore = "PORT DISCREPANCY: LOG log->basic conversion (log_ofst_to_hfst_basic_transducer) emits an empty-symbol transition, throwing EmptyStringException; LOG was commented out in the C++ array"]
-fn valid_file_read_lexc_log() {
+fn valid_file_read_lexc_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    valid_file_read_lexc(LOG_OPENFST_TYPE);
+    valid_file_read_lexc(LOG_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]

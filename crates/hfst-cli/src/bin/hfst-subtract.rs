@@ -172,10 +172,17 @@ unsafe fn subtract_streams(
         //                         : HfstOutputStream(output_type)' — both rely on
         // the default 'hfst_format=true'.
         let output_named = globals::output_filename() != "<stdout>";
-        let mut outstream = if output_named {
+        let outstream_result = if output_named {
             HfstOutputStream::new_filename(&globals::output_filename(), output_type, true)
         } else {
             HfstOutputStream::new(output_type, true)
+        };
+        let mut outstream = match outstream_result {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         let mut first: Option<HfstTransducer> = None;
@@ -183,10 +190,22 @@ unsafe fn subtract_streams(
         let mut transducer_n_first: usize = 0; // transducers read from first stream
         let mut transducer_n_second: usize = 0; // transducers read from second stream
         while continue_reading {
-            first = Some(HfstTransducer::new_from_stream(firststream));
+            first = Some(match HfstTransducer::new_from_stream(firststream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            });
             transducer_n_first += 1;
             if secondstream.is_good() {
-                second = Some(HfstTransducer::new_from_stream(secondstream));
+                second = Some(match HfstTransducer::new_from_stream(secondstream) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                });
                 transducer_n_second += 1;
             }
             let first_t = first.as_mut().unwrap();
@@ -243,44 +262,48 @@ unsafe fn subtract_streams(
                 }
             }
 
-            let subtract_result = {
-                let first_t = first.as_mut().unwrap();
-                let second_t = second.as_ref().unwrap();
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    first_t.subtract(second_t, HARMONIZE);
-                }))
+            let mismatch = {
+                let second_ref = second
+                    .as_ref()
+                    .expect("second transducer present (just read)");
+                first
+                    .as_mut()
+                    .expect("first transducer present (just read)")
+                    .subtract(second_ref, HARMONIZE)
+                    .is_err()
             };
-            if let Err(payload) = subtract_result {
-                if payload
-                    .downcast_ref::<hfst::error::Error>()
-                    .filter(|__e| {
-                        matches!(__e.kind, hfst::error::ErrorKind::TransducerTypeMismatch)
-                    })
-                    .is_some()
-                {
-                    if globals::ALLOW_TRANSDUCER_CONVERSION {
-                        let first_t = first.as_mut().unwrap();
-                        let second_t = second.as_mut().unwrap();
-                        convert_transducers(first_t, second_t);
-                        let first_t = first.as_mut().unwrap();
-                        let second_t = second.as_ref().unwrap();
-                        first_t.subtract(second_t, HARMONIZE);
-                    } else {
-                        error(
-                            1,
-                            0,
-                            &format!(
-                                "Could not subtract {} and {} [{}]:\nformats {} and {} are not compatible for subtraction (--do-not-convert was requested)",
-                                firstname,
-                                secondname,
-                                transducer_n_first,
-                                hfst_strformat(firststream.get_type()),
-                                hfst_strformat(secondstream.get_type())
-                            ),
-                        );
+            if mismatch {
+                if globals::ALLOW_TRANSDUCER_CONVERSION {
+                    let first_t = first
+                        .as_mut()
+                        .expect("first transducer present (just read)");
+                    let second_t = second
+                        .as_mut()
+                        .expect("second transducer present (just read)");
+                    convert_transducers(first_t, second_t);
+                    let first_t = first
+                        .as_mut()
+                        .expect("first transducer present (just read)");
+                    let second_t = second
+                        .as_ref()
+                        .expect("second transducer present (just read)");
+                    if let Err(e) = first_t.subtract(second_t, HARMONIZE) {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
                     }
                 } else {
-                    std::panic::resume_unwind(payload);
+                    error(
+                        1,
+                        0,
+                        &format!(
+                            "Could not subtract {} and {} [{}]:\nformats {} and {} are not compatible for subtraction (--do-not-convert was requested)",
+                            firstname,
+                            secondname,
+                            transducer_n_first,
+                            hfst_strformat(firststream.get_type()),
+                            hfst_strformat(secondstream.get_type())
+                        ),
+                    );
                 }
             }
 
@@ -292,7 +315,10 @@ unsafe fn subtract_streams(
             let first_t = first.as_mut().unwrap();
             hfst_set_name_binary(first_t, &first_src, second_ref, "subtract");
             hfst_set_formula_binary(first_t, &first_src, second_ref, "\u{2212}");
-            outstream.redirect(first_t);
+            if let Err(e) = outstream.redirect(first_t) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
 
             continue_reading =
                 firststream.is_good() && (secondstream.is_good() || transducer_n_second == 1);
@@ -331,7 +357,10 @@ unsafe fn subtract_streams(
         }
         firststream.close();
         secondstream.close();
-        outstream.flush();
+        if let Err(e) = outstream.flush() {
+            error(1, 0, &format!("{e}"));
+            return 1;
+        }
         outstream.close();
         0
     }
@@ -367,15 +396,29 @@ unsafe fn real_main() -> i32 {
         // (the C wraps each ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
-        let mut firststream = if first_opened {
+        let firststream_result = if first_opened {
             HfstInputStream::new_filename(&globals::first_filename())
         } else {
             HfstInputStream::new()
         };
-        let mut secondstream = if second_opened {
+        let mut firststream = match firststream_result {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
+        let secondstream_result = if second_opened {
             HfstInputStream::new_filename(&globals::second_filename())
         } else {
             HfstInputStream::new()
+        };
+        let mut secondstream = match secondstream_result {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if is_input_stream_in_ol_format(&firststream, "hfst-subtract")

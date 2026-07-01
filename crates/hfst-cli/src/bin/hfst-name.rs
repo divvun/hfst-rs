@@ -149,7 +149,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 ));
             }
 
-            let mut trans = HfstTransducer::new_from_stream(instream);
+            let mut trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("hfst-name: {e}");
+                    return 1;
+                }
+            };
             if !PRINT_NAME {
                 let name = (*std::ptr::addr_of!(TRANSDUCER_NAME)).clone();
                 if TRUNCATE_LENGTH > 0 {
@@ -160,7 +166,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 } else {
                     trans.set_name(&name);
                 }
-                outstream.redirect(&mut trans);
+                if let Err(e) = outstream.redirect(&mut trans) {
+                    eprintln!("hfst-name: {e}");
+                    return 1;
+                }
             } else {
                 eprint!("\"{}\"\n", trans.get_name());
             }
@@ -207,20 +216,32 @@ unsafe fn real_main() -> i32 {
         ));
 
         // here starts the buffer handling part
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("hfst-name: {e}");
+                return 1;
+            }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
 
         let type_ = instream.get_type();
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("hfst-name: {e}");
+                return 1;
+            }
         };
 
         process_stream(&mut instream, &mut outstream)

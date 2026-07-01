@@ -124,7 +124,7 @@ pub struct OstConfig {
 // Rule hierarchy — RuleT trait + one struct per C++ subclass:
 pub trait RuleT {
     // [spec:hfst:def:rule.rule.compile-fn]
-    fn compile(&mut self, cfg: &OstConfig) -> OtherSymbolTransducer;
+    fn compile(&mut self, cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer>;
     fn rule(&self) -> &Rule;
     fn rule_mut(&mut self) -> &mut Rule;
     fn rule_transducer(&self) -> &OtherSymbolTransducer {
@@ -366,18 +366,18 @@ impl OtherSymbolTransducer {
     // -------------------------------------------------------------------------
 
     /// 'OtherSymbolTransducer(void)' — empty transducer of the configured type.
-    pub fn new(cfg: &OstConfig) -> Self {
-        OtherSymbolTransducer {
+    pub fn new(cfg: &OstConfig) -> crate::error::Result<Self> {
+        Ok(OtherSymbolTransducer {
             is_broken: false,
-            transducer: HfstTransducer::new_type(Self::config_transducer_type(cfg)),
-        }
+            transducer: HfstTransducer::new_type(Self::config_transducer_type(cfg))?,
+        })
     }
 
     /// 'OtherSymbolTransducer(const std::string &i_symbol,
     ///  const std::string &o_symbol)' — build 'input_symbol:output_symbol'.
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.other-symbol-transducer-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.other-symbol-transducer-fn]
-    pub fn new_pair(cfg: &OstConfig, i_symbol: &str, o_symbol: &str) -> Self {
+    pub fn new_pair(cfg: &OstConfig, i_symbol: &str, o_symbol: &str) -> crate::error::Result<Self> {
         let transducer_type = Self::config_transducer_type(cfg);
         let mut input_symbol = i_symbol.to_string();
         let mut output_symbol = o_symbol.to_string();
@@ -391,14 +391,14 @@ impl OtherSymbolTransducer {
 
         let mut this = OtherSymbolTransducer {
             is_broken: false,
-            transducer: HfstTransducer::new_type(transducer_type),
+            transducer: HfstTransducer::new_type(transducer_type)?,
         };
         this.check_pair(cfg, &input_symbol, &output_symbol);
         if this.is_broken {
-            return this;
+            return Ok(this);
         }
         if input_symbol == HFST_UNKNOWN && output_symbol == HFST_UNKNOWN {
-            this.transducer = Self::get_universal(cfg).transducer;
+            this.transducer = Self::get_universal(cfg)?.transducer;
         } else {
             let mut fst = HfstBasicTransducer::from_transducer(&this.transducer);
             let target = fst.add_state_new();
@@ -444,14 +444,14 @@ impl OtherSymbolTransducer {
                 );
                 fst.add_transition(0, &tr, true);
             }
-            this.transducer = HfstTransducer::new_from_basic(&fst, transducer_type);
+            this.transducer = HfstTransducer::new_from_basic(&fst, transducer_type)?;
         }
-        this
+        Ok(this)
     }
 
     /// 'OtherSymbolTransducer(const std::string &sym)' — build 'symbol:symbol'
     /// (or 'symbol:0' for a diacritic).
-    pub fn new_symbol(cfg: &OstConfig, sym: &str) -> Self {
+    pub fn new_symbol(cfg: &OstConfig, sym: &str) -> crate::error::Result<Self> {
         let transducer_type = Self::config_transducer_type(cfg);
         let mut symbol = sym.to_string();
         if symbol == TWOLC_UNKNOWN {
@@ -462,7 +462,7 @@ impl OtherSymbolTransducer {
 
         let mut this = OtherSymbolTransducer {
             is_broken: false,
-            transducer: HfstTransducer::new_type(transducer_type),
+            transducer: HfstTransducer::new_type(transducer_type)?,
         };
         if is_diacritic {
             this.check_pair(cfg, &symbol, TWOLC_EPSILON);
@@ -471,18 +471,18 @@ impl OtherSymbolTransducer {
         }
 
         if this.is_broken {
-            return this;
+            return Ok(this);
         }
 
         if symbol == HFST_UNKNOWN {
-            this.transducer = Self::get_universal(cfg).transducer;
+            this.transducer = Self::get_universal(cfg)?.transducer;
         } else if is_diacritic {
             this.transducer =
-                HfstTransducer::new_symbol_pair(&symbol, TWOLC_EPSILON, transducer_type);
+                HfstTransducer::new_symbol_pair(&symbol, TWOLC_EPSILON, transducer_type)?;
         } else {
-            this.transducer = HfstTransducer::new_symbol(&symbol, transducer_type);
+            this.transducer = HfstTransducer::new_symbol(&symbol, transducer_type)?;
         }
-        this
+        Ok(this)
     }
 
     // -------------------------------------------------------------------------
@@ -553,8 +553,9 @@ impl OtherSymbolTransducer {
     /// 'void add_diamond_transition(void)' — 'add_symbol_to_alphabet(DIAMOND)'.
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.add-diamond-transition-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.add-diamond-transition-fn]
-    pub fn add_diamond_transition(&mut self, cfg: &OstConfig) {
-        self.add_symbol_to_alphabet(cfg, TWOLC_DIAMOND);
+    pub fn add_diamond_transition(&mut self, cfg: &OstConfig) -> crate::error::Result<()> {
+        self.add_symbol_to_alphabet(cfg, TWOLC_DIAMOND)?;
+        Ok(())
     }
 
     /// 'static bool empty(const HfstBasicTransducer &fsm)' — true iff no
@@ -1019,7 +1020,11 @@ impl OtherSymbolTransducer {
         let num_states = basic.states_and_transitions().len();
         for s in 0..num_states {
             let mut identity_target: Option<HfstState> = None;
-            for jt in basic.index(s as HfstState).iter() {
+            for jt in basic
+                .index(s as HfstState)
+                .expect("s is a valid state of this transducer")
+                .iter()
+            {
                 if jt.get_input_symbol(basic.coder()) == TWOLC_IDENTITY {
                     identity_target = Some(jt.get_target_state());
                     break;
@@ -1038,7 +1043,8 @@ impl OtherSymbolTransducer {
                 }
             }
         }
-        self.transducer = HfstTransducer::new_from_basic(&basic, Self::config_transducer_type(cfg));
+        self.transducer = HfstTransducer::new_from_basic(&basic, Self::config_transducer_type(cfg))
+            .expect("constructing a transducer from a valid basic transducer cannot fail");
         self
     }
 
@@ -1050,13 +1056,13 @@ impl OtherSymbolTransducer {
         cfg: &OstConfig,
         left: &mut OtherSymbolTransducer,
         right: &mut OtherSymbolTransducer,
-    ) -> OtherSymbolTransducer {
-        let mut universal = Self::get_universal(cfg);
+    ) -> crate::error::Result<OtherSymbolTransducer> {
+        let mut universal = Self::get_universal(cfg)?;
         universal.apply_zero(cfg, |t| {
             t.repeat_star();
         });
         let mut result = universal.clone();
-        let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND);
+        let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND)?;
         universal.apply_zero(cfg, |t| {
             t.repeat_star();
         });
@@ -1068,7 +1074,7 @@ impl OtherSymbolTransducer {
             .concatenate(cfg, &diamond)
             .concatenate(cfg, right)
             .concatenate(cfg, &universal);
-        result
+        Ok(result)
     }
 
     /// 'static OtherSymbolTransducer get_universal(void)' — a one-symbol
@@ -1076,11 +1082,11 @@ impl OtherSymbolTransducer {
     /// except the diamond.
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.get-universal-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.get-universal-fn]
-    pub fn get_universal(cfg: &OstConfig) -> OtherSymbolTransducer {
+    pub fn get_universal(cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer> {
         let transducer_type = Self::config_transducer_type(cfg);
         let universal = OtherSymbolTransducer {
             is_broken: false,
-            transducer: HfstTransducer::new_type(transducer_type),
+            transducer: HfstTransducer::new_type(transducer_type)?,
         };
         let mut fst = HfstBasicTransducer::from_transducer(&universal.transducer);
         let target = fst.add_state_new();
@@ -1107,21 +1113,26 @@ impl OtherSymbolTransducer {
             );
             fst.add_transition(0, &tr, true);
         }
-        OtherSymbolTransducer {
+        Ok(OtherSymbolTransducer {
             is_broken: false,
-            transducer: HfstTransducer::new_from_basic(&fst, transducer_type),
-        }
+            transducer: HfstTransducer::new_from_basic(&fst, transducer_type)?,
+        })
     }
 
     /// 'void add_symbol_to_alphabet(const std::string &symbol)' — round-trip
     /// through the basic transducer to add 'symbol' (prevents harmonization).
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.add-symbol-to-alphabet-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.add-symbol-to-alphabet-fn]
-    pub fn add_symbol_to_alphabet(&mut self, cfg: &OstConfig, symbol: &str) {
+    pub fn add_symbol_to_alphabet(
+        &mut self,
+        cfg: &OstConfig,
+        symbol: &str,
+    ) -> crate::error::Result<()> {
         let mut mutable_transducer = HfstBasicTransducer::from_transducer(&self.transducer);
         mutable_transducer.add_symbol_to_alphabet(&symbol.to_string());
         self.transducer =
-            HfstTransducer::new_from_basic(&mutable_transducer, Self::config_transducer_type(cfg));
+            HfstTransducer::new_from_basic(&mutable_transducer, Self::config_transducer_type(cfg))?;
+        Ok(())
     }
 
     /// 'void remove_diacritics_from_output(void)' — for each diacritic, rewrite
@@ -1196,7 +1207,10 @@ impl OtherSymbolTransducer {
     /// center to its input side).
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.get-inverse-of-upper-projection-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.get-inverse-of-upper-projection-fn]
-    pub fn get_inverse_of_upper_projection(&self, cfg: &OstConfig) -> OtherSymbolTransducer {
+    pub fn get_inverse_of_upper_projection(
+        &self,
+        cfg: &OstConfig,
+    ) -> crate::error::Result<OtherSymbolTransducer> {
         if self.is_broken {
             std::panic::panic_any(UndefinedSymbolPairsFound);
         }
@@ -1211,10 +1225,10 @@ impl OtherSymbolTransducer {
             let st = state as HfstState;
             new_fst.add_state(st);
             if fst.is_final_state(st) {
-                let w = fst.get_final_weight(st);
+                let w = fst.get_final_weight(st)?;
                 new_fst.set_final_weight(st, &w);
             }
-            for jt in fst.index(st).iter() {
+            for jt in fst.index(st)?.iter() {
                 let input = jt.get_transition_data().get_input_symbol(fst.coder());
                 let output = jt.get_transition_data().get_output_symbol(fst.coder());
                 let target = jt.get_target_state();
@@ -1279,31 +1293,31 @@ impl OtherSymbolTransducer {
         }
         let mut copy = self.clone();
         copy.transducer =
-            HfstTransducer::new_from_basic(&new_fst, Self::config_transducer_type(cfg));
+            HfstTransducer::new_from_basic(&new_fst, Self::config_transducer_type(cfg))?;
         copy.apply_zero(cfg, |t| {
             t.minimize();
         });
-        copy
+        Ok(copy)
     }
 
     /// 'OtherSymbolTransducer &contained(void)' — '?* X ?*'.
-    pub fn contained(&mut self, cfg: &OstConfig) -> &mut Self {
+    pub fn contained(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
         // [spec:hfst:def:other-symbol-transducer.universal-fn]
         // [spec:hfst:sem:other-symbol-transducer.universal-fn]
-        let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
+        let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         universal.apply_zero(cfg, |t| {
             t.repeat_star();
         });
         let mut result = universal.clone();
         result.concatenate(cfg, self).concatenate(cfg, &universal);
         *self = result;
-        self
+        Ok(self)
     }
 
     /// 'OtherSymbolTransducer &contained_once(void)' —
     /// '?* X ?* - ?* X ?* X ?*'.
-    pub fn contained_once(&mut self, cfg: &OstConfig) -> &mut Self {
-        let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
+    pub fn contained_once(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
+        let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         universal.apply_zero(cfg, |t| {
             t.repeat_star();
         });
@@ -1317,32 +1331,32 @@ impl OtherSymbolTransducer {
             .concatenate(cfg, &universal);
         result1.subtract(cfg, &result2);
         *self = result1;
-        self
+        Ok(self)
     }
 
     /// 'OtherSymbolTransducer &negated(void)' — '?* - X'.
-    pub fn negated(&mut self, cfg: &OstConfig) -> &mut Self {
-        let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
+    pub fn negated(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
+        let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         universal.apply_zero(cfg, |t| {
             t.repeat_star();
         });
         universal.subtract(cfg, self);
         *self = universal;
-        self
+        Ok(self)
     }
 
     /// 'OtherSymbolTransducer &term_complemented(void)' — '? - X'.
-    pub fn term_complemented(&mut self, cfg: &OstConfig) -> &mut Self {
-        let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
+    pub fn term_complemented(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
+        let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         universal.subtract(cfg, self);
         *self = universal;
-        self
+        Ok(self)
     }
 
     /// 'HfstTransducer get_transducer(void) const'.
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.get-transducer-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.get-transducer-fn]
-    pub fn get_transducer(&self) -> HfstTransducer {
+    pub fn get_transducer(&self) -> crate::error::Result<HfstTransducer> {
         if self.is_broken {
             std::panic::panic_any(UndefinedSymbolPairsFound);
         }
@@ -1359,7 +1373,11 @@ impl OtherSymbolTransducer {
             std::panic::panic_any(UndefinedSymbolPairsFound);
         }
         let fst = HfstBasicTransducer::from_transducer(&self.transducer);
-        for jt in fst.index(0).iter() {
+        for jt in fst
+            .index(0)
+            .expect("s is a valid state of this transducer")
+            .iter()
+        {
             let input = jt.get_transition_data().get_input_symbol(fst.coder());
             let output = jt.get_transition_data().get_output_symbol(fst.coder());
             pair_container.push((input, output));
@@ -1387,12 +1405,16 @@ impl OtherSymbolTransducer {
     /// 'another' is a subset of '*this' (computed as 'another - *this' empty).
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.is-subset-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.is-subset-fn]
-    pub fn is_subset(&self, cfg: &OstConfig, another: &OtherSymbolTransducer) -> bool {
+    pub fn is_subset(
+        &self,
+        cfg: &OstConfig,
+        another: &OtherSymbolTransducer,
+    ) -> crate::error::Result<bool> {
         // Do this properly later.. (preserved C++ comment.)
         let mut another_fst = another.clone();
         another_fst.subtract(cfg, self);
-        let internal = HfstBasicTransducer::from_transducer(&another_fst.get_transducer());
-        Self::empty(&internal)
+        let internal = HfstBasicTransducer::from_transducer(&another_fst.get_transducer()?);
+        Ok(Self::empty(&internal))
     }
 
     /// 'bool is_empty(void) const' — true iff the wrapped transducer has no
@@ -1410,7 +1432,8 @@ impl Clone for OtherSymbolTransducer {
     fn clone(&self) -> Self {
         OtherSymbolTransducer {
             is_broken: self.is_broken,
-            transducer: HfstTransducer::new_copy(&self.transducer),
+            transducer: HfstTransducer::new_copy(&self.transducer)
+                .expect("copying a valid transducer cannot fail"),
         }
     }
 }
@@ -1433,8 +1456,12 @@ fn have_common_string(
         return true;
     }
 
-    let fst1_transitions = fst1.index(state1);
-    let fst2_transitions = fst2.index(state2);
+    let fst1_transitions = fst1
+        .index(state1)
+        .expect("s is a valid state of this transducer");
+    let fst2_transitions = fst2
+        .index(state2)
+        .expect("s is a valid state of this transducer");
 
     let mut fst1_transition_map: BTreeMap<SymbolPair, HfstState> = BTreeMap::new();
     for it in fst1_transitions.iter() {
@@ -1484,13 +1511,13 @@ impl Rule {
         name: &str,
         center: OtherSymbolTransducer,
         contexts: &OtherSymbolTransducerVector,
-    ) -> Rule {
+    ) -> crate::error::Result<Rule> {
         let mut rule = Rule {
             is_empty: false,
             name: unescape_name(name),
             center,
-            context: OtherSymbolTransducer::new(cfg),
-            rule_transducer: OtherSymbolTransducer::new(cfg),
+            context: OtherSymbolTransducer::new(cfg)?,
+            rule_transducer: OtherSymbolTransducer::new(cfg)?,
         };
         // OtherSymbolTransducerVector contexts_copy = contexts;
         // for (it : contexts_copy) context.apply(disjunct, *it);
@@ -1498,10 +1525,10 @@ impl Rule {
             rule.context.disjunct(cfg, ctx);
         }
         // this->center.harmonize_diacritics(cfg, context);
-        let mut context = std::mem::replace(&mut rule.context, OtherSymbolTransducer::new(cfg));
+        let mut context = std::mem::replace(&mut rule.context, OtherSymbolTransducer::new(cfg)?);
         rule.center.harmonize_diacritics(cfg, &mut context);
         rule.context = context;
-        rule
+        Ok(rule)
     }
 
     /// 'Rule::Rule(name, RuleVector)' ('Rule.cc') — the intersecting result
@@ -1510,8 +1537,12 @@ impl Rule {
     /// ['ResultRule'] whose 'compile()' is the base no-op.
     // [spec:hfst:def:rule.rule.rule-fn]
     // [spec:hfst:sem:rule.rule.rule-fn]
-    pub fn new_from_vector(cfg: &OstConfig, name: &str, v: &[&dyn RuleT]) -> ResultRule {
-        let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
+    pub fn new_from_vector(
+        cfg: &OstConfig,
+        name: &str,
+        v: &[&dyn RuleT],
+    ) -> crate::error::Result<ResultRule> {
+        let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         rule_transducer.repeat_star(cfg);
         let mut is_empty = true;
         for r in v.iter() {
@@ -1520,15 +1551,15 @@ impl Rule {
                 is_empty = false;
             }
         }
-        ResultRule {
+        Ok(ResultRule {
             base: Rule {
                 is_empty,
                 name: unescape_name(name),
-                center: OtherSymbolTransducer::new(cfg),
-                context: OtherSymbolTransducer::new(cfg),
+                center: OtherSymbolTransducer::new(cfg)?,
+                context: OtherSymbolTransducer::new(cfg)?,
                 rule_transducer,
             },
-        }
+        })
     }
 
     /// 'Rule::empty()' ('Rule.cc'). True when conflict resolution merged this
@@ -1548,9 +1579,9 @@ impl Rule {
         &mut self,
         cfg: &OstConfig,
         out: &mut crate::hfst_output_stream::HfstOutputStream,
-    ) {
+    ) -> crate::error::Result<()> {
         if self.is_empty {
-            return;
+            return Ok(());
         }
         self.add_name();
         self.rule_transducer.remove_diacritics_from_output(cfg);
@@ -1567,7 +1598,8 @@ impl Rule {
         );
         self.rule_transducer
             .apply_subst(cfg, TWOLC_IDENTITY, HFST_IDENTITY, true, true);
-        out.redirect(&mut self.rule_transducer.transducer);
+        out.redirect(&mut self.rule_transducer.transducer)?;
+        Ok(())
     }
 
     /// 'Rule::get_name()' ('Rule.cc').
@@ -1605,48 +1637,57 @@ impl Rule {
     /// '?* <D> ?* <D> ?*'.
     // [spec:hfst:def:rule.rule.get-universal-language-with-diamonds-fn]
     // [spec:hfst:sem:rule.rule.get-universal-language-with-diamonds-fn]
-    pub fn get_universal_language_with_diamonds(cfg: &OstConfig) -> OtherSymbolTransducer {
-        let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
+    pub fn get_universal_language_with_diamonds(
+        cfg: &OstConfig,
+    ) -> crate::error::Result<OtherSymbolTransducer> {
+        let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         universal.repeat_star(cfg);
-        let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND);
+        let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND)?;
         let mut universal_with_diamonds = universal.clone();
         universal_with_diamonds
             .concatenate(cfg, &diamond)
             .concatenate(cfg, &universal)
             .concatenate(cfg, &diamond)
             .concatenate(cfg, &universal);
-        universal_with_diamonds
+        Ok(universal_with_diamonds)
     }
 
     /// 'Rule::get_center(input, output)' ('Rule.cc'). Returns
     /// '?* <D> input:output <D> ?*'.
     // [spec:hfst:def:rule.rule.get-center-fn]
     // [spec:hfst:sem:rule.rule.get-center-fn]
-    pub fn get_center_io(cfg: &OstConfig, input: &str, output: &str) -> OtherSymbolTransducer {
-        let mut unknown = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
+    pub fn get_center_io(
+        cfg: &OstConfig,
+        input: &str,
+        output: &str,
+    ) -> crate::error::Result<OtherSymbolTransducer> {
+        let mut unknown = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         unknown.repeat_star(cfg);
-        let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND);
+        let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND)?;
         let mut center = unknown.clone();
-        let center_pair = OtherSymbolTransducer::new_pair(cfg, input, output);
+        let center_pair = OtherSymbolTransducer::new_pair(cfg, input, output)?;
         center
             .concatenate(cfg, &diamond)
             .concatenate(cfg, &center_pair)
             .concatenate(cfg, &diamond)
             .concatenate(cfg, &unknown);
-        center
+        Ok(center)
     }
 
     /// 'Rule::get_center(v: SymbolPairVector)' ('Rule.cc'). Returns
     /// '?* <D> (disjunction of pairs) <D> ?*'.
     // [spec:hfst:def:rule.rule.get-center-fn]
     // [spec:hfst:sem:rule.rule.get-center-fn]
-    pub fn get_center_pairs(cfg: &OstConfig, v: &SymbolPairVector) -> OtherSymbolTransducer {
-        let mut unknown = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
+    pub fn get_center_pairs(
+        cfg: &OstConfig,
+        v: &SymbolPairVector,
+    ) -> crate::error::Result<OtherSymbolTransducer> {
+        let mut unknown = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         unknown.repeat_star(cfg);
-        let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND);
-        let mut center_pair_transducer = OtherSymbolTransducer::new(cfg);
+        let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND)?;
+        let mut center_pair_transducer = OtherSymbolTransducer::new(cfg)?;
         for pair in v.iter() {
-            let p = OtherSymbolTransducer::new_pair(cfg, &pair.0, &pair.1);
+            let p = OtherSymbolTransducer::new_pair(cfg, &pair.0, &pair.1)?;
             center_pair_transducer.disjunct(cfg, &p);
         }
         let mut center = unknown.clone();
@@ -1655,7 +1696,7 @@ impl Rule {
             .concatenate(cfg, &center_pair_transducer)
             .concatenate(cfg, &diamond)
             .concatenate(cfg, &unknown);
-        center
+        Ok(center)
     }
 
     /// 'Rule::get_center(restricted_center)' ('Rule.cc'). Returns
@@ -1665,17 +1706,17 @@ impl Rule {
     pub fn get_center_restricted(
         cfg: &OstConfig,
         restricted_center: &OtherSymbolTransducer,
-    ) -> OtherSymbolTransducer {
-        let mut unknown = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
+    ) -> crate::error::Result<OtherSymbolTransducer> {
+        let mut unknown = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         unknown.repeat_star(cfg);
-        let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND);
+        let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND)?;
         let mut center = unknown.clone();
         center
             .concatenate(cfg, &diamond)
             .concatenate(cfg, restricted_center)
             .concatenate(cfg, &diamond)
             .concatenate(cfg, &unknown);
-        center
+        Ok(center)
     }
 
     /// 'Rule::add_missing_symbols_freely(diacritics)' ('Rule.cc'). For every
@@ -1683,11 +1724,15 @@ impl Rule {
     /// the alphabet and insert the diacritic-pair freely.
     // [spec:hfst:def:rule.rule.add-missing-symbols-freely-fn]
     // [spec:hfst:sem:rule.rule.add-missing-symbols-freely-fn]
-    pub fn add_missing_symbols_freely(&mut self, cfg: &OstConfig, diacritics: &SymbolRange) {
-        let symbol_set: BTreeSet<String> = self.rule_transducer.get_transducer().get_alphabet();
+    pub fn add_missing_symbols_freely(
+        &mut self,
+        cfg: &OstConfig,
+        diacritics: &SymbolRange,
+    ) -> crate::error::Result<()> {
+        let symbol_set: BTreeSet<String> = self.rule_transducer.get_transducer()?.get_alphabet()?;
         for d in diacritics.iter() {
             if !symbol_set.contains(d) {
-                self.rule_transducer.add_symbol_to_alphabet(cfg, d);
+                self.rule_transducer.add_symbol_to_alphabet(cfg, d)?;
                 self.rule_transducer.apply_symbol_pair(
                     cfg,
                     |t_, p_| {
@@ -1697,6 +1742,7 @@ impl Rule {
                 );
             }
         }
+        Ok(())
     }
 }
 
@@ -1708,7 +1754,7 @@ impl Rule {
 impl RuleT for ResultRule {
     // [spec:hfst:def:rule.rule.compile-fn]
     // [spec:hfst:sem:rule.rule.compile-fn]
-    fn compile(&mut self, cfg: &OstConfig) -> OtherSymbolTransducer {
+    fn compile(&mut self, cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer> {
         OtherSymbolTransducer::new(cfg)
     }
     fn rule(&self) -> &Rule {
@@ -1733,10 +1779,10 @@ impl RightArrowRule {
         name: &str,
         center: OtherSymbolTransducer,
         contexts: &OtherSymbolTransducerVector,
-    ) -> RightArrowRule {
-        RightArrowRule {
-            base: Rule::new(cfg, name, center, contexts),
-        }
+    ) -> crate::error::Result<RightArrowRule> {
+        Ok(RightArrowRule {
+            base: Rule::new(cfg, name, center, contexts)?,
+        })
     }
 }
 
@@ -1753,21 +1799,21 @@ impl RuleT for RightArrowRule {
     /// into epsilon) before building 'rule_transducer = ?* - center'.
     // [spec:hfst:def:right-arrow-rule.right-arrow-rule.compile-fn]
     // [spec:hfst:sem:right-arrow-rule.right-arrow-rule.compile-fn]
-    fn compile(&mut self, cfg: &OstConfig) -> OtherSymbolTransducer {
-        let context = std::mem::replace(&mut self.base.context, OtherSymbolTransducer::new(cfg));
+    fn compile(&mut self, cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer> {
+        let context = std::mem::replace(&mut self.base.context, OtherSymbolTransducer::new(cfg)?);
         self.base
             .center
             .subtract(cfg, &context)
             .substitute_diamond_to_epsilon(cfg);
         self.base.context = context;
 
-        let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
-        let center = std::mem::replace(&mut self.base.center, OtherSymbolTransducer::new(cfg));
+        let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
+        let center = std::mem::replace(&mut self.base.center, OtherSymbolTransducer::new(cfg)?);
         rule_transducer.repeat_star(cfg).subtract(cfg, &center);
         self.base.center = center;
 
         self.base.rule_transducer = rule_transducer.clone();
-        rule_transducer
+        Ok(rule_transducer)
     }
     fn rule(&self) -> &Rule {
         &self.base
@@ -1791,10 +1837,10 @@ impl LeftArrowRule {
         name: &str,
         center: OtherSymbolTransducer,
         contexts: &OtherSymbolTransducerVector,
-    ) -> LeftArrowRule {
-        LeftArrowRule {
-            base: Rule::new(cfg, name, center, contexts),
-        }
+    ) -> crate::error::Result<LeftArrowRule> {
+        Ok(LeftArrowRule {
+            base: Rule::new(cfg, name, center, contexts)?,
+        })
     }
 }
 
@@ -1811,10 +1857,10 @@ impl RuleT for LeftArrowRule {
     /// '''
     // [spec:hfst:def:left-arrow-rule.left-arrow-rule.compile-fn]
     // [spec:hfst:sem:left-arrow-rule.left-arrow-rule.compile-fn]
-    fn compile(&mut self, cfg: &OstConfig) -> OtherSymbolTransducer {
-        let abstract_center = self.base.center.get_inverse_of_upper_projection(cfg);
+    fn compile(&mut self, cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer> {
+        let abstract_center = self.base.center.get_inverse_of_upper_projection(cfg)?;
         // context.intersect(cfg, abstract_center).subtract(cfg, center).substitute(<D>->0)
-        let center = std::mem::replace(&mut self.base.center, OtherSymbolTransducer::new(cfg));
+        let center = std::mem::replace(&mut self.base.center, OtherSymbolTransducer::new(cfg)?);
         self.base
             .context
             .intersect(cfg, &abstract_center)
@@ -1822,13 +1868,13 @@ impl RuleT for LeftArrowRule {
             .substitute_diamond_to_epsilon(cfg);
         self.base.center = center;
 
-        let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
-        let context = std::mem::replace(&mut self.base.context, OtherSymbolTransducer::new(cfg));
+        let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
+        let context = std::mem::replace(&mut self.base.context, OtherSymbolTransducer::new(cfg)?);
         rule_transducer.repeat_star(cfg).subtract(cfg, &context);
         self.base.context = context;
 
         self.base.rule_transducer = rule_transducer.clone();
-        rule_transducer
+        Ok(rule_transducer)
     }
     fn rule(&self) -> &Rule {
         &self.base
@@ -1853,10 +1899,10 @@ impl LeftRestrictionArrowRule {
         name: &str,
         center: OtherSymbolTransducer,
         contexts: &OtherSymbolTransducerVector,
-    ) -> LeftRestrictionArrowRule {
-        LeftRestrictionArrowRule {
-            base: Rule::new(cfg, name, center, contexts),
-        }
+    ) -> crate::error::Result<LeftRestrictionArrowRule> {
+        Ok(LeftRestrictionArrowRule {
+            base: Rule::new(cfg, name, center, contexts)?,
+        })
     }
 
     /// 'LeftRestrictionArrowRule::LeftRestrictionArrowRule(name, SymbolPair
@@ -1869,15 +1915,15 @@ impl LeftRestrictionArrowRule {
         name: &str,
         center: &SymbolPair,
         contexts: &OtherSymbolTransducerVector,
-    ) -> LeftRestrictionArrowRule {
-        LeftRestrictionArrowRule {
+    ) -> crate::error::Result<LeftRestrictionArrowRule> {
+        Ok(LeftRestrictionArrowRule {
             base: Rule::new(
                 cfg,
                 name,
-                Rule::get_center_io(cfg, &center.0, &center.1),
+                Rule::get_center_io(cfg, &center.0, &center.1)?,
                 contexts,
-            ),
-        }
+            )?,
+        })
     }
 }
 
@@ -1892,21 +1938,21 @@ impl RuleT for LeftRestrictionArrowRule {
     /// '''
     // [spec:hfst:def:left-restriction-arrow-rule.left-restriction-arrow-rule.compile-fn]
     // [spec:hfst:sem:left-restriction-arrow-rule.left-restriction-arrow-rule.compile-fn]
-    fn compile(&mut self, cfg: &OstConfig) -> OtherSymbolTransducer {
-        let context = std::mem::replace(&mut self.base.context, OtherSymbolTransducer::new(cfg));
+    fn compile(&mut self, cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer> {
+        let context = std::mem::replace(&mut self.base.context, OtherSymbolTransducer::new(cfg)?);
         self.base
             .center
             .intersect(cfg, &context)
             .substitute_diamond_to_epsilon(cfg);
         self.base.context = context;
 
-        let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
-        let center = std::mem::replace(&mut self.base.center, OtherSymbolTransducer::new(cfg));
+        let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
+        let center = std::mem::replace(&mut self.base.center, OtherSymbolTransducer::new(cfg)?);
         rule_transducer.repeat_star(cfg).subtract(cfg, &center);
         self.base.center = center;
 
         self.base.rule_transducer = rule_transducer.clone();
-        rule_transducer
+        Ok(rule_transducer)
     }
     fn rule(&self) -> &Rule {
         &self.base
@@ -1932,16 +1978,16 @@ impl ConflictResolvingRightArrowRule {
         name: &str,
         center: &SymbolPair,
         contexts: &OtherSymbolTransducerVector,
-    ) -> ConflictResolvingRightArrowRule {
-        ConflictResolvingRightArrowRule {
+    ) -> crate::error::Result<ConflictResolvingRightArrowRule> {
+        Ok(ConflictResolvingRightArrowRule {
             base: RightArrowRule::new(
                 cfg,
                 name,
-                Rule::get_center_io(cfg, &center.0, &center.1),
+                Rule::get_center_io(cfg, &center.0, &center.1)?,
                 contexts,
-            ),
+            )?,
             center_pair: center.clone(),
-        }
+        })
     }
 
     /// 'ConflictResolvingRightArrowRule::conflicts_this(another)'
@@ -1972,7 +2018,7 @@ impl ConflictResolvingRightArrowRule {
 }
 
 impl RuleT for ConflictResolvingRightArrowRule {
-    fn compile(&mut self, cfg: &OstConfig) -> OtherSymbolTransducer {
+    fn compile(&mut self, cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer> {
         self.base.compile(cfg)
     }
     fn rule(&self) -> &Rule {
@@ -1991,10 +2037,10 @@ impl RuleT for ConflictResolvingRightArrowRule {
 /// word-boundary framing transducer '.#. ((? - .#.) | <D>)* .#.'.
 // [spec:hfst:def:conflict-resolving-left-arrow-rule.get-wb-fst-fn]
 // [spec:hfst:sem:conflict-resolving-left-arrow-rule.get-wb-fst-fn]
-pub fn get_wb_fst(cfg: &OstConfig) -> OtherSymbolTransducer {
-    let wb = OtherSymbolTransducer::new_pair(cfg, "__HFST_TWOLC_.#.", "__HFST_TWOLC_.#.");
-    let mut no_wb = OtherSymbolTransducer::new_pair(cfg, TWOLC_UNKNOWN, TWOLC_UNKNOWN);
-    let diamond = OtherSymbolTransducer::new_pair(cfg, TWOLC_DIAMOND, TWOLC_DIAMOND);
+pub fn get_wb_fst(cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer> {
+    let wb = OtherSymbolTransducer::new_pair(cfg, "__HFST_TWOLC_.#.", "__HFST_TWOLC_.#.")?;
+    let mut no_wb = OtherSymbolTransducer::new_pair(cfg, TWOLC_UNKNOWN, TWOLC_UNKNOWN)?;
+    let diamond = OtherSymbolTransducer::new_pair(cfg, TWOLC_DIAMOND, TWOLC_DIAMOND)?;
 
     no_wb.subtract(cfg, &wb);
     no_wb.disjunct(cfg, &diamond);
@@ -2004,18 +2050,21 @@ pub fn get_wb_fst(cfg: &OstConfig) -> OtherSymbolTransducer {
     result.concatenate(cfg, &no_wb);
     result.concatenate(cfg, &wb);
 
-    result
+    Ok(result)
 }
 
 /// 'wbize(cfg, t)' ('ConflictResolvingLeftArrowRule.cc'). Intersects 't' with the
 /// word-boundary framing transducer.
 // [spec:hfst:def:conflict-resolving-left-arrow-rule.wbize-fn]
 // [spec:hfst:sem:conflict-resolving-left-arrow-rule.wbize-fn]
-pub fn wbize(cfg: &OstConfig, t: &OtherSymbolTransducer) -> OtherSymbolTransducer {
+pub fn wbize(
+    cfg: &OstConfig,
+    t: &OtherSymbolTransducer,
+) -> crate::error::Result<OtherSymbolTransducer> {
     let mut t_copy = t.clone();
-    let wb_fst = get_wb_fst(cfg);
+    let wb_fst = get_wb_fst(cfg)?;
     t_copy.intersect(cfg, &wb_fst);
-    t_copy
+    Ok(t_copy)
 }
 
 impl ConflictResolvingLeftArrowRule {
@@ -2030,16 +2079,16 @@ impl ConflictResolvingLeftArrowRule {
         name: &str,
         center: &SymbolPair,
         contexts: &OtherSymbolTransducerVector,
-    ) -> ConflictResolvingLeftArrowRule {
-        ConflictResolvingLeftArrowRule {
+    ) -> crate::error::Result<ConflictResolvingLeftArrowRule> {
+        Ok(ConflictResolvingLeftArrowRule {
             base: LeftArrowRule::new(
                 cfg,
                 name,
-                Rule::get_center_io(cfg, &center.0, &center.1),
+                Rule::get_center_io(cfg, &center.0, &center.1)?,
                 contexts,
-            ),
+            )?,
             input_symbol: center.0.clone(),
-        }
+        })
     }
 
     /// 'ConflictResolvingLeftArrowRule::conflicts_this(another, v)'
@@ -2053,12 +2102,12 @@ impl ConflictResolvingLeftArrowRule {
         cfg: &OstConfig,
         another: &ConflictResolvingLeftArrowRule,
         v: &mut StringVector,
-    ) -> bool {
-        !self
+    ) -> crate::error::Result<bool> {
+        Ok(!self
             .base
             .base
             .context
-            .is_empty_intersection(&wbize(cfg, &another.base.base.context), v)
+            .is_empty_intersection(&wbize(cfg, &another.base.base.context)?, v))
     }
 
     /// 'ConflictResolvingLeftArrowRule::resolvable_conflict(another)'
@@ -2070,11 +2119,11 @@ impl ConflictResolvingLeftArrowRule {
         &self,
         cfg: &OstConfig,
         another: &ConflictResolvingLeftArrowRule,
-    ) -> bool {
+    ) -> crate::error::Result<bool> {
         self.base
             .base
             .context
-            .is_subset(cfg, &wbize(cfg, &another.base.base.context))
+            .is_subset(cfg, &wbize(cfg, &another.base.base.context)?)
     }
 
     /// 'ConflictResolvingLeftArrowRule::resolve_conflict(another)'
@@ -2089,7 +2138,7 @@ impl ConflictResolvingLeftArrowRule {
 }
 
 impl RuleT for ConflictResolvingLeftArrowRule {
-    fn compile(&mut self, cfg: &OstConfig) -> OtherSymbolTransducer {
+    fn compile(&mut self, cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer> {
         self.base.compile(cfg)
     }
     fn rule(&self) -> &Rule {
@@ -2154,13 +2203,14 @@ impl RuleContainer {
     // C++ iterates 'rule_vector', optionally prints the print-name and calls
     // '(*it)->compile()'. The verbose message is sent to stderr (the C++
     // 'msg_out' is always 'std::cerr' at the call sites).
-    pub fn compile(&mut self, cfg: &OstConfig, be_verbose: bool) {
+    pub fn compile(&mut self, cfg: &OstConfig, be_verbose: bool) -> crate::error::Result<()> {
         for rule in self.rule_vector.iter_mut() {
             if be_verbose {
                 debug!("Compiling {}", Rule::get_print_name(&rule.rule().name));
             }
-            rule.compile(cfg);
+            rule.compile(cfg)?;
         }
+        Ok(())
     }
 
     // [spec:hfst:def:rule-container.rule-container.store-fn]
@@ -2173,22 +2223,29 @@ impl RuleContainer {
         cfg: &OstConfig,
         out: &mut crate::hfst_output_stream::HfstOutputStream,
         be_verbose: bool,
-    ) {
+    ) -> crate::error::Result<()> {
         for rule in self.rule_vector.iter_mut() {
             if be_verbose {
                 let name = Rule::get_print_name(&rule.rule().get_name());
                 debug!("Storing {name}");
             }
-            rule.rule_mut().store(cfg, out);
+            rule.rule_mut().store(cfg, out)?;
         }
+        Ok(())
     }
 
     // [spec:hfst:def:rule-container.rule-container.add-missing-symbols-freely-fn]
     // [spec:hfst:sem:rule-container.rule-container.add-missing-symbols-freely-fn]
-    pub fn add_missing_symbols_freely(&mut self, cfg: &OstConfig, diacritics: &SymbolRange) {
+    pub fn add_missing_symbols_freely(
+        &mut self,
+        cfg: &OstConfig,
+        diacritics: &SymbolRange,
+    ) -> crate::error::Result<()> {
         for rule in self.rule_vector.iter_mut() {
-            rule.rule_mut().add_missing_symbols_freely(cfg, diacritics);
+            rule.rule_mut()
+                .add_missing_symbols_freely(cfg, diacritics)?;
         }
+        Ok(())
     }
 
     /// Borrow the rule at 'index' as a '&dyn RuleT' (the 'Rule*' deref the
@@ -2288,8 +2345,9 @@ impl RightArrowRuleContainer {
     }
 
     /// C++ 'RuleContainer::compile' forwarded through the base member.
-    pub fn compile(&mut self, cfg: &OstConfig, be_verbose: bool) {
-        self.base.compile(cfg, be_verbose);
+    pub fn compile(&mut self, cfg: &OstConfig, be_verbose: bool) -> crate::error::Result<()> {
+        self.base.compile(cfg, be_verbose)?;
+        Ok(())
     }
 
     pub(crate) fn rule_ref(&self, index: usize) -> &dyn RuleT {
@@ -2347,14 +2405,14 @@ impl LeftArrowRuleContainer {
         &mut self,
         cfg: &OstConfig,
         mut rule: ConflictResolvingLeftArrowRule,
-    ) -> usize {
+    ) -> crate::error::Result<usize> {
         let input = rule.input_symbol.clone();
         if let Some(indices) = self.input_to_rule_map.get(&input) {
             let existing_indices: Vec<usize> = indices.clone();
             for existing_index in existing_indices {
                 // (*it)->conflicts_this(*rule, conflicting_context):
                 //   ! existing.context.is_empty_intersection(wbize(cfg, rule.context))
-                let wbized_incoming = wbize(cfg, &rule.base.base.context);
+                let wbized_incoming = wbize(cfg, &rule.base.base.context)?;
                 let mut conflicting_context: StringVector = Vec::new();
                 let conflicts = {
                     let existing = self.base.rule_vector[existing_index].rule();
@@ -2394,7 +2452,7 @@ impl LeftArrowRuleContainer {
                         //   existing.context.is_subset(wbize(cfg, rule.context))
                         let existing_resolvable = {
                             let existing = self.base.rule_vector[existing_index].rule();
-                            existing.context.is_subset(cfg, &wbized_incoming)
+                            existing.context.is_subset(cfg, &wbized_incoming)?
                         };
                         if existing_resolvable {
                             if self.report_left_arrow_conflicts {
@@ -2415,10 +2473,10 @@ impl LeftArrowRuleContainer {
                             //   rule.context.is_subset(wbize(cfg, existing.context))
                             let wbized_existing = {
                                 let existing = self.base.rule_vector[existing_index].rule();
-                                wbize(cfg, &existing.context)
+                                wbize(cfg, &existing.context)?
                             };
                             let incoming_resolvable =
-                                rule.base.base.context.is_subset(cfg, &wbized_existing);
+                                rule.base.base.context.is_subset(cfg, &wbized_existing)?;
                             if incoming_resolvable {
                                 if self.report_left_arrow_conflicts {
                                     warn!(
@@ -2443,11 +2501,12 @@ impl LeftArrowRuleContainer {
         }
         let index = self.base.add_rule(Box::new(rule));
         self.input_to_rule_map.entry(input).or_default().push(index);
-        index
+        Ok(index)
     }
 
-    pub fn compile(&mut self, cfg: &OstConfig, be_verbose: bool) {
-        self.base.compile(cfg, be_verbose);
+    pub fn compile(&mut self, cfg: &OstConfig, be_verbose: bool) -> crate::error::Result<()> {
+        self.base.compile(cfg, be_verbose)?;
+        Ok(())
     }
 
     pub(crate) fn rule_ref(&self, index: usize) -> &dyn RuleT {
@@ -2546,10 +2605,10 @@ impl TwolCGrammar {
         center: &SymbolPair,
         oper: Operator,
         contexts: &OtherSymbolTransducerVector,
-    ) {
+    ) -> crate::error::Result<()> {
         match oper {
             Operator::RIGHT => {
-                let rule = ConflictResolvingRightArrowRule::new(cfg, name, center, contexts);
+                let rule = ConflictResolvingRightArrowRule::new(cfg, name, center, contexts)?;
                 let index = self
                     .right_arrow_rule_container
                     .add_rule_and_display_and_resolve_conflicts(cfg, rule);
@@ -2562,10 +2621,10 @@ impl TwolCGrammar {
                 );
             }
             Operator::LEFT => {
-                let rule = ConflictResolvingLeftArrowRule::new(cfg, name, center, contexts);
+                let rule = ConflictResolvingLeftArrowRule::new(cfg, name, center, contexts)?;
                 let index = self
                     .left_arrow_rule_container
-                    .add_rule_and_display_and_resolve_conflicts(cfg, rule);
+                    .add_rule_and_display_and_resolve_conflicts(cfg, rule)?;
                 self.insert_subcase(
                     name,
                     RuleHandle {
@@ -2575,7 +2634,7 @@ impl TwolCGrammar {
                 );
             }
             Operator::LEFT_RIGHT => {
-                let right_rule = ConflictResolvingRightArrowRule::new(cfg, name, center, contexts);
+                let right_rule = ConflictResolvingRightArrowRule::new(cfg, name, center, contexts)?;
                 let right_index = self
                     .right_arrow_rule_container
                     .add_rule_and_display_and_resolve_conflicts(cfg, right_rule);
@@ -2586,10 +2645,10 @@ impl TwolCGrammar {
                         index: right_index,
                     },
                 );
-                let left_rule = ConflictResolvingLeftArrowRule::new(cfg, name, center, contexts);
+                let left_rule = ConflictResolvingLeftArrowRule::new(cfg, name, center, contexts)?;
                 let left_index = self
                     .left_arrow_rule_container
-                    .add_rule_and_display_and_resolve_conflicts(cfg, left_rule);
+                    .add_rule_and_display_and_resolve_conflicts(cfg, left_rule)?;
                 self.insert_subcase(
                     name,
                     RuleHandle {
@@ -2599,7 +2658,7 @@ impl TwolCGrammar {
                 );
             }
             Operator::NOT_LEFT => {
-                let rule = LeftRestrictionArrowRule::new_pair(cfg, name, center, contexts);
+                let rule = LeftRestrictionArrowRule::new_pair(cfg, name, center, contexts)?;
                 let index = self.other_rule_container.add_rule(Box::new(rule));
                 self.insert_subcase(
                     name,
@@ -2611,6 +2670,7 @@ impl TwolCGrammar {
             }
             _ => panic!("TwolCGrammar::add_rule_pair: unexpected operator {oper:?}"),
         }
+        Ok(())
     }
 
     /// 'TwolCGrammar::add_rule(name, const OtherSymbolTransducer &center, oper,
@@ -2623,11 +2683,11 @@ impl TwolCGrammar {
         center: &OtherSymbolTransducer,
         oper: Operator,
         contexts: &OtherSymbolTransducerVector,
-    ) {
-        let center_fst = Rule::get_center_restricted(cfg, center);
+    ) -> crate::error::Result<()> {
+        let center_fst = Rule::get_center_restricted(cfg, center)?;
         match oper {
             Operator::RE_RIGHT => {
-                let rule = RightArrowRule::new(cfg, name, clone_ost(&center_fst), contexts);
+                let rule = RightArrowRule::new(cfg, name, clone_ost(&center_fst), contexts)?;
                 let index = self.other_rule_container.add_rule(Box::new(rule));
                 self.insert_subcase(
                     name,
@@ -2638,7 +2698,7 @@ impl TwolCGrammar {
                 );
             }
             Operator::RE_LEFT => {
-                let rule = LeftArrowRule::new(cfg, name, clone_ost(&center_fst), contexts);
+                let rule = LeftArrowRule::new(cfg, name, clone_ost(&center_fst), contexts)?;
                 let index = self.other_rule_container.add_rule(Box::new(rule));
                 self.insert_subcase(
                     name,
@@ -2649,7 +2709,7 @@ impl TwolCGrammar {
                 );
             }
             Operator::RE_LEFT_RIGHT => {
-                let right_rule = RightArrowRule::new(cfg, name, clone_ost(&center_fst), contexts);
+                let right_rule = RightArrowRule::new(cfg, name, clone_ost(&center_fst), contexts)?;
                 let right_index = self.other_rule_container.add_rule(Box::new(right_rule));
                 self.insert_subcase(
                     name,
@@ -2658,7 +2718,7 @@ impl TwolCGrammar {
                         index: right_index,
                     },
                 );
-                let left_rule = LeftArrowRule::new(cfg, name, clone_ost(&center_fst), contexts);
+                let left_rule = LeftArrowRule::new(cfg, name, clone_ost(&center_fst), contexts)?;
                 let left_index = self.other_rule_container.add_rule(Box::new(left_rule));
                 self.insert_subcase(
                     name,
@@ -2670,7 +2730,7 @@ impl TwolCGrammar {
             }
             Operator::RE_NOT_LEFT => {
                 let rule =
-                    LeftRestrictionArrowRule::new(cfg, name, clone_ost(&center_fst), contexts);
+                    LeftRestrictionArrowRule::new(cfg, name, clone_ost(&center_fst), contexts)?;
                 let index = self.other_rule_container.add_rule(Box::new(rule));
                 self.insert_subcase(
                     name,
@@ -2682,6 +2742,7 @@ impl TwolCGrammar {
             }
             _ => panic!("TwolCGrammar::add_rule_regex: unexpected operator {oper:?}"),
         }
+        Ok(())
     }
 
     // [spec:hfst:def:twol-c-grammar.twol-c-grammar.add-rule-fn]
@@ -2697,13 +2758,13 @@ impl TwolCGrammar {
         center: &SymbolPairVector,
         oper: Operator,
         contexts: &OtherSymbolTransducerVector,
-    ) {
+    ) -> crate::error::Result<()> {
         for pair in center.iter() {
             let center_name = format!("{} CENTER={}:{}", name, pair.0, pair.1);
             match oper {
                 Operator::RIGHT => {
                     let rule =
-                        ConflictResolvingRightArrowRule::new(cfg, &center_name, pair, contexts);
+                        ConflictResolvingRightArrowRule::new(cfg, &center_name, pair, contexts)?;
                     let index = self
                         .right_arrow_rule_container
                         .add_rule_and_display_and_resolve_conflicts(cfg, rule);
@@ -2717,10 +2778,10 @@ impl TwolCGrammar {
                 }
                 Operator::LEFT => {
                     let rule =
-                        ConflictResolvingLeftArrowRule::new(cfg, &center_name, pair, contexts);
+                        ConflictResolvingLeftArrowRule::new(cfg, &center_name, pair, contexts)?;
                     let index = self
                         .left_arrow_rule_container
-                        .add_rule_and_display_and_resolve_conflicts(cfg, rule);
+                        .add_rule_and_display_and_resolve_conflicts(cfg, rule)?;
                     self.insert_subcase(
                         &center_name,
                         RuleHandle {
@@ -2731,7 +2792,7 @@ impl TwolCGrammar {
                 }
                 Operator::LEFT_RIGHT => {
                     let right_rule =
-                        ConflictResolvingRightArrowRule::new(cfg, &center_name, pair, contexts);
+                        ConflictResolvingRightArrowRule::new(cfg, &center_name, pair, contexts)?;
                     let right_index = self
                         .right_arrow_rule_container
                         .add_rule_and_display_and_resolve_conflicts(cfg, right_rule);
@@ -2743,10 +2804,10 @@ impl TwolCGrammar {
                         },
                     );
                     let left_rule =
-                        ConflictResolvingLeftArrowRule::new(cfg, &center_name, pair, contexts);
+                        ConflictResolvingLeftArrowRule::new(cfg, &center_name, pair, contexts)?;
                     let left_index = self
                         .left_arrow_rule_container
-                        .add_rule_and_display_and_resolve_conflicts(cfg, left_rule);
+                        .add_rule_and_display_and_resolve_conflicts(cfg, left_rule)?;
                     self.insert_subcase(
                         &center_name,
                         RuleHandle {
@@ -2757,7 +2818,7 @@ impl TwolCGrammar {
                 }
                 Operator::NOT_LEFT => {
                     let rule =
-                        LeftRestrictionArrowRule::new_pair(cfg, &center_name, pair, contexts);
+                        LeftRestrictionArrowRule::new_pair(cfg, &center_name, pair, contexts)?;
                     let index = self.other_rule_container.add_rule(Box::new(rule));
                     self.insert_subcase(
                         &center_name,
@@ -2770,6 +2831,7 @@ impl TwolCGrammar {
                 _ => panic!("TwolCGrammar::add_rule_pairs: unexpected operator {oper:?}"),
             }
         }
+        Ok(())
     }
 
     /// Borrow the rule a ['RuleHandle'] points at as a '&dyn RuleT'.
@@ -2789,15 +2851,15 @@ impl TwolCGrammar {
     // diacritics freely, and stores the result. The binary store path is
     // DEFERRED; this port instead RETURNS the assembled result transducer (the
     // intersection of every compiled rule), so a smoke can drive the compiler.
-    pub fn compile_and_store(&mut self, cfg: &OstConfig) -> HfstTransducer {
+    pub fn compile_and_store(&mut self, cfg: &OstConfig) -> crate::error::Result<HfstTransducer> {
         if !self.be_quiet {
             info!("Compiling rules.");
         }
 
         let verbose = (!self.be_quiet) && self.be_verbose;
-        self.left_arrow_rule_container.compile(cfg, verbose);
-        self.right_arrow_rule_container.compile(cfg, verbose);
-        self.other_rule_container.compile(cfg, verbose);
+        self.left_arrow_rule_container.compile(cfg, verbose)?;
+        self.right_arrow_rule_container.compile(cfg, verbose)?;
+        self.other_rule_container.compile(cfg, verbose)?;
 
         // Build one intersecting 'ResultRule' per original rule name. The
         // 'name_to_rule_subcases' map is iterated in its (ordered) key order,
@@ -2807,12 +2869,12 @@ impl TwolCGrammar {
             let handles: Vec<RuleHandle> =
                 self.name_to_rule_subcases[&name].iter().copied().collect();
             let subcases: Vec<&dyn RuleT> = handles.iter().map(|&h| self.rule_at(h)).collect();
-            let result_rule = Rule::new_from_vector(cfg, &name, &subcases);
+            let result_rule = Rule::new_from_vector(cfg, &name, &subcases)?;
             self.compiled_rule_container.add_rule(Box::new(result_rule));
         }
         let diacritics = self.diacritics.clone();
         self.compiled_rule_container
-            .add_missing_symbols_freely(cfg, &diacritics);
+            .add_missing_symbols_freely(cfg, &diacritics)?;
 
         if !self.be_quiet {
             info!("Storing rules.");
@@ -2831,8 +2893,11 @@ impl TwolCGrammar {
 /// would otherwise serialise. Starts from '?*' (the universal language over the
 /// twolc unknown symbol) so an empty grammar yields the universal automaton,
 /// matching 'Rule(name, RuleVector)''s own '?*'-seeded intersection.
-fn assemble_result_transducer(cfg: &OstConfig, container: &RuleContainer) -> HfstTransducer {
-    let mut result = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN);
+fn assemble_result_transducer(
+    cfg: &OstConfig,
+    container: &RuleContainer,
+) -> crate::error::Result<HfstTransducer> {
+    let mut result = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
     result.repeat_star(cfg);
     for rule in container.rule_vector.iter() {
         if !rule.rule().is_empty {
@@ -2840,7 +2905,7 @@ fn assemble_result_transducer(cfg: &OstConfig, container: &RuleContainer) -> Hfs
             result.intersect(cfg, &rt);
         }
     }
-    result.transducer
+    Ok(result.transducer)
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -2927,13 +2992,14 @@ impl TwolcCompiler {
         self.register_alphabet(&mut cfg, &twolc_file.alphabet);
         self.register_diacritics(&mut cfg, &twolc_file.diacritics, &mut grammar);
         self.register_sets(&twolc_file.sets);
-        self.register_definitions(&cfg, &twolc_file.definitions);
+        self.register_definitions(&cfg, &twolc_file.definitions)
+            .ok()?;
 
         for rule in twolc_file.rules.iter() {
-            self.drive_rule(&cfg, &rule.value, &mut grammar);
+            self.drive_rule(&cfg, &rule.value, &mut grammar).ok()?;
         }
 
-        let result = grammar.compile_and_store(&cfg);
+        let result = grammar.compile_and_store(&cfg).ok()?;
         Some(result)
     }
 
@@ -2972,18 +3038,28 @@ impl TwolcCompiler {
     /// Register the 'Definitions' section: evaluate each named regex body to an
     /// ['OtherSymbolTransducer'] so a 'Symbol' naming a definition expands to
     /// it (mirrors the C++ 'NameToRegexMap').
-    pub fn register_definitions(&mut self, cfg: &OstConfig, defs: &[Spanned<TwolcDefinition>]) {
+    pub fn register_definitions(
+        &mut self,
+        cfg: &OstConfig,
+        defs: &[Spanned<TwolcDefinition>],
+    ) -> crate::error::Result<()> {
         for d in defs {
-            let t = self.eval_regex(cfg, &d.value.body);
+            let t = self.eval_regex(cfg, &d.value.body)?;
             self.definitions.insert(d.value.name.clone(), t);
         }
+        Ok(())
     }
 
     /// Drive one ['TwolcRule']: expand its 'where'-variables into concrete
     /// rules and feed each into the grammar via the matching 'add_rule'
     /// overload.
-    pub fn drive_rule(&mut self, cfg: &OstConfig, rule: &TwolcRule, grammar: &mut TwolCGrammar) {
-        for concrete in self.expand_rule_variables(cfg, rule) {
+    pub fn drive_rule(
+        &mut self,
+        cfg: &OstConfig,
+        rule: &TwolcRule,
+        grammar: &mut TwolCGrammar,
+    ) -> crate::error::Result<()> {
+        for concrete in self.expand_rule_variables(cfg, rule)? {
             match concrete.center {
                 CenterEval::Pairs(pairs) => {
                     grammar.add_rule_pairs(
@@ -2992,7 +3068,7 @@ impl TwolcCompiler {
                         &pairs,
                         concrete.oper,
                         &concrete.contexts,
-                    );
+                    )?;
                 }
                 CenterEval::Regex(center) => {
                     grammar.add_rule_regex(
@@ -3001,10 +3077,11 @@ impl TwolcCompiler {
                         &center,
                         concrete.oper,
                         &concrete.contexts,
-                    );
+                    )?;
                 }
             }
         }
+        Ok(())
     }
 
     /// Expand a ['TwolcRule']'s 'where'-blocks into concrete rules using the
@@ -3014,7 +3091,7 @@ impl TwolcCompiler {
         &mut self,
         cfg: &OstConfig,
         rule: &TwolcRule,
-    ) -> Vec<ConcreteRule> {
+    ) -> crate::error::Result<Vec<ConcreteRule>> {
         let regex_center = matches!(rule.center, RuleCenter::Regex(_));
         let oper = TwolcCompiler::operator_of(rule.operator, regex_center);
 
@@ -3031,10 +3108,10 @@ impl TwolcCompiler {
 
         if rule_variables.empty() {
             let empty_vvm = VariableValueMap::new();
-            if let Some(cr) = self.build_concrete_rule(cfg, rule, oper, &empty_vvm) {
+            if let Some(cr) = self.build_concrete_rule(cfg, rule, oper, &empty_vvm)? {
                 result.push(cr);
             }
-            return result;
+            return Ok(result);
         }
 
         // Odometer over the cross-product of the where-blocks.
@@ -3043,12 +3120,12 @@ impl TwolcCompiler {
         while it.ne(&end) {
             let mut vvm = VariableValueMap::new();
             it.set_values(&mut vvm);
-            if let Some(cr) = self.build_concrete_rule(cfg, rule, oper, &vvm) {
+            if let Some(cr) = self.build_concrete_rule(cfg, rule, oper, &vvm)? {
                 result.push(cr);
             }
             it.increment();
         }
-        result
+        Ok(result)
     }
 
     /// Build a single ['ConcreteRule'] from a rule template and a variable
@@ -3060,22 +3137,22 @@ impl TwolcCompiler {
         rule: &TwolcRule,
         oper: Operator,
         vvm: &VariableValueMap,
-    ) -> Option<ConcreteRule> {
+    ) -> crate::error::Result<Option<ConcreteRule>> {
         // Compose the subcase-qualified name. The C++ rule template carried a
         // '__HFST_TWOLC_RULE_NAME' marker that 'RuleSymbolVector' rewrote with
         // the 'SUBCASE:'/'var=value' markers; here the rule's own name plays
         // that role and the marker rewrite is applied directly.
         let name = build_rule_name(&rule.name, vvm);
 
-        let center = self.eval_center(cfg, &rule.center, vvm);
+        let center = self.eval_center(cfg, &rule.center, vvm)?;
         let contexts =
-            self.eval_contexts(cfg, &rule.positive_contexts, &rule.negative_contexts, vvm);
-        Some(ConcreteRule {
+            self.eval_contexts(cfg, &rule.positive_contexts, &rule.negative_contexts, vvm)?;
+        Ok(Some(ConcreteRule {
             name,
             center,
             oper,
             contexts,
-        })
+        }))
     }
 
     /// AST 'where'-blocks -> ['RuleVariables'] (the C++
@@ -3117,8 +3194,8 @@ impl TwolcCompiler {
         cfg: &OstConfig,
         center: &RuleCenter,
         vvm: &VariableValueMap,
-    ) -> CenterEval {
-        match center {
+    ) -> crate::error::Result<CenterEval> {
+        Ok(match center {
             RuleCenter::Pair(pairs) => {
                 let mut spv: SymbolPairVector = Vec::new();
                 for p in pairs {
@@ -3128,8 +3205,8 @@ impl TwolcCompiler {
                 }
                 CenterEval::Pairs(spv)
             }
-            RuleCenter::Regex(e) => CenterEval::Regex(self.eval_regex_with_vars(cfg, e, vvm)),
-        }
+            RuleCenter::Regex(e) => CenterEval::Regex(self.eval_regex_with_vars(cfg, e, vvm)?),
+        })
     }
 
     /// Evaluate the positive and negative contexts of a rule into one
@@ -3142,17 +3219,17 @@ impl TwolcCompiler {
         pos: &[RuleContext],
         neg: &[RuleContext],
         vvm: &VariableValueMap,
-    ) -> OtherSymbolTransducerVector {
+    ) -> crate::error::Result<OtherSymbolTransducerVector> {
         let mut result: OtherSymbolTransducerVector = Vec::new();
         for ctx in pos {
-            result.push(self.eval_context(cfg, ctx, vvm));
+            result.push(self.eval_context(cfg, ctx, vvm)?);
         }
         for ctx in neg {
-            let mut c = self.eval_context(cfg, ctx, vvm);
-            c.negated(cfg);
+            let mut c = self.eval_context(cfg, ctx, vvm)?;
+            c.negated(cfg)?;
             result.push(c);
         }
-        result
+        Ok(result)
     }
 
     /// Evaluate one ['RuleContext'] into 'left D ?* D right' via
@@ -3162,9 +3239,9 @@ impl TwolcCompiler {
         cfg: &OstConfig,
         ctx: &RuleContext,
         vvm: &VariableValueMap,
-    ) -> OtherSymbolTransducer {
-        let mut left = self.eval_regex_with_vars(cfg, &ctx.left, vvm);
-        let mut right = self.eval_regex_with_vars(cfg, &ctx.right, vvm);
+    ) -> crate::error::Result<OtherSymbolTransducer> {
+        let mut left = self.eval_regex_with_vars(cfg, &ctx.left, vvm)?;
+        let mut right = self.eval_regex_with_vars(cfg, &ctx.right, vvm)?;
         OtherSymbolTransducer::get_context(cfg, &mut left, &mut right)
     }
 
@@ -3174,7 +3251,7 @@ impl TwolcCompiler {
         &mut self,
         cfg: &OstConfig,
         e: &Spanned<TwolcRegex>,
-    ) -> OtherSymbolTransducer {
+    ) -> crate::error::Result<OtherSymbolTransducer> {
         let vvm = VariableValueMap::new();
         self.eval_regex_with_vars(cfg, e, &vvm)
     }
@@ -3188,8 +3265,8 @@ impl TwolcCompiler {
         cfg: &OstConfig,
         e: &Spanned<TwolcRegex>,
         vvm: &VariableValueMap,
-    ) -> OtherSymbolTransducer {
-        match &e.value {
+    ) -> crate::error::Result<OtherSymbolTransducer> {
+        Ok(match &e.value {
             TwolcRegex::Symbol(s) => {
                 let sym = substitute_symbol(s, vvm);
                 // A symbol naming a definition expands to its transducer; a
@@ -3198,36 +3275,36 @@ impl TwolcCompiler {
                 if let Some(def) = self.definitions.get(&sym) {
                     clone_ost(def)
                 } else if let Some(members) = self.sets.get(&sym).cloned() {
-                    let mut t = OtherSymbolTransducer::new(cfg);
+                    let mut t = OtherSymbolTransducer::new(cfg)?;
                     for m in &members {
                         let member_sym = substitute_symbol(m, vvm);
-                        let pair = OtherSymbolTransducer::new_symbol(cfg, &member_sym);
+                        let pair = OtherSymbolTransducer::new_symbol(cfg, &member_sym)?;
                         t.disjunct(cfg, &pair);
                     }
                     t
                 } else {
-                    OtherSymbolTransducer::new_symbol(cfg, &sym)
+                    OtherSymbolTransducer::new_symbol(cfg, &sym)?
                 }
             }
             TwolcRegex::Pair { upper, lower } => {
                 let up = symbol_of(upper, vvm);
                 let lo = symbol_of(lower, vvm);
-                OtherSymbolTransducer::new_pair(cfg, &up, &lo)
+                OtherSymbolTransducer::new_pair(cfg, &up, &lo)?
             }
-            TwolcRegex::Epsilon => OtherSymbolTransducer::new_symbol(cfg, TWOLC_EPSILON),
-            TwolcRegex::Any => OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN),
-            TwolcRegex::Group(inner) => self.eval_regex_with_vars(cfg, inner, vvm),
+            TwolcRegex::Epsilon => OtherSymbolTransducer::new_symbol(cfg, TWOLC_EPSILON)?,
+            TwolcRegex::Any => OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?,
+            TwolcRegex::Group(inner) => self.eval_regex_with_vars(cfg, inner, vvm)?,
             TwolcRegex::Optional(inner) => {
-                let mut t = self.eval_regex_with_vars(cfg, inner, vvm);
+                let mut t = self.eval_regex_with_vars(cfg, inner, vvm)?;
                 t.apply_zero(cfg, |t_| {
                     t_.optionalize();
                 });
                 t
             }
-            TwolcRegex::Binary(op, l, r) => self.eval_binary(cfg, *op, l, r, vvm),
-            TwolcRegex::Unary(op, inner) => self.eval_unary(cfg, *op, inner, vvm),
+            TwolcRegex::Binary(op, l, r) => self.eval_binary(cfg, *op, l, r, vvm)?,
+            TwolcRegex::Unary(op, inner) => self.eval_unary(cfg, *op, inner, vvm)?,
             TwolcRegex::RepeatN(inner, n) => {
-                let mut t = self.eval_regex_with_vars(cfg, inner, vvm);
+                let mut t = self.eval_regex_with_vars(cfg, inner, vvm)?;
                 t.apply_num(
                     cfg,
                     |t_, n_| {
@@ -3238,7 +3315,7 @@ impl TwolcCompiler {
                 t
             }
             TwolcRegex::RepeatNToK(inner, n, k) => {
-                let mut t = self.eval_regex_with_vars(cfg, inner, vvm);
+                let mut t = self.eval_regex_with_vars(cfg, inner, vvm)?;
                 t.apply_two_num(
                     cfg,
                     |t_, a_, b_| {
@@ -3249,7 +3326,7 @@ impl TwolcCompiler {
                 );
                 t
             }
-        }
+        })
     }
 
     /// Evaluate a ['TwolcRegex::Unary'] node.
@@ -3259,8 +3336,8 @@ impl TwolcCompiler {
         op: UnaryOp,
         inner: &Spanned<TwolcRegex>,
         vvm: &VariableValueMap,
-    ) -> OtherSymbolTransducer {
-        let mut t = self.eval_regex_with_vars(cfg, inner, vvm);
+    ) -> crate::error::Result<OtherSymbolTransducer> {
+        let mut t = self.eval_regex_with_vars(cfg, inner, vvm)?;
         match op {
             UnaryOp::Star => {
                 t.apply_zero(cfg, |t_| {
@@ -3293,22 +3370,22 @@ impl TwolcCompiler {
                 });
             }
             UnaryOp::Complement => {
-                t.negated(cfg);
+                t.negated(cfg)?;
             }
             UnaryOp::TermComplement => {
-                t.term_complemented(cfg);
+                t.term_complemented(cfg)?;
             }
             UnaryOp::Containment => {
-                t.contained(cfg);
+                t.contained(cfg)?;
             }
             UnaryOp::ContainmentOnce => {
-                t.contained_once(cfg);
+                t.contained_once(cfg)?;
             }
             UnaryOp::ContainmentOpt => {
-                t.contained(cfg);
+                t.contained(cfg)?;
             }
         }
-        t
+        Ok(t)
     }
 
     /// Evaluate a ['TwolcRegex::Binary'] node.
@@ -3319,9 +3396,9 @@ impl TwolcCompiler {
         l: &Spanned<TwolcRegex>,
         r: &Spanned<TwolcRegex>,
         vvm: &VariableValueMap,
-    ) -> OtherSymbolTransducer {
-        let mut left = self.eval_regex_with_vars(cfg, l, vvm);
-        let right = self.eval_regex_with_vars(cfg, r, vvm);
+    ) -> crate::error::Result<OtherSymbolTransducer> {
+        let mut left = self.eval_regex_with_vars(cfg, l, vvm)?;
+        let right = self.eval_regex_with_vars(cfg, r, vvm)?;
         match op {
             BinaryOp::Concatenate => {
                 left.concatenate(cfg, &right);
@@ -3350,7 +3427,7 @@ impl TwolcCompiler {
                 ));
             }
         }
-        left
+        Ok(left)
     }
 }
 

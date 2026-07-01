@@ -135,7 +135,13 @@ impl Transducer {
     fn analyze(&mut self, input: &str) {
         let limit: isize = -1; // no max-lookups cap (preserve current behaviour)
         let time_cutoff: f64 = unsafe { TIME_CUTOFF };
-        let paths = self.inner.lookup_fd_string(input, limit, time_cutoff);
+        let paths = match self.inner.lookup_fd_string(input, limit, time_cutoff) {
+            Ok(p) => p,
+            Err(e) => {
+                print_err(&format!("{e}\n"));
+                return;
+            }
+        };
         for path in &paths {
             let weight = path.first;
             let output: String = path
@@ -397,8 +403,20 @@ fn run_transducer(t: &mut Transducer) {
 // [spec:hfst:def:hfst-optimized-lookup.setup-fn]
 // [spec:hfst:sem:hfst-optimized-lookup.setup-fn]
 fn setup(path: &str) -> i32 {
-    let mut instream = hfst::hfst_input_stream::HfstInputStream::new_filename(path);
-    let t = hfst::hfst_transducer::HfstTransducer::new_from_stream(&mut instream);
+    let mut instream = match hfst::hfst_input_stream::HfstInputStream::new_filename(path) {
+        Ok(v) => v,
+        Err(e) => {
+            print_err(&format!("{e}\n"));
+            return 1;
+        }
+    };
+    let t = match hfst::hfst_transducer::HfstTransducer::new_from_stream(&mut instream) {
+        Ok(v) => v,
+        Err(e) => {
+            print_err(&format!("{e}\n"));
+            return 1;
+        }
+    };
     let weighted = t.get_type() == hfst::hfst_data_types::ImplementationType::HFST_OLW_TYPE;
     let unique = unsafe { DISPLAY_UNIQUE_FLAG };
     let variant = match (weighted, unique) {

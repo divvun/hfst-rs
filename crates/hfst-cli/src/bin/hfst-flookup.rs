@@ -942,10 +942,23 @@ unsafe fn lookup_simple_ol(
                     ),
                 );
             }
-            results = t.lookup_fd_string_vector(&s.second, INFINITE_CUTOFF as isize, TIME_CUTOFF);
+            results =
+                match t.lookup_fd_string_vector(&s.second, INFINITE_CUTOFF as isize, TIME_CUTOFF) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        hfst_error(1, 0, &format!("{e}"));
+                        HfstOneLevelPaths::new()
+                    }
+                };
             *infinity = true;
         } else {
-            results = t.lookup_fd_string_vector(&s.second, -1, TIME_CUTOFF);
+            results = match t.lookup_fd_string_vector(&s.second, -1, TIME_CUTOFF) {
+                Ok(v) => v,
+                Err(e) => {
+                    hfst_error(1, 0, &format!("{e}"));
+                    HfstOneLevelPaths::new()
+                }
+            };
         }
 
         if results.is_empty() {
@@ -1149,7 +1162,13 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             transducer_n += 1;
             // [spec:hfst:def:hfst-flookup.trans-fn]
             // [spec:hfst:sem:hfst-flookup.trans-fn]
-            let mut trans = HfstTransducer::new_from_stream(inputstream);
+            let mut trans = match HfstTransducer::new_from_stream(inputstream) {
+                Ok(t) => t,
+                Err(e) => {
+                    hfst_error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let type_ = trans.get_type();
             let mut symbols_seen: StringSet = StringSet::new();
 
@@ -1180,11 +1199,25 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
                 if type_ != ImplementationType::HFST_OL_TYPE
                     && type_ != ImplementationType::HFST_OLW_TYPE
                 {
-                    trans.invert();
+                    if let Err(e) = trans.invert() {
+                        hfst_error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                 } else {
-                    trans.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
-                    trans.invert();
-                    trans.convert(type_, String::new());
+                    if let Err(e) =
+                        trans.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())
+                    {
+                        hfst_error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                    if let Err(e) = trans.invert() {
+                        hfst_error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                    if let Err(e) = trans.convert(type_, String::new()) {
+                        hfst_error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                 }
             }
 
@@ -1196,7 +1229,13 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             {
                 // [spec:hfst:def:hfst-flookup.basic-fn]
                 // [spec:hfst:sem:hfst-flookup.basic-fn]
-                let basic = trans.get_basic_transducer();
+                let basic = match trans.get_basic_transducer() {
+                    Ok(b) => b,
+                    Err(e) => {
+                        hfst_error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
                 for it in basic.iter() {
                     for tr_it in it.iter() {
                         let mcs = tr_it.get_input_symbol(basic.coder());
@@ -1418,10 +1457,16 @@ unsafe fn real_main() -> i32 {
         // (C++ wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // emitting "%s is not a valid transducer file" is not reproduced here.)
-        let mut instream = if globals::input_filename() != "<stdin>" {
+        let mut instream = match if globals::input_filename() != "<stdin>" {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(s) => s,
+            Err(e) => {
+                hfst_error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         let mut out = match globals::output_writer() {

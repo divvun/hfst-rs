@@ -40,6 +40,7 @@ fn w_fputs(file: &mut dyn Write, s: &str) {
 // exposes it as 'HfstTransducer::get_basic_transducer'.
 fn hfst_transducer_to_basic(t: &HfstTransducer) -> HfstBasicTransducer {
     t.get_basic_transducer()
+        .expect("get_basic_transducer on a valid transducer cannot fail")
 }
 
 // [spec:hfst:def:hfst-print-dot.hfst.trim-to-valid-utf8-fn]
@@ -154,7 +155,11 @@ pub fn print_dot_file(out: &mut dyn Write, t: &mut HfstTransducer) {
     // for some reason, dot works nicer if I first have all nodes, then arcs
     for _state in mutt.iter() {
         if mutt.is_final_state(s) {
-            if mutt.get_final_weight(s) > 0.0 {
+            if mutt
+                .get_final_weight(s)
+                .expect("state was confirmed final via is_final_state")
+                > 0.0
+            {
                 w_fputs(
                     out,
                     &format!(
@@ -162,6 +167,7 @@ pub fn print_dot_file(out: &mut dyn Write, t: &mut HfstTransducer) {
                         s,
                         s,
                         mutt.get_final_weight(s)
+                            .expect("state was confirmed final via is_final_state")
                     ),
                 );
             } else {
@@ -216,13 +222,18 @@ pub fn print_dot_os(out: &mut dyn Write, t: &mut HfstTransducer) {
     // for some reason, dot works nicer if I first have all nodes, then arcs
     for _state in mutt.iter() {
         if mutt.is_final_state(s) {
-            if mutt.get_final_weight(s) > 0.0 {
+            if mutt
+                .get_final_weight(s)
+                .expect("state was confirmed final via is_final_state")
+                > 0.0
+            {
                 let _ = writeln!(
                     out,
                     "q{} [shape=doublecircle,label=\"q{}/\\n{}\"] ",
                     s,
                     s,
                     mutt.get_final_weight(s)
+                        .expect("state was confirmed final via is_final_state")
                 );
             } else {
                 let _ = writeln!(out, "q{} [shape=doublecircle,label=\"q{} \"] ", s, s);

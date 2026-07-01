@@ -166,13 +166,25 @@ unsafe fn process_stream(instream: &mut HfstInputStream, out: &mut HfstOutputStr
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let analyzer = HfstTransducer::new_from_stream(instream);
+            let analyzer = match HfstTransducer::new_from_stream(instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
 
             verbose_printf(&format!(
                 "Compiling guesser from the transducer {}.\n",
                 analyzer.get_name()
             ));
-            let mut guesser = guessify_analyzer(analyzer, DEFAULT_PENALTY);
+            let mut guesser = match guessify_analyzer(analyzer, DEFAULT_PENALTY) {
+                Ok(g) => g,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
 
             if COMPILE_GENERATOR {
                 verbose_printf("Compiling generator and storing guesser and generator.\n");
@@ -180,7 +192,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream, out: &mut HfstOutputStr
                 verbose_printf("Storing guesser.\n");
             }
 
-            store_guesser(&mut guesser, out, COMPILE_GENERATOR);
+            if let Err(e) = store_guesser(&mut guesser, out, COMPILE_GENERATOR) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
 
         instream.close();
@@ -220,17 +235,24 @@ unsafe fn real_main() -> i32 {
         // (the C wraps the ctor in try/catch on HfstException reporting
         // "%s is not a valid transducer file"; the Rust ctor currently panics on
         // a bad file rather than throwing, so the catch arm is not reproduced.)
-        let mut instream = if input_opened {
+        let instream_result = if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        };
+        let mut instream = match instream_result {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         let output_opened = globals::output_filename() != "<stdout>";
         // (the C wraps the ctor in try/catch on HfstException reporting
         // "%s cannot be opened for writing."; the Rust ctor currently panics
         // rather than throwing, so the catch arm is not reproduced here.)
-        let mut outstream = if output_opened {
+        let outstream_result = if output_opened {
             HfstOutputStream::new_filename(
                 &globals::output_filename(),
                 ImplementationType::HFST_OLW_TYPE,
@@ -238,6 +260,13 @@ unsafe fn real_main() -> i32 {
             )
         } else {
             HfstOutputStream::new(ImplementationType::HFST_OLW_TYPE, true)
+        };
+        let mut outstream = match outstream_result {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         process_stream(&mut instream, &mut outstream)

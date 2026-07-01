@@ -50,13 +50,13 @@ impl ConversionFunctions {
     pub fn log_ofst_to_hfst_basic_transducer(
         t: &LogVectorFst,
         has_hfst_header: bool,
-    ) -> HfstBasicTransducer {
+    ) -> crate::error::Result<HfstBasicTransducer> {
         let inputsym = t.input_symbols();
         let mut outputsym = t.output_symbols();
 
         /* An HFST log transducer always has an input symbol table. */
         if has_hfst_header && inputsym.is_none() {
-            crate::HFST_THROW!(MissingOpenFstInputSymbolTable);
+            crate::bail!(MissingOpenFstInputSymbolTable);
         }
 
         let mut net = HfstBasicTransducer::new();
@@ -87,7 +87,7 @@ impl ConversionFunctions {
                     }
                 }
             }
-            return net;
+            return Ok(net);
         }
 
         /* A non-empty OpenFst transducer must have at least an input symbol table.
@@ -95,7 +95,7 @@ impl ConversionFunctions {
         equivalent to the input symbol table. */
         let inputsym = match inputsym {
             None => {
-                crate::HFST_THROW!(MissingOpenFstInputSymbolTable);
+                crate::bail!(MissingOpenFstInputSymbolTable);
             }
             Some(inputsym) => inputsym,
         };
@@ -227,7 +227,7 @@ impl ConversionFunctions {
             }
         }
 
-        net
+        Ok(net)
     }
 
     /* Get a state id for a state in transducer 't' that corresponds
@@ -304,8 +304,14 @@ impl ConversionFunctions {
         for state in 0..=net.get_max_state() {
             if net.is_final_state(state) {
                 let s = Self::hfst_state_to_state_id(state, &mut state_map, &mut t);
-                t.set_final(s, LogWeight::new(net.get_final_weight(state)))
-                    .unwrap();
+                t.set_final(
+                    s,
+                    LogWeight::new(
+                        net.get_final_weight(state)
+                            .expect("state was confirmed final via is_final_state"),
+                    ),
+                )
+                .expect("s is a state that exists in the fst");
             }
         }
 

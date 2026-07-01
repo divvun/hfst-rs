@@ -7,8 +7,8 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, is_input_stream_in_ol_format,
-    print_more_info, print_report_bugs, verbose_printf,
+    EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name,
+    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -87,7 +87,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = HfstTransducer::new_from_stream(instream);
+            let mut trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let inputname = hfst_get_name(&trans, &globals::input_filename());
             if transducer_n == 1 {
                 verbose_printf(&format!("Reversing {}...\n", inputname));
@@ -95,14 +101,20 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 verbose_printf(&format!("Reversing {}...{}\n", inputname, transducer_n));
             }
 
-            trans.reverse();
+            if let Err(e) = trans.reverse() {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
             // C: hfst_set_name(trans, trans, "reverse"); the dest and src are the
             // same object, which Rust cannot alias mut+const, so the read side is
             // taken from a copy (name/formula are unchanged by the copy).
             let src = trans.clone();
             hfst_set_name_unary(&mut trans, &src, "reverse");
             hfst_set_formula_unary(&mut trans, &src, "\u{21c6}");
-            outstream.redirect(&mut trans);
+            if let Err(e) = outstream.redirect(&mut trans) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
         instream.close();
         outstream.close();
@@ -137,10 +149,17 @@ unsafe fn real_main() -> i32 {
         ));
 
         // here starts the buffer handling part
-        let mut instream = if input_opened {
+        let instream_result = if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        };
+        let mut instream = match instream_result {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
@@ -151,10 +170,17 @@ unsafe fn real_main() -> i32 {
         }
 
         let type_ = instream.get_type();
-        let mut outstream = if output_opened {
+        let outstream_result = if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        };
+        let mut outstream = match outstream_result {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         process_stream(&mut instream, &mut outstream)

@@ -102,50 +102,52 @@ fn print_usage() {
 
 // [spec:hfst:def:hfst-tokenize.make-naive-tokenizer-fn]
 // [spec:hfst:sem:hfst-tokenize.make-naive-tokenizer-fn]
-unsafe fn make_naive_tokenizer(dictionary: &mut HfstTransducer) -> PmatchContainer {
+unsafe fn make_naive_tokenizer(
+    dictionary: &mut HfstTransducer,
+) -> hfst::error::Result<PmatchContainer> {
     unsafe {
         let mut word_boundary =
             hfst::pmatch_compiler::PmatchUtilityTransducers::make_latin1_whitespace_acceptor(
                 DEFAULT_FORMAT,
-            );
+            )?;
         let punctuation =
             hfst::pmatch_compiler::PmatchUtilityTransducers::make_latin1_punct_acceptor(
                 DEFAULT_FORMAT,
-            );
-        word_boundary.disjunct(&punctuation, true);
-        let mut others = hfst::pmatch_compiler::make_exc_list(&word_boundary, DEFAULT_FORMAT);
-        others.repeat_plus();
+            )?;
+        word_boundary.disjunct(&punctuation, true)?;
+        let mut others = hfst::pmatch_compiler::make_exc_list(&word_boundary, DEFAULT_FORMAT)?;
+        others.repeat_plus()?;
         // make the default token less likely than any dictionary token
-        others.set_final_weights(f32::MAX, false);
+        others.set_final_weights(f32::MAX, false)?;
         let mut word_boundary_list =
-            hfst::pmatch_compiler::make_list(&word_boundary, DEFAULT_FORMAT);
+            hfst::pmatch_compiler::make_list(&word_boundary, DEFAULT_FORMAT)?;
         // @BOUNDARY@ is pmatch's special input boundary marker
-        let boundary = HfstTransducer::new_symbol("@BOUNDARY@", DEFAULT_FORMAT);
-        word_boundary_list.disjunct(&boundary, true);
+        let boundary = HfstTransducer::new_symbol("@BOUNDARY@", DEFAULT_FORMAT)?;
+        word_boundary_list.disjunct(&boundary, true)?;
         let mut left_context = HfstTransducer::new_symbol_pair(
             hfst::hfst_symbol_defs::internal_epsilon,
             hfst::pmatch_compiler::LC_ENTRY_SYMBOL,
             DEFAULT_FORMAT,
-        );
+        )?;
         let mut right_context = HfstTransducer::new_symbol_pair(
             hfst::hfst_symbol_defs::internal_epsilon,
             hfst::pmatch_compiler::RC_ENTRY_SYMBOL,
             DEFAULT_FORMAT,
-        );
-        left_context.concatenate(&word_boundary_list, true);
-        right_context.concatenate(&word_boundary_list, true);
+        )?;
+        left_context.concatenate(&word_boundary_list, true)?;
+        right_context.concatenate(&word_boundary_list, true)?;
         let left_context_exit = HfstTransducer::new_symbol_pair(
             hfst::hfst_symbol_defs::internal_epsilon,
             hfst::pmatch_compiler::LC_EXIT_SYMBOL,
             DEFAULT_FORMAT,
-        );
+        )?;
         let right_context_exit = HfstTransducer::new_symbol_pair(
             hfst::hfst_symbol_defs::internal_epsilon,
             hfst::pmatch_compiler::RC_EXIT_SYMBOL,
             DEFAULT_FORMAT,
-        );
-        left_context.concatenate(&left_context_exit, true);
-        right_context.concatenate(&right_context_exit, true);
+        )?;
+        left_context.concatenate(&left_context_exit, true)?;
+        right_context.concatenate(&right_context_exit, true)?;
         let mut dict_name = dictionary.get_name();
         if dict_name.is_empty() {
             dict_name = "unknown_pmatch_tokenized_dict".to_string();
@@ -154,31 +156,31 @@ unsafe fn make_naive_tokenizer(dictionary: &mut HfstTransducer) -> PmatchContain
         let dict_ins_arc = HfstTransducer::new_symbol(
             &hfst::pmatch_compiler::get_Ins_transition(&dict_name),
             DEFAULT_FORMAT,
-        );
+        )?;
         // We now make the center of the tokenizer
-        others.disjunct(&dict_ins_arc, true);
+        others.disjunct(&dict_ins_arc, true)?;
         // And combine it with the context conditions
-        left_context.concatenate(&others, true);
-        left_context.concatenate(&right_context, true);
+        left_context.concatenate(&others, true)?;
+        left_context.concatenate(&right_context, true)?;
         // Because there are context conditions we need delimiter markers
-        let mut tokenizer = hfst::pmatch_compiler::add_pmatch_delimiters(&left_context);
+        let mut tokenizer = hfst::pmatch_compiler::add_pmatch_delimiters(&left_context)?;
         tokenizer.set_name("TOP");
-        tokenizer.minimize();
+        tokenizer.minimize()?;
         // Convert the dictionary to olw if it wasn't already
-        dictionary.convert(ImplementationType::HFST_OLW_TYPE, String::new());
+        dictionary.convert(ImplementationType::HFST_OLW_TYPE, String::new())?;
         // Get the alphabets
-        let dict_syms = dictionary.get_alphabet();
-        let tokenizer_syms = tokenizer.get_alphabet();
+        let dict_syms = dictionary.get_alphabet()?;
+        let tokenizer_syms = tokenizer.get_alphabet()?;
         // What to add to the dictionary
         let tokenizer_minus_dict: Vec<String> =
             tokenizer_syms.difference(&dict_syms).cloned().collect();
         for it in tokenizer_minus_dict.iter() {
-            dictionary.insert_to_alphabet(it.as_str());
+            dictionary.insert_to_alphabet(it.as_str())?;
         }
         let tokenizer_basic =
             hfst::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(
                 &tokenizer,
-            );
+            )?;
         // The C++ 'hfst_basic_transducer_to_hfst_ol' takes the HfstTransducer
         // dictionary directly as its harmonizer and converts it internally; the
         // Rust port shifts that to the caller, so we first obtain the dictionary's
@@ -196,10 +198,10 @@ unsafe fn make_naive_tokenizer(dictionary: &mut HfstTransducer) -> PmatchContain
                 true,                 // weighted
                 "",                   // no special options
                 Some(&*dict_backend), // harmonize with the dictionary
-            );
-        let mut retval = PmatchContainer::new_from_transducer(Box::new(tokenizer_ol));
-        retval.add_rtn(&*dict_backend, &dict_name);
-        retval
+            )?;
+        let mut retval = PmatchContainer::new_from_transducer(Box::new(tokenizer_ol))?;
+        retval.add_rtn(&*dict_backend, &dict_name)?;
+        Ok(retval)
     }
 }
 
@@ -631,7 +633,13 @@ unsafe fn real_main() -> i32 {
         let first_header_attributes = {
             let mut hdr_stream =
                 hfst::transducer::IStream::new(&mut file as &mut dyn std::io::Read);
-            PmatchContainer::parse_hfst3_header(&mut hdr_stream)
+            match PmatchContainer::parse_hfst3_header(&mut hdr_stream) {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("hfst-tokenize: {e}");
+                    return 1;
+                }
+            }
         };
         use std::io::Seek;
         let _ = file.seek(std::io::SeekFrom::Start(0));
@@ -647,16 +655,40 @@ unsafe fn real_main() -> i32 {
         };
         if first_header_attributes.get("name").map(|s| s.as_str()) != Some("TOP") {
             verbose_printf("No TOP automaton found, using naive tokeniser?\n");
-            let mut is = HfstInputStream::new_filename(&tokenizer_filename);
-            let mut dictionary = HfstTransducer::new_from_stream(&mut is);
-            let mut container = make_naive_tokenizer(&mut dictionary);
+            let mut is = match HfstInputStream::new_filename(&tokenizer_filename) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("hfst-tokenize: {e}");
+                    return 1;
+                }
+            };
+            let mut dictionary = match HfstTransducer::new_from_stream(&mut is) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("hfst-tokenize: {e}");
+                    return 1;
+                }
+            };
+            let mut container = match make_naive_tokenizer(&mut dictionary) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("hfst-tokenize: {e}");
+                    return 1;
+                }
+            };
             container.set_verbose(globals::VERBOSE);
             container.set_single_codepoint_tokenization(!settings().tokenize_multichar);
             process_input(&mut container, &mut stdout, &mut *input)
         } else {
             verbose_printf("TOP automaton seen, treating as pmatch script...\n");
             let mut is = hfst::transducer::IStream::new(&mut file as &mut dyn std::io::Read);
-            let mut container = PmatchContainer::new_from_stream(&mut is);
+            let mut container = match PmatchContainer::new_from_stream(&mut is) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("hfst-tokenize: {e}");
+                    return 1;
+                }
+            };
             container.set_verbose(globals::VERBOSE);
             container.set_single_codepoint_tokenization(!settings().tokenize_multichar);
             process_input(&mut container, &mut stdout, &mut *input)

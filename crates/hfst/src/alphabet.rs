@@ -52,10 +52,15 @@ impl Alphabet {
         let input = pair.0.clone();
         let output = pair.1.clone();
 
-        let mut pair_transducer = OtherSymbolTransducer::new(cfg);
+        let mut pair_transducer = OtherSymbolTransducer::new(cfg)
+            .expect("creating an empty transducer of the configured type cannot fail");
 
         if self.diacritics.contains(&input) {
-            pair_transducer.disjunct(cfg, &OtherSymbolTransducer::new_pair(cfg, &input, &input));
+            pair_transducer.disjunct(
+                cfg,
+                &OtherSymbolTransducer::new_pair(cfg, &input, &input)
+                    .expect("symbol pair from the alphabet is non-empty"),
+            );
             if input != output && output != TWOLC_EPSILON && output != TWOLC_UNKNOWN {
                 tracing::warn!(
                     "Diacritic {} in pair {}:{} will correspond 0.",
@@ -71,9 +76,17 @@ impl Alphabet {
                     continue;
                 }
 
-                pair_transducer.disjunct(cfg, &OtherSymbolTransducer::new_pair(cfg, &it.0, &it.1));
+                pair_transducer.disjunct(
+                    cfg,
+                    &OtherSymbolTransducer::new_pair(cfg, &it.0, &it.1)
+                        .expect("symbol pair from the alphabet is non-empty"),
+                );
             }
-            pair_transducer.disjunct(cfg, &OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN));
+            pair_transducer.disjunct(
+                cfg,
+                &OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)
+                    .expect("special symbol is non-empty"),
+            );
         } else if input == TWOLC_UNKNOWN {
             self.output_symbols.insert(pair.1.clone());
             let output_set = self.sets[&output].clone();
@@ -85,8 +98,11 @@ impl Alphabet {
                     }
 
                     if *it == jt.1 {
-                        pair_transducer
-                            .disjunct(cfg, &OtherSymbolTransducer::new_pair(cfg, &jt.0, &jt.1));
+                        pair_transducer.disjunct(
+                            cfg,
+                            &OtherSymbolTransducer::new_pair(cfg, &jt.0, &jt.1)
+                                .expect("symbol pair from the alphabet is non-empty"),
+                        );
                     }
                 }
             }
@@ -101,8 +117,11 @@ impl Alphabet {
                     }
 
                     if *it == jt.0 {
-                        pair_transducer
-                            .disjunct(cfg, &OtherSymbolTransducer::new_pair(cfg, &jt.0, &jt.1));
+                        pair_transducer.disjunct(
+                            cfg,
+                            &OtherSymbolTransducer::new_pair(cfg, &jt.0, &jt.1)
+                                .expect("symbol pair from the alphabet is non-empty"),
+                        );
                     }
                 }
             }
@@ -113,8 +132,11 @@ impl Alphabet {
             for it in input_set.iter() {
                 for jt in output_set.iter() {
                     if self.is_pair(it, jt) {
-                        pair_transducer
-                            .disjunct(cfg, &OtherSymbolTransducer::new_pair(cfg, it, jt));
+                        pair_transducer.disjunct(
+                            cfg,
+                            &OtherSymbolTransducer::new_pair(cfg, it, jt)
+                                .expect("symbol pair from the alphabet is non-empty"),
+                        );
                     }
                 }
             }
@@ -208,7 +230,10 @@ impl Alphabet {
         // value; mirror that so a never-computed pair yields an empty fst.
         self.alphabet
             .entry(pair.clone())
-            .or_insert_with(|| OtherSymbolTransducer::new(cfg))
+            .or_insert_with(|| {
+                OtherSymbolTransducer::new(cfg)
+                    .expect("creating an empty transducer of the configured type cannot fail")
+            })
             .is_empty()
     }
 

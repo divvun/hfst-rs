@@ -197,7 +197,13 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
             // exception it prints e.name and returns EXIT_FAILURE. The Rust
             // compiler panics rather than throwing, so the catch arm is not
             // reproduced (any panic propagates).
-            definitions = comp.compile(&file_contents);
+            definitions = match comp.compile(&file_contents) {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return 1;
+                }
+            };
         }
 
         if globals::VERBOSE {
@@ -206,7 +212,13 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
         }
 
         // A dummy transducer with an alphabet with all the symbols
-        let mut harmonizer = HfstTransducer::new_type(COMPILATION_FORMAT);
+        let mut harmonizer = match HfstTransducer::new_type(COMPILATION_FORMAT) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("{e}");
+                return 1;
+            }
+        };
         // First we need to collect a unified alphabet from all the transducers.
         let mut symbols_seen: hfst::hfst_symbol_defs::StringSet = std::collections::BTreeSet::new();
         // Iterate in key order to mirror std::map's ordered iteration.
@@ -214,10 +226,19 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
         keys.sort();
         for key in &keys {
             let t = &definitions[*key];
-            let string_set = t.get_alphabet();
+            let string_set = match t.get_alphabet() {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return 1;
+                }
+            };
             for sym in string_set.iter() {
                 if !symbols_seen.contains(sym) {
-                    harmonizer.insert_to_alphabet(sym);
+                    if let Err(e) = harmonizer.insert_to_alphabet(sym) {
+                        eprintln!("{e}");
+                        return 1;
+                    }
                     symbols_seen.insert(sym.clone());
                 }
             }
@@ -232,7 +253,10 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
         }
 
         // Then we convert it...
-        harmonizer.convert(ImplementationType::HFST_OLW_TYPE, String::new());
+        if let Err(e) = harmonizer.convert(ImplementationType::HFST_OLW_TYPE, String::new()) {
+            eprintln!("{e}");
+            return 1;
+        }
         // Use these for naughty intermediate steps to make sure
         // everything has the same alphabet
         // C passes 'HfstTransducer* harmonizer' to the conversion functions,
@@ -252,19 +276,43 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
             let properties: std::collections::BTreeMap<String, String> =
                 definitions["TOP"].get_properties().clone();
             let intermediate_tmp =
-                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&definitions["TOP"]);
-            let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
+                match ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(
+                    &definitions["TOP"],
+                ) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("{e}");
+                        return 1;
+                    }
+                };
+            let harmonized_tmp = match ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                 &intermediate_tmp,
                 true,                  // weighted
                 "",                    // no special options
                 Some(&*harmonizer_ol), // harmonize with this
-            );
-            let mut output_tmp = ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp);
+            ) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return 1;
+                }
+            };
+            let mut output_tmp =
+                match ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("{e}");
+                        return 1;
+                    }
+                };
             output_tmp.set_name("TOP");
             for (k, v) in properties.iter() {
                 output_tmp.set_property(k, v);
             }
-            outstream.redirect(&mut output_tmp);
+            if let Err(e) = outstream.redirect(&mut output_tmp) {
+                eprintln!("{e}");
+                return 1;
+            }
             definitions.remove("TOP");
 
             if globals::VERBOSE {
@@ -282,7 +330,13 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
                     TIMER = clock();
                 }
                 let intermediate_tmp =
-                    ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t);
+                    match ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            eprintln!("{e}");
+                            return 1;
+                        }
+                    };
                 let harmonized_tmp = if !key.contains("UNCOMPOSE") {
                     ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                         &intermediate_tmp,
@@ -298,10 +352,26 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
                         Some(&*harmonizer_ol), // harmonize with this
                     )
                 };
+                let harmonized_tmp = match harmonized_tmp {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("{e}");
+                        return 1;
+                    }
+                };
                 let mut output_tmp =
-                    ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp);
+                    match ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            eprintln!("{e}");
+                            return 1;
+                        }
+                    };
                 output_tmp.set_name(key);
-                outstream.redirect(&mut output_tmp);
+                if let Err(e) = outstream.redirect(&mut output_tmp) {
+                    eprintln!("{e}");
+                    return 1;
+                }
                 if globals::VERBOSE {
                     let duration = (clock() - TIMER) as f64 / CLOCKS_PER_SEC as f64;
                     eprintln!("converted in {:.2} seconds", duration);
@@ -344,7 +414,7 @@ unsafe fn real_main() -> i32 {
             globals::output_filename()
         ));
         // here starts the buffer handling part
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(
                 &globals::output_filename(),
                 ImplementationType::HFST_OLW_TYPE,
@@ -352,6 +422,12 @@ unsafe fn real_main() -> i32 {
             )
         } else {
             HfstOutputStream::new(ImplementationType::HFST_OLW_TYPE, true)
+        } {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("hfst-pmatch2fst: cannot open output: {e}");
+                return 1;
+            }
         };
         let mut input = match globals::input_reader() {
             Ok(r) => r,

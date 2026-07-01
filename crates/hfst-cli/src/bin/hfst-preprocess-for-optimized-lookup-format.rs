@@ -9,7 +9,7 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, print_more_info,
+    EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, print_more_info,
     print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
@@ -89,7 +89,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = HfstTransducer::new_from_stream(instream);
+            let mut trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let inputname = hfst_get_name(&trans, &globals::input_filename());
             if transducer_n == 1 {
                 verbose_printf(&format!("Removing epsilons {}...\n", inputname));
@@ -99,7 +105,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                     inputname, transducer_n
                 ));
             }
-            trans.remove_epsilons();
+            if let Err(e) = trans.remove_epsilons() {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
             if transducer_n == 1 {
                 verbose_printf(&format!("Rebuilding and fixing {}...\n", inputname));
             } else {
@@ -110,17 +119,36 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             }
             // C++: HfstBasicTransducer original(trans); — the
             // HfstBasicTransducer(const HfstTransducer&) conversion constructor.
-            let original: HfstBasicTransducer = trans.get_basic_transducer();
+            let original: HfstBasicTransducer = match trans.get_basic_transducer() {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let replication = original.renumber_states();
-            trans = HfstTransducer::new_from_basic(&replication, trans.get_type());
+            let type_ = trans.get_type();
+            trans = match HfstTransducer::new_from_basic(&replication, type_) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             // C: hfst_set_name(trans, trans, "fu"); the dest and src are the same
             // object, which Rust cannot alias mut+const, so the read side is taken
             // from a copy (name/formula are unchanged by the copy).
             let src = trans.clone();
             hfst_set_name_unary(&mut trans, &src, "fu");
             hfst_set_formula_unary(&mut trans, &src, "FU");
-            trans.remove_epsilons();
-            outstream.redirect(&mut trans);
+            if let Err(e) = trans.remove_epsilons() {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+            if let Err(e) = outstream.redirect(&mut trans) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
         instream.close();
         outstream.close();
@@ -155,20 +183,32 @@ unsafe fn real_main() -> i32 {
         ));
 
         // here starts the buffer handling part
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
 
         let type_ = instream.get_type();
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         process_stream(&mut instream, &mut outstream)

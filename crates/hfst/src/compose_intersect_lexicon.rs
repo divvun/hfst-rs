@@ -20,7 +20,7 @@
 //!   'std::queue<HfstState>' -> 'VecDeque<HfstState>'
 //!   ('empty()'/'front()'/'pop()'/'push()' -> 'is_empty()'/'front()'/
 //!   'pop_front()'/'push_back()').
-//! * 'HFST_THROW(StateNotDefined)' -> 'crate::HFST_THROW!(StateNotDefined)',
+//! * 'HFST_THROW(StateNotDefined)' -> 'crate::bail!(StateNotDefined)',
 //!   using the 'StateNotDefined' child exception defined in
 //!   ['crate::compose_intersect_fst'].
 //! * 'FdOperation::is_diacritic' -> ['crate::hfst_flag_diacritics::FdOperation::is_diacritic'].
@@ -109,9 +109,11 @@ impl ComposeIntersectLexicon {
     // bool ComposeIntersectLexicon::is_flag_diacritic(size_t symbol)
     // { return FdOperation::is_diacritic
     //     (HfstTropicalTransducerTransitionData::get_symbol(hfst::size_t_to_uint(symbol))); }
-    fn is_flag_diacritic(&self, symbol: usize) -> bool {
+    fn is_flag_diacritic(&self, symbol: usize) -> crate::error::Result<bool> {
         // 'symbol' is a number in the shared (lexicon/canonical) coding.
-        FdOperation::is_diacritic(&self.base.coder().get_symbol(size_t_to_uint(symbol)))
+        Ok(FdOperation::is_diacritic(
+            &self.base.coder().get_symbol(size_t_to_uint(symbol))?,
+        ))
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.clear-all-info-fn]
@@ -172,14 +174,14 @@ impl ComposeIntersectLexicon {
     pub fn compose_with_rules(
         &mut self,
         rules: &mut dyn ComposeIntersectRuleObject,
-    ) -> HfstBasicTransducer {
+    ) -> crate::error::Result<HfstBasicTransducer> {
         self.clear_all_info();
         let start_pair: StatePair = (ComposeIntersectFst::START, ComposeIntersectFst::START);
 
         // This will return 0.
         let _ = self.map_state_and_add_to_agenda(&start_pair, true);
 
-        self.compute_composition_result(rules).clone()
+        Ok(self.compute_composition_result(rules)?.clone())
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.get-state-fn]
@@ -197,43 +199,47 @@ impl ComposeIntersectLexicon {
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.set-final-state-weights-fn]
     // [spec:hfst:sem:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.set-final-state-weights-fn]
-    fn set_final_state_weights(&mut self, rules: &mut dyn ComposeIntersectRuleObject) {
+    fn set_final_state_weights(
+        &mut self,
+        rules: &mut dyn ComposeIntersectRuleObject,
+    ) -> crate::error::Result<()> {
         for s in 0..self.pair_vector.len() {
             let pair = self.pair_vector[s];
-            let lexicon_weight = self.base.get_final_weight(pair.0);
-            let rules_weight = rules.get_final_weight(pair.1);
+            let lexicon_weight = self.base.get_final_weight(pair.0)?;
+            let rules_weight = rules.get_final_weight(pair.1)?;
             if lexicon_weight != f32::INFINITY && rules_weight != f32::INFINITY {
                 self.result
                     .set_final_weight(size_t_to_uint(s), &(lexicon_weight + rules_weight));
             }
         }
+        Ok(())
     }
 
     // HfstBasicTransducer &ComposeIntersectLexicon::compute_composition_result(...)
     fn compute_composition_result(
         &mut self,
         rules: &mut dyn ComposeIntersectRuleObject,
-    ) -> &HfstBasicTransducer {
+    ) -> crate::error::Result<&HfstBasicTransducer> {
         while !self.agenda.is_empty() {
             let s = *self.agenda.front().unwrap();
             self.agenda.pop_front();
 
             let allow = self.can_have_lexicon_epsilons(s);
-            self.compute_state(s, rules, allow);
+            self.compute_state(s, rules, allow)?;
         }
 
-        self.set_final_state_weights(rules);
-        &self.result
+        self.set_final_state_weights(rules)?;
+        Ok(&self.result)
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.get-pair-fn]
     // [spec:hfst:sem:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.get-pair-fn]
-    fn get_pair(&self, s: HfstState) -> StatePair {
+    fn get_pair(&self, s: HfstState) -> crate::error::Result<StatePair> {
         if s as usize >= self.pair_vector.len() {
-            crate::HFST_THROW!(StateNotDefined);
+            crate::bail!(StateNotDefined);
         }
 
-        self.pair_vector[s as usize]
+        Ok(self.pair_vector[s as usize])
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.compute-state-fn]
@@ -243,8 +249,8 @@ impl ComposeIntersectLexicon {
         state: HfstState,
         rules: &mut dyn ComposeIntersectRuleObject,
         allow_lexicon_epsilons: bool,
-    ) {
-        let p = self.get_pair(state);
+    ) -> crate::error::Result<()> {
+        let p = self.get_pair(state)?;
 
         //bool lexicon_eps_transition_found = false;
 
@@ -266,19 +272,20 @@ impl ComposeIntersectLexicon {
         for (first, second) in entries.iter() {
             if *first == epsilon_number {
                 if allow_lexicon_epsilons {
-                    self.lexicon_skip_symbol_compose(second, p.1, state);
+                    self.lexicon_skip_symbol_compose(second, p.1, state)?;
                     //lexicon_eps_transition_found = true;
                 }
-            } else if self.is_flag_diacritic(*first) && (!rules.known_symbol(*first)) {
-                self.lexicon_skip_symbol_compose(second, p.1, state);
+            } else if self.is_flag_diacritic(*first)? && (!rules.known_symbol(*first)?) {
+                self.lexicon_skip_symbol_compose(second, p.1, state)?;
                 //lexicon_eps_transition_found = true;
             } else {
-                self.compose(second, rules.get_transitions(p.1, *first), state);
+                self.compose(second, rules.get_transitions(p.1, *first)?, state)?;
             }
         }
 
         let epsilon_number = self.base.coder_mut().get_number("@_EPSILON_SYMBOL_@") as usize;
-        self.rule_skip_symbol_compose(rules.get_transitions(p.1, epsilon_number), p.0, state);
+        self.rule_skip_symbol_compose(rules.get_transitions(p.1, epsilon_number)?, p.0, state)?;
+        Ok(())
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.lexicon-skip-symbol-compose-fn]
@@ -288,11 +295,12 @@ impl ComposeIntersectLexicon {
         transitions: &TransitionSet,
         rule_state: HfstState,
         origin: HfstState,
-    ) {
+    ) -> crate::error::Result<()> {
         for it in transitions.begin() {
             let target = self.get_state(&(it.target, rule_state), true);
-            self.add_transition(origin, it.ilabel, it.olabel, it.weight, target);
+            self.add_transition(origin, it.ilabel, it.olabel, it.weight, target)?;
         }
+        Ok(())
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.rule-skip-symbol-compose-fn]
@@ -302,11 +310,12 @@ impl ComposeIntersectLexicon {
         transitions: &TransitionSet,
         lex_state: HfstState,
         origin: HfstState,
-    ) {
+    ) -> crate::error::Result<()> {
         for it in transitions.begin() {
             let target = self.get_state(&(lex_state, it.target), false);
-            self.add_transition(origin, it.ilabel, it.olabel, it.weight, target);
+            self.add_transition(origin, it.ilabel, it.olabel, it.weight, target)?;
         }
+        Ok(())
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.compose-fn]
@@ -316,15 +325,16 @@ impl ComposeIntersectLexicon {
         lex_transitions: &TransitionSet,
         rule_transitions: &TransitionSet,
         origin: HfstState,
-    ) {
-        let p = self.get_pair(origin);
+    ) -> crate::error::Result<()> {
+        let p = self.get_pair(origin)?;
         let _ = p;
         for it in lex_transitions.begin() {
             for jt in rule_transitions.begin() {
                 let target = self.get_state(&(it.target, jt.target), true);
-                self.add_transition(origin, it.ilabel, jt.olabel, it.weight + jt.weight, target);
+                self.add_transition(origin, it.ilabel, jt.olabel, it.weight + jt.weight, target)?;
             }
         }
+        Ok(())
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.add-transition-fn]
@@ -336,14 +346,15 @@ impl ComposeIntersectLexicon {
         output: usize,
         weight: f32,
         target: HfstState,
-    ) {
+    ) -> crate::error::Result<()> {
         // 'input'/'output' are numbers in the shared (lexicon/canonical) coding;
         // resolve them there, then re-intern into the result transducer's coder.
-        let isym = self.base.coder().get_symbol(size_t_to_uint(input));
-        let osym = self.base.coder().get_symbol(size_t_to_uint(output));
+        let isym = self.base.coder().get_symbol(size_t_to_uint(input))?;
+        let osym = self.base.coder().get_symbol(size_t_to_uint(output))?;
         let tr =
             HfstBasicTransition::new_symbols(target, isym, osym, weight, self.result.coder_mut());
         self.result.add_transition(origin, &tr, true);
+        Ok(())
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.identity-compose-fn]

@@ -91,14 +91,14 @@ impl SymbolCoder {
     }
 
     /// Map 'number' back to its symbol (throws if out of range, as the C++ does).
-    pub fn get_symbol(&self, number: u32) -> String {
+    pub fn get_symbol(&self, number: u32) -> crate::error::Result<String> {
         if number as usize >= self.number2symbol.len() {
             let mut message = String::from("HfstTropicalTransducerTransitionData: number ");
             message.push_str(&number.to_string());
             message.push_str(" is not mapped to any symbol");
-            crate::HFST_THROW_MESSAGE!(Fatal, message);
+            crate::bail!(Fatal, message);
         }
-        self.number2symbol[number as usize].clone()
+        Ok(self.number2symbol[number as usize].clone())
     }
 
     /// Map 'symbol' to its number, interning a fresh number if unseen.
@@ -141,7 +141,9 @@ impl SymbolCoder {
     ) -> Vec<u32> {
         let mut harmv: Vec<u32> = vec![0; (self.max_number + 1) as usize];
         for i in 0..harmv.len() {
-            let sym = self.get_symbol(i as u32);
+            let sym = self
+                .get_symbol(i as u32)
+                .expect("i ranges over 0..=max_number, always a valid coder index");
             if let Some(second) = symbols.get(&sym) {
                 harmv[i] = *second;
             }
@@ -239,19 +241,19 @@ impl HfstTropicalTransducerTransitionData {
         osymbol: SymbolType,
         weight: WeightType,
         coder: &mut SymbolCoder,
-    ) -> Self {
+    ) -> crate::error::Result<Self> {
         if isymbol.is_empty() || osymbol.is_empty() {
-            crate::HFST_THROW_MESSAGE!(
+            crate::bail!(
                 EmptyString,
                 "HfstTropicalTransducerTransitionData(SymbolType, SymbolType, WeightType)"
             );
         }
 
-        HfstTropicalTransducerTransitionData {
+        Ok(HfstTropicalTransducerTransitionData {
             input_number: coder.get_number(&isymbol),
             output_number: coder.get_number(&osymbol),
             weight,
-        }
+        })
     }
 
     pub fn new_numbers(inumber: u32, onumber: u32, weight: WeightType) -> Self {
@@ -263,7 +265,9 @@ impl HfstTropicalTransducerTransitionData {
     }
 
     pub fn get_input_symbol(&self, coder: &SymbolCoder) -> SymbolType {
-        coder.get_symbol(self.input_number)
+        coder
+            .get_symbol(self.input_number)
+            .expect("transition input number was interned by this coder, so it is always in range")
     }
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-input-symbol-fn]
@@ -273,7 +277,9 @@ impl HfstTropicalTransducerTransitionData {
     }
 
     pub fn get_output_symbol(&self, coder: &SymbolCoder) -> SymbolType {
-        coder.get_symbol(self.output_number)
+        coder
+            .get_symbol(self.output_number)
+            .expect("transition output number was interned by this coder, so it is always in range")
     }
 
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.set-output-symbol-fn]

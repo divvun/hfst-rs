@@ -137,10 +137,22 @@ unsafe fn compare_streams(
         let mut second: Option<HfstTransducer> = None;
 
         while continue_reading {
-            let mut first = HfstTransducer::new_from_stream(firststream);
+            let mut first = match HfstTransducer::new_from_stream(firststream) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             transducer_n_first += 1;
             if secondstream.is_good() {
-                second = Some(HfstTransducer::new_from_stream(secondstream));
+                second = Some(match HfstTransducer::new_from_stream(secondstream) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                });
                 transducer_n_second += 1;
             }
             let mut firstname = first.get_name();
@@ -167,16 +179,18 @@ unsafe fn compare_streams(
             // C: try { ... } catch (TransducerTypeMismatchException). The Rust
             // 'compare' panics with TransducerTypeMismatchException on a type
             // mismatch, so the try is reproduced with catch_unwind.
-            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                if ELIMINATE_FLAGS {
-                    verbose_printf("Eliminating flags...\n");
-                    first.eliminate_flags();
-                    second_ref.eliminate_flags();
-                }
-                first.compare(second_ref, HARMONIZE)
-            }));
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                || -> hfst::error::Result<bool> {
+                    if ELIMINATE_FLAGS {
+                        verbose_printf("Eliminating flags...\n");
+                        first.eliminate_flags()?;
+                        second_ref.eliminate_flags()?;
+                    }
+                    first.compare(second_ref, HARMONIZE)
+                },
+            ));
             match outcome {
-                Ok(equal) => {
+                Ok(Ok(equal)) => {
                     if equal {
                         if transducer_n_first == 1 {
                             if !globals::SILENT {
@@ -203,6 +217,10 @@ unsafe fn compare_streams(
                         }
                         mismatches += 1;
                     }
+                }
+                Ok(Err(e)) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
                 }
                 Err(_) => {
                     // cannot recover yet, but beautify error messages
@@ -299,15 +317,27 @@ unsafe fn real_main() -> i32 {
         // (the C wraps each ctor in try/catch on HfstException, calling
         // error(EXIT_FAILURE, ...) on a bad file; the Rust ctor currently panics
         // on a bad file rather than throwing, so the catch arm is not reproduced.)
-        let mut firststream = if !first_is_stdin {
+        let mut firststream = match if !first_is_stdin {
             HfstInputStream::new_filename(&globals::first_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
-        let mut secondstream = if !second_is_stdin {
+        let mut secondstream = match if !second_is_stdin {
             HfstInputStream::new_filename(&globals::second_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if is_input_stream_in_ol_format(&firststream, "hfst-compare")

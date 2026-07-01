@@ -264,7 +264,10 @@ unsafe fn to_transducer_name() -> String {
 }
 
 // The 'HfstTransducer&' overload of 'do_substitute'.
-unsafe fn do_substitute(trans: &mut HfstTransducer, transducer_n: usize) {
+unsafe fn do_substitute(
+    trans: &mut HfstTransducer,
+    transducer_n: usize,
+) -> hfst::error::Result<()> {
     unsafe {
         let from_pair = (*(&raw const FROM_PAIR)).clone();
         let to_pair = (*(&raw const TO_PAIR)).clone();
@@ -276,7 +279,7 @@ unsafe fn do_substitute(trans: &mut HfstTransducer, transducer_n: usize) {
                 "Substituting pair {}:{} with pair {}:{}...\n",
                 fp.0, fp.1, tp.0, tp.1
             ));
-            trans.substitute_symbol_pair(fp, tp);
+            trans.substitute_symbol_pair(fp, tp)?;
         } else if let (Some(fl), Some(tl)) = (&from_label, &to_label) {
             if COMPOSE {
                 if transducer_n < 2 {
@@ -290,11 +293,11 @@ unsafe fn do_substitute(trans: &mut HfstTransducer, transducer_n: usize) {
                         fl, tl, transducer_n
                     ));
                 }
-                let substitution = HfstTransducer::new_symbol_pair(fl, tl, trans.get_type());
+                let substitution = HfstTransducer::new_symbol_pair(fl, tl, trans.get_type())?;
                 (*(&raw mut SUBSTITUTION_TRANS))
                     .as_mut()
-                    .unwrap()
-                    .disjunct(&substitution, true);
+                    .expect("SUBSTITUTION_TRANS initialized per transducer above")
+                    .disjunct(&substitution, true)?;
                 DELAYED = true;
             } else {
                 if transducer_n < 2 {
@@ -305,7 +308,7 @@ unsafe fn do_substitute(trans: &mut HfstTransducer, transducer_n: usize) {
                         fl, tl, transducer_n
                     ));
                 }
-                trans.substitute(fl, tl, true, true);
+                trans.substitute(fl, tl, true, true)?;
             }
         } else if let (Some(fp), true) = (&from_pair, has_to_transducer) {
             let to_name = to_transducer_name();
@@ -320,8 +323,10 @@ unsafe fn do_substitute(trans: &mut HfstTransducer, transducer_n: usize) {
                     fp.0, fp.1, to_name, transducer_n
                 ));
             }
-            let to_t = (*(&raw mut TO_TRANSDUCER)).as_mut().unwrap();
-            trans.substitute_symbol_pair_with_transducer(fp, to_t, true);
+            let to_t = (*(&raw mut TO_TRANSDUCER))
+                .as_mut()
+                .expect("TO_TRANSDUCER present when has_to_transducer is true");
+            trans.substitute_symbol_pair_with_transducer(fp, to_t, true)?;
         } else if let (Some(fl), true) = (&from_label, has_to_transducer) {
             let to_name = to_transducer_name();
             if transducer_n < 2 {
@@ -336,18 +341,26 @@ unsafe fn do_substitute(trans: &mut HfstTransducer, transducer_n: usize) {
                 ));
             }
             let from_arc: StringPair = (fl.clone(), fl.clone());
-            let to_t = (*(&raw mut TO_TRANSDUCER)).as_mut().unwrap();
-            trans.substitute_symbol_pair_with_transducer(&from_arc, to_t, true);
+            let to_t = (*(&raw mut TO_TRANSDUCER))
+                .as_mut()
+                .expect("TO_TRANSDUCER present when has_to_transducer is true");
+            trans.substitute_symbol_pair_with_transducer(&from_arc, to_t, true)?;
         }
+        Ok(())
     }
 }
 
 // [spec:hfst:def:hfst-substitute.perform-delayed-fn]
 // [spec:hfst:sem:hfst-substitute.perform-delayed-fn]
-unsafe fn perform_delayed(trans: &mut HfstTransducer) {
+unsafe fn perform_delayed(trans: &mut HfstTransducer) -> hfst::error::Result<()> {
     unsafe {
         verbose_printf("Finalising substitution transducer...\n");
-        trans.substitute_by_composition((*(&raw const SUBSTITUTION_TRANS)).as_ref().unwrap());
+        trans.substitute_by_composition(
+            (*(&raw const SUBSTITUTION_TRANS))
+                .as_ref()
+                .expect("SUBSTITUTION_TRANS initialized per transducer above"),
+        )?;
+        Ok(())
     }
 }
 
@@ -366,8 +379,20 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             let to_fname = (*(&raw const TO_TRANSDUCER_FILENAME)).clone().unwrap();
             // (C wraps the ctor in try/catch on NotTransducerStreamException; the
             // Rust ctor panics on a bad file rather than throwing.)
-            let mut tostream = HfstInputStream::new_filename(&to_fname);
-            TO_TRANSDUCER = Some(HfstTransducer::new_from_stream(&mut tostream));
+            let mut tostream = match HfstInputStream::new_filename(&to_fname) {
+                Ok(s) => s,
+                Err(e) => {
+                    hfst_error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            TO_TRANSDUCER = Some(match HfstTransducer::new_from_stream(&mut tostream) {
+                Ok(t) => t,
+                Err(e) => {
+                    hfst_error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            });
             tostream.close();
             let to_transducer_type = (*(&raw const TO_TRANSDUCER)).as_ref().unwrap().get_type();
             let instream_type = instream.get_type();
@@ -397,10 +422,14 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                         ));
                     }
                     hfst_warning(0, 0, &warnstr);
-                    (*(&raw mut TO_TRANSDUCER))
+                    if let Err(e) = (*(&raw mut TO_TRANSDUCER))
                         .as_mut()
-                        .unwrap()
-                        .convert(output_type, String::new());
+                        .expect("TO_TRANSDUCER populated above")
+                        .convert(output_type, String::new())
+                    {
+                        hfst_error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                 } else {
                     hfst_error(
                         1,
@@ -424,15 +453,27 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
         }
 
         let output_named = globals::output_filename() != "<stdout>";
-        let mut outstream = if output_named {
+        let mut outstream = match if output_named {
             HfstOutputStream::new_filename(&globals::output_filename(), output_type, true)
         } else {
             HfstOutputStream::new(output_type, true)
+        } {
+            Ok(s) => s,
+            Err(e) => {
+                hfst_error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = HfstTransducer::new_from_stream(instream);
+            let mut trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    hfst_error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let inputname = {
                 let n = trans.get_name();
                 if n.is_empty() {
@@ -450,7 +491,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                 ));
             }
             // initialize delayed substitutor automaton
-            SUBSTITUTION_TRANS = Some(HfstTransducer::new_type(trans.get_type()));
+            SUBSTITUTION_TRANS = Some(match HfstTransducer::new_type(trans.get_type()) {
+                Ok(t) => t,
+                Err(e) => {
+                    hfst_error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            });
             if (*(&raw const FROM_FILE)).is_some() {
                 let from_file_name = (*(&raw const FROM_FILE_NAME)).clone().unwrap();
                 let mut line_n: u32 = 0;
@@ -527,7 +574,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                                 );
                             symbol_pair_map_in_use = true;
                         } else {
-                            do_substitute(&mut trans, transducer_n);
+                            if let Err(e) = do_substitute(&mut trans, transducer_n) {
+                                hfst_error(1, 0, &format!("{e}"));
+                                return 1;
+                            }
                         }
                     } else if !fl.is_empty() && !tl.is_empty() {
                         if !IN_ORDER {
@@ -537,35 +587,57 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                                 .insert(fl.clone(), tl.clone());
                             symbol_map_in_use = true;
                         } else {
-                            do_substitute(&mut trans, transducer_n);
+                            if let Err(e) = do_substitute(&mut trans, transducer_n) {
+                                hfst_error(1, 0, &format!("{e}"));
+                                return 1;
+                            }
                         }
                     } else {
-                        do_substitute(&mut trans, transducer_n);
+                        if let Err(e) = do_substitute(&mut trans, transducer_n) {
+                            hfst_error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
                     }
                 } // while getline
 
                 // perform label-to-label substitution right away
                 if !IN_ORDER && symbol_map_in_use {
-                    trans.substitute_substitutions(
-                        (*(&raw const LABEL_SUBSTITUTION_MAP)).as_ref().unwrap(),
-                    );
+                    if let Err(e) = trans.substitute_substitutions(
+                        (*(&raw const LABEL_SUBSTITUTION_MAP))
+                            .as_ref()
+                            .expect("LABEL_SUBSTITUTION_MAP initialized when FROM_FILE present"),
+                    ) {
+                        hfst_error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                     symbol_map_in_use = false;
                 }
 
                 // perform symbol pair-to-symbol pair substitution right away
                 if !IN_ORDER && symbol_pair_map_in_use {
-                    trans.substitute_symbol_pairs(
-                        (*(&raw const PAIR_SUBSTITUTION_MAP)).as_ref().unwrap(),
-                    );
+                    if let Err(e) = trans.substitute_symbol_pairs(
+                        (*(&raw const PAIR_SUBSTITUTION_MAP))
+                            .as_ref()
+                            .expect("PAIR_SUBSTITUTION_MAP initialized when FROM_FILE present"),
+                    ) {
+                        hfst_error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                     symbol_pair_map_in_use = false;
                 }
             }
             // if not from file
             else {
-                do_substitute(&mut trans, transducer_n);
+                if let Err(e) = do_substitute(&mut trans, transducer_n) {
+                    hfst_error(1, 0, &format!("{e}"));
+                    return 1;
+                }
             }
             if DELAYED {
-                perform_delayed(&mut trans);
+                if let Err(e) = perform_delayed(&mut trans) {
+                    hfst_error(1, 0, &format!("{e}"));
+                    return 1;
+                }
             }
             if (*(&raw const FROM_FILE)).is_some() {
                 let from_file_name = (*(&raw const FROM_FILE_NAME)).clone().unwrap();
@@ -600,7 +672,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                 let src = trans.clone();
                 hfst_set_formula_unary(&mut trans, &src, &format!("{} ♲ {}", fl, tf));
             }
-            outstream.redirect(&mut trans);
+            if let Err(e) = outstream.redirect(&mut trans) {
+                hfst_error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
         // delete to_transducer
         TO_TRANSDUCER = None;
@@ -643,10 +718,16 @@ unsafe fn real_main() -> i32 {
         // here starts the buffer handling part
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing.)
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(s) => s,
+            Err(e) => {
+                hfst_error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-substitute") {

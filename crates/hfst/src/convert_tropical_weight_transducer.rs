@@ -33,13 +33,17 @@ use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unkn
 defines whether `t` is an HFST transducer. */
 // [spec:hfst:def:convert-tropical-weight-transducer.hfst.implementations.handle-symbol-tables-fn]
 // [spec:hfst:sem:convert-tropical-weight-transducer.hfst.implementations.handle-symbol-tables-fn]
-fn handle_symbol_tables(t: &StdVectorFst, net: &mut HfstBasicTransducer, has_hfst_header: bool) {
+fn handle_symbol_tables(
+    t: &StdVectorFst,
+    net: &mut HfstBasicTransducer,
+    has_hfst_header: bool,
+) -> crate::error::Result<()> {
     let inputsym = t.input_symbols();
     let outputsym = t.output_symbols();
 
     /* An HFST tropical transducer always has an input symbol table. */
     if has_hfst_header && inputsym.is_none() {
-        crate::HFST_THROW!(MissingOpenFstInputSymbolTable);
+        crate::bail!(MissingOpenFstInputSymbolTable);
     }
 
     // An empty transducer
@@ -71,15 +75,16 @@ fn handle_symbol_tables(t: &StdVectorFst, net: &mut HfstBasicTransducer, has_hfs
                 }
             }
         }
-        return;
+        return Ok(());
     }
 
     /* A non-empty OpenFst transducer must have at least an input symbol table.
     If the output symbol table is missing, we assume that it would be
     equivalent to the input symbol table. */
     if inputsym.is_none() {
-        crate::HFST_THROW!(MissingOpenFstInputSymbolTable);
+        crate::bail!(MissingOpenFstInputSymbolTable);
     }
+    Ok(())
 }
 
 /* Copy alphabet of 't' to 'net'. */
@@ -124,10 +129,10 @@ impl ConversionFunctions {
     pub fn tropical_ofst_to_hfst_basic_transducer(
         t: &StdVectorFst,
         has_hfst_header: bool,
-    ) -> HfstBasicTransducer {
+    ) -> crate::error::Result<HfstBasicTransducer> {
         let mut net = HfstBasicTransducer::new();
 
-        handle_symbol_tables(t, &mut net, has_hfst_header);
+        handle_symbol_tables(t, &mut net, has_hfst_header)?;
 
         let symbol_vector =
             crate::tropical_weight_transducer::TropicalWeightTransducer::get_symbol_vector(t);
@@ -175,7 +180,7 @@ impl ConversionFunctions {
                         "FATAL ERROR: input number {} not in symbol_vector\n",
                         arc.ilabel
                     );
-                    crate::HFST_THROW_MESSAGE!(Fatal, oss);
+                    crate::bail!(Fatal, oss);
                     // exit(1);
                 }
                 if arc.olabel as usize >= symbol_vector.len() {
@@ -183,7 +188,7 @@ impl ConversionFunctions {
                         "FATAL ERROR: output number {} not in symbol_vector\n",
                         arc.olabel
                     );
-                    crate::HFST_THROW_MESSAGE!(Fatal, oss);
+                    crate::bail!(Fatal, oss);
                     // exit(1);
                 }
 
@@ -210,7 +215,7 @@ impl ConversionFunctions {
         // Copy the alphabet
         copy_alphabet(t, &mut net);
 
-        net
+        Ok(net)
     }
 
     /* ------------------------------------------------------------------------
@@ -286,8 +291,12 @@ impl ConversionFunctions {
         // the final states is used.
         for state in 0..=net.get_max_state() {
             if net.is_final_state(state) {
-                t.set_final(state_vector[state as usize], net.get_final_weight(state))
-                    .unwrap();
+                t.set_final(
+                    state_vector[state as usize],
+                    net.get_final_weight(state)
+                        .expect("state was confirmed final via is_final_state"),
+                )
+                .expect("state_vector maps to a state that exists in the fst");
             }
         }
         // ... final states gone through

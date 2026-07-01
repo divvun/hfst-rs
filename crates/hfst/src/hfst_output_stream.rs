@@ -71,11 +71,11 @@ mod output_impl {
     impl HfstOutputStream {
         /// 'HfstOutputStream(ImplementationType type, bool hfst_format=true)' — a
         /// stream to standard output. (No '[spec:]' id in the C++ for this ctor.)
-        pub fn new(type_: ImplementationType, hfst_format: bool) -> Self {
+        pub fn new(type_: ImplementationType, hfst_format: bool) -> crate::error::Result<Self> {
             if !HfstTransducer::is_lean_implementation_type_available(type_) {
                 // 'throw ImplementationTypeNotAvailableException(...)' — a direct
                 // panic_any rather than HFST_THROW (which can't carry the 'type_').
-                crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+                crate::bail!(ImplementationTypeNotAvailable(type_));
             }
 
             let mut implementation = StreamImplementation {
@@ -113,15 +113,15 @@ mod output_impl {
                 ImplementationType::HFST_OLW_TYPE => {
                     implementation.hfst_ol = Some(Box::new(HfstOlOutputStream::new(true)));
                 }
-                _ => crate::HFST_THROW!(SpecifiedTypeRequired),
+                _ => crate::bail!(SpecifiedTypeRequired),
             }
 
-            HfstOutputStream {
+            Ok(HfstOutputStream {
                 type_,
                 hfst_format,
                 implementation,
                 is_open: true,
-            }
+            })
         }
 
         // FIXME: HfstOutputStream takes a string parameter,
@@ -130,7 +130,11 @@ mod output_impl {
         // [spec:hfst:sem:hfst-output-stream.hfst.hfst-output-stream.hfst-output-stream-fn]
         /// 'HfstOutputStream(const std::string &filename, ImplementationType type,
         /// bool hfst_format=true)'.
-        pub fn new_filename(filename: &str, type_: ImplementationType, hfst_format: bool) -> Self {
+        pub fn new_filename(
+            filename: &str,
+            type_: ImplementationType,
+            hfst_format: bool,
+        ) -> crate::error::Result<Self> {
             // The CLI passes the sentinel "<stdout>" (and "") for standard output;
             // route those to the stdout constructor rather than creating a file
             // literally named "<stdout>".
@@ -138,7 +142,7 @@ mod output_impl {
                 return Self::new(type_, hfst_format);
             }
             if !HfstTransducer::is_lean_implementation_type_available(type_) {
-                crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+                crate::bail!(ImplementationTypeNotAvailable(type_));
             }
 
             let mut implementation = StreamImplementation {
@@ -189,15 +193,15 @@ mod output_impl {
                     implementation.hfst_ol =
                         Some(Box::new(HfstOlOutputStream::new_filename(filename, true)));
                 }
-                _ => crate::HFST_THROW!(SpecifiedTypeRequired),
+                _ => crate::bail!(SpecifiedTypeRequired),
             }
 
-            HfstOutputStream {
+            Ok(HfstOutputStream {
                 type_,
                 hfst_format,
                 implementation,
                 is_open: true,
-            }
+            })
         }
 
         // '~HfstOutputStream' (C++) just 'delete's the active backend pointer; in Rust
@@ -296,30 +300,36 @@ mod output_impl {
             }
         }
 
-        pub fn flush(&mut self) -> &mut Self {
+        pub fn flush(&mut self) -> crate::error::Result<&mut Self> {
             if !self.is_open {
-                crate::HFST_THROW!(StreamIsClosed);
+                crate::bail!(StreamIsClosed);
             }
             if self.type_ == ImplementationType::XFSM_TYPE {
                 // implementation.xfsm->flush();
                 unimplemented!("deferred: XfsmOutputStream");
             }
-            self
+            Ok(self)
         }
 
         /// An alias for 'operator<<'.
-        pub fn redirect(&mut self, transducer: &mut HfstTransducer) -> &mut Self {
+        pub fn redirect(
+            &mut self,
+            transducer: &mut HfstTransducer,
+        ) -> crate::error::Result<&mut Self> {
             self.operator_shl(transducer)
         }
 
         /// 'HfstOutputStream &operator<< (HfstTransducer &transducer)'.
-        pub fn operator_shl(&mut self, transducer: &mut HfstTransducer) -> &mut Self {
+        pub fn operator_shl(
+            &mut self,
+            transducer: &mut HfstTransducer,
+        ) -> crate::error::Result<&mut Self> {
             if !self.is_open {
-                crate::HFST_THROW!(StreamIsClosed);
+                crate::bail!(StreamIsClosed);
             }
 
             if self.type_ != transducer.type_ {
-                crate::HFST_THROW_MESSAGE!(
+                crate::bail!(
                     TransducerTypeMismatch,
                     "operator<<: HfstOutputStream and HfstTransducer do not have the same type"
                 );
@@ -367,7 +377,7 @@ mod output_impl {
                 // write header length using two bytes
                 let header_length: i32 = header.len() as i32;
                 if header_length > MAX_HEADER_LENGTH {
-                    crate::HFST_THROW_MESSAGE!(Fatal, "transducer header is too long");
+                    crate::bail!(Fatal, "transducer header is too long");
                 }
 
                 // mirrors C++ '*((char*)(&header_length)+i)' (native-endian byte punning)
@@ -382,7 +392,7 @@ mod output_impl {
                 self.write_char_vector(&header);
             } // if (hfst_format)
 
-            match self.type_ {
+            Ok(match self.type_ {
                 ImplementationType::SFST_TYPE => {
                     // implementation.sfst->write_transducer(transducer.implementation.sfst);
                     unimplemented!("deferred: SfstOutputStream")
@@ -424,7 +434,7 @@ mod output_impl {
                     assert!(false);
                     self
                 }
-            }
+            })
         }
 
         // [spec:hfst:def:hfst-output-stream.hfst.hfst-output-stream.close-fn]

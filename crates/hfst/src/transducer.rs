@@ -413,21 +413,21 @@ pub struct TransducerHeader {
 impl TransducerHeader {
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.header-error-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-header.header-error-fn]
-    fn header_error() -> ! {
-        crate::HFST_THROW!(TransducerHasWrongType)
+    fn header_error() -> crate::error::Error {
+        crate::err!(TransducerHasWrongType)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.read-bool-property-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-header.read-bool-property-fn]
-    fn read_bool_property(is: &mut IStream) -> bool {
+    fn read_bool_property(is: &mut IStream) -> crate::error::Result<bool> {
         let prop = is.read_u32();
         if prop == 0 {
-            return false;
+            return Ok(false);
         }
         if prop == 1 {
-            return true;
+            return Ok(true);
         }
-        Self::header_error();
+        Err(Self::header_error())
     }
 
     /// 'TransducerHeader(bool weights)'.
@@ -481,7 +481,7 @@ impl TransducerHeader {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.transducer-header-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-header.transducer-header-fn]
-    pub fn new_istream(is: &mut IStream) -> Self {
+    pub fn new_istream(is: &mut IStream) -> crate::error::Result<Self> {
         let header = TransducerHeader {
             number_of_input_symbols: is.read_u16(),
             number_of_symbols: is.read_u16(),
@@ -489,20 +489,20 @@ impl TransducerHeader {
             size_of_transition_target_table: is.read_u32(),
             number_of_states: is.read_u32(),
             number_of_transitions: is.read_u32(),
-            weighted: Self::read_bool_property(is),
-            deterministic: Self::read_bool_property(is),
-            input_deterministic: Self::read_bool_property(is),
-            minimized: Self::read_bool_property(is),
-            cyclic: Self::read_bool_property(is),
-            has_epsilon_epsilon_transitions: Self::read_bool_property(is),
-            has_input_epsilon_transitions: Self::read_bool_property(is),
-            has_input_epsilon_cycles: Self::read_bool_property(is),
-            has_unweighted_input_epsilon_cycles: Self::read_bool_property(is),
+            weighted: Self::read_bool_property(is)?,
+            deterministic: Self::read_bool_property(is)?,
+            input_deterministic: Self::read_bool_property(is)?,
+            minimized: Self::read_bool_property(is)?,
+            cyclic: Self::read_bool_property(is)?,
+            has_epsilon_epsilon_transitions: Self::read_bool_property(is)?,
+            has_input_epsilon_transitions: Self::read_bool_property(is)?,
+            has_input_epsilon_cycles: Self::read_bool_property(is)?,
+            has_unweighted_input_epsilon_cycles: Self::read_bool_property(is)?,
         };
         if !is.good() {
-            crate::HFST_THROW!(TransducerHasWrongType);
+            crate::bail!(TransducerHasWrongType);
         }
-        header
+        Ok(header)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.symbol-count-fn]
@@ -675,7 +675,7 @@ impl TransducerAlphabet {
         is: &mut IStream,
         symbol_count: SymbolNumber,
         preserve_diacritic_strings: bool,
-    ) -> Self {
+    ) -> crate::error::Result<Self> {
         let mut alpha = TransducerAlphabet {
             symbol_table: SymbolTable::new(),
             fd_table: FdTable::new(),
@@ -701,13 +701,13 @@ impl TransducerAlphabet {
                 alpha.identity_symbol = i;
             }
             if !is.good() {
-                crate::HFST_THROW!(TransducerHasWrongType);
+                crate::bail!(TransducerHasWrongType);
             }
             alpha.symbol_table.push(str);
             i += 1;
         }
         alpha.orig_symbol_count = size_t_to_uint(alpha.symbol_table.len()) as SymbolNumber;
-        alpha
+        Ok(alpha)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-alphabet.fake-read-alphabet-fn]
@@ -2141,13 +2141,13 @@ impl Transducer {
         }
     }
 
-    pub fn new_istream(is: &mut IStream) -> Self {
-        let header = Box::new(TransducerHeader::new_istream(is));
+    pub fn new_istream(is: &mut IStream) -> crate::error::Result<Self> {
+        let header = Box::new(TransducerHeader::new_istream(is)?);
         let alphabet = Box::new(TransducerAlphabet::new_istream(
             is,
             header.symbol_count(),
             true,
-        ));
+        )?);
         let encoder = Box::new(Encoder::new(
             alphabet.get_symbol_table(),
             header.input_symbol_count(),
@@ -2170,8 +2170,8 @@ impl Transducer {
             max_time: 0.0,
             start_clock: None,
         };
-        t.load_tables(is);
-        t
+        t.load_tables(is)?;
+        Ok(t)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.transducer-fn]
@@ -2365,9 +2365,9 @@ impl Transducer {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.copy-windex-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-windex-table-fn]
-    pub fn copy_windex_table(&self) -> TransducerTable<TransitionWIndex> {
+    pub fn copy_windex_table(&self) -> crate::error::Result<TransducerTable<TransitionWIndex>> {
         if !self.hdr().probe_flag(HeaderFlag::Weighted) {
-            crate::HFST_THROW!(TransducerHasWrongType);
+            crate::bail!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
         for i in 0..self.hdr().index_table_size() {
@@ -2376,13 +2376,13 @@ impl Transducer {
                 self.tbl().get_index_target(i),
             ));
         }
-        another
+        Ok(another)
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer.copy-transitionw-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-transitionw-table-fn]
-    pub fn copy_transitionw_table(&self) -> TransducerTable<TransitionW> {
+    pub fn copy_transitionw_table(&self) -> crate::error::Result<TransducerTable<TransitionW>> {
         if !self.hdr().probe_flag(HeaderFlag::Weighted) {
-            crate::HFST_THROW!(TransducerHasWrongType);
+            crate::bail!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
         for i in 0..self.hdr().target_table_size() {
@@ -2393,13 +2393,13 @@ impl Transducer {
                 self.tbl().get_weight(i),
             ));
         }
-        another
+        Ok(another)
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer.copy-index-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-index-table-fn]
-    pub fn copy_index_table(&self) -> TransducerTable<TransitionIndex> {
+    pub fn copy_index_table(&self) -> crate::error::Result<TransducerTable<TransitionIndex>> {
         if self.hdr().probe_flag(HeaderFlag::Weighted) {
-            crate::HFST_THROW!(TransducerHasWrongType);
+            crate::bail!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
         for i in 0..self.hdr().index_table_size() {
@@ -2410,13 +2410,13 @@ impl Transducer {
                 idx.get_target(),
             ));
         }
-        another
+        Ok(another)
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer.copy-transition-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-transition-table-fn]
-    pub fn copy_transition_table(&self) -> TransducerTable<Transition> {
+    pub fn copy_transition_table(&self) -> crate::error::Result<TransducerTable<Transition>> {
         if self.hdr().probe_flag(HeaderFlag::Weighted) {
-            crate::HFST_THROW!(TransducerHasWrongType);
+            crate::bail!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
         for i in 0..self.hdr().target_table_size() {
@@ -2427,12 +2427,12 @@ impl Transducer {
                 tr.get_target(),
             ));
         }
-        another
+        Ok(another)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.load-tables-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.load-tables-fn]
-    pub fn load_tables(&mut self, is: &mut IStream) {
+    pub fn load_tables(&mut self, is: &mut IStream) -> crate::error::Result<()> {
         let weighted = self.hdr().probe_flag(HeaderFlag::Weighted);
         let its = self.hdr().index_table_size();
         let tts = self.hdr().target_table_size();
@@ -2446,8 +2446,9 @@ impl Transducer {
             ));
         }
         if !is.good() {
-            crate::HFST_THROW!(TransducerHasWrongType);
+            crate::bail!(TransducerHasWrongType);
         }
+        Ok(())
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.write-fn]
@@ -2470,21 +2471,21 @@ impl Transducer {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.copy-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-fn]
-    pub fn copy(t: &Transducer, weighted: bool) -> Transducer {
+    pub fn copy(t: &Transducer, weighted: bool) -> crate::error::Result<Transducer> {
         if weighted {
-            Transducer::new_from_tables_weighted(
+            Ok(Transducer::new_from_tables_weighted(
                 t.get_header(),
                 t.get_alphabet(),
-                t.copy_windex_table(),
-                t.copy_transitionw_table(),
-            )
+                t.copy_windex_table()?,
+                t.copy_transitionw_table()?,
+            ))
         } else {
-            Transducer::new_from_tables_unweighted(
+            Ok(Transducer::new_from_tables_unweighted(
                 t.get_header(),
                 t.get_alphabet(),
-                t.copy_index_table(),
-                t.copy_transition_table(),
-            )
+                t.copy_index_table()?,
+                t.copy_transition_table()?,
+            ))
         }
     }
 

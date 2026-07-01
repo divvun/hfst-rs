@@ -196,9 +196,9 @@ impl StatePlaceholder {
         &self,
         symbol: SymbolNumber,
         flag_symbols: &BTreeSet<SymbolNumber>,
-    ) -> u32 {
+    ) -> crate::error::Result<u32> {
         if symbol == 0 {
-            return 0;
+            return Ok(0);
         }
         let mut offset: u32 = 0;
         if self.input_present(0) {
@@ -209,7 +209,7 @@ impl StatePlaceholder {
             if self.input_present(*flag_it) {
                 if symbol == *flag_it {
                     // Flags go to 0 (even if there's no epsilon)
-                    return 0;
+                    return Ok(0);
                 }
                 offset += size_t_to_uint(self.get_transition_placeholders(*flag_it).len());
             }
@@ -222,7 +222,7 @@ impl StatePlaceholder {
                     continue;
                 }
                 if symbol == i {
-                    return offset;
+                    return Ok(offset);
                 }
                 offset += size_t_to_uint(self.get_transition_placeholders(i).len());
             }
@@ -232,7 +232,7 @@ impl StatePlaceholder {
              HfstTransducer;\ntried to calculate symbol_offset for symbol not \
              present in state",
         );
-        crate::HFST_THROW_MESSAGE!(Fatal, message)
+        crate::bail!(Fatal, message)
     }
 }
 

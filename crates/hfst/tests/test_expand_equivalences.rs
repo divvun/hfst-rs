@@ -71,27 +71,28 @@ fn read_tsv_extensions_comment_needs_no_tab() {
 }
 
 #[test]
-fn expand_equivalences_applies_extensions_at_each_level() {
+fn expand_equivalences_applies_extensions_at_each_level() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     let pairs = [("a".to_string(), "b".to_string())];
-    let empty = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE);
-    let a_acc = HfstTransducer::new_symbol("a", TROPICAL_OPENFST_TYPE);
+    let empty = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE)?;
+    let a_acc = HfstTransducer::new_symbol("a", TROPICAL_OPENFST_TYPE)?;
 
     // Second level composes the input with (identity | a:b)*, so the "a" acceptor
     // gains an a:b path and is no longer the bare acceptor.
-    let extended = expand_equivalences(a_acc.clone(), &pairs, FsaLevel::Second);
+    let extended = expand_equivalences(a_acc.clone(), &pairs, FsaLevel::Second)?;
     assert!(
-        !extended.compare_default(&empty),
+        !extended.compare_default(&empty)?,
         "result must be non-empty"
     );
     assert!(
-        !extended.compare_default(&a_acc),
+        !extended.compare_default(&a_acc)?,
         "Second-level extension must change the transducer"
     );
 
     // First and Both levels also produce non-empty transducers.
     for level in [FsaLevel::First, FsaLevel::Both] {
-        let r = expand_equivalences(a_acc.clone(), &pairs, level);
-        assert!(!r.compare_default(&empty), "result must be non-empty");
+        let r = expand_equivalences(a_acc.clone(), &pairs, level)?;
+        assert!(!r.compare_default(&empty)?, "result must be non-empty");
     }
+    Ok(())
 }

@@ -45,7 +45,10 @@ fn my_default() -> &'static str {
 
 // [spec:hfst:def:guessify-fst.remove-flag-diacritics-fn]
 // [spec:hfst:sem:guessify-fst.remove-flag-diacritics-fn]
-pub fn remove_flag_diacritics(morphological_analyzer: &mut HfstTransducer, alphabet: &StringSet) {
+pub fn remove_flag_diacritics(
+    morphological_analyzer: &mut HfstTransducer,
+    alphabet: &StringSet,
+) -> crate::error::Result<()> {
     let mut flag_diacritic_epsilon_pairs = HfstSymbolSubstitutions::new();
 
     for it in alphabet.iter() {
@@ -54,7 +57,8 @@ pub fn remove_flag_diacritics(morphological_analyzer: &mut HfstTransducer, alpha
         }
     }
 
-    morphological_analyzer.substitute_symbol_substitutions(&flag_diacritic_epsilon_pairs);
+    morphological_analyzer.substitute_symbol_substitutions(&flag_diacritic_epsilon_pairs)?;
+    Ok(())
 }
 
 // [spec:hfst:def:guessify-fst.is-cathegory-symbol-fn]
@@ -79,83 +83,86 @@ pub fn get_cathegory_symbols(alphabet: &StringSet) -> StringSet {
 
 // [spec:hfst:def:guessify-fst.get-prefix-remover-fn]
 // [spec:hfst:sem:guessify-fst.get-prefix-remover-fn]
-pub fn get_prefix_remover(alphabet: &StringSet) -> HfstTransducer {
+pub fn get_prefix_remover(alphabet: &StringSet) -> crate::error::Result<HfstTransducer> {
     let cathegory_symbols = get_cathegory_symbols(alphabet);
 
-    let mut cathegory_symbols_fst = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE);
+    let mut cathegory_symbols_fst = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE)?;
 
     let mut identity_except_cathegory =
-        HfstTransducer::new_symbol(internal_identity, TROPICAL_OPENFST_TYPE);
+        HfstTransducer::new_symbol(internal_identity, TROPICAL_OPENFST_TYPE)?;
     let mut basic_identity = HfstBasicTransducer::from_transducer(&identity_except_cathegory);
 
     // Add cathegory symbols as paths in cathegory_symbols_fst and add
     // them to the alphabet of basic_identity so that the identity
     // transitions won't cover cathegory symbols.
     for it in cathegory_symbols.iter() {
-        let cathegory_symbol_fst = HfstTransducer::new_symbol(it, TROPICAL_OPENFST_TYPE);
-        cathegory_symbols_fst.disjunct(&cathegory_symbol_fst, true);
+        let cathegory_symbol_fst = HfstTransducer::new_symbol(it, TROPICAL_OPENFST_TYPE)?;
+        cathegory_symbols_fst.disjunct(&cathegory_symbol_fst, true)?;
         basic_identity.add_symbol_to_alphabet(it);
     }
 
-    cathegory_symbols_fst.minimize();
+    cathegory_symbols_fst.minimize()?;
 
     // Preserve one symbol after the cathegory marker.
-    let identity = HfstTransducer::new_symbol(internal_identity, TROPICAL_OPENFST_TYPE);
+    let identity = HfstTransducer::new_symbol(internal_identity, TROPICAL_OPENFST_TYPE)?;
     cathegory_symbols_fst
-        .concatenate(&identity, true)
-        .minimize();
+        .concatenate(&identity, true)?
+        .minimize()?;
     identity_except_cathegory =
         HfstTransducer::new_from_basic_transducer(&basic_identity, TROPICAL_OPENFST_TYPE);
-    identity_except_cathegory.repeat_star().minimize();
+    identity_except_cathegory.repeat_star()?.minimize()?;
 
     let mut remove_symbol =
-        HfstTransducer::new_symbol_pair(internal_unknown, REMOVED_SYMBOL, TROPICAL_OPENFST_TYPE);
-    remove_symbol.repeat_star().minimize();
+        HfstTransducer::new_symbol_pair(internal_unknown, REMOVED_SYMBOL, TROPICAL_OPENFST_TYPE)?;
+    remove_symbol.repeat_star()?.minimize()?;
 
-    let mut remove_suffix = HfstTransducer::new_copy(&cathegory_symbols_fst);
-    remove_suffix.concatenate(&remove_symbol, true);
-    remove_suffix.optionalize().minimize();
-
-    identity_except_cathegory
-        .concatenate(&remove_suffix, true)
-        .minimize();
+    let mut remove_suffix = HfstTransducer::new_copy(&cathegory_symbols_fst)?;
+    remove_suffix.concatenate(&remove_symbol, true)?;
+    remove_suffix.optionalize()?.minimize()?;
 
     identity_except_cathegory
+        .concatenate(&remove_suffix, true)?
+        .minimize()?;
+
+    Ok(identity_except_cathegory)
 }
 
 // [spec:hfst:def:guessify-fst.get-invalid-form-filterer-fn]
 // [spec:hfst:sem:guessify-fst.get-invalid-form-filterer-fn]
-pub fn get_invalid_form_filterer(alphabet: &StringSet) -> HfstTransducer {
+pub fn get_invalid_form_filterer(alphabet: &StringSet) -> crate::error::Result<HfstTransducer> {
     let cathegory_symbols = get_cathegory_symbols(alphabet);
 
-    let mut cathegory_symbols_fst = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE);
+    let mut cathegory_symbols_fst = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE)?;
     for it in cathegory_symbols.iter() {
-        let cathegory_symbol_fst = HfstTransducer::new_symbol(it, TROPICAL_OPENFST_TYPE);
-        cathegory_symbols_fst.disjunct(&cathegory_symbol_fst, true);
+        let cathegory_symbol_fst = HfstTransducer::new_symbol(it, TROPICAL_OPENFST_TYPE)?;
+        cathegory_symbols_fst.disjunct(&cathegory_symbol_fst, true)?;
     }
 
-    cathegory_symbols_fst.minimize();
+    cathegory_symbols_fst.minimize()?;
 
-    let identity = HfstTransducer::new_symbol(internal_identity, TROPICAL_OPENFST_TYPE);
+    let identity = HfstTransducer::new_symbol(internal_identity, TROPICAL_OPENFST_TYPE)?;
 
-    let mut identity_star = HfstTransducer::new_copy(&identity);
+    let mut identity_star = HfstTransducer::new_copy(&identity)?;
 
-    identity_star.repeat_star().minimize();
+    identity_star.repeat_star()?.minimize()?;
 
-    let mut remover = HfstTransducer::new_copy(&identity_star);
-
-    remover
-        .concatenate(&cathegory_symbols_fst, true)
-        .concatenate(&identity, true)
-        .concatenate(&identity_star, true)
-        .minimize();
+    let mut remover = HfstTransducer::new_copy(&identity_star)?;
 
     remover
+        .concatenate(&cathegory_symbols_fst, true)?
+        .concatenate(&identity, true)?
+        .concatenate(&identity_star, true)?
+        .minimize()?;
+
+    Ok(remover)
 }
 
 // [spec:hfst:def:guessify-fst.rewrite-removed-symbols-fn]
 // [spec:hfst:sem:guessify-fst.rewrite-removed-symbols-fn]
-pub fn rewrite_removed_symbols(morphological_analyzer: &mut HfstTransducer, alphabet: &StringSet) {
+pub fn rewrite_removed_symbols(
+    morphological_analyzer: &mut HfstTransducer,
+    alphabet: &StringSet,
+) -> crate::error::Result<()> {
     let mut substitution_pairs = HfstSymbolPairSubstitutions::new();
 
     substitution_pairs.insert(
@@ -172,7 +179,8 @@ pub fn rewrite_removed_symbols(morphological_analyzer: &mut HfstTransducer, alph
         }
     }
 
-    morphological_analyzer.substitute_symbol_pair_substitutions(&substitution_pairs);
+    morphological_analyzer.substitute_symbol_pair_substitutions(&substitution_pairs)?;
+    Ok(())
 }
 
 // [spec:hfst:def:guessify-fst.guessify-analyzer-fn]
@@ -180,24 +188,24 @@ pub fn rewrite_removed_symbols(morphological_analyzer: &mut HfstTransducer, alph
 pub fn guessify_analyzer(
     mut morphological_analyzer: HfstTransducer,
     penalty: f32,
-) -> HfstTransducer {
+) -> crate::error::Result<HfstTransducer> {
     // Convert to tropical openfst type so that all operations can be
     // performed.
-    morphological_analyzer.convert(TROPICAL_OPENFST_TYPE, String::new());
+    morphological_analyzer.convert(TROPICAL_OPENFST_TYPE, String::new())?;
 
     let morphological_analyzer_name = morphological_analyzer.get_name();
 
     // Start be reversing the morphological analyzer, since guessing is
     // based on suffixes of words.
-    morphological_analyzer.reverse().minimize();
+    morphological_analyzer.reverse()?.minimize()?;
 
     // Get rid of flag diacritics. They're a nuissance and the
     // combinatorics would any way be screwed up because we modify the
     // behavior of the transducer using default-transitions.
-    let alphabet = morphological_analyzer.get_alphabet();
-    remove_flag_diacritics(&mut morphological_analyzer, &alphabet);
+    let alphabet = morphological_analyzer.get_alphabet()?;
+    remove_flag_diacritics(&mut morphological_analyzer, &alphabet)?;
 
-    morphological_analyzer.minimize();
+    morphological_analyzer.minimize()?;
 
     // Remove the parts of analyses that precede the last cathegory
     // tag. After the last cathegory tag all input should be echoed as is to
@@ -243,8 +251,8 @@ pub fn guessify_analyzer(
     // without any additional transitions.
     let mut s: HfstState = 0;
     while s <= basic_guesser.get_max_state() {
-        if basic_guesser.index(s).len() == 1
-            && basic_guesser.index(s)[0].get_input_symbol(basic_guesser.coder()) == my_default()
+        if basic_guesser.index(s)?.len() == 1
+            && basic_guesser.index(s)?[0].get_input_symbol(basic_guesser.coder()) == my_default()
         {
             let arc = HfstBasicTransition::new_symbols(
                 sink_state,
@@ -261,15 +269,15 @@ pub fn guessify_analyzer(
     let mut guesser =
         HfstTransducer::new_from_basic_transducer(&basic_guesser, TROPICAL_OPENFST_TYPE);
 
-    let invalid_form_filterer = get_invalid_form_filterer(&alphabet);
+    let invalid_form_filterer = get_invalid_form_filterer(&alphabet)?;
 
-    guesser.compose(&invalid_form_filterer, true).minimize();
+    guesser.compose(&invalid_form_filterer, true)?.minimize()?;
 
     guesser.set_name(&format!("guessified({})", morphological_analyzer_name));
 
     guesser.set_property("reverse input", "true");
 
-    guesser
+    Ok(guesser)
 }
 
 // [spec:hfst:def:guessify-fst.store-guesser-fn]
@@ -278,23 +286,24 @@ pub fn store_guesser(
     guesser: &mut HfstTransducer,
     out: &mut HfstOutputStream,
     compile_generator: bool,
-) {
-    let mut generator = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE);
+) -> crate::error::Result<()> {
+    let mut generator = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE)?;
     if compile_generator {
-        generator = HfstTransducer::new_copy(guesser);
+        generator = HfstTransducer::new_copy(guesser)?;
     }
 
-    guesser.substitute(my_default(), internal_default, true, true);
-    guesser.convert(HFST_OLW_TYPE, String::new());
-    out.operator_shl(guesser);
+    guesser.substitute(my_default(), internal_default, true, true)?;
+    guesser.convert(HFST_OLW_TYPE, String::new())?;
+    out.operator_shl(guesser)?;
 
     if compile_generator {
-        generator.invert();
+        generator.invert()?;
         generator.set_name(&format!("inverted({})", guesser.get_name()));
-        generator.substitute(my_default(), internal_default, true, true);
-        generator.convert(HFST_OLW_TYPE, String::new());
-        out.operator_shl(&mut generator);
+        generator.substitute(my_default(), internal_default, true, true)?;
+        generator.convert(HFST_OLW_TYPE, String::new())?;
+        out.operator_shl(&mut generator)?;
     }
+    Ok(())
 }
 
 // Direction of guessing for `affix_guessify`. Lifted verbatim from
@@ -323,9 +332,9 @@ pub fn affix_guessify(
     direction: GuessDirection,
     weight: f32,
     format: ImplementationType,
-) -> HfstTransducer {
-    let alpha = trans.get_alphabet();
-    match direction {
+) -> crate::error::Result<HfstTransducer> {
+    let alpha = trans.get_alphabet()?;
+    Ok(match direction {
         GuessDirection::GuessSuffix => {
             let mutt = HfstBasicTransducer::from_transducer(trans);
             let mut repl = HfstBasicTransducer::new();
@@ -351,7 +360,7 @@ pub fn affix_guessify(
             for s in 0..=mutt.get_max_state() {
                 let d = repl.add_state(s + 1);
                 if mutt.is_final_state(s) {
-                    let fw = mutt.get_final_weight(s);
+                    let fw = mutt.get_final_weight(s)?;
                     repl.set_final_weight(d, &fw);
                 }
                 let guess_arc = HfstBasicTransition::new_symbols(
@@ -372,7 +381,7 @@ pub fn affix_guessify(
                     );
                     repl.add_transition(guess_state, &x_arc, true);
                 }
-                for arc in mutt.transitions(s).iter() {
+                for arc in mutt.transitions(s)?.iter() {
                     // Cross-graph copy: read arc symbols via 'mutt's coder, then
                     // build the new transition into 'repl' via 'repl's coder.
                     let target = arc.get_target_state() + 1;
@@ -384,7 +393,7 @@ pub fn affix_guessify(
                     repl.add_transition(d, &newarc, true);
                 }
             }
-            HfstTransducer::new_from_basic(&repl, format)
+            HfstTransducer::new_from_basic(&repl, format)?
         }
         GuessDirection::GuessPrefix => {
             let mut repl = HfstBasicTransducer::from_transducer(trans);
@@ -409,9 +418,9 @@ pub fn affix_guessify(
                 );
                 repl.add_transition(s, &newarc, true);
             }
-            HfstTransducer::new_from_basic(&repl, format)
+            HfstTransducer::new_from_basic(&repl, format)?
         }
-    }
+    })
 }
 
 // [spec:hfst:def:guessify-fst.main-fn]

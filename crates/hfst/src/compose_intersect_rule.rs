@@ -70,21 +70,26 @@ impl ComposeIntersectRule {
     // { return
     //     symbols.count(HfstTropicalTransducerTransitionData::get_symbol(hfst::size_t_to_uint(symbol)))
     //   > 0; }
-    pub fn known_symbol(&self, symbol: usize) -> bool {
+    pub fn known_symbol(&self, symbol: usize) -> crate::error::Result<bool> {
         // 'symbol' is a number in the shared (lexicon/canonical) coding, which the
         // rule has been reindexed onto, so its own coder resolves it.
-        self.symbols
-            .contains(&self.base.coder().get_symbol(size_t_to_uint(symbol)))
+        Ok(self
+            .symbols
+            .contains(&self.base.coder().get_symbol(size_t_to_uint(symbol))?))
     }
 
     // -- inherited (public) interface of ComposeIntersectFst, re-exposed by
     //    delegation since Rust has no class inheritance --
 
-    pub fn get_transitions(&mut self, s: HfstState, symbol: usize) -> &TransitionSet {
+    pub fn get_transitions(
+        &mut self,
+        s: HfstState,
+        symbol: usize,
+    ) -> crate::error::Result<&TransitionSet> {
         self.base.get_transitions(s, symbol)
     }
 
-    pub fn get_final_weight(&self, s: HfstState) -> f32 {
+    pub fn get_final_weight(&self, s: HfstState) -> crate::error::Result<f32> {
         self.base.get_final_weight(s)
     }
 

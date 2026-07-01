@@ -62,35 +62,37 @@ fn temp_path(stem: &str) -> String {
 // --- The empty / epsilon / one-transition constructors, plus the destructor.
 // These C++ blocks construct without asserting; the port verifies they do not
 // panic.
-fn smoke_constructors(type_: ImplementationType) {
+fn smoke_constructors(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     verbose_print("The empty transducer", type_);
-    let _empty = HfstTransducer::new_type(type_);
+    let _empty = HfstTransducer::new_type(type_)?;
 
     verbose_print("The epsilon transducer", type_);
-    let _epsilon = HfstTransducer::new_symbol("@_EPSILON_SYMBOL_@", type_);
+    let _epsilon = HfstTransducer::new_symbol("@_EPSILON_SYMBOL_@", type_)?;
 
     verbose_print("One-transition transducer", type_);
-    let _foo = HfstTransducer::new_symbol("foo", type_);
-    let _foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_);
+    let _foo = HfstTransducer::new_symbol("foo", type_)?;
+    let _foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
 
     // Destructor: C++ does 'new HfstTransducer("new", type); delete nu;'.
     verbose_print("Destructor", type_);
-    let nu = Box::new(HfstTransducer::new_symbol("new", type_));
+    let nu = Box::new(HfstTransducer::new_symbol("new", type_)?);
     drop(nu);
+    Ok(())
 }
 
 // --- The copy constructor.
-fn copy_constructor(type_: ImplementationType) {
+fn copy_constructor(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     verbose_print("The copy constructor", type_);
-    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_);
-    let foobar_copy = HfstTransducer::new_copy(&foobar);
-    assert!(foobar.compare_default(&foobar_copy));
+    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+    let foobar_copy = HfstTransducer::new_copy(&foobar)?;
+    assert!(foobar.compare_default(&foobar_copy)?);
+    Ok(())
 }
 
 // --- Conversion from HfstBasicTransducer.
-fn conversion_from_basic(type_: ImplementationType) {
+fn conversion_from_basic(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     verbose_print("Conversion from HfstBasicTransducer", type_);
-    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_);
+    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
 
     let mut basic = HfstBasicTransducer::new();
     basic.add_state(1);
@@ -104,31 +106,33 @@ fn conversion_from_basic(type_: ImplementationType) {
     basic.add_transition(0, &tr, true);
     basic.set_final_weight(1, &0.0);
 
-    let foobar_basic = HfstTransducer::new_from_basic(&basic, type_);
-    assert!(foobar.compare_default(&foobar_basic));
+    let foobar_basic = HfstTransducer::new_from_basic(&basic, type_)?;
+    assert!(foobar.compare_default(&foobar_basic)?);
+    Ok(())
 }
 
 // --- Construction by tokenization.
-fn construction_by_tokenization(type_: ImplementationType) {
+fn construction_by_tokenization(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     verbose_print("Construction by tokenization", type_);
-    let foo = HfstTransducer::new_symbol("foo", type_);
-    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_);
+    let foo = HfstTransducer::new_symbol("foo", type_)?;
+    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
 
     let mut tok = HfstTokenizer::new();
     tok.add_skip_symbol("baz");
     tok.add_multichar_symbol("foo");
     tok.add_multichar_symbol("bar");
 
-    let foo_tok = HfstTransducer::new_tokenized("bazfoobaz", &tok, type_);
-    let foobar_tok = HfstTransducer::new_tokenized_pair("bazfoo", "barbaz", &tok, type_);
-    assert!(foo.compare_default(&foo_tok));
-    assert!(foobar.compare_default(&foobar_tok));
+    let foo_tok = HfstTransducer::new_tokenized("bazfoobaz", &tok, type_)?;
+    let foobar_tok = HfstTransducer::new_tokenized_pair("bazfoo", "barbaz", &tok, type_)?;
+    assert!(foo.compare_default(&foo_tok)?);
+    assert!(foobar.compare_default(&foobar_tok)?);
+    Ok(())
 }
 
 // --- Construction from AT&T format.
-fn construction_from_att(type_: ImplementationType) {
+fn construction_from_att(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     verbose_print("Construction from AT&T format", type_);
-    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_);
+    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
 
     let path = fixture_path("foobar.att");
     // C++ uses the (FILE*, type, epsilon_symbol, linecount) constructor with
@@ -136,77 +140,82 @@ fn construction_from_att(type_: ImplementationType) {
     // opens the file itself. warn_negs defaults to false.
     let foobar_att = HfstTransducer::read_in_att_format_filename(&path, type_, "@0@", false)
         .expect("foobar.att fixture reads as a valid AT&T transducer");
-    foobar_att.minimize();
-    assert!(foobar.compare_default(foobar_att));
+    foobar_att.minimize()?;
+    assert!(foobar.compare_default(foobar_att)?);
 
     // The facade reader returns a heap HfstTransducer the caller owns/deletes.
     drop(unsafe { Box::from_raw(foobar_att as *mut HfstTransducer) });
+    Ok(())
 }
 
 // --- Construction from HfstInputStream (also tests get_type, set_name, get_name).
-fn construction_from_stream(type_: ImplementationType) {
+fn construction_from_stream(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     verbose_print("Construction from HfstInputStream", type_);
-    let mut foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_);
+    let mut foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
 
     let path = temp_path(&format!("hfst_test_constructors_{type_:?}.hfst"));
     {
-        let mut out = HfstOutputStream::new_filename(&path, foobar.get_type(), true);
+        let mut out = HfstOutputStream::new_filename(&path, foobar.get_type(), true)?;
         foobar.set_name("foobar");
-        out.operator_shl(&mut foobar);
+        out.operator_shl(&mut foobar)?;
         out.close();
     }
-    let mut instream = HfstInputStream::new_filename(&path);
-    let foobar_stream = HfstTransducer::new_from_stream(&mut instream);
+    let mut instream = HfstInputStream::new_filename(&path)?;
+    let foobar_stream = HfstTransducer::new_from_stream(&mut instream)?;
     instream.close();
     let _ = std::fs::remove_file(&path);
 
-    assert!(foobar.compare_default(&foobar_stream));
+    assert!(foobar.compare_default(&foobar_stream)?);
     assert_eq!(foobar_stream.get_name(), "foobar");
     assert_eq!(foobar_stream.get_type(), type_);
+    Ok(())
 }
 
 // --- Operator= (the non-OL part of the C++ operator= block).
-fn operator_assign(type_: ImplementationType) {
+fn operator_assign(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     verbose_print("Operator=", type_);
     // In C++ foobar already carries name "foobar" from the stream block; set it
     // explicitly here so this group is self-contained.
-    let mut foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_);
+    let mut foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
     foobar.set_name("foobar");
 
-    let mut foobar2 = HfstTransducer::new_symbol("baz", type_);
+    let mut foobar2 = HfstTransducer::new_symbol("baz", type_)?;
     assert_eq!(foobar.get_name(), "foobar");
-    foobar2.operator_assign(&foobar);
+    foobar2.operator_assign(&foobar)?;
     assert_eq!(foobar2.get_name(), "foobar");
-    assert!(foobar.compare_default(&foobar2));
+    assert!(foobar.compare_default(&foobar2)?);
+    Ok(())
 }
 
 // --- Reserving props in the copy constructor (C++ bug #3405831).
 // Type-independent: always uses TROPICAL_OPENFST_TYPE as the source, then
 // converts to HFST_OLW_TYPE and checks the copy constructor preserves the name.
-fn copy_constructor_preserves_name_after_olw_convert() {
-    let mut t = HfstTransducer::new_symbol("a", TROPICAL_OPENFST_TYPE);
-    t.convert(HFST_OLW_TYPE, String::new());
+fn copy_constructor_preserves_name_after_olw_convert() -> Result<(), hfst::error::Error> {
+    let mut t = HfstTransducer::new_symbol("a", TROPICAL_OPENFST_TYPE)?;
+    t.convert(HFST_OLW_TYPE, String::new())?;
     t.set_name("foo");
-    let s = HfstTransducer::new_copy(&t);
+    let s = HfstTransducer::new_copy(&t)?;
     assert_eq!(s.get_name(), t.get_name());
+    Ok(())
 }
 
 // --- The HFST_OL / HFST_OLW part of the C++ operator= block.
 // Faithful port: constructs empty HFST_OL / HFST_OLW transducers and assigns
 // converted copies of foobar2 into them, checking the name survives.
-fn operator_assign_ol(type_: ImplementationType) {
+fn operator_assign_ol(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     // foobar2 corresponds to C++ foobar2 after 'foobar2 = foobar': the foo:bar
     // transducer named "foobar".
-    let mut foobar2 = HfstTransducer::new_symbol_pair("foo", "bar", type_);
+    let mut foobar2 = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
     foobar2.set_name("foobar");
 
-    let mut empty_ol = HfstTransducer::new_type(HFST_OL_TYPE);
-    let mut empty_olw = HfstTransducer::new_type(HFST_OLW_TYPE);
+    let mut empty_ol = HfstTransducer::new_type(HFST_OL_TYPE)?;
+    let mut empty_olw = HfstTransducer::new_type(HFST_OLW_TYPE)?;
 
-    empty_ol.operator_assign(foobar2.convert(HFST_OL_TYPE, String::new()));
-    empty_olw.operator_assign(foobar2.convert(HFST_OLW_TYPE, String::new()));
+    empty_ol.operator_assign(foobar2.convert(HFST_OL_TYPE, String::new())?)?;
+    empty_olw.operator_assign(foobar2.convert(HFST_OLW_TYPE, String::new())?)?;
     assert_eq!(empty_ol.get_name(), "foobar");
     assert_eq!(empty_olw.get_name(), "foobar");
+    Ok(())
 }
 
 // =====================================================================
@@ -214,45 +223,52 @@ fn operator_assign_ol(type_: ImplementationType) {
 // =====================================================================
 
 #[test]
-fn smoke_constructors_tropical() {
+fn smoke_constructors_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    smoke_constructors(TROPICAL_OPENFST_TYPE);
+    smoke_constructors(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn copy_constructor_tropical() {
+fn copy_constructor_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    copy_constructor(TROPICAL_OPENFST_TYPE);
+    copy_constructor(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn conversion_from_basic_tropical() {
+fn conversion_from_basic_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    conversion_from_basic(TROPICAL_OPENFST_TYPE);
+    conversion_from_basic(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn construction_by_tokenization_tropical() {
+fn construction_by_tokenization_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    construction_by_tokenization(TROPICAL_OPENFST_TYPE);
+    construction_by_tokenization(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn construction_from_att_tropical() {
+fn construction_from_att_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    construction_from_att(TROPICAL_OPENFST_TYPE);
+    construction_from_att(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn construction_from_stream_tropical() {
+fn construction_from_stream_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    construction_from_stream(TROPICAL_OPENFST_TYPE);
+    construction_from_stream(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn operator_assign_tropical() {
+fn operator_assign_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    operator_assign(TROPICAL_OPENFST_TYPE);
+    operator_assign(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 // =====================================================================
@@ -260,27 +276,31 @@ fn operator_assign_tropical() {
 // =====================================================================
 
 #[test]
-fn smoke_constructors_log() {
+fn smoke_constructors_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    smoke_constructors(LOG_OPENFST_TYPE);
+    smoke_constructors(LOG_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn copy_constructor_log() {
+fn copy_constructor_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    copy_constructor(LOG_OPENFST_TYPE);
+    copy_constructor(LOG_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn conversion_from_basic_log() {
+fn conversion_from_basic_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    conversion_from_basic(LOG_OPENFST_TYPE);
+    conversion_from_basic(LOG_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn construction_by_tokenization_log() {
+fn construction_by_tokenization_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    construction_by_tokenization(LOG_OPENFST_TYPE);
+    construction_by_tokenization(LOG_OPENFST_TYPE)?;
+    Ok(())
 }
 
 // PORT DISCREPANCY (latent C++ bug surfaced, not a Rust regression): for
@@ -292,21 +312,24 @@ fn construction_by_tokenization_log() {
 // The C++ suite never triggered this because its LOG iteration was commented out.
 #[test]
 #[ignore = "PORT DISCREPANCY: LOG basic->log conversion hardcodes source_state=0 (faithfully ported C++ bug), so the att foo:bar transducer collapses to empty after minimize; never exercised by C++ (LOG commented out)"]
-fn construction_from_att_log() {
+fn construction_from_att_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    construction_from_att(LOG_OPENFST_TYPE);
+    construction_from_att(LOG_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn construction_from_stream_log() {
+fn construction_from_stream_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    construction_from_stream(LOG_OPENFST_TYPE);
+    construction_from_stream(LOG_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn operator_assign_log() {
+fn operator_assign_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    operator_assign(LOG_OPENFST_TYPE);
+    operator_assign(LOG_OPENFST_TYPE)?;
+    Ok(())
 }
 
 // =====================================================================
@@ -314,19 +337,22 @@ fn operator_assign_log() {
 // =====================================================================
 
 #[test]
-fn copy_constructor_preserves_name_after_olw_convert_test() {
+fn copy_constructor_preserves_name_after_olw_convert_test() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    copy_constructor_preserves_name_after_olw_convert();
+    copy_constructor_preserves_name_after_olw_convert()?;
+    Ok(())
 }
 
 #[test]
-fn operator_assign_ol_tropical() {
+fn operator_assign_ol_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    operator_assign_ol(TROPICAL_OPENFST_TYPE);
+    operator_assign_ol(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn operator_assign_ol_log() {
+fn operator_assign_ol_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    operator_assign_ol(LOG_OPENFST_TYPE);
+    operator_assign_ol(LOG_OPENFST_TYPE)?;
+    Ok(())
 }

@@ -196,10 +196,22 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             } else {
                 verbose_printf(&format!("Alphadumping... {}\n", transducer_n));
             }
-            let trans = HfstTransducer::new_from_stream(instream);
+            let trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("hfst-dump-alphabets: {e}");
+                    return 1;
+                }
+            };
             let mutt = HfstBasicTransducer::new_from_transducer(&trans);
             // unsigned int initial_state = 0; // mutt.get_initial_state();
-            let transducer_alphabet = trans.get_alphabet();
+            let transducer_alphabet = match trans.get_alphabet() {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("hfst-dump-alphabets: {e}");
+                    return 1;
+                }
+            };
             let transducer_knows_alphabet = true;
             let found_alphabet: StringSet = mutt.symbols_used();
             if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
@@ -283,10 +295,20 @@ unsafe fn real_main() -> i32 {
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // that calls error(EXIT_FAILURE, ...) is not reproduced here.)
-        let mut instream = if input_opened {
+        let instream_res = if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        };
+        let mut instream = match instream_res {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!(
+                    "hfst-dump-alphabets: {} is not a valid transducer file: {e}",
+                    globals::input_filename()
+                );
+                return 1;
+            }
         };
         let _retval = process_stream(&mut instream);
 

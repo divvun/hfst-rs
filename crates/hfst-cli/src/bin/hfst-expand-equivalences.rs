@@ -238,7 +238,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         while instream.is_good() {
             transducer_n += 1;
             let _ = transducer_n; // C++ counts but never reads it
-            let trans = HfstTransducer::new_from_stream(instream);
+            let trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            };
 
             // Collect the (from, to) extension pairs from whichever source the
             // options selected. The TSV parser and the extension/compose loop now
@@ -282,8 +288,17 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 return;
             }
 
-            let mut trans = expand_equivalences(trans, &pairs, LEVEL);
-            outstream.redirect(&mut trans);
+            let mut trans = match expand_equivalences(trans, &pairs, LEVEL) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            };
+            if let Err(e) = outstream.redirect(&mut trans) {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
         } // for each automaton
     }
 }
@@ -317,20 +332,32 @@ unsafe fn real_main() -> i32 {
         ));
 
         // here starts the buffer handling part
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
 
         let type_ = instream.get_type();
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-expand-equivalences") {

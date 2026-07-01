@@ -1,7 +1,7 @@
 use hfst::transducer::{HeaderFlag, IStream, Transducer};
 
 // Round-trip a constructed transducer through the real binary writer + reader.
-fn roundtrip(weighted: bool) {
+fn roundtrip(weighted: bool) -> hfst::error::Result<()> {
     let t = Transducer::new_weighted(weighted);
 
     let mut buf: Vec<u8> = Vec::new();
@@ -9,7 +9,7 @@ fn roundtrip(weighted: bool) {
 
     let mut cursor = &buf[..];
     let mut is = IStream::new(&mut cursor);
-    let t2 = Transducer::new_istream(&mut is);
+    let t2 = Transducer::new_istream(&mut is)?;
 
     let h1 = t.get_header();
     let h2 = t2.get_header();
@@ -36,9 +36,11 @@ fn roundtrip(weighted: bool) {
         buf.len(),
         h2.index_table_size()
     );
+    Ok(())
 }
 
-fn main() {
-    roundtrip(false);
-    roundtrip(true);
+fn main() -> hfst::error::Result<()> {
+    roundtrip(false)?;
+    roundtrip(true)?;
+    Ok(())
 }

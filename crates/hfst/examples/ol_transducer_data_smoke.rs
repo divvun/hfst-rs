@@ -2,14 +2,14 @@ use hfst::transducer::{
     Encoder, HeaderFlag, IStream, SymbolTable, TransducerHeader, TransitionIndex,
 };
 
-fn main() {
+fn main() -> hfst::error::Result<()> {
     // Header binary round-trip: write to a buffer, read it back, compare.
     let h = TransducerHeader::new_sizes(2, 5, 7, 11, true);
     let mut buf: Vec<u8> = Vec::new();
     h.write(&mut buf);
     let mut cursor = &buf[..];
     let mut is = IStream::new(&mut cursor);
-    let h2 = TransducerHeader::new_istream(&mut is);
+    let h2 = TransducerHeader::new_istream(&mut is)?;
     assert_eq!(h2.input_symbol_count(), 2);
     assert_eq!(h2.symbol_count(), 5);
     assert_eq!(h2.index_table_size(), 7);
@@ -42,4 +42,5 @@ fn main() {
     assert_eq!(s1, 1, "first token should be 'a' -> 1");
     assert_eq!(s2, 2, "second token should be 'bc' -> 2");
     println!("encoder OK (a=1, bc=2)");
+    Ok(())
 }

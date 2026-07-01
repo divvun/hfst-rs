@@ -148,10 +148,28 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                 outfilename
             ));
             let mut outstream =
-                HfstOutputStream::new_filename(&outfilename, instream.get_type(), true);
-            let mut trans = HfstTransducer::new_from_stream(instream);
-            outstream.redirect(&mut trans);
-            outstream.flush();
+                match HfstOutputStream::new_filename(&outfilename, instream.get_type(), true) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
+            let mut trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            if let Err(e) = outstream.redirect(&mut trans) {
+                hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+                return 1;
+            }
+            if let Err(e) = outstream.flush() {
+                hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+                return 1;
+            }
             outstream.close();
             globals::set_output_filename("");
         }
@@ -188,10 +206,17 @@ unsafe fn real_main() -> i32 {
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced faithfully here.)
-        let mut instream = if globals::input_filename() != "<stdin>" {
+        let instream_result = if globals::input_filename() != "<stdin>" {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        };
+        let mut instream = match instream_result {
+            Ok(s) => s,
+            Err(e) => {
+                hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         process_stream(&mut instream)

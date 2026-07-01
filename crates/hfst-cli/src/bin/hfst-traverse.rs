@@ -8,8 +8,8 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_readline, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_printf,
+    EXIT_CONTINUE, error, extend_options_getenv, hfst_readline, hfst_set_program_name,
+    print_more_info, print_report_bugs, verbose_printf,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -132,7 +132,13 @@ unsafe fn main_loop(trans: &HfstBasicTransducer) -> i32 {
             // print available paths
             for ((path_str, _), state) in paths.iter() {
                 let _ = write!(msg, "On path `{}' are continuations:\n", path_str);
-                let transitions = trans.index(*state);
+                let transitions = match trans.index(*state) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
                 if transitions.is_empty() {
                     let _ = write!(msg, "<Nothing, you've hit a dead end here>\n");
                 }
@@ -151,7 +157,14 @@ unsafe fn main_loop(trans: &HfstBasicTransducer) -> i32 {
             };
             let mut new_paths: BTreeMap<(String, usize), u32> = BTreeMap::new();
             for ((path_str, _), state) in paths.iter() {
-                for arc in trans.index(*state).iter() {
+                let transitions = match trans.index(*state) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
+                for arc in transitions.iter() {
                     if arc.get_input_symbol(trans.coder()) == label {
                         let newpath = format!(
                             "{}{}:{} ",
@@ -188,13 +201,25 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
         while instream.is_good() {
             transducer_n += 1;
             let _ = transducer_n;
-            let trans = HfstTransducer::new_from_stream(instream);
+            let trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let mut trans_name = trans.get_name();
             if trans_name.is_empty() {
                 trans_name = globals::input_filename();
             }
             // HfstBasicTransducer walkable(trans);
-            let walkable = trans.get_basic_transducer();
+            let walkable = match trans.get_basic_transducer() {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             if CAVE_MODE {
                 let _ = write!(
                     msg,
@@ -266,10 +291,16 @@ unsafe fn real_main() -> i32 {
         ));
 
         // here starts the buffer handling part
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
@@ -279,10 +310,16 @@ unsafe fn real_main() -> i32 {
         // this tool never writes to it (traversal only reads). Mirror that
         // construction so the buffer-handling part matches the source.
         let type_ = instream.get_type();
-        let _outstream = if output_opened {
+        let _outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         process_stream(&mut instream)

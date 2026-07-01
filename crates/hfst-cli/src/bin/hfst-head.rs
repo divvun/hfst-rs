@@ -113,20 +113,35 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         if HEAD_COUNT > 0 {
             while instream.is_good() && (transducer_n < HEAD_COUNT as usize) {
                 transducer_n += 1;
-                let mut trans = HfstTransducer::new_from_stream(instream);
+                let mut trans = match HfstTransducer::new_from_stream(instream) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
                 let mut inputname = trans.get_name();
                 if inputname.is_empty() {
                     inputname = globals::input_filename();
                 }
                 verbose_printf(&format!("Forwarding {}...{}\n", inputname, transducer_n));
-                outstream.redirect(&mut trans);
+                if let Err(e) = outstream.redirect(&mut trans) {
+                    hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+                    return 1;
+                }
             }
         } else if HEAD_COUNT < 0 {
             let mut first_but_n: VecDeque<HfstTransducer> = VecDeque::new();
             verbose_printf(&format!("Counting all but last {}\n", HEAD_COUNT));
             while instream.is_good() {
                 transducer_n += 1;
-                let trans = HfstTransducer::new_from_stream(instream);
+                let trans = match HfstTransducer::new_from_stream(instream) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
                 first_but_n.push_back(trans);
             }
             if (-HEAD_COUNT) as usize > first_but_n.len() {
@@ -152,11 +167,17 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                     inputname = globals::input_filename();
                 }
                 verbose_printf(&format!("Forwarding {}...{}\n", inputname, transducer_n));
-                outstream.redirect(&mut trans);
+                if let Err(e) = outstream.redirect(&mut trans) {
+                    hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+                    return 1;
+                }
                 first_but_n.pop_front();
             }
         }
-        outstream.flush();
+        if let Err(e) = outstream.flush() {
+            hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+            return 1;
+        }
         instream.close();
         outstream.close();
         0
@@ -190,7 +211,7 @@ unsafe fn real_main() -> i32 {
         ));
 
         // here starts the buffer handling part
-        let mut instream = if input_opened {
+        let instream_result = if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
@@ -198,12 +219,26 @@ unsafe fn real_main() -> i32 {
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
+        let mut instream = match instream_result {
+            Ok(s) => s,
+            Err(e) => {
+                hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
 
         let type_ = instream.get_type();
-        let mut outstream = if output_opened {
+        let outstream_result = if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        };
+        let mut outstream = match outstream_result {
+            Ok(s) => s,
+            Err(e) => {
+                hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         process_stream(&mut instream, &mut outstream)

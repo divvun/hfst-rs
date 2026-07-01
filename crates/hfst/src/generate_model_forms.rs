@@ -65,12 +65,14 @@ pub fn is_guesser(t: &HfstTransducer) -> bool {
 // it (a generator maps the guesser's analyses back to surface forms), and
 // convert to the optimised-lookup weighted type. Lifted verbatim from
 // hfst-guess's main.
-pub fn compile_generator_from_guesser(guesser: &HfstTransducer) -> HfstTransducer {
-    let mut generator = HfstTransducer::new_copy(guesser);
-    generator.convert(TROPICAL_OPENFST_TYPE, String::new());
-    generator.invert();
-    generator.convert(HFST_OLW_TYPE, String::new());
-    generator
+pub fn compile_generator_from_guesser(
+    guesser: &HfstTransducer,
+) -> crate::error::Result<HfstTransducer> {
+    let mut generator = HfstTransducer::new_copy(guesser)?;
+    generator.convert(TROPICAL_OPENFST_TYPE, String::new())?;
+    generator.invert()?;
+    generator.convert(HFST_OLW_TYPE, String::new())?;
+    Ok(generator)
 }
 
 // 'guessify_fst.cc': 'bool is_cathegory_symbol(const std::string &symbol)'.
@@ -80,13 +82,15 @@ fn is_cathegory_symbol(symbol: &str) -> bool {
 
 // [spec:hfst:def:generate-model-forms.get-alphabet-string-tokenizer-fn]
 // [spec:hfst:sem:generate-model-forms.get-alphabet-string-tokenizer-fn]
-pub fn get_alphabet_string_tokenizer(fst: &mut HfstTransducer) -> HfstTokenizer {
+pub fn get_alphabet_string_tokenizer(
+    fst: &mut HfstTransducer,
+) -> crate::error::Result<HfstTokenizer> {
     // FIXME: temporary until optimized lookup transducers implement
     // get_alphabet.
-    let mut temp = HfstTransducer::new_copy(fst);
-    temp.convert(TROPICAL_OPENFST_TYPE, String::new());
+    let mut temp = HfstTransducer::new_copy(fst)?;
+    temp.convert(TROPICAL_OPENFST_TYPE, String::new())?;
 
-    let alphabet: StringSet = temp.get_alphabet();
+    let alphabet: StringSet = temp.get_alphabet()?;
 
     let mut tokenizer = HfstTokenizer::new();
 
@@ -94,7 +98,7 @@ pub fn get_alphabet_string_tokenizer(fst: &mut HfstTransducer) -> HfstTokenizer 
         tokenizer.add_multichar_symbol(it);
     }
 
-    tokenizer
+    Ok(tokenizer)
 }
 
 // [spec:hfst:def:generate-model-forms.get-analysis-prefix-fn]
@@ -145,8 +149,8 @@ fn generate_word_forms(
     form_generator: &mut HfstTransducer,
     max_generated_forms: usize,
     generate_threshold: f32,
-) -> StringVector {
-    let word_forms = form_generator.lookup_string_vector(analysis, -1, 0.0);
+) -> crate::error::Result<StringVector> {
+    let word_forms = form_generator.lookup_string_vector(analysis, -1, 0.0)?;
 
     let mut result_set: StringVectorSet = StringVectorSet::new();
 
@@ -198,7 +202,7 @@ fn generate_word_forms(
         results.push("<no word forms>".to_string());
     }
 
-    results
+    Ok(results)
 }
 
 // [spec:hfst:def:generate-model-forms.get-model-forms-fn]
@@ -209,7 +213,7 @@ fn get_model_forms(
     form_generator: &mut HfstTransducer,
     max_generated_forms: usize,
     generate_threshold: f32,
-) -> StringVectorVector {
+) -> crate::error::Result<StringVectorVector> {
     let reversed_analysis_prefix = get_analysis_prefix(reversed_analysis);
 
     let mut results: StringVectorVector = StringVectorVector::new();
@@ -222,10 +226,10 @@ fn get_model_forms(
             form_generator,
             max_generated_forms,
             generate_threshold,
-        ));
+        )?);
     }
 
-    results
+    Ok(results)
 }
 
 // [spec:hfst:def:generate-model-forms.split-fn]
@@ -296,11 +300,11 @@ pub fn get_guesses(
     guesser: &mut HfstTransducer,
     number_of_guesses: usize,
     tokenizer: &mut HfstTokenizer,
-) -> StringVectorVector {
+) -> crate::error::Result<StringVectorVector> {
     let mut tokenized_line = tokenizer.tokenize_one_level(word_form, false);
     tokenized_line.reverse();
 
-    let paths = guesser.lookup_fd_string_vector(&tokenized_line, -1, 0.0);
+    let paths = guesser.lookup_fd_string_vector(&tokenized_line, -1, 0.0)?;
 
     let mut num: usize = 1;
 
@@ -314,7 +318,7 @@ pub fn get_guesses(
         num += 1;
     }
 
-    results
+    Ok(results)
 }
 
 // [spec:hfst:def:generate-model-forms.get-paradigms-fn]
@@ -326,7 +330,7 @@ pub fn get_paradigms(
     model_forms: &StringVectorVector,
     number_of_generated_forms: usize,
     generate_threshold: f32,
-) -> StringVectorVector {
+) -> crate::error::Result<StringVectorVector> {
     let mut paradigm_guesses: StringVectorVector = StringVectorVector::new();
 
     for it in guesses {
@@ -338,7 +342,7 @@ pub fn get_paradigms(
             generator,
             number_of_generated_forms,
             generate_threshold,
-        );
+        )?;
 
         let mut paradigm: StringVector = StringVector::new();
         paradigm.push(word_form.to_string());
@@ -358,7 +362,7 @@ pub fn get_paradigms(
         paradigm_guesses.push(paradigm);
     }
 
-    paradigm_guesses
+    Ok(paradigm_guesses)
 }
 
 // Models 'std::getline(in, line)' over a byte stream: reads up to (and

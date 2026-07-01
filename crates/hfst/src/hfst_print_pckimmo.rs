@@ -68,7 +68,9 @@ pub fn print_pckimmo(out: &mut dyn Write, t: &crate::hfst_transducer::HfstTransd
     // C++: 'HfstBasicTransducer mutt {t};' — build the interchange graph from
     // the facade. get_basic_transducer is the HfstBasicTransducer(const
     // HfstTransducer&) conversion.
-    let mutt: HfstBasicTransducer = t.get_basic_transducer();
+    let mutt: HfstBasicTransducer = t
+        .get_basic_transducer()
+        .expect("get_basic_transducer on a valid transducer cannot fail");
     let mut s: HfstState = 0;
     let mut last: HfstState = 0;
     let mut pairs: BTreeSet<(String, String)> = BTreeSet::new();

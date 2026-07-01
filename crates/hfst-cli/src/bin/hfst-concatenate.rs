@@ -173,10 +173,16 @@ unsafe fn concatenate_streams(
         }
 
         let output_named = globals::output_filename() != "<stdout>";
-        let mut outstream = if output_named {
+        let mut outstream = match if output_named {
             HfstOutputStream::new_filename(&globals::output_filename(), output_type, true)
         } else {
             HfstOutputStream::new(output_type, true)
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         let mut first: Option<HfstTransducer> = None;
@@ -185,10 +191,22 @@ unsafe fn concatenate_streams(
         let mut transducer_n_second: usize = 0; // transducers read from second stream
 
         while continue_reading {
-            first = Some(HfstTransducer::new_from_stream(firststream));
+            first = Some(match HfstTransducer::new_from_stream(firststream) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            });
             transducer_n_first += 1;
             if secondstream.is_good() {
-                second = Some(HfstTransducer::new_from_stream(secondstream));
+                second = Some(match HfstTransducer::new_from_stream(secondstream) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                });
                 transducer_n_second += 1;
             }
             let firstname = hfst_get_name(first.as_ref().unwrap(), &globals::first_filename());
@@ -220,11 +238,15 @@ unsafe fn concatenate_streams(
                         );
                     }
                 } else {
-                    let mut s_mut = second.take().unwrap();
-                    first
+                    let mut s_mut = second.take().expect("second transducer is present");
+                    if let Err(e) = first
                         .as_mut()
-                        .unwrap()
-                        .harmonize_flag_diacritics(&mut s_mut, false);
+                        .expect("first transducer is present")
+                        .harmonize_flag_diacritics(&mut s_mut, false)
+                    {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                     second = Some(s_mut);
                 }
             }
@@ -232,30 +254,26 @@ unsafe fn concatenate_streams(
             //    catch (TransducerTypeMismatchException) { ... }
             let harmonize = HARMONIZE;
             let attempt = {
-                let mut f = first.take().unwrap();
-                let s = second.take().unwrap();
-                let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    f.concatenate(&s, harmonize);
-                }));
+                let mut f = first.take().expect("first transducer is present");
+                let s = second.take().expect("second transducer is present");
+                let res = f.concatenate(&s, harmonize).map(|_| ());
                 first = Some(f);
                 second = Some(s);
                 res
             };
             if let Err(e) = attempt {
-                let is_type_mismatch = e
-                    .downcast_ref::<hfst::error::Error>()
-                    .filter(|__e| {
-                        matches!(__e.kind, hfst::error::ErrorKind::TransducerTypeMismatch)
-                    })
-                    .is_some();
-                if !is_type_mismatch {
-                    std::panic::resume_unwind(e);
+                if !matches!(e.kind, hfst::error::ErrorKind::TransducerTypeMismatch) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
                 }
                 if globals::ALLOW_TRANSDUCER_CONVERSION {
-                    let mut f = first.take().unwrap();
-                    let mut s = second.take().unwrap();
+                    let mut f = first.take().expect("first transducer is present");
+                    let mut s = second.take().expect("second transducer is present");
                     convert_transducers(&mut f, &mut s);
-                    f.concatenate(&s, harmonize);
+                    if let Err(e2) = f.concatenate(&s, harmonize).map(|_| ()) {
+                        error(1, 0, &format!("{e2}"));
+                        return 1;
+                    }
                     first = Some(f);
                     second = Some(s);
                 } else {
@@ -271,6 +289,7 @@ unsafe fn concatenate_streams(
                             hfst_strformat(secondstream.get_type())
                         ),
                     );
+                    return 1;
                 }
             }
             {
@@ -284,7 +303,11 @@ unsafe fn concatenate_streams(
                 hfst_set_formula_binary(first.as_mut().unwrap(), &lhs, &s, "\u{22c5}");
                 second = Some(s);
             }
-            outstream.redirect(first.as_mut().unwrap());
+            if let Err(e) = outstream.redirect(first.as_mut().expect("first transducer is present"))
+            {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
 
             continue_reading =
                 firststream.is_good() && (secondstream.is_good() || transducer_n_second == 1);
@@ -324,7 +347,10 @@ unsafe fn concatenate_streams(
 
         firststream.close();
         secondstream.close();
-        outstream.flush();
+        if let Err(e) = outstream.flush() {
+            error(1, 0, &format!("{e}"));
+            return 1;
+        }
         outstream.close();
         0
     }
@@ -361,15 +387,27 @@ unsafe fn real_main() -> i32 {
         // (the C wraps each ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
-        let mut firststream = if first_opened {
+        let mut firststream = match if first_opened {
             HfstInputStream::new_filename(&globals::first_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
-        let mut secondstream = if second_opened {
+        let mut secondstream = match if second_opened {
             HfstInputStream::new_filename(&globals::second_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if is_input_stream_in_ol_format(&firststream, "hfst-concatenate")

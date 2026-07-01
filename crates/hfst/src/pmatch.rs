@@ -306,13 +306,13 @@ impl PmatchAlphabet {
         inputstream: &mut crate::transducer::IStream,
         symbol_count: SymbolNumber,
         cont: &mut PmatchContainer,
-    ) -> PmatchAlphabet {
+    ) -> crate::error::Result<PmatchAlphabet> {
         // C++ 'PmatchAlphabet(istream, n, cont)' derives from
         // 'TransducerAlphabet(istream, n, true)' then builds the pmatch symbol
         // maps; read the base alphabet from the stream and reuse the same
         // map-building done by 'new_from_alphabet'.
-        let base = TransducerAlphabet::new_istream(inputstream, symbol_count, true);
-        Self::new_from_alphabet(&base, cont)
+        let base = TransducerAlphabet::new_istream(inputstream, symbol_count, true)?;
+        Ok(Self::new_from_alphabet(&base, cont))
     }
 
     // ctor from existing alphabet: PmatchAlphabet(TransducerAlphabet const&, PmatchContainer*)
@@ -1073,12 +1073,14 @@ impl PmatchContainer {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
     // explicit PmatchContainer(std::istream &) — reads a binary pmatch archive:
     // the TOP transducer followed by any UNCOMPOSE L/R nets and RTN sub-nets.
-    pub fn new_from_stream(is: &mut crate::transducer::IStream) -> PmatchContainer {
+    pub fn new_from_stream(
+        is: &mut crate::transducer::IStream,
+    ) -> crate::error::Result<PmatchContainer> {
         use crate::transducer::{Encoder, TransducerAlphabet, TransducerHeader};
         let mut c = PmatchContainer::new();
         c.set_properties();
         c.reset_recursion();
-        let mut properties = Self::parse_hfst3_header(is);
+        let mut properties = Self::parse_hfst3_header(is)?;
         let transducer_name: String;
         if !properties.contains_key("name") {
             warn!("TOP not defined in archive, using first as TOP");
@@ -1096,8 +1098,8 @@ impl PmatchContainer {
             warn!("archive type isn't weighted optimized-lookup according to header");
         }
         c.set_properties_map(&properties);
-        let header = TransducerHeader::new_istream(is);
-        c.alphabet = PmatchAlphabet::new_from_stream(is, header.symbol_count(), &mut c);
+        let header = TransducerHeader::new_istream(is)?;
+        c.alphabet = PmatchAlphabet::new_from_stream(is, header.symbol_count(), &mut c)?;
         c.orig_symbol_count = c.alphabet.get_orig_symbol_count();
         c.symbol_count = c.alphabet.get_orig_symbol_count();
         c.global_flag_state = FdState::new(c.alphabet.get_fd_table());
@@ -1131,23 +1133,23 @@ impl PmatchContainer {
                 break;
             }
             is.putback(probe as u8);
-            properties = Self::parse_hfst3_header(is);
+            properties = Self::parse_hfst3_header(is)?;
             let transducer_name = properties.get("name").cloned().unwrap_or_default();
             if transducer_name.starts_with("UNCOMPOSE LEFT") {
-                c.uncompose_left = Some(Box::new(crate::transducer::Transducer::new_istream(is)));
+                c.uncompose_left = Some(Box::new(crate::transducer::Transducer::new_istream(is)?));
                 if c.verbose {
                     debug!("Reading uncomposer L... {} done", transducer_name);
                 }
                 c.uncomposable = true;
             } else if transducer_name.starts_with("UNCOMPOSE RIGHT") {
-                c.uncompose_right = Some(Box::new(crate::transducer::Transducer::new_istream(is)));
+                c.uncompose_right = Some(Box::new(crate::transducer::Transducer::new_istream(is)?));
                 if c.verbose {
                     debug!("Reading uncomposer R... {} done", transducer_name);
                 }
                 c.uncomposable = true;
             } else {
-                let rtn_header = TransducerHeader::new_istream(is);
-                let _dummy = TransducerAlphabet::new_istream(is, rtn_header.symbol_count(), true);
+                let rtn_header = TransducerHeader::new_istream(is)?;
+                let _dummy = TransducerAlphabet::new_istream(is, rtn_header.symbol_count(), true)?;
                 let rtn = PmatchTransducer::new_from_stream(
                     is,
                     rtn_header.index_table_size(),
@@ -1161,11 +1163,13 @@ impl PmatchContainer {
                 // else: C++ 'delete rtn' — Rust drops it here.
             }
         }
-        c
+        Ok(c)
     }
 
     // PmatchContainer(Transducer *t)
-    pub fn new_from_transducer(toplevel: Box<crate::transducer::Transducer>) -> PmatchContainer {
+    pub fn new_from_transducer(
+        toplevel: Box<crate::transducer::Transducer>,
+    ) -> crate::error::Result<PmatchContainer> {
         let mut c = PmatchContainer::new();
         c.set_properties();
         c.reset_recursion();
@@ -1179,8 +1183,8 @@ impl PmatchContainer {
             c.alphabet.get_symbol_table(),
             c.orig_symbol_count,
         ));
-        let transitions = toplevel.copy_transitionw_table();
-        let indices = toplevel.copy_windex_table();
+        let transitions = toplevel.copy_transitionw_table()?;
+        let indices = toplevel.copy_windex_table()?;
         let top = PmatchTransducer::new_from_vectors(
             transitions.get_vector().clone(),
             indices.get_vector().clone(),
@@ -1188,7 +1192,7 @@ impl PmatchContainer {
             "TOP".to_string(),
         );
         c.toplevel = Some(Box::new(top));
-        c
+        Ok(c)
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
@@ -1196,12 +1200,12 @@ impl PmatchContainer {
     // explicit PmatchContainer(std::vector<hfst::HfstTransducer>)
     pub fn new_from_hfst_transducers(
         transducers: Vec<crate::hfst_transducer::HfstTransducer>,
-    ) -> PmatchContainer {
+    ) -> crate::error::Result<PmatchContainer> {
         if transducers.is_empty() {
             let mut c = PmatchContainer::new();
             c.set_properties();
             c.reset_recursion();
-            return c;
+            return Ok(c);
         }
         if transducers.len() == 1 {
             // C++: convert transducers[0] to HFST_OLW (unless already), then
@@ -1214,16 +1218,16 @@ impl PmatchContainer {
                 top.convert(
                     crate::hfst_data_types::ImplementationType::HFST_OLW_TYPE,
                     String::new(),
-                );
+                )?;
             }
             let backend =
-                crate::transducer::Transducer::copy(top.implementation.as_hfst_ol(), true);
-            let mut c = PmatchContainer::new_from_transducer(Box::new(backend));
+                crate::transducer::Transducer::copy(top.implementation.as_hfst_ol(), true)?;
+            let mut c = PmatchContainer::new_from_transducer(Box::new(backend))?;
             // C++ sets these from transducers[0]'s properties before building; the
             // build does not depend on them, so applying them afterwards is
             // equivalent.
             c.set_properties_map(transducers[0].get_properties());
-            c
+            Ok(c)
         } else {
             // This is the difficult case where we have to make sure multiple
             // optimized-lookup transducers are harmonized with each other.
@@ -1238,7 +1242,7 @@ impl PmatchContainer {
             // A dummy transducer with an alphabet with all the symbols
             let mut harmonizer = crate::hfst_transducer::HfstTransducer::new_type(
                 crate::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE,
-            );
+            )?;
             // First we need to collect a unified alphabet from all the
             // transducers.
             let mut symbols_seen: std::collections::BTreeSet<String> =
@@ -1247,14 +1251,14 @@ impl PmatchContainer {
             let mut top_index: Option<usize> = None;
             // We collect all the symbols and also locate the TOP member.
             for i in 0..transducers.len() {
-                let string_set = transducers[i].get_alphabet();
+                let string_set = transducers[i].get_alphabet()?;
                 for sym in string_set.iter() {
                     if !symbols_seen.contains(sym) {
                         let ht = crate::hfst_transducer::HfstTransducer::new_symbol(
                             sym,
                             harmonizer.get_type(),
-                        );
-                        harmonizer.disjunct(&ht, true);
+                        )?;
+                        harmonizer.disjunct(&ht, true)?;
                         symbols_seen.insert(sym.clone());
                     }
                 }
@@ -1270,23 +1274,23 @@ impl PmatchContainer {
                 }
             };
             // Then we convert the harmonizer...
-            harmonizer.convert(HFST_OLW_TYPE, String::new());
+            harmonizer.convert(HFST_OLW_TYPE, String::new())?;
             let harmonizer_ol = harmonizer.implementation.as_hfst_ol();
 
             // We take care of TOP first. Convert to OLW (mirrors C++) then to
             // an intermediate basic transducer, then harmonize into OL.
             let mut top = transducers[top_index].clone();
             if top.get_type() != HFST_OLW_TYPE {
-                top.convert(HFST_OLW_TYPE, String::new());
+                top.convert(HFST_OLW_TYPE, String::new())?;
             }
             let intermediate_tmp =
-                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&top);
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&top)?;
             let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                 &intermediate_tmp,
                 true,                // weighted
                 "",                  // no special options
                 Some(harmonizer_ol), // harmonize with this
-            );
+            )?;
             // this will be the alphabet of the entire container
             c.alphabet = PmatchAlphabet::new_from_alphabet(harmonized_tmp.get_alphabet(), &mut c);
             c.orig_symbol_count = c.alphabet.get_orig_symbol_count();
@@ -1296,8 +1300,8 @@ impl PmatchContainer {
                 c.alphabet.get_symbol_table(),
                 c.orig_symbol_count,
             ));
-            let transitions = harmonized_tmp.copy_transitionw_table();
-            let indices = harmonized_tmp.copy_windex_table();
+            let transitions = harmonized_tmp.copy_transitionw_table()?;
+            let indices = harmonized_tmp.copy_windex_table()?;
             let top_pt = PmatchTransducer::new_from_vectors(
                 transitions.get_vector().clone(),
                 indices.get_vector().clone(),
@@ -1316,18 +1320,18 @@ impl PmatchContainer {
                 }
                 let mut temp = transducers[i].clone();
                 if temp.get_type() != HFST_OLW_TYPE {
-                    temp.convert(HFST_OLW_TYPE, String::new());
+                    temp.convert(HFST_OLW_TYPE, String::new())?;
                 }
                 let intermediate_tmp =
-                    ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&temp);
+                    ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&temp)?;
                 let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                     &intermediate_tmp,
                     true,
                     "",
                     Some(harmonizer_ol),
-                );
-                let transitions = harmonized_tmp.copy_transitionw_table();
-                let indices = harmonized_tmp.copy_windex_table();
+                )?;
+                let transitions = harmonized_tmp.copy_transitionw_table()?;
+                let indices = harmonized_tmp.copy_windex_table()?;
                 let name = transducers[i].get_name();
                 let rtn = PmatchTransducer::new_from_vectors(
                     transitions.get_vector().clone(),
@@ -1337,7 +1341,7 @@ impl PmatchContainer {
                 );
                 c.alphabet.add_rtn(Box::new(rtn), &name);
             }
-            c
+            Ok(c)
         }
     }
 
@@ -1588,9 +1592,13 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.add-rtn-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.add-rtn-fn]
-    pub fn add_rtn(&mut self, rtn: &crate::transducer::Transducer, name: &str) {
-        let transitions = rtn.copy_transitionw_table();
-        let indices = rtn.copy_windex_table();
+    pub fn add_rtn(
+        &mut self,
+        rtn: &crate::transducer::Transducer,
+        name: &str,
+    ) -> crate::error::Result<()> {
+        let transitions = rtn.copy_transitionw_table()?;
+        let indices = rtn.copy_windex_table()?;
         let pmatch_rtn = Box::new(PmatchTransducer::new_from_vectors(
             transitions.get_vector().clone(),
             indices.get_vector().clone(),
@@ -1605,6 +1613,7 @@ impl PmatchContainer {
             // argument is borrowed and pmatch_rtn is simply dropped.
             drop(pmatch_rtn);
         }
+        Ok(())
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.process-fn]
@@ -1955,7 +1964,9 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.parse-hfst3-header-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.parse-hfst3-header-fn]
-    pub fn parse_hfst3_header(f: &mut crate::transducer::IStream) -> BTreeMap<String, String> {
+    pub fn parse_hfst3_header(
+        f: &mut crate::transducer::IStream,
+    ) -> crate::error::Result<BTreeMap<String, String>> {
         let mut properties: BTreeMap<String, String> = BTreeMap::new();
         let header1 = b"HFST";
         let total = header1.len() + 1; // 'HFST' plus the C-string NUL = 5
@@ -1982,12 +1993,12 @@ impl PmatchContainer {
             f.read(&mut len_bytes);
             let remaining_header_len = u16::from_ne_bytes(len_bytes) as usize;
             if f.get() != 0 {
-                crate::HFST_THROW!(TransducerHeader);
+                crate::bail!(TransducerHeader);
             }
             let mut headervalue = vec![0u8; remaining_header_len];
             f.read(&mut headervalue);
             if remaining_header_len == 0 || headervalue[remaining_header_len - 1] != 0 {
-                crate::HFST_THROW!(TransducerHeader);
+                crate::bail!(TransducerHeader);
             }
             let cstrlen = |s: &[u8]| -> usize { s.iter().position(|&b| b == 0).unwrap_or(s.len()) };
             let mut i = 0usize;
@@ -2000,7 +2011,7 @@ impl PmatchContainer {
                 properties.insert(property, value);
                 i += length + 1;
             }
-            properties
+            Ok(properties)
         } else {
             // nope. put back what we've taken: the non-matching character first,
             // then the characters that did match, so the next read sees them in
@@ -2011,7 +2022,7 @@ impl PmatchContainer {
             for &b in matched.iter().rev() {
                 f.putback(b);
             }
-            crate::HFST_THROW!(TransducerHeader);
+            crate::bail!(TransducerHeader);
         }
     }
 
@@ -2092,11 +2103,12 @@ impl PmatchContainer {
     }
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.decrease-stack-depth-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.decrease-stack-depth-fn]
-    pub fn decrease_stack_depth(&mut self) {
+    pub fn decrease_stack_depth(&mut self) -> crate::error::Result<()> {
         if self.stack_depth == 0 {
-            crate::HFST_THROW_MESSAGE!(Hfst, "pmatch: negative stack depth");
+            crate::bail!(Hfst, "pmatch: negative stack depth");
         }
         self.stack_depth -= 1;
+        Ok(())
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.push-rtn-call-fn]

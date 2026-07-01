@@ -80,7 +80,7 @@ fn build_abcd() -> (HfstBasicTransducer, u32, u32) {
 
 // --- "HfstBasicTransducer construction"
 #[test]
-fn construction() {
+fn construction() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     verbose_print("HfstBasicTransducer construction");
 
@@ -104,11 +104,12 @@ fn construction() {
     assert!(!t.is_final_state(s2));
 
     t.set_final_weight(s2, &1.0);
-    assert!(t.is_final_state(s2) && t.get_final_weight(s2) == 1.0);
+    assert!(t.is_final_state(s2) && t.get_final_weight(s2)? == 1.0);
 
     // Take a copy (C++ 'HfstBasicTransducer tc(t)').
     let tc = t.clone();
-    assert!(tc.is_final_state(s2) && tc.get_final_weight(s2) == 1.0);
+    assert!(tc.is_final_state(s2) && tc.get_final_weight(s2)? == 1.0);
+    Ok(())
 }
 
 // --- "HfstBasicTransducer exceptions"
@@ -124,14 +125,9 @@ fn exceptions() {
     // so every call throws StateIsNotFinalException.
     for s in 0u32..5 {
         if s != s2 {
-            let payload = expect_hfst_exception(|| {
-                let _w = t.get_final_weight(0);
-            });
+            let r = t.get_final_weight(0);
             assert!(
-                payload
-                    .downcast_ref::<hfst::error::Error>()
-                    .filter(|__e| matches!(__e.kind, hfst::error::ErrorKind::StateIsNotFinal))
-                    .is_some(),
+                matches!(&r, Err(e) if matches!(e.kind, hfst::error::ErrorKind::StateIsNotFinal)),
                 "expected StateIsNotFinalException"
             );
         }
@@ -223,12 +219,19 @@ fn empty_string_exception() {
         );
         empty_symbol.add_transition(0, &tr, true);
     });
+    // HfstBasicTransition::new_symbols returns Self (not Result) and unwraps the
+    // fallible transition-data constructor via .expect, so an empty-symbol
+    // transition panics with the String message from .expect rather than a
+    // panic_any(hfst::error::Error). The Debug of the wrapped ErrorKind::EmptyString
+    // is embedded in that message, so assert on it to keep the EmptyString check.
+    let msg = payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .expect("empty-symbol transition must panic with a string message");
     assert!(
-        payload
-            .downcast_ref::<hfst::error::Error>()
-            .filter(|__e| matches!(__e.kind, hfst::error::ErrorKind::EmptyString))
-            .is_some(),
-        "expected EmptyStringException"
+        msg.contains("EmptyString"),
+        "expected EmptyStringException, got panic message {msg:?}"
     );
 }
 
@@ -295,7 +298,7 @@ fn unknown_and_identity_symbols() {
 // reachable states are NOT in sequential order so the renumber genuinely
 // reorders, and check the compacted result preserves the language "ab".
 #[test]
-fn renumber_states_compacts_in_discovery_order() {
+fn renumber_states_compacts_in_discovery_order() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     verbose_print("HfstBasicTransducer: renumber_states");
 
@@ -331,7 +334,8 @@ fn renumber_states_compacts_in_discovery_order() {
     // new id 2 (old final state 1): no arcs, final, weight carried over.
     assert!(r.iter().nth(2).unwrap().is_empty());
     assert!(r.is_final_state(2));
-    assert_eq!(r.get_final_weight(2), 0.5);
+    assert_eq!(r.get_final_weight(2)?, 0.5);
+    Ok(())
 }
 
 // --- kill_paths (librarify regression, not a C++ test-suite block)
@@ -439,7 +443,7 @@ fn pair_target_state_with_identity_fallback() {
 // — (w, None, None) for a final weight, (w, Some, Some) for an arc — so it can
 // reweight conditionally on the symbols.
 #[test]
-fn transform_weights_applies_per_arc_and_final_symbol_aware() {
+fn transform_weights_applies_per_arc_and_final_symbol_aware() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     verbose_print("HfstBasicTransducer: transform_weights");
 
@@ -467,7 +471,8 @@ fn transform_weights_applies_per_arc_and_final_symbol_aware() {
     let s1: Vec<_> = r.iter().nth(1).unwrap().iter().collect();
     assert!((s1[0].get_weight() - 1.0).abs() < 1e-6);
     // final weight 0.5 -> 1.5 (the None, None branch)
-    assert!((r.get_final_weight(2) - 1.5).abs() < 1e-6);
+    assert!((r.get_final_weight(2)? - 1.5).abs() < 1e-6);
+    Ok(())
 }
 
 // --- summarize (librarify regression, not a C++ test-suite block)
@@ -508,7 +513,7 @@ fn summarize_counts_states_arcs_and_alphabet() {
 // printing source/target/input/output/weight, and the final weight of final
 // states, to stderr. Ported faithfully as a walk over the iterator API.
 #[test]
-fn iterating_through() {
+fn iterating_through() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     verbose_print("HfstBasicTransducer: iterating through");
 
@@ -527,8 +532,9 @@ fn iterating_through() {
             );
         }
         if t.is_final_state(source_state) {
-            eprintln!("{}\t{}", source_state, t.get_final_weight(source_state));
+            eprintln!("{}\t{}", source_state, t.get_final_weight(source_state)?);
         }
         source_state += 1;
     }
+    Ok(())
 }

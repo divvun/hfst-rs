@@ -3,7 +3,7 @@
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 
-fn main() {
+fn main() -> hfst::error::Result<()> {
     // state0 --a:b/0.5--> state1 (final, weight 0.3)
     let mut g = HfstBasicTransducer::new();
     g.name = "foo".to_string();
@@ -37,8 +37,8 @@ fn main() {
     assert_eq!(g2.name, "foo");
     assert_eq!(g2.get_max_state(), 1);
     assert!(g2.is_final_state(1));
-    assert!((g2.get_final_weight(1) - 0.3).abs() < 1e-6);
-    let trs = g2.transitions(0);
+    assert!((g2.get_final_weight(1)? - 0.3).abs() < 1e-6);
+    let trs = g2.transitions(0)?;
     assert_eq!(trs.len(), 1);
     assert_eq!(trs[0].get_input_symbol(g2.coder()), "a");
     assert_eq!(trs[0].get_output_symbol(g2.coder()), "b");
@@ -56,12 +56,13 @@ fn main() {
         assert_eq!(g3.name, "foo");
         assert_eq!(g3.get_max_state(), 1);
         assert!(g3.is_final_state(1));
-        assert!((g3.get_final_weight(1) - 0.3).abs() < 1e-6);
-        let t = g3.transitions(0);
+        assert!((g3.get_final_weight(1)? - 0.3).abs() < 1e-6);
+        let t = g3.transitions(0)?;
         assert_eq!(t.len(), 1);
         assert_eq!(t[0].get_input_symbol(g3.coder()), "a");
         assert_eq!(t[0].get_output_symbol(g3.coder()), "b");
         assert!((t[0].get_weight() - 0.5).abs() < 1e-6);
         println!("prolog round-trip (read_in_prolog_format_file) OK");
     }
+    Ok(())
 }

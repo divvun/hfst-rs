@@ -122,15 +122,51 @@ unsafe fn process_stream(
                 verbose_printf(&format!("Checking alphas... {}\n", transducer_n));
             }
             // read first alphas
-            let first = HfstTransducer::new_from_stream(firststream);
-            let mutt: HfstBasicTransducer = first.get_basic_transducer();
-            let first_transducer_alphabet: StringSet = first.get_alphabet();
+            let first = match HfstTransducer::new_from_stream(firststream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            let mutt: HfstBasicTransducer = match first.get_basic_transducer() {
+                Ok(m) => m,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            let first_transducer_alphabet: StringSet = match first.get_alphabet() {
+                Ok(a) => a,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let transducer_knows_alphabet = true;
             let first_found_alphabet: StringSet = mutt.symbols_used();
             // read second alphas
-            let second = HfstTransducer::new_from_stream(secondstream);
-            let secondmutt: HfstBasicTransducer = second.get_basic_transducer();
-            let second_transducer_alphabet: StringSet = second.get_alphabet();
+            let second = match HfstTransducer::new_from_stream(secondstream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            let secondmutt: HfstBasicTransducer = match second.get_basic_transducer() {
+                Ok(m) => m,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            let second_transducer_alphabet: StringSet = match second.get_alphabet() {
+                Ok(a) => a,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let second_found_alphabet: StringSet = secondmutt.symbols_used();
             // match
             let _ = write!(out, "Actual alphabet differences:\n");
@@ -279,14 +315,11 @@ unsafe fn real_main() -> i32 {
         ));
         // here starts the buffer handling part
         // (the C wraps each ctor in try/catch on HfstException, calling error()
-        // and returning EXIT_FAILURE; the Rust ctors currently panic on a bad
-        // file rather than throwing. We mirror the intent via catch_unwind so the
-        // error path and message are preserved.)
+        // and returning EXIT_FAILURE; the Rust ctors now return a Result, so the
+        // error path and message are preserved via a match on that Result.)
         let firststream = if first_opened {
             let name = globals::first_filename();
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                HfstInputStream::new_filename(&name)
-            })) {
+            match HfstInputStream::new_filename(&name) {
                 Ok(s) => s,
                 Err(_) => {
                     error(1, 0, &format!("{} is not a valid transducer file", name));
@@ -294,7 +327,7 @@ unsafe fn real_main() -> i32 {
                 }
             }
         } else {
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(HfstInputStream::new)) {
+            match HfstInputStream::new() {
                 Ok(s) => s,
                 Err(_) => {
                     error(
@@ -311,9 +344,7 @@ unsafe fn real_main() -> i32 {
         };
         let secondstream = if second_opened {
             let name = globals::second_filename();
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                HfstInputStream::new_filename(&name)
-            })) {
+            match HfstInputStream::new_filename(&name) {
                 Ok(s) => s,
                 Err(_) => {
                     error(1, 0, &format!("{} is not a valid transducer file", name));
@@ -321,7 +352,7 @@ unsafe fn real_main() -> i32 {
                 }
             }
         } else {
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(HfstInputStream::new)) {
+            match HfstInputStream::new() {
                 Ok(s) => s,
                 Err(_) => {
                     error(

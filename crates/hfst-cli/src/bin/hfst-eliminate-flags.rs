@@ -111,7 +111,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = HfstTransducer::new_from_stream(instream);
+            let mut trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let mut inputname = hfst_get_name(&trans, &globals::input_filename());
             if inputname.is_empty() {
                 inputname = globals::input_filename();
@@ -126,13 +132,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             }
             match &flag {
                 None => {
-                    trans.eliminate_flags();
+                    if let Err(e) = trans.eliminate_flags() {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                 }
                 Some(f) => {
-                    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        trans.eliminate_flag(f);
-                    }));
-                    if res.is_err() {
+                    if trans.eliminate_flag(f).is_err() {
                         error(
                             1,
                             0,
@@ -152,7 +158,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             let src = trans.clone();
             hfst_set_name_unary(&mut trans, &src, "eliminate-flags");
             hfst_set_formula_unary(&mut trans, &src, "Id");
-            outstream.redirect(&mut trans);
+            if let Err(e) = outstream.redirect(&mut trans) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
         instream.close();
         outstream.close();
@@ -187,20 +196,32 @@ unsafe fn real_main() -> i32 {
         ));
 
         // here starts the buffer handling part
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
 
         let type_ = instream.get_type();
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-eliminate-flags") {

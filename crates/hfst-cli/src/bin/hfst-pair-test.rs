@@ -335,7 +335,13 @@ fn get_transducer(tokenized_pair_string: &StringPairVector) -> HfstTransducer {
         s = target;
     }
     t.set_final_weight(s, &0.0);
-    HfstTransducer::new_from_basic(&t, ImplementationType::TROPICAL_OPENFST_TYPE)
+    match HfstTransducer::new_from_basic(&t, ImplementationType::TROPICAL_OPENFST_TYPE) {
+        Ok(v) => v,
+        Err(e) => {
+            error(1, 0, &format!("{e}"));
+            unreachable!()
+        }
+    }
 }
 
 // [spec:hfst:def:hfst-pair-test.unescape-fn]
@@ -420,8 +426,26 @@ unsafe fn print_failure_info(
 ) {
     unsafe {
         let mut str_transducer = get_transducer(tokenized_pair_string);
-        let tt = HfstTransducer::new_from_basic(t, ImplementationType::TROPICAL_OPENFST_TYPE);
-        str_transducer.input_project().compose(&tt, true).minimize();
+        let tt = match HfstTransducer::new_from_basic(t, ImplementationType::TROPICAL_OPENFST_TYPE)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
+        };
+        if let Err(e) = str_transducer.input_project() {
+            error(1, 0, &format!("{e}"));
+            return;
+        }
+        if let Err(e) = str_transducer.compose(&tt, true) {
+            error(1, 0, &format!("{e}"));
+            return;
+        }
+        if let Err(e) = str_transducer.minimize() {
+            error(1, 0, &format!("{e}"));
+            return;
+        }
         let basic = HfstBasicTransducer::new_from_transducer(&str_transducer);
         print_recognized_prefix(tokenized_pair_string, &basic, name, outfile, known_symbols);
     }
@@ -593,7 +617,13 @@ unsafe fn process_stream(
                     transducer_n
                 ));
             }
-            let trans = HfstTransducer::new_from_stream(inputstream);
+            let trans = match HfstTransducer::new_from_stream(inputstream) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let basic = HfstBasicTransducer::new_from_transducer(&trans);
             grammar.push(basic);
             rule_names.push(demangle(trans.get_name()));
@@ -897,10 +927,16 @@ unsafe fn real_main() -> i32 {
 
         // here starts the buffer handling part
         let input_named = globals::input_filename() != "<stdin>";
-        let mut instream = if input_named {
+        let mut instream = match if input_named {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm

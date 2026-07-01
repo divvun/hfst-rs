@@ -161,10 +161,16 @@ unsafe fn priority_disjunct_streams(
         }
 
         let output_named = globals::output_filename() != "<stdout>";
-        let mut outstream = if output_named {
+        let mut outstream = match if output_named {
             HfstOutputStream::new_filename(&globals::output_filename(), output_type, true)
         } else {
             HfstOutputStream::new(output_type, true)
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         let mut first: Option<HfstTransducer> = None;
@@ -172,10 +178,22 @@ unsafe fn priority_disjunct_streams(
         let mut transducer_n_first: usize = 0; // transducers read from first stream
         let mut transducer_n_second: usize = 0; // transducers read from second stream
         while continue_reading {
-            first = Some(HfstTransducer::new_from_stream(firststream));
+            first = Some(match HfstTransducer::new_from_stream(firststream) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            });
             transducer_n_first += 1;
             if secondstream.is_good() {
-                second = Some(HfstTransducer::new_from_stream(secondstream));
+                second = Some(match HfstTransducer::new_from_stream(secondstream) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                });
                 transducer_n_second += 1;
             }
             let first_t = first.as_mut().unwrap();
@@ -197,17 +215,31 @@ unsafe fn priority_disjunct_streams(
                 ));
             }
             let mismatch = {
-                let second_ref = second.as_ref().unwrap();
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    first.as_mut().unwrap().priority_union(second_ref); // harmonize
-                }))
-                .is_err()
+                let second_ref = second
+                    .as_ref()
+                    .expect("second transducer present (just read)");
+                first
+                    .as_mut()
+                    .expect("first transducer present (just read)")
+                    .priority_union(second_ref) // harmonize
+                    .is_err()
             };
             if mismatch {
                 if globals::ALLOW_TRANSDUCER_CONVERSION {
-                    let mut second_t = second.take().unwrap();
-                    convert_transducers(first.as_mut().unwrap(), &mut second_t);
-                    first.as_mut().unwrap().priority_union(&second_t); // , harmonize);
+                    let mut second_t = second.take().expect("second transducer present");
+                    convert_transducers(
+                        first.as_mut().expect("first transducer present"),
+                        &mut second_t,
+                    );
+                    if let Err(e) = first
+                        .as_mut()
+                        .expect("first transducer present")
+                        .priority_union(&second_t)
+                    // , harmonize);
+                    {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                     second = Some(second_t);
                 } else {
                     error(
@@ -232,7 +264,10 @@ unsafe fn priority_disjunct_streams(
             let second_ref = second.as_ref().unwrap();
             hfst_set_name_binary(first.as_mut().unwrap(), &first_src, second_ref, "union");
             hfst_set_formula_binary(first.as_mut().unwrap(), &first_src, second_ref, "\u{222a}");
-            outstream.redirect(first.as_mut().unwrap());
+            if let Err(e) = outstream.redirect(first.as_mut().expect("first transducer present")) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
 
             continue_reading =
                 firststream.is_good() && (secondstream.is_good() || transducer_n_second == 1);
@@ -245,7 +280,10 @@ unsafe fn priority_disjunct_streams(
                 second = None;
             }
 
-            outstream.flush();
+            if let Err(e) = outstream.flush() {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
 
         if firststream.is_good() {
@@ -311,15 +349,27 @@ unsafe fn real_main() -> i32 {
         // (the C wraps each ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch
         // arms are not reproduced here.)
-        let mut firststream = if first_opened {
+        let mut firststream = match if first_opened {
             HfstInputStream::new_filename(&globals::first_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
-        let mut secondstream = if second_opened {
+        let mut secondstream = match if second_opened {
             HfstInputStream::new_filename(&globals::second_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if is_input_stream_in_ol_format(&firststream, "hfst-priority-disjunct")

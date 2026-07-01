@@ -142,7 +142,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let trans = HfstTransducer::new_from_stream(instream);
+            let trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             // C: inputname = trans->get_name(); if empty, use inputfilename.
             let inputname = if !trans.get_name().is_empty() {
                 trans.get_name()
@@ -154,8 +160,17 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             } else {
                 verbose_printf(&format!("Guessifying {}... {}\n", inputname, transducer_n));
             }
-            let mut t = affix_guessify(&trans, DIRECTION, WEIGHT, FORMAT);
-            outstream.redirect(&mut t);
+            let mut t = match affix_guessify(&trans, DIRECTION, WEIGHT, FORMAT) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            if let Err(e) = outstream.redirect(&mut t) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         } // good instream
         0
     }
@@ -191,17 +206,31 @@ unsafe fn real_main() -> i32 {
         // (the C wraps the ctor in try/catch on HfstException reporting
         // "%s is not a valid transducer file"; the Rust ctor currently panics on
         // a bad file rather than throwing, so the catch arm is not reproduced.)
-        let mut instream = if input_opened {
+        let instream_res = if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
         };
+        let mut instream = match instream_res {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
 
         let type_ = instream.get_type();
-        let mut outstream = if output_opened {
+        let outstream_res = if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        };
+        let mut outstream = match outstream_res {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-affix-guessify") {

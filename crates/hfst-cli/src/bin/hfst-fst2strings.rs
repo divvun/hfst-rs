@@ -457,7 +457,13 @@ unsafe fn process_stream(
             }
             first_transducer = false;
 
-            let mut t = HfstTransducer::new_from_stream(instream);
+            let mut t = match HfstTransducer::new_from_stream(instream) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
 
             /* Pairstring format is not supported on optimized lookup format. */
             if PRINT_IN_PAIRSTRING_FORMAT
@@ -480,9 +486,15 @@ unsafe fn process_stream(
                 // and HfstFatalException; in Rust these surface as panics rather
                 // than being caught here.)
                 let mut tc = t.clone();
-                tc.n_best(1);
+                if let Err(e) = tc.n_best(1) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
                 let mut best_paths: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
-                tc.extract_paths(&mut best_paths, -1, -1);
+                if let Err(e) = tc.extract_paths(&mut best_paths, -1, -1) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
                 if best_paths.len() != 1 {
                     error(1, 0, "n_best(1) produced more than one path");
                 }
@@ -496,20 +508,31 @@ unsafe fn process_stream(
                 ));
                 // (the C wraps this in try/catch on FunctionNotImplementedException
                 // and HfstFatalException; in Rust these surface as panics.)
-                t.n_best(NBEST_STRINGS as u32);
+                if let Err(e) = t.n_best(NBEST_STRINGS as u32) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
             } else if MAX_RANDOM_STRINGS <= 0
                 && MAX_STRINGS <= 0
                 && MAX_INPUT_LENGTH == 0
                 && MAX_OUTPUT_LENGTH == 0
                 && CYCLES < 0
-                && t.is_cyclic()
             {
-                error(
-                    1,
-                    0,
-                    "Transducer is cyclic. Use one or more of these options: -n, -N, -r, -l, -L, -c",
-                );
-                return 1;
+                let is_cyclic = match t.is_cyclic() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
+                if is_cyclic {
+                    error(
+                        1,
+                        0,
+                        "Transducer is cyclic. Use one or more of these options: -n, -N, -r, -l, -L, -c",
+                    );
+                    return 1;
+                }
             }
 
             if MAX_STRINGS > 0 {
@@ -526,10 +549,14 @@ unsafe fn process_stream(
             /* not random strings */
             if MAX_RANDOM_STRINGS <= 0 {
                 let mut cb = Callback::new(MAX_STRINGS, &mut *outstream);
-                if EVAL_FD {
-                    t.extract_paths_fd_cb(&mut cb, CYCLES, FILTER_FD);
+                let extract_res = if EVAL_FD {
+                    t.extract_paths_fd_cb(&mut cb, CYCLES, FILTER_FD)
                 } else {
-                    t.extract_paths_cb(&mut cb, CYCLES);
+                    t.extract_paths_cb(&mut cb, CYCLES)
+                };
+                if let Err(e) = extract_res {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
                 }
                 verbose_printf(&format!("Printed {} string(s)\n", cb.count));
             }
@@ -538,10 +565,14 @@ unsafe fn process_stream(
                 let mut results: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
                 // (the C wraps this in try/catch on FunctionNotImplementedException;
                 // in Rust the not-implemented case surfaces as a panic.)
-                if EVAL_FD {
-                    t.extract_random_paths_fd(&mut results, MAX_RANDOM_STRINGS, FILTER_FD);
+                let random_res = if EVAL_FD {
+                    t.extract_random_paths_fd(&mut results, MAX_RANDOM_STRINGS, FILTER_FD)
                 } else {
-                    t.extract_random_paths(&mut results, MAX_RANDOM_STRINGS);
+                    t.extract_random_paths(&mut results, MAX_RANDOM_STRINGS)
+                };
+                if let Err(e) = random_res {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
                 }
 
                 let mut cb = Callback::new(MAX_RANDOM_STRINGS, &mut *outstream);
@@ -596,10 +627,16 @@ unsafe fn real_main() -> i32 {
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // printing "%s is not a valid transducer file" is not reproduced here.)
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         let mut out = match globals::output_writer() {

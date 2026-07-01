@@ -1,7 +1,7 @@
 use hfst::convert::{IndexPlaceholders, StatePlaceholder, TransitionPlaceholder};
 use std::collections::BTreeSet;
 
-fn main() {
+fn main() -> hfst::error::Result<()> {
     let flags: BTreeSet<u16> = BTreeSet::new();
 
     // State 0 is always nonsimple; a later state starts empty (=> simple).
@@ -36,8 +36,8 @@ fn main() {
     s2.add_input(3, &flags);
     s2.add_transition(TransitionPlaceholder::new(1, 0, 0, 0.0)); // epsilon
     s2.add_transition(TransitionPlaceholder::new(2, 3, 3, 0.0)); // symbol 3
-    assert_eq!(s2.symbol_offset(0, &flags), 0);
-    assert_eq!(s2.symbol_offset(3, &flags), 1);
+    assert_eq!(s2.symbol_offset(0, &flags)?, 0);
+    assert_eq!(s2.symbol_offset(3, &flags)?, 1);
     println!("symbol_offset OK");
 
     // IndexPlaceholders: sparse assignment with NO_TABLE_INDEX gaps.
@@ -51,4 +51,5 @@ fn main() {
     // an occupied position is unsuitable
     assert!(ip.unsuitable(2, 4, 1.0));
     println!("index-placeholders OK");
+    Ok(())
 }

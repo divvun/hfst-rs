@@ -430,9 +430,18 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 }
 
                 tr.disjunct_path(&spv, path_weight);
-                let mut res = HfstTransducer::new_from_basic(&tr, OUTPUT_FORMAT);
+                let mut res = match HfstTransducer::new_from_basic(&tr, OUTPUT_FORMAT) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
                 hfst_set_name(&mut res, "", "string");
-                outstream.redirect(&mut res);
+                if let Err(e) = outstream.redirect(&mut res) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
             } else {
                 // disjunct all strings into a single transducer
                 // do not take negative logarithm yet
@@ -441,22 +450,40 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         }
         // C: free(line); -> owned String, drops at scope end.
         if DISJUNCT_STRINGS {
-            let mut res = HfstTransducer::new_from_basic(&disjunction, OUTPUT_FORMAT);
+            let mut res = match HfstTransducer::new_from_basic(&disjunction, OUTPUT_FORMAT) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
 
             if NORMALIZE_WEIGHTS {
                 verbose_printf("Normalising weights...\n");
-                res.transform_weights(divide_by_sum_of_weights);
+                if let Err(e) = res.transform_weights(divide_by_sum_of_weights) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
             }
             if LOGARITHMIC_WEIGHTS_E {
                 verbose_printf("Taking negative logarithm...\n");
-                res.transform_weights(take_negative_logarithm_e);
+                if let Err(e) = res.transform_weights(take_negative_logarithm_e) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
             } else if LOGARITHMIC_WEIGHTS_10 {
                 verbose_printf("Taking negative logarithm...\n");
-                res.transform_weights(take_negative_logarithm_10);
+                if let Err(e) = res.transform_weights(take_negative_logarithm_10) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
             }
 
             hfst_set_name(&mut res, "?", "strings");
-            outstream.redirect(&mut res);
+            if let Err(e) = outstream.redirect(&mut res) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
         0
     }
@@ -509,10 +536,17 @@ unsafe fn real_main() -> i32 {
             globals::output_filename()
         ));
         // here starts the buffer handling part
-        let mut outstream = if output_opened {
+        let outstream_result = if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), OUTPUT_FORMAT, true)
         } else {
             HfstOutputStream::new(OUTPUT_FORMAT, true)
+        };
+        let mut outstream = match outstream_result {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
         let mut input = match globals::input_reader() {
             Ok(r) => r,

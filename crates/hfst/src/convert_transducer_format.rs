@@ -119,30 +119,30 @@ impl ConversionFunctions {
     // The C++ sets 'retval->name = t.get_name()' on every arm.
     pub fn hfst_transducer_to_hfst_basic_transducer(
         t: &crate::hfst_transducer::HfstTransducer,
-    ) -> crate::hfst_basic_transducer::HfstBasicTransducer {
+    ) -> crate::error::Result<crate::hfst_basic_transducer::HfstBasicTransducer> {
         use crate::hfst_data_types::ImplementationType::*;
         if t.type_ == TROPICAL_OPENFST_TYPE {
             let mut retval = ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
                 t.implementation.as_tropical(),
                 true,
-            );
+            )?;
             retval.name = t.get_name();
-            return retval;
+            return Ok(retval);
         }
         if t.type_ == LOG_OPENFST_TYPE {
             let mut retval = ConversionFunctions::log_ofst_to_hfst_basic_transducer(
                 t.implementation.as_log(),
                 true,
-            );
+            )?;
             retval.name = t.get_name();
-            return retval;
+            return Ok(retval);
         }
         if t.type_ == HFST_OL_TYPE || t.type_ == HFST_OLW_TYPE {
             let mut retval = ConversionFunctions::hfst_ol_to_hfst_basic_transducer(
                 t.implementation.as_hfst_ol(),
             );
             retval.name = t.get_name();
-            return retval;
+            return Ok(retval);
         }
         unimplemented!(
             "hfst_transducer_to_hfst_basic_transducer: not implemented for this transducer type"

@@ -41,7 +41,8 @@ impl HfstBasicTransition {
             target_state: s,
             transition_data: HfstTropicalTransducerTransitionData::new_symbols(
                 isymbol, osymbol, weight, coder,
-            ),
+            )
+            .expect("new_symbols is called with non-empty transition symbols"),
         }
     }
 

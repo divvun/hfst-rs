@@ -220,9 +220,9 @@ impl HfstTransducer {
     /// \brief Create an empty transducer of type 'type_'.
     ///
     /// 'HfstTransducer(ImplementationType type)'.
-    pub fn new_type(type_: ImplementationType) -> Self {
+    pub fn new_type(type_: ImplementationType) -> crate::error::Result<Self> {
         if !Self::is_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         // SFST_TYPE / FOMA_TYPE / XFSM_TYPE arms are #if'd out.
         let implementation = match type_ {
@@ -241,17 +241,17 @@ impl HfstTransducer {
                     ),
                 ),
             ),
-            ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequired),
+            ERROR_TYPE => crate::bail!(SpecifiedTypeRequired),
             _ => unimplemented!("new_type: not implemented for this transducer type"),
         };
-        HfstTransducer {
+        Ok(HfstTransducer {
             type_,
             anonymous: false,
             is_trie: true,
             name: String::new(),
             props: BTreeMap::new(),
             implementation,
-        }
+        })
     }
 
     /// 'HfstTransducer(const std::string &utf8_str, const HfstTokenizer&, type)'.
@@ -259,12 +259,12 @@ impl HfstTransducer {
         utf8_str: &str,
         multichar_symbol_tokenizer: &HfstTokenizer,
         type_: ImplementationType,
-    ) -> Self {
+    ) -> crate::error::Result<Self> {
         if !Self::is_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         if utf8_str.is_empty() {
-            HFST_THROW_MESSAGE!(
+            crate::bail!(
                 EmptyString,
                 "HfstTransducer(const std::string&, const HfstTokenizer&, ImplementationType)"
             );
@@ -277,17 +277,17 @@ impl HfstTransducer {
             LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
                 LogWeightTransducer::define_transducer_spv(&spv),
             )),
-            ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequired),
+            ERROR_TYPE => crate::bail!(SpecifiedTypeRequired),
             _ => unimplemented!("new_tokenized: not implemented for this transducer type"),
         };
-        HfstTransducer {
+        Ok(HfstTransducer {
             type_,
             anonymous: false,
             is_trie: true,
             name: String::new(),
             props: BTreeMap::new(),
             implementation,
-        }
+        })
     }
 
     /// 'HfstTransducer(const std::string &upper, const std::string &lower,
@@ -297,13 +297,13 @@ impl HfstTransducer {
         lower_utf8_str: &str,
         multichar_symbol_tokenizer: &HfstTokenizer,
         type_: ImplementationType,
-    ) -> Self {
+    ) -> crate::error::Result<Self> {
         if !Self::is_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         if upper_utf8_str.is_empty() || lower_utf8_str.is_empty() {
             // NOTE: the C++ message is missing its closing paren; preserved.
-            HFST_THROW_MESSAGE!(
+            crate::bail!(
                 EmptyString,
                 "HfstTransducer(const std::string&, const std::string&, const HfstTokenizer&, ImplementationType"
             );
@@ -316,18 +316,18 @@ impl HfstTransducer {
             LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
                 LogWeightTransducer::define_transducer_spv(&spv),
             )),
-            ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequired),
+            ERROR_TYPE => crate::bail!(SpecifiedTypeRequired),
             // C++ default here throws ImplementationTypeNotAvailableException.
-            _ => crate::err!(ImplementationTypeNotAvailable(type_)).throw(),
+            _ => crate::bail!(ImplementationTypeNotAvailable(type_)),
         };
-        HfstTransducer {
+        Ok(HfstTransducer {
             type_,
             anonymous: false,
             is_trie: true,
             name: String::new(),
             props: BTreeMap::new(),
             implementation,
-        }
+        })
     }
 
     /// 'HfstTransducer(const StringPairSet &sps, type, bool cyclic=false)'.
@@ -335,13 +335,13 @@ impl HfstTransducer {
         sps: &StringPairSet,
         type_: ImplementationType,
         cyclic: bool,
-    ) -> Self {
+    ) -> crate::error::Result<Self> {
         if !Self::is_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         for sp in sps {
             if sp.0.is_empty() || sp.1.is_empty() {
-                HFST_THROW_MESSAGE!(
+                crate::bail!(
                     EmptyString,
                     "HfstTransducer(const StringPairSet&, ImplementationType, bool)"
                 );
@@ -354,27 +354,30 @@ impl HfstTransducer {
             LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
                 LogWeightTransducer::define_transducer_sps(sps, cyclic),
             )),
-            ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequired),
+            ERROR_TYPE => crate::bail!(SpecifiedTypeRequired),
             _ => unimplemented!("new_string_pair_set: not implemented for this transducer type"),
         };
-        HfstTransducer {
+        Ok(HfstTransducer {
             type_,
             anonymous: false,
             is_trie: false,
             name: String::new(),
             props: BTreeMap::new(),
             implementation,
-        }
+        })
     }
 
     /// 'HfstTransducer(const StringPairVector &spv, type)'.
-    pub fn new_string_pair_vector(spv: &StringPairVector, type_: ImplementationType) -> Self {
+    pub fn new_string_pair_vector(
+        spv: &StringPairVector,
+        type_: ImplementationType,
+    ) -> crate::error::Result<Self> {
         if !Self::is_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         for it in spv {
             if it.0.is_empty() || it.1.is_empty() {
-                HFST_THROW_MESSAGE!(
+                crate::bail!(
                     EmptyString,
                     "HfstTransducer(const StringPairVector&, ImplementationType)"
                 );
@@ -387,17 +390,17 @@ impl HfstTransducer {
             LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
                 LogWeightTransducer::define_transducer_spv(spv),
             )),
-            ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequired),
+            ERROR_TYPE => crate::bail!(SpecifiedTypeRequired),
             _ => unimplemented!("new_string_pair_vector: not implemented for this transducer type"),
         };
-        HfstTransducer {
+        Ok(HfstTransducer {
             type_,
             anonymous: false,
             is_trie: false,
             name: String::new(),
             props: BTreeMap::new(),
             implementation,
-        }
+        })
     }
 
     /// 'HfstTransducer(const StringVector &sv, type)'.
@@ -409,7 +412,10 @@ impl HfstTransducer {
     /// 'operator=''s delete switch is a safe no-op; the observable result
     /// ('props["name"] == ""', the copied backend, and the final 'type_') is
     /// identical.
-    pub fn new_string_vector(sv: &StringVector, type_: ImplementationType) -> Self {
+    pub fn new_string_vector(
+        sv: &StringVector,
+        type_: ImplementationType,
+    ) -> crate::error::Result<Self> {
         let mut this = HfstTransducer {
             type_: UNSPECIFIED_TYPE,
             anonymous: false,
@@ -423,20 +429,23 @@ impl HfstTransducer {
             spv.push((it.clone(), it.clone()));
         }
         // *this = HfstTransducer(spv, type);
-        let tmp = HfstTransducer::new_string_pair_vector(&spv, type_);
-        this.operator_assign(&tmp);
-        this
+        let tmp = HfstTransducer::new_string_pair_vector(&spv, type_)?;
+        this.operator_assign(&tmp)?;
+        Ok(this)
     }
 
     /// 'HfstTransducer(const std::vector<StringPairSet> &spsv, type)'.
-    pub fn new_string_pair_set_vector(spsv: &[StringPairSet], type_: ImplementationType) -> Self {
+    pub fn new_string_pair_set_vector(
+        spsv: &[StringPairSet],
+        type_: ImplementationType,
+    ) -> crate::error::Result<Self> {
         if !Self::is_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         for it in spsv {
             for pair in it {
                 if pair.0.is_empty() || pair.1.is_empty() {
-                    HFST_THROW_MESSAGE!(
+                    crate::bail!(
                         EmptyString,
                         "HfstTransducer(const std::vector<StringPairSet>&, ImplementationType)"
                     );
@@ -450,28 +459,28 @@ impl HfstTransducer {
             LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
                 LogWeightTransducer::define_transducer_spsv(spsv),
             )),
-            ERROR_TYPE => HFST_THROW!(SpecifiedTypeRequired),
+            ERROR_TYPE => crate::bail!(SpecifiedTypeRequired),
             _ => unimplemented!(
                 "new_string_pair_set_vector: not implemented for this transducer type"
             ),
         };
-        HfstTransducer {
+        Ok(HfstTransducer {
             type_,
             anonymous: false,
             is_trie: false,
             name: String::new(),
             props: BTreeMap::new(),
             implementation,
-        }
+        })
     }
 
     /// \brief Create a deep copy of transducer 'another'.
     ///
     /// 'HfstTransducer(const HfstTransducer &another)'.
-    pub fn new_copy(another: &HfstTransducer) -> Self {
+    pub fn new_copy(another: &HfstTransducer) -> crate::error::Result<Self> {
         let type_ = another.type_;
         if !Self::is_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         let mut props = BTreeMap::new();
         for (k, v) in &another.props {
@@ -489,33 +498,36 @@ impl HfstTransducer {
             HFST_OL_TYPE => TransducerImplementation::HfstOl(Box::new(Transducer::copy(
                 another.implementation.as_hfst_ol(),
                 false,
-            ))),
+            )?)),
             HFST_OLW_TYPE => TransducerImplementation::HfstOl(Box::new(Transducer::copy(
                 another.implementation.as_hfst_ol(),
                 true,
-            ))),
-            ERROR_TYPE => HFST_THROW!(TransducerHasWrongType),
+            )?)),
+            ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             _ => unimplemented!("new_copy: not implemented for this transducer type"),
         };
         // NOTE: like C++, 'name' stays "" even though 'props' may carry a copied
         // "name" entry.
-        HfstTransducer {
+        Ok(HfstTransducer {
             type_,
             anonymous: another.anonymous,
             is_trie: another.is_trie,
             name: String::new(),
             props,
             implementation,
-        }
+        })
     }
 
     /// \brief Create an HFST transducer equivalent to HFST basic transducer
     /// 'net', of type 'type_'.
     ///
     /// 'HfstTransducer(const hfst::implementations::HfstBasicTransducer &net, type)'.
-    pub fn new_from_basic(net: &HfstBasicTransducer, type_: ImplementationType) -> Self {
+    pub fn new_from_basic(
+        net: &HfstBasicTransducer,
+        type_: ImplementationType,
+    ) -> crate::error::Result<Self> {
         if !Self::is_lean_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         // SFST_TYPE / FOMA_TYPE / XFSM_TYPE arms are #if'd out.
         let implementation = match type_ {
@@ -526,22 +538,22 @@ impl HfstTransducer {
                 ConversionFunctions::hfst_basic_transducer_to_log_ofst(net),
             )),
             HFST_OL_TYPE => TransducerImplementation::HfstOl(Box::new(
-                ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, false, "", None),
+                ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, false, "", None)?,
             )),
             HFST_OLW_TYPE => TransducerImplementation::HfstOl(Box::new(
-                ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, true, "", None),
+                ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, true, "", None)?,
             )),
-            ERROR_TYPE => HFST_THROW!(TransducerHasWrongType),
+            ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             _ => unimplemented!("new_from_basic: not implemented for this transducer type"),
         };
-        HfstTransducer {
+        Ok(HfstTransducer {
             type_,
             anonymous: false,
             is_trie: false,
             name: net.name.clone(), // C++: name = net.name; (after the switch)
             props: BTreeMap::new(),
             implementation,
-        }
+        })
     }
 
     /// \brief Read a (binary) transducer from an HFST input stream.
@@ -549,10 +561,12 @@ impl HfstTransducer {
     /// 'HfstTransducer(HfstInputStream &in)'.
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.hfst-transducer-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.hfst-transducer-fn]
-    pub fn new_from_stream(instream: &mut crate::hfst_input_stream::HfstInputStream) -> Self {
+    pub fn new_from_stream(
+        instream: &mut crate::hfst_input_stream::HfstInputStream,
+    ) -> crate::error::Result<Self> {
         let type_ = instream.get_type();
         if !Self::is_lean_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         // C++ leaves 'implementation' to be filled by 'in.read_transducer(*this)';
         // seed it with a null pointer first (overwritten by the read).
@@ -569,21 +583,21 @@ impl HfstTransducer {
         // now, so a bad read re-raises here exactly as the C++ `read_transducer`
         // throw did. Propagating `Result` to the 67 callers is a later step.
         if let Err(e) = instream.read_transducer(&mut t) {
-            e.throw();
+            return Err(e);
         }
-        t
+        Ok(t)
     }
 
     /// \brief Create '[symbol:symbol]' of type 'type_'.
     ///
     /// 'HfstTransducer(const std::string &symbol, type)'.
-    pub fn new_symbol(symbol: &str, type_: ImplementationType) -> Self {
+    pub fn new_symbol(symbol: &str, type_: ImplementationType) -> crate::error::Result<Self> {
         if !Self::is_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         HfstTokenizer::check_utf8_correctness(symbol);
         if symbol.is_empty() {
-            HFST_THROW_MESSAGE!(
+            crate::bail!(
                 EmptyString,
                 "HfstTransducer(const std::string&, ImplementationType)"
             );
@@ -595,30 +609,34 @@ impl HfstTransducer {
             LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
                 LogWeightTransducer::define_transducer_symbol(symbol),
             )),
-            ERROR_TYPE => HFST_THROW!(TransducerHasWrongType),
+            ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             _ => unimplemented!("new_symbol: not implemented for this transducer type"),
         };
-        HfstTransducer {
+        Ok(HfstTransducer {
             type_,
             anonymous: false,
             is_trie: false,
             name: String::new(),
             props: BTreeMap::new(),
             implementation,
-        }
+        })
     }
 
     /// \brief Create '[isymbol:osymbol]' of type 'type_'.
     ///
     /// 'HfstTransducer(const std::string &isymbol, const std::string &osymbol, type)'.
-    pub fn new_symbol_pair(isymbol: &str, osymbol: &str, type_: ImplementationType) -> Self {
+    pub fn new_symbol_pair(
+        isymbol: &str,
+        osymbol: &str,
+        type_: ImplementationType,
+    ) -> crate::error::Result<Self> {
         if !Self::is_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
         HfstTokenizer::check_utf8_correctness(isymbol);
         HfstTokenizer::check_utf8_correctness(osymbol);
         if isymbol.is_empty() || osymbol.is_empty() {
-            HFST_THROW_MESSAGE!(
+            crate::bail!(
                 EmptyString,
                 "HfstTransducer(const std::string&, const std::string&,  ImplementationType)"
             );
@@ -630,17 +648,17 @@ impl HfstTransducer {
             LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(
                 LogWeightTransducer::define_transducer_symbol_pair(isymbol, osymbol),
             )),
-            ERROR_TYPE => HFST_THROW!(TransducerHasWrongType),
+            ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             _ => unimplemented!("new_symbol_pair: not implemented for this transducer type"),
         };
-        HfstTransducer {
+        Ok(HfstTransducer {
             type_,
             anonymous: false,
             is_trie: false,
             name: String::new(),
             props: BTreeMap::new(),
             implementation,
-        }
+        })
     }
 
     // -------------------------------------------------------------------------
@@ -648,14 +666,20 @@ impl HfstTransducer {
     // -------------------------------------------------------------------------
 
     /// 'HfstTransducer &assign(const HfstTransducer &another)' -> 'operator='.
-    pub fn assign(&mut self, another: &HfstTransducer) -> &mut HfstTransducer {
+    pub fn assign(
+        &mut self,
+        another: &HfstTransducer,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.operator_assign(another)
     }
 
     /// \brief Assign this transducer a new value equivalent to 'another'.
     ///
     /// 'HfstTransducer &operator=(const HfstTransducer &another)'.
-    pub fn operator_assign(&mut self, another: &HfstTransducer) -> &mut HfstTransducer {
+    pub fn operator_assign(
+        &mut self,
+        another: &HfstTransducer,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // #if HAVE_XFSM: XFSM_TYPE -> FunctionNotImplemented (XFSM #if'd out).
 
         // Check for self-assignment.
@@ -663,11 +687,11 @@ impl HfstTransducer {
             another as *const HfstTransducer,
             self as *const HfstTransducer,
         ) {
-            return self;
+            return Ok(self);
         }
 
         if self.type_ != UNSPECIFIED_TYPE && self.type_ != another.type_ {
-            HFST_THROW_MESSAGE!(TransducerTypeMismatch, "HfstTransducer::operator=");
+            crate::bail!(TransducerTypeMismatch, "HfstTransducer::operator=");
         }
 
         // set some features
@@ -686,7 +710,7 @@ impl HfstTransducer {
             | HFST_OLW_TYPE
             | UNSPECIFIED_TYPE => {}
             // case ERROR_TYPE: default: -> TransducerHasWrongTypeException
-            _ => HFST_THROW!(TransducerHasWrongType),
+            _ => crate::bail!(TransducerHasWrongType),
         }
 
         // Set new transducer.
@@ -707,20 +731,20 @@ impl HfstTransducer {
                 self.implementation = TransducerImplementation::HfstOl(Box::new(Transducer::copy(
                     another_1.implementation.as_hfst_ol(),
                     false,
-                )));
+                )?));
             }
             HFST_OLW_TYPE => {
                 self.implementation = TransducerImplementation::HfstOl(Box::new(Transducer::copy(
                     another_1.implementation.as_hfst_ol(),
                     true,
-                )));
+                )?));
             }
             // default: (void)1;  (implementation left unchanged)
             _ => {
                 let _ = 1;
             }
         }
-        self
+        Ok(self)
     }
 
     // -------------------------------------------------------------------------
@@ -858,7 +882,7 @@ impl HfstTransducer {
     /// For internal use: create an 'HfstBasicTransducer' equivalent to '*this'.
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.get-basic-transducer-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.get-basic-transducer-fn]
-    pub fn get_basic_transducer(&self) -> HfstBasicTransducer {
+    pub fn get_basic_transducer(&self) -> crate::error::Result<HfstBasicTransducer> {
         // SFST arm #if'd out.
         if self.type_ == TROPICAL_OPENFST_TYPE {
             return ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
@@ -874,7 +898,7 @@ impl HfstTransducer {
         }
         // FOMA arm #if'd out.
         if self.type_ == ERROR_TYPE {
-            HFST_THROW!(TransducerHasWrongType);
+            crate::bail!(TransducerHasWrongType);
         }
         unimplemented!("get_basic_transducer: not implemented for this transducer type")
     }
@@ -884,7 +908,10 @@ impl HfstTransducer {
     /// basic transducer, applies [`HfstBasicTransducer::kill_paths`], and
     /// converts back to this transducer's type. Lifted from hfst-kill-paths.
     pub fn kill_paths(&self, symbol: &str) -> HfstTransducer {
-        let killed = self.get_basic_transducer().kill_paths(symbol);
+        let killed = self
+            .get_basic_transducer()
+            .expect("get_basic_transducer on a valid transducer cannot fail")
+            .kill_paths(symbol);
         HfstTransducer::from_basic_transducer(&killed, self.get_type())
     }
 
@@ -892,72 +919,77 @@ impl HfstTransducer {
     /// and delete the backend implementation.
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.convert-to-basic-transducer-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.convert-to-basic-transducer-fn]
-    pub fn convert_to_basic_transducer(&mut self) -> HfstBasicTransducer {
+    pub fn convert_to_basic_transducer(&mut self) -> crate::error::Result<HfstBasicTransducer> {
         // SFST arm #if'd out.
         if self.type_ == TROPICAL_OPENFST_TYPE {
             let net = ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
                 self.implementation.as_tropical(),
                 true,
-            );
+            )?;
             // 'delete' the old backend: moving the enum to None drops the owned Box.
             self.implementation = TransducerImplementation::None;
-            return net;
+            return Ok(net);
         }
         if self.type_ == LOG_OPENFST_TYPE {
             let net = ConversionFunctions::log_ofst_to_hfst_basic_transducer(
                 self.implementation.as_log(),
                 true,
-            );
+            )?;
             self.implementation = TransducerImplementation::None;
-            return net;
+            return Ok(net);
         }
         // FOMA arm #if'd out.
         if self.type_ == ERROR_TYPE {
-            HFST_THROW!(TransducerHasWrongType);
+            crate::bail!(TransducerHasWrongType);
         }
         unimplemented!("convert_to_basic_transducer: not implemented for this transducer type")
     }
 
     /// For internal use: build a backend of 'self.type_' equivalent to 't',
     /// delete 't', and store it as this transducer's implementation.
-    pub fn convert_to_hfst_transducer(&mut self, t: HfstBasicTransducer) -> &mut HfstTransducer {
+    pub fn convert_to_hfst_transducer(
+        &mut self,
+        t: HfstBasicTransducer,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // SFST arm #if'd out.
         if self.type_ == TROPICAL_OPENFST_TYPE {
             self.implementation = TransducerImplementation::Tropical(Box::new(
                 ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(&t),
             ));
             self.name = t.name.clone();
-            return self;
+            return Ok(self);
         }
         if self.type_ == LOG_OPENFST_TYPE {
             self.implementation = TransducerImplementation::Log(Box::new(
                 ConversionFunctions::hfst_basic_transducer_to_log_ofst(&t),
             ));
             self.name = t.name.clone();
-            return self;
+            return Ok(self);
         }
         // FOMA arm #if'd out.
         if self.type_ == ERROR_TYPE {
-            HFST_THROW!(TransducerHasWrongType);
+            crate::bail!(TransducerHasWrongType);
         }
         unimplemented!("convert_to_hfst_transducer: not implemented for this transducer type")
     }
 
     /// For internal use: create a new transducer equivalent to 't' in format
     /// 'type_'. (Static 'convert'.)
-    pub fn convert_static(t: &HfstTransducer, type_: ImplementationType) -> HfstTransducer {
+    pub fn convert_static(
+        t: &HfstTransducer,
+        type_: ImplementationType,
+    ) -> crate::error::Result<HfstTransducer> {
         if type_ == ERROR_TYPE {
-            HFST_THROW_MESSAGE!(SpecifiedTypeRequired, "HfstTransducer::convert");
+            crate::bail!(SpecifiedTypeRequired, "HfstTransducer::convert");
         }
         if type_ == t.type_ {
             return HfstTransducer::new_copy(t);
         }
         if !Self::is_lean_implementation_type_available(type_) {
-            crate::error::Error::with_message(
+            return Err(crate::error::Error::with_message(
                 crate::error::ErrorKind::ImplementationTypeNotAvailable(type_),
                 "HfstTransducer::convert".to_string(),
-            )
-            .throw();
+            ));
         }
         // [spec:hfst:def:hfst-transducer.hfst.net-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.net-fn]
@@ -967,31 +999,34 @@ impl HfstTransducer {
         // The HfstBasicTransducer(const HfstTransducer&) ctor is the facade's
         // get_basic_transducer (full type-dispatch incl. HFST_OL, heap-allocated
         // like the C++ stack temporary); new_from_basic is HfstTransducer(net, type).
-        let net = t.get_basic_transducer();
+        let net = t.get_basic_transducer()?;
         HfstTransducer::new_from_basic(&net, type_)
     }
 
     /// \brief Convert the transducer into an equivalent transducer in format
     /// 'type_'. (Member 'convert'.)
-    pub fn convert(&mut self, type_: ImplementationType, options: String) -> &mut HfstTransducer {
+    pub fn convert(
+        &mut self,
+        type_: ImplementationType,
+        options: String,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         if !Self::is_lean_implementation_type_available(self.type_) {
-            HFST_THROW_MESSAGE!(
+            crate::bail!(
                 Fatal,
                 "HfstTransducer::convert: the original type of the transducer is not available!"
             );
         }
         if type_ == ERROR_TYPE {
-            HFST_THROW_MESSAGE!(SpecifiedTypeRequired, "HfstTransducer::convert");
+            crate::bail!(SpecifiedTypeRequired, "HfstTransducer::convert");
         }
         if type_ == self.type_ {
-            return self;
+            return Ok(self);
         }
         if !Self::is_lean_implementation_type_available(type_) {
-            crate::error::Error::with_message(
+            return Err(crate::error::Error::with_message(
                 crate::error::ErrorKind::ImplementationTypeNotAvailable(type_),
                 "HfstTransducer::convert".to_string(),
-            )
-            .throw();
+            ));
         }
 
         // FOMA / XFSM arms #if'd out.
@@ -1004,7 +1039,7 @@ impl HfstTransducer {
                 let net = ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
                     self.implementation.as_tropical(),
                     true,
-                );
+                )?;
                 self.implementation = TransducerImplementation::None;
                 net
             }
@@ -1012,7 +1047,7 @@ impl HfstTransducer {
                 let net = ConversionFunctions::log_ofst_to_hfst_basic_transducer(
                     self.implementation.as_log(),
                     true,
-                );
+                )?;
                 self.implementation = TransducerImplementation::None;
                 net
             }
@@ -1024,7 +1059,7 @@ impl HfstTransducer {
                 net
             }
             // case ERROR_TYPE: default: throw.
-            _ => HFST_THROW!(TransducerHasWrongType),
+            _ => crate::bail!(TransducerHasWrongType),
         };
 
         self.type_ = type_;
@@ -1047,12 +1082,12 @@ impl HfstTransducer {
                         self.type_ == HFST_OLW_TYPE,
                         &options,
                         None,
-                    ),
+                    )?,
                 ));
             }
-            _ => HFST_THROW!(TransducerHasWrongType),
+            _ => crate::bail!(TransducerHasWrongType),
         }
-        self
+        Ok(self)
     }
 
     // -------------------------------------------------------------------------
@@ -1067,7 +1102,7 @@ impl HfstTransducer {
         tropical_ofst_funct: fn(&StdVectorFst) -> StdVectorFst,
         log_ofst_funct: fn(&LogFst) -> LogFst,
         foo: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         let _ = foo;
         // SFST / FOMA / XFSM arms #if'd out.
         match self.type_ {
@@ -1080,9 +1115,9 @@ impl HfstTransducer {
                 self.implementation = TransducerImplementation::Log(Box::new(temp));
             }
             // case ERROR_TYPE: default: -> TransducerHasWrongTypeException
-            _ => HFST_THROW!(TransducerHasWrongType),
+            _ => crate::bail!(TransducerHasWrongType),
         }
-        self
+        Ok(self)
     }
 
     /// 'apply' threading a single 'bool' through to the backend functor (used to
@@ -1093,7 +1128,7 @@ impl HfstTransducer {
         tropical_ofst_funct: fn(&StdVectorFst, bool) -> StdVectorFst,
         log_ofst_funct: fn(&LogFst, bool) -> LogFst,
         b: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         match self.type_ {
             TROPICAL_OPENFST_TYPE => {
                 let temp = tropical_ofst_funct(self.implementation.as_tropical(), b);
@@ -1103,9 +1138,9 @@ impl HfstTransducer {
                 let temp = log_ofst_funct(self.implementation.as_log(), b);
                 self.implementation = TransducerImplementation::Log(Box::new(temp));
             }
-            _ => HFST_THROW!(TransducerHasWrongType),
+            _ => crate::bail!(TransducerHasWrongType),
         }
-        self
+        Ok(self)
     }
 
     /// 'apply(... , unsigned int n)'.
@@ -1114,7 +1149,7 @@ impl HfstTransducer {
         tropical_ofst_funct: fn(&StdVectorFst, u32) -> StdVectorFst,
         log_ofst_funct: fn(&LogFst, u32) -> LogFst,
         n: u32,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         match self.type_ {
             TROPICAL_OPENFST_TYPE => {
                 let temp = tropical_ofst_funct(self.implementation.as_tropical(), n);
@@ -1124,9 +1159,9 @@ impl HfstTransducer {
                 let temp = log_ofst_funct(self.implementation.as_log(), n);
                 self.implementation = TransducerImplementation::Log(Box::new(temp));
             }
-            _ => HFST_THROW!(TransducerHasWrongType),
+            _ => crate::bail!(TransducerHasWrongType),
         }
-        self
+        Ok(self)
     }
 
     /// 'apply(... , String s1, String s2)'.
@@ -1136,7 +1171,7 @@ impl HfstTransducer {
         log_ofst_funct: fn(&LogFst, String, String) -> LogFst,
         s1: String,
         s2: String,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         match self.type_ {
             TROPICAL_OPENFST_TYPE => {
                 let temp = tropical_ofst_funct(self.implementation.as_tropical(), s1, s2);
@@ -1146,9 +1181,9 @@ impl HfstTransducer {
                 let temp = log_ofst_funct(self.implementation.as_log(), s1, s2);
                 self.implementation = TransducerImplementation::Log(Box::new(temp));
             }
-            _ => HFST_THROW!(TransducerHasWrongType),
+            _ => crate::bail!(TransducerHasWrongType),
         }
-        self
+        Ok(self)
     }
 
     /// 'apply(... , HfstTransducer &another_tr, bool harmonize)' — binary ops.
@@ -1161,28 +1196,29 @@ impl HfstTransducer {
         log_ofst_funct: fn(&LogFst, &LogFst) -> LogFst,
         another_tr: &HfstTransducer,
         harmonize: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         if self.type_ != another_tr.type_ {
-            HFST_THROW!(TransducerTypeMismatch);
+            crate::bail!(TransducerTypeMismatch);
         }
 
         // [spec:hfst:def:hfst-apply.another-fn]
         // [spec:hfst:sem:hfst-apply.another-fn]
-        let mut another = HfstTransducer::new_copy(another_tr);
+        let mut another = HfstTransducer::new_copy(another_tr)?;
 
         // prevent harmonization, if needed
         if !harmonize {
-            self.insert_missing_symbols_to_alphabet_from(&another, false);
-            another.insert_missing_symbols_to_alphabet_from(self, false);
+            self.insert_missing_symbols_to_alphabet_from(&another, false)?;
+            another.insert_missing_symbols_to_alphabet_from(self, false)?;
         }
 
         // special symbols are never harmonized
-        self.insert_missing_symbols_to_alphabet_from(&another, true);
-        another.insert_missing_symbols_to_alphabet_from(self, true);
+        self.insert_missing_symbols_to_alphabet_from(&another, true)?;
+        another.insert_missing_symbols_to_alphabet_from(self, true)?;
         // 'harmonize_' returns None for foma (use our own copy of 'another').
-        let another_: HfstTransducer = self
-            .harmonize_(&another)
-            .unwrap_or_else(|| HfstTransducer::new_copy(&another));
+        let another_: HfstTransducer = match self.harmonize_(&another)? {
+            Some(h) => h,
+            None => HfstTransducer::new_copy(&another)?,
+        };
 
         // SFST / FOMA / XFSM arms #if'd out.
         match self.type_ {
@@ -1200,10 +1236,10 @@ impl HfstTransducer {
                 );
                 self.implementation = TransducerImplementation::Log(Box::new(temp));
             }
-            _ => HFST_THROW!(TransducerHasWrongType),
+            _ => crate::bail!(TransducerHasWrongType),
         }
 
-        self
+        Ok(self)
     }
 }
 
@@ -1216,7 +1252,7 @@ impl Drop for HfstTransducer {
     /// the C++ destructor, which 'HFST_THROW's for those.
     fn drop(&mut self) {
         if !Self::is_lean_implementation_type_available(self.type_) {
-            crate::err!(ImplementationTypeNotAvailable(self.type_)).throw();
+            crate::HFST_THROW!(ImplementationTypeNotAvailable(self.type_));
         }
         // SFST / FOMA / XFSM arms #if'd out. The enum's owned backend is freed
         // automatically when this struct's fields drop after this method; only
@@ -1232,7 +1268,7 @@ impl Drop for HfstTransducer {
             // serves the operator= role here, so it mirrors the no-op (the
             // implementation pointer is null, so nothing leaks).
             UNSPECIFIED_TYPE => {}
-            ERROR_TYPE => HFST_THROW!(TransducerHasWrongType),
+            ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongType),
             // default -> FunctionNotImplementedException
             _ => unimplemented!("drop: not implemented for this transducer type"),
         }
@@ -1267,11 +1303,11 @@ impl HfstTransducer {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.insert-to-alphabet-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.insert-to-alphabet-fn]
-    pub fn insert_to_alphabet_string(&mut self, symbol: &str) {
+    pub fn insert_to_alphabet_string(&mut self, symbol: &str) -> crate::error::Result<()> {
         HfstTokenizer::check_utf8_correctness(symbol);
 
         if symbol.is_empty() {
-            crate::HFST_THROW_MESSAGE!(EmptyString, "insert_to_alphabet");
+            crate::bail!(EmptyString, "insert_to_alphabet");
         }
 
         if self.type_ == ImplementationType::HFST_OL_TYPE
@@ -1280,58 +1316,66 @@ impl HfstTransducer {
             self.implementation
                 .as_hfst_ol_mut()
                 .include_symbol_in_alphabet(symbol);
-            return;
+            return Ok(());
         }
         if self.type_ != ImplementationType::XFSM_TYPE {
-            let mut net = self.convert_to_basic_transducer();
+            let mut net = self.convert_to_basic_transducer()?;
             net.add_symbol_to_alphabet(&symbol.to_string());
-            self.convert_to_hfst_transducer(net);
+            self.convert_to_hfst_transducer(net)?;
         } else {
-            crate::err!(ImplementationTypeNotAvailable(
+            crate::bail!(ImplementationTypeNotAvailable(
                 ImplementationType::XFSM_TYPE
-            ))
-            .throw();
+            ));
         }
+        Ok(())
     }
 
-    pub fn insert_to_alphabet_string_set(&mut self, symbols: &StringSet) {
+    pub fn insert_to_alphabet_string_set(
+        &mut self,
+        symbols: &StringSet,
+    ) -> crate::error::Result<()> {
         for symbol in symbols.iter() {
             HfstTokenizer::check_utf8_correctness(symbol);
             if symbol.is_empty() {
-                crate::HFST_THROW_MESSAGE!(EmptyString, "insert_to_alphabet");
+                crate::bail!(EmptyString, "insert_to_alphabet");
             }
         }
 
         if self.type_ != ImplementationType::XFSM_TYPE {
-            let mut net = self.convert_to_basic_transducer();
+            let mut net = self.convert_to_basic_transducer()?;
             net.add_symbols_to_alphabet_set(symbols);
-            self.convert_to_hfst_transducer(net);
+            self.convert_to_hfst_transducer(net)?;
         } else {
-            crate::err!(ImplementationTypeNotAvailable(
+            crate::bail!(ImplementationTypeNotAvailable(
                 ImplementationType::XFSM_TYPE
-            ))
-            .throw();
+            ));
         }
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.remove-from-alphabet-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.remove-from-alphabet-fn]
-    pub fn remove_from_alphabet_string(&mut self, symbol: &str) {
+    pub fn remove_from_alphabet_string(&mut self, symbol: &str) -> crate::error::Result<()> {
         HfstTokenizer::check_utf8_correctness(symbol);
 
         if symbol.is_empty() {
-            crate::HFST_THROW_MESSAGE!(EmptyString, "remove_from_alphabet");
+            crate::bail!(EmptyString, "remove_from_alphabet");
         }
 
-        let mut net = self.convert_to_basic_transducer();
+        let mut net = self.convert_to_basic_transducer()?;
         net.remove_symbol_from_alphabet(&symbol.to_string());
-        self.convert_to_hfst_transducer(net);
+        self.convert_to_hfst_transducer(net)?;
+        Ok(())
     }
 
-    pub fn remove_from_alphabet_string_set(&mut self, symbols: &StringSet) {
+    pub fn remove_from_alphabet_string_set(
+        &mut self,
+        symbols: &StringSet,
+    ) -> crate::error::Result<()> {
         for symbol in symbols.iter() {
-            self.remove_from_alphabet_string(symbol);
+            self.remove_from_alphabet_string(symbol)?;
         }
+        Ok(())
     }
 
     /* Implemented for XFSM_TYPE, as conversion between HfstBasicFormat and
@@ -1345,8 +1389,8 @@ impl HfstTransducer {
         let _ = symbols;
     }
 
-    pub fn prune_alphabet(&mut self, force: bool) -> &mut HfstTransducer {
-        let mut net = self.convert_to_basic_transducer();
+    pub fn prune_alphabet(&mut self, force: bool) -> crate::error::Result<&mut HfstTransducer> {
+        let mut net = self.convert_to_basic_transducer()?;
         net.prune_alphabet(force);
         self.convert_to_hfst_transducer(net)
     }
@@ -1368,42 +1412,42 @@ impl HfstTransducer {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.get-first-input-symbols-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.get-first-input-symbols-fn]
-    pub fn get_first_input_symbols(&self) -> StringSet {
-        match self.type_ {
+    pub fn get_first_input_symbols(&self) -> crate::error::Result<StringSet> {
+        Ok(match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 TropicalWeightTransducer::get_first_input_symbols(self.implementation.as_tropical())
             }
             ImplementationType::LOG_OPENFST_TYPE => {
                 unimplemented!("get_first_input_symbols")
             }
-            ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongType),
+            ImplementationType::ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
                 unimplemented!("get_first_input_symbols")
             }
             _ => {
                 unimplemented!("get_first_input_symbols")
             }
-        }
+        })
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.get-alphabet-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.get-alphabet-fn]
-    pub fn get_alphabet(&self) -> StringSet {
-        match self.type_ {
+    pub fn get_alphabet(&self) -> crate::error::Result<StringSet> {
+        Ok(match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 TropicalWeightTransducer::get_alphabet(self.implementation.as_tropical())
             }
             ImplementationType::LOG_OPENFST_TYPE => {
                 LogWeightTransducer::get_alphabet(self.implementation.as_log())
             }
-            ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongType),
+            ImplementationType::ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
                 crate::hfst_ol_transducer::HfstOlTransducer::get_alphabet(
                     self.implementation.as_hfst_ol(),
                 )
             }
             _ => unimplemented!("get_alphabet"),
-        }
+        })
     }
 
     /*
@@ -1431,13 +1475,16 @@ impl HfstTransducer {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.harmonize-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.harmonize-fn]
     #[allow(unreachable_code)]
-    pub fn harmonize_(&mut self, another: &HfstTransducer) -> Option<HfstTransducer> {
+    pub fn harmonize_(
+        &mut self,
+        another: &HfstTransducer,
+    ) -> crate::error::Result<Option<HfstTransducer>> {
         if self.type_ != another.type_ {
-            crate::HFST_THROW!(TransducerTypeMismatch);
+            crate::bail!(TransducerTypeMismatch);
         }
 
         if self.anonymous && another.anonymous {
-            crate::HFST_THROW_MESSAGE!(Fatal, "harmonize_ with anonymous transducers");
+            crate::bail!(Fatal, "harmonize_ with anonymous transducers");
         }
 
         let mut another_copy = another.clone();
@@ -1445,8 +1492,8 @@ impl HfstTransducer {
         // Prevent flag diacritics from being harmonized by inserting them to
         // the alphabet. FIX?: remove them at the end?
         if self.get_type() == ImplementationType::FOMA_TYPE {
-            let this_alphabet = self.get_alphabet();
-            let another_alphabet = another_copy.get_alphabet();
+            let this_alphabet = self.get_alphabet()?;
+            let another_alphabet = another_copy.get_alphabet()?;
             let mut add_to_this = StringSet::new();
             let mut add_to_another = StringSet::new();
 
@@ -1456,22 +1503,22 @@ impl HfstTransducer {
                 }
             }
 
-            self.insert_to_alphabet_string_set(&add_to_this);
+            self.insert_to_alphabet_string_set(&add_to_this)?;
 
             for it in this_alphabet.iter() {
                 if FdOperation::is_diacritic(it) && !another_alphabet.contains(it) {
                     add_to_another.insert(it.clone());
                 }
             }
-            another_copy.insert_to_alphabet_string_set(&add_to_another);
+            another_copy.insert_to_alphabet_string_set(&add_to_another)?;
         }
 
         match self.type_ {
             ImplementationType::SFST_TYPE
             | ImplementationType::TROPICAL_OPENFST_TYPE
             | ImplementationType::LOG_OPENFST_TYPE => {
-                let mut another_basic = another_copy.get_basic_transducer();
-                let mut this_basic = self.convert_to_basic_transducer();
+                let mut another_basic = another_copy.get_basic_transducer()?;
+                let mut this_basic = self.convert_to_basic_transducer()?;
 
                 this_basic.harmonize(&mut another_basic);
 
@@ -1490,16 +1537,17 @@ impl HfstTransducer {
                 this_basic.reindex_into(&mut canonical);
                 another_basic.reindex_into(&mut canonical);
 
-                self.convert_to_hfst_transducer(this_basic);
+                self.convert_to_hfst_transducer(this_basic)?;
                 let another_harmonized =
                     HfstTransducer::from_basic_transducer(&another_basic, self.type_);
 
-                return Some(another_harmonized);
+                return Ok(Some(another_harmonized));
             }
-            ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongType),
-            _ => crate::HFST_THROW!(TransducerHasWrongType),
+            ImplementationType::ERROR_TYPE => crate::bail!(TransducerHasWrongType),
+            _ => crate::bail!(TransducerHasWrongType),
         }
-        None // make compiler happy
+        #[allow(unreachable_code)]
+        Ok(None) // make compiler happy
     }
 
     /*  Harmonize symbol-to-number encodings and expand unknown and
@@ -1508,29 +1556,33 @@ impl HfstTransducer {
     In the case of foma transducers, does nothing because foma's own functions
     take care of harmonizing. If harmonization is needed,
     FomaTransducer::harmonize can be used instead. */
-    pub fn harmonize(&mut self, another: &mut HfstTransducer, force: bool) {
+    pub fn harmonize(
+        &mut self,
+        another: &mut HfstTransducer,
+        force: bool,
+    ) -> crate::error::Result<()> {
         if self.type_ != another.type_ {
-            crate::HFST_THROW!(TransducerTypeMismatch);
+            crate::bail!(TransducerTypeMismatch);
         }
 
         if self.anonymous && another.anonymous {
-            return;
+            return Ok(());
         }
 
         // Prevent flag diacritics from being harmonized by inserting them to
         // the alphabet.
-        let this_alphabet = self.get_alphabet();
-        let another_alphabet = another.get_alphabet();
+        let this_alphabet = self.get_alphabet()?;
+        let another_alphabet = another.get_alphabet()?;
 
         for it in another_alphabet.iter() {
             if FdOperation::is_diacritic(it) && !this_alphabet.contains(it) {
-                self.insert_to_alphabet_string(it);
+                self.insert_to_alphabet_string(it)?;
             }
         }
 
         for it in this_alphabet.iter() {
             if FdOperation::is_diacritic(it) && !another_alphabet.contains(it) {
-                another.insert_to_alphabet_string(it);
+                another.insert_to_alphabet_string(it)?;
             }
         }
 
@@ -1540,8 +1592,8 @@ impl HfstTransducer {
             ImplementationType::SFST_TYPE
             | ImplementationType::TROPICAL_OPENFST_TYPE
             | ImplementationType::LOG_OPENFST_TYPE => {
-                let mut this_basic = self.convert_to_basic_transducer();
-                let mut another_basic = another.convert_to_basic_transducer();
+                let mut this_basic = self.convert_to_basic_transducer()?;
+                let mut another_basic = another.convert_to_basic_transducer()?;
 
                 this_basic.harmonize(&mut another_basic);
 
@@ -1558,12 +1610,13 @@ impl HfstTransducer {
                 this_basic.reindex_into(&mut canonical);
                 another_basic.reindex_into(&mut canonical);
 
-                self.convert_to_hfst_transducer(this_basic);
-                another.convert_to_hfst_transducer(another_basic);
+                self.convert_to_hfst_transducer(this_basic)?;
+                another.convert_to_hfst_transducer(another_basic)?;
             }
-            ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongType),
-            _ => crate::HFST_THROW!(TransducerHasWrongType),
+            ImplementationType::ERROR_TYPE => crate::bail!(TransducerHasWrongType),
+            _ => crate::bail!(TransducerHasWrongType),
         }
+        Ok(())
     }
 
     // test function
@@ -1587,11 +1640,16 @@ impl HfstTransducer {
         s: &StringVector,
         limit: isize,
         time_cutoff: f64,
-    ) -> HfstOneLevelPaths {
+    ) -> crate::error::Result<HfstOneLevelPaths> {
         self.lookup_fd_string_vector(s, limit, time_cutoff)
     }
 
-    pub fn lookup_string(&self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths {
+    pub fn lookup_string(
+        &self,
+        s: &str,
+        limit: isize,
+        time_cutoff: f64,
+    ) -> crate::error::Result<HfstOneLevelPaths> {
         self.lookup_fd_string(s, limit, time_cutoff)
     }
 
@@ -1613,26 +1671,31 @@ impl HfstTransducer {
         s: &StringVector,
         limit: isize,
         time_cutoff: f64,
-    ) -> HfstOneLevelPaths {
-        match self.type_ {
+    ) -> crate::error::Result<HfstOneLevelPaths> {
+        Ok(match self.type_ {
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => unsafe {
                 (*self.implementation.as_hfst_ol_ptr()).lookup_fd_strvec(s, limit, time_cutoff)
             },
-            ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongType),
+            ImplementationType::ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             _ => {
                 unimplemented!("lookup_fd_string_vector: not implemented for this transducer type")
             }
-        }
+        })
     }
 
-    pub fn lookup_fd_string(&self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths {
-        match self.type_ {
+    pub fn lookup_fd_string(
+        &self,
+        s: &str,
+        limit: isize,
+        time_cutoff: f64,
+    ) -> crate::error::Result<HfstOneLevelPaths> {
+        Ok(match self.type_ {
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => unsafe {
                 (*self.implementation.as_hfst_ol_ptr()).lookup_fd_str(s, limit, time_cutoff)
             },
-            ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongType),
+            ImplementationType::ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             _ => unimplemented!("lookup_fd_string: not implemented for this transducer type"),
-        }
+        })
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.lookup-fn]
@@ -1643,7 +1706,7 @@ impl HfstTransducer {
         s: &str,
         limit: isize,
         time_cutoff: f64,
-    ) -> HfstOneLevelPaths {
+    ) -> crate::error::Result<HfstOneLevelPaths> {
         let sv: StringVector = tok.tokenize_one_level(s, false);
         self.lookup_string_vector(&sv, limit, time_cutoff)
     }
@@ -1721,19 +1784,19 @@ impl HfstTransducer {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.is-infinitely-ambiguous-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.is-infinitely-ambiguous-fn]
-    pub fn is_infinitely_ambiguous(&self) -> bool {
-        match self.type_ {
+    pub fn is_infinitely_ambiguous(&self) -> crate::error::Result<bool> {
+        Ok(match self.type_ {
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => unsafe {
                 (*self.implementation.as_hfst_ol_ptr()).is_infinitely_ambiguous()
             },
-            ImplementationType::ERROR_TYPE => crate::HFST_THROW!(TransducerHasWrongType),
+            ImplementationType::ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             _ => {
                 // hfst::implementations::HfstBasicTransducer net(*this);
                 // return net.is_infinitely_ambiguous();
-                let net = self.get_basic_transducer();
+                let net = self.get_basic_transducer()?;
                 net.is_infinitely_ambiguous()
             }
-        }
+        })
     }
 }
 
@@ -1750,9 +1813,9 @@ impl HfstTransducer {
 impl HfstTransducer {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.compare-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.compare-fn]
-    pub fn compare(&self, another: &HfstTransducer, harmonize: bool) -> bool {
+    pub fn compare(&self, another: &HfstTransducer, harmonize: bool) -> crate::error::Result<bool> {
         if self.type_ != another.type_ {
-            crate::err!(TransducerTypeMismatch).throw();
+            crate::bail!(TransducerTypeMismatch);
         }
 
         let mut one_copy = HfstTransducer::new_from(self);
@@ -1760,23 +1823,25 @@ impl HfstTransducer {
 
         /* prevent harmonization, if needed */
         if !harmonize {
-            one_copy.insert_missing_symbols_to_alphabet_from(&another_copy, false);
-            another_copy.insert_missing_symbols_to_alphabet_from(&one_copy, false);
+            one_copy.insert_missing_symbols_to_alphabet_from(&another_copy, false)?;
+            another_copy.insert_missing_symbols_to_alphabet_from(&one_copy, false)?;
         }
         /* always prevent harmonizing special symbols */
-        one_copy.insert_missing_symbols_to_alphabet_from(&another_copy, true);
-        another_copy.insert_missing_symbols_to_alphabet_from(&one_copy, true);
+        one_copy.insert_missing_symbols_to_alphabet_from(&another_copy, true)?;
+        another_copy.insert_missing_symbols_to_alphabet_from(&one_copy, true)?;
 
         if self.type_ != ImplementationType::FOMA_TYPE
             && self.type_ != ImplementationType::XFSM_TYPE
         {
-            another_copy = one_copy.harmonize_(&another_copy).unwrap();
+            another_copy = one_copy
+                .harmonize_(&another_copy)?
+                .expect("harmonize_ returns Some for tropical/log types");
         }
 
-        one_copy.determinize();
-        another_copy.determinize();
+        one_copy.determinize()?;
+        another_copy.determinize()?;
 
-        match one_copy.type_ {
+        Ok(match one_copy.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 crate::tropical_weight_transducer::TropicalWeightTransducer::are_equivalent(
                     one_copy.implementation.as_tropical(),
@@ -1792,19 +1857,19 @@ impl HfstTransducer {
                     another_copy.implementation.as_log(),
                 )
             }
-            ImplementationType::ERROR_TYPE => crate::err!(TransducerHasWrongType).throw(),
+            ImplementationType::ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             _ => unimplemented!("compare: not implemented for this transducer type"),
-        }
+        })
     }
 
-    pub fn compare_default(&self, another: &HfstTransducer) -> bool {
+    pub fn compare_default(&self, another: &HfstTransducer) -> crate::error::Result<bool> {
         self.compare(another, true)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.is-automaton-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.is-automaton-fn]
-    pub fn is_automaton(&self) -> bool {
-        match self.type_ {
+    pub fn is_automaton(&self) -> crate::error::Result<bool> {
+        Ok(match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 crate::tropical_weight_transducer::TropicalWeightTransducer::is_automaton(
                     self.implementation.as_tropical(),
@@ -1815,15 +1880,15 @@ impl HfstTransducer {
                     self.implementation.as_log(),
                 )
             }
-            ImplementationType::ERROR_TYPE => crate::err!(TransducerHasWrongType).throw(),
+            ImplementationType::ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             _ => unimplemented!("is_automaton: not implemented for this transducer type"),
-        }
+        })
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.is-cyclic-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.is-cyclic-fn]
-    pub fn is_cyclic(&self) -> bool {
-        match self.type_ {
+    pub fn is_cyclic(&self) -> crate::error::Result<bool> {
+        Ok(match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 crate::tropical_weight_transducer::TropicalWeightTransducer::is_cyclic(
                     self.implementation.as_tropical(),
@@ -1839,9 +1904,9 @@ impl HfstTransducer {
                     self.implementation.as_hfst_ol(),
                 )
             }
-            ImplementationType::ERROR_TYPE => crate::err!(TransducerHasWrongType).throw(),
+            ImplementationType::ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             _ => unimplemented!("is_cyclic: not implemented for this transducer type"),
-        }
+        })
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.number-of-states-fn]
@@ -1876,10 +1941,10 @@ impl HfstTransducer {
     //
     // -----------------------------------------------------------------------
 
-    pub fn eliminate_flags(&mut self) -> &mut HfstTransducer {
+    pub fn eliminate_flags(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         let basic = crate::hfst_basic_transducer::HfstBasicTransducer::new_from_transducer(self);
         let flags = basic.get_flags();
-        let filter = get_flag_filter(self, &flags, "");
+        let filter = get_flag_filter(self, &flags, "")?;
 
         if let Some(filter) = filter {
             let mut filter_copy = HfstTransducer::new_from(&filter);
@@ -1887,19 +1952,19 @@ impl HfstTransducer {
                 let self_copy = HfstTransducer::new_from(self);
                 let filter_deref = HfstTransducer::new_from(&filter);
                 filter_copy
-                    .compose(&self_copy, true)
-                    .compose(&filter_deref, true);
+                    .compose(&self_copy, true)?
+                    .compose(&filter_deref, true)?;
             }
-            flag_purge(&mut filter_copy, "");
+            flag_purge(&mut filter_copy, "")?;
             *self = filter_copy;
         } else {
-            flag_purge(self, "");
+            flag_purge(self, "")?;
         }
 
         self.optimize()
     }
 
-    pub fn eliminate_flag(&mut self, flag: &str) -> &mut HfstTransducer {
+    pub fn eliminate_flag(&mut self, flag: &str) -> crate::error::Result<&mut HfstTransducer> {
         let basic = crate::hfst_basic_transducer::HfstBasicTransducer::new_from_transducer(self);
         let flags = basic.get_flags();
         let mut feature_found = false;
@@ -1911,46 +1976,44 @@ impl HfstTransducer {
         }
         if !feature_found {
             if !flag.contains('.') {
-                crate::err!(
+                crate::bail!(
                     Hfst,
                     format!(
                         "HfstTransducer::eliminate_flag: flag feature does not occur in the transducer: {}",
                         flag
                     )
-                )
-                .throw();
+                );
             } else {
-                crate::err!(
+                crate::bail!(
                     Hfst,
                     format!(
                         "HfstTransducer::eliminate_flag: only the flag feature must be given, no value or operator: {}",
                         flag
                     )
-                )
-                .throw();
+                );
             }
         }
 
-        let filter = get_flag_filter(self, &flags, flag);
+        let filter = get_flag_filter(self, &flags, flag)?;
         if let Some(filter) = filter {
             let mut filter_copy = HfstTransducer::new_from(&filter);
             {
                 let self_copy = HfstTransducer::new_from(self);
                 let filter_deref = HfstTransducer::new_from(&filter);
                 filter_copy
-                    .compose(&self_copy, true)
-                    .compose(&filter_deref, true);
+                    .compose(&self_copy, true)?
+                    .compose(&filter_deref, true)?;
             }
-            flag_purge(&mut filter_copy, flag);
+            flag_purge(&mut filter_copy, flag)?;
             *self = filter_copy;
         } else {
-            flag_purge(self, flag);
+            flag_purge(self, flag)?;
         }
 
         self.optimize()
     }
 
-    pub fn remove_epsilons(&mut self) -> &mut HfstTransducer {
+    pub fn remove_epsilons(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false;
         self.apply(
             |t: &StdVectorFst| -> StdVectorFst {
@@ -1963,24 +2026,27 @@ impl HfstTransducer {
         )
     }
 
-    pub fn prune(&mut self) -> &mut HfstTransducer {
+    pub fn prune(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         // slow for xfsm type...
         self.convert(ImplementationType::TROPICAL_OPENFST_TYPE, "".to_string());
         let temp = crate::tropical_weight_transducer::TropicalWeightTransducer::prune(
             self.implementation.as_tropical(),
         );
         self.implementation = TransducerImplementation::Tropical(Box::new(temp));
-        self
+        Ok(self)
     }
 
-    pub fn determinize(&mut self) -> &mut HfstTransducer {
+    pub fn determinize(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.determinize_with_config(&EngineConfig::default())
     }
 
     /// 'determinize', reading 'encode_weights' (the only engine-policy flag this op
     /// consults) from the supplied config. The tropical backend encodes weights iff
     /// 'config.encode_weights'; the log backend never did, so it ignores it.
-    pub fn determinize_with_config(&mut self, config: &EngineConfig) -> &mut HfstTransducer {
+    pub fn determinize_with_config(
+        &mut self,
+        config: &EngineConfig,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false;
         self.apply_bool(
             |t: &StdVectorFst, ew: bool| -> StdVectorFst {
@@ -1995,13 +2061,16 @@ impl HfstTransducer {
         )
     }
 
-    pub fn minimize(&mut self) -> &mut HfstTransducer {
+    pub fn minimize(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.minimize_with_config(&EngineConfig::default())
     }
 
     /// 'minimize', reading 'encode_weights' from the supplied config (see
     /// 'determinize_with_config').
-    pub fn minimize_with_config(&mut self, config: &EngineConfig) -> &mut HfstTransducer {
+    pub fn minimize_with_config(
+        &mut self,
+        config: &EngineConfig,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false;
         self.apply_bool(
             |t: &StdVectorFst, ew: bool| -> StdVectorFst {
@@ -2016,11 +2085,14 @@ impl HfstTransducer {
         )
     }
 
-    pub fn optimize(&mut self) -> &mut HfstTransducer {
+    pub fn optimize(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.optimize_with_config(&EngineConfig::default())
     }
 
-    pub fn optimize_with_config(&mut self, config: &EngineConfig) -> &mut HfstTransducer {
+    pub fn optimize_with_config(
+        &mut self,
+        config: &EngineConfig,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         if config.minimization {
             self.minimize_with_config(config)
         } else {
@@ -2034,7 +2106,7 @@ impl HfstTransducer {
     //
     // -----------------------------------------------------------------------
 
-    pub fn repeat_star(&mut self) -> &mut HfstTransducer {
+    pub fn repeat_star(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false;
         self.apply(
             |t: &StdVectorFst| -> StdVectorFst {
@@ -2047,7 +2119,7 @@ impl HfstTransducer {
         )
     }
 
-    pub fn repeat_plus(&mut self) -> &mut HfstTransducer {
+    pub fn repeat_plus(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false;
         self.apply(
             |t: &StdVectorFst| -> StdVectorFst {
@@ -2060,7 +2132,7 @@ impl HfstTransducer {
         )
     }
 
-    pub fn repeat_n(&mut self, n: u32) -> &mut HfstTransducer {
+    pub fn repeat_n(&mut self, n: u32) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply_n(
             |t: &StdVectorFst, n: u32| -> StdVectorFst {
@@ -2075,14 +2147,14 @@ impl HfstTransducer {
         )
     }
 
-    pub fn repeat_n_plus(&mut self, n: u32) -> &mut HfstTransducer {
+    pub fn repeat_n_plus(&mut self, n: u32) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         let mut a = HfstTransducer::new_from(self);
-        let b = HfstTransducer::new_from(a.repeat_star());
-        self.repeat_n(n).concatenate(&b, true)
+        let b = HfstTransducer::new_from(a.repeat_star()?);
+        self.repeat_n(n)?.concatenate(&b, true)
     }
 
-    pub fn repeat_n_minus(&mut self, n: u32) -> &mut HfstTransducer {
+    pub fn repeat_n_minus(&mut self, n: u32) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply_n(
             |t: &StdVectorFst, n: u32| -> StdVectorFst {
@@ -2097,11 +2169,11 @@ impl HfstTransducer {
         )
     }
 
-    pub fn repeat_n_to_k(&mut self, n: u32, k: u32) -> &mut HfstTransducer {
+    pub fn repeat_n_to_k(&mut self, n: u32, k: u32) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         let mut a = HfstTransducer::new_from(self);
-        let b = HfstTransducer::new_from(a.repeat_n_minus(k - n));
-        self.repeat_n(n).concatenate(&b, true)
+        let b = HfstTransducer::new_from(a.repeat_n_minus(k - n)?);
+        self.repeat_n(n)?.concatenate(&b, true)
     }
 
     // -----------------------------------------------------------------------
@@ -2110,7 +2182,7 @@ impl HfstTransducer {
     //
     // -----------------------------------------------------------------------
 
-    pub fn optionalize(&mut self) -> &mut HfstTransducer {
+    pub fn optionalize(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply(
             |t: &StdVectorFst| -> StdVectorFst {
@@ -2123,7 +2195,7 @@ impl HfstTransducer {
         )
     }
 
-    pub fn invert(&mut self) -> &mut HfstTransducer {
+    pub fn invert(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply(
             |t: &StdVectorFst| -> StdVectorFst {
@@ -2136,7 +2208,7 @@ impl HfstTransducer {
         )
     }
 
-    pub fn reverse(&mut self) -> &mut HfstTransducer {
+    pub fn reverse(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply(
             |t: &StdVectorFst| -> StdVectorFst {
@@ -2149,7 +2221,7 @@ impl HfstTransducer {
         )
     }
 
-    pub fn input_project(&mut self) -> &mut HfstTransducer {
+    pub fn input_project(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply(
             |t: &StdVectorFst| -> StdVectorFst {
@@ -2164,7 +2236,7 @@ impl HfstTransducer {
         )
     }
 
-    pub fn output_project(&mut self) -> &mut HfstTransducer {
+    pub fn output_project(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply(
             |t: &StdVectorFst| -> StdVectorFst { crate::tropical_weight_transducer::TropicalWeightTransducer::extract_output_language(
@@ -2177,25 +2249,25 @@ impl HfstTransducer {
         )
     }
 
-    pub fn negate(&mut self) -> &mut HfstTransducer {
+    pub fn negate(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
 
-        if !self.is_automaton() {
-            crate::err!(TransducerIsNotAutomaton).throw();
+        if !self.is_automaton()? {
+            crate::bail!(TransducerIsNotAutomaton);
         }
 
-        let mut idstar = HfstTransducer::new_from_symbol("@_IDENTITY_SYMBOL_@", self.type_);
+        let mut idstar = HfstTransducer::new_from_symbol("@_IDENTITY_SYMBOL_@", self.type_)?;
         // diacritics will not be harmonized in subtract
-        let flags = idstar.insert_missing_diacritics_to_alphabet_from(self);
+        let flags = idstar.insert_missing_diacritics_to_alphabet_from(self)?;
         for flag in flags.iter() {
-            let tr = HfstTransducer::new_from_symbol(flag, self.type_);
-            idstar.disjunct(&tr, true);
+            let tr = HfstTransducer::new_from_symbol(flag, self.type_)?;
+            idstar.disjunct(&tr, true)?;
         }
-        idstar.repeat_star();
-        idstar.minimize();
-        idstar.subtract(self, true);
+        idstar.repeat_star()?;
+        idstar.minimize()?;
+        idstar.subtract(self, true)?;
         *self = idstar;
-        self
+        Ok(self)
     }
 }
 
@@ -2208,7 +2280,7 @@ fn new_filter(
     succeed_flags: &HfstTransducer,
     self_: &HfstTransducer,
     required: bool,
-) -> HfstTransducer {
+) -> crate::error::Result<HfstTransducer> {
     let type_ = fail_flags.get_type();
     let mut comp = crate::xre::XreCompiler::new(type_);
     comp.set_expand_definitions(true);
@@ -2223,28 +2295,29 @@ fn new_filter(
     .unwrap();
 
     // Should the xre compiler do this?
-    result.remove_from_alphabet("Fail");
-    result.remove_from_alphabet("Succeed");
-    result.remove_from_alphabet("Self");
+    result.remove_from_alphabet("Fail")?;
+    result.remove_from_alphabet("Succeed")?;
+    result.remove_from_alphabet("Self")?;
 
-    result
+    Ok(result)
 }
 
 // Substitute each symbol '_@FLAG@' with '@FLAG@'
 // [spec:hfst:def:hfst-transducer.hfst.substitute-escaped-flags-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.substitute-escaped-flags-fn]
-fn substitute_escaped_flags(filter: &mut HfstTransducer) {
-    let alpha = filter.get_alphabet();
+fn substitute_escaped_flags(filter: &mut HfstTransducer) -> crate::error::Result<()> {
+    let alpha = filter.get_alphabet()?;
     for it in alpha.iter() {
         if it.len() > 1 {
             let bytes = it.as_bytes();
             if bytes[0] == b'_' && bytes[1] == b'@' {
                 let mut s = it.clone();
                 s.remove(0);
-                filter.substitute_symbol(it, &s, true, true);
+                filter.substitute_symbol(it, &s, true, true)?;
             }
         }
     }
+    Ok(())
 }
 
 const FLAG_UNIFY: i32 = 1;
@@ -2425,15 +2498,15 @@ fn get_flag_filter(
     transducer: &HfstTransducer,
     flags: &crate::hfst_symbol_defs::StringSet,
     flag: &str,
-) -> Option<HfstTransducer> {
+) -> crate::error::Result<Option<HfstTransducer>> {
     let type_ = transducer.get_type();
     let mut flag_found = false;
     let mut filter: Option<HfstTransducer> = None;
 
     for f in flags.iter() {
-        let self_ = HfstTransducer::new_from_symbol(&format!("_{}", f), type_); // escape flags
-        let mut succeed_flags = HfstTransducer::new_type(type_);
-        let mut fail_flags = HfstTransducer::new_type(type_);
+        let self_ = HfstTransducer::new_from_symbol(&format!("_{}", f), type_)?; // escape flags
+        let mut succeed_flags = HfstTransducer::new_type(type_)?;
+        let mut fail_flags = HfstTransducer::new_type(type_)?;
 
         let op = crate::hfst_flag_diacritics::FdOperation::get_operator(f).as_bytes()[0];
         if (flag.is_empty() || crate::hfst_flag_diacritics::FdOperation::get_feature(f) == flag)
@@ -2445,15 +2518,15 @@ fn get_flag_filter(
 
                 if fstatus == 1 {
                     fail_flags.disjunct(
-                        &HfstTransducer::new_from_symbol(&format!("_{}", flag2), type_),
+                        &HfstTransducer::new_from_symbol(&format!("_{}", flag2), type_)?,
                         true,
-                    );
+                    )?;
                     flag_found = true;
                 } else if fstatus == 2 {
                     succeed_flags.disjunct(
-                        &HfstTransducer::new_from_symbol(&format!("_{}", flag2), type_),
+                        &HfstTransducer::new_from_symbol(&format!("_{}", flag2), type_)?,
                         true,
-                    );
+                    )?;
                     flag_found = true;
                 } else {
                 }
@@ -2466,13 +2539,13 @@ fn get_flag_filter(
                 &succeed_flags,
                 &self_,
                 crate::hfst_flag_diacritics::FdOperation::get_operator(f).as_bytes()[0] == b'R',
-            );
+            )?;
 
             // intersect filter with newfilter
             match filter.as_mut() {
                 None => filter = Some(newfilter),
                 Some(filt) => {
-                    filt.intersect(&newfilter, true);
+                    filt.intersect(&newfilter, true)?;
                 }
             }
         }
@@ -2480,11 +2553,11 @@ fn get_flag_filter(
     }
 
     if let Some(filt) = filter.as_mut() {
-        substitute_escaped_flags(filt); // unescape the flags
-        filt.optimize();
+        substitute_escaped_flags(filt)?; // unescape the flags
+        filt.optimize()?;
     }
 
-    filter
+    Ok(filter)
 }
 
 // Replace arcs in \a transducer that use flag \a flag with epsilon arcs
@@ -2492,13 +2565,14 @@ fn get_flag_filter(
 // string, replace/remove all flags.
 // [spec:hfst:def:hfst-transducer.hfst.flag-purge-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.flag-purge-fn]
-fn flag_purge(transducer: &mut HfstTransducer, flag: &str) {
+fn flag_purge(transducer: &mut HfstTransducer, flag: &str) -> crate::error::Result<()> {
     let type_ = transducer.get_type();
     // slow for xfsm_transducer..
     let mut net =
         crate::hfst_basic_transducer::HfstBasicTransducer::new_from_transducer(transducer);
     net.flag_purge(flag);
-    *transducer = HfstTransducer::new_from_basic(&net, type_);
+    *transducer = HfstTransducer::new_from_basic(&net, type_)?;
+    Ok(())
 }
 
 // ===== extract_nbest (workflow body) =====
@@ -2572,7 +2646,11 @@ impl HfstTransducer {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.extract-paths-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.extract-paths-fn]
-    pub fn extract_paths_cb(&self, callback: &mut dyn ExtractStringsCb, cycles: i32) {
+    pub fn extract_paths_cb(
+        &self,
+        callback: &mut dyn ExtractStringsCb,
+        cycles: i32,
+    ) -> crate::error::Result<()> {
         match self.type_ {
             ImplementationType::LOG_OPENFST_TYPE => {
                 LogWeightTransducer::extract_paths(
@@ -2603,12 +2681,13 @@ impl HfstTransducer {
                 );
             }
             ImplementationType::ERROR_TYPE => {
-                crate::HFST_THROW!(TransducerHasWrongType);
+                crate::bail!(TransducerHasWrongType);
             }
             _ => {
                 unimplemented!("extract_paths_cb: not implemented for this transducer type");
             }
         }
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.extract-paths-fd-fn]
@@ -2618,7 +2697,7 @@ impl HfstTransducer {
         callback: &mut dyn ExtractStringsCb,
         cycles: i32,
         filter_fd: bool,
-    ) {
+    ) -> crate::error::Result<()> {
         match self.type_ {
             ImplementationType::LOG_OPENFST_TYPE => {
                 let t_log_ofst =
@@ -2659,33 +2738,39 @@ impl HfstTransducer {
                 // real thing
             }
             ImplementationType::ERROR_TYPE => {
-                crate::HFST_THROW!(TransducerHasWrongType);
+                crate::bail!(TransducerHasWrongType);
             }
             _ => {
                 unimplemented!("extract_paths_fd_cb: not implemented for this transducer type");
             }
         }
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.longest-path-size-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.longest-path-size-fn]
-    pub fn longest_path_size(&self, obey_flags: bool) -> i32 {
-        if self.is_cyclic() {
-            crate::HFST_THROW!(TransducerIsCyclic);
+    pub fn longest_path_size(&self, obey_flags: bool) -> crate::error::Result<i32> {
+        if self.is_cyclic()? {
+            crate::bail!(TransducerIsCyclic);
         }
 
         if !obey_flags {
             let net = HfstBasicTransducer::new_from_transducer(self);
-            return net.longest_path_size();
+            return Ok(net.longest_path_size());
         }
 
         let mut results = HfstTwoLevelPaths::new();
-        let paths_found = self.extract_longest_paths(&mut results, true /* obey flags */);
+        let paths_found = self.extract_longest_paths(&mut results, true /* obey flags */)?;
         if !paths_found {
-            return -1;
+            return Ok(-1);
         }
         // else, there is at least one path
-        results.iter().next().unwrap().second.len() as i32
+        Ok(results
+            .iter()
+            .next()
+            .expect("paths_found is true, so results has at least one entry")
+            .second
+            .len() as i32)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.extract-longest-paths-fn]
@@ -2694,15 +2779,15 @@ impl HfstTransducer {
         &self,
         results: &mut HfstTwoLevelPaths,
         obey_flags: bool, /*,show_flags: bool*/
-    ) -> bool {
-        if self.is_cyclic() {
-            crate::HFST_THROW!(TransducerIsCyclic);
+    ) -> crate::error::Result<bool> {
+        if self.is_cyclic()? {
+            crate::bail!(TransducerIsCyclic);
         }
 
         let net = HfstBasicTransducer::new_from_transducer(self);
         let path_lengths = net.path_sizes();
         if path_lengths.len() == 0 {
-            return false;
+            return Ok(false);
         }
 
         let flags = net.get_flags();
@@ -2718,40 +2803,50 @@ impl HfstTransducer {
             let mut length_tr = xre.compile(match_length.as_str()).unwrap();
 
             // filter out the paths of current length and extract them
-            length_tr.compose(self, true);
-            length_tr.optimize();
+            length_tr.compose(self, true)?;
+            length_tr.optimize()?;
             if obey_flags {
-                length_tr.extract_paths_fd(results, -1, -1, true);
+                length_tr.extract_paths_fd(results, -1, -1, true)?;
             } else {
-                length_tr.extract_paths(results, -1, -1);
+                length_tr.extract_paths(results, -1, -1)?;
             }
 
             // if paths were found
             if results.len() > 0 {
-                return true;
+                return Ok(true);
             }
         } // lengths of accepted paths gone through
 
         // no paths found
-        false
+        Ok(false)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.extract-shortest-paths-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.extract-shortest-paths-fn]
-    pub fn extract_shortest_paths(&self, results: &mut HfstTwoLevelPaths) {
+    pub fn extract_shortest_paths(
+        &self,
+        results: &mut HfstTwoLevelPaths,
+    ) -> crate::error::Result<()> {
         let mut t = HfstTransducer::new_from_transducer(self);
-        t.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
-        t.n_best(1);
-        t.extract_paths(results, -1, -1);
+        t.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())?;
+        t.n_best(1)?;
+        t.extract_paths(results, -1, -1)?;
+        Ok(())
     }
 
-    pub fn extract_paths(&self, results: &mut HfstTwoLevelPaths, max_num: i32, cycles: i32) {
-        if self.is_cyclic() && max_num < 1 && cycles < 0 {
-            crate::HFST_THROW_MESSAGE!(TransducerIsCyclic, "HfstTransducer::extract_paths");
+    pub fn extract_paths(
+        &self,
+        results: &mut HfstTwoLevelPaths,
+        max_num: i32,
+        cycles: i32,
+    ) -> crate::error::Result<()> {
+        if self.is_cyclic()? && max_num < 1 && cycles < 0 {
+            crate::bail!(TransducerIsCyclic, "HfstTransducer::extract_paths");
         }
 
         let mut cb = ExtractStringsCb_::new(results, max_num);
-        self.extract_paths_cb(&mut cb, cycles);
+        self.extract_paths_cb(&mut cb, cycles)?;
+        Ok(())
     }
 
     pub fn extract_paths_fd(
@@ -2760,18 +2855,23 @@ impl HfstTransducer {
         max_num: i32,
         cycles: i32,
         filter_fd: bool,
-    ) {
-        if self.is_cyclic() && max_num < 1 && cycles < 0 {
-            crate::HFST_THROW_MESSAGE!(TransducerIsCyclic, "HfstTransducer::extract_paths_fd");
+    ) -> crate::error::Result<()> {
+        if self.is_cyclic()? && max_num < 1 && cycles < 0 {
+            crate::bail!(TransducerIsCyclic, "HfstTransducer::extract_paths_fd");
         }
 
         let mut cb = ExtractStringsCb_::new(results, max_num);
-        self.extract_paths_fd_cb(&mut cb, cycles, filter_fd);
+        self.extract_paths_fd_cb(&mut cb, cycles, filter_fd)?;
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.extract-random-paths-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.extract-random-paths-fn]
-    pub fn extract_random_paths(&self, results: &mut HfstTwoLevelPaths, max_num: i32) {
+    pub fn extract_random_paths(
+        &self,
+        results: &mut HfstTwoLevelPaths,
+        max_num: i32,
+    ) -> crate::error::Result<()> {
         match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 TropicalWeightTransducer::extract_random_paths(
@@ -2789,7 +2889,7 @@ impl HfstTransducer {
             }
             ImplementationType::SFST_TYPE => {
                 let mut copy = HfstTransducer::new_from_transducer(self);
-                copy.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
+                copy.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())?;
                 TropicalWeightTransducer::extract_random_paths(
                     copy.implementation.as_tropical(),
                     results,
@@ -2798,7 +2898,7 @@ impl HfstTransducer {
             }
             ImplementationType::FOMA_TYPE => {
                 let mut copy = HfstTransducer::new_from_transducer(self);
-                copy.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
+                copy.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())?;
                 TropicalWeightTransducer::extract_random_paths(
                     copy.implementation.as_tropical(),
                     results,
@@ -2807,12 +2907,13 @@ impl HfstTransducer {
             }
             /* Add here your implementation. */
             ImplementationType::ERROR_TYPE => {
-                crate::HFST_THROW!(TransducerHasWrongType);
+                crate::bail!(TransducerHasWrongType);
             }
             _ => {
                 unimplemented!("extract_random_paths: not implemented for this transducer type");
             }
         }
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.extract-random-paths-fd-fn]
@@ -2822,18 +2923,19 @@ impl HfstTransducer {
         results: &mut HfstTwoLevelPaths,
         max_num: i32,
         filter_fd: bool,
-    ) {
+    ) -> crate::error::Result<()> {
         let mut copy = HfstTransducer::new_from_transducer(self);
-        copy.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
+        copy.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())?;
         TropicalWeightTransducer::extract_random_paths_fd(
             copy.implementation.as_tropical(),
             results,
             max_num,
             filter_fd,
         );
+        Ok(())
     }
 
-    pub fn n_best(&mut self, n: u32) -> &mut HfstTransducer {
+    pub fn n_best(&mut self, n: u32) -> crate::error::Result<&mut HfstTransducer> {
         if !HfstTransducer::is_implementation_type_available(
             ImplementationType::TROPICAL_OPENFST_TYPE,
         ) {
@@ -2866,14 +2968,14 @@ impl HfstTransducer {
                 self.implementation = TransducerImplementation::Log(Box::new(temp));
             }
             ImplementationType::ERROR_TYPE => {
-                crate::HFST_THROW!(TransducerHasWrongType);
+                crate::bail!(TransducerHasWrongType);
             }
             _ => {
                 unimplemented!("n_best: not implemented for this transducer type");
             }
         }
         self.convert(original_type, String::new());
-        self
+        Ok(self)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.is-special-symbol-fn]
@@ -2908,9 +3010,9 @@ impl HfstTransducer {
     pub fn insert_missing_diacritics_to_alphabet_from(
         &mut self,
         another: &HfstTransducer,
-    ) -> StringSet {
-        let this_alphabet: StringSet = self.get_alphabet();
-        let another_alphabet: StringSet = another.get_alphabet();
+    ) -> crate::error::Result<StringSet> {
+        let this_alphabet: StringSet = self.get_alphabet()?;
+        let another_alphabet: StringSet = another.get_alphabet()?;
         let mut missing_flags: StringSet = StringSet::new();
 
         for it in another_alphabet.iter() {
@@ -2920,8 +3022,8 @@ impl HfstTransducer {
                 }
             }
         }
-        self.insert_to_alphabet_set(&missing_flags);
-        missing_flags
+        self.insert_to_alphabet_set(&missing_flags)?;
+        Ok(missing_flags)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.insert-missing-symbols-to-alphabet-from-fn]
@@ -2930,9 +3032,9 @@ impl HfstTransducer {
         &mut self,
         another: &HfstTransducer,
         only_special_symbols: bool,
-    ) {
-        let this_alphabet: StringSet = self.get_alphabet();
-        let another_alphabet: StringSet = another.get_alphabet();
+    ) -> crate::error::Result<()> {
+        let this_alphabet: StringSet = self.get_alphabet()?;
+        let another_alphabet: StringSet = another.get_alphabet()?;
         let mut missing_symbols: StringSet = StringSet::new();
 
         for it in another_alphabet.iter() {
@@ -2946,7 +3048,8 @@ impl HfstTransducer {
                 }
             }
         }
-        self.insert_to_alphabet_set(&missing_symbols);
+        self.insert_to_alphabet_set(&missing_symbols)?;
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -2971,8 +3074,12 @@ impl HfstTransducer {
         return_on_first_miss: bool,
     ) -> bool {
         let mut retval = false;
-        let this_alphabet: StringSet = self.get_alphabet();
-        let another_alphabet: StringSet = another.get_alphabet();
+        let this_alphabet: StringSet = self
+            .get_alphabet()
+            .expect("get_alphabet on a valid transducer cannot fail");
+        let another_alphabet: StringSet = another
+            .get_alphabet()
+            .expect("get_alphabet on a valid transducer cannot fail");
 
         for it in another_alphabet.iter() {
             if FdOperation::is_diacritic(it) && (this_alphabet.get(it).is_none()) {
@@ -3012,7 +3119,8 @@ impl HfstTransducer {
                 s += 1;
             }
 
-            *self = HfstTransducer::new_from_basic(&basic, self.type_);
+            *self = HfstTransducer::new_from_basic(&basic, self.type_)
+                .expect("converting a basic transducer to an available backend type cannot fail");
         }
     }
 
@@ -3024,7 +3132,7 @@ impl HfstTransducer {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.twosided-flag-diacritics-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.twosided-flag-diacritics-fn]
-    pub fn twosided_flag_diacritics(&mut self) {
+    pub fn twosided_flag_diacritics(&mut self) -> crate::error::Result<()> {
         let basic_fst: HfstBasicTransducer = HfstBasicTransducer::from_transducer(self);
         let mut basic_fst_copy: HfstBasicTransducer = HfstBasicTransducer::new();
         let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
@@ -3090,12 +3198,18 @@ impl HfstTransducer {
             }
 
             if basic_fst.is_final_state(s) {
-                basic_fst_copy.set_final_weight(s, &basic_fst.get_final_weight(s));
+                basic_fst_copy.set_final_weight(
+                    s,
+                    &basic_fst
+                        .get_final_weight(s)
+                        .expect("state was confirmed final via is_final_state"),
+                );
             }
 
             s += 1;
         }
-        *self = HfstTransducer::new_from_basic(&basic_fst_copy, self.get_type());
+        *self = HfstTransducer::new_from_basic(&basic_fst_copy, self.get_type())?;
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.harmonize-flag-diacritics-fn]
@@ -3104,9 +3218,9 @@ impl HfstTransducer {
         &mut self,
         another: &mut HfstTransducer,
         insert_renamed_flags: bool,
-    ) {
+    ) -> crate::error::Result<()> {
         if self.type_ != another.type_ {
-            crate::HFST_THROW!(TransducerTypeMismatch);
+            crate::bail!(TransducerTypeMismatch);
         }
 
         let this_has_flag_diacritics = has_flags(self);
@@ -3119,13 +3233,14 @@ impl HfstTransducer {
             if insert_renamed_flags {
                 self.insert_freely_missing_flags_from(another);
                 another.insert_freely_missing_flags_from(self);
-                self.remove_illegal_flag_paths();
+                self.remove_illegal_flag_paths()?;
             }
         } else if this_has_flag_diacritics && insert_renamed_flags {
             another.insert_freely_missing_flags_from(self);
         } else if another_has_flag_diacritics && insert_renamed_flags {
             self.insert_freely_missing_flags_from(another);
         }
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.check-for-missing-flags-in-fn]
@@ -3147,22 +3262,26 @@ impl HfstTransducer {
         &mut self,
         symbol_pair: &StringPair,
         harmonize: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         HfstTokenizer::check_utf8_correctness(&symbol_pair.0);
         HfstTokenizer::check_utf8_correctness(&symbol_pair.1);
 
         if symbol_pair.0.is_empty() || symbol_pair.1.is_empty() {
-            crate::HFST_THROW_MESSAGE!(EmptyString, "insert_freely(const StringPair&)");
+            crate::bail!(EmptyString, "insert_freely(const StringPair&)");
         }
 
         let tr =
-            HfstTransducer::new_from_symbol_pair(&symbol_pair.0, &symbol_pair.1, self.get_type());
+            HfstTransducer::new_from_symbol_pair(&symbol_pair.0, &symbol_pair.1, self.get_type())?;
         self.insert_freely(&tr, harmonize)
     }
 
-    pub fn insert_freely(&mut self, tr: &HfstTransducer, harmonize: bool) -> &mut HfstTransducer {
+    pub fn insert_freely(
+        &mut self,
+        tr: &HfstTransducer,
+        harmonize: bool,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         if self.type_ != tr.type_ {
-            crate::HFST_THROW_MESSAGE!(TransducerTypeMismatch, "HfstTransducer::insert_freely");
+            crate::bail!(TransducerTypeMismatch, "HfstTransducer::insert_freely");
         }
 
         // Segfaults in xfst command line tool...
@@ -3171,45 +3290,51 @@ impl HfstTransducer {
         /* In this function, this transducer must always be harmonized
         according to tr, not the other way round. */
         // foma or no harmonization -> use our own copy of tr.
-        let tr_harmonized: HfstTransducer = if harmonize { self.harmonize_(tr) } else { None }
-            .unwrap_or_else(|| HfstTransducer::new_copy(tr));
+        let tr_harmonized: HfstTransducer = match if harmonize {
+            self.harmonize_(tr)?
+        } else {
+            None
+        } {
+            Some(h) => h,
+            None => HfstTransducer::new_copy(tr)?,
+        };
 
         match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 let mut net = ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
                     self.implementation.as_tropical(),
                     true,
-                );
+                )?;
                 let substituting_net = ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
                     tr_harmonized.implementation.as_tropical(),
                     true,
-                );
+                )?;
 
-                net.insert_freely_graph(&substituting_net);
+                net.insert_freely_graph(&substituting_net)?;
                 self.implementation = TransducerImplementation::Tropical(Box::new(
                     ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(&net),
                 ));
-                return self;
+                return Ok(self);
             }
             ImplementationType::LOG_OPENFST_TYPE => {
                 let mut net = ConversionFunctions::log_ofst_to_hfst_basic_transducer(
                     self.implementation.as_log(),
                     true,
-                );
+                )?;
                 let substituting_net = ConversionFunctions::log_ofst_to_hfst_basic_transducer(
                     tr_harmonized.implementation.as_log(),
                     true,
-                );
+                )?;
 
-                net.insert_freely_graph(&substituting_net);
+                net.insert_freely_graph(&substituting_net)?;
                 self.implementation = TransducerImplementation::Log(Box::new(
                     ConversionFunctions::hfst_basic_transducer_to_log_ofst(&net),
                 ));
-                return self;
+                return Ok(self);
             }
             /* Add here your implementation. */
             ImplementationType::ERROR_TYPE => {
-                crate::HFST_THROW!(TransducerHasWrongType);
+                crate::bail!(TransducerHasWrongType);
             }
             _ => {
                 unimplemented!("insert_freely: not implemented for this transducer type");
@@ -3226,10 +3351,10 @@ impl HfstTransducer {
     pub fn substitute_with_func(
         &mut self,
         func: impl Fn(&StringPair, &mut StringPairSet) -> bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // (XFSM_TYPE branch is #if'd out: HAVE_XFSM is not defined.)
-        let mut net = self.convert_to_basic_transducer();
-        net.substitute_with_func(func);
+        let mut net = self.convert_to_basic_transducer()?;
+        net.substitute_with_func(func)?;
         self.convert_to_hfst_transducer(net)
     }
 
@@ -3239,11 +3364,11 @@ impl HfstTransducer {
         new_symbol: &str,
         input_side: bool,
         output_side: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // (XFSM_TYPE branch is #if'd out: HAVE_XFSM is not defined.)
         // empty strings are not accepted
         if old_symbol.is_empty() || new_symbol.is_empty() {
-            crate::HFST_THROW_MESSAGE!(
+            crate::bail!(
                 EmptyString,
                 "substitute(const std::string&, const std::string&, bool, bool)"
             );
@@ -3268,7 +3393,7 @@ impl HfstTransducer {
                 );
                 self.implementation = TransducerImplementation::Tropical(Box::new(tmp));
             }
-            return self;
+            return Ok(self);
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE && input_side && output_side {
             {
@@ -3279,17 +3404,17 @@ impl HfstTransducer {
                 );
                 self.implementation = TransducerImplementation::Log(Box::new(tmp));
             }
-            return self;
+            return Ok(self);
         }
 
         // use the default HfstBasicTransducer function
-        let mut net = self.convert_to_basic_transducer();
+        let mut net = self.convert_to_basic_transducer()?;
         net.substitute_symbol(
             &old_symbol.to_string(),
             &new_symbol.to_string(),
             input_side,
             output_side,
-        );
+        )?;
         self.convert_to_hfst_transducer(net)
     }
 
@@ -3297,7 +3422,7 @@ impl HfstTransducer {
         &mut self,
         old_symbol_pair: &StringPair,
         new_symbol_pair: &StringPair,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // (XFSM_TYPE branch is #if'd out: HAVE_XFSM is not defined.)
         // empty strings are not accepted
         if old_symbol_pair.0.is_empty()
@@ -3305,33 +3430,33 @@ impl HfstTransducer {
             || new_symbol_pair.0.is_empty()
             || new_symbol_pair.1.is_empty()
         {
-            crate::HFST_THROW_MESSAGE!(
+            crate::bail!(
                 EmptyString,
                 "substitute(const StringPair&, const StringPair&)"
             );
         }
 
-        let mut net = self.convert_to_basic_transducer();
-        net.substitute_symbol_pair(old_symbol_pair, new_symbol_pair);
-        self.convert_to_hfst_transducer(net);
-        self
+        let mut net = self.convert_to_basic_transducer()?;
+        net.substitute_symbol_pair(old_symbol_pair, new_symbol_pair)?;
+        self.convert_to_hfst_transducer(net)?;
+        Ok(self)
     }
 
     pub fn substitute_pair_with_pair_set(
         &mut self,
         old_symbol_pair: &StringPair,
         new_symbol_pair_set: &StringPairSet,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // (XFSM_TYPE branch is #if'd out: HAVE_XFSM is not defined.)
         if old_symbol_pair.0.is_empty() || old_symbol_pair.1.is_empty() {
-            crate::HFST_THROW_MESSAGE!(
+            crate::bail!(
                 EmptyString,
                 "substitute(const StringPair&, const StringPairSet&"
             );
         }
 
-        let mut net = self.convert_to_basic_transducer();
-        net.substitute_symbol_pair_with_set(old_symbol_pair, new_symbol_pair_set);
+        let mut net = self.convert_to_basic_transducer()?;
+        net.substitute_symbol_pair_with_set(old_symbol_pair, new_symbol_pair_set)?;
         self.convert_to_hfst_transducer(net)
     }
 
@@ -3341,7 +3466,7 @@ impl HfstTransducer {
         new_symbol: &str,
         input_side: bool,
         output_side: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.substitute_string(old_symbol, new_symbol, input_side, output_side)
     }
 
@@ -3349,7 +3474,7 @@ impl HfstTransducer {
         &mut self,
         old_symbol_pair: &StringPair,
         new_symbol_pair: &StringPair,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.substitute_pair_with_pair(old_symbol_pair, new_symbol_pair)
     }
 
@@ -3357,7 +3482,7 @@ impl HfstTransducer {
         &mut self,
         old_symbol_pair: &StringPair,
         new_symbol_pair_set: &StringPairSet,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.substitute_pair_with_pair_set(old_symbol_pair, new_symbol_pair_set)
     }
 
@@ -3366,23 +3491,23 @@ impl HfstTransducer {
         symbol_pair: &StringPair,
         transducer: &mut HfstTransducer,
         harmonize: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.substitute_pair_with_transducer(symbol_pair, transducer, harmonize)
     }
 
     pub fn substitute_symbols(
         &mut self,
         substitutions: &HfstSymbolSubstitutions,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.substitute_symbol_substitutions(substitutions)
     }
 
     pub fn substitute_symbol_substitutions(
         &mut self,
         substitutions: &HfstSymbolSubstitutions,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // (XFSM_TYPE branch is #if'd out: HAVE_XFSM is not defined.)
-        let mut net = self.convert_to_basic_transducer();
+        let mut net = self.convert_to_basic_transducer()?;
 
         net.substitute_symbols(substitutions);
 
@@ -3392,16 +3517,16 @@ impl HfstTransducer {
     pub fn substitute_symbol_pairs(
         &mut self,
         substitutions: &HfstSymbolPairSubstitutions,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.substitute_symbol_pair_substitutions(substitutions)
     }
 
     pub fn substitute_symbol_pair_substitutions(
         &mut self,
         substitutions: &HfstSymbolPairSubstitutions,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // (XFSM_TYPE branch is #if'd out: HAVE_XFSM is not defined.)
-        let mut net = self.convert_to_basic_transducer();
+        let mut net = self.convert_to_basic_transducer()?;
         net.substitute_symbol_pairs(substitutions);
         self.convert_to_hfst_transducer(net)
     }
@@ -3411,14 +3536,14 @@ impl HfstTransducer {
         symbol_pair: &StringPair,
         transducer: &mut HfstTransducer,
         harmonize: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // (XFSM_TYPE branch is #if'd out: HAVE_XFSM is not defined.)
         if self.type_ != transducer.type_ {
-            crate::HFST_THROW_MESSAGE!(TransducerTypeMismatch, "HfstTransducer::substitute");
+            crate::bail!(TransducerTypeMismatch, "HfstTransducer::substitute");
         }
 
         if symbol_pair.0.is_empty() || symbol_pair.1.is_empty() {
-            crate::HFST_THROW_MESSAGE!(
+            crate::bail!(
                 EmptyString,
                 "substitute(const StringPair&, HfstTransducer&)"
             );
@@ -3427,24 +3552,24 @@ impl HfstTransducer {
         // (SFST conversion fast path is #if'd out: HAVE_SFST is not defined.)
 
         let mut pair_transducer =
-            HfstTransducer::new_from_symbol_pair(&symbol_pair.0, &symbol_pair.1, self.type_);
+            HfstTransducer::new_from_symbol_pair(&symbol_pair.0, &symbol_pair.1, self.type_)?;
         if !harmonize {
-            self.insert_missing_symbols_to_alphabet_from(&pair_transducer, false);
-            pair_transducer.insert_missing_symbols_to_alphabet_from(self, false);
+            self.insert_missing_symbols_to_alphabet_from(&pair_transducer, false)?;
+            pair_transducer.insert_missing_symbols_to_alphabet_from(self, false)?;
         }
-        self.insert_missing_symbols_to_alphabet_from(&pair_transducer, true);
-        pair_transducer.insert_missing_symbols_to_alphabet_from(self, true);
+        self.insert_missing_symbols_to_alphabet_from(&pair_transducer, true)?;
+        pair_transducer.insert_missing_symbols_to_alphabet_from(self, true)?;
 
-        self.harmonize(&mut pair_transducer, false);
+        self.harmonize(&mut pair_transducer, false)?;
 
         if !harmonize {
-            self.insert_missing_symbols_to_alphabet_from(transducer, false);
-            transducer.insert_missing_symbols_to_alphabet_from(self, false);
+            self.insert_missing_symbols_to_alphabet_from(transducer, false)?;
+            transducer.insert_missing_symbols_to_alphabet_from(self, false)?;
         }
-        self.insert_missing_symbols_to_alphabet_from(transducer, true);
-        transducer.insert_missing_symbols_to_alphabet_from(self, true);
+        self.insert_missing_symbols_to_alphabet_from(transducer, true)?;
+        transducer.insert_missing_symbols_to_alphabet_from(self, true)?;
 
-        self.harmonize(transducer, false);
+        self.harmonize(transducer, false)?;
 
         // (FOMA branch is #if'd out: HAVE_FOMA is not defined.)
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
@@ -3456,7 +3581,7 @@ impl HfstTransducer {
                 );
                 self.implementation = TransducerImplementation::Tropical(Box::new(result));
             }
-            return self;
+            return Ok(self);
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE {
             {
@@ -3467,10 +3592,10 @@ impl HfstTransducer {
                 );
                 self.implementation = TransducerImplementation::Log(Box::new(result));
             }
-            return self;
+            return Ok(self);
         }
         if self.type_ == ImplementationType::ERROR_TYPE {
-            crate::HFST_THROW!(TransducerHasWrongType);
+            crate::bail!(TransducerHasWrongType);
         }
 
         unimplemented!("substitute_pair_with_transducer: not implemented for this transducer type")
@@ -3482,7 +3607,11 @@ impl HfstTransducer {
     //
     // -----------------------------------------------------------------------
 
-    pub fn set_final_weights(&mut self, weight: f32, increment: bool) -> &mut HfstTransducer {
+    pub fn set_final_weights(
+        &mut self,
+        weight: f32,
+        increment: bool,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
             {
                 self.implementation = TransducerImplementation::Tropical(Box::new(
@@ -3493,7 +3622,7 @@ impl HfstTransducer {
                     ),
                 ));
             }
-            return self;
+            return Ok(self);
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE {
             {
@@ -3501,10 +3630,10 @@ impl HfstTransducer {
                     LogWeightTransducer::set_final_weights(self.implementation.as_log(), weight),
                 ));
             }
-            return self;
+            return Ok(self);
         }
         let _ = weight;
-        self
+        Ok(self)
     }
 }
 
@@ -3745,7 +3874,10 @@ fn code_symbols_for_shuffle_impl(
 #[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 impl HfstTransducer {
-    pub fn push_labels(&mut self, push_type: PushType) -> &mut HfstTransducer {
+    pub fn push_labels(
+        &mut self,
+        push_type: PushType,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         let to_initial_state = push_type == PushType::TO_INITIAL_STATE;
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
             let tmp = TropicalWeightTransducer::push_labels(
@@ -3753,30 +3885,33 @@ impl HfstTransducer {
                 to_initial_state,
             );
             self.implementation = TransducerImplementation::Tropical(Box::new(tmp));
-            return self;
+            return Ok(self);
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE {
             let tmp =
                 LogWeightTransducer::push_labels(self.implementation.as_log(), to_initial_state);
             self.implementation = TransducerImplementation::Log(Box::new(tmp));
-            return self;
+            return Ok(self);
         }
         let _ = push_type;
-        self
+        Ok(self)
     }
 
     /// Realign a transducer by pushing its labels to the start on both sides:
     /// invert, push labels to the initial state, invert back, and push again.
     /// Lifted verbatim from hfst-realign (the boundary-symbol variant is dead /
     /// commented out in the C++; this is the only realignment it performs).
-    pub fn realign(&mut self) -> &mut HfstTransducer {
+    pub fn realign(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         self.invert();
         self.push_labels(PushType::TO_INITIAL_STATE);
         self.invert();
         self.push_labels(PushType::TO_INITIAL_STATE)
     }
 
-    pub fn push_weights(&mut self, push_type: PushType) -> &mut HfstTransducer {
+    pub fn push_weights(
+        &mut self,
+        push_type: PushType,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         let to_initial_state = push_type == PushType::TO_INITIAL_STATE;
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
             let tmp = TropicalWeightTransducer::push_weights(
@@ -3784,19 +3919,22 @@ impl HfstTransducer {
                 to_initial_state,
             );
             self.implementation = TransducerImplementation::Tropical(Box::new(tmp));
-            return self;
+            return Ok(self);
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE {
             let tmp =
                 LogWeightTransducer::push_weights(self.implementation.as_log(), to_initial_state);
             self.implementation = TransducerImplementation::Log(Box::new(tmp));
-            return self;
+            return Ok(self);
         }
         let _ = push_type;
-        self
+        Ok(self)
     }
 
-    pub fn transform_weights(&mut self, func: fn(f32) -> f32) -> &mut HfstTransducer {
+    pub fn transform_weights(
+        &mut self,
+        func: fn(f32) -> f32,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         if self.type_ == ImplementationType::TROPICAL_OPENFST_TYPE {
             // NOTE: as in the C++ facade, the old transducer is NOT deleted here.
             self.implementation = TransducerImplementation::Tropical(Box::new(
@@ -3805,16 +3943,16 @@ impl HfstTransducer {
                     func,
                 ),
             ));
-            return self;
+            return Ok(self);
         }
         if self.type_ == ImplementationType::LOG_OPENFST_TYPE {
             self.implementation = TransducerImplementation::Log(Box::new(
                 LogWeightTransducer::transform_weights(self.implementation.as_log(), func),
             ));
-            return self;
+            return Ok(self);
         }
         let _ = func;
-        self
+        Ok(self)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.has-weights-fn]
@@ -3833,7 +3971,7 @@ impl HfstTransducer {
         &mut self,
         another: &HfstTransducer,
         args: &crate::xre::XreConstructorArguments,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // #if HAVE_XFSM: if (this->type == XFSM_TYPE) throw FunctionNotImplemented
         let mut this_basic = HfstBasicTransducer::from_transducer(self);
         // [spec:hfst:def:hfst-transducer.hfst.another-basic-fn]
@@ -3845,9 +3983,9 @@ impl HfstTransducer {
             &mut another_basic,
             &args.list_definitions,
             &mut markers_added,
-        );
+        )?;
         let mut initial_merge = HfstTransducer::from_basic(&result, self.get_type());
-        initial_merge.optimize();
+        initial_merge.optimize()?;
 
         // filter non-optimal paths
         // [ ? | #V ?:? ]* %#V:V ?:0 [ ? | #V ?:? | %#V:V ?:0 ]*
@@ -3866,26 +4004,26 @@ impl HfstTransducer {
             );
 
             let mut worsener = xre_.compile(&worsener_string).unwrap();
-            worsener.optimize();
+            worsener.optimize()?;
             // [spec:hfst:def:hfst-transducer.hfst.cp-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.cp-fn]
             let mut cp = initial_merge.clone();
-            cp.compose(&worsener, true).output_project().optimize();
+            cp.compose(&worsener, true)?.output_project()?.optimize()?;
 
-            initial_merge.subtract(&cp, true).optimize();
-            initial_merge.substitute_symbol(&marker, internal_epsilon, true, true);
+            initial_merge.subtract(&cp, true)?.optimize()?;
+            initial_merge.substitute_symbol(&marker, internal_epsilon, true, true)?;
 
             // [spec:hfst:def:hfst-transducer.hfst.fsm-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.fsm-fn]
             let fsm = HfstBasicTransducer::from_transducer(&initial_merge);
             let symbols = fsm.symbols_used();
             if !symbols.contains(&symbol) {
-                initial_merge.remove_from_alphabet(&symbol);
+                initial_merge.remove_from_alphabet(&symbol)?;
             }
         }
 
         *self = initial_merge;
-        self
+        Ok(self)
     }
 
     /// Apply a set of label substitutions by composition — the `--compose` path
@@ -3898,30 +4036,34 @@ impl HfstTransducer {
     pub fn substitute_by_composition(
         &mut self,
         substitutions: &HfstTransducer,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         let mut subs = substitutions.clone();
         let mut sigma_minus_subs = HfstTransducer::new_symbol_pair(
             crate::hfst_symbol_defs::internal_identity,
             crate::hfst_symbol_defs::internal_identity,
             self.type_,
-        );
+        )?;
         let mut subs_in = substitutions.clone();
-        subs_in.input_project();
-        sigma_minus_subs.subtract(&subs_in, true);
-        subs.disjunct(&sigma_minus_subs, true);
-        subs.repeat_star();
+        subs_in.input_project()?;
+        sigma_minus_subs.subtract(&subs_in, true)?;
+        subs.disjunct(&sigma_minus_subs, true)?;
+        subs.repeat_star()?;
         // Compose on the right, minimise, then compose the inverse on the left
         // (C++: trans = substitution_trans->compose(trans)).
-        self.compose(&subs, true);
-        self.minimize();
-        subs.invert();
-        subs.compose(&*self, true);
+        self.compose(&subs, true)?;
+        self.minimize()?;
+        subs.invert()?;
+        subs.compose(&*self, true)?;
         *self = subs;
-        self.minimize();
-        self
+        self.minimize()?;
+        Ok(self)
     }
 
-    pub fn compose(&mut self, another: &HfstTransducer, harmonize: bool) -> &mut HfstTransducer {
+    pub fn compose(
+        &mut self,
+        another: &HfstTransducer,
+        harmonize: bool,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.compose_with_config(another, harmonize, &EngineConfig::default())
     }
 
@@ -3933,11 +4075,11 @@ impl HfstTransducer {
         another: &HfstTransducer,
         harmonize: bool,
         config: &EngineConfig,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false;
 
         if self.type_ != another.type_ {
-            crate::HFST_THROW!(TransducerTypeMismatch);
+            crate::bail!(TransducerTypeMismatch);
         }
 
         let mut another_copy: HfstTransducer = another.clone();
@@ -3946,15 +4088,17 @@ impl HfstTransducer {
         in composition, we substitute output flags of first transducer with
         epsilons and input flags of second transducer with epsilons. */
         if config.flag_is_epsilon_in_composition && self.type_ != ImplementationType::XFSM_TYPE {
-            let __prev_hook = std::panic::take_hook();
-            std::panic::set_hook(Box::new(|_| {}));
-            let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                self.substitute_with_func(substitute_output_flag_with_epsilon);
-                another_copy.substitute_with_func(substitute_input_flag_with_epsilon);
-            }));
-            std::panic::set_hook(__prev_hook);
-            if __res.is_err() {
-                crate::HFST_THROW!(FlagDiacriticsAreNotIdentities);
+            // The C++ caught a throw from these substitutions and rethrew it as
+            // FlagDiacriticsAreNotIdentities; the ported substitute returns the
+            // error instead, so remap it the same way.
+            if self
+                .substitute_with_func(substitute_output_flag_with_epsilon)
+                .is_err()
+                || another_copy
+                    .substitute_with_func(substitute_input_flag_with_epsilon)
+                    .is_err()
+            {
+                crate::bail!(FlagDiacriticsAreNotIdentities);
             }
         }
 
@@ -3969,26 +4113,28 @@ impl HfstTransducer {
             }
         } else if self.type_ == ImplementationType::XFSM_TYPE {
             diacritics_added_from_another_to_this =
-                self.insert_missing_diacritics_to_alphabet_from(&another_copy);
+                self.insert_missing_diacritics_to_alphabet_from(&another_copy)?;
             diacritics_added_from_this_to_another =
-                another_copy.insert_missing_diacritics_to_alphabet_from(self);
+                another_copy.insert_missing_diacritics_to_alphabet_from(self)?;
         }
 
         /* Prevent harmonization (i.e. matching unknown symbols), if requested. */
         if !harmonize {
-            self.insert_missing_symbols_to_alphabet_from(&another_copy, false);
-            another_copy.insert_missing_symbols_to_alphabet_from(self, false);
+            self.insert_missing_symbols_to_alphabet_from(&another_copy, false)?;
+            another_copy.insert_missing_symbols_to_alphabet_from(self, false)?;
         }
 
         /* Special symbols are never harmonized. */
-        self.insert_missing_symbols_to_alphabet_from(&another_copy, true);
-        another_copy.insert_missing_symbols_to_alphabet_from(self, true);
+        self.insert_missing_symbols_to_alphabet_from(&another_copy, true)?;
+        another_copy.insert_missing_symbols_to_alphabet_from(self, true)?;
 
         // Harmonize, FOMA and XFSM take care of this by default.
         if self.type_ != ImplementationType::FOMA_TYPE
             && self.type_ != ImplementationType::XFSM_TYPE
         {
-            another_copy = self.harmonize_(&another_copy).unwrap();
+            another_copy = self
+                .harmonize_(&another_copy)?
+                .expect("harmonize_ returns Some for tropical/log types");
         }
 
         /* Take care of unknown and identity symbols being handled right in
@@ -3997,13 +4143,13 @@ impl HfstTransducer {
             && self.type_ != ImplementationType::XFSM_TYPE)
             && config.unknown_symbols_in_use
         {
-            self.substitute_symbol("@_IDENTITY_SYMBOL_@", "@_UNKNOWN_SYMBOL_@", false, true);
+            self.substitute_symbol("@_IDENTITY_SYMBOL_@", "@_UNKNOWN_SYMBOL_@", false, true)?;
             another_copy.substitute_symbol(
                 "@_IDENTITY_SYMBOL_@",
                 "@_UNKNOWN_SYMBOL_@",
                 true,
                 false,
-            );
+            )?;
         }
 
         match self.type_ {
@@ -4024,10 +4170,10 @@ impl HfstTransducer {
             }
             ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
                 // This is the exception the tool wants to hear
-                crate::HFST_THROW!(HfstTransducerTypeMismatch);
+                crate::bail!(HfstTransducerTypeMismatch);
             }
             ImplementationType::ERROR_TYPE => {
-                crate::HFST_THROW!(TransducerHasWrongType);
+                crate::bail!(TransducerHasWrongType);
             }
             _ => {
                 unimplemented!("compose_with_config: not implemented for this transducer type");
@@ -4046,22 +4192,24 @@ impl HfstTransducer {
         }
 
         if config.flag_is_epsilon_in_composition && self.type_ != ImplementationType::XFSM_TYPE {
-            self.substitute_with_func(substitute_one_sided_flags);
+            self.substitute_with_func(substitute_one_sided_flags)?;
         }
 
         if (self.type_ != ImplementationType::FOMA_TYPE
             && self.type_ != ImplementationType::XFSM_TYPE)
             && config.unknown_symbols_in_use
         {
-            self.substitute_with_func(substitute_single_identity_with_the_other_symbol);
-            another_copy.substitute_with_func(substitute_unknown_identity_pairs);
+            self.substitute_with_func(substitute_single_identity_with_the_other_symbol)?;
+            another_copy.substitute_with_func(substitute_unknown_identity_pairs)?;
         }
 
-        self
+        Ok(self)
     }
 
-    pub(crate) fn remove_illegal_flag_paths(&mut self) -> &mut HfstTransducer {
-        let alphabet = self.get_alphabet();
+    pub(crate) fn remove_illegal_flag_paths(
+        &mut self,
+    ) -> crate::error::Result<&mut HfstTransducer> {
+        let alphabet = self.get_alphabet()?;
         let mut _1_flags: StringSet = StringSet::new();
         let mut _2_flags: StringSet = StringSet::new();
 
@@ -4083,7 +4231,7 @@ impl HfstTransducer {
         // if there aren't both _1 and _2 flag diaciritcs, there can be no
         // illegal paths.
         if _1_flags.is_empty() || _2_flags.is_empty() {
-            return self;
+            return Ok(self);
         }
 
         // Rename @...@ flags to $...$ flags and compile restriction.
@@ -4108,28 +4256,28 @@ impl HfstTransducer {
             back_subst.insert(dollar_flag, at_flag);
         }
 
-        self.substitute_symbols(&subst);
+        self.substitute_symbols(&subst)?;
 
         let mut restriction = get_flag_path_restriction(&_1_flags, &_2_flags, self.type_);
 
         // Apply restrictions.
-        self.compose(&restriction, true);
+        self.compose(&restriction, true)?;
         let _ = &mut restriction;
 
         // Rename $...$ flags back to @...@ flags.
-        self.substitute_symbols(&back_subst);
+        self.substitute_symbols(&back_subst)?;
 
-        self
+        Ok(self)
     }
 
     pub fn lenient_composition(
         &mut self,
         another: &HfstTransducer,
         _harmonize: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // #if HAVE_XFSM: if (this->type == XFSM_TYPE) throw FunctionNotImplemented
         if self.type_ != another.type_ {
-            crate::HFST_THROW_MESSAGE!(
+            crate::bail!(
                 HfstTransducerTypeMismatch,
                 "HfstTransducer::lenient_composition"
             );
@@ -4138,23 +4286,23 @@ impl HfstTransducer {
         let mut retval = self.clone();
         // true is a dummy variable, false means do not encode epsilons
         retval
-            .compose(another, true)
-            .optimize()
-            .priority_union(self)
-            .optimize();
+            .compose(another, true)?
+            .optimize()?
+            .priority_union(self)?
+            .optimize()?;
 
         *self = retval;
-        self
+        Ok(self)
     }
 
     pub fn cross_product(
         &mut self,
         another: &HfstTransducer,
         _harmonize: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // #if HAVE_XFSM: if (this->type == XFSM_TYPE) throw FunctionNotImplemented
         if self.type_ != another.type_ {
-            crate::HFST_THROW_MESSAGE!(HfstTransducerTypeMismatch, "HfstTransducer::cross_product");
+            crate::bail!(HfstTransducerTypeMismatch, "HfstTransducer::cross_product");
         }
 
         let mut automata1 = self.clone();
@@ -4166,21 +4314,21 @@ impl HfstTransducer {
         // [spec:hfst:def:hfst-transducer.hfst.t1-proj-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.t1-proj-fn]
         let mut t1_proj = automata1.clone();
-        t1_proj.input_project();
+        t1_proj.input_project()?;
         // [spec:hfst:def:hfst-transducer.hfst.t2-proj-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.t2-proj-fn]
         let mut t2_proj = automata2.clone();
-        t2_proj.input_project();
+        t2_proj.input_project()?;
 
-        if !t1_proj.compare(&automata1, true) || !t2_proj.compare(&automata2, true) {
-            crate::HFST_THROW_MESSAGE!(TransducersAreNotAutomata, "HfstTransducer::cross_product");
+        if !t1_proj.compare(&automata1, true)? || !t2_proj.compare(&automata2, true)? {
+            crate::bail!(TransducersAreNotAutomata, "HfstTransducer::cross_product");
         }
 
         // Put MARK all over lower part of automata1 and upper part of automata2,
         // and then compose them. Also, there should be created padding after
         // strings, on both sides
-        automata1.insert_to_alphabet("@_MARK_@");
-        automata2.insert_to_alphabet("@_MARK_@");
+        automata1.insert_to_alphabet("@_MARK_@")?;
+        automata2.insert_to_alphabet("@_MARK_@")?;
 
         let mut tok = HfstTokenizer::new();
         tok.add_multichar_symbol("@_EPSILON_SYMBOL_@");
@@ -4190,44 +4338,44 @@ impl HfstTransducer {
         // EpsilonToMark and MarkToEpsilon are paddings (if strings are not the
         // same size)
         let mut unknown_to_mark =
-            HfstTransducer::from_strings("@_UNKNOWN_SYMBOL_@", "@_MARK_@", &tok, self.type_);
+            HfstTransducer::from_strings("@_UNKNOWN_SYMBOL_@", "@_MARK_@", &tok, self.type_)?;
         let mut epsilon_to_mark =
-            HfstTransducer::from_strings("@_EPSILON_SYMBOL_@", "@_MARK_@", &tok, self.type_);
+            HfstTransducer::from_strings("@_EPSILON_SYMBOL_@", "@_MARK_@", &tok, self.type_)?;
 
         // [spec:hfst:def:hfst-transducer.hfst.mark-to-unknown-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.mark-to-unknown-fn]
         let mut mark_to_unknown = unknown_to_mark.clone();
-        mark_to_unknown.invert();
+        mark_to_unknown.invert()?;
         // [spec:hfst:def:hfst-transducer.hfst.mark-to-epsilon-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.mark-to-epsilon-fn]
         let mut mark_to_epsilon = epsilon_to_mark.clone();
-        mark_to_epsilon.invert();
+        mark_to_epsilon.invert()?;
 
-        unknown_to_mark.repeat_star().minimize(); // minimization is safe
-        epsilon_to_mark.repeat_star().minimize(); // minimization is safe
-        mark_to_unknown.repeat_star().minimize(); // minimization is safe
-        mark_to_epsilon.repeat_star().minimize(); // minimization is safe
+        unknown_to_mark.repeat_star()?.minimize()?; // minimization is safe
+        epsilon_to_mark.repeat_star()?.minimize()?; // minimization is safe
+        mark_to_unknown.repeat_star()?.minimize()?; // minimization is safe
+        mark_to_epsilon.repeat_star()?.minimize()?; // minimization is safe
 
         // [spec:hfst:def:hfst-transducer.hfst.a1-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.a1-fn]
         let mut a1 = automata1.clone();
-        a1.compose(&unknown_to_mark, true)
-            .optimize()
-            .concatenate(&epsilon_to_mark, true)
-            .optimize();
+        a1.compose(&unknown_to_mark, true)?
+            .optimize()?
+            .concatenate(&epsilon_to_mark, true)?
+            .optimize()?;
 
         // [spec:hfst:def:hfst-transducer.hfst.b1-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.b1-fn]
         let mut b1 = mark_to_unknown.clone();
-        b1.compose(&automata2, true)
-            .optimize()
-            .concatenate(&mark_to_epsilon, true)
-            .optimize();
+        b1.compose(&automata2, true)?
+            .optimize()?
+            .concatenate(&mark_to_epsilon, true)?
+            .optimize()?;
 
         // [spec:hfst:def:hfst-transducer.hfst.retval-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.retval-fn]
         let mut retval = a1.clone();
-        retval.compose(&b1, true).optimize();
+        retval.compose(&b1, true)?.optimize()?;
 
         // Expand ?:? transitions to ?:?|?
         let mut id_or_unk: StringPairSet = StringPairSet::new();
@@ -4245,18 +4393,22 @@ impl HfstTransducer {
                 "@_UNKNOWN_SYMBOL_@".to_string(),
             ),
             &id_or_unk,
-        );
+        )?;
 
-        retval.remove_from_alphabet("@_MARK_@");
+        retval.remove_from_alphabet("@_MARK_@")?;
 
         *self = retval;
-        self
+        Ok(self)
     }
 
-    pub fn shuffle(&mut self, another: &HfstTransducer, _b: bool) -> &mut HfstTransducer {
+    pub fn shuffle(
+        &mut self,
+        another: &HfstTransducer,
+        _b: bool,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // #if HAVE_XFSM: if (this->type == XFSM_TYPE) throw FunctionNotImplemented
         if self.type_ != another.type_ {
-            crate::HFST_THROW_MESSAGE!(
+            crate::bail!(
                 TransducerTypeMismatch,
                 "HfstTransducer::shuffle(const HfstTransducer&)"
             );
@@ -4281,7 +4433,7 @@ impl HfstTransducer {
         coding_case.set(ShuffleCoding::ENCODE_FIRST_SHUFFLE_ARGUMENT);
         this_basic.substitute_with_func(|sp, sps| {
             code_symbols_for_shuffle_impl(sp, sps, &coding_case, &shuffle_failed)
-        });
+        })?;
         // also remember to remove the unprefixed symbols from the alphabet
         this_basic.remove_symbols_from_alphabet(&this_alphabet);
 
@@ -4289,14 +4441,14 @@ impl HfstTransducer {
         coding_case.set(ShuffleCoding::ENCODE_SECOND_SHUFFLE_ARGUMENT);
         another_basic.substitute_with_func(|sp, sps| {
             code_symbols_for_shuffle_impl(sp, sps, &coding_case, &shuffle_failed)
-        });
+        })?;
         // also remember to remove the unprefixed symbols from the alphabet
         another_basic.remove_symbols_from_alphabet(&another_alphabet);
 
         // See if shuffle failed, i.e. either transducer is not an automaton
         if shuffle_failed.get() {
             shuffle_failed.set(false);
-            crate::HFST_THROW_MESSAGE!(
+            crate::bail!(
                 TransducersAreNotAutomata,
                 "HfstTransducer::shuffle(const HfstTransducer&)"
             );
@@ -4320,15 +4472,15 @@ impl HfstTransducer {
 
         // Freely insert any number of any symbol in the first transducer
         // to the second transducer and vice versa
-        this_basic.insert_freely_set(&another_alphabet_pairset, 0.0);
-        another_basic.insert_freely_set(&this_alphabet_pairset, 0.0);
+        this_basic.insert_freely_set(&another_alphabet_pairset, 0.0)?;
+        another_basic.insert_freely_set(&this_alphabet_pairset, 0.0)?;
 
         // We use HfstTransducers for intersection
         let mut this1 = HfstTransducer::from_basic(&this_basic, self.get_type());
         let another1 = HfstTransducer::from_basic(&another_basic, another.get_type());
 
-        this1.intersect(&another1, true);
-        this1.optimize();
+        this1.intersect(&another1, true)?;
+        this1.optimize()?;
 
         // We use HfstBasicTransducers again
         // [spec:hfst:def:hfst-transducer.hfst.this1-basic-fn]
@@ -4340,7 +4492,7 @@ impl HfstTransducer {
         coding_case.set(ShuffleCoding::DECODE_AFTER_SHUFFLE);
         this1_basic.substitute_with_func(|sp, sps| {
             code_symbols_for_shuffle_impl(sp, sps, &coding_case, &shuffle_failed)
-        });
+        })?;
         // also remember to remove the prefixed symbols from the alphabet
         this1_basic.remove_symbols_from_alphabet(&this_alphabet);
         this1_basic.remove_symbols_from_alphabet(&another_alphabet);
@@ -4349,20 +4501,20 @@ impl HfstTransducer {
         let this_finally = HfstTransducer::from_basic(&this1_basic, self.get_type());
         *self = this_finally;
 
-        self
+        Ok(self)
     }
 
     // ---------------------- Shuffle functions end --------------------
 
     // Q .P. R = Q | [~[Q .u] .o. R ]
     // .u is input project
-    pub fn priority_union(&mut self, another: &HfstTransducer) -> &mut HfstTransducer {
+    pub fn priority_union(
+        &mut self,
+        another: &HfstTransducer,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // #if HAVE_XFSM: if (this->type == XFSM_TYPE) throw FunctionNotImplemented
         if self.type_ != another.type_ {
-            crate::HFST_THROW_MESSAGE!(
-                HfstTransducerTypeMismatch,
-                "HfstTransducer::priority_union"
-            );
+            crate::bail!(HfstTransducerTypeMismatch, "HfstTransducer::priority_union");
         }
         let t1 = self.clone();
         // [spec:hfst:def:hfst-transducer.hfst.t2-fn]
@@ -4372,20 +4524,20 @@ impl HfstTransducer {
         // [spec:hfst:def:hfst-transducer.hfst.t1upper-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.t1upper-fn]
         let mut t1upper = t1.clone();
-        t1upper.input_project().optimize();
+        t1upper.input_project()?.optimize()?;
 
         // [spec:hfst:def:hfst-transducer.hfst.complement-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.complement-fn]
         let mut complement = t1upper.clone();
-        complement.negate().prune_alphabet(false);
+        complement.negate()?.prune_alphabet(false)?;
 
-        complement.compose(&t2, true).optimize();
+        complement.compose(&t2, true)?.optimize()?;
 
         let mut retval = t1.clone();
-        retval.disjunct(&complement, true).optimize();
+        retval.disjunct(&complement, true)?.optimize()?;
 
         *self = retval;
-        self
+        Ok(self)
     }
 
     #[allow(unused_variables, unused_mut, unreachable_code)]
@@ -4395,35 +4547,35 @@ impl HfstTransducer {
         v: &HfstTransducerVector,
         invert: bool,
         _b: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         // #if HAVE_XFSM: if (this->type == XFSM_TYPE) throw FunctionNotImplemented
         // Foma transducers don't harmonize porperly. If the input is foma
         // transducers, convert to openfst type.
         let mut convert_to_openfst = false;
         if self.get_type() == ImplementationType::FOMA_TYPE {
             convert_to_openfst = true;
-            self.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
+            self.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())?;
         }
 
         // The intersection of an empty set of rules is the empty language,
         // which makes the result empty.
         if v.is_empty() {
-            *self = HfstTransducer::from_type(self.type_);
+            *self = HfstTransducer::from_type(self.type_)?;
         }
 
         let first = &v[0];
 
         // If rule transducers contain word boundaries, add word boundaries to
         // the lexicon unless the lexicon already contains them.
-        let rule_alphabet = first.get_alphabet();
+        let rule_alphabet = first.get_alphabet()?;
 
         if rule_alphabet.contains("@#@") {
-            let lexicon_alphabet = self.get_alphabet();
+            let lexicon_alphabet = self.get_alphabet()?;
             let mut tokenizer = HfstTokenizer::new();
             tokenizer.add_multichar_symbol("@#@");
             tokenizer.add_multichar_symbol(internal_epsilon);
             let mut wb =
-                HfstTransducer::from_strings(internal_epsilon, "@#@", &tokenizer, self.type_);
+                HfstTransducer::from_strings(internal_epsilon, "@#@", &tokenizer, self.type_)?;
             // [spec:hfst:def:hfst-transducer.hfst.wb-copy-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.wb-copy-fn]
             let wb_copy = wb.clone();
@@ -4434,9 +4586,9 @@ impl HfstTransducer {
             basic_this.add_symbol_to_alphabet(&"@#@".to_string());
             *self = HfstTransducer::from_basic(&basic_this, self.get_type());
 
-            wb.concatenate(self, true)
-                .concatenate(&wb_copy, true)
-                .optimize();
+            wb.concatenate(self, true)?
+                .concatenate(&wb_copy, true)?
+                .optimize()?;
             *self = wb;
             let _ = lexicon_alphabet;
         }
@@ -4444,19 +4596,19 @@ impl HfstTransducer {
         let mut rule_1 = v[0].clone();
 
         if convert_to_openfst {
-            rule_1.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
+            rule_1.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())?;
         }
 
         // foma / no harmonization -> use our own copy.
         let mut harmonized_lexicon: HfstTransducer =
-            rule_1.harmonize_(self).unwrap_or_else(|| self.clone());
+            rule_1.harmonize_(self)?.unwrap_or_else(|| self.clone());
 
         if invert {
-            harmonized_lexicon.invert();
+            harmonized_lexicon.invert()?;
             harmonized_lexicon.substitute_symbol_pair(
                 &("@#@".to_string(), internal_epsilon.to_string()),
                 &(internal_epsilon.to_string(), "@#@".to_string()),
-            );
+            )?;
         }
 
         harmonized_lexicon.substitute_symbol(
@@ -4464,8 +4616,13 @@ impl HfstTransducer {
             "||_IDENTITY_SYMBOL_||",
             true,
             true,
-        );
-        harmonized_lexicon.substitute_symbol(internal_unknown, "||_UNKNOWN_SYMBOL_||", true, true);
+        )?;
+        harmonized_lexicon.substitute_symbol(
+            internal_unknown,
+            "||_UNKNOWN_SYMBOL_||",
+            true,
+            true,
+        )?;
 
         if v.len() == 1 {
             let mut rule_fst = v[0].clone();
@@ -4474,11 +4631,11 @@ impl HfstTransducer {
             }
 
             if invert {
-                rule_fst.invert();
+                rule_fst.invert()?;
                 rule_fst.substitute_symbol_pair(
                     &(internal_epsilon.to_string(), "@#@".to_string()),
                     &("@#@".to_string(), internal_epsilon.to_string()),
-                );
+                )?;
             }
 
             // In case there is only onw rule, compose with that.
@@ -4508,7 +4665,7 @@ impl HfstTransducer {
                     &lexicon_basic,
                 );
 
-            let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut rule);
+            let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut rule)?;
 
             res.prune_alphabet(true);
             *self = HfstTransducer::from_basic(&res, self.type_);
@@ -4517,28 +4674,29 @@ impl HfstTransducer {
             // recursively and compose with that.
             let mut first_rule_fst = v[0].clone();
             if convert_to_openfst {
-                first_rule_fst.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
+                first_rule_fst.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())?;
             }
 
             if invert {
-                first_rule_fst.invert();
+                first_rule_fst.invert()?;
                 first_rule_fst.substitute_symbol_pair(
                     &(internal_epsilon.to_string(), "@#@".to_string()),
                     &("@#@".to_string(), internal_epsilon.to_string()),
-                );
+                )?;
             }
 
             let mut second_rule_fst = v[1].clone();
             if convert_to_openfst {
-                second_rule_fst.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
+                second_rule_fst
+                    .convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())?;
             }
 
             if invert {
-                second_rule_fst.invert();
+                second_rule_fst.invert()?;
                 second_rule_fst.substitute_symbol_pair(
                     &(internal_epsilon.to_string(), "@#@".to_string()),
                     &("@#@".to_string(), internal_epsilon.to_string()),
-                );
+                )?;
             }
 
             // std::vector<implementations::ComposeIntersectRule *> rule_vector;
@@ -4562,15 +4720,15 @@ impl HfstTransducer {
             for it in &v[2..] {
                 let mut rule_fst = it.clone();
                 if convert_to_openfst {
-                    rule_fst.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
+                    rule_fst.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())?;
                 }
 
                 if invert {
-                    rule_fst.invert();
+                    rule_fst.invert()?;
                     rule_fst.substitute_symbol_pair(
                         &(internal_epsilon.to_string(), "@#@".to_string()),
                         &("@#@".to_string(), internal_epsilon.to_string()),
-                    );
+                    )?;
                 }
                 extra_rule_basics.push(HfstBasicTransducer::from_transducer(&rule_fst));
             }
@@ -4633,13 +4791,13 @@ impl HfstTransducer {
                 crate::compose_intersect_lexicon::ComposeIntersectLexicon::new_from_transducer(
                     &lexicon_basic,
                 );
-            let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut *rules);
+            let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut *rules)?;
 
             res.prune_alphabet(true);
             *self = HfstTransducer::from_basic(&res, self.type_);
 
             if invert {
-                self.invert();
+                self.invert()?;
             }
 
             // delete rules; -> the owning 'rules' Box (and the recursively nested
@@ -4648,21 +4806,21 @@ impl HfstTransducer {
 
         drop(harmonized_lexicon);
 
-        self.substitute_symbol("||_IDENTITY_SYMBOL_||", internal_identity, true, true);
-        self.substitute_symbol("||_UNKNOWN_SYMBOL_||", internal_unknown, true, true);
+        self.substitute_symbol("||_IDENTITY_SYMBOL_||", internal_identity, true, true)?;
+        self.substitute_symbol("||_UNKNOWN_SYMBOL_||", internal_unknown, true, true)?;
 
         if convert_to_openfst {
-            self.convert(ImplementationType::FOMA_TYPE, String::new());
+            self.convert(ImplementationType::FOMA_TYPE, String::new())?;
         }
 
-        self
+        Ok(self)
     }
 
     pub fn concatenate(
         &mut self,
         another: &HfstTransducer,
         harmonize: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply_binary(
             |t1, t2| TropicalWeightTransducer::concatenate(t1, t2),
@@ -4672,7 +4830,10 @@ impl HfstTransducer {
         )
     }
 
-    pub fn disjunct_spv(&mut self, spv: &StringPairVector) -> &mut HfstTransducer {
+    pub fn disjunct_spv(
+        &mut self,
+        spv: &StringPairVector,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         match self.type_ {
             ImplementationType::TROPICAL_OPENFST_TYPE => {
                 TropicalWeightTransducer::disjunct_spv(self.implementation.as_tropical_mut(), spv);
@@ -4688,7 +4849,7 @@ impl HfstTransducer {
                 assert!(false);
             }
         }
-        self
+        Ok(self)
     }
 
     // TODO...
@@ -4696,11 +4857,11 @@ impl HfstTransducer {
         &mut self,
         another: &mut HfstTransducer,
         type_: ImplementationType,
-    ) -> &mut HfstTransducer {
-        self.convert(type_, String::new());
+    ) -> crate::error::Result<&mut HfstTransducer> {
+        self.convert(type_, String::new())?;
         if type_ != another.type_ {
             let mut __tmp = another.clone();
-            __tmp.convert(type_, String::new());
+            __tmp.convert(type_, String::new())?;
             *another = __tmp;
         }
 
@@ -4721,10 +4882,14 @@ impl HfstTransducer {
                 assert!(false);
             }
         }
-        self
+        Ok(self)
     }
 
-    pub fn disjunct(&mut self, another: &HfstTransducer, harmonize: bool) -> &mut HfstTransducer {
+    pub fn disjunct(
+        &mut self,
+        another: &HfstTransducer,
+        harmonize: bool,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false;
         self.apply_binary(
             |t1, t2| TropicalWeightTransducer::disjunct(t1, t2),
@@ -4734,7 +4899,11 @@ impl HfstTransducer {
         )
     }
 
-    pub fn intersect(&mut self, another: &HfstTransducer, harmonize: bool) -> &mut HfstTransducer {
+    pub fn intersect(
+        &mut self,
+        another: &HfstTransducer,
+        harmonize: bool,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply_binary(
             |t1, t2| TropicalWeightTransducer::intersect(t1, t2),
@@ -4744,7 +4913,11 @@ impl HfstTransducer {
         )
     }
 
-    pub fn subtract(&mut self, another: &HfstTransducer, harmonize: bool) -> &mut HfstTransducer {
+    pub fn subtract(
+        &mut self,
+        another: &HfstTransducer,
+        harmonize: bool,
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         self.apply_binary(
             |t1, t2| TropicalWeightTransducer::subtract(t1, t2),
@@ -4776,17 +4949,22 @@ impl HfstTransducer {
 impl HfstTransducer {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.write-in-att-format-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.write-in-att-format-fn]
-    pub fn write_in_att_format_filename(&self, filename: &str, print_weights: bool) {
+    pub fn write_in_att_format_filename(
+        &self,
+        filename: &str,
+        print_weights: bool,
+    ) -> crate::error::Result<()> {
         let file = match std::fs::File::create(filename) {
             Ok(f) => f,
             Err(_) => {
                 let message = filename.to_string();
-                crate::HFST_THROW_MESSAGE!(StreamCannotBeWritten, message);
+                crate::bail!(StreamCannotBeWritten, message);
             }
         };
         let mut ofile = std::io::BufWriter::new(file);
         self.write_in_att_format_file(&mut ofile, print_weights);
         let _ = std::io::Write::flush(&mut ofile);
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.write-in-att-format-number-fn]
@@ -4890,7 +5068,7 @@ impl HfstTransducer {
         let _ = foo;
         Ok(Box::leak(Box::new(HfstTransducer::new_from_basic(
             &net, type_,
-        ))))
+        )?)))
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.universal-pair-fn]
@@ -4986,9 +5164,13 @@ impl HfstTransducer {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.read-lexc-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.read-lexc-fn]
-    pub fn read_lexc(filename: &str, type_: ImplementationType, verbose: bool) -> HfstTransducer {
-        HfstTransducer::read_lexc_ptr(filename, type_, verbose)
-            .expect("read_lexc: lexc compilation produced no transducer")
+    pub fn read_lexc(
+        filename: &str,
+        type_: ImplementationType,
+        verbose: bool,
+    ) -> crate::error::Result<HfstTransducer> {
+        Ok(HfstTransducer::read_lexc_ptr(filename, type_, verbose)?
+            .expect("read_lexc: lexc compilation produced no transducer"))
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.read-lexc-ptr-fn]
@@ -4997,16 +5179,16 @@ impl HfstTransducer {
         filename: &str,
         type_: ImplementationType,
         verbose: bool,
-    ) -> Option<HfstTransducer> {
+    ) -> crate::error::Result<Option<HfstTransducer>> {
         if type_ == ImplementationType::XFSM_TYPE {
             unimplemented!("read_lexc_ptr: not implemented for this transducer type");
         }
 
         if !HfstTransducer::is_implementation_type_available(type_) {
-            crate::err!(ImplementationTypeNotAvailable(type_)).throw();
+            crate::bail!(ImplementationTypeNotAvailable(type_));
         }
 
-        match type_ {
+        Ok(match type_ {
             ImplementationType::FOMA_TYPE
             | ImplementationType::SFST_TYPE
             | ImplementationType::TROPICAL_OPENFST_TYPE
@@ -5022,12 +5204,12 @@ impl HfstTransducer {
                 compiler.compile(&source)
             }
             ImplementationType::ERROR_TYPE => {
-                HFST_THROW!(TransducerHasWrongType);
+                crate::bail!(TransducerHasWrongType);
             }
             _ => {
-                HFST_THROW!(TransducerHasWrongType);
+                crate::bail!(TransducerHasWrongType);
             }
-        }
+        })
     }
 }
 
@@ -5036,30 +5218,38 @@ impl HfstTransducer {
 // thin forwarders bridge them to the skeleton's canonical 'new_*' constructors.
 impl Clone for HfstTransducer {
     fn clone(&self) -> Self {
-        HfstTransducer::new_copy(self)
+        HfstTransducer::new_copy(self).expect("cloning a valid transducer cannot fail")
     }
 }
 
 impl HfstTransducer {
     pub fn new_from(another: &HfstTransducer) -> Self {
-        HfstTransducer::new_copy(another)
+        HfstTransducer::new_copy(another).expect("copying an existing transducer cannot fail")
     }
     pub fn new_from_transducer(another: &HfstTransducer) -> Self {
-        HfstTransducer::new_copy(another)
+        HfstTransducer::new_copy(another).expect("copying an existing transducer cannot fail")
     }
-    pub fn from_type(type_: ImplementationType) -> Self {
+    pub fn from_type(type_: ImplementationType) -> crate::error::Result<Self> {
         HfstTransducer::new_type(type_)
     }
-    pub fn from_symbol(symbol: &str, type_: ImplementationType) -> Self {
+    pub fn from_symbol(symbol: &str, type_: ImplementationType) -> crate::error::Result<Self> {
         HfstTransducer::new_symbol(symbol, type_)
     }
-    pub fn new_from_symbol(symbol: &str, type_: ImplementationType) -> Self {
+    pub fn new_from_symbol(symbol: &str, type_: ImplementationType) -> crate::error::Result<Self> {
         HfstTransducer::new_symbol(symbol, type_)
     }
-    pub fn from_isymbol_osymbol(isymbol: &str, osymbol: &str, type_: ImplementationType) -> Self {
+    pub fn from_isymbol_osymbol(
+        isymbol: &str,
+        osymbol: &str,
+        type_: ImplementationType,
+    ) -> crate::error::Result<Self> {
         HfstTransducer::new_symbol_pair(isymbol, osymbol, type_)
     }
-    pub fn new_from_symbol_pair(isymbol: &str, osymbol: &str, type_: ImplementationType) -> Self {
+    pub fn new_from_symbol_pair(
+        isymbol: &str,
+        osymbol: &str,
+        type_: ImplementationType,
+    ) -> crate::error::Result<Self> {
         HfstTransducer::new_symbol_pair(isymbol, osymbol, type_)
     }
     pub fn from_strings(
@@ -5067,14 +5257,14 @@ impl HfstTransducer {
         osymbol: &str,
         tokenizer: &HfstTokenizer,
         type_: ImplementationType,
-    ) -> Self {
+    ) -> crate::error::Result<Self> {
         HfstTransducer::new_tokenized_pair(isymbol, osymbol, tokenizer, type_)
     }
     pub fn new_string_tokenizer_type(
         utf8_str: &str,
         tokenizer: &HfstTokenizer,
         type_: ImplementationType,
-    ) -> Self {
+    ) -> crate::error::Result<Self> {
         HfstTransducer::new_tokenized(utf8_str, tokenizer, type_)
     }
     pub fn new_string_string_tokenizer_type(
@@ -5082,23 +5272,26 @@ impl HfstTransducer {
         lower: &str,
         tokenizer: &HfstTokenizer,
         type_: ImplementationType,
-    ) -> Self {
+    ) -> crate::error::Result<Self> {
         HfstTransducer::new_tokenized_pair(upper, lower, tokenizer, type_)
     }
     pub fn from_basic(net: &HfstBasicTransducer, type_: ImplementationType) -> Self {
         HfstTransducer::new_from_basic(net, type_)
+            .expect("converting a basic transducer to an available backend type cannot fail")
     }
     pub fn from_basic_transducer(net: &HfstBasicTransducer, type_: ImplementationType) -> Self {
         HfstTransducer::new_from_basic(net, type_)
+            .expect("converting a basic transducer to an available backend type cannot fail")
     }
     pub fn new_from_basic_transducer(net: &HfstBasicTransducer, type_: ImplementationType) -> Self {
         HfstTransducer::new_from_basic(net, type_)
+            .expect("converting a basic transducer to an available backend type cannot fail")
     }
     pub fn from_string_pair_set(
         sps: &StringPairSet,
         type_: ImplementationType,
         cyclic: bool,
-    ) -> Self {
+    ) -> crate::error::Result<Self> {
         HfstTransducer::new_string_pair_set(sps, type_, cyclic)
     }
 }
@@ -5242,20 +5435,23 @@ impl HfstTransducer {
     pub fn insert_to_alphabet_symbol<S: AsRef<str>>(&mut self, symbol: S) {
         self.insert_to_alphabet_string(symbol.as_ref());
     }
-    pub fn insert_to_alphabet<S: AsRef<str>>(&mut self, symbol: S) {
-        self.insert_to_alphabet_string(symbol.as_ref());
+    pub fn insert_to_alphabet<S: AsRef<str>>(&mut self, symbol: S) -> crate::error::Result<()> {
+        self.insert_to_alphabet_string(symbol.as_ref())
     }
-    pub fn insert_to_alphabet_set(&mut self, symbols: &StringSet) {
-        self.insert_to_alphabet_string_set(symbols);
+    pub fn insert_to_alphabet_set(&mut self, symbols: &StringSet) -> crate::error::Result<()> {
+        self.insert_to_alphabet_string_set(symbols)
     }
-    pub fn remove_from_alphabet_symbol<S: AsRef<str>>(&mut self, symbol: S) {
-        self.remove_from_alphabet_string(symbol.as_ref());
+    pub fn remove_from_alphabet_symbol<S: AsRef<str>>(
+        &mut self,
+        symbol: S,
+    ) -> crate::error::Result<()> {
+        self.remove_from_alphabet_string(symbol.as_ref())
     }
-    pub fn remove_from_alphabet<S: AsRef<str>>(&mut self, symbol: S) {
-        self.remove_from_alphabet_string(symbol.as_ref());
+    pub fn remove_from_alphabet<S: AsRef<str>>(&mut self, symbol: S) -> crate::error::Result<()> {
+        self.remove_from_alphabet_string(symbol.as_ref())
     }
-    pub fn remove_from_alphabet_set(&mut self, symbols: &StringSet) {
-        self.remove_from_alphabet_string_set(symbols);
+    pub fn remove_from_alphabet_set(&mut self, symbols: &StringSet) -> crate::error::Result<()> {
+        self.remove_from_alphabet_string_set(symbols)
     }
     pub fn substitute<A: AsRef<str>, B: AsRef<str>>(
         &mut self,
@@ -5263,7 +5459,7 @@ impl HfstTransducer {
         new_symbol: B,
         input_side: bool,
         output_side: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.substitute_string(
             old_symbol.as_ref(),
             new_symbol.as_ref(),
@@ -5274,7 +5470,7 @@ impl HfstTransducer {
     pub fn substitute_substitutions(
         &mut self,
         substitutions: &HfstSymbolSubstitutions,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.substitute_symbol_substitutions(substitutions)
     }
 }
@@ -5285,6 +5481,7 @@ impl HfstBasicTransducer {
     /// to the interchange basic transducer.
     pub fn from_transducer(t: &HfstTransducer) -> HfstBasicTransducer {
         t.get_basic_transducer()
+            .expect("get_basic_transducer on a valid transducer cannot fail")
     }
     pub fn new_from_transducer(t: &HfstTransducer) -> HfstBasicTransducer {
         HfstBasicTransducer::from_transducer(t)
@@ -5302,7 +5499,7 @@ impl HfstTransducer {
         &mut self,
         tr: &HfstTransducer,
         harmonize: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.insert_freely(tr, harmonize)
     }
     pub fn apply_binary(
@@ -5311,7 +5508,7 @@ impl HfstTransducer {
         log_ofst_funct: fn(&LogFst, &LogFst) -> LogFst,
         another_tr: &HfstTransducer,
         harmonize: bool,
-    ) -> &mut HfstTransducer {
+    ) -> crate::error::Result<&mut HfstTransducer> {
         self.apply_another(tropical_ofst_funct, log_ofst_funct, another_tr, harmonize)
     }
 }
@@ -5363,7 +5560,9 @@ fn add_suffix_to_feature_name(flag_diacritic: &str, suffix: &str) -> String {
 // [spec:hfst:def:hfst-transducer.hfst.has-flags-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.has-flags-fn]
 fn has_flags(fst: &HfstTransducer) -> bool {
-    let alphabet = fst.get_alphabet();
+    let alphabet = fst
+        .get_alphabet()
+        .expect("get_alphabet on a valid transducer cannot fail");
     for it in alphabet.iter() {
         if FdOperation::is_diacritic(it) {
             return true;
@@ -5429,12 +5628,18 @@ fn rename_flag_diacritics(fst: &mut HfstTransducer, suffix: &str) {
         }
 
         if basic_fst.is_final_state(s) {
-            basic_fst_copy.set_final_weight(s, &basic_fst.get_final_weight(s));
+            basic_fst_copy.set_final_weight(
+                s,
+                &basic_fst
+                    .get_final_weight(s)
+                    .expect("state was confirmed final via is_final_state"),
+            );
         }
 
         s += 1;
     }
-    *fst = HfstTransducer::new_from_basic(&basic_fst_copy, fst.get_type());
+    *fst = HfstTransducer::new_from_basic(&basic_fst_copy, fst.get_type())
+        .expect("converting a basic transducer to an available backend type cannot fail");
 }
 
 // [spec:hfst:def:hfst-transducer.hfst.encode-flag-diacritics-fn]
@@ -5471,7 +5676,12 @@ fn encode_flag_diacritics(fst: &mut HfstTransducer) {
         }
 
         if basic_fst.is_final_state(s) {
-            basic_fst_copy.set_final_weight(s, &basic_fst.get_final_weight(s));
+            basic_fst_copy.set_final_weight(
+                s,
+                &basic_fst
+                    .get_final_weight(s)
+                    .expect("state was confirmed final via is_final_state"),
+            );
         }
 
         s += 1;
@@ -5501,7 +5711,8 @@ fn encode_flag_diacritics(fst: &mut HfstTransducer) {
         basic_fst_copy.add_symbol_to_alphabet(&symbol);
     }
 
-    *fst = HfstTransducer::new_from_basic(&basic_fst_copy, fst.get_type());
+    *fst = HfstTransducer::new_from_basic(&basic_fst_copy, fst.get_type())
+        .expect("converting a basic transducer to an available backend type cannot fail");
 }
 
 // [spec:hfst:def:hfst-transducer.hfst.decode-flag-diacritics-fn]
@@ -5539,7 +5750,12 @@ fn decode_flag_diacritics(fst: &mut HfstTransducer) {
         }
 
         if basic_fst.is_final_state(s) {
-            basic_fst_copy.set_final_weight(s, &basic_fst.get_final_weight(s));
+            basic_fst_copy.set_final_weight(
+                s,
+                &basic_fst
+                    .get_final_weight(s)
+                    .expect("state was confirmed final via is_final_state"),
+            );
         }
 
         s += 1;
@@ -5555,7 +5771,8 @@ fn decode_flag_diacritics(fst: &mut HfstTransducer) {
         basic_fst_copy.add_symbol_to_alphabet(&symbol);
     }
 
-    *fst = HfstTransducer::new_from_basic(&basic_fst_copy, fst.get_type());
+    *fst = HfstTransducer::new_from_basic(&basic_fst_copy, fst.get_type())
+        .expect("converting a basic transducer to an available backend type cannot fail");
 }
 
 // C++ 'operator<<(std::ostream &out, const HfstTransducer &t)' (HfstTransducer.cc:6419)

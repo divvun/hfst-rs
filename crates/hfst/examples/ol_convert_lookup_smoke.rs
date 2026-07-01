@@ -2,7 +2,7 @@ use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 
-fn main() {
+fn main() -> hfst::error::Result<()> {
     // Build a:b / 0.5 with a final state weighted 0.3.
     let mut basic = HfstBasicTransducer::new();
     let tr = HfstBasicTransition::new_symbols(
@@ -16,7 +16,7 @@ fn main() {
     basic.set_final_weight(1, &0.3);
 
     // Convert to the optimized-lookup format and look up "a".
-    let mut ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&basic, true, "", None);
+    let mut ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&basic, true, "", None)?;
 
     let results = ol.lookup_fd_str("a", -1, 0.0);
     assert_eq!(results.len(), 1, "expected exactly one analysis");
@@ -36,7 +36,7 @@ fn main() {
 
     // Round-trip the OL transducer back to a HfstBasicTransducer.
     let basic2 = ConversionFunctions::hfst_ol_to_hfst_basic_transducer(&ol);
-    let t0 = basic2.transitions(0);
+    let t0 = basic2.transitions(0)?;
     assert_eq!(
         t0.len(),
         1,
@@ -46,4 +46,5 @@ fn main() {
     assert_eq!(t0[0].get_output_symbol(basic2.coder()), "b");
     assert!(basic2.is_final_state(t0[0].get_target_state()));
     println!("OL -> basic round-trip OK");
+    Ok(())
 }

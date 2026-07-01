@@ -109,7 +109,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = HfstTransducer::new_from_stream(instream);
+            let mut trans = match HfstTransducer::new_from_stream(instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("hfst-multiply: {e}");
+                    return 1;
+                }
+            };
             let mut inputname = trans.get_name();
             if inputname.is_empty() {
                 inputname = globals::input_filename();
@@ -120,7 +126,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 inputname, DUPE_COUNT, transducer_n
             ));
             for _ in 0..DUPE_COUNT {
-                outstream.redirect(&mut trans);
+                if let Err(e) = outstream.redirect(&mut trans) {
+                    eprintln!("hfst-multiply: {e}");
+                    return 1;
+                }
             }
         }
         instream.close();
@@ -156,10 +165,16 @@ unsafe fn real_main() -> i32 {
         ));
 
         // here starts the buffer handling part
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("hfst-multiply: cannot open input: {e}");
+                return 1;
+            }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
@@ -170,10 +185,16 @@ unsafe fn real_main() -> i32 {
         }
 
         let type_ = instream.get_type();
-        let mut outstream = if output_opened {
+        let mut outstream = match if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        } {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("hfst-multiply: cannot open output: {e}");
+                return 1;
+            }
         };
 
         process_stream(&mut instream, &mut outstream)

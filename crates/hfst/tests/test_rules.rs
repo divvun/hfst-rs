@@ -61,7 +61,7 @@ fn sp(a: &str, b: &str) -> StringPair {
 // ---------------------------------------------------------------------------
 // Block 1: two_level_if / two_level_only_if / two_level_if_and_only_if.
 // ---------------------------------------------------------------------------
-fn run_two_level_rules(type_: ImplementationType) {
+fn run_two_level_rules(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     let _guard = serialized();
 
     verbose_print(
@@ -70,8 +70,8 @@ fn run_two_level_rules(type_: ImplementationType) {
         type_,
     );
 
-    let leftc = HfstTransducer::new_symbol("c", type_);
-    let rightc = HfstTransducer::new_symbol("c", type_);
+    let leftc = HfstTransducer::new_symbol("c", type_)?;
+    let rightc = HfstTransducer::new_symbol("c", type_)?;
     let mut context: HfstTransducerPair = (leftc, rightc);
 
     let mut mappings: StringPairSet = StringPairSet::new();
@@ -83,40 +83,43 @@ fn run_two_level_rules(type_: ImplementationType) {
     alphabet.insert(sp("b", "b"));
     alphabet.insert(sp("c", "c"));
 
-    let _rule_transducer1 = hfst_rules::two_level_if(&mut context, &mut mappings, &mut alphabet);
+    let _rule_transducer1 = hfst_rules::two_level_if(&mut context, &mut mappings, &mut alphabet)?;
     let _rule_transducer2 =
-        hfst_rules::two_level_only_if(&mut context, &mut mappings, &mut alphabet);
+        hfst_rules::two_level_only_if(&mut context, &mut mappings, &mut alphabet)?;
     let _rule_transducer3 =
-        hfst_rules::two_level_if_and_only_if(&mut context, &mut mappings, &mut alphabet);
+        hfst_rules::two_level_if_and_only_if(&mut context, &mut mappings, &mut alphabet)?;
 
     // compare_and_delete in C++ converts the SFST (index 0) and FOMA (index 2)
     // rule transducers to TROPICAL and asserts each compares equal to the
     // TROPICAL (index 1) result. Both SFST and FOMA are out of scope and
     // unavailable, so no cross-implementation compare() assertion runs; this
     // block faithfully exercises only construction.
+    Ok(())
 }
 
 #[test]
-fn two_level_rules_tropical() {
-    run_two_level_rules(TROPICAL_OPENFST_TYPE);
+fn two_level_rules_tropical() -> Result<(), hfst::error::Error> {
+    run_two_level_rules(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
-fn two_level_rules_log() {
-    run_two_level_rules(LOG_OPENFST_TYPE);
+fn two_level_rules_log() -> Result<(), hfst::error::Error> {
+    run_two_level_rules(LOG_OPENFST_TYPE)?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
 // Block 2: replace_down_karttunen.
 // ---------------------------------------------------------------------------
-fn run_replace_down_karttunen(type_: ImplementationType) {
+fn run_replace_down_karttunen(type_: ImplementationType) -> Result<(), hfst::error::Error> {
     let _guard = serialized();
 
     let mut tok = HfstTokenizer::new();
     tok.add_multichar_symbol("@_EPSILON_SYMBOL_@");
-    let mut mapping = HfstTransducer::new_tokenized_pair("ab", "x", &tok, type_);
-    let left_context = HfstTransducer::new_tokenized_pair("ab", "ab", &tok, type_);
-    let right_context = HfstTransducer::new_symbol("a", type_);
+    let mut mapping = HfstTransducer::new_tokenized_pair("ab", "x", &tok, type_)?;
+    let left_context = HfstTransducer::new_tokenized_pair("ab", "ab", &tok, type_)?;
+    let right_context = HfstTransducer::new_symbol("a", type_)?;
     let mut context: HfstTransducerPair = (left_context, right_context);
     let mut alphabet: StringPairSet = StringPairSet::new();
     alphabet.insert(sp("a", "a"));
@@ -125,27 +128,30 @@ fn run_replace_down_karttunen(type_: ImplementationType) {
     let optional = false;
 
     let replace_down_transducer =
-        hfst_rules::replace_down_karttunen(&mut context, &mut mapping, optional, &mut alphabet);
+        hfst_rules::replace_down_karttunen(&mut context, &mut mapping, optional, &mut alphabet)?;
 
-    let mut test_abababa = HfstTransducer::new_tokenized("abababa", &tok, type_);
-    test_abababa.compose(&replace_down_transducer, true);
+    let mut test_abababa = HfstTransducer::new_tokenized("abababa", &tok, type_)?;
+    test_abababa.compose(&replace_down_transducer, true)?;
     let abxaba =
-        HfstTransducer::new_tokenized_pair("abababa", "abx@_EPSILON_SYMBOL_@aba", &tok, type_);
+        HfstTransducer::new_tokenized_pair("abababa", "abx@_EPSILON_SYMBOL_@aba", &tok, type_)?;
     let ababxa =
-        HfstTransducer::new_tokenized_pair("abababa", "ababx@_EPSILON_SYMBOL_@a", &tok, type_);
-    let mut expected_result = HfstTransducer::new_type(type_);
-    expected_result.disjunct(&abxaba, true);
-    expected_result.disjunct(&ababxa, true);
-    assert!(expected_result.compare(&test_abababa, true));
+        HfstTransducer::new_tokenized_pair("abababa", "ababx@_EPSILON_SYMBOL_@a", &tok, type_)?;
+    let mut expected_result = HfstTransducer::new_type(type_)?;
+    expected_result.disjunct(&abxaba, true)?;
+    expected_result.disjunct(&ababxa, true)?;
+    assert!(expected_result.compare(&test_abababa, true)?);
+    Ok(())
 }
 
 #[test]
-fn replace_down_karttunen_tropical() {
-    run_replace_down_karttunen(TROPICAL_OPENFST_TYPE);
+fn replace_down_karttunen_tropical() -> Result<(), hfst::error::Error> {
+    run_replace_down_karttunen(TROPICAL_OPENFST_TYPE)?;
+    Ok(())
 }
 
 #[test]
 #[ignore = "PORT DISCREPANCY: replace_down_karttunen for LOG_OPENFST throws EmptyStringException -- the faithfully-ported LOG log->basic conversion (source_state hardcoded to 0) emits an empty-symbol transition; LOG was commented out of the C++ types array so this path is never exercised upstream"]
-fn replace_down_karttunen_log() {
-    run_replace_down_karttunen(LOG_OPENFST_TYPE);
+fn replace_down_karttunen_log() -> Result<(), hfst::error::Error> {
+    run_replace_down_karttunen(LOG_OPENFST_TYPE)?;
+    Ok(())
 }

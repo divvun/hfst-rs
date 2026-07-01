@@ -350,7 +350,14 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
             }
         }
         verbose_printf("Compiling... ");
-        let Some(mut res) = lexc.compile_lexical() else {
+        let compiled = match lexc.compile_lexical() {
+            Ok(c) => c,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
+        let Some(mut res) = compiled else {
             if LEXCCOUNT == 1 {
                 error(
                     1,
@@ -375,7 +382,10 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
         hfst_set_name(&mut res, &lexcfilenames[0], "lexc");
         hfst_set_formula(&mut res, &lexcfilenames[0], "L");
         verbose_printf("\nWriting... ");
-        outstream.redirect(&mut res);
+        if let Err(e) = outstream.redirect(&mut res) {
+            error(1, 0, &format!("{e}"));
+            return 1;
+        }
         verbose_printf("done\n");
         // C++ 'delete res' — owned value drops at end of scope.
         outstream.close();
@@ -411,10 +421,17 @@ unsafe fn real_main() -> i32 {
         verbose_printf(&format!("writing to {}\n", globals::output_filename()));
         // here starts the buffer handling part
         let output_opened = globals::output_filename() != "<stdout>";
-        let mut outstream = if output_opened {
+        let outstream_res = if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), FORMAT, true)
         } else {
             HfstOutputStream::new(FORMAT, true)
+        };
+        let mut outstream = match outstream_res {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
         let mut lexc = LexcCompiler::new_with_flags(FORMAT, WITH_FLAGS, ALIGN_STRINGS);
         lexc.set_minimize_flags(MINIMIZE_FLAGS);

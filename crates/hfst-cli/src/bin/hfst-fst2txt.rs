@@ -178,7 +178,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
             // C: catches TransducerTypeMismatchException -> error "input
             // transducers do not have the same type"; the Rust ctor currently
             // panics rather than throwing, so the catch arm is not reproduced.
-            let mut t = HfstTransducer::new_from_stream(instream);
+            let mut t = match HfstTransducer::new_from_stream(instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             let mut inputname = t.get_name();
             if inputname.is_empty() {
                 inputname = globals::input_filename();
@@ -305,10 +311,16 @@ unsafe fn real_main() -> i32 {
         // (the C wraps the ctor in try/catch on HfstException -> error
         // "%s is not a valid transducer file"; the Rust ctor currently panics
         // rather than throwing, so the catch arm is not reproduced here.)
-        let mut instream = if input_opened {
+        let mut instream = match if input_opened {
             HfstInputStream::new_filename(&globals::input_filename())
         } else {
             HfstInputStream::new()
+        } {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         if instream.get_type() == ImplementationType::XFSM_TYPE {

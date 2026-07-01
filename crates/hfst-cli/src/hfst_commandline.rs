@@ -208,7 +208,9 @@ pub fn debug_save_transducer(t: &HfstTransducer, name: &str) {
         let mut t = t.clone();
         let debug_name = format!("DEBUG {}", name);
         t.set_name(&debug_name);
-        let mut debug_out = HfstOutputStream::new_filename(name, t.get_type(), true);
+        let Ok(mut debug_out) = HfstOutputStream::new_filename(name, t.get_type(), true) else {
+            return;
+        };
         debug_printf(&format!(
             "*** DEBUG ({}): saving current transducer to {}\n",
             globals::program_name(),

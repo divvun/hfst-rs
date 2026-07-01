@@ -2,7 +2,7 @@
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 
-fn main() {
+fn main() -> hfst::error::Result<()> {
     let mut g = HfstBasicTransducer::new();
     let tr =
         HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.5, g.coder_mut());
@@ -27,8 +27,8 @@ fn main() {
 
     assert_eq!(g2.get_max_state(), 1);
     assert!(g2.is_final_state(1));
-    assert!((g2.get_final_weight(1) - 0.3).abs() < 1e-6);
-    let trs = g2.transitions(0);
+    assert!((g2.get_final_weight(1)? - 0.3).abs() < 1e-6);
+    let trs = g2.transitions(0)?;
     assert_eq!(trs.len(), 1);
     assert_eq!(trs[0].get_input_symbol(g2.coder()), "a");
     assert_eq!(trs[0].get_output_symbol(g2.coder()), "b");
@@ -51,12 +51,13 @@ fn main() {
 
         assert_eq!(g3.get_max_state(), 1);
         assert!(g3.is_final_state(1));
-        assert!((g3.get_final_weight(1) - 0.3).abs() < 1e-6);
-        let t = g3.transitions(0);
+        assert!((g3.get_final_weight(1)? - 0.3).abs() < 1e-6);
+        let t = g3.transitions(0)?;
         assert_eq!(t.len(), 1);
         assert_eq!(t[0].get_input_symbol(g3.coder()), "a");
         assert_eq!(t[0].get_output_symbol(g3.coder()), "b");
         assert!((t[0].get_weight() - 0.5).abs() < 1e-6);
         println!("att round-trip (read_in_att_format_file) OK");
     }
+    Ok(())
 }

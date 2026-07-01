@@ -173,42 +173,48 @@ fn is_special_symbol(symbol: &str) -> bool {
 
 // [spec:hfst:def:hfst-compose-intersect.check-all-symbols-fn]
 // [spec:hfst:sem:hfst-compose-intersect.check-all-symbols-fn]
-fn check_all_symbols(lexicon: &HfstTransducer, rule: &HfstTransducer) -> String {
-    let rule_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule);
+fn check_all_symbols(
+    lexicon: &HfstTransducer,
+    rule: &HfstTransducer,
+) -> hfst::error::Result<String> {
+    let rule_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule)?;
 
     let rule_input_symbols = rule_b.input_symbols_used();
 
     if rule_input_symbols.contains(internal_identity) {
-        return String::new();
+        return Ok(String::new());
     }
 
-    let lexicon_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon);
+    let lexicon_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon)?;
 
     for s in 0..=lexicon_b.get_max_state() {
-        for it in lexicon_b.transitions(s).iter() {
+        for it in lexicon_b.transitions(s)?.iter() {
             let output_symbol = it.get_output_symbol(lexicon_b.coder());
 
             if !rule_input_symbols.contains(&output_symbol) {
-                return output_symbol;
+                return Ok(output_symbol);
             }
         }
     }
 
-    String::new()
+    Ok(String::new())
 }
 
 // [spec:hfst:def:hfst-compose-intersect.check-multi-char-symbols-fn]
 // [spec:hfst:sem:hfst-compose-intersect.check-multi-char-symbols-fn]
-fn check_multi_char_symbols(lexicon: &HfstTransducer, rule: &HfstTransducer) -> String {
-    let lexicon_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon);
-    let rule_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule);
+fn check_multi_char_symbols(
+    lexicon: &HfstTransducer,
+    rule: &HfstTransducer,
+) -> hfst::error::Result<String> {
+    let lexicon_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon)?;
+    let rule_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule)?;
 
     let tokenizer = HfstTokenizer::new();
 
     let rule_input_symbols = rule_b.input_symbols_used();
 
     for s in 0..=lexicon_b.get_max_state() {
-        for it in lexicon_b.transitions(s).iter() {
+        for it in lexicon_b.transitions(s)?.iter() {
             let output_symbol = it.get_output_symbol(lexicon_b.coder());
 
             if !rule_input_symbols.contains(&output_symbol) {
@@ -217,21 +223,25 @@ fn check_multi_char_symbols(lexicon: &HfstTransducer, rule: &HfstTransducer) -> 
                 }
 
                 if tokenizer.tokenize_one_level(&output_symbol, false).len() > 1 {
-                    return output_symbol;
+                    return Ok(output_symbol);
                 }
             }
         }
     }
 
-    String::new()
+    Ok(String::new())
 }
 
 // [spec:hfst:def:hfst-compose-intersect.harmonize-rules-fn]
 // [spec:hfst:sem:hfst-compose-intersect.harmonize-rules-fn]
-fn harmonize_rules(lexicon: &mut HfstTransducer, rules: &mut [HfstTransducer]) {
+fn harmonize_rules(
+    lexicon: &mut HfstTransducer,
+    rules: &mut [HfstTransducer],
+) -> hfst::error::Result<()> {
     for it in rules.iter_mut() {
-        it.harmonize(lexicon, false);
+        it.harmonize(lexicon, false)?;
     }
+    Ok(())
 }
 
 // [spec:hfst:def:hfst-compose-intersect.compose-streams-fn]
@@ -289,10 +299,17 @@ unsafe fn compose_streams(
             output_type = type1;
         }
 
-        let mut outstream = if globals::output_filename() != "<stdout>" {
+        let outstream_res = if globals::output_filename() != "<stdout>" {
             HfstOutputStream::new_filename(&globals::output_filename(), output_type, true)
         } else {
             HfstOutputStream::new(output_type, true)
+        };
+        let mut outstream = match outstream_res {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         let _both_inputs = firststream.is_good() && secondstream.is_good();
@@ -307,18 +324,30 @@ unsafe fn compose_streams(
         let mut rule_n: usize = 1;
 
         while secondstream.is_good() {
-            let mut rule = HfstTransducer::new_from_stream(secondstream);
-            rule.convert(output_type, String::new());
+            let mut rule = match HfstTransducer::new_from_stream(secondstream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            if let Err(e) = rule.convert(output_type, String::new()) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
             let rulename = rule.get_name();
             if rulename.len() > 0 {
                 verbose_printf(&format!("Reading and minimizing rule {}...\n", rulename));
             } else {
                 verbose_printf(&format!("Reading and minimizing rule {}...\n", rule_n));
             }
-            rule.minimize_with_config(&EngineConfig {
+            if let Err(e) = rule.minimize_with_config(&EngineConfig {
                 encode_weights: ENCODE_WEIGHTS,
                 ..EngineConfig::default()
-            });
+            }) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
 
             rules.push(rule);
             rule_n += 1;
@@ -326,15 +355,30 @@ unsafe fn compose_streams(
 
         while firststream.is_good() {
             verbose_printf("Reading lexicon...");
-            let mut lexicon = HfstTransducer::new_from_stream(firststream);
-            lexicon.convert(output_type, String::new());
+            let mut lexicon = match HfstTransducer::new_from_stream(firststream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            if let Err(e) = lexicon.convert(output_type, String::new()) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
             let lexiconname = hfst_get_name(&lexicon, &globals::first_filename());
             verbose_printf(&format!(" {} read\n", lexiconname));
 
             verbose_printf("Computing intersecting composition...\n");
 
             if rules.len() > 0 {
-                let symbol = check_all_symbols(&lexicon, &rules[0]);
+                let symbol = match check_all_symbols(&lexicon, &rules[0]) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
                 if symbol != "" {
                     warning(
                         0,
@@ -350,7 +394,13 @@ unsafe fn compose_streams(
                         ),
                     );
                 } else {
-                    let symbol = check_multi_char_symbols(&lexicon, &rules[0]);
+                    let symbol = match check_multi_char_symbols(&lexicon, &rules[0]) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
+                    };
                     if symbol != "" {
                         warning(
                             0,
@@ -369,7 +419,10 @@ unsafe fn compose_streams(
             }
 
             if HARMONIZE {
-                harmonize_rules(&mut lexicon, &mut rules);
+                if let Err(e) = harmonize_rules(&mut lexicon, &mut rules) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
             }
 
             if FAST_CI {
@@ -379,19 +432,48 @@ unsafe fn compose_streams(
 
                 if INVERT {
                     let mut lexicon_input = lexicon.clone();
-                    lexicon_input.input_project().minimize();
-                    lexicon_input.compose_intersect(&rules, true, true);
+                    if let Err(e) = lexicon_input.input_project() {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                    if let Err(e) = lexicon_input.minimize() {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                    if let Err(e) = lexicon_input.compose_intersect(&rules, true, true) {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
 
-                    lexicon_input.compose(&lexicon, true);
+                    if let Err(e) = lexicon_input.compose(&lexicon, true) {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                     lexicon = lexicon_input;
                 } else {
                     let mut lexicon_output = lexicon.clone();
-                    lexicon_output.output_project().minimize();
-                    lexicon_output.compose_intersect(&rules, false, true);
-                    lexicon.compose(&lexicon_output, true);
+                    if let Err(e) = lexicon_output.output_project() {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                    if let Err(e) = lexicon_output.minimize() {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                    if let Err(e) = lexicon_output.compose_intersect(&rules, false, true) {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                    if let Err(e) = lexicon.compose(&lexicon_output, true) {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                 }
             } else {
-                lexicon.compose_intersect(&rules, INVERT, true);
+                if let Err(e) = lexicon.compose_intersect(&rules, INVERT, true) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
             }
 
             let composed_name = format!(
@@ -407,7 +489,10 @@ unsafe fn compose_streams(
                 "Storing result in {}...\n",
                 globals::output_filename()
             ));
-            outstream.redirect(&mut lexicon);
+            if let Err(e) = outstream.redirect(&mut lexicon) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
 
         firststream.close();
@@ -445,15 +530,29 @@ unsafe fn real_main() -> i32 {
         // (the C wraps the ctors in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
-        let mut firststream = if globals::first_filename() != "<stdin>" {
+        let firststream_res = if globals::first_filename() != "<stdin>" {
             HfstInputStream::new_filename(&globals::first_filename())
         } else {
             HfstInputStream::new()
         };
-        let mut secondstream = if globals::second_filename() != "<stdin>" {
+        let mut firststream = match firststream_res {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
+        let secondstream_res = if globals::second_filename() != "<stdin>" {
             HfstInputStream::new_filename(&globals::second_filename())
         } else {
             HfstInputStream::new()
+        };
+        let mut secondstream = match secondstream_res {
+            Ok(s) => s,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
         };
 
         compose_streams(&mut firststream, &mut secondstream)

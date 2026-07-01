@@ -124,10 +124,28 @@ unsafe fn binaryoperate_streams(
                     transducer_n
                 ));
             }
-            let mut first = HfstTransducer::new_from_stream(firststream);
-            let second = HfstTransducer::new_from_stream(secondstream);
-            first.concatenate(&second, true);
-            outstream.redirect(&mut first);
+            let mut first = match HfstTransducer::new_from_stream(firststream) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("hfst-binary-tool: {e}");
+                    return 1;
+                }
+            };
+            let second = match HfstTransducer::new_from_stream(secondstream) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("hfst-binary-tool: {e}");
+                    return 1;
+                }
+            };
+            if let Err(e) = first.concatenate(&second, true) {
+                eprintln!("hfst-binary-tool: {e}");
+                return 1;
+            }
+            if let Err(e) = outstream.redirect(&mut first) {
+                eprintln!("hfst-binary-tool: {e}");
+                return 1;
+            }
             both_inputs = firststream.is_good() && secondstream.is_good();
         }
 
@@ -190,21 +208,42 @@ unsafe fn real_main() -> i32 {
         // (the C wraps each ctor in try/catch on HfstException; the Rust ctor
         // currently panics on a bad file rather than throwing, so the catch
         // arms are not reproduced here.)
-        let mut firststream = if first_opened {
+        let firststream_res = if first_opened {
             HfstInputStream::new_filename(&globals::first_filename())
         } else {
             HfstInputStream::new()
         };
-        let mut secondstream = if second_opened {
+        let mut firststream = match firststream_res {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("hfst-binary-tool: {e}");
+                return 1;
+            }
+        };
+        let secondstream_res = if second_opened {
             HfstInputStream::new_filename(&globals::second_filename())
         } else {
             HfstInputStream::new()
         };
+        let mut secondstream = match secondstream_res {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("hfst-binary-tool: {e}");
+                return 1;
+            }
+        };
         let type_ = firststream.get_type();
-        let mut outstream = if output_opened {
+        let outstream_res = if output_opened {
             HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
         } else {
             HfstOutputStream::new(type_, true)
+        };
+        let mut outstream = match outstream_res {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("hfst-binary-tool: {e}");
+                return 1;
+            }
         };
 
         // (the C main calls concatenate_streams; the defined function is

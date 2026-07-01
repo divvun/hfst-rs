@@ -149,8 +149,8 @@ pub enum ErrorKind {
     Hfst,
 }
 
-/// Build an [`Error`] without returning it. `err!(Kind)`, `err!(Kind, message)`,
-/// or `err!(Kind(data))`.
+/// Build an [`Error`] without returning it. `crate::err!(Kind)`, `crate::err!(Kind, message)`,
+/// or `crate::err!(Kind(data))`.
 #[macro_export]
 macro_rules! err {
     ($kind:ident ( $($arg:expr),* $(,)? )) => {
