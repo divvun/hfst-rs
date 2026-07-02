@@ -3,6 +3,7 @@ name = "hfst-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 # The HFST command-line tools (tools/src/*.cc), ported faithfully (getopt and
 # all). Shared infra (hfst-getopt, hfst-commandline, hfst-program-options,

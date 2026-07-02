@@ -11,7 +11,7 @@ exclude = ["crates/hfst-c"]
 version = "0.1.0"
 edition = "2024"
 license = "LGPL-3.0-or-later"
-repository = "https://github.com/hfst/hfst"
+repository = "https://github.com/divvun/rust-hfst"
 
 [workspace.dependencies]
 # internal crates (dependency layers, bottom-up)
