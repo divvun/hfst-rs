@@ -1475,7 +1475,7 @@ impl OtherSymbolTransducer {
     ) -> crate::error::Result<bool> {
         // Do this properly later.. (preserved C++ comment.)
         let mut another_fst = another.clone();
-        another_fst.subtract(cfg, self);
+        another_fst.subtract(cfg, self)?;
         let internal = HfstBasicTransducer::from_transducer(&another_fst.get_transducer()?);
         Ok(Self::empty(&internal))
     }
@@ -1585,7 +1585,7 @@ impl Rule {
         // OtherSymbolTransducerVector contexts_copy = contexts;
         // for (it : contexts_copy) context.apply(disjunct, *it);
         for ctx in contexts.iter() {
-            rule.context.disjunct(cfg, ctx);
+            rule.context.disjunct(cfg, ctx)?;
         }
         // this->center.harmonize_diacritics(cfg, context);
         let mut context = std::mem::replace(&mut rule.context, OtherSymbolTransducer::new(cfg)?);
@@ -1606,11 +1606,11 @@ impl Rule {
         v: &[&dyn RuleT],
     ) -> crate::error::Result<ResultRule> {
         let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
-        rule_transducer.repeat_star(cfg);
+        rule_transducer.repeat_star(cfg)?;
         let mut is_empty = true;
         for r in v.iter() {
             if !r.rule().empty() {
-                rule_transducer.intersect(cfg, r.rule_transducer());
+                rule_transducer.intersect(cfg, r.rule_transducer())?;
                 is_empty = false;
             }
         }
@@ -1646,21 +1646,21 @@ impl Rule {
         if self.is_empty {
             return Ok(());
         }
-        self.add_name();
-        self.rule_transducer.remove_diacritics_from_output(cfg);
+        self.add_name()?;
+        self.rule_transducer.remove_diacritics_from_output(cfg)?;
         self.rule_transducer
-            .apply_subst(cfg, TWOLC_EPSILON, HFST_EPSILON, true, true);
+            .apply_subst(cfg, TWOLC_EPSILON, HFST_EPSILON, true, true)?;
         self.rule_transducer
-            .apply_subst(cfg, "__HFST_TWOLC_.#.", "@#@", true, true);
+            .apply_subst(cfg, "__HFST_TWOLC_.#.", "@#@", true, true)?;
         self.rule_transducer
-            .apply_subst(cfg, "__HFST_TWOLC_SPACE", " ", true, true);
+            .apply_subst(cfg, "__HFST_TWOLC_SPACE", " ", true, true)?;
         self.rule_transducer.apply_subst_pair(
             cfg,
             &("@#@".to_string(), "@#@".to_string()),
             &("@#@".to_string(), HFST_EPSILON.to_string()),
-        );
+        )?;
         self.rule_transducer
-            .apply_subst(cfg, TWOLC_IDENTITY, HFST_IDENTITY, true, true);
+            .apply_subst(cfg, TWOLC_IDENTITY, HFST_IDENTITY, true, true)?;
         out.redirect(&mut self.rule_transducer.transducer)?;
         Ok(())
     }
@@ -1676,9 +1676,10 @@ impl Rule {
     /// 'rule_transducer'.
     // [spec:hfst:def:rule.rule.add-name-fn]
     // [spec:hfst:sem:rule.rule.add-name-fn]
-    pub fn add_name(&mut self) {
+    pub fn add_name(&mut self) -> crate::error::Result<()> {
         let name = self.name.clone();
-        self.rule_transducer.add_info_symbol(&name);
+        self.rule_transducer.add_info_symbol(&name)?;
+        Ok(())
     }
 
     /// 'Rule::get_print_name(s)' ('Rule.cc'). Strips the '__HFST_TWOLC_*'
@@ -2101,13 +2102,13 @@ pub fn get_wb_fst(cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer
     let mut no_wb = OtherSymbolTransducer::new_pair(cfg, TWOLC_UNKNOWN, TWOLC_UNKNOWN)?;
     let diamond = OtherSymbolTransducer::new_pair(cfg, TWOLC_DIAMOND, TWOLC_DIAMOND)?;
 
-    no_wb.subtract(cfg, &wb);
-    no_wb.disjunct(cfg, &diamond);
-    no_wb.repeat_star(cfg);
+    no_wb.subtract(cfg, &wb)?;
+    no_wb.disjunct(cfg, &diamond)?;
+    no_wb.repeat_star(cfg)?;
 
     let mut result = wb.clone();
-    result.concatenate(cfg, &no_wb);
-    result.concatenate(cfg, &wb);
+    result.concatenate(cfg, &no_wb)?;
+    result.concatenate(cfg, &wb)?;
 
     Ok(result)
 }
@@ -2122,7 +2123,7 @@ pub fn wbize(
 ) -> crate::error::Result<OtherSymbolTransducer> {
     let mut t_copy = t.clone();
     let wb_fst = get_wb_fst(cfg)?;
-    t_copy.intersect(cfg, &wb_fst);
+    t_copy.intersect(cfg, &wb_fst)?;
     Ok(t_copy)
 }
 
@@ -2190,9 +2191,14 @@ impl ConflictResolvingLeftArrowRule {
     /// 'another''s context from 'this''s context.
     // [spec:hfst:def:conflict-resolving-left-arrow-rule.conflict-resolving-left-arrow-rule.resolve-conflict-fn]
     // [spec:hfst:sem:conflict-resolving-left-arrow-rule.conflict-resolving-left-arrow-rule.resolve-conflict-fn]
-    pub fn resolve_conflict(&mut self, cfg: &OstConfig, another: &ConflictResolvingLeftArrowRule) {
+    pub fn resolve_conflict(
+        &mut self,
+        cfg: &OstConfig,
+        another: &ConflictResolvingLeftArrowRule,
+    ) -> crate::error::Result<()> {
         let another_context = another.base.base.context.clone();
-        self.base.base.context.subtract(cfg, &another_context);
+        self.base.base.context.subtract(cfg, &another_context)?;
+        Ok(())
     }
 }
 
@@ -2366,7 +2372,7 @@ impl RightArrowRuleContainer {
         &mut self,
         cfg: &OstConfig,
         mut rule: ConflictResolvingRightArrowRule,
-    ) -> usize {
+    ) -> crate::error::Result<usize> {
         let center_pair = rule.center_pair.clone();
         if let Some(&existing_index) = self.center_to_rule_map.get(&center_pair) {
             if self.report_right_arrow_conflicts {
@@ -2387,19 +2393,19 @@ impl RightArrowRuleContainer {
                 let incoming_name = rule.base.base.name.clone();
                 {
                     let existing = self.base.rule_vector[existing_index].rule_mut();
-                    existing.context.disjunct(cfg, &incoming_context);
-                    existing.context.minimize(cfg);
+                    existing.context.disjunct(cfg, &incoming_context)?;
+                    existing.context.minimize(cfg)?;
                     existing.name = format!("{} and {}", existing.name, incoming_name);
                 }
                 rule.base.base.is_empty = true;
-                self.base.add_rule(Box::new(rule))
+                Ok(self.base.add_rule(Box::new(rule)))
             } else {
-                self.base.add_rule(Box::new(rule))
+                Ok(self.base.add_rule(Box::new(rule)))
             }
         } else {
             let index = self.base.add_rule(Box::new(rule));
             self.center_to_rule_map.insert(center_pair, index);
-            index
+            Ok(index)
         }
     }
 
@@ -2526,7 +2532,7 @@ impl LeftArrowRuleContainer {
                             //   existing.context.subtract(cfg, rule.context);
                             let incoming_context = clone_ost(&rule.base.base.context);
                             let existing = self.base.rule_vector[existing_index].rule_mut();
-                            existing.context.subtract(cfg, &incoming_context);
+                            existing.context.subtract(cfg, &incoming_context)?;
                         } else {
                             // rule.resolvable_conflict(*it):
                             //   rule.context.is_subset(wbize(cfg, existing.context))
@@ -2549,7 +2555,7 @@ impl LeftArrowRuleContainer {
                                     let existing = self.base.rule_vector[existing_index].rule();
                                     clone_ost(&existing.context)
                                 };
-                                rule.base.base.context.subtract(cfg, &existing_context);
+                                rule.base.base.context.subtract(cfg, &existing_context)?;
                             } else if self.report_left_arrow_conflicts {
                                 warn!("The conflict is unresolvable.");
                             }
@@ -2670,7 +2676,7 @@ impl TwolCGrammar {
                 let rule = ConflictResolvingRightArrowRule::new(cfg, name, center, contexts)?;
                 let index = self
                     .right_arrow_rule_container
-                    .add_rule_and_display_and_resolve_conflicts(cfg, rule);
+                    .add_rule_and_display_and_resolve_conflicts(cfg, rule)?;
                 self.insert_subcase(
                     name,
                     RuleHandle {
@@ -2696,7 +2702,7 @@ impl TwolCGrammar {
                 let right_rule = ConflictResolvingRightArrowRule::new(cfg, name, center, contexts)?;
                 let right_index = self
                     .right_arrow_rule_container
-                    .add_rule_and_display_and_resolve_conflicts(cfg, right_rule);
+                    .add_rule_and_display_and_resolve_conflicts(cfg, right_rule)?;
                 self.insert_subcase(
                     name,
                     RuleHandle {
@@ -2826,7 +2832,7 @@ impl TwolCGrammar {
                         ConflictResolvingRightArrowRule::new(cfg, &center_name, pair, contexts)?;
                     let index = self
                         .right_arrow_rule_container
-                        .add_rule_and_display_and_resolve_conflicts(cfg, rule);
+                        .add_rule_and_display_and_resolve_conflicts(cfg, rule)?;
                     self.insert_subcase(
                         &center_name,
                         RuleHandle {
@@ -2854,7 +2860,7 @@ impl TwolCGrammar {
                         ConflictResolvingRightArrowRule::new(cfg, &center_name, pair, contexts)?;
                     let right_index = self
                         .right_arrow_rule_container
-                        .add_rule_and_display_and_resolve_conflicts(cfg, right_rule);
+                        .add_rule_and_display_and_resolve_conflicts(cfg, right_rule)?;
                     self.insert_subcase(
                         &center_name,
                         RuleHandle {
@@ -2957,11 +2963,11 @@ fn assemble_result_transducer(
     container: &RuleContainer,
 ) -> crate::error::Result<HfstTransducer> {
     let mut result = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
-    result.repeat_star(cfg);
+    result.repeat_star(cfg)?;
     for rule in container.rule_vector.iter() {
         if !rule.rule().is_empty {
             let rt = clone_ost(rule.rule_transducer());
-            result.intersect(cfg, &rt);
+            result.intersect(cfg, &rt)?;
         }
     }
     Ok(result.transducer)

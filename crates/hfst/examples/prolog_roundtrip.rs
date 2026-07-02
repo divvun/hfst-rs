@@ -13,7 +13,7 @@ fn main() -> hfst::error::Result<()> {
     g.set_final_weight(1, &0.3);
 
     let mut buf: Vec<u8> = Vec::new();
-    g.write_in_prolog_format_os(&mut buf, "foo", true);
+    g.write_in_prolog_format_os(&mut buf, "foo", true)?;
     let text = String::from_utf8(buf).unwrap();
     println!("--- prolog ---\n{}", text);
 

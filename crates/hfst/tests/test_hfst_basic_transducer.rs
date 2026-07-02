@@ -179,7 +179,7 @@ fn symbol_handling() {
 // The C++ block has no assertions: it only checks that substituting the pair
 // a:b with the set {A:B, C:D} does not throw.
 #[test]
-fn substitute() {
+fn substitute() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     verbose_print("HfstBasicTransducer: substitute");
 
@@ -196,7 +196,8 @@ fn substitute() {
     let mut sps: StringPairSet = BTreeSet::new();
     sps.insert(("A".to_string(), "B".to_string()));
     sps.insert(("C".to_string(), "D".to_string()));
-    tr.substitute_pair_with_set(&("a".to_string(), "b".to_string()), &sps);
+    tr.substitute_pair_with_set(&("a".to_string(), "b".to_string()), &sps)?;
+    Ok(())
 }
 
 // --- "HfstBasicTransducer: EmptyStringException"

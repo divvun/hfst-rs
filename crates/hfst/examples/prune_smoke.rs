@@ -6,7 +6,7 @@ use hfst::hfst_data_types::{HfstTwoLevelPaths, ImplementationType};
 use hfst::hfst_transducer::HfstTransducer;
 use std::collections::BTreeSet;
 
-fn main() {
+fn main() -> hfst::error::Result<()> {
     // Two paths: "a" (total weight 1.0, the best) and "b" (total weight 5.0).
     let att = "0\t1\ta\ta\t1\n1\t0\n0\t2\tb\tb\t5\n2\t0\n";
     let path = std::env::temp_dir().join("hfst_prune_smoke.att");
@@ -23,7 +23,7 @@ fn main() {
 
     // Before pruning: both "a" and "b" are present.
     let mut before: HfstTwoLevelPaths = BTreeSet::new();
-    t.extract_paths(&mut before, -1, -1);
+    t.extract_paths(&mut before, -1, -1)?;
     let before_inputs: BTreeSet<String> = before
         .iter()
         .map(|p| p.second.iter().map(|(i, _)| i.as_str()).collect::<String>())
@@ -34,11 +34,11 @@ fn main() {
         "both paths present before prune, got {before_inputs:?}"
     );
 
-    t.prune();
+    t.prune()?;
 
     // After pruning with threshold One only the best path ("a", weight 1.0) survives.
     let mut after: HfstTwoLevelPaths = BTreeSet::new();
-    t.extract_paths(&mut after, -1, -1);
+    t.extract_paths(&mut after, -1, -1)?;
     let after_inputs: BTreeSet<String> = after
         .iter()
         .map(|p| p.second.iter().map(|(i, _)| i.as_str()).collect::<String>())
@@ -60,4 +60,5 @@ fn main() {
     drop(unsafe { Box::from_raw(t as *mut HfstTransducer) });
     let _ = std::fs::remove_file(&path);
     println!("prune OK (b pruned, a kept with weight 1.0)");
+    Ok(())
 }

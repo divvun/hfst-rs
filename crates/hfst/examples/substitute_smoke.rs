@@ -7,7 +7,7 @@ fn main() -> hfst::error::Result<()> {
     let tr =
         HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.0, g.coder_mut());
     g.add_transition(0, &tr, true);
-    g.substitute_symbol(&"a".to_string(), &"x".to_string(), true, false);
+    g.substitute_symbol(&"a".to_string(), &"x".to_string(), true, false)?;
     let t = g.transitions(0)?;
     assert_eq!(t[0].get_input_symbol(g.coder()), "x");
     assert_eq!(t[0].get_output_symbol(g.coder()), "b");
@@ -17,7 +17,7 @@ fn main() -> hfst::error::Result<()> {
     g.substitute_pair(
         &("x".to_string(), "b".to_string()),
         &("c".to_string(), "d".to_string()),
-    );
+    )?;
     let t = g.transitions(0)?;
     // the first new pair both replaces and is appended (bug preserved) -> two arcs
     assert!(
@@ -50,7 +50,7 @@ fn main() -> hfst::error::Result<()> {
     );
     host.add_transition(0, &tr, true);
     host.set_final_weight(1, &0.0);
-    host.substitute_pair_with_graph(&("a".to_string(), "b".to_string()), &sub);
+    host.substitute_pair_with_graph(&("a".to_string(), "b".to_string()), &sub)?;
     // p:q now appears somewhere in the host's expanded graph
     let found = (0..=host.get_max_state()).any(|s| {
         host.transitions(s)

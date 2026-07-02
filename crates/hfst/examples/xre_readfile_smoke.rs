@@ -62,7 +62,7 @@ fn main() -> hfst::error::Result<()> {
         g.add_transition(0, &tr, true);
         g.set_final_weight(1, &0.0);
         let mut buf: Vec<u8> = Vec::new();
-        g.write_in_prolog_format_os(&mut buf, "ab", true);
+        g.write_in_prolog_format_os(&mut buf, "ab", true)?;
         std::fs::write(&pl, buf).unwrap();
     }
     let from_pl = compile(&mut c, &format!("@pl\"{pl}\""));

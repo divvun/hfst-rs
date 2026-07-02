@@ -576,10 +576,14 @@ impl XfstCompiler {
     // @brief Convert format of \a t read from file \a filename to common
     // format used by this xfst compiler and print a warning message
     // about loss of information during conversion, if needed.
-    fn convert_to_common_format(&mut self, t: &NetRef, filename: Option<&str>) {
+    fn convert_to_common_format(
+        &mut self,
+        t: &NetRef,
+        filename: Option<&str>,
+    ) -> crate::error::Result<()> {
         // CHECK_FILENAME equivalent: if (!check_filename(filename)) return;
         if !self.check_filename(filename.unwrap_or("")) {
-            return;
+            return Ok(());
         }
 
         let t_type = t.borrow().get_type();
@@ -592,7 +596,7 @@ impl XfstCompiler {
                         "transducer is in optimized lookup format, 'apply up' is the only operation it supports"
                     );
                 }
-                return;
+                return Ok(());
             }
 
             if self.verbose_ {
@@ -612,8 +616,9 @@ impl XfstCompiler {
                 }
                 warn!("{}", line);
             }
-            t.borrow_mut().convert(self.format_, String::new());
+            t.borrow_mut().convert(self.format_, String::new())?;
         }
+        Ok(())
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.open-hfst-input-stream-fn]
@@ -1068,58 +1073,58 @@ impl XfstCompiler {
             // ── network ops ─────────────────────────────────
             XfstCommand::Network(op) => match op {
                 NetworkOp::Compose => {
-                    self.compose_net();
+                    self.compose_net()?;
                 }
                 NetworkOp::Concatenate => {
-                    self.concatenate_net();
+                    self.concatenate_net()?;
                 }
                 NetworkOp::Intersect => {
-                    self.intersect_net();
+                    self.intersect_net()?;
                 }
                 NetworkOp::Union => {
-                    self.union_net();
+                    self.union_net()?;
                 }
                 NetworkOp::Minus => {
-                    self.minus_net();
+                    self.minus_net()?;
                 }
                 NetworkOp::Crossproduct => {
-                    self.crossproduct_net();
+                    self.crossproduct_net()?;
                 }
                 NetworkOp::Ignore => {
-                    self.ignore_net();
+                    self.ignore_net()?;
                 }
                 NetworkOp::Invert => {
-                    self.invert_net();
+                    self.invert_net()?;
                 }
                 NetworkOp::Reverse => {
-                    self.reverse_net();
+                    self.reverse_net()?;
                 }
                 NetworkOp::Determinize => {
-                    self.determinize_net();
+                    self.determinize_net()?;
                 }
                 NetworkOp::Minimize => {
-                    self.minimize_net();
+                    self.minimize_net()?;
                 }
                 NetworkOp::EpsilonRemove => {
-                    self.epsilon_remove_net();
+                    self.epsilon_remove_net()?;
                 }
                 NetworkOp::PruneNet => {
-                    self.prune_net();
+                    self.prune_net()?;
                 }
                 NetworkOp::Negate => {
-                    self.negate_net();
+                    self.negate_net()?;
                 }
                 NetworkOp::OnePlus => {
-                    self.one_plus_net();
+                    self.one_plus_net()?;
                 }
                 NetworkOp::ZeroPlus => {
-                    self.zero_plus_net();
+                    self.zero_plus_net()?;
                 }
                 NetworkOp::Sort => {
                     self.sort_net();
                 }
                 NetworkOp::Shuffle => {
-                    self.shuffle_net();
+                    self.shuffle_net()?;
                 }
                 NetworkOp::Substring => {
                     self.substring_net();
@@ -1128,13 +1133,13 @@ impl XfstCompiler {
                     self.cleanup_net();
                 }
                 NetworkOp::Complete => {
-                    self.complete_net();
+                    self.complete_net()?;
                 }
                 NetworkOp::LowerSide => {
-                    self.lower_side_net();
+                    self.lower_side_net()?;
                 }
                 NetworkOp::UpperSide => {
-                    self.upper_side_net();
+                    self.upper_side_net()?;
                 }
                 NetworkOp::Sigma => {
                     self.sigma_net()?;
@@ -1146,16 +1151,16 @@ impl XfstCompiler {
                     self.inspect_net()?;
                 }
                 NetworkOp::TwosidedFlags => {
-                    self.twosided_flags();
+                    self.twosided_flags()?;
                 }
                 NetworkOp::EliminateAll => {
-                    self.eliminate_flags();
+                    self.eliminate_flags()?;
                 }
                 NetworkOp::CollectEpsilonLoops => {
                     self.collect_epsilon_loops();
                 }
                 NetworkOp::CompactSigma => {
-                    self.compact_sigma();
+                    self.compact_sigma()?;
                 }
                 NetworkOp::View => {
                     self.view_net();
@@ -1206,10 +1211,10 @@ impl XfstCompiler {
                 }
             }
             XfstCommand::LookupOptimize => {
-                self.lookup_optimize();
+                self.lookup_optimize()?;
             }
             XfstCommand::RemoveOptimization => {
-                self.remove_optimization();
+                self.remove_optimization()?;
             }
 
             // ── read / save ─────────────────────────────────
@@ -1237,10 +1242,10 @@ impl XfstCompiler {
                     self.read_props(&s);
                 }
                 ReadCmd::Lexc(p) => {
-                    self.read_lexc_from_file(p);
+                    self.read_lexc_from_file(p)?;
                 }
                 ReadCmd::Att(p) => {
-                    self.read_att_from_file(p);
+                    self.read_att_from_file(p)?;
                 }
             },
             XfstCommand::Save(sc) => {
@@ -1308,7 +1313,7 @@ impl XfstCompiler {
                     self.substitute_symbol(&list, to)?;
                 }
                 SubstituteCmd::Label { from, to, scope: _ } => {
-                    self.substitute_label(&from.join(" "), to);
+                    self.substitute_label(&from.join(" "), to)?;
                 }
                 SubstituteCmd::Named { def, label } => {
                     self.substitute_named(def, label)?;
@@ -1426,7 +1431,7 @@ impl XfstCompiler {
     // returning a shared handle just like xre_.compile.
     fn compile_spanned_xre(&mut self, xre: &nfst_xre::SpannedXre) -> crate::error::Result<NetRef> {
         let mut t = self.xre_.eval(xre)?;
-        t.optimize();
+        t.optimize()?;
         Ok(Rc::new(RefCell::new(t)))
     }
 
@@ -1464,10 +1469,10 @@ impl XfstCompiler {
                 self.print_longest_string_size(oss)?;
             }
             P::ShortestString => {
-                self.print_shortest_string(oss);
+                self.print_shortest_string(oss)?;
             }
             P::ShortestStringSize => {
-                self.print_shortest_string_size(oss);
+                self.print_shortest_string_size(oss)?;
             }
             P::Flags => {
                 self.print_flags(oss);
@@ -1554,7 +1559,7 @@ impl XfstCompiler {
             S::Prolog(p) => {
                 if self.check_filename(p) {
                     if let Ok(mut f) = std::fs::File::create(p) {
-                        self.write_prolog(&mut f);
+                        self.write_prolog(&mut f)?;
                     }
                 }
             }
@@ -2045,20 +2050,23 @@ impl XfstCompiler {
         &mut self,
         transducer: &HfstTransducer,
         paths: &mut HfstTwoLevelPaths,
-    ) -> &mut Self {
-        transducer.extract_shortest_paths(paths);
-        return self;
+    ) -> crate::error::Result<&mut Self> {
+        transducer.extract_shortest_paths(paths)?;
+        Ok(self)
     }
 
     // @brief Print shortest string of network
-    pub fn print_shortest_string(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
+    pub fn print_shortest_string(
+        &mut self,
+        oss: &mut dyn std::io::Write,
+    ) -> crate::error::Result<&mut Self> {
         let Some(topmost) = self.top() else {
             self.xfst_lesser_fail();
-            return self;
+            return Ok(self);
         };
 
         let mut paths = HfstTwoLevelPaths::new();
-        self.shortest_string(&topmost.borrow(), &mut paths);
+        self.shortest_string(&topmost.borrow(), &mut paths)?;
 
         if paths.len() == 0 {
             print!("transducer is empty\n");
@@ -2067,18 +2075,21 @@ impl XfstCompiler {
         }
         self.flush();
         self.prompt();
-        return self;
+        return Ok(self);
     }
 
     // @brief Print length of shortest string
-    pub fn print_shortest_string_size(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
+    pub fn print_shortest_string_size(
+        &mut self,
+        oss: &mut dyn std::io::Write,
+    ) -> crate::error::Result<&mut Self> {
         let Some(topmost) = self.top() else {
             self.xfst_lesser_fail();
-            return self;
+            return Ok(self);
         };
 
         let mut paths = HfstTwoLevelPaths::new();
-        self.shortest_string(&topmost.borrow(), &mut paths);
+        self.shortest_string(&topmost.borrow(), &mut paths)?;
 
         if paths.len() == 0 {
             print!("transducer is empty\n");
@@ -2091,7 +2102,7 @@ impl XfstCompiler {
         }
         self.flush();
         self.prompt();
-        return self;
+        return Ok(self);
     }
 
     // @brief Print longest string in network
@@ -3938,42 +3949,42 @@ impl XfstCompiler {
     }
 
     // @brief Compose stack
-    pub fn compose_net(&mut self) -> &mut Self {
+    pub fn compose_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_binary_operation_iteratively(BinaryOperation::COMPOSE_NET)
     }
 
     // @brief concatenate stack
-    pub fn concatenate_net(&mut self) -> &mut Self {
+    pub fn concatenate_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_binary_operation_iteratively(BinaryOperation::CONCATENATE_NET)
     }
 
     // @brief Crossproduct top of stack
-    pub fn crossproduct_net(&mut self) -> &mut Self {
+    pub fn crossproduct_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_binary_operation(BinaryOperation::CROSSPRODUCT_NET)
     }
 
     // @brief Ignore top of stack with second automaton
-    pub fn ignore_net(&mut self) -> &mut Self {
+    pub fn ignore_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_binary_operation(BinaryOperation::IGNORE_NET)
     }
 
     // @brief Intersect stack
-    pub fn intersect_net(&mut self) -> &mut Self {
+    pub fn intersect_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_binary_operation_iteratively(BinaryOperation::INTERSECT_NET)
     }
 
     // @brief Subtract second from top of stack
-    pub fn minus_net(&mut self) -> &mut Self {
+    pub fn minus_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_binary_operation(BinaryOperation::MINUS_NET)
     }
 
     // @brief Shuffle top network with second
-    pub fn shuffle_net(&mut self) -> &mut Self {
+    pub fn shuffle_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_binary_operation_iteratively(BinaryOperation::SHUFFLE_NET)
     }
 
     // @brief Disjunct the stack
-    pub fn union_net(&mut self) -> &mut Self {
+    pub fn union_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_binary_operation_iteratively(BinaryOperation::UNION_NET)
     }
 
@@ -3982,12 +3993,15 @@ impl XfstCompiler {
     // (the topmost transducer is the first transducer in the operation),
     // and the result is pushed to the top of the stack.
     // If the stack has less than two transducers, print a warning.
-    fn apply_binary_operation(&mut self, operation: BinaryOperation) -> &mut Self {
+    fn apply_binary_operation(
+        &mut self,
+        operation: BinaryOperation,
+    ) -> crate::error::Result<&mut Self> {
         if self.stack_.len() < 2 {
             self.error_message("Not enough networks on stack. Operation requires at least 2.");
             self.flush();
             self.xfst_lesser_fail();
-            return self;
+            return Ok(self);
         }
         let result = self.stack_.last().unwrap().clone();
         self.stack_.pop();
@@ -3997,34 +4011,27 @@ impl XfstCompiler {
 
         match operation {
             BinaryOperation::IGNORE_NET => {
-                result.borrow_mut().insert_freely(&another_inner, true);
+                result.borrow_mut().insert_freely(&another_inner, true)?;
             }
             BinaryOperation::MINUS_NET => {
-                result.borrow_mut().subtract(&another_inner, true);
+                result.borrow_mut().subtract(&another_inner, true)?;
             }
             BinaryOperation::CROSSPRODUCT_NET => {
-                let __prev_hook = std::panic::take_hook();
-                std::panic::set_hook(Box::new(|_| {}));
-                let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    result.borrow_mut().cross_product(&another_inner, true);
-                }));
-                std::panic::set_hook(__prev_hook);
-                if let Err(e) = __res {
-                    if e.downcast_ref::<crate::error::Error>()
-                        .filter(|__e| {
-                            matches!(__e.kind, crate::error::ErrorKind::TransducersAreNotAutomata)
-                        })
-                        .is_some()
-                    {
+                let cross = result
+                    .borrow_mut()
+                    .cross_product(&another_inner, true)
+                    .map(|_| ());
+                if let Err(e) = cross {
+                    if matches!(e.kind, crate::error::ErrorKind::TransducersAreNotAutomata) {
                         self.error_message("transducers are not automata");
                         self.flush();
                         self.xfst_fail();
                         self.stack_.push(another);
                         self.stack_.push(result);
                         self.prompt();
-                        return self;
+                        return Ok(self);
                     } else {
-                        std::panic::resume_unwind(e);
+                        return Err(e);
                     }
                 }
             }
@@ -4035,11 +4042,11 @@ impl XfstCompiler {
             }
         }
 
-        result.borrow_mut().optimize();
+        result.borrow_mut().optimize()?;
         self.stack_.push(result);
         self.print_transducer_info();
         self.prompt();
-        self
+        Ok(self)
     }
 
     // @brief Apply operation on all transducers in the stack.
@@ -4048,12 +4055,15 @@ impl XfstCompiler {
     // [[[n1 OPERATION n2] OPERATION n3] OPERATION n4] ...
     // popping each of them and the result is pushed to the stack.
     // If the stack is empty, print a warning.
-    fn apply_binary_operation_iteratively(&mut self, operation: BinaryOperation) -> &mut Self {
+    fn apply_binary_operation_iteratively(
+        &mut self,
+        operation: BinaryOperation,
+    ) -> crate::error::Result<&mut Self> {
         if self.stack_.len() < 2 {
             self.error_message("Not enough networks on stack. Operation requires at least 2.");
             self.flush();
             self.xfst_lesser_fail();
-            return self;
+            return Ok(self);
         }
         let result = self.stack_.last().unwrap().clone();
 
@@ -4072,10 +4082,10 @@ impl XfstCompiler {
 
             match operation {
                 BinaryOperation::INTERSECT_NET => {
-                    result.borrow_mut().intersect(&t.borrow(), true);
+                    result.borrow_mut().intersect(&t.borrow(), true)?;
                 }
                 BinaryOperation::IGNORE_NET => {
-                    result.borrow_mut().insert_freely(&t.borrow(), true);
+                    result.borrow_mut().insert_freely(&t.borrow(), true)?;
                 }
                 BinaryOperation::COMPOSE_NET => {
                     let both_have_flags =
@@ -4093,29 +4103,20 @@ impl XfstCompiler {
                         } else {
                             let mut rb = result.borrow_mut();
                             let mut tb = t.borrow_mut();
-                            rb.harmonize_flag_diacritics(&mut tb, true);
+                            rb.harmonize_flag_diacritics(&mut tb, true)?;
                         }
                     }
 
                     let cfg = self.engine_config_;
-                    let __prev_hook = std::panic::take_hook();
-                    std::panic::set_hook(Box::new(|_| {}));
-                    let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        result
-                            .borrow_mut()
-                            .compose_with_config(&t.borrow(), true, &cfg);
-                    }));
-                    std::panic::set_hook(__prev_hook);
-                    if let Err(e) = __res {
-                        if e.downcast_ref::<crate::error::Error>()
-                            .filter(|__e| {
-                                matches!(
-                                    __e.kind,
-                                    crate::error::ErrorKind::FlagDiacriticsAreNotIdentities
-                                )
-                            })
-                            .is_some()
-                        {
+                    let composed = result
+                        .borrow_mut()
+                        .compose_with_config(&t.borrow(), true, &cfg)
+                        .map(|_| ());
+                    if let Err(e) = composed {
+                        if matches!(
+                            e.kind,
+                            crate::error::ErrorKind::FlagDiacriticsAreNotIdentities
+                        ) {
                             self.error_message(
                                 "Error: flag diacritics must be identities in \
                                  composition if flag-is-epsilon is ON.\n\
@@ -4127,20 +4128,20 @@ impl XfstCompiler {
                             self.flush();
                             self.xfst_lesser_fail();
                             self.prompt();
-                            return self;
+                            return Ok(self);
                         } else {
-                            std::panic::resume_unwind(e);
+                            return Err(e);
                         }
                     }
                 }
                 BinaryOperation::CONCATENATE_NET => {
-                    result.borrow_mut().concatenate(&t.borrow(), true);
+                    result.borrow_mut().concatenate(&t.borrow(), true)?;
                 }
                 BinaryOperation::UNION_NET => {
-                    result.borrow_mut().disjunct(&t.borrow(), true);
+                    result.borrow_mut().disjunct(&t.borrow(), true)?;
                 }
                 BinaryOperation::SHUFFLE_NET => {
-                    result.borrow_mut().shuffle(&t.borrow(), true);
+                    result.borrow_mut().shuffle(&t.borrow(), true)?;
                 }
                 _ => {
                     self.error_message("ERROR: unknown binary operation");
@@ -4149,23 +4150,23 @@ impl XfstCompiler {
             }
             self.stack_.pop();
         }
-        result.borrow_mut().optimize();
+        result.borrow_mut().optimize()?;
         self.stack_.push(result);
         self.print_transducer_info();
         self.prompt();
-        self
+        Ok(self)
     }
 
     // @brief Remove unnecessary symbols using ?
     // @todo HFST does not support ?
-    pub fn compact_sigma(&mut self) -> &mut Self {
+    pub fn compact_sigma(&mut self) -> crate::error::Result<&mut Self> {
         let Some(top) = self.top() else {
             self.xfst_lesser_fail();
-            return self;
+            return Ok(self);
         };
-        top.borrow_mut().prune_alphabet(true);
+        top.borrow_mut().prune_alphabet(true)?;
         self.prompt();
-        self
+        Ok(self)
     }
 
     // @brief Eliminate flag diacritic
@@ -4178,17 +4179,9 @@ impl XfstCompiler {
         // [spec:hfst:def:xfst-compiler.hfst.xfst.name-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.name-fn]
         let name_ = name.to_string();
-        let __prev_hook = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_| {}));
-        let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-            tmp.borrow_mut().eliminate_flag(name);
-        }));
-        std::panic::set_hook(__prev_hook);
-        if let Err(__e) = __res {
-            let __name = match __e.downcast_ref::<crate::error::Error>() {
-                Some(__ex) => __ex.message.clone().unwrap_or_default(),
-                None => String::new(),
-            };
+        let elim = tmp.borrow_mut().eliminate_flag(name).map(|_| ());
+        if let Err(__e) = elim {
+            let __name = __e.message.clone().unwrap_or_default();
             error!("could not eliminate flag '{}': {}", name, __name);
             if self.variables_["quit-on-fail"] == "ON" {
                 self.fail_flag_ = true;
@@ -4201,24 +4194,24 @@ impl XfstCompiler {
 
     // @brief Eliminate all flag diacritics
     // @todo unimplemented yet
-    pub fn eliminate_flags(&mut self) -> &mut Self {
+    pub fn eliminate_flags(&mut self) -> crate::error::Result<&mut Self> {
         let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
-            return self;
+            return Ok(self);
         };
-        tmp.borrow_mut().eliminate_flags();
+        tmp.borrow_mut().eliminate_flags()?;
         self.prompt();
-        self
+        Ok(self)
     }
 
-    pub fn twosided_flags(&mut self) -> &mut Self {
+    pub fn twosided_flags(&mut self) -> crate::error::Result<&mut Self> {
         let Some(tmp) = self.top() else {
             self.xfst_lesser_fail();
-            return self;
+            return Ok(self);
         };
-        tmp.borrow_mut().twosided_flag_diacritics();
+        tmp.borrow_mut().twosided_flag_diacritics()?;
         self.prompt();
-        self
+        Ok(self)
     }
 
     // @brief do some label pushing
@@ -4237,38 +4230,38 @@ impl XfstCompiler {
 
     // @brief Make transducer functional
     // @todo unimplemented
-    pub fn complete_net(&mut self) -> &mut Self {
+    pub fn complete_net(&mut self) -> crate::error::Result<&mut Self> {
         let Some(topmost) = self.top() else {
             self.xfst_lesser_fail();
-            return self;
+            return Ok(self);
         };
         let mut fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
-        fsm.complete();
+        fsm.complete()?;
         let topmost_type = topmost.borrow().get_type();
         let result = Rc::new(RefCell::new(HfstTransducer::from_basic_transducer(
             &fsm,
             topmost_type,
         )));
         self.stack_.pop();
-        result.borrow_mut().optimize();
+        result.borrow_mut().optimize()?;
         self.stack_.push(result);
         self.print_transducer_info();
         self.prompt();
-        self
+        Ok(self)
     }
 
     // @brief Determinize top of stack
-    pub fn determinize_net(&mut self) -> &mut Self {
+    pub fn determinize_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_unary_operation(UnaryOperation::DETERMINIZE_NET)
     }
 
     // @brief Remove epsilons from top of stack
-    pub fn epsilon_remove_net(&mut self) -> &mut Self {
+    pub fn epsilon_remove_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_unary_operation(UnaryOperation::EPSILON_REMOVE_NET)
     }
 
     // @brief invert top of stack
-    pub fn invert_net(&mut self) -> &mut Self {
+    pub fn invert_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_unary_operation(UnaryOperation::INVERT_NET)
     }
 
@@ -4305,78 +4298,69 @@ impl XfstCompiler {
     }
 
     // @brief Project input for top of stack
-    pub fn lower_side_net(&mut self) -> &mut Self {
+    pub fn lower_side_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_unary_operation(UnaryOperation::LOWER_SIDE_NET)
     }
 
     // @brief Project output for top of stack
-    pub fn upper_side_net(&mut self) -> &mut Self {
+    pub fn upper_side_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_unary_operation(UnaryOperation::UPPER_SIDE_NET)
     }
 
     // @brief Minimize top of stack
-    pub fn minimize_net(&mut self) -> &mut Self {
+    pub fn minimize_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_unary_operation(UnaryOperation::MINIMIZE_NET)
     }
 
     // @brief Negate top of stack
-    pub fn negate_net(&mut self) -> &mut Self {
+    pub fn negate_net(&mut self) -> crate::error::Result<&mut Self> {
         if self.stack_.len() < 1 {
             warn!("Empty stack.");
             self.xfst_lesser_fail();
-            return self;
+            return Ok(self);
         }
 
         let t = self.stack_.last().unwrap().clone();
         let t_op = t.clone();
 
-        let __prev_hook = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_| {}));
-        let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-            t_op.borrow_mut().negate();
-        }));
-        std::panic::set_hook(__prev_hook);
-        if let Err(__e) = __res {
-            if __e
-                .downcast_ref::<crate::error::Error>()
-                .filter(|__e| matches!(__e.kind, crate::error::ErrorKind::TransducerIsNotAutomaton))
-                .is_some()
-            {
+        let negated = t_op.borrow_mut().negate().map(|_| ());
+        if let Err(__e) = negated {
+            if matches!(__e.kind, crate::error::ErrorKind::TransducerIsNotAutomaton) {
                 error!("Error: Negation is defined only for automata.");
                 error!(
                     "Use expression [[?:?]* - A] instead where A is the transducer to be negated."
                 );
                 self.xfst_lesser_fail();
-                return self;
+                return Ok(self);
             } else {
-                std::panic::resume_unwind(__e);
+                return Err(__e);
             }
         }
 
-        t.borrow_mut().optimize();
+        t.borrow_mut().optimize()?;
         self.print_transducer_info();
         self.prompt();
-        self
+        Ok(self)
     }
 
     // @brief Kleene plus top network of stack
-    pub fn one_plus_net(&mut self) -> &mut Self {
+    pub fn one_plus_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_unary_operation(UnaryOperation::ONE_PLUS_NET)
     }
 
     // @brief Kleene star top network of stack
-    pub fn zero_plus_net(&mut self) -> &mut Self {
+    pub fn zero_plus_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_unary_operation(UnaryOperation::ZERO_PLUS_NET)
     }
 
     // @brief Prune top network of stack
     // @todo Most of HFST automata are pruned by default?
-    pub fn prune_net(&mut self) -> &mut Self {
+    pub fn prune_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_unary_operation(UnaryOperation::PRUNE_NET_)
     }
 
     // @brief Reverse top network of the stack
-    pub fn reverse_net(&mut self) -> &mut Self {
+    pub fn reverse_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_unary_operation(UnaryOperation::REVERSE_NET)
     }
 
@@ -4519,7 +4503,7 @@ impl XfstCompiler {
     }
 
     // @brief Repeat 0..1 times
-    pub fn optional_net(&mut self) -> &mut Self {
+    pub fn optional_net(&mut self) -> crate::error::Result<&mut Self> {
         self.apply_unary_operation(UnaryOperation::OPTIONAL_NET)
     }
 
@@ -4652,48 +4636,51 @@ impl XfstCompiler {
 
     // @brief Apply \a operation on top transducer in the stack.
     // If the stack is empty, print a warning.
-    fn apply_unary_operation(&mut self, operation: UnaryOperation) -> &mut Self {
+    fn apply_unary_operation(
+        &mut self,
+        operation: UnaryOperation,
+    ) -> crate::error::Result<&mut Self> {
         let Some(result) = self.top() else {
             self.xfst_lesser_fail();
-            return self;
+            return Ok(self);
         };
         self.stack_.pop();
         let result_op = result.clone();
 
         match operation {
             UnaryOperation::DETERMINIZE_NET => {
-                result_op.borrow_mut().determinize();
+                result_op.borrow_mut().determinize()?;
             }
             UnaryOperation::EPSILON_REMOVE_NET => {
-                result_op.borrow_mut().remove_epsilons();
+                result_op.borrow_mut().remove_epsilons()?;
             }
             UnaryOperation::INVERT_NET => {
-                result_op.borrow_mut().invert();
+                result_op.borrow_mut().invert()?;
             }
             UnaryOperation::LOWER_SIDE_NET => {
-                result_op.borrow_mut().output_project();
+                result_op.borrow_mut().output_project()?;
             }
             UnaryOperation::UPPER_SIDE_NET => {
-                result_op.borrow_mut().input_project();
+                result_op.borrow_mut().input_project()?;
             }
             UnaryOperation::ZERO_PLUS_NET => {
-                result_op.borrow_mut().repeat_star();
+                result_op.borrow_mut().repeat_star()?;
             }
             UnaryOperation::ONE_PLUS_NET => {
-                result_op.borrow_mut().repeat_plus();
+                result_op.borrow_mut().repeat_plus()?;
             }
             UnaryOperation::OPTIONAL_NET => {
-                result_op.borrow_mut().optionalize();
+                result_op.borrow_mut().optionalize()?;
             }
             UnaryOperation::REVERSE_NET => {
-                result_op.borrow_mut().reverse();
+                result_op.borrow_mut().reverse()?;
             }
             UnaryOperation::MINIMIZE_NET => {
                 // implicit minimization requested, do not use optimize()
-                result_op.borrow_mut().minimize();
+                result_op.borrow_mut().minimize()?;
             }
             UnaryOperation::PRUNE_NET_ => {
-                result_op.borrow_mut().prune();
+                result_op.borrow_mut().prune()?;
             }
         }
 
@@ -4701,13 +4688,13 @@ impl XfstCompiler {
             && operation != UnaryOperation::DETERMINIZE_NET
             && operation != UnaryOperation::EPSILON_REMOVE_NET
         {
-            result_op.borrow_mut().optimize();
+            result_op.borrow_mut().optimize()?;
         }
         self.stack_.push(result);
         self.print_transducer_info();
 
         self.prompt();
-        self
+        Ok(self)
     }
 
     // For 'inspect_net': append state \a state to paths.
@@ -4932,13 +4919,13 @@ impl XfstCompiler {
         self
     }
 
-    pub fn lookup_optimize(&mut self) -> &mut Self {
+    pub fn lookup_optimize(&mut self) -> crate::error::Result<&mut Self> {
         if self.stack_.len() < 1 {
             // EMPTY_STACK
             warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
-            return self;
+            return Ok(self);
         }
 
         let t = self.stack_.last().unwrap().clone();
@@ -4949,7 +4936,7 @@ impl XfstCompiler {
         {
             info!("Network is already optimized for lookup.");
             self.prompt();
-            return self;
+            return Ok(self);
         } else if t_type == ImplementationType::TROPICAL_OPENFST_TYPE
             || t_type == ImplementationType::LOG_OPENFST_TYPE
         {
@@ -4969,7 +4956,7 @@ impl XfstCompiler {
         let mut temp: Vec<NetRef> = Vec::new();
         while !self.stack_.is_empty() {
             let top = self.stack_.last().unwrap().clone();
-            top.borrow_mut().convert(to_format, String::new());
+            top.borrow_mut().convert(to_format, String::new())?;
             temp.push(top);
             self.stack_.pop();
         }
@@ -4979,16 +4966,16 @@ impl XfstCompiler {
         }
 
         self.prompt();
-        self
+        Ok(self)
     }
 
-    pub fn remove_optimization(&mut self) -> &mut Self {
+    pub fn remove_optimization(&mut self) -> crate::error::Result<&mut Self> {
         if self.stack_.len() < 1 {
             // EMPTY_STACK
             warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
-            return self;
+            return Ok(self);
         }
         let t = self.stack_.last().unwrap().clone();
         let t_type = t.borrow().get_type();
@@ -4997,7 +4984,7 @@ impl XfstCompiler {
         {
             info!("Network is already in ordinary format.");
             self.prompt();
-            return self;
+            return Ok(self);
         }
 
         if self.verbose_ {
@@ -5016,7 +5003,7 @@ impl XfstCompiler {
         let mut temp: Vec<NetRef> = Vec::new();
         while !self.stack_.is_empty() {
             let top = self.stack_.last().unwrap().clone();
-            top.borrow_mut().convert(self.format_, String::new());
+            top.borrow_mut().convert(self.format_, String::new())?;
             temp.push(top);
             self.stack_.pop();
         }
@@ -5026,7 +5013,7 @@ impl XfstCompiler {
         }
 
         self.prompt();
-        self
+        Ok(self)
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-apply-prompt-fn]
@@ -5387,12 +5374,15 @@ impl XfstCompiler {
     }
 
     // @brief Save top networks prolog form in @a outfile
-    pub fn write_prolog(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
+    pub fn write_prolog(
+        &mut self,
+        oss: &mut dyn std::io::Write,
+    ) -> crate::error::Result<&mut Self> {
         if self.stack_.len() < 1 {
             warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
-            return self;
+            return Ok(self);
         }
         let mut reverse_stack: Vec<NetRef> = Vec::new();
         while self.stack_.len() != 0 {
@@ -5403,7 +5393,7 @@ impl XfstCompiler {
             }
             let fsm = HfstBasicTransducer::new_from_transducer(&tr.borrow());
             let write_weights = self.variables_["print-weight"] == "ON";
-            fsm.write_in_prolog_format_os(oss, &name, write_weights);
+            fsm.write_in_prolog_format_os(oss, &name, write_weights)?;
             if self.stack_.len() != 1 {
                 // separator
                 let _ = writeln!(oss);
@@ -5417,7 +5407,7 @@ impl XfstCompiler {
         }
         let _ = oss.flush();
         self.prompt();
-        self
+        Ok(self)
     }
 
     // @brief Save top networks spaced paths form in @a outfile
@@ -5611,9 +5601,9 @@ impl XfstCompiler {
     }
 
     // @brief Read lexicons from @a infile
-    pub fn read_lexc_from_file(&mut self, filename: &str) -> &mut Self {
+    pub fn read_lexc_from_file(&mut self, filename: &str) -> crate::error::Result<&mut Self> {
         if !self.check_filename(filename) {
-            return self;
+            return Ok(self);
         }
 
         if self.variables_["lexc-with-flags"] == "ON" {
@@ -5634,7 +5624,7 @@ impl XfstCompiler {
                 error!("could not read lexc file");
                 self.xfst_fail();
                 self.prompt();
-                return self;
+                return Ok(self);
             }
         };
 
@@ -5648,20 +5638,20 @@ impl XfstCompiler {
             error!("error compiling file in lexc format");
             self.xfst_fail();
             self.prompt();
-            return self;
+            return Ok(self);
         };
 
-        t.optimize();
+        t.optimize()?;
         self.stack_.push(Rc::new(RefCell::new(t)));
         self.print_transducer_info();
         self.prompt();
-        self
+        Ok(self)
     }
 
     // @brief Read a transducer in att format from file @a filename
-    pub fn read_att_from_file(&mut self, filename: &str) -> &mut Self {
+    pub fn read_att_from_file(&mut self, filename: &str) -> crate::error::Result<&mut Self> {
         if !self.check_filename(filename) {
-            return self;
+            return Ok(self);
         }
         let infile = match std::fs::File::open(filename) {
             Ok(f) => f,
@@ -5669,7 +5659,7 @@ impl XfstCompiler {
                 error!("could not read att file {}", filename);
                 self.xfst_fail();
                 self.prompt();
-                return self;
+                return Ok(self);
             }
         };
         let mut reader = std::io::BufReader::new(infile);
@@ -5692,7 +5682,7 @@ impl XfstCompiler {
                 // recover ownership of the heap transducer the reader leaked (Box::leak)
                 let tmp = unsafe { *Box::from_raw(std::ptr::from_mut(r)) };
                 let net = Rc::new(RefCell::new(tmp));
-                net.borrow_mut().optimize();
+                net.borrow_mut().optimize()?;
                 self.stack_.push(net);
                 self.print_transducer_info();
             }
@@ -5702,7 +5692,7 @@ impl XfstCompiler {
             }
         }
         self.prompt();
-        self
+        Ok(self)
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.check-filename-fn]
@@ -5866,11 +5856,15 @@ impl XfstCompiler {
     }
 
     // @brief Substitute all labels @a list by @a target.
-    pub fn substitute_label(&mut self, list: &str, target: &str) -> &mut Self {
+    pub fn substitute_label(
+        &mut self,
+        list: &str,
+        target: &str,
+    ) -> crate::error::Result<&mut Self> {
         // GET_TOP(top)
         let Some(top) = self.top() else {
             self.xfst_lesser_fail();
-            return self;
+            return Ok(self);
         };
 
         // tokenize list into labels
@@ -5892,7 +5886,7 @@ impl XfstCompiler {
                             self.fail_flag_ = true;
                         }
                         self.prompt();
-                        return self;
+                        return Ok(self);
                     }
                 }
             }
@@ -5924,11 +5918,11 @@ impl XfstCompiler {
                         target_label.0, target_label.1
                     );
                     self.prompt();
-                    return self;
+                    return Ok(self);
                 }
 
                 top.borrow_mut()
-                    .substitute_symbol_pair_with_set(&target_label, &symbol_pairs);
+                    .substitute_symbol_pair_with_set(&target_label, &symbol_pairs)?;
             }
             None => {
                 error!("could not substitute '{}'", target);
@@ -5940,9 +5934,9 @@ impl XfstCompiler {
         }
 
         // MAYBE_MINIMIZE(top)
-        top.borrow_mut().optimize();
+        top.borrow_mut().optimize()?;
         self.prompt();
-        self
+        Ok(self)
     }
 
     // @brief Substitute all symbols in @a list by @a target.
