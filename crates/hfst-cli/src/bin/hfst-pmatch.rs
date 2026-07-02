@@ -13,7 +13,8 @@ use hfst::pmatch::PmatchContainer;
 use hfst::transducer::{INFINITE_WEIGHT, IStream, Weight};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, print_more_info, print_report_bugs,
+    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, print_more_info,
+    print_report_bugs,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -191,7 +192,7 @@ unsafe fn process_input(container: &mut PmatchContainer, outstream: &mut dyn Wri
 // [spec:hfst:sem:hfst-pmatch.parse-options-fn]
 unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(args);
+        extend_options_from_env(args);
         // use of this function requires options are settable on global scope
         loop {
             let mut long_options: Vec<getopt::GetOpt> = Vec::new();

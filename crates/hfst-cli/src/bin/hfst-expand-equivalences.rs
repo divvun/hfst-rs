@@ -11,7 +11,7 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_set_program_name,
+    EXIT_CONTINUE, error, error_at_line, extend_options_from_env, hfst_set_program_name,
     is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
@@ -97,7 +97,7 @@ fn print_usage() {
 // [spec:hfst:sem:hfst-expand-equivalences.parse-options-fn]
 unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(args);
+        extend_options_from_env(args);
         loop {
             let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());

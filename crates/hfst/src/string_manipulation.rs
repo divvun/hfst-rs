@@ -8,7 +8,6 @@
 //! here. 'unescape_name' likewise is credited in 'twolc.rs'.
 
 #![allow(dead_code)]
-#![allow(non_camel_case_types)]
 
 use crate::twolc::replace_substr;
 
@@ -45,7 +44,7 @@ pub fn unescape(str: &str) -> crate::error::Result<String> {
 
 // [spec:hfst:def:string-manipulation.strcmp-unescaped-fn]
 // [spec:hfst:sem:string-manipulation.strcmp-unescaped-fn]
-pub fn strcmp_unescaped(str1: &str, str2: &str) -> crate::error::Result<i32> {
+pub fn compare_unescaped(str1: &str, str2: &str) -> crate::error::Result<i32> {
     // Remove all escapes from str1 and str2 and
     // compare them.
     let str1_copy = unescape(str1)?;
@@ -256,9 +255,9 @@ impl StringVector {
 
 // @brief Regular string comparison.
 // [spec:hfst:def:string-manipulation.str-cmp]
-pub struct str_cmp;
+pub struct StrCmp;
 
-impl str_cmp {
+impl StrCmp {
     // [spec:hfst:def:string-manipulation.str-cmp.operator-fn]
     // [spec:hfst:sem:string-manipulation.str-cmp.operator-fn]
     pub fn operator_call(str1: &str, str2: &str) -> bool {
@@ -268,12 +267,12 @@ impl str_cmp {
 
 // @brief String comparison of unescaped strings.
 // [spec:hfst:def:string-manipulation.relaxed-str-cmp]
-pub struct relaxed_str_cmp;
+pub struct RelaxedStrCmp;
 
-impl relaxed_str_cmp {
+impl RelaxedStrCmp {
     // [spec:hfst:def:string-manipulation.relaxed-str-cmp.operator-fn]
     // [spec:hfst:sem:string-manipulation.relaxed-str-cmp.operator-fn]
     pub fn operator_call(str1: &str, str2: &str) -> crate::error::Result<bool> {
-        Ok(strcmp_unescaped(str1, str2)? < 0)
+        Ok(compare_unescaped(str1, str2)? < 0)
     }
 }

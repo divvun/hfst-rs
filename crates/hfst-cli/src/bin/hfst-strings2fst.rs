@@ -11,7 +11,7 @@ use hfst::hfst_strings2_fst_tokenizer::{HfstStrings2FstTokenizer, StringPairVect
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_error, hfst_error_at_line,
+    EXIT_CONTINUE, error, error_at_line, extend_options_from_env, hfst_error, hfst_error_at_line,
     hfst_parse_format_name, hfst_set_program_name, hfst_strtoweight, hfst_warning_at_line,
     print_more_info, print_report_bugs, verbose_print,
 };
@@ -91,7 +91,7 @@ fn take_negative_logarithm_10(weight: f32) -> f32 {
     result
 }
 
-fn errno() -> i32 {
+fn last_os_error_code() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
 
@@ -137,7 +137,7 @@ fn print_usage() {
 // [spec:hfst:sem:hfst-strings2fst.parse-options-fn]
 unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(args);
+        extend_options_from_env(args);
         // use of this function requires options are settable on global scope
         loop {
             let mut long_options: Vec<getopt::GetOpt> = Vec::new();
@@ -378,7 +378,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                         if pairstrings {
                             error_at_line(
                                 1,
-                                errno(),
+                                last_os_error_code(),
                                 &inputfilename,
                                 line_n as u32,
                                 &format!(
@@ -389,7 +389,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                         } else {
                             error_at_line(
                                 1,
-                                errno(),
+                                last_os_error_code(),
                                 &inputfilename,
                                 line_n as u32,
                                 &format!(
@@ -402,7 +402,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                         // IncorrectUtf8CodingException
                         error_at_line(
                             1,
-                            errno(),
+                            last_os_error_code(),
                             &inputfilename,
                             line_n as u32,
                             &format!("Input string `{}' is not valid utf-8.", parse_line),
@@ -526,7 +526,11 @@ unsafe fn real_main() -> i32 {
                     }
                 }
                 Err(_) => {
-                    error(1, errno(), "Multichar symbol file can't be read.");
+                    error(
+                        1,
+                        last_os_error_code(),
+                        "Multichar symbol file can't be read.",
+                    );
                 }
             }
         }

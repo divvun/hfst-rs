@@ -13,7 +13,7 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_getenv, hfst_error, hfst_error_at_line,
+    EXIT_CONTINUE, error, extend_options_from_env, hfst_error, hfst_error_at_line,
     hfst_set_program_name, hfst_strtoweight, hfst_warning, is_input_stream_in_ol_format,
     print_more_info, print_report_bugs, verbose_print,
 };
@@ -118,7 +118,7 @@ unless option --end-states-only or --arcs-only is used.\n"
 // [spec:hfst:sem:hfst-reweight.parse-options-fn]
 unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(args);
+        extend_options_from_env(args);
         // use of this function requires options are settable on global scope
         loop {
             let mut long_options: Vec<getopt::GetOpt> = Vec::new();

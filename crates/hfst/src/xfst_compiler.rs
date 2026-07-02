@@ -3308,7 +3308,7 @@ fn initialize_variable_explanations() {
 }
 
 // ===== integrated bodies 1-6 =====
-fn strstrip(s: &str) -> String {
+fn trim_whitespace(s: &str) -> String {
     let bytes = s.as_bytes();
     let is_space = |b: u8| matches!(b, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r');
     let mut start = 0;
@@ -5078,7 +5078,7 @@ impl XfstCompiler {
         t: &HfstTransducer,
         cutoff: usize,
     ) -> crate::error::Result<&mut Self> {
-        let token = strstrip(line);
+        let token = trim_whitespace(line);
 
         let paths = if self.variables["obey-flags"] == "ON" {
             t.lookup_fd_string(&token, cutoff as isize, 0.0)?
@@ -5095,7 +5095,7 @@ impl XfstCompiler {
     }
 
     fn lookup_basic(&mut self, line: &str, t: &HfstBasicTransducer) -> &mut Self {
-        let token = strstrip(line);
+        let token = trim_whitespace(line);
 
         let alpha = t.get_input_symbols();
         let mut tok = crate::hfst_tokenizer::HfstTokenizer::new();

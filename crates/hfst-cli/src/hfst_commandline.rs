@@ -51,12 +51,12 @@ const PACKAGE_BUGREPORT: &str = "";
 // ---------------------------------------------------------------------------
 
 // Current value of errno, as the C read it after a failing libc call.
-fn errno() -> i32 {
+fn last_os_error_code() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
 
-// The OS strerror text for `errnum` (C: strerror(e)).
-fn strerror(errnum: i32) -> String {
+// The OS strerror text for `errnum` (C: os_error_string(e)).
+fn os_error_string(errnum: i32) -> String {
     std::io::Error::from_raw_os_error(errnum).to_string()
 }
 
@@ -70,7 +70,7 @@ pub fn error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg
     let f = &mut std::io::stderr();
     let _ = write!(f, "{}.{}: {}", filename, linenum, msg);
     if errnum != 0 {
-        let _ = write!(f, "{}", strerror(errnum));
+        let _ = write!(f, "{}", os_error_string(errnum));
     }
     let _ = writeln!(f);
     if status != 0 {
@@ -90,7 +90,7 @@ pub fn hfst_error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
         maybe_print_colour(f, COLOUR_MAGENTA);
-        let _ = write!(f, "{}", strerror(errnum));
+        let _ = write!(f, "{}", os_error_string(errnum));
         maybe_print_colour(f, COLOUR_RESET);
     }
     if status != 0 {
@@ -110,7 +110,7 @@ pub fn hfst_warning_at_line(status: i32, errnum: i32, filename: &str, linenum: u
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
         maybe_print_colour(f, COLOUR_MAGENTA);
-        let _ = write!(f, "{}", strerror(errnum));
+        let _ = write!(f, "{}", os_error_string(errnum));
         maybe_print_colour(f, COLOUR_RESET);
     }
     if status != 0 {
@@ -124,7 +124,7 @@ pub fn error(status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
     let _ = write!(f, "{}: {}", globals::program_name(), msg);
     if errnum != 0 {
-        let _ = write!(f, "{}", strerror(errnum));
+        let _ = write!(f, "{}", os_error_string(errnum));
     }
     let _ = writeln!(f);
     if status != 0 {
@@ -144,7 +144,7 @@ pub fn hfst_error(status: i32, errnum: i32, msg: &str) {
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
         maybe_print_colour(f, COLOUR_MAGENTA);
-        let _ = write!(f, "{}", strerror(errnum));
+        let _ = write!(f, "{}", os_error_string(errnum));
         maybe_print_colour(f, COLOUR_RESET);
     }
     let _ = writeln!(f);
@@ -159,7 +159,7 @@ pub fn warning(status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
     let _ = write!(f, "{}: warning: {}", globals::program_name(), msg);
     if errnum != 0 {
-        let _ = write!(f, "{}", strerror(errnum));
+        let _ = write!(f, "{}", os_error_string(errnum));
     }
     let _ = writeln!(f);
     if status != 0 {
@@ -179,7 +179,7 @@ pub fn hfst_warning(status: i32, errnum: i32, msg: &str) {
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
         maybe_print_colour(f, COLOUR_MAGENTA);
-        let _ = write!(f, "{}", strerror(errnum));
+        let _ = write!(f, "{}", os_error_string(errnum));
         maybe_print_colour(f, COLOUR_RESET);
     }
     let _ = writeln!(f);
@@ -335,7 +335,7 @@ pub fn hfst_strtoweight(s: &str) -> f32 {
     match s.parse::<f64>() {
         Ok(rv) => rv as f32,
         Err(_) => {
-            hfst_error(1, errno(), &format!("{} not a weight", s));
+            hfst_error(1, last_os_error_code(), &format!("{} not a weight", s));
             0.0
         }
     }
@@ -351,7 +351,7 @@ pub fn hfst_strtonumber(s: &str, infinite: Option<&mut bool>) -> i32 {
     let rv = match s.parse::<f64>() {
         Ok(rv) => rv,
         Err(_) => {
-            hfst_error(1, errno(), &format!("{} not a number", s));
+            hfst_error(1, last_os_error_code(), &format!("{} not a number", s));
             return 0;
         }
     };
@@ -377,7 +377,7 @@ pub fn parse_u64(s: &str, base: i32) -> u64 {
         Err(_) => {
             hfst_error(
                 1,
-                errno(),
+                last_os_error_code(),
                 &format!("{} is not a valid unsigned number string", s),
             );
             0
@@ -393,7 +393,7 @@ pub fn parse_i64(s: &str, base: i32) -> i64 {
         Err(_) => {
             hfst_error(
                 1,
-                errno(),
+                last_os_error_code(),
                 &format!("{} is not a valid signed number string", s),
             );
             0
@@ -617,7 +617,7 @@ pub fn print_report_bugs() {
 // Append the space-separated tokens of $HFST_OPTIONS to the program arguments
 // (consecutive spaces collapse, as the C strtok loop did); getopt then permutes
 // them into place.
-pub fn extend_options_getenv(args: &mut Vec<String>) {
+pub fn extend_options_from_env(args: &mut Vec<String>) {
     if let Ok(hfstopts) = std::env::var("HFST_OPTIONS") {
         for t in hfstopts.split(' ').filter(|t| !t.is_empty()) {
             args.push(t.to_string());

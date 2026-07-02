@@ -19,7 +19,7 @@ use hfst::xre::XreCompiler;
 use hfst_cli::globals;
 use hfst_cli::globals::ColourTristate;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_parse_format_name,
+    EXIT_CONTINUE, error, error_at_line, extend_options_from_env, hfst_parse_format_name,
     hfst_set_program_name, parse_u64, print_more_info, print_report_bugs, print_short_help,
     verbose_print, warning,
 };
@@ -203,7 +203,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
         const INCLUDEFROM_OPT: i32 = 25;
         const EXCLUDEFROM_OPT: i32 = 26;
         const COLOR_OPT: i32 = 27;
-        extend_options_getenv(args);
+        extend_options_from_env(args);
         loop {
             let mut long_options: Vec<getopt::GetOpt> = Vec::new();
             long_options.extend(hfst_getopt_common_long());

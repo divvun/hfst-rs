@@ -22,7 +22,7 @@ use hfst::hfst_symbol_defs::{internal_identity, internal_unknown, is_epsilon};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_error, hfst_error_at_line, hfst_set_program_name,
+    EXIT_CONTINUE, extend_options_from_env, hfst_error, hfst_error_at_line, hfst_set_program_name,
     hfst_strformat, hfst_warning, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
@@ -275,7 +275,7 @@ fn print_usage() {
 // [spec:hfst:sem:hfst-lookup.parse-options-fn]
 unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
     unsafe {
-        extend_options_getenv(args);
+        extend_options_from_env(args);
         // use of this function requires options are settable on global scope
         loop {
             let mut long_options: Vec<getopt::GetOpt> = Vec::new();
