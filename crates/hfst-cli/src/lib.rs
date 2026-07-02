@@ -22,3 +22,8 @@ pub mod hfst_tool_metadata;
 // '#include's into its 'parse_options' (getopt-cases-*.h, check-params-*.h),
 // translated once into shared helpers the bin mains call.
 pub mod inc;
+
+// The shared main/<op>_streams scaffolding of the two-input-stream (BINARY)
+// tools, lifted out of the per-tool verbatim copies and parameterized by an
+// op descriptor.
+pub mod binary_ops;

@@ -5,6 +5,7 @@
 
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_transducer::HfstTransducer;
+use hfst_cli::binary_ops::open_two_input_streams;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, hfst_strformat,
@@ -305,39 +306,15 @@ unsafe fn real_main() -> i32 {
             return retval;
         }
         // close buffers, we use streams
-        let first_is_stdin = globals::first_filename() == "<stdin>";
-        let second_is_stdin = globals::second_filename() == "<stdin>";
         verbose_print(&format!(
             "Reading from {} and {}, writing log to {}\n",
             globals::first_filename(),
             globals::second_filename(),
             globals::output_filename()
         ));
-        // here starts the buffer handling part
-        // (the C wraps each ctor in try/catch on HfstException, calling
-        // error(EXIT_FAILURE, ...) on a bad file; the Rust ctor currently panics
-        // on a bad file rather than throwing, so the catch arm is not reproduced.)
-        let mut firststream = match if !first_is_stdin {
-            HfstInputStream::new_filename(&globals::first_filename())
-        } else {
-            HfstInputStream::new()
-        } {
+        let (mut firststream, mut secondstream) = match open_two_input_streams() {
             Ok(v) => v,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-        let mut secondstream = match if !second_is_stdin {
-            HfstInputStream::new_filename(&globals::second_filename())
-        } else {
-            HfstInputStream::new()
-        } {
-            Ok(v) => v,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
+            Err(code) => return code,
         };
 
         if is_input_stream_in_ol_format(&firststream, "hfst-compare")

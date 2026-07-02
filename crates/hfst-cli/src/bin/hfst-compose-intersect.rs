@@ -6,18 +6,16 @@
 //! (the rule file).
 
 use hfst::convert_transducer_format::ConversionFunctions;
-use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_symbol_defs::internal_identity;
 use hfst::hfst_tokenizer::HfstTokenizer;
 use hfst::hfst_transducer::EngineConfig;
 use hfst::hfst_transducer::{HfstTransducer, HfstTransducerVector};
+use hfst_cli::binary_ops::{open_output_stream, open_two_input_streams, resolve_output_type};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, conversion_type, error, extend_options_from_env, hfst_set_program_name,
-    hfst_strformat, is_input_stream_in_ol_format, print_more_info, print_report_bugs,
-    verbose_print, warning,
+    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name,
+    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print, warning,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -254,62 +252,12 @@ unsafe fn compose_streams(
         // there must be at least one transducer in both input streams
         let type1 = firststream.get_type();
         let type2 = secondstream.get_type();
-        let mut output_type = ImplementationType::UNSPECIFIED_TYPE;
-        if type1 != type2 {
-            if globals::ALLOW_TRANSDUCER_CONVERSION {
-                let ct = conversion_type(type1, type2);
-                let mut warnstr = format!(
-                    "Transducer type mismatch in {} and {}; ",
-                    globals::first_filename(),
-                    globals::second_filename()
-                );
-                if ct == 1 {
-                    warnstr.push_str("using former type as output");
-                    output_type = type1;
-                } else if ct == 2 {
-                    warnstr.push_str("using latter type as output");
-                    output_type = type2;
-                } else if ct == -1 {
-                    warnstr
-                        .push_str("using former type as output, loss of information is possible");
-                    output_type = type1;
-                } else {
-                    // should not happen
-                    std::panic::panic_any(
-                        "Error: hfst-compose-intersect: conversion_type returned an invalid integer",
-                    );
-                }
-                warning(0, 0, &warnstr);
-            } else {
-                error(
-                    1,
-                    0,
-                    &format!(
-                        "Transducer type mismatch in {} and {}; \
-                         formats {} and {} are not compatible for compose-intersect \
-                         (--do-not-convert was requested)",
-                        globals::first_filename(),
-                        globals::second_filename(),
-                        hfst_strformat(type1),
-                        hfst_strformat(type2)
-                    ),
-                );
-            }
-        } else {
-            output_type = type1;
-        }
+        let output_type =
+            resolve_output_type("hfst-compose-intersect", "compose-intersect", type1, type2);
 
-        let outstream_res = if globals::output_filename() != "<stdout>" {
-            HfstOutputStream::new_filename(&globals::output_filename(), output_type, true)
-        } else {
-            HfstOutputStream::new(output_type, true)
-        };
-        let mut outstream = match outstream_res {
+        let mut outstream = match open_output_stream(output_type) {
             Ok(s) => s,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
+            Err(code) => return code,
         };
 
         let _both_inputs = firststream.is_good() && secondstream.is_good();
@@ -526,33 +474,9 @@ unsafe fn real_main() -> i32 {
             globals::second_filename(),
             globals::output_filename()
         ));
-        // here starts the buffer handling part
-        // (the C wraps the ctors in try/catch on HfstException; the Rust ctor
-        // currently panics on a bad file rather than throwing, so the catch arm
-        // is not reproduced here.)
-        let firststream_res = if globals::first_filename() != "<stdin>" {
-            HfstInputStream::new_filename(&globals::first_filename())
-        } else {
-            HfstInputStream::new()
-        };
-        let mut firststream = match firststream_res {
-            Ok(s) => s,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-        let secondstream_res = if globals::second_filename() != "<stdin>" {
-            HfstInputStream::new_filename(&globals::second_filename())
-        } else {
-            HfstInputStream::new()
-        };
-        let mut secondstream = match secondstream_res {
-            Ok(s) => s,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
+        let (mut firststream, mut secondstream) = match open_two_input_streams() {
+            Ok(v) => v,
+            Err(code) => return code,
         };
 
         compose_streams(&mut firststream, &mut secondstream)

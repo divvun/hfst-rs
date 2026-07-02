@@ -3,24 +3,23 @@
 //! getopt, commandline, program-options, tool-metadata, inc fragments).
 //!
 //! This is a BINARY tool: it reads two input streams (firststream and
-//! secondstream) and writes their pairwise concatenation.
+//! secondstream) and writes their pairwise concatenation; the shared
+//! scaffolding lives in hfst_cli::binary_ops.
 
-use hfst::hfst_data_types::ImplementationType;
-use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
+use hfst_cli::binary_ops::{
+    BinaryOpSpec, LoopStyle, PairContext, RetryPolicy, run_binary_streams_tool,
+};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, conversion_type, convert_transducers, error, extend_options_from_env,
-    hfst_set_program_name, hfst_strformat, is_input_stream_in_ol_format, print_more_info,
-    print_report_bugs, verbose_print, warning,
+    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, print_more_info,
+    print_report_bugs, warning,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
     hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
     print_common_binary_program_parameter_instructions, print_common_program_options,
 };
-use hfst_cli::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_binary, hfst_set_name_binary};
 use hfst_cli::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
@@ -118,246 +117,24 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 
 // [spec:hfst:def:hfst-concatenate.concatenate-streams-fn]
 // [spec:hfst:sem:hfst-concatenate.concatenate-streams-fn]
-unsafe fn concatenate_streams(
-    firststream: &mut HfstInputStream,
-    secondstream: &mut HfstInputStream,
-) -> i32 {
-    unsafe {
-        // there must be at least one transducer in both input streams
-        let mut continue_reading = firststream.is_good() && secondstream.is_good();
-
-        let type1 = firststream.get_type();
-        let type2 = secondstream.get_type();
-        let mut output_type = ImplementationType::UNSPECIFIED_TYPE;
-        if type1 != type2 {
-            if globals::ALLOW_TRANSDUCER_CONVERSION {
-                let ct = conversion_type(type1, type2);
-                let mut warnstr = format!(
-                    "Transducer type mismatch in {} and {}; ",
-                    globals::first_filename(),
-                    globals::second_filename()
-                );
-                if ct == 1 {
-                    warnstr.push_str("using former type as output");
-                    output_type = type1;
-                } else if ct == 2 {
-                    warnstr.push_str("using latter type as output");
-                    output_type = type2;
-                } else if ct == -1 {
-                    warnstr
-                        .push_str("using former type as output, loss of information is possible");
-                    output_type = type1;
-                } else {
-                    // should not happen
-                    std::panic::panic_any(
-                        "Error: hfst-concatenate: conversion_type returned an invalid integer"
-                            .to_string(),
-                    );
-                }
-                warning(0, 0, &warnstr);
-            } else {
-                error(
-                    1,
-                    0,
-                    &format!(
-                        "Transducer type mismatch in {} and {}; formats {} and {} are not compatible for concatenation (--do-not-convert was requested)",
-                        globals::first_filename(),
-                        globals::second_filename(),
-                        hfst_strformat(type1),
-                        hfst_strformat(type2)
-                    ),
-                );
-            }
-        } else {
-            output_type = type1;
-        }
-
-        let output_named = globals::output_filename() != "<stdout>";
-        let mut outstream = match if output_named {
-            HfstOutputStream::new_filename(&globals::output_filename(), output_type, true)
-        } else {
-            HfstOutputStream::new(output_type, true)
-        } {
-            Ok(v) => v,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-
-        let mut first: Option<HfstTransducer> = None;
-        let mut second: Option<HfstTransducer> = None;
-        let mut transducer_n_first: usize = 0; // transducers read from first stream
-        let mut transducer_n_second: usize = 0; // transducers read from second stream
-
-        while continue_reading {
-            first = Some(match HfstTransducer::new_from_stream(firststream) {
-                Ok(v) => v,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            });
-            transducer_n_first += 1;
-            if secondstream.is_good() {
-                second = Some(match HfstTransducer::new_from_stream(secondstream) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                });
-                transducer_n_second += 1;
-            }
-            let firstname = hfst_get_name(first.as_ref().unwrap(), &globals::first_filename());
-            if second.is_none() {
-                // make scan-build happy, this should not happen
-                std::panic::panic_any("Error: second stream has a NULL value.".to_string());
-            }
-            let secondname = hfst_get_name(second.as_ref().unwrap(), &globals::second_filename());
-            if transducer_n_first == 1 {
-                verbose_print(&format!(
-                    "Concatenating {} and {}...\n",
-                    firstname, secondname
-                ));
-            } else {
-                verbose_print(&format!(
-                    "Concatenating {} and {}... {}\n",
-                    firstname, secondname, transducer_n_first
-                ));
-            }
-            let both_have_flags = first.as_ref().unwrap().has_flag_diacritics()
-                && second.as_ref().unwrap().has_flag_diacritics();
-            if both_have_flags {
-                if !HARMONIZE_FLAGS {
-                    if !globals::SILENT {
-                        warning(
-                            0,
-                            0,
-                            "The arguments contain flag diacritics. Use -F to harmonize them.",
-                        );
-                    }
-                } else {
-                    let mut s_mut = second.take().expect("second transducer is present");
-                    if let Err(e) = first
-                        .as_mut()
-                        .expect("first transducer is present")
-                        .harmonize_flag_diacritics(&mut s_mut, false)
-                    {
-                        error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                    second = Some(s_mut);
-                }
-            }
-            // C: try { first->concatenate(*second, harmonize); }
-            //    catch (TransducerTypeMismatchException) { ... }
-            let harmonize = HARMONIZE;
-            let attempt = {
-                let mut f = first.take().expect("first transducer is present");
-                let s = second.take().expect("second transducer is present");
-                let res = f.concatenate(&s, harmonize).map(|_| ());
-                first = Some(f);
-                second = Some(s);
-                res
-            };
-            if let Err(e) = attempt {
-                if !matches!(e.kind, hfst::error::ErrorKind::TransducerTypeMismatch) {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-                if globals::ALLOW_TRANSDUCER_CONVERSION {
-                    let mut f = first.take().expect("first transducer is present");
-                    let mut s = second.take().expect("second transducer is present");
-                    if let Err(e) = convert_transducers(&mut f, &mut s) {
-                        error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                    if let Err(e2) = f.concatenate(&s, harmonize).map(|_| ()) {
-                        error(1, 0, &format!("{e2}"));
-                        return 1;
-                    }
-                    first = Some(f);
-                    second = Some(s);
-                } else {
-                    error(
-                        1,
-                        0,
-                        &format!(
-                            "Could not concatenate {} and {} [{}]:\nformats {} and {} are not compatible for concatenation (--do-not-convert was requested)",
-                            firstname,
-                            secondname,
-                            transducer_n_first,
-                            hfst_strformat(firststream.get_type()),
-                            hfst_strformat(secondstream.get_type())
-                        ),
-                    );
-                    return 1;
-                }
-            }
-            {
-                // C: hfst_set_name(*first, *first, *second, "concatenate");
-                // dest and lhs are the same object; Rust cannot alias mut+const,
-                // so the lhs read side is taken from a clone (name/formula are
-                // unchanged by the clone).
-                let lhs = first.as_ref().unwrap().clone();
-                let s = second.take().unwrap();
-                hfst_set_name_binary(first.as_mut().unwrap(), &lhs, &s, "concatenate");
-                hfst_set_formula_binary(first.as_mut().unwrap(), &lhs, &s, "\u{22c5}");
-                second = Some(s);
-            }
-            if let Err(e) = outstream.redirect(first.as_mut().expect("first transducer is present"))
-            {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-
-            continue_reading =
-                firststream.is_good() && (secondstream.is_good() || transducer_n_second == 1);
-
-            first = None;
-            // delete the transducer of second stream, unless we continue reading
-            // the first stream and there is only one transducer in the second
-            // stream
-            if (continue_reading && secondstream.is_good()) || !continue_reading {
-                second = None;
-            }
-        }
-
-        if firststream.is_good() {
-            error(
-                1,
-                0,
-                &format!(
-                    "second input '{}' contains fewer transducers than first input '{}'; this is only possible if the second input contains exactly one transducer",
-                    globals::second_filename(),
-                    globals::first_filename()
-                ),
-            );
-        }
-
-        if secondstream.is_good() {
-            error(
-                1,
-                0,
-                &format!(
-                    "first input '{}' contains fewer transducers than second input '{}'",
-                    globals::first_filename(),
-                    globals::second_filename()
-                ),
-            );
-        }
-
-        firststream.close();
-        secondstream.close();
-        if let Err(e) = outstream.flush() {
-            error(1, 0, &format!("{e}"));
-            return 1;
-        }
-        outstream.close();
-        0
-    }
-}
+// The streams loop lives in hfst_cli::binary_ops::run_binary_streams_tool;
+// this descriptor plus the pre-apply/apply closures in real_main carry the
+// tool's behaviour contract.
+const SPEC: BinaryOpSpec = BinaryOpSpec {
+    tool_name: "hfst-concatenate",
+    mismatch_noun: "concatenation",
+    could_not_verb: "concatenate",
+    could_not_noun: "concatenation",
+    name_op: "concatenate",
+    formula: "\u{22c5}",
+    verbose_begin: |firstname, secondname| {
+        format!("Concatenating {} and {}", firstname, secondname)
+    },
+    loop_style: LoopStyle::Standard,
+    retry: RetryPolicy::TypeMismatchOnly,
+    flush_each_round: false,
+    flush_at_end: true,
+};
 
 // [spec:hfst:def:hfst-concatenate.main-fn]
 // [spec:hfst:sem:hfst-concatenate.main-fn]
@@ -376,49 +153,31 @@ unsafe fn real_main() -> i32 {
         if retval != EXIT_CONTINUE {
             return retval;
         }
-        // close buffers, we use streams
-        let first_opened = globals::first_filename() != "<stdin>";
-        let second_opened = globals::second_filename() != "<stdin>";
-        verbose_print(&format!(
-            "Reading from {} and {}, writing to {}\n",
-            globals::first_filename(),
-            globals::second_filename(),
-            globals::output_filename()
-        ));
-
-        // here starts the buffer handling part.
-        // (the C wraps each ctor in try/catch on HfstException; the Rust ctor
-        // currently panics on a bad file rather than throwing, so the catch arm
-        // is not reproduced here.)
-        let mut firststream = match if first_opened {
-            HfstInputStream::new_filename(&globals::first_filename())
-        } else {
-            HfstInputStream::new()
-        } {
-            Ok(v) => v,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
+        let harmonize = HARMONIZE;
+        let harmonize_flags = HARMONIZE_FLAGS;
+        let mut pre_apply = |first: &mut HfstTransducer,
+                             second: &mut HfstTransducer,
+                             _ctx: &PairContext|
+         -> Result<(), i32> {
+            let both_have_flags = first.has_flag_diacritics() && second.has_flag_diacritics();
+            if both_have_flags {
+                if !harmonize_flags {
+                    if !globals::SILENT {
+                        warning(
+                            0,
+                            0,
+                            "The arguments contain flag diacritics. Use -F to harmonize them.",
+                        );
+                    }
+                } else if let Err(e) = first.harmonize_flag_diacritics(second, false) {
+                    error(1, 0, &format!("{e}"));
+                    return Err(1);
+                }
             }
+            Ok(())
         };
-        let mut secondstream = match if second_opened {
-            HfstInputStream::new_filename(&globals::second_filename())
-        } else {
-            HfstInputStream::new()
-        } {
-            Ok(v) => v,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-
-        if is_input_stream_in_ol_format(&firststream, "hfst-concatenate")
-            || is_input_stream_in_ol_format(&secondstream, "hfst-concatenate")
-        {
-            return 1;
-        }
-
-        concatenate_streams(&mut firststream, &mut secondstream)
+        run_binary_streams_tool(&SPEC, Some(&mut pre_apply), &mut |first, second| {
+            first.concatenate(second, harmonize).map(|_| ())
+        })
     }
 }
