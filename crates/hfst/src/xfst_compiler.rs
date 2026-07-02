@@ -624,10 +624,10 @@ impl XfstCompiler {
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.open-hfst-input-stream-fn]
     // @brief Open HfstInputStream to file \a filename.
     // Print an error message and return NULL, if not succesful.
-    fn open_hfst_input_stream(&mut self, filename: &str) -> *mut HfstInputStream<'_> {
+    fn open_hfst_input_stream(&mut self, filename: &str) -> Option<HfstInputStream<'static>> {
         // assert(infilename != NULL): filename is always a valid &str here.
         if !self.check_filename(filename) {
-            return std::ptr::null_mut();
+            return None;
         }
 
         match crate::hfst_data_types::open_file(filename, "r") {
@@ -635,7 +635,7 @@ impl XfstCompiler {
                 error!("Could not open file {}", filename);
                 self.flush();
                 self.xfst_fail();
-                return std::ptr::null_mut();
+                return None;
             }
             Ok(infile) => {
                 // close the probe handle (the real read goes through
@@ -646,7 +646,7 @@ impl XfstCompiler {
 
         // C++: try { new HfstInputStream(infilename) } catch (NotTransducerStreamException)
         match HfstInputStream::new_filename(filename) {
-            Ok(instream) => Box::into_raw(Box::new(instream)),
+            Ok(instream) => Some(instream),
             Err(_) => {
                 error!(
                     "Unable to read transducers from {}",
@@ -654,7 +654,7 @@ impl XfstCompiler {
                 );
                 self.flush();
                 self.xfst_fail();
-                std::ptr::null_mut()
+                None
             }
         }
     }
@@ -668,33 +668,58 @@ impl XfstCompiler {
             return self;
         }
         // Try to open the stream to file infilename
-        let instream = self.open_hfst_input_stream(infilename);
         // IF_NULL_PROMPT_AND_RETURN_THIS(instream)
-        if instream.is_null() {
+        let Some(mut instream) = self.open_hfst_input_stream(infilename) else {
             if self.variables["quit-on-fail"] == "ON" {
                 self.fail_flag = true;
             }
             self.prompt();
             return self;
+        };
+
+        // Read transducers from stream
+        while instream.is_good() {
+            let t = match HfstTransducer::new_from_stream(&mut instream) {
+                Ok(t) => t,
+                Err(e) => {
+                    error!("{e}");
+                    if self.variables["quit-on-fail"] == "ON" {
+                        self.fail_flag = true;
+                    }
+                    break;
+                }
+            };
+            let t: NetRef = Rc::new(RefCell::new(t));
+
+            // Convert transducer format, if needed
+            if let Err(e) = self.convert_to_common_format(&t, Some(infilename)) {
+                error!("{e}");
+                if self.variables["quit-on-fail"] == "ON" {
+                    self.fail_flag = true;
+                }
+                break;
+            }
+
+            // Add transducer as definition..
+            if definitions {
+                let t_type = t.borrow().get_type();
+                if t_type == ImplementationType::HFST_OL_TYPE
+                    || t_type == ImplementationType::HFST_OLW_TYPE
+                {
+                    error!("cannot load optimized lookup transducers as definitions");
+                    self.flush();
+                    break;
+                }
+                self.add_loaded_definition(t);
+            }
+            // ..or push it to stack.
+            else {
+                self.stack.push(t);
+                self.print_transducer_info();
+            }
         }
 
-        // Read transducers from stream. Constructing a HfstTransducer from a
-        // HfstInputStream is not yet available in the ported facade (the binary
-        // HFST stream reader is deferred), so this read loop reports the
-        // limitation instead of looping. The per-transducer handling
-        // (convert_to_common_format, add_loaded_definition / stack push) is
-        // preserved in add_loaded_definition and is reachable once the stream
-        // reader lands.
-        let _ = definitions;
-        if unsafe { (*instream).is_good() } {
-            warn!("loading transducers from a binary HFST file is not yet supported");
-        }
-
-        unsafe {
-            (*instream).close();
-            // std::unique_ptr<HfstInputStream> went out of scope here
-            drop(Box::from_raw(instream));
-        }
+        instream.close();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
         self

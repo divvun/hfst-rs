@@ -156,7 +156,7 @@ pub fn hfst_getopt_unary_long() -> [GetOpt; 2] {
 // HFST_GETOPT_BINARY_LONG
 //
 // 'input2' is mapped to the '1' option value, bug-for-bug with the C macro.
-pub fn hfst_getopt_binary_long() -> [GetOpt; 4] {
+pub fn hfst_getopt_binary_long() -> [GetOpt; 5] {
     [
         GetOpt {
             name: "input1",
@@ -167,6 +167,14 @@ pub fn hfst_getopt_binary_long() -> [GetOpt; 4] {
             name: "input2",
             has_arg: REQUIRED_ARGUMENT,
             val: b'1' as i32,
+        },
+        // The C binary tools' getopt SHORT string carried "1:2:"; with the
+        // long table's 'input2'->'1' mapping being a preserved upstream bug,
+        // the short '-2' needs its own entry for the fallback matcher.
+        GetOpt {
+            name: "2",
+            has_arg: REQUIRED_ARGUMENT,
+            val: b'2' as i32,
         },
         GetOpt {
             name: "output",
