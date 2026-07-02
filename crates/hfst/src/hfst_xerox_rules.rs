@@ -56,7 +56,7 @@ pub enum ReplaceArrow {
 
 /// \brief A rule that contains mapping and context and replace type (if any).
 /// If rule is A -> B || L _ R , than mapping is cross product of transducers A and B,
-///     context is pair of transducers L and R, and replType is enum REPL_UP.
+///     context is pair of transducers L and R, and repl_type is enum REPL_UP.
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.rule]
 #[derive(Clone)]
 pub struct Rule {
@@ -65,7 +65,7 @@ pub struct Rule {
     /* context */
     pub(crate) context: HfstTransducerPairVector,
     /* if there is a context, it needs to have a direction (up, left, down or right) */
-    pub(crate) replType: ReplaceType,
+    pub(crate) repl_type: ReplaceType,
 }
 
 // C++ 'friend std::ostream& operator<<(std::ostream&, const Rule&)' -> 'Display'.
@@ -94,8 +94,8 @@ impl Rule {
 
         let ty: ImplementationType = mappingPairVector[0].0.get_type();
         // Check if all transducer types are the same
-        for i in 0..mappingPairVector.len() {
-            if mappingPairVector[i].0.get_type() != ty || mappingPairVector[i].1.get_type() != ty {
+        for pair in mappingPairVector.iter() {
+            if pair.0.get_type() != ty || pair.1.get_type() != ty {
                 crate::bail!(TransducerTypeMismatch, "Rule mapping");
             }
         }
@@ -110,16 +110,16 @@ impl Rule {
         let mapping = mappingPairVector.clone();
 
         // HfstTransducerPairVector tmpV = mappingPairVector;
-        // tmpV[0].0 = encodeFlagDiacritics(tmpV[0].0);
+        // tmpV[0].0 = encode_flag_diacritics(tmpV[0].0);
 
         //mapping = tmpV;
         let context = epsilonContext;
-        let replType = ReplaceType::REPL_UP;
+        let repl_type = ReplaceType::REPL_UP;
 
         Ok(Rule {
             mapping,
             context,
-            replType,
+            repl_type,
         })
     }
 
@@ -128,33 +128,33 @@ impl Rule {
     pub fn new_mapping_context_repl_type(
         mappingPairVector: &HfstTransducerPairVector,
         a_context: &HfstTransducerPairVector,
-        a_replType: ReplaceType,
+        a_repl_type: ReplaceType,
     ) -> crate::error::Result<Self> {
         // Check if all transducer types are the same
         let ty: ImplementationType = mappingPairVector[0].0.get_type();
-        for i in 0..mappingPairVector.len() {
-            if mappingPairVector[i].0.get_type() != ty || mappingPairVector[i].1.get_type() != ty {
+        for pair in mappingPairVector.iter() {
+            if pair.0.get_type() != ty || pair.1.get_type() != ty {
                 crate::bail!(TransducerTypeMismatch, "Rule mapping");
             }
         }
-        for j in 0..a_context.len() {
-            if a_context[j].0.get_type() != ty || a_context[j].1.get_type() != ty {
+        for pair in a_context.iter() {
+            if pair.0.get_type() != ty || pair.1.get_type() != ty {
                 crate::bail!(TransducerTypeMismatch, "Rule context");
             }
         }
 
         //HfstTransducerPairVector tmpV = mappingPairVector;
-        //tmpV[0].0 = encodeFlagDiacritics(tmpV[0].0);
+        //tmpV[0].0 = encode_flag_diacritics(tmpV[0].0);
 
         let mapping = mappingPairVector.clone();
         // mapping = tmpV                       ;
         let context = a_context.clone();
-        let replType = a_replType;
+        let repl_type = a_repl_type;
 
         Ok(Rule {
             mapping,
             context,
-            replType,
+            repl_type,
         })
     }
 
@@ -162,12 +162,12 @@ impl Rule {
     pub fn new_rule(a_rule: &Rule) -> Self {
         let mapping = a_rule.get_mapping();
         let context = a_rule.get_context();
-        let replType = a_rule.get_replType();
+        let repl_type = a_rule.get_repl_type();
 
         Rule {
             mapping,
             context,
-            replType,
+            repl_type,
         }
     }
 
@@ -183,14 +183,14 @@ impl Rule {
         let mut epsilonContext: HfstTransducerPairVector = Vec::new();
         epsilonContext.push(contextPair);
         let context = epsilonContext;
-        let replType = ReplaceType::REPL_UP;
+        let repl_type = ReplaceType::REPL_UP;
         // 'mapping' is left default-constructed (an empty vector), as in C++.
         let mapping: HfstTransducerPairVector = Vec::new();
 
         Ok(Rule {
             mapping,
             context,
-            replType,
+            repl_type,
         })
     }
 
@@ -208,25 +208,25 @@ impl Rule {
 
     // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.rule.get-repl-type-fn]
     // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.rule.get-repl-type-fn]
-    pub fn get_replType(&self) -> ReplaceType {
-        self.replType
+    pub fn get_repl_type(&self) -> ReplaceType {
+        self.repl_type
     }
 
     // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.rule.encode-flags-fn]
     // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.rule.encode-flags-fn]
-    pub fn encodeFlags(&mut self) -> crate::error::Result<()> {
+    pub fn encode_flags(&mut self) -> crate::error::Result<()> {
         let mut tmpM: HfstTransducerPairVector = self.mapping.clone();
 
-        for i in 0..tmpM.len() {
-            tmpM[i].0 = encodeFlagDiacritics(&tmpM[i].0)?;
-            tmpM[i].1 = encodeFlagDiacritics(&tmpM[i].1)?;
+        for pair in tmpM.iter_mut() {
+            pair.0 = encode_flag_diacritics(&pair.0)?;
+            pair.1 = encode_flag_diacritics(&pair.1)?;
         }
 
         let mut tmpC: HfstTransducerPairVector = self.context.clone();
 
-        for i in 0..tmpC.len() {
-            tmpC[i].0 = encodeFlagDiacritics(&tmpC[i].0)?;
-            tmpC[i].1 = encodeFlagDiacritics(&tmpC[i].1)?;
+        for pair in tmpC.iter_mut() {
+            pair.0 = encode_flag_diacritics(&pair.0)?;
+            pair.1 = encode_flag_diacritics(&pair.1)?;
         }
 
         self.mapping = tmpM;
@@ -238,8 +238,8 @@ impl Rule {
 // Ports 'std::ostream & operator<<(std::ostream &out, const Rule & r)'.
 pub fn operator_shl_os(out: &mut dyn Write, r: &Rule) {
     writeln!(out, "hfst::xeroxRules::Rule:").unwrap();
-    write!(out, "replType: ").unwrap();
-    match r.replType {
+    write!(out, "repl_type: ").unwrap();
+    match r.repl_type {
         ReplaceType::REPL_UP => {
             write!(out, "REPL_UP").unwrap();
         }
@@ -256,23 +256,19 @@ pub fn operator_shl_os(out: &mut dyn Write, r: &Rule) {
     writeln!(out).unwrap();
 
     writeln!(out, "mapping:").unwrap();
-    let mut index: u32 = 1;
-    for it in r.mapping.iter() {
-        writeln!(out, "#{} (right side):", index).unwrap();
+    for (i, it) in r.mapping.iter().enumerate() {
+        writeln!(out, "#{} (right side):", i + 1).unwrap();
         crate::hfst_transducer::operator_shl_os(out, &it.0);
-        writeln!(out, "#{} (left side):", index).unwrap();
+        writeln!(out, "#{} (left side):", i + 1).unwrap();
         crate::hfst_transducer::operator_shl_os(out, &it.1);
-        index += 1;
     }
 
     writeln!(out, "context:").unwrap();
-    index = 1;
-    for it in r.context.iter() {
-        writeln!(out, "#{} (right side):", index).unwrap();
+    for (i, it) in r.context.iter().enumerate() {
+        writeln!(out, "#{} (right side):", i + 1).unwrap();
         crate::hfst_transducer::operator_shl_os(out, &it.0);
-        writeln!(out, "#{} (left side):", index).unwrap();
+        writeln!(out, "#{} (left side):", i + 1).unwrap();
         crate::hfst_transducer::operator_shl_os(out, &it.1);
-        index += 1;
     }
 }
 
@@ -282,7 +278,7 @@ pub fn operator_shl_os(out: &mut dyn Write, r: &Rule) {
 // ie. @P.FOO.BAR@ will be changed into $P.FOO.BAR$
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.encode-flag-diacritics-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.encode-flag-diacritics-fn]
-pub fn encodeFlagDiacritics(tr: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
+pub fn encode_flag_diacritics(tr: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
     let mut realFlagstoFakeFlags: HfstSymbolSubstitutions = HfstSymbolSubstitutions::new();
     let mut removeFromAlphabet: StringSet = StringSet::new();
     let transducerAlphabet: StringSet = tr.get_alphabet()?;
@@ -324,7 +320,7 @@ pub fn encodeFlagDiacritics(tr: &HfstTransducer) -> crate::error::Result<HfstTra
 
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.decode-flag-diacritics-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.decode-flag-diacritics-fn]
-pub fn decodeFlagDiacritics(tr: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
+pub fn decode_flag_diacritics(tr: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
     let mut fakeFlagsToRealFlags: HfstSymbolSubstitutions = HfstSymbolSubstitutions::new();
 
     let transducerAlphabet: StringSet = tr.get_alphabet()?;
@@ -366,12 +362,12 @@ pub fn decodeFlagDiacritics(tr: &HfstTransducer) -> crate::error::Result<HfstTra
 
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.disjunct-vector-members-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.disjunct-vector-members-fn]
-pub fn disjunctVectorMembers(
+pub fn disjunct_vector_members(
     trVector: &HfstTransducerVector,
 ) -> crate::error::Result<HfstTransducer> {
     let mut retval: HfstTransducer = trVector[0].clone();
-    for i in 1..trVector.len() {
-        retval.disjunct(&trVector[i], true)?.optimize()?;
+    for tr in &trVector[1..] {
+        retval.disjunct(tr, true)?.optimize()?;
     }
     Ok(retval)
 }
@@ -379,12 +375,12 @@ pub fn disjunctVectorMembers(
 //////////////////////////////////////
 // Port of 'libhfst/src/HfstXeroxRules.cc' lines 320..1500 (functions defined in
 // that span). Sibling areas of 'crate::hfst_xerox_rules' own everything outside
-// this span (e.g. 'decodeFlagDiacritics', 'Rule', 'ReplaceType', the 'replace*'
+// this span (e.g. 'decode_flag_diacritics', 'Rule', 'ReplaceType', the 'replace*'
 // interface functions); they reach this module via 'use super::*'.
 
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.remove-markers-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.remove-markers-fn]
-pub fn removeMarkers(tr: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
+pub fn remove_markers(tr: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
     let mut retval = tr.clone();
 
     let leftMarker: String = "@LM@".to_string();
@@ -414,7 +410,7 @@ pub fn removeMarkers(tr: &HfstTransducer) -> crate::error::Result<HfstTransducer
 
     retval.optimize()?;
 
-    retval = decodeFlagDiacritics(&retval)?;
+    retval = decode_flag_diacritics(&retval)?;
 
     Ok(retval)
 }
@@ -433,7 +429,7 @@ pub fn zero_weight(f: f32) -> f32 {
 // (t.1 - tmp.2) .o. t
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.constraint-composition-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.constraint-composition-fn]
-pub fn constraintComposition(
+pub fn constraint_composition(
     t: &HfstTransducer,
     Constraint: &HfstTransducer,
 ) -> crate::error::Result<HfstTransducer> {
@@ -458,7 +454,7 @@ pub fn constraintComposition(
 
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.insert-freely-all-the-brackets-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.insert-freely-all-the-brackets-fn]
-pub fn insertFreelyAllTheBrackets(
+pub fn insert_freely_all_the_brackets(
     t: &mut HfstTransducer,
     optional: bool,
 ) -> crate::error::Result<()> {
@@ -498,11 +494,11 @@ pub fn insertFreelyAllTheBrackets(
 
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.expand-contexts-with-mapping-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.expand-contexts-with-mapping-fn]
-pub fn expandContextsWithMapping(
+pub fn expand_contexts_with_mapping(
     ContextVector: &HfstTransducerPairVector,
     mappingWithBracketsAndTmpBoundary: &HfstTransducer,
     identityExpanded: &HfstTransducer,
-    replType: ReplaceType,
+    repl_type: ReplaceType,
     optional: bool,
 ) -> crate::error::Result<HfstTransducer> {
     let ty = identityExpanded.get_type();
@@ -513,7 +509,7 @@ pub fn expandContextsWithMapping(
     // TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
     // HfstTransducer epsilon("@_EPSILON_SYMBOL_@", TOK, type);
 
-    for i in 0..ContextVector.len() {
+    for context_pair in ContextVector.iter() {
         // Expand context with mapping
         // Cr' = (Rc .*) << Markers (<,>,|) .o. [I:I | <a:b>]*
         // Cr = Cr|Cr'
@@ -526,18 +522,18 @@ pub fn expandContextsWithMapping(
         identityStar.repeat_star()?;
 
         let mut firstContext = identityStar.clone();
-        firstContext.concatenate(&ContextVector[i].0, true)?;
+        firstContext.concatenate(&context_pair.0, true)?;
         firstContext.transform_weights(zero_weight)?;
         firstContext.optimize()?;
 
-        insertFreelyAllTheBrackets(&mut firstContext, optional)?;
+        insert_freely_all_the_brackets(&mut firstContext, optional)?;
 
         // Rc =  (Rc .*) << {<,>}
-        let mut secondContext = ContextVector[i].1.clone();
+        let mut secondContext = context_pair.1.clone();
         secondContext.concatenate(&identityStar, true)?;
         secondContext.transform_weights(zero_weight)?;
         secondContext.optimize()?;
-        insertFreelyAllTheBrackets(&mut secondContext, optional)?;
+        insert_freely_all_the_brackets(&mut secondContext, optional)?;
 
         /* RULE:    LC:        RC:
          * up        up        up
@@ -550,7 +546,7 @@ pub fn expandContextsWithMapping(
         let mut rightContextExpanded = HfstTransducer::new_type(ty)?;
 
         // both contexts are in upper language
-        if replType == ReplaceType::REPL_UP {
+        if repl_type == ReplaceType::REPL_UP {
             // compose them with [I:I | <a:b>]*
             leftContextExpanded = firstContext.clone();
             rightContextExpanded = secondContext.clone();
@@ -559,7 +555,7 @@ pub fn expandContextsWithMapping(
             rightContextExpanded.compose(identityExpanded, true)?;
         }
         // left context is in lower language, right in upper ( // )
-        if replType == ReplaceType::REPL_RIGHT {
+        if repl_type == ReplaceType::REPL_RIGHT {
             // compose them with [I:I | <a:b>]*
 
             // left compose opposite way
@@ -570,7 +566,7 @@ pub fn expandContextsWithMapping(
             rightContextExpanded.compose(identityExpanded, true)?;
         }
         // right context is in lower language, left in upper ( \\ )
-        if replType == ReplaceType::REPL_LEFT {
+        if repl_type == ReplaceType::REPL_LEFT {
             // compose them with [I:I | <a:b>]*
             leftContextExpanded = firstContext.clone();
             rightContextExpanded = identityExpanded.clone();
@@ -578,7 +574,7 @@ pub fn expandContextsWithMapping(
             leftContextExpanded.compose(identityExpanded, true)?;
             rightContextExpanded.compose(&secondContext, true)?;
         }
-        if replType == ReplaceType::REPL_DOWN {
+        if repl_type == ReplaceType::REPL_DOWN {
             // compose them with [I:I | <a:b>]*
             leftContextExpanded = identityExpanded.clone();
             rightContextExpanded = identityExpanded.clone();
@@ -666,7 +662,7 @@ pub fn expandContextsWithMapping(
 // [spec:hfst:sem:hfst-transducer.hfst.xerox-rules.bracketed-replace-fn]
 // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.hfst.xerox-rules.bracketed-replace-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.hfst.xerox-rules.bracketed-replace-fn]
-pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<HfstTransducer> {
+pub fn bracketed_replace(rule: &Rule, optional: bool) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
     TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
     TOK.add_multichar_symbol("@_UNKNOWN_SYMBOL_@");
@@ -687,11 +683,11 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
 
     //first, encode all flag diacritics
     let mut ruletmp = rule.clone();
-    ruletmp.encodeFlags()?;
+    ruletmp.encode_flags()?;
 
     let mappingPairVector: HfstTransducerPairVector = ruletmp.get_mapping();
     let ContextVector: HfstTransducerPairVector = ruletmp.get_context();
-    let replType: ReplaceType = ruletmp.get_replType();
+    let repl_type: ReplaceType = ruletmp.get_repl_type();
 
     let ty = mappingPairVector[0].0.get_type();
 
@@ -702,13 +698,13 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
 
     let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let mut mapping = HfstTransducer::new_type(ty)?;
-    for i in 0..mappingPairVector.len() {
-        let mut oneMappingPair = mappingPairVector[i].0.clone();
+    for (i, pair) in mappingPairVector.iter().enumerate() {
+        let mut oneMappingPair = pair.0.clone();
 
-        //markup rules are already cross product in mappingPairVector[i].0 (second is empty)
-        //so the cross product should not be done for markup rules
-        if mappingPairVector[i].0.get_property("isMarkup") != "yes" {
-            oneMappingPair.cross_product(&mappingPairVector[i].1, true)?;
+        //markup rules are already cross product in the pair's first member
+        //(second is empty), so the cross product should not be done for markup rules
+        if pair.0.get_property("isMarkup") != "yes" {
+            oneMappingPair.cross_product(&pair.1, true)?;
         }
 
         // for removing .#. from the center
@@ -776,10 +772,8 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
 
         let mut mappingWithBrackets2 = leftBracket2.clone();
         let mut leftMappingUnion = mappingPairVector[0].0.clone();
-        for i in 1..mappingPairVector.len() {
-            leftMappingUnion
-                .disjunct(&mappingPairVector[i].0, true)?
-                .optimize()?;
+        for pair in &mappingPairVector[1..] {
+            leftMappingUnion.disjunct(&pair.0, true)?.optimize()?;
         }
         // needed in case of ? -> x replacement
         leftMappingUnion.insert_to_alphabet_symbol(&leftMarker2)?;
@@ -838,24 +832,24 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
         .optimize()?;
 
     // .* |<a:b>| :*
-    let mut bracketedReplace = identityExpanded.clone();
-    bracketedReplace
+    let mut bracketed_replace = identityExpanded.clone();
+    bracketed_replace
         .concatenate(&mappingWithBracketsAndTmpBoundary, true)?
         .concatenate(&identityExpanded, true)?
         .optimize()?;
 
     // Expand all contexts with mapping taking in consideration replace type
     // result is their union
-    let unionContextReplace = expandContextsWithMapping(
+    let unionContextReplace = expand_contexts_with_mapping(
         &ContextVector,
         &mappingWithBracketsAndTmpBoundary,
         &identityExpanded,
-        replType,
+        repl_type,
         optional,
     )?;
 
     // subtract all mappings in contexts from replace without contexts
-    let mut replaceWithoutContexts = bracketedReplace.clone();
+    let mut replaceWithoutContexts = bracketed_replace.clone();
     replaceWithoutContexts
         .subtract(&unionContextReplace, true)?
         .optimize()?;
@@ -887,7 +881,7 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
 // Return the string "@N@" where N is the string representation of i.
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.get-marker-string-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.get-marker-string-fn]
-fn getMarkerString(i: u32) -> String {
+fn get_marker_string(i: u32) -> String {
     let oss: String = i.to_string();
     String::from("@") + &oss + &String::from("@")
 }
@@ -895,7 +889,7 @@ fn getMarkerString(i: u32) -> String {
 // Return the number representation of N in string "@N@".
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.get-marker-number-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.get-marker-number-fn]
-fn getMarkerNumber(str: &str) -> u32 {
+fn get_marker_number(str: &str) -> u32 {
     let number_str = str[1..str.len() - 1].to_string();
     let _ = number_str;
     // iss should be iss(number_str); i guess, but cannot be fixed, because some
@@ -908,7 +902,7 @@ fn getMarkerNumber(str: &str) -> u32 {
 // Bracketed replace for parallel rules.
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.parallel-bracketed-replace-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.parallel-bracketed-replace-fn]
-pub fn parallelBracketedReplace(
+pub fn parallel_bracketed_replace(
     ruleVector: &Vec<Rule>,
     optional: bool,
 ) -> crate::error::Result<HfstTransducer> {
@@ -922,7 +916,7 @@ pub fn parallelBracketedReplace(
     let mut marker_symbols: StringSet = StringSet::new(); // "@1@", "@2@", ... , "@N@"
     let mut marker_substitutions: HfstSymbolSubstitutions = HfstSymbolSubstitutions::new();
     for i in 0..ruleVector.len() {
-        let marker_string = getMarkerString((i + 1) as u32);
+        let marker_string = get_marker_string((i + 1) as u32);
         marker_symbols.insert(marker_string.clone());
         marker_substitutions.insert(marker_string.clone(), internal_epsilon.to_string());
     }
@@ -988,13 +982,13 @@ pub fn parallelBracketedReplace(
     // go through vector and do everything for each rule
     for i in 0..ruleVector.len() {
         let mut ruletmp = ruleVector[i].clone();
-        ruletmp.encodeFlags()?;
+        ruletmp.encode_flags()?;
 
         let mappingPairVector = ruletmp.get_mapping();
         let mut mapping = HfstTransducer::new_type(ty)?;
         for j in 0..mappingPairVector.len() {
             // i+1 because @0@ is epsilon..
-            let marker_string = getMarkerString((i + 1) as u32);
+            let marker_string = get_marker_string((i + 1) as u32);
             let marker = HfstTransducer::new_symbol(&marker_string, ty)?;
             let mut oneMappingPair = mappingPairVector[j].0.clone();
             // unknowns/identities must not be expanded to marker symbols
@@ -1110,10 +1104,10 @@ pub fn parallelBracketedReplace(
     let _ = &contextReplaceMap;
 
     let mut unionContextReplace = HfstTransducer::new_type(ty)?;
-    let mut bracketedReplace = HfstTransducer::new_type(ty)?;
+    let mut bracketed_replace = HfstTransducer::new_type(ty)?;
     for i in 0..ruleVector.len() {
         let mut ruletmp = ruleVector[i].clone();
-        ruletmp.encodeFlags()?;
+        ruletmp.encode_flags()?;
 
         // Surround mapping with brackets with tmp boudaries
         let mut mappingWithBracketsAndTmpBoundary = tmpBracket.clone();
@@ -1129,7 +1123,7 @@ pub fn parallelBracketedReplace(
             .optimize()?;
 
         bracketedReplaceTmp.transform_weights(zero_weight)?;
-        bracketedReplace
+        bracketed_replace
             .disjunct(&bracketedReplaceTmp, true)?
             .optimize()?;
 
@@ -1141,10 +1135,10 @@ pub fn parallelBracketedReplace(
         // be generated by other rules.
         let mut cont = ruletmp.get_context();
 
-        if ruletmp.get_replType() != ReplaceType::REPL_UP {
+        if ruletmp.get_repl_type() != ReplaceType::REPL_UP {
             for cont_it in cont.iter_mut() {
                 for sit in marker_symbols.iter() {
-                    if getMarkerNumber(sit) != i as u32 {
+                    if get_marker_number(sit) != i as u32 {
                         let marker_pair = (sit.clone(), sit.clone());
                         // 'false' makes sure harmonization is not done
                         cont_it.0.insert_freely_pair(&marker_pair, false)?;
@@ -1154,11 +1148,11 @@ pub fn parallelBracketedReplace(
             }
         }
 
-        unionContextReplaceTmp = expandContextsWithMapping(
+        unionContextReplaceTmp = expand_contexts_with_mapping(
             &cont,
             &mappingWithBracketsAndTmpBoundary,
             &identityExpanded,
-            ruletmp.get_replType(),
+            ruletmp.get_repl_type(),
             optional,
         )?;
 
@@ -1170,7 +1164,7 @@ pub fn parallelBracketedReplace(
     }
 
     // subtract all mappings in contexts from replace without contexts
-    let mut replaceWithoutContexts = bracketedReplace.clone();
+    let mut replaceWithoutContexts = bracketed_replace.clone();
     replaceWithoutContexts
         .subtract(&unionContextReplace, true)?
         .optimize()?;
@@ -1212,7 +1206,7 @@ pub fn parallelBracketedReplace(
 // which is used in some constraints
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.constraints-right-part-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.constraints-right-part-fn]
-pub fn constraintsRightPart(ty: ImplementationType) -> crate::error::Result<HfstTransducer> {
+pub fn constraints_right_part(ty: ImplementationType) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
     TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
 
@@ -1262,7 +1256,7 @@ pub fn constraintsRightPart(ty: ImplementationType) -> crate::error::Result<Hfst
 // filters out empty string
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.one-betterthan-none-constraint-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.one-betterthan-none-constraint-fn]
-pub fn oneBetterthanNoneConstraint(
+pub fn one_betterthan_none_constraint(
     uncondidtionalTr: &HfstTransducer,
 ) -> crate::error::Result<HfstTransducer> {
     let ty = uncondidtionalTr.get_type();
@@ -1299,7 +1293,7 @@ pub fn oneBetterthanNoneConstraint(
     // tmp = t.1 .o. Constr .o. t.1
     // (t.1 - tmp.2) .o. t
 
-    let retval = constraintComposition(uncondidtionalTr, &Constraint)?;
+    let retval = constraint_composition(uncondidtionalTr, &Constraint)?;
 
     Ok(retval)
 }
@@ -1307,7 +1301,7 @@ pub fn oneBetterthanNoneConstraint(
 // .#. ?* <:0 [B:0]* [I-B] [ B:0 | 0:B | ?-B ]* .#.
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.left-most-constraint-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.left-most-constraint-fn]
-pub fn leftMostConstraint(
+pub fn left_most_constraint(
     uncondidtionalTr: &HfstTransducer,
 ) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
@@ -1331,7 +1325,7 @@ pub fn leftMostConstraint(
     identity.repeat_star()?.optimize()?;
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
-    let rightPart = constraintsRightPart(ty)?;
+    let rightPart = constraints_right_part(ty)?;
 
     // epsilon
     let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
@@ -1376,7 +1370,7 @@ pub fn leftMostConstraint(
     // tmp = t.1 .o. Constr .o. t.1
     // (t.1 - tmp.2) .o. t
 
-    let retval = constraintComposition(uncondidtionalTr, &Constraint)?;
+    let retval = constraint_composition(uncondidtionalTr, &Constraint)?;
 
     Ok(retval)
 }
@@ -1384,7 +1378,7 @@ pub fn leftMostConstraint(
 // [ B:0 | 0:B | ?-B ]* [I-B]+  >:0 [ ?-B ]*
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.right-most-constraint-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.right-most-constraint-fn]
-pub fn rightMostConstraint(
+pub fn right_most_constraint(
     uncondidtionalTr: &HfstTransducer,
 ) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
@@ -1407,7 +1401,7 @@ pub fn rightMostConstraint(
     identity.repeat_star()?.optimize()?;
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
-    let rightPart = constraintsRightPart(ty)?;
+    let rightPart = constraints_right_part(ty)?;
 
     // epsilon
     let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
@@ -1448,7 +1442,7 @@ pub fn rightMostConstraint(
     // tmp = t.1 .o. Constr .o. t.1
     // (t.1 - tmp.2) .o. t
 
-    let retval = constraintComposition(uncondidtionalTr, &Constraint)?;
+    let retval = constraint_composition(uncondidtionalTr, &Constraint)?;
 
     Ok(retval)
 }
@@ -1461,7 +1455,7 @@ use std::collections::BTreeSet;
 // ?* < [?-B]+ 0:> [ ? | 0:< | <:0 | 0:> | B ] [ B:0 | 0:B | ?-B ]*
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.longest-match-left-most-constraint-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.longest-match-left-most-constraint-fn]
-pub fn longestMatchLeftMostConstraint(
+pub fn longest_match_left_most_constraint(
     uncondidtionalTr: &HfstTransducer,
 ) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
@@ -1504,7 +1498,7 @@ pub fn longestMatchLeftMostConstraint(
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
     let mut rightPart = HfstTransducer::new_type(ty)?;
-    rightPart = constraintsRightPart(ty)?;
+    rightPart = constraints_right_part(ty)?;
 
     let RightBracketToEpsilon =
         HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
@@ -1552,7 +1546,7 @@ pub fn longestMatchLeftMostConstraint(
 
     //uncondidtionalTr should be left most for the left most longest match
     let mut retval = HfstTransducer::new_type(ty)?;
-    retval = constraintComposition(uncondidtionalTr, &Constraint)?;
+    retval = constraint_composition(uncondidtionalTr, &Constraint)?;
 
     Ok(retval)
 }
@@ -1560,7 +1554,7 @@ pub fn longestMatchLeftMostConstraint(
 // Longest match RIGHT most
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.longest-match-right-most-constraint-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.longest-match-right-most-constraint-fn]
-pub fn longestMatchRightMostConstraint(
+pub fn longest_match_right_most_constraint(
     uncondidtionalTr: &HfstTransducer,
 ) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
@@ -1603,7 +1597,7 @@ pub fn longestMatchRightMostConstraint(
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
     let mut rightPart = HfstTransducer::new_type(ty)?;
-    rightPart = constraintsRightPart(ty)?;
+    rightPart = constraints_right_part(ty)?;
 
     let RightBracketToEpsilon =
         HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
@@ -1641,7 +1635,7 @@ pub fn longestMatchRightMostConstraint(
 
     //uncondidtionalTr should be left most for the left most longest match
     let mut retval = HfstTransducer::new_type(ty)?;
-    retval = constraintComposition(uncondidtionalTr, &Constraint)?;
+    retval = constraint_composition(uncondidtionalTr, &Constraint)?;
 
     Ok(retval)
 }
@@ -1653,7 +1647,7 @@ pub fn longestMatchRightMostConstraint(
 // [ B:0 | 0:B | ?-B ]*
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.shortest-match-left-most-constraint-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.shortest-match-left-most-constraint-fn]
-pub fn shortestMatchLeftMostConstraint(
+pub fn shortest_match_left_most_constraint(
     uncondidtionalTr: &HfstTransducer,
 ) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
@@ -1676,7 +1670,7 @@ pub fn shortestMatchLeftMostConstraint(
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
     let mut rightPart = HfstTransducer::new_type(ty)?;
-    rightPart = constraintsRightPart(ty)?;
+    rightPart = constraints_right_part(ty)?;
 
     // [?-B] and [?-B]+
     let mut B = leftBracket.clone();
@@ -1734,7 +1728,7 @@ pub fn shortestMatchLeftMostConstraint(
 
     //uncondidtionalTr should be left most for the left most shortest match
     let mut retval = HfstTransducer::new_type(ty)?;
-    retval = constraintComposition(uncondidtionalTr, &Constraint)?;
+    retval = constraint_composition(uncondidtionalTr, &Constraint)?;
 
     Ok(retval)
 }
@@ -1746,7 +1740,7 @@ pub fn shortestMatchLeftMostConstraint(
 // <:0 [?-B]+   > ?*
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.shortest-match-right-most-constraint-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.shortest-match-right-most-constraint-fn]
-pub fn shortestMatchRightMostConstraint(
+pub fn shortest_match_right_most_constraint(
     uncondidtionalTr: &HfstTransducer,
 ) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
@@ -1769,7 +1763,7 @@ pub fn shortestMatchRightMostConstraint(
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
     let mut rightPart = HfstTransducer::new_type(ty)?;
-    rightPart = constraintsRightPart(ty)?;
+    rightPart = constraints_right_part(ty)?;
 
     // [?-B] and [?-B]+
     let mut B = leftBracket.clone();
@@ -1823,7 +1817,7 @@ pub fn shortestMatchRightMostConstraint(
 
     //uncondidtionalTr should be left most for the left most longest match
     let mut retval = HfstTransducer::new_type(ty)?;
-    retval = constraintComposition(uncondidtionalTr, &Constraint)?;
+    retval = constraint_composition(uncondidtionalTr, &Constraint)?;
 
     Ok(retval)
 }
@@ -1831,7 +1825,7 @@ pub fn shortestMatchRightMostConstraint(
 // ?* [ BL:0 (?-B)+ BR:0 ?* ]+
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.most-brackets-plus-constraint-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.most-brackets-plus-constraint-fn]
-pub fn mostBracketsPlusConstraint(
+pub fn most_brackets_plus_constraint(
     uncondidtionalTr: &HfstTransducer,
 ) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
@@ -1927,7 +1921,7 @@ pub fn mostBracketsPlusConstraint(
     // (t.1 - tmp.2) .o. t
 
     let mut retval = HfstTransducer::new_type(ty)?;
-    retval = constraintComposition(uncondidtionalTr, &Constraint)?;
+    retval = constraint_composition(uncondidtionalTr, &Constraint)?;
 
     //printf("After composition: \n");
     //retval.write_in_att_format(stdout, 1);
@@ -1938,7 +1932,7 @@ pub fn mostBracketsPlusConstraint(
 // ?* [ BL:0 (?-B)* BR:0 ?* ]+
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.most-brackets-star-constraint-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.most-brackets-star-constraint-fn]
-pub fn mostBracketsStarConstraint(
+pub fn most_brackets_star_constraint(
     uncondidtionalTr: &HfstTransducer,
 ) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
@@ -2033,7 +2027,7 @@ pub fn mostBracketsStarConstraint(
     // tmp = t.1 .o. Constr .o. t.1
     // (t.1 - tmp.2) .o. t
     let mut retval = HfstTransducer::new_type(ty)?;
-    retval = constraintComposition(uncondidtionalTr, &Constraint)?;
+    retval = constraint_composition(uncondidtionalTr, &Constraint)?;
 
     //printf("After composition: \n");
     //retval.write_in_att_format(stdout, 1);
@@ -2043,7 +2037,7 @@ pub fn mostBracketsStarConstraint(
 // ?* B2 ?*
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.remove-b2-constraint-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.remove-b2-constraint-fn]
-pub fn removeB2Constraint(t: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
+pub fn remove_b2_constraint(t: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
     TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
 
@@ -2079,7 +2073,7 @@ pub fn removeB2Constraint(t: &HfstTransducer) -> crate::error::Result<HfstTransd
     // (t.1 - tmp.2) .o. t
 
     let mut retval = HfstTransducer::new_type(ty)?;
-    retval = constraintComposition(t, &Constraint)?;
+    retval = constraint_composition(t, &Constraint)?;
 
     retval.remove_from_alphabet(&leftMarker2)?;
     retval.remove_from_alphabet(&rightMarker2)?;
@@ -2093,7 +2087,7 @@ pub fn removeB2Constraint(t: &HfstTransducer) -> crate::error::Result<HfstTransd
 // to avoid repetition in empty replace rule
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.no-repetition-constraint-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.no-repetition-constraint-fn]
-pub fn noRepetitionConstraint(t: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
+pub fn no_repetition_constraint(t: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
     TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
 
@@ -2165,9 +2159,9 @@ pub fn noRepetitionConstraint(t: &HfstTransducer) -> crate::error::Result<HfstTr
     //Constraint.write_in_att_format(stdout, 1);
 
     let mut retval = HfstTransducer::new_type(ty)?;
-    retval = constraintComposition(t, &Constraint)?;
+    retval = constraint_composition(t, &Constraint)?;
 
-    //    retval = removeB2Constraint(retval);
+    //    retval = remove_b2_constraint(retval);
 
     Ok(retval)
 }
@@ -2184,7 +2178,7 @@ pub fn noRepetitionConstraint(t: &HfstTransducer) -> crate::error::Result<HfstTr
  */
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.apply-boundary-mark-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.apply-boundary-mark-fn]
-pub fn applyBoundaryMark(t: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
+pub fn apply_boundary_mark(t: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
     TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
     TOK.add_multichar_symbol("@_UNKNOWN_SYMBOL_@");
@@ -2328,7 +2322,7 @@ pub fn create_mapping_for_mark_up_replace(
 
 // replace up, left, right, down
 pub fn replace_rule(rule: &Rule, optional: bool) -> crate::error::Result<HfstTransducer> {
-    let mut retval: HfstTransducer = bracketedReplace(rule, optional)?;
+    let mut retval: HfstTransducer = bracketed_replace(rule, optional)?;
 
     //printf("---bracketed replace done---: \n");
     //retval.optimize().write_in_att_format(stdout, 1);
@@ -2336,27 +2330,27 @@ pub fn replace_rule(rule: &Rule, optional: bool) -> crate::error::Result<HfstTra
     // for epenthesis rules
     // it can't have more than one epsilon repetition in a row
 
-    retval = noRepetitionConstraint(&retval)?;
+    retval = no_repetition_constraint(&retval)?;
 
-    //printf("-----noRepetitionConstraint-----: \n");
+    //printf("-----no_repetition_constraint-----: \n");
     //retval.write_in_att_format(stdout, 1);
 
-    // deals with boundary symbol, must be before mostBracketsStarConstraint
-    retval = applyBoundaryMark(&retval)?;
+    // deals with boundary symbol, must be before most_brackets_star_constraint
+    retval = apply_boundary_mark(&retval)?;
 
-    //printf("----after applyBoundaryMark: ----\n");
+    //printf("----after apply_boundary_mark: ----\n");
     //retval.write_in_att_format(stdout, 1);
     if !optional {
-        //printf(" ----------  mostBracketsStarConstraint --------------\n");
-        // Epenthesis rules behave differently if used mostBracketsPlusConstraint
-        //retval = mostBracketsPlusConstraint(retval);
-        retval = mostBracketsStarConstraint(&retval)?;
+        //printf(" ----------  most_brackets_star_constraint --------------\n");
+        // Epenthesis rules behave differently if used most_brackets_plus_constraint
+        //retval = most_brackets_plus_constraint(retval);
+        retval = most_brackets_star_constraint(&retval)?;
         //printf("after non optional: \n");
         //retval.write_in_att_format(stdout, 1);
     }
-    retval = removeB2Constraint(&retval)?;
-    retval = removeMarkers(&retval)?;
-    //printf("after removeMarkers: \n");
+    retval = remove_b2_constraint(&retval)?;
+    retval = remove_markers(&retval)?;
+    //printf("after remove_markers: \n");
     //retval.write_in_att_format(stdout, 1);
     Ok(retval)
 }
@@ -2373,9 +2367,9 @@ pub fn replace_rule_vector(
     let mut retval: HfstTransducer = HfstTransducer::new();
     // If there is only one rule in the vector, it is not parallel
     if ruleVector.len() == 1 {
-        retval = bracketedReplace(&ruleVector[0], optional)?;
+        retval = bracketed_replace(&ruleVector[0], optional)?;
     } else {
-        retval = parallelBracketedReplace(ruleVector, optional)?;
+        retval = parallel_bracketed_replace(ruleVector, optional)?;
     }
 
     //std::cerr << "after bracketed replace"<< std::endl;
@@ -2384,34 +2378,34 @@ pub fn replace_rule_vector(
 
     // for epenthesis rules
     // it can't have more than one epsilon repetition in a row
-    retval = noRepetitionConstraint(&retval)?;
+    retval = no_repetition_constraint(&retval)?;
 
-    //   printf("----after noRepetitionConstraint: ----\n");
+    //   printf("----after no_repetition_constraint: ----\n");
     //   retval.write_in_att_format(stdout, 1);
 
     // deals with boundary symbol
-    retval = applyBoundaryMark(&retval)?;
+    retval = apply_boundary_mark(&retval)?;
 
-    //printf("----after applyBoundaryMark: ----\n");
+    //printf("----after apply_boundary_mark: ----\n");
     //retval.write_in_att_format(stdout, 1);
 
     if !optional {
-        // Epenthesis rules behave differently if used mostBracketsPlusConstraint
-        // retval = mostBracketsPlusConstraint(retval);
-        retval = mostBracketsStarConstraint(&retval)?;
+        // Epenthesis rules behave differently if used most_brackets_plus_constraint
+        // retval = most_brackets_plus_constraint(retval);
+        retval = most_brackets_star_constraint(&retval)?;
     }
 
-    // printf("----after mostBracketsStarConstraint: ----\n");
+    // printf("----after most_brackets_star_constraint: ----\n");
     //  retval.write_in_att_format(stdout, 1);
 
-    retval = removeB2Constraint(&retval)?;
+    retval = remove_b2_constraint(&retval)?;
 
-    //printf("----after removeB2Constraint: ----\n");
+    //printf("----after remove_b2_constraint: ----\n");
     // retval.write_in_att_format(stdout, 1);
 
-    retval = removeMarkers(&retval)?;
+    retval = remove_markers(&retval)?;
 
-    //printf("----after removeMarkers: ----\n");
+    //printf("----after remove_markers: ----\n");
     //retval.write_in_att_format(stdout, 1);
     Ok(retval)
 }
@@ -2434,7 +2428,7 @@ pub fn replace_left_rule(rule: &Rule, optional: bool) -> crate::error::Result<Hf
     let newRule: Rule = Rule::new_mapping_context_repl_type(
         &newMappingPairVector,
         &rule.get_context(),
-        rule.get_replType(),
+        rule.get_repl_type(),
     )?;
     let mut retval: HfstTransducer = replace_rule(&newRule, optional)?;
 
@@ -2468,7 +2462,7 @@ pub fn replace_left_rule_vector(
         let newRule: Rule = Rule::new_mapping_context_repl_type(
             &newMappingPairVector,
             &ruleVector[i].get_context(),
-            ruleVector[i].get_replType(),
+            ruleVector[i].get_repl_type(),
         )?;
 
         leftRuleVector.push(newRule);
@@ -2482,34 +2476,34 @@ pub fn replace_left_rule_vector(
 
 // left to right
 pub fn replace_leftmost_longest_match_rule(rule: &Rule) -> crate::error::Result<HfstTransducer> {
-    let mut uncondidtionalTr: HfstTransducer = bracketedReplace(rule, true)?;
-    //uncondidtionalTr = bracketedReplace(rule, true);
+    let mut uncondidtionalTr: HfstTransducer = bracketed_replace(rule, true)?;
+    //uncondidtionalTr = bracketed_replace(rule, true);
 
     //printf("LM uncondidtionalTr: \n");
     //uncondidtionalTr.write_in_att_format(stdout, 1);
 
     // for epenthesis rules
     // it can't have more than one epsilon repetition in a row
-    // it should be before leftMostConstraint
-    uncondidtionalTr = noRepetitionConstraint(&uncondidtionalTr)?;
+    // it should be before left_most_constraint
+    uncondidtionalTr = no_repetition_constraint(&uncondidtionalTr)?;
 
-    let mut retval: HfstTransducer = leftMostConstraint(&uncondidtionalTr)?;
+    let mut retval: HfstTransducer = left_most_constraint(&uncondidtionalTr)?;
 
     //to remove empty strings
-    retval = oneBetterthanNoneConstraint(&retval)?;
+    retval = one_betterthan_none_constraint(&retval)?;
 
-    // printf("leftMostConstraint: \n");
+    // printf("left_most_constraint: \n");
     // retval.write_in_att_format(stdout, 1);
-    retval = longestMatchLeftMostConstraint(&retval)?;
+    retval = longest_match_left_most_constraint(&retval)?;
 
-    //printf("longestMatchLeftMostConstraint: \n");
+    //printf("longest_match_left_most_constraint: \n");
     //retval.write_in_att_format(stdout, 1);
 
-    retval = removeB2Constraint(&retval)?;
-    retval = removeMarkers(&retval)?;
+    retval = remove_b2_constraint(&retval)?;
+    retval = remove_markers(&retval)?;
 
     // deals with boundary symbol
-    retval = applyBoundaryMark(&retval)?;
+    retval = apply_boundary_mark(&retval)?;
 
     Ok(retval)
 }
@@ -2524,9 +2518,9 @@ pub fn replace_leftmost_longest_match_rule_vector(
 
     let mut uncondidtionalTr: HfstTransducer = HfstTransducer::new();
     if ruleVector.len() == 1 {
-        uncondidtionalTr = bracketedReplace(&ruleVector[0], true)?;
+        uncondidtionalTr = bracketed_replace(&ruleVector[0], true)?;
     } else {
-        uncondidtionalTr = parallelBracketedReplace(ruleVector, true)?;
+        uncondidtionalTr = parallel_bracketed_replace(ruleVector, true)?;
     }
 
     //printf("retval unconditional 1 \n");
@@ -2534,35 +2528,35 @@ pub fn replace_leftmost_longest_match_rule_vector(
 
     // for epenthesis rules
     // it can't have more than one epsilon repetition in a row
-    // it should be before leftMostConstraint
-    uncondidtionalTr = noRepetitionConstraint(&uncondidtionalTr)?;
+    // it should be before left_most_constraint
+    uncondidtionalTr = no_repetition_constraint(&uncondidtionalTr)?;
     //printf("uncondidtionalTr epenthesis \n");
     //uncondidtionalTr.write_in_att_format(stdout, 1);
 
-    let mut retval: HfstTransducer = leftMostConstraint(&uncondidtionalTr)?;
+    let mut retval: HfstTransducer = left_most_constraint(&uncondidtionalTr)?;
 
     //to remove empty strings
-    retval = oneBetterthanNoneConstraint(&retval)?;
+    retval = one_betterthan_none_constraint(&retval)?;
 
-    retval = longestMatchLeftMostConstraint(&retval)?;
-    //printf("retval longestMatchLeftMostConstraint \n");
+    retval = longest_match_left_most_constraint(&retval)?;
+    //printf("retval longest_match_left_most_constraint \n");
     //retval.write_in_att_format(stdout, 1);
 
     // remove LM2, RM2
-    retval = removeB2Constraint(&retval)?;
+    retval = remove_b2_constraint(&retval)?;
 
-    //printf("retval removeB2Constraint \n");
+    //printf("retval remove_b2_constraint \n");
     //retval.write_in_att_format(stdout, 1);
 
-    retval = removeMarkers(&retval)?;
+    retval = remove_markers(&retval)?;
 
-    //       printf("LM removeMarkers: \n");
+    //       printf("LM remove_markers: \n");
     //        retval.write_in_att_format(stdout, 1);
 
     // deals with boundary symbol
-    retval = applyBoundaryMark(&retval)?;
+    retval = apply_boundary_mark(&retval)?;
 
-    // printf("LM applyBoundaryMark: \n");
+    // printf("LM apply_boundary_mark: \n");
     // retval.write_in_att_format(stdout, 1);
 
     Ok(retval)
@@ -2570,30 +2564,30 @@ pub fn replace_leftmost_longest_match_rule_vector(
 
 // right to left
 pub fn replace_rightmost_longest_match_rule(rule: &Rule) -> crate::error::Result<HfstTransducer> {
-    let uncondidtionalTr: HfstTransducer = bracketedReplace(rule, true)?;
-    //uncondidtionalTr = bracketedReplace(rule, true);
+    let uncondidtionalTr: HfstTransducer = bracketed_replace(rule, true)?;
+    //uncondidtionalTr = bracketed_replace(rule, true);
 
-    let mut retval: HfstTransducer = rightMostConstraint(&uncondidtionalTr)?;
-    //retval = rightMostConstraint(uncondidtionalTr);
+    let mut retval: HfstTransducer = right_most_constraint(&uncondidtionalTr)?;
+    //retval = right_most_constraint(uncondidtionalTr);
 
-    //printf("rightMostConstraint: \n");
+    //printf("right_most_constraint: \n");
     //retval.write_in_att_format(stdout, 1);
 
-    retval = longestMatchRightMostConstraint(&retval)?;
+    retval = longest_match_right_most_constraint(&retval)?;
 
-    //printf("longestMatchLeftMostConstraint: \n");
+    //printf("longest_match_left_most_constraint: \n");
     //retval.write_in_att_format(stdout, 1);
 
     // for epenthesis rules
     // it can't have more than one epsilon repetition in a row
-    retval = noRepetitionConstraint(&retval)?;
+    retval = no_repetition_constraint(&retval)?;
     // remove LM2, RM2
-    retval = removeB2Constraint(&retval)?;
+    retval = remove_b2_constraint(&retval)?;
 
-    retval = removeMarkers(&retval)?;
+    retval = remove_markers(&retval)?;
 
     // deals with boundary symbol
-    retval = applyBoundaryMark(&retval)?;
+    retval = apply_boundary_mark(&retval)?;
 
     Ok(retval)
 }
@@ -2606,61 +2600,61 @@ pub fn replace_rightmost_longest_match_rule_vector(
 ) -> crate::error::Result<HfstTransducer> {
     let mut uncondidtionalTr: HfstTransducer = HfstTransducer::new();
     if ruleVector.len() == 1 {
-        uncondidtionalTr = bracketedReplace(&ruleVector[0], true)?;
+        uncondidtionalTr = bracketed_replace(&ruleVector[0], true)?;
     } else {
-        uncondidtionalTr = parallelBracketedReplace(ruleVector, true)?;
+        uncondidtionalTr = parallel_bracketed_replace(ruleVector, true)?;
     }
 
-    let mut retval: HfstTransducer = rightMostConstraint(&uncondidtionalTr)?;
-    //retval = rightMostConstraint(uncondidtionalTr);
+    let mut retval: HfstTransducer = right_most_constraint(&uncondidtionalTr)?;
+    //retval = right_most_constraint(uncondidtionalTr);
 
-    //printf("rightMostConstraint: \n");
+    //printf("right_most_constraint: \n");
     //retval.write_in_att_format(stdout, 1);
 
-    retval = longestMatchRightMostConstraint(&retval)?;
+    retval = longest_match_right_most_constraint(&retval)?;
 
-    //printf("longestMatchLeftMostConstraint: \n");
+    //printf("longest_match_left_most_constraint: \n");
     //retval.write_in_att_format(stdout, 1);
 
     // for epenthesis rules
     // it can't have more than one epsilon repetition in a row
-    retval = noRepetitionConstraint(&retval)?;
+    retval = no_repetition_constraint(&retval)?;
     // remove LM2, RM2
-    retval = removeB2Constraint(&retval)?;
+    retval = remove_b2_constraint(&retval)?;
 
-    retval = removeMarkers(&retval)?;
+    retval = remove_markers(&retval)?;
 
     // deals with boundary symbol
-    retval = applyBoundaryMark(&retval)?;
+    retval = apply_boundary_mark(&retval)?;
 
     Ok(retval)
 }
 
 pub fn replace_leftmost_shortest_match_rule(rule: &Rule) -> crate::error::Result<HfstTransducer> {
-    let mut uncondidtionalTr: HfstTransducer = bracketedReplace(rule, true)?;
-    //    uncondidtionalTr = bracketedReplace(rule, true);
+    let mut uncondidtionalTr: HfstTransducer = bracketed_replace(rule, true)?;
+    //    uncondidtionalTr = bracketed_replace(rule, true);
 
     // for epenthesis rules
     // it can't have more than one epsilon repetition in a row
-    //has to be before leftMostConstraint
-    uncondidtionalTr = noRepetitionConstraint(&uncondidtionalTr)?;
+    //has to be before left_most_constraint
+    uncondidtionalTr = no_repetition_constraint(&uncondidtionalTr)?;
 
-    let mut retval: HfstTransducer = leftMostConstraint(&uncondidtionalTr)?;
+    let mut retval: HfstTransducer = left_most_constraint(&uncondidtionalTr)?;
     //to remove empty strings
-    retval = oneBetterthanNoneConstraint(&retval)?;
+    retval = one_betterthan_none_constraint(&retval)?;
 
-    retval = shortestMatchLeftMostConstraint(&retval)?;
+    retval = shortest_match_left_most_constraint(&retval)?;
 
     //printf("sh tr: \n");
     //retval.write_in_att_format(stdout, 1);
 
     // remove LM2, RM2
-    retval = removeB2Constraint(&retval)?;
+    retval = remove_b2_constraint(&retval)?;
 
-    retval = removeMarkers(&retval)?;
+    retval = remove_markers(&retval)?;
 
     // deals with boundary symbol
-    retval = applyBoundaryMark(&retval)?;
+    retval = apply_boundary_mark(&retval)?;
 
     Ok(retval)
 }
@@ -2672,57 +2666,57 @@ pub fn replace_leftmost_shortest_match_rule_vector(
 ) -> crate::error::Result<HfstTransducer> {
     let mut uncondidtionalTr: HfstTransducer = HfstTransducer::new();
     if ruleVector.len() == 1 {
-        uncondidtionalTr = bracketedReplace(&ruleVector[0], true)?;
+        uncondidtionalTr = bracketed_replace(&ruleVector[0], true)?;
     } else {
-        uncondidtionalTr = parallelBracketedReplace(ruleVector, true)?;
+        uncondidtionalTr = parallel_bracketed_replace(ruleVector, true)?;
     }
 
     // for epenthesis rules
     // it can't have more than one epsilon repetition in a row
-    uncondidtionalTr = noRepetitionConstraint(&uncondidtionalTr)?;
+    uncondidtionalTr = no_repetition_constraint(&uncondidtionalTr)?;
 
-    let mut retval: HfstTransducer = leftMostConstraint(&uncondidtionalTr)?;
+    let mut retval: HfstTransducer = left_most_constraint(&uncondidtionalTr)?;
 
     //to remove empty strings
-    retval = oneBetterthanNoneConstraint(&retval)?;
+    retval = one_betterthan_none_constraint(&retval)?;
 
-    retval = shortestMatchLeftMostConstraint(&retval)?;
+    retval = shortest_match_left_most_constraint(&retval)?;
 
     //printf("sh tr: \n");
     //retval.write_in_att_format(stdout, 1);
 
     // remove LM2, RM2
-    retval = removeB2Constraint(&retval)?;
+    retval = remove_b2_constraint(&retval)?;
 
-    retval = removeMarkers(&retval)?;
+    retval = remove_markers(&retval)?;
 
     // deals with boundary symbol
-    retval = applyBoundaryMark(&retval)?;
+    retval = apply_boundary_mark(&retval)?;
 
     Ok(retval)
 }
 
 pub fn replace_rightmost_shortest_match_rule(rule: &Rule) -> crate::error::Result<HfstTransducer> {
-    let uncondidtionalTr: HfstTransducer = bracketedReplace(rule, true)?;
-    //uncondidtionalTr = bracketedReplace( rule, true);
+    let uncondidtionalTr: HfstTransducer = bracketed_replace(rule, true)?;
+    //uncondidtionalTr = bracketed_replace( rule, true);
 
-    let mut retval: HfstTransducer = rightMostConstraint(&uncondidtionalTr)?;
-    //retval = rightMostConstraint(uncondidtionalTr);
-    retval = shortestMatchRightMostConstraint(&retval)?;
+    let mut retval: HfstTransducer = right_most_constraint(&uncondidtionalTr)?;
+    //retval = right_most_constraint(uncondidtionalTr);
+    retval = shortest_match_right_most_constraint(&retval)?;
 
     //printf("sh tr: \n");
     //retval.write_in_att_format(stdout, 1);
 
     // for epenthesis rules
     // it can't have more than one epsilon repetition in a row
-    retval = noRepetitionConstraint(&retval)?;
+    retval = no_repetition_constraint(&retval)?;
     // remove LM2, RM2
-    retval = removeB2Constraint(&retval)?;
+    retval = remove_b2_constraint(&retval)?;
 
-    retval = removeMarkers(&retval)?;
+    retval = remove_markers(&retval)?;
 
     // deals with boundary symbol
-    retval = applyBoundaryMark(&retval)?;
+    retval = apply_boundary_mark(&retval)?;
 
     Ok(retval)
 }
@@ -2734,27 +2728,27 @@ pub fn replace_rightmost_shortest_match_rule_vector(
 ) -> crate::error::Result<HfstTransducer> {
     let mut uncondidtionalTr: HfstTransducer = HfstTransducer::new();
     if ruleVector.len() == 1 {
-        uncondidtionalTr = bracketedReplace(&ruleVector[0], true)?;
+        uncondidtionalTr = bracketed_replace(&ruleVector[0], true)?;
     } else {
-        uncondidtionalTr = parallelBracketedReplace(ruleVector, true)?;
+        uncondidtionalTr = parallel_bracketed_replace(ruleVector, true)?;
     }
-    let mut retval: HfstTransducer = rightMostConstraint(&uncondidtionalTr)?;
-    //retval = rightMostConstraint(uncondidtionalTr);
-    retval = shortestMatchRightMostConstraint(&retval)?;
+    let mut retval: HfstTransducer = right_most_constraint(&uncondidtionalTr)?;
+    //retval = right_most_constraint(uncondidtionalTr);
+    retval = shortest_match_right_most_constraint(&retval)?;
 
     //printf("sh tr: \n");
     //retval.write_in_att_format(stdout, 1);
 
     // for epenthesis rules
     // it can't have more than one epsilon repetition in a row
-    retval = noRepetitionConstraint(&retval)?;
+    retval = no_repetition_constraint(&retval)?;
     // remove LM2, RM2
-    retval = removeB2Constraint(&retval)?;
+    retval = remove_b2_constraint(&retval)?;
 
-    retval = removeMarkers(&retval)?;
+    retval = remove_markers(&retval)?;
 
     // deals with boundary symbol
-    retval = applyBoundaryMark(&retval)?;
+    retval = apply_boundary_mark(&retval)?;
 
     Ok(retval)
 }
@@ -2916,7 +2910,7 @@ pub fn restriction(
     retval.remove_from_alphabet_string(&restrictionMark)?;
 
     // deals with boundary symbol
-    retval = applyBoundaryMark(&retval)?;
+    retval = apply_boundary_mark(&retval)?;
 
     Ok(retval)
 }

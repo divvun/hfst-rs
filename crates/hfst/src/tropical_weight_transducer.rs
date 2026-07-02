@@ -19,8 +19,10 @@
 //! - methods that take a 'StdVectorFst*' and read it -> '&StdVectorFst'.
 //! - methods that take a 'StdVectorFst*' and mutate it in place (state/arc
 //!   builders, 'add_to_weights', symbol-table setters, ...) -> '&mut StdVectorFst'.
-//! - 'delete_transducer(StdVectorFst*)' -> takes 'StdVectorFst' by value (drops it).
+//! - 'delete_transducer(StdVectorFst*)' -> dropping the owned 'StdVectorFst'.
 //! The C++ 'int64' typedef is 'i64' here.
+// [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.delete-transducer-fn]
+// [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.delete-transducer-fn]
 
 #![allow(non_snake_case)]
 #![allow(dead_code)] // many ported ops are only reached once the facade lands
@@ -345,8 +347,11 @@ mod construction_io {
             !self.input_stream.good()
         }
 
+        // Also 'bool operator() (void) const' — the stream-good predicate.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-good-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-good-fn]
+        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.operator-fn]
+        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.operator-fn]
         pub fn is_good(&self) -> bool {
             if self.is_eof() {
                 return false;
@@ -357,13 +362,6 @@ mod construction_io {
         pub fn is_fst(&mut self) -> bool {
             // C++ 'is_fst()' routes to the static 'is_fst(input_stream)'.
             Self::is_fst_istream(&mut self.input_stream)
-        }
-
-        /// 'bool operator() (void) const;' — stream-good predicate.
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.operator-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.operator-fn]
-        pub fn operator_call(&self) -> bool {
-            self.is_good()
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.ignore-fn]
@@ -571,12 +569,6 @@ mod construction_io {
             t.set_start(s).unwrap();
             t.set_final(s, 0.0f32).unwrap();
             t
-        }
-
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.delete-transducer-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.delete-transducer-fn]
-        pub fn delete_transducer(t: StdVectorFst) {
-            drop(t);
         }
 
         // ---- string versions of define_transducer ----
@@ -1211,10 +1203,12 @@ mod construction_io {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.print-alphabet-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.print-alphabet-fn]
         pub fn print_alphabet(t: &StdVectorFst) {
-            let mut line = String::new();
-            for (_l, sym) in t.input_symbols().unwrap().iter() {
-                line.push_str(&format!("'{}', ", sym));
-            }
+            let line: String = t
+                .input_symbols()
+                .unwrap()
+                .iter()
+                .map(|(_l, sym)| format!("'{}', ", sym))
+                .collect();
             tracing::debug!("{}", line);
         }
 
@@ -1417,16 +1411,10 @@ mod construction_io {
             );
 
             if debug {
-                let mut line1 = String::from("New symbols for t1: ");
-                for it in unknown_t1.iter() {
-                    line1.push_str(&format!("'{}', ", it));
-                }
-                tracing::debug!("{}", line1);
-                let mut line2 = String::from("New symbols for t2: ");
-                for it in unknown_t2.iter() {
-                    line2.push_str(&format!("'{}', ", it));
-                }
-                tracing::debug!("{}", line2);
+                let line1: String = unknown_t1.iter().map(|it| format!("'{}', ", it)).collect();
+                tracing::debug!("New symbols for t1: {}", line1);
+                let line2: String = unknown_t2.iter().map(|it| format!("'{}', ", it)).collect();
+                tracing::debug!("New symbols for t2: {}", line2);
             }
 
             // 2. add new symbols from t1 to t2's symbol table...

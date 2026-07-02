@@ -262,8 +262,7 @@ impl ConversionFunctions {
         }
 
         // Go through all states...
-        let mut source_state: usize = 0;
-        for it in net.iter() {
+        for (source_state, it) in net.iter().enumerate() {
             // Go through the set of transitions in each state...
             for tr_it in it.iter() {
                 // Copy the transition
@@ -282,7 +281,6 @@ impl ConversionFunctions {
                 )
                 .unwrap();
             } // ... set of transitions gone through
-            source_state += 1;
         } // ... all states gone through
 
         // Go through the final states...

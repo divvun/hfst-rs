@@ -32,7 +32,6 @@ pub mod convert_transducer_format;
 pub mod convert_tropical_weight_transducer;
 pub mod error;
 pub mod expand_equivalences;
-pub mod format_specifiers;
 pub mod generate_model_forms;
 pub mod guessify_fst;
 pub mod harmonize_unknown_and_identity_symbols;

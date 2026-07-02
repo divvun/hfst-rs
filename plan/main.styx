@@ -1754,6 +1754,21 @@ children (
             {
                 id idiom9.mechanical
                 title "risk-NONE mechanical sweep (the bulk, ~250+ behaviour-identical sites). Iteration → combinators: `let mut s=0; for x in it {…; s+=1}`→`enumerate()` (~25, densest in hfst_basic_transducer + hfst_xerox_rules), push-loops→`collect`, found-flag+break→`find`/`position`/`any`, xfst stack drain-into-temp-and-restore→`reverse()`/`iter().rev()` (×8), binary buffer walks→`chunks_exact`. Strings → `format!`/`join`/`collect`; `@TAG.…@` substring-by-index peeling → `strip_prefix`/`strip_suffix` (deletes 3 `unsafe as_bytes_mut()` pokes); `chars().take_while(|c| c!=',')`→`split`. Naming → snake_case the hfst_xerox_rules camelCase public API (~24 fns), delete redundant `operator_*` beside Ord/PartialEq (51), `void display()`→Debug/Display (~20), vestigial stream stubs / empty Drop / delete_transducer. Delete dead `format_specifiers.rs`. GUARD: skip the bug-preserving `remove_transitions:2660` cursor, `top_index` first-wins tie, insertion-sort `<`, f32/NaN comparators."
+                log (
+                    {
+                        at 2026-07-02T12:33:13.601465Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-02T13:17:04.592704Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

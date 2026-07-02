@@ -34,6 +34,10 @@ fn byte_at(p: &[u8], i: usize) -> u8 {
 }
 
 // [spec:hfst:def:hfst-tokenizer.hfst.multi-char-symbol-trie]
+// The C++ destructor 'delete's every child trie; here the owned 'Box'es are
+// dropped automatically.
+// [spec:hfst:def:hfst-tokenizer.hfst.multi-char-symbol-trie.multi-char-symbol-trie-fn]
+// [spec:hfst:sem:hfst-tokenizer.hfst.multi-char-symbol-trie.multi-char-symbol-trie-fn]
 pub struct MultiCharSymbolTrie {
     symbol_rests: Vec<Option<Box<MultiCharSymbolTrie>>>,
     is_leaf: Vec<bool>,
@@ -126,15 +130,6 @@ impl MultiCharSymbolTrie {
             }
         }
     }
-}
-
-// [spec:hfst:def:hfst-tokenizer.hfst.multi-char-symbol-trie.multi-char-symbol-trie-fn]
-// [spec:hfst:sem:hfst-tokenizer.hfst.multi-char-symbol-trie.multi-char-symbol-trie-fn]
-//
-// The C++ destructor 'delete's every child trie; here the owned 'Box'es are
-// dropped automatically once the empty body returns.
-impl Drop for MultiCharSymbolTrie {
-    fn drop(&mut self) {}
 }
 
 impl Default for MultiCharSymbolTrie {

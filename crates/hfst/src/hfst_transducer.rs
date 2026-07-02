@@ -1965,13 +1965,9 @@ impl HfstTransducer {
     pub fn eliminate_flag(&mut self, flag: &str) -> crate::error::Result<&mut HfstTransducer> {
         let basic = crate::hfst_basic_transducer::HfstBasicTransducer::new_from_transducer(self);
         let flags = basic.get_flags();
-        let mut feature_found = false;
-        for it in flags.iter() {
-            if crate::hfst_flag_diacritics::FdOperation::get_feature(it) == flag {
-                feature_found = true;
-                break;
-            }
-        }
+        let feature_found = flags
+            .iter()
+            .any(|it| crate::hfst_flag_diacritics::FdOperation::get_feature(it) == flag);
         if !feature_found {
             if !flag.contains('.') {
                 crate::bail!(
@@ -3742,13 +3738,11 @@ pub fn get_flag_path_restriction(
     // All _1_flags are allowed as long as no _2_flags with no
     // intervening symbols were observed.
     for dollar_flag in _1_flags {
-        let mut dollar_flag = dollar_flag.clone();
-        unsafe {
-            let b = dollar_flag.as_bytes_mut();
-            let n = b.len();
-            b[0] = b'$';
-            b[n - 1] = b'$';
-        }
+        let inner = dollar_flag
+            .strip_prefix('@')
+            .and_then(|s| s.strip_suffix('@'))
+            .expect("flag diacritic is @-delimited");
+        let dollar_flag = format!("${inner}$");
 
         let tr = HfstBasicTransition::new_symbols(
             start_state,
@@ -3763,13 +3757,11 @@ pub fn get_flag_path_restriction(
     // If _2_flags are observed, _1_flags are illegal before an
     // intervening regular symbol is seen.
     for dollar_flag in _2_flags {
-        let mut dollar_flag = dollar_flag.clone();
-        unsafe {
-            let b = dollar_flag.as_bytes_mut();
-            let n = b.len();
-            b[0] = b'$';
-            b[n - 1] = b'$';
-        }
+        let inner = dollar_flag
+            .strip_prefix('@')
+            .and_then(|s| s.strip_suffix('@'))
+            .expect("flag diacritic is @-delimited");
+        let dollar_flag = format!("${inner}$");
 
         let tr = HfstBasicTransition::new_symbols(
             seen_2_state,

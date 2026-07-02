@@ -2419,22 +2419,13 @@ impl XfstCompiler {
 
     // @brief Print all networks in stack
     pub fn print_stack(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let mut tmp: Vec<NetRef> = Vec::new();
-        let mut i = 0;
-        while !self.stack.is_empty() {
+        for i in 0..self.stack.len() {
             let _ = write!(
                 oss,
                 "{:>10}",
                 format!("{}: ? bytes. ? states, ? arcs, ? paths.", i)
             );
             let _ = write!(oss, "\n");
-            tmp.push(self.stack.last().unwrap().clone());
-            self.stack.pop();
-            i += 1;
-        }
-        while !tmp.is_empty() {
-            self.stack.push(tmp.last().unwrap().clone());
-            tmp.pop();
         }
         self.flush();
         self.prompt();
@@ -3722,12 +3713,8 @@ impl XfstCompiler {
 
     // @brief Clear stack
     pub fn clear(&mut self) -> &mut Self {
-        while !self.stack.is_empty() {
-            self.stack.pop();
-        }
-        if self.latest_regex_compiled.is_some() {
-            self.latest_regex_compiled = None;
-        }
+        self.stack.clear();
+        self.latest_regex_compiled = None;
         self.prompt();
         self
     }
@@ -3776,13 +3763,7 @@ impl XfstCompiler {
 
     // @brief Reverse stack
     pub fn turn(&mut self) -> &mut Self {
-        let mut tmp: std::collections::VecDeque<NetRef> = std::collections::VecDeque::new();
-        while !self.stack.is_empty() {
-            tmp.push_back(self.stack.pop().unwrap());
-        }
-        while !tmp.is_empty() {
-            self.stack.push(tmp.pop_front().unwrap());
-        }
+        self.stack.reverse();
         // PRINT_INFO_PROMPT_AND_RETURN_THIS
         self.print_transducer_info();
         self.prompt();
@@ -3796,11 +3777,7 @@ impl XfstCompiler {
             return self;
         }
 
-        let mut tmp: Vec<NetRef> = Vec::new();
-        while !self.stack.is_empty() {
-            tmp.push(self.stack.pop().unwrap());
-        }
-        self.stack = tmp;
+        self.stack.reverse();
 
         // PRINT_INFO_PROMPT_AND_RETURN_THIS
         self.print_transducer_info();
@@ -4948,16 +4925,8 @@ impl XfstCompiler {
             );
         }
 
-        let mut temp: Vec<NetRef> = Vec::new();
-        while !self.stack.is_empty() {
-            let top = self.stack.last().unwrap().clone();
-            top.borrow_mut().convert(to_format, String::new())?;
-            temp.push(top);
-            self.stack.pop();
-        }
-        while !temp.is_empty() {
-            self.stack.push(temp.last().unwrap().clone());
-            temp.pop();
+        for net in self.stack.iter().rev() {
+            net.borrow_mut().convert(to_format, String::new())?;
         }
 
         self.prompt();
@@ -4995,16 +4964,8 @@ impl XfstCompiler {
             }
         }
 
-        let mut temp: Vec<NetRef> = Vec::new();
-        while !self.stack.is_empty() {
-            let top = self.stack.last().unwrap().clone();
-            top.borrow_mut().convert(self.format, String::new())?;
-            temp.push(top);
-            self.stack.pop();
-        }
-        while !temp.is_empty() {
-            self.stack.push(temp.last().unwrap().clone());
-            temp.pop();
+        for net in self.stack.iter().rev() {
+            net.borrow_mut().convert(self.format, String::new())?;
         }
 
         self.prompt();
@@ -5379,9 +5340,7 @@ impl XfstCompiler {
             self.prompt();
             return Ok(self);
         }
-        let mut reverse_stack: Vec<NetRef> = Vec::new();
-        while self.stack.len() != 0 {
-            let tr = self.stack.last().unwrap().clone();
+        for (i, tr) in self.stack.iter().rev().enumerate() {
             let mut name = tr.borrow().get_name();
             if name.is_empty() {
                 name = "NO_NAME".to_string();
@@ -5389,16 +5348,10 @@ impl XfstCompiler {
             let fsm = HfstBasicTransducer::new_from_transducer(&tr.borrow());
             let write_weights = self.variables["print-weight"] == "ON";
             fsm.write_in_prolog_format_os(oss, &name, write_weights)?;
-            if self.stack.len() != 1 {
+            if i + 1 != self.stack.len() {
                 // separator
                 let _ = writeln!(oss);
             }
-            reverse_stack.push(tr);
-            self.stack.pop();
-        }
-        while reverse_stack.len() != 0 {
-            self.stack.push(reverse_stack.last().unwrap().clone());
-            reverse_stack.pop();
         }
         let _ = oss.flush();
         self.prompt();
@@ -5504,16 +5457,8 @@ impl XfstCompiler {
         } else {
             HfstOutputStream::new(top_type, true)?
         };
-        let mut tmp: Vec<NetRef> = Vec::new();
-        while !self.stack.is_empty() {
-            tmp.push(self.stack.last().unwrap().clone());
-            self.stack.pop();
-        }
-        while !tmp.is_empty() {
-            let t = tmp.last().unwrap().clone();
+        for t in self.stack.iter() {
             outstream.operator_shl(&mut *t.borrow_mut())?;
-            self.stack.push(t);
-            tmp.pop();
         }
         outstream.close();
         self.prompt();
@@ -6194,16 +6139,15 @@ impl XfstCompiler {
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.copied-stack-fn]
         let mut copied_stack: Vec<NetRef> = self.stack.clone();
 
-        let mut topmost_transducer =
-            HfstTransducer::new_from_transducer(&copied_stack.last().unwrap().borrow());
-        copied_stack.pop();
+        let topmost = copied_stack
+            .pop()
+            .expect("stack has at least 2 networks (checked above)");
+        let mut topmost_transducer = HfstTransducer::new_from_transducer(&topmost.borrow());
 
         let empty = HfstTransducer::new_type(topmost_transducer.get_type())?;
 
-        while !copied_stack.is_empty() {
-            let next_transducer =
-                HfstTransducer::new_from_transducer(&copied_stack.last().unwrap().borrow());
-            copied_stack.pop();
+        while let Some(next) = copied_stack.pop() {
+            let next_transducer = HfstTransducer::new_from_transducer(&next.borrow());
 
             match operation {
                 TestOperation::TEST_OVERLAP_ => {

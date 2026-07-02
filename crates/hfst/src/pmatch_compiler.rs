@@ -3703,12 +3703,10 @@ impl PmatchParallelRulesContainer {
         &mut self,
         ctx: &mut PmatchEvalContext,
     ) -> crate::error::Result<Vec<Rule>> {
-        let mut retval: Vec<Rule> = Vec::new();
-        for it in self.rules.iter() {
-            retval.push(it.borrow_mut().make_mapping(ctx)?);
-        }
-
-        Ok(retval)
+        self.rules
+            .iter()
+            .map(|it| it.borrow_mut().make_mapping(ctx))
+            .collect()
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-replace-rule-container.evaluate-fn]
@@ -4881,10 +4879,11 @@ impl PmatchObject for PmatchFuncall {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
-        let mut evaluated_args: Vec<ObjRef> = Vec::new();
-        for it in self.args.iter() {
-            evaluated_args.push(it.borrow_mut().evaluate_as_arg(ctx));
-        }
+        let evaluated_args: Vec<ObjRef> = self
+            .args
+            .iter()
+            .map(|it| it.borrow_mut().evaluate_as_arg(ctx))
+            .collect();
         let retval = self
             .fun
             .borrow_mut()
@@ -6858,10 +6857,11 @@ pub fn build_object(
         PE::Sigma(inner) => pmb_unary(PmatchUnaryOp::MakeSigma, build_object(ctx, inner)?),
         PE::Interpolate(items) => {
             // FUNCALL_ARGLIST is in reverse source order; replicate.
-            let mut argvec: Vec<ObjRef> = Vec::new();
-            for it in items.iter().rev() {
-                argvec.push(build_object(ctx, it)?);
-            }
+            let argvec: Vec<ObjRef> = items
+                .iter()
+                .rev()
+                .map(|it| build_object(ctx, it))
+                .collect::<crate::error::Result<_>>()?;
             as_obj(Rc::new(RefCell::new(PmatchBuiltinFunction {
                 name: String::new(),
                 weight: 0.0,
@@ -6949,10 +6949,11 @@ pub fn build_object(
             } else {
                 let mut sym_lookup = sym.clone();
                 let fun = symbol_from_global_context(ctx, &mut sym_lookup).unwrap();
-                let mut argvec: Vec<ObjRef> = Vec::new();
-                for a in args.iter().rev() {
-                    argvec.push(build_object(ctx, a)?);
-                }
+                let argvec: Vec<ObjRef> = args
+                    .iter()
+                    .rev()
+                    .map(|a| build_object(ctx, a))
+                    .collect::<crate::error::Result<_>>()?;
                 as_obj(Rc::new(RefCell::new(PmatchFuncall {
                     name: String::new(),
                     weight: 0.0,

@@ -73,51 +73,18 @@ impl TraversalState {
     pub fn new(i: TransitionTableIndex, f: FlagDiacriticState) -> Self {
         TraversalState { index: i, flags: f }
     }
-
-    // Define an operation for checking state equivalence for the
-    // purpose of detecting the same situation happening twice.
-    // 'operator==' is declared in transducer.h and defined in
-    // find-epsilon-loops.cc — one function, two ids.
-    // [spec:hfst:def:find-epsilon-loops.hfst-ol.traversal-state.operator-fn]
-    // [spec:hfst:def:transducer.hfst-ol.traversal-state.operator-fn]
-    // [spec:hfst:sem:transducer.hfst-ol.traversal-state.operator-fn]
-    pub fn operator_eq(&self, rhs: &TraversalState) -> bool {
-        if self.index != rhs.index {
-            return false;
-        }
-        for i in 0..self.flags.len() {
-            if self.flags[i] != rhs.flags[i] {
-                return false;
-            }
-        }
-        true
-    }
-
-    // [spec:hfst:def:find-epsilon-loops.hfst-ol.traversal-state.operator-fn]
-    // [spec:hfst:sem:find-epsilon-loops.hfst-ol.traversal-state.operator-fn]
-    pub fn operator_lt(&self, rhs: &TraversalState) -> bool {
-        if self.index < rhs.index {
-            return true;
-        }
-        if self.index > rhs.index {
-            return false;
-        }
-        for i in 0..self.flags.len() {
-            if self.flags[i] < rhs.flags[i] {
-                return true;
-            }
-            if self.flags[i] > rhs.flags[i] {
-                return false;
-            }
-        }
-        false
-    }
 }
 
-// 'std::set<TraversalState>' orders by 'operator<'; mirror that exactly.
+// State equivalence for the purpose of detecting the same situation
+// happening twice.
+// 'operator==' is declared in transducer.h and defined in
+// find-epsilon-loops.cc — one function, two ids.
+// [spec:hfst:def:find-epsilon-loops.hfst-ol.traversal-state.operator-fn]
+// [spec:hfst:def:transducer.hfst-ol.traversal-state.operator-fn]
+// [spec:hfst:sem:transducer.hfst-ol.traversal-state.operator-fn]
 impl PartialEq for TraversalState {
     fn eq(&self, other: &Self) -> bool {
-        !self.operator_lt(other) && !other.operator_lt(self)
+        self.cmp(other) == std::cmp::Ordering::Equal
     }
 }
 impl Eq for TraversalState {}
@@ -126,15 +93,14 @@ impl PartialOrd for TraversalState {
         Some(self.cmp(other))
     }
 }
+// 'std::set<TraversalState>' orders by 'operator<'; mirror that exactly.
+// [spec:hfst:def:find-epsilon-loops.hfst-ol.traversal-state.operator-fn]
+// [spec:hfst:sem:find-epsilon-loops.hfst-ol.traversal-state.operator-fn]
 impl Ord for TraversalState {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        if self.operator_lt(other) {
-            std::cmp::Ordering::Less
-        } else if other.operator_lt(self) {
-            std::cmp::Ordering::Greater
-        } else {
-            std::cmp::Ordering::Equal
-        }
+        self.index
+            .cmp(&other.index)
+            .then_with(|| self.flags.cmp(&other.flags))
     }
 }
 

@@ -553,12 +553,11 @@ impl OtherSymbolTransducer {
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.empty-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.empty-fn]
     pub fn empty(fsm: &HfstBasicTransducer) -> bool {
-        let mut state: HfstState = 0;
-        for _ in fsm.iter() {
+        for (state, _) in fsm.iter().enumerate() {
+            let state = state as HfstState;
             if fsm.is_final_state(state) {
                 return false;
             }
-            state += 1;
         }
         true
     }
@@ -2232,16 +2231,11 @@ impl RuleT for ConflictResolvingLeftArrowRule {
 // 'Box<dyn RuleT>' back to its concrete conflict-resolving type.
 // ───────────────────────────────────────────────────────────────────────────
 
-// [spec:hfst:def:rule-container.rule-container.rule-container-fn]
-// [spec:hfst:sem:rule-container.rule-container.rule-container-fn]
-//
 // C++ '~RuleContainer' iterates 'rule_vector' and 'delete's every 'Rule*'.
 // Here each rule is owned as a 'Box<dyn RuleT>', so dropping 'rule_vector' is
-// the deleting destructor; the explicit empty 'drop' makes the symbol present.
-impl Drop for RuleContainer {
-    fn drop(&mut self) {}
-}
-
+// the deleting destructor.
+// [spec:hfst:def:rule-container.rule-container.rule-container-fn]
+// [spec:hfst:sem:rule-container.rule-container.rule-container-fn]
 // [spec:hfst:def:rule-container.rule-container]
 impl RuleContainer {
     /// C++ 'RuleContainer::RuleContainer(void): report(true) {}'.
@@ -3285,10 +3279,10 @@ impl TwolcCompiler {
         neg: &[RuleContext],
         vvm: &VariableValueMap,
     ) -> crate::error::Result<OtherSymbolTransducerVector> {
-        let mut result: OtherSymbolTransducerVector = Vec::new();
-        for ctx in pos {
-            result.push(self.eval_context(cfg, ctx, vvm)?);
-        }
+        let mut result: OtherSymbolTransducerVector = pos
+            .iter()
+            .map(|ctx| self.eval_context(cfg, ctx, vvm))
+            .collect::<crate::error::Result<_>>()?;
         for ctx in neg {
             let mut c = self.eval_context(cfg, ctx, vvm)?;
             c.negated(cfg)?;

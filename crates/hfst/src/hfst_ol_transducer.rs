@@ -172,8 +172,11 @@ mod ol_construction_io {
             }
         }
 
+        // Also 'bool operator() (void) const' — the stream-good predicate.
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-good-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-good-fn]
+        // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.operator-fn]
+        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.operator-fn]
         pub fn is_good(&self) -> bool {
             if self.is_eof() {
                 return false;
@@ -299,12 +302,6 @@ mod ol_construction_io {
         pub fn ignore(&mut self, n: u32) {
             let mut buf = vec![0u8; n as usize];
             self.input_stream.read(&mut buf);
-        }
-
-        // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.operator-fn]
-        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.operator-fn]
-        pub fn operator_call(&self) -> bool {
-            self.is_good()
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.read-transducer-fn]

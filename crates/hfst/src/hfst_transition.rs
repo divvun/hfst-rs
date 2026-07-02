@@ -101,6 +101,10 @@ impl TransitionData for HfstTropicalTransducerTransitionData {
 }
 
 // [spec:hfst:def:hfst-transition.hfst.implementations.hfst-transition]
+// The C++ destructor '~HfstTransition() {}' is empty; dropping the fields is
+// the faithful equivalent.
+// [spec:hfst:def:hfst-transition.hfst.implementations.hfst-transition-fn]
+// [spec:hfst:sem:hfst-transition.hfst.implementations.hfst-transition-fn]
 #[derive(Clone, Debug)]
 pub struct HfstTransition<C: TransitionData> {
     // the state where the transition leads
@@ -209,15 +213,6 @@ impl<C: TransitionData> HfstTransition<C> {
     pub fn set_weight(&mut self, w: f32) {
         self.transition_data.data_set_weight(w);
     }
-}
-
-// [spec:hfst:def:hfst-transition.hfst.implementations.hfst-transition-fn]
-// [spec:hfst:sem:hfst-transition.hfst.implementations.hfst-transition-fn]
-//
-// The C++ destructor '~HfstTransition() {}' is empty; an explicit empty Drop is
-// the faithful equivalent.
-impl<C: TransitionData> Drop for HfstTransition<C> {
-    fn drop(&mut self) {}
 }
 
 // 'operator<' ('bool operator<') made usable in ordered containers. Requires the

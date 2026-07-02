@@ -75,22 +75,18 @@ impl Transition {
             target,
         }
     }
-
-    // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.transition.operator-fn]
-    // [spec:hfst:sem:compose-intersect-fst.hfst.implementations.compose-intersect-fst.transition.operator-fn]
-    pub fn operator_eq(&self, another: &Transition) -> bool {
-        self.ilabel == another.ilabel
-            && self.olabel == another.olabel
-            && self.weight == another.weight
-            && self.target == another.target
-    }
 }
 
 // 'bool operator==(const Transition&) const' made usable by 'SpaceSavingSet'
 // (which compares elements with '==').
+// [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.transition.operator-fn]
+// [spec:hfst:sem:compose-intersect-fst.hfst.implementations.compose-intersect-fst.transition.operator-fn]
 impl PartialEq for Transition {
     fn eq(&self, other: &Self) -> bool {
-        self.operator_eq(other)
+        self.ilabel == other.ilabel
+            && self.olabel == other.olabel
+            && self.weight == other.weight
+            && self.target == other.target
     }
 }
 

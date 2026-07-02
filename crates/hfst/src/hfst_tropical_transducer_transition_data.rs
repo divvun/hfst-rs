@@ -215,17 +215,6 @@ impl HfstTropicalTransducerTransitionData {
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-number-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.get-number-fn]
 
-    // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.print-transition-data-fn]
-    // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.print-transition-data-fn]
-    pub fn print_transition_data(&self) {
-        tracing::debug!(
-            "{}:{} {}",
-            self.input_number,
-            self.output_number,
-            self.weight
-        );
-    }
-
     pub fn new() -> Self {
         HfstTropicalTransducerTransitionData {
             input_number: 0,
@@ -405,6 +394,18 @@ impl Ord for HfstTropicalTransducerTransitionData {
 impl Default for HfstTropicalTransducerTransitionData {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.print-transition-data-fn]
+// [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.print-transition-data-fn]
+impl std::fmt::Display for HfstTropicalTransducerTransitionData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}:{} {}",
+            self.input_number, self.output_number, self.weight
+        )
     }
 }
 

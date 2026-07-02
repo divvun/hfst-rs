@@ -121,11 +121,10 @@ impl StatePlaceholder {
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.number-of-transitions-fn]
     // [spec:hfst:sem:convert.hfst-ol.state-placeholder.number-of-transitions-fn]
     pub fn number_of_transitions(&self) -> u32 {
-        let mut count: u32 = 0;
-        for it in self.transition_placeholders.iter() {
-            count += size_t_to_uint(it.len());
-        }
-        count
+        self.transition_placeholders
+            .iter()
+            .map(|it| size_t_to_uint(it.len()))
+            .sum()
     }
 
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.input-present-fn]

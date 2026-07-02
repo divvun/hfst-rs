@@ -452,14 +452,12 @@ impl HfstBasicTransducer {
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.print-alphabet-fn]
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.print-alphabet-fn]
     pub fn print_alphabet(&self) {
-        let first = self.alphabet.iter().next();
-        let mut line = String::new();
-        for it in self.alphabet.iter() {
-            if Some(it) != first {
-                line.push_str(", ");
-            }
-            line.push_str(it);
-        }
+        let line = self
+            .alphabet
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(", ");
         tracing::debug!("{}", line);
     }
 
@@ -655,8 +653,8 @@ impl HfstBasicTransducer {
         let mut state_count: HfstState = 1;
         let mut rebuilt: BTreeMap<HfstState, HfstState> = BTreeMap::new();
         rebuilt.insert(0, 0);
-        let mut source_state: HfstState = 0;
-        for state in self.iter() {
+        for (source_state, state) in self.iter().enumerate() {
+            let source_state = source_state as HfstState;
             if !rebuilt.contains_key(&source_state) {
                 replication.add_state(state_count);
                 if self.is_final_state(source_state) {
@@ -696,7 +694,6 @@ impl HfstBasicTransducer {
                 let src_rebuilt = rebuilt[&source_state];
                 replication.add_transition(src_rebuilt, &nu, true);
             }
-            source_state += 1;
         }
         replication
     }
@@ -720,8 +717,8 @@ impl HfstBasicTransducer {
                     .expect("state was confirmed final via is_final_state"),
             );
         }
-        let mut source_state: HfstState = 0;
-        for state in self.iter() {
+        for (source_state, state) in self.iter().enumerate() {
+            let source_state = source_state as HfstState;
             if !rebuilt.contains_key(&source_state) {
                 replication.add_state(state_count);
                 if self.is_final_state(source_state) {
@@ -766,7 +763,6 @@ impl HfstBasicTransducer {
                 );
                 replication.add_transition(rebuilt[&source_state], &nu, true);
             }
-            source_state += 1;
         }
         replication
     }
@@ -798,8 +794,8 @@ impl HfstBasicTransducer {
                 ),
             );
         }
-        let mut source_state: HfstState = 0;
-        for state in self.iter() {
+        for (source_state, state) in self.iter().enumerate() {
+            let source_state = source_state as HfstState;
             if !rebuilt.contains_key(&source_state) {
                 replication.add_state(state_count);
                 if self.is_final_state(source_state) {
@@ -846,7 +842,6 @@ impl HfstBasicTransducer {
                 );
                 replication.add_transition(rebuilt[&source_state], &nu, true);
             }
-            source_state += 1;
         }
         replication
     }
@@ -878,9 +873,9 @@ impl HfstBasicTransducer {
         let mut cyclic = false;
         let mut cyclic_at_initial_state = false;
 
-        let mut source_state: u32 = 0;
         let is_begin_state = |s: u32| s == 0;
-        for transitions in self.states_and_transitions() {
+        for (source_state, transitions) in self.states_and_transitions().iter().enumerate() {
+            let source_state = source_state as u32;
             let s = source_state;
             states += 1;
             if self.is_final_state(s) {
@@ -958,7 +953,6 @@ impl HfstBasicTransducer {
                 }
                 uniq_output_arcs += 1;
             }
-            source_state += 1;
         }
 
         SummaryStats {
@@ -1506,8 +1500,8 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-transition-graph.write-in-xfst-format-fn]
     pub fn write_in_xfst_format(&self, os: &mut dyn Write, write_weights: bool) {
         let _ = write_weights; // todo
-        let mut source_state: u32 = 0;
-        for it in self.state_vector.iter() {
+        for (source_state, it) in self.state_vector.iter().enumerate() {
+            let source_state = source_state as u32;
             self.print_xfst_state_os(os, source_state);
             let _ = write!(os, ":\t");
 
@@ -1526,7 +1520,6 @@ impl HfstBasicTransducer {
                 }
             }
             let _ = writeln!(os, ".");
-            source_state += 1;
         }
     }
 
@@ -1626,7 +1619,6 @@ impl HfstBasicTransducer {
         name: &str,
         write_weights: bool,
     ) -> crate::error::Result<()> {
-        let mut source_state: u32 = 0;
         let identifier = name;
         // Print the name.
         if name.contains(',') {
@@ -1652,7 +1644,7 @@ impl HfstBasicTransducer {
         }
 
         // Print arcs.
-        for it in self.state_vector.iter() {
+        for (source_state, it) in self.state_vector.iter().enumerate() {
             for tr_it in it.iter() {
                 w_fputs(
                     file,
@@ -1671,7 +1663,6 @@ impl HfstBasicTransducer {
                 }
                 w_fputs(file, ").\n");
             }
-            source_state += 1;
         }
 
         // Print final states.
@@ -1693,8 +1684,6 @@ impl HfstBasicTransducer {
         name: &str,
         write_weights: bool,
     ) -> crate::error::Result<()> {
-        let mut source_state: u32 = 0;
-
         // Print the name.
         if name.contains(',') {
             let msg = "no commas allowed in the name of prolog networks".to_string();
@@ -1712,7 +1701,7 @@ impl HfstBasicTransducer {
         }
 
         // Print arcs.
-        for it in self.state_vector.iter() {
+        for (source_state, it) in self.state_vector.iter().enumerate() {
             for tr_it in it.iter() {
                 let _ = write!(
                     os,
@@ -1729,7 +1718,6 @@ impl HfstBasicTransducer {
                 }
                 let _ = writeln!(os, ").");
             }
-            source_state += 1;
         }
 
         // Print final states.
@@ -2179,8 +2167,8 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.write-in-xfst-format-fn]
     pub fn write_in_xfst_format_file(&self, file: &mut dyn Write, write_weights: bool) {
         let _ = write_weights;
-        let mut source_state: u32 = 0;
-        for it in self.state_vector.iter() {
+        for (source_state, it) in self.state_vector.iter().enumerate() {
+            let source_state = source_state as u32;
             self.print_xfst_state_file(file, source_state);
             w_fputs(file, ":\t");
 
@@ -2199,14 +2187,13 @@ impl HfstBasicTransducer {
                 }
             }
             w_fputs(file, ".\n");
-            source_state += 1;
         }
     }
 
     /** @brief Write the graph in AT&T format to ostream 'os'. */
     pub fn write_in_att_format_os(&self, os: &mut dyn Write, write_weights: bool) {
-        let mut source_state: u32 = 0;
-        for it in self.state_vector.iter() {
+        for (source_state, it) in self.state_vector.iter().enumerate() {
+            let source_state = source_state as u32;
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data().clone();
 
@@ -2247,14 +2234,13 @@ impl HfstBasicTransducer {
                 }
                 let _ = write!(os, "\n");
             }
-            source_state += 1;
         }
     }
 
     /** @brief Write the graph in AT&T format to FILE 'file'. */
     pub fn write_in_att_format_file(&self, file: &mut dyn Write, write_weights: bool) {
-        let mut source_state: u32 = 0;
-        for it in self.state_vector.iter() {
+        for (source_state, it) in self.state_vector.iter().enumerate() {
+            let source_state = source_state as u32;
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data().clone();
 
@@ -2297,7 +2283,6 @@ impl HfstBasicTransducer {
                 }
                 w_fputs(file, "\n");
             }
-            source_state += 1;
         }
     }
 
@@ -2311,8 +2296,8 @@ impl HfstBasicTransducer {
     // [spec:hfst:def:hfst-transition-graph.write-in-att-format-number-fn]
     // [spec:hfst:sem:hfst-transition-graph.write-in-att-format-number-fn]
     pub fn write_in_att_format_number_file(&self, file: &mut dyn Write, write_weights: bool) {
-        let mut source_state: u32 = 0;
-        for it in self.state_vector.iter() {
+        for (source_state, it) in self.state_vector.iter().enumerate() {
+            let source_state = source_state as u32;
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data().clone();
 
@@ -2347,7 +2332,6 @@ impl HfstBasicTransducer {
                     w_fputs(file, "\n");
                 }
             }
-            source_state += 1;
         }
     }
 
@@ -2489,8 +2473,7 @@ impl HfstBasicTransducer {
         }
 
         if !Self::parse_prolog_network_line(&linestr, &mut retval) {
-            let mut message = String::from("first line not valid prolog: ");
-            message.push_str(&linestr);
+            let message = format!("first line not valid prolog: {linestr}");
             crate::bail!(NotValidPrologFormat, message);
         }
 
@@ -2510,8 +2493,7 @@ impl HfstBasicTransducer {
                 || Self::parse_prolog_final_line(&linestr, &mut retval)
                 || Self::parse_prolog_symbol_line(&linestr, &mut retval))
             {
-                let mut message = String::from("line not valid prolog: ");
-                message.push_str(&linestr);
+                let message = format!("line not valid prolog: {linestr}");
                 crate::bail!(NotValidPrologFormat, message);
             }
         }
@@ -3146,8 +3128,8 @@ impl HfstBasicTransducer {
         // The substituting graph has its own coder; resolve its arc symbols
         // through *its* coding, then re-intern them into this graph's coder.
         let graph_coder = graph_ref.coder();
-        let mut source_state: HfstState = 0;
-        for it in graph_ref.state_vector.iter() {
+        for (source_state, it) in graph_ref.state_vector.iter().enumerate() {
+            let source_state = source_state as HfstState;
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data();
                 let isym = data.get_input_symbol(graph_coder);
@@ -3161,7 +3143,6 @@ impl HfstBasicTransducer {
                 );
                 self.add_transition(source_state + offset, &transition, true);
             }
-            source_state += 1;
         }
 
         // Epsilon transitions from final states of the graph.
@@ -3478,31 +3459,27 @@ impl HfstBasicTransducer {
         while *it != spv.len() {
             // C++ copies the transition vector before searching it.
             let tr = self.state_vector[current_state as usize].clone();
-            let mut transition_found = false;
-            let mut next_state: HfstState = 0;
-
-            for tr_it in tr.iter() {
+            let found = tr.iter().find(|tr_it| {
                 let data = tr_it.get_transition_data();
-                if data.get_input_symbol(&self.coder) == spv[*it].0
+                data.get_input_symbol(&self.coder) == spv[*it].0
                     && data.get_output_symbol(&self.coder) == spv[*it].1
-                {
-                    transition_found = true;
-                    next_state = tr_it.get_target_state();
-                    break;
-                }
-            }
+            });
 
-            if !transition_found {
-                next_state = self.add_state_new();
-                let transition = HfstBasicTransition::new_symbols(
-                    next_state,
-                    spv[*it].0.clone(),
-                    spv[*it].1.clone(),
-                    0.0,
-                    self.coder_mut(),
-                );
-                self.add_transition(current_state, &transition, true);
-            }
+            let next_state = match found {
+                Some(tr_it) => tr_it.get_target_state(),
+                None => {
+                    let next_state = self.add_state_new();
+                    let transition = HfstBasicTransition::new_symbols(
+                        next_state,
+                        spv[*it].0.clone(),
+                        spv[*it].1.clone(),
+                        0.0,
+                        self.coder_mut(),
+                    );
+                    self.add_transition(current_state, &transition, true);
+                    next_state
+                }
+            };
 
             *it += 1;
             current_state = next_state;
@@ -3656,7 +3633,6 @@ impl HfstBasicTransducer {
         substitution_map: &mut SubstMap,
         harmonize: bool,
     ) -> crate::error::Result<&mut Self> {
-        let mut symbol_found = false;
         for (first, _) in substitution_map.iter() {
             if !HfstTropicalTransducerTransitionData::is_valid_symbol(first) {
                 crate::bail!(
@@ -3664,10 +3640,10 @@ impl HfstBasicTransducer {
                     "HfstBasicTransducer::substitute (const std::map<HfstSymbol, HfstBasicTransducer> &)"
                 );
             }
-            if !symbol_found && self.alphabet.contains(first) {
-                symbol_found = true;
-            }
         }
+        let symbol_found = substitution_map
+            .iter()
+            .any(|(first, _)| self.alphabet.contains(first));
 
         // If none of the symbols is known to the graph, do nothing.
         if !symbol_found {
@@ -4465,14 +4441,13 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-transition-graph.hfst-replacements-map-find-replacements-fn]
     pub fn find_replacements(&self, input_side: bool) -> HfstReplacementsMap {
         let mut replacements = HfstReplacementsMap::new();
-        let mut state: u32 = 0;
-        for _it in self.state_vector.iter() {
+        for (state, _it) in self.state_vector.iter().enumerate() {
+            let state = state as u32;
             let mut full_paths: HfstReplacements = Vec::new();
             self.find_regexp_paths_driver(state, &mut full_paths, input_side);
             if full_paths.len() > 0 {
                 replacements.insert(state, full_paths);
             }
-            state += 1;
         }
         replacements
     }
@@ -4493,8 +4468,8 @@ impl HfstBasicTransducer {
         // 'graph' has its own coder; resolve its arc symbols through *its* coding,
         // then re-intern them into this graph's coder.
         let graph_coder = graph.coder();
-        let mut source_state: u32 = 0;
-        for it in graph.state_vector.iter() {
+        for (source_state, it) in graph.state_vector.iter().enumerate() {
+            let source_state = source_state as u32;
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data();
                 let isym = data.get_input_symbol(graph_coder);
@@ -4508,7 +4483,6 @@ impl HfstBasicTransducer {
                 );
                 self.add_transition(source_state + offset, &transition, true);
             }
-            source_state += 1;
         }
 
         // Epsilon transitions from final states of 'graph'.

@@ -118,12 +118,6 @@ impl<W: Clone + PartialEq + PartialOrd + std::ops::Add<Output = W> + std::fmt::D
         }
         self
     }
-
-    pub fn operator_assign(&mut self, another: &WeightedPath<W>) {
-        self.istring = another.istring.clone();
-        self.ostring = another.ostring.clone();
-        self.weight = another.weight.clone();
-    }
 }
 
 // [spec:hfst:def:hfst-extract-strings.hfst.weighted-paths]
@@ -172,6 +166,9 @@ impl<W: Clone + PartialEq + PartialOrd + std::ops::Add<Output = W> + std::fmt::D
 }
 
 // [spec:hfst:def:hfst-extract-strings.hfst.extract-strings-cb.ret-val]
+// 'operator=' is the derived 'Copy' assignment.
+// [spec:hfst:def:hfst-extract-strings.hfst.extract-strings-cb.ret-val.operator-fn]
+// [spec:hfst:sem:hfst-extract-strings.hfst.extract-strings-cb.ret-val.operator-fn]
 #[derive(Clone, Copy)]
 pub struct RetVal {
     pub continueSearch: bool,
@@ -186,13 +183,6 @@ impl RetVal {
             continueSearch: s,
             continuePath: p,
         }
-    }
-
-    // [spec:hfst:def:hfst-extract-strings.hfst.extract-strings-cb.ret-val.operator-fn]
-    // [spec:hfst:sem:hfst-extract-strings.hfst.extract-strings-cb.ret-val.operator-fn]
-    pub fn operator_assign(&mut self, o: &RetVal) {
-        self.continueSearch = o.continueSearch;
-        self.continuePath = o.continuePath;
     }
 }
 
