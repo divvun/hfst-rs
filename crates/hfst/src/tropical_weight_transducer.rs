@@ -1245,19 +1245,21 @@ mod construction_io {
                             // cross-product "?:?"
                             for it1 in unknown.iter() {
                                 if !FdOperation::is_diacritic(it1) {
-                                    let inumber: i64 =
-                                        is.get_label(it1).map(|l| l as i64).unwrap_or(-1);
+                                    let inumber = is
+                                        .get_label(it1)
+                                        .expect("unknown symbol must be in the symbol table");
                                     for it2 in unknown.iter() {
                                         if !FdOperation::is_diacritic(it2) {
-                                            let onumber: i64 =
-                                                is.get_label(it2).map(|l| l as i64).unwrap_or(-1);
+                                            let onumber = is.get_label(it2).expect(
+                                                "unknown symbol must be in the symbol table",
+                                            );
                                             if inumber != onumber {
                                                 result
                                                     .add_tr(
                                                         result_s,
                                                         StdTransition::new(
-                                                            inumber as u32,
-                                                            onumber as u32,
+                                                            inumber,
+                                                            onumber,
                                                             arc.weight,
                                                             result_nextstate,
                                                         ),
@@ -1270,7 +1272,7 @@ mod construction_io {
                                         .add_tr(
                                             result_s,
                                             StdTransition::new(
-                                                inumber as u32,
+                                                inumber,
                                                 1,
                                                 arc.weight,
                                                 result_nextstate,
@@ -1282,7 +1284,7 @@ mod construction_io {
                                             result_s,
                                             StdTransition::new(
                                                 1,
-                                                inumber as u32,
+                                                inumber,
                                                 arc.weight,
                                                 result_nextstate,
                                             ),
@@ -1294,14 +1296,15 @@ mod construction_io {
                             // identity "?:?"
                             for it in unknown.iter() {
                                 if !FdOperation::is_diacritic(it) {
-                                    let number: i64 =
-                                        is.get_label(it).map(|l| l as i64).unwrap_or(-1);
+                                    let number = is
+                                        .get_label(it)
+                                        .expect("unknown symbol must be in the symbol table");
                                     result
                                         .add_tr(
                                             result_s,
                                             StdTransition::new(
-                                                number as u32,
-                                                number as u32,
+                                                number,
+                                                number,
                                                 arc.weight,
                                                 result_nextstate,
                                             ),
@@ -1313,13 +1316,14 @@ mod construction_io {
                             // "?:x"
                             for it in unknown.iter() {
                                 if !FdOperation::is_diacritic(it) {
-                                    let number: i64 =
-                                        is.get_label(it).map(|l| l as i64).unwrap_or(-1);
+                                    let number = is
+                                        .get_label(it)
+                                        .expect("unknown symbol must be in the symbol table");
                                     result
                                         .add_tr(
                                             result_s,
                                             StdTransition::new(
-                                                number as u32,
+                                                number,
                                                 arc.olabel,
                                                 arc.weight,
                                                 result_nextstate,
@@ -1332,14 +1336,15 @@ mod construction_io {
                             // "x:?"
                             for it in unknown.iter() {
                                 if !FdOperation::is_diacritic(it) {
-                                    let number: i64 =
-                                        is.get_label(it).map(|l| l as i64).unwrap_or(-1);
+                                    let number = is
+                                        .get_label(it)
+                                        .expect("unknown symbol must be in the symbol table");
                                     result
                                         .add_tr(
                                             result_s,
                                             StdTransition::new(
                                                 arc.ilabel,
-                                                number as u32,
+                                                number,
                                                 arc.weight,
                                                 result_nextstate,
                                             ),
@@ -1523,9 +1528,9 @@ mod construction_io {
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.is-final-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.is-final-fn]
-        pub fn is_final(t: &StdVectorFst, s: StateId) -> f32 {
-            // C++ returns '(t->Final(s) != Zero())' implicitly converted to float.
-            if t.is_final(s).unwrap() { 1.0 } else { 0.0 }
+        pub fn is_final(t: &StdVectorFst, s: StateId) -> bool {
+            // C++ declares 'float' but computes '(t->Final(s) != Zero())' — a bool.
+            t.is_final(s).expect("state id comes from the same fst")
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-initial-state-fn]
@@ -2164,20 +2169,17 @@ mod operations {
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.has-arc-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.has-arc-fn]
-        fn has_arc(t: &StdVectorFst, sourcestate: i32, ilabel: i32, olabel: i32) -> i32 {
-            for (position, a) in t
-                .get_trs(sourcestate as StateId)
+        fn has_arc(
+            t: &StdVectorFst,
+            sourcestate: StateId,
+            ilabel: u32,
+            olabel: u32,
+        ) -> Option<usize> {
+            t.get_trs(sourcestate)
                 .unwrap()
                 .trs()
                 .iter()
-                .enumerate()
-            {
-                if (a.ilabel as i32 == ilabel) && (a.olabel as i32 == olabel) {
-                    return position as i32;
-                }
-            }
-
-            -1
+                .position(|a| a.ilabel == ilabel && a.olabel == olabel)
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.disjunct-as-tries-fn]
@@ -2199,24 +2201,30 @@ mod operations {
             }
             let trs = t2.get_trs(t2_state).unwrap().trs().to_vec();
             for arc in &trs {
-                let arc_index = TropicalWeightTransducer::has_arc(
-                    t1,
-                    t1_state as i32,
-                    arc.ilabel as i32,
-                    arc.olabel as i32,
-                );
-                if arc_index == -1 {
-                    let new_state = t1.add_state();
-                    t1.add_tr(
-                        t1_state,
-                        StdTransition::new(arc.ilabel, arc.olabel, arc.weight.clone(), new_state),
-                    )
-                    .unwrap();
-                    TropicalWeightTransducer::add_sub_trie(t1, new_state, t2, arc.nextstate);
-                } else {
-                    // MutableArcIterator ajter(&t1, t1_state); ajter.Seek(arc_index);
-                    let next = t1.get_trs(t1_state).unwrap().trs()[arc_index as usize].nextstate;
-                    TropicalWeightTransducer::disjunct_as_tries(t1, next, t2, arc.nextstate);
+                match TropicalWeightTransducer::has_arc(t1, t1_state, arc.ilabel, arc.olabel) {
+                    None => {
+                        let new_state = t1.add_state();
+                        t1.add_tr(
+                            t1_state,
+                            StdTransition::new(
+                                arc.ilabel,
+                                arc.olabel,
+                                arc.weight.clone(),
+                                new_state,
+                            ),
+                        )
+                        .expect("target state was just added");
+                        TropicalWeightTransducer::add_sub_trie(t1, new_state, t2, arc.nextstate);
+                    }
+                    Some(arc_index) => {
+                        // MutableArcIterator ajter(&t1, t1_state); ajter.Seek(arc_index);
+                        let next = t1
+                            .get_trs(t1_state)
+                            .expect("t1_state is a valid state")
+                            .trs()[arc_index]
+                            .nextstate;
+                        TropicalWeightTransducer::disjunct_as_tries(t1, next, t2, arc.nextstate);
+                    }
                 }
             }
         }

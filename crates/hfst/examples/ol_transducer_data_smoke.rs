@@ -39,8 +39,8 @@ fn main() -> hfst::error::Result<()> {
     let mut p = 0usize;
     let s1 = enc.find_key(input, &mut p);
     let s2 = enc.find_key(input, &mut p);
-    assert_eq!(s1, 1, "first token should be 'a' -> 1");
-    assert_eq!(s2, 2, "second token should be 'bc' -> 2");
+    assert_eq!(s1, Some(1), "first token should be 'a' -> 1");
+    assert_eq!(s2, Some(2), "second token should be 'bc' -> 2");
     println!("encoder OK (a=1, bc=2)");
     Ok(())
 }

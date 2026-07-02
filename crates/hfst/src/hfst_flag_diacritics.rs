@@ -9,8 +9,6 @@
 
 use std::collections::BTreeMap;
 
-use crate::hfst_data_types::size_t_to_ushort;
-
 // [spec:hfst:def:hfst-flag-diacritics.hfst.fd-operator]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FdOperator {
@@ -268,11 +266,13 @@ impl<T: Ord + Clone> FdTable<T> {
         }
 
         if !self.feature_map.contains_key(&feat) {
-            let next: FdFeature = size_t_to_ushort(self.feature_map.len());
+            let next: FdFeature =
+                u16::try_from(self.feature_map.len()).expect("value out of u16 range");
             self.feature_map.insert(feat.clone(), next);
         }
         if !self.value_map.contains_key(&val) {
-            let next: FdValue = size_t_to_ushort(self.value_map.len() + 1) as FdValue;
+            let next: FdValue =
+                u16::try_from(self.value_map.len() + 1).expect("value out of u16 range") as FdValue;
             self.value_map.insert(val.clone(), next);
         }
 

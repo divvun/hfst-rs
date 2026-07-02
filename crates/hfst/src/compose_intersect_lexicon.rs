@@ -40,7 +40,6 @@ use crate::compose_intersect_rule_pair::ComposeIntersectRuleObject;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::implementations::HfstState;
-use crate::hfst_data_types::size_t_to_uint;
 use crate::hfst_flag_diacritics::FdOperation;
 
 // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.symbol-transition-map]
@@ -111,9 +110,9 @@ impl ComposeIntersectLexicon {
     //     (HfstTropicalTransducerTransitionData::get_symbol(hfst::size_t_to_uint(symbol))); }
     fn is_flag_diacritic(&self, symbol: usize) -> crate::error::Result<bool> {
         // 'symbol' is a number in the shared (lexicon/canonical) coding.
-        Ok(FdOperation::is_diacritic(
-            &self.base.coder().get_symbol(size_t_to_uint(symbol))?,
-        ))
+        Ok(FdOperation::is_diacritic(&self.base.coder().get_symbol(
+            u32::try_from(symbol).expect("value out of u32 range"),
+        )?))
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.clear-all-info-fn]
@@ -208,8 +207,10 @@ impl ComposeIntersectLexicon {
             let lexicon_weight = self.base.get_final_weight(pair.0)?;
             let rules_weight = rules.get_final_weight(pair.1)?;
             if lexicon_weight != f32::INFINITY && rules_weight != f32::INFINITY {
-                self.result
-                    .set_final_weight(size_t_to_uint(s), &(lexicon_weight + rules_weight));
+                self.result.set_final_weight(
+                    u32::try_from(s).expect("value out of u32 range"),
+                    &(lexicon_weight + rules_weight),
+                );
             }
         }
         Ok(())
@@ -349,8 +350,14 @@ impl ComposeIntersectLexicon {
     ) -> crate::error::Result<()> {
         // 'input'/'output' are numbers in the shared (lexicon/canonical) coding;
         // resolve them there, then re-intern into the result transducer's coder.
-        let isym = self.base.coder().get_symbol(size_t_to_uint(input))?;
-        let osym = self.base.coder().get_symbol(size_t_to_uint(output))?;
+        let isym = self
+            .base
+            .coder()
+            .get_symbol(u32::try_from(input).expect("value out of u32 range"))?;
+        let osym = self
+            .base
+            .coder()
+            .get_symbol(u32::try_from(output).expect("value out of u32 range"))?;
         let tr =
             HfstBasicTransition::new_symbols(target, isym, osym, weight, self.result.coder_mut());
         self.result.add_transition(origin, &tr, true);

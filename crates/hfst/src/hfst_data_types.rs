@@ -167,42 +167,6 @@ pub fn implementation_type_to_format(ty: ImplementationType) -> &'static str {
     }
 }
 
-// [spec:hfst:def:hfst-data-types.hfst.size-t-to-int-fn]
-// [spec:hfst:sem:hfst-data-types.hfst.size-t-to-int-fn]
-pub fn size_t_to_int(value: usize) -> i32 {
-    if value > i32::MAX as usize {
-        panic!("data is larger than INT_MAX");
-    }
-    value as i32
-}
-
-// [spec:hfst:def:hfst-data-types.hfst.size-t-to-uint-fn]
-// [spec:hfst:sem:hfst-data-types.hfst.size-t-to-uint-fn]
-pub fn size_t_to_uint(value: usize) -> u32 {
-    if value > u32::MAX as usize {
-        panic!("data is larger than UINT_MAX");
-    }
-    value as u32
-}
-
-// [spec:hfst:def:hfst-data-types.hfst.size-t-to-ushort-fn]
-// [spec:hfst:sem:hfst-data-types.hfst.size-t-to-ushort-fn]
-pub fn size_t_to_ushort(value: usize) -> u16 {
-    if value > u16::MAX as usize {
-        panic!("data is larger than USHRT_MAX");
-    }
-    value as u16
-}
-
-// [spec:hfst:def:hfst-data-types.hfst.double-to-float-fn]
-// [spec:hfst:sem:hfst-data-types.hfst.double-to-float-fn]
-pub fn double_to_float(value: f64) -> f32 {
-    if value > f32::MAX as f64 {
-        panic!("data is larger than FLT_MAX");
-    }
-    value as f32
-}
-
 // [spec:hfst:def:hfst-data-types.hfst.hfst-fopen-fn]
 // [spec:hfst:sem:hfst-data-types.hfst.hfst-fopen-fn]
 //

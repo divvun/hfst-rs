@@ -278,23 +278,22 @@ impl InputString {
 
         while buf[p] != 0 {
             let oldp = p;
-            let k = encoder.find_key(&buf, &mut p);
-
-            if k == NO_SYMBOL_NUMBER {
-                // no tokenization from alphabet
-                let n = nByte_utf8(buf[oldp]);
-                if n == 0 {
-                    return false; // can't parse utf-8 character, admit failure
-                } else {
+            match encoder.find_key(&buf, &mut p) {
+                None => {
+                    // no tokenization from alphabet
+                    let n = nByte_utf8(buf[oldp]);
+                    if n == 0 {
+                        return false; // can't parse utf-8 character, admit failure
+                    }
                     if other == NO_SYMBOL_NUMBER {
                         return false; // if we don't have an "other" symbol
                     }
                     p = oldp + n as usize;
                     self.s.push(other);
-                    continue;
                 }
-            } else {
-                self.s.push(k);
+                Some(k) => {
+                    self.s.push(k);
+                }
             }
         }
         true

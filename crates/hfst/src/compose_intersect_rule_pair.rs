@@ -35,7 +35,7 @@
 //! * 'ComposeIntersectRule::START' (the inherited 'ComposeIntersectFst::START', = 0)
 //!   -> ['ComposeIntersectFst::START']; the pair's own 'START' static -> the
 //!   'ComposeIntersectRulePair::START' associated const (also 0).
-//! * 'hfst::size_t_to_uint' -> ['crate::hfst_data_types::size_t_to_uint'].
+//! * 'hfst::size_t_to_uint' -> an inline 'u32::try_from' narrowing.
 //! * 'HFST_THROW(StateNotDefined)' -> 'crate::bail!(StateNotDefined)' with the
 //!   'StateNotDefined' child exception owned by 'compose_intersect_fst'.
 //! * The merge-join in 'compute_transition_set' holds 'const TransitionSet &'s into
@@ -52,7 +52,6 @@ use std::collections::BTreeMap;
 use crate::compose_intersect_fst::{ComposeIntersectFst, SymbolSet, Transition};
 use crate::compose_intersect_rule::ComposeIntersectRule;
 use crate::hfst_data_types::implementations::HfstState;
-use crate::hfst_data_types::size_t_to_uint;
 
 // [spec:hfst:def:compose-intersect-rule-pair.hfst.implementations.compose-intersect-rule-pair.transition-set]
 //
@@ -264,12 +263,15 @@ impl ComposeIntersectRulePair {
     // }
     fn get_state(&mut self, p: &StatePair) -> HfstState {
         if !self.has_pair(p) {
-            self.pair_state_map
-                .insert(*p, size_t_to_uint(self.state_pair_vector.len()));
+            self.pair_state_map.insert(
+                *p,
+                u32::try_from(self.state_pair_vector.len()).expect("value out of u32 range"),
+            );
             self.state_pair_vector.push(*p);
             self.state_transition_vector
                 .push(SymbolTransitionMap::new());
-            return size_t_to_uint(self.state_pair_vector.len() - 1);
+            return u32::try_from(self.state_pair_vector.len() - 1)
+                .expect("value out of u32 range");
         }
         self.pair_state_map[p]
     }

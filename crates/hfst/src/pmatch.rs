@@ -394,7 +394,7 @@ impl PmatchAlphabet {
     pub fn string_from_symbol(&self, symbol: SymbolNumber) -> String {
         self.base.string_from_symbol(symbol)
     }
-    pub fn symbol_from_string(&self, s: &str) -> SymbolNumber {
+    pub fn symbol_from_string(&self, s: &str) -> Option<SymbolNumber> {
         self.base.symbol_from_string(s)
     }
     pub fn build_string_symbol_map(&self) -> crate::transducer::StringSymbolMap {
@@ -451,13 +451,13 @@ impl PmatchAlphabet {
             // if there are exclusionary lists, they should all accept the new
             // symbol
             self.symbol2lists[self.base.symbol_table.len()] =
-                crate::hfst_data_types::size_t_to_ushort(self.symbol_lists.len());
+                u16::try_from(self.symbol_lists.len()).expect("value out of u16 range");
             self.symbol_lists.push(self.exclusionary_lists.clone());
             for exc in self.exclusionary_lists.clone() {
                 let idx = self.list2symbols[exc as usize] as usize;
-                self.symbol_list_members[idx].push(crate::hfst_data_types::size_t_to_ushort(
-                    self.base.symbol_table.len(),
-                ));
+                self.symbol_list_members[idx].push(
+                    u16::try_from(self.base.symbol_table.len()).expect("value out of u16 range"),
+                );
             }
         }
         self.base.add_symbol(symbol);
@@ -764,7 +764,7 @@ impl PmatchAlphabet {
             if polarity {
                 if self.symbol2lists[str_sym as usize] == NO_SYMBOL_NUMBER {
                     self.symbol2lists[str_sym as usize] =
-                        crate::hfst_data_types::size_t_to_ushort(self.symbol_lists.len());
+                        u16::try_from(self.symbol_lists.len()).expect("value out of u16 range");
                     self.symbol_lists.push(vec![sym]);
                 } else {
                     let idx = self.symbol2lists[str_sym as usize] as usize;
@@ -773,7 +773,7 @@ impl PmatchAlphabet {
             }
         }
         self.list2symbols[sym as usize] =
-            crate::hfst_data_types::size_t_to_ushort(self.symbol_list_members.len());
+            u16::try_from(self.symbol_list_members.len()).expect("value out of u16 range");
         if !polarity {
             let mut excl_symbols: SymbolNumberVector = SymbolNumberVector::new();
             self.exclusionary_lists.push(sym);
@@ -786,7 +786,7 @@ impl PmatchAlphabet {
                     if self.symbol2lists[candidate_for_list as usize] == NO_SYMBOL_NUMBER {
                         // This symbol is not yet associated with any list
                         self.symbol2lists[candidate_for_list as usize] =
-                            crate::hfst_data_types::size_t_to_ushort(self.symbol_lists.len());
+                            u16::try_from(self.symbol_lists.len()).expect("value out of u16 range");
                         self.symbol_lists.push(vec![sym]);
                     } else {
                         let idx = self.symbol2lists[candidate_for_list as usize] as usize;
@@ -822,7 +822,7 @@ impl PmatchAlphabet {
             if polarity {
                 if self.symbol2lists[*it as usize] == NO_SYMBOL_NUMBER {
                     self.symbol2lists[*it as usize] =
-                        crate::hfst_data_types::size_t_to_ushort(self.symbol_lists.len());
+                        u16::try_from(self.symbol_lists.len()).expect("value out of u16 range");
                     self.symbol_lists.push(vec![sym]);
                 } else {
                     let idx = self.symbol2lists[*it as usize] as usize;
@@ -831,7 +831,7 @@ impl PmatchAlphabet {
             }
         }
         self.list2symbols[sym as usize] =
-            crate::hfst_data_types::size_t_to_ushort(self.symbol_list_members.len());
+            u16::try_from(self.symbol_list_members.len()).expect("value out of u16 range");
         if !polarity {
             let mut excl_symbols: SymbolNumberVector = SymbolNumberVector::new();
             self.exclusionary_lists.push(sym);
@@ -843,7 +843,7 @@ impl PmatchAlphabet {
                     excl_symbols.push(candidate_for_list);
                     if self.symbol2lists[candidate_for_list as usize] == NO_SYMBOL_NUMBER {
                         self.symbol2lists[candidate_for_list as usize] =
-                            crate::hfst_data_types::size_t_to_ushort(self.symbol_lists.len());
+                            u16::try_from(self.symbol_lists.len()).expect("value out of u16 range");
                         self.symbol_lists.push(vec![sym]);
                     } else {
                         // NOTE: faithful to the C++ bug — indexes by symbol2lists[sym]
@@ -962,7 +962,7 @@ impl PmatchAlphabet {
             }
             let output = it.output;
             if output == self.special_symbols[SpecialSymbol::entry as usize] {
-                start_tag_pos.push(crate::hfst_data_types::size_t_to_uint(retval.len()));
+                start_tag_pos.push(u32::try_from(retval.len()).expect("value out of u32 range"));
             } else if output == self.special_symbols[SpecialSymbol::exit as usize] {
                 if !start_tag_pos.is_empty() {
                     start_tag_pos.pop();
@@ -1527,7 +1527,9 @@ impl PmatchContainer {
         let mut buf: Vec<u8> = input_s.as_bytes().to_vec();
         buf.push(0);
         let mut p: usize = 0;
-        let mut k: SymbolNumber = NO_SYMBOL_NUMBER;
+        // 'k' lives outside the loop to mirror the C++, where a stale value can
+        // carry over when single-codepoint tokenization finds no bytes to take.
+        let mut k: Option<SymbolNumber> = None;
         let boundary_sym = self.alphabet.get_special(SpecialSymbol::boundary);
         if boundary_sym != NO_SYMBOL_NUMBER {
             self.input.push(boundary_sym);
@@ -1543,35 +1545,48 @@ impl PmatchContainer {
                     let mut scratch: Vec<u8> = buf[p..p + bytes_to_tokenize as usize].to_vec();
                     scratch.push(0);
                     let mut sp: usize = 0;
-                    k = self.encoder.as_ref().unwrap().find_key(&scratch, &mut sp);
-                    if k != NO_SYMBOL_NUMBER {
+                    k = self
+                        .encoder
+                        .as_ref()
+                        .expect("encoder is initialized during container load")
+                        .find_key(&scratch, &mut sp);
+                    if k.is_some() {
                         p += bytes_to_tokenize as usize;
                     }
                 }
             } else {
-                k = self.encoder.as_ref().unwrap().find_key(&buf, &mut p);
+                k = self
+                    .encoder
+                    .as_ref()
+                    .expect("encoder is initialized during container load")
+                    .find_key(&buf, &mut p);
             }
-            if k == NO_SYMBOL_NUMBER {
-                // Regular tokenization failed
-                p = original_input_loc;
-                let mut bytes_to_tokenize =
-                    nByte_grapheme(std::str::from_utf8(&buf[p..buf.len() - 1]).unwrap_or(""));
-                if bytes_to_tokenize == 0 {
-                    // if utf-8 tokenization fails too, just grab a byte
-                    bytes_to_tokenize = 1;
+            let key = match k {
+                Some(key) => key,
+                None => {
+                    // Regular tokenization failed
+                    p = original_input_loc;
+                    let mut bytes_to_tokenize =
+                        nByte_grapheme(std::str::from_utf8(&buf[p..buf.len() - 1]).unwrap_or(""));
+                    if bytes_to_tokenize == 0 {
+                        // if utf-8 tokenization fails too, just grab a byte
+                        bytes_to_tokenize = 1;
+                    }
+                    let new_symbol_bytes = buf[p..p + bytes_to_tokenize as usize].to_vec();
+                    let new_symbol = String::from_utf8_lossy(&new_symbol_bytes).into_owned();
+                    p += bytes_to_tokenize as usize;
+                    self.alphabet.add_symbol(&new_symbol);
+                    self.encoder
+                        .as_mut()
+                        .expect("encoder is initialized during container load")
+                        .read_input_symbol(&new_symbol, self.symbol_count as i32);
+                    let key = self.symbol_count;
+                    k = Some(key);
+                    self.symbol_count += 1;
+                    key
                 }
-                let new_symbol_bytes = buf[p..p + bytes_to_tokenize as usize].to_vec();
-                let new_symbol = String::from_utf8_lossy(&new_symbol_bytes).into_owned();
-                p += bytes_to_tokenize as usize;
-                self.alphabet.add_symbol(&new_symbol);
-                self.encoder
-                    .as_mut()
-                    .unwrap()
-                    .read_input_symbol(&new_symbol, self.symbol_count as i32);
-                k = self.symbol_count;
-                self.symbol_count += 1;
-            }
-            self.input.push(k);
+            };
+            self.input.push(key);
         }
         if boundary_sym != NO_SYMBOL_NUMBER {
             self.input.push(boundary_sym);
@@ -1671,9 +1686,8 @@ impl PmatchContainer {
                         let mut ls: LocationVector = LocationVector::new();
                         let mut nonmatching = self.c_locatefy(
                             printable_input_pos
-                                - crate::hfst_data_types::size_t_to_uint(
-                                    nonmatching_locations.inner.len(),
-                                ),
+                                - u32::try_from(nonmatching_locations.inner.len())
+                                    .expect("value out of u32 range"),
                             &WeightedDoubleTape::new(nonmatching_locations.clone(), 0.0),
                         );
                         nonmatching.output = "@_NONMATCHING_@".to_string();
@@ -1727,7 +1741,8 @@ impl PmatchContainer {
             let mut ls: LocationVector = LocationVector::new();
             let mut nonmatching = self.c_locatefy(
                 printable_input_pos
-                    - crate::hfst_data_types::size_t_to_uint(nonmatching_locations.inner.len()),
+                    - u32::try_from(nonmatching_locations.inner.len())
+                        .expect("value out of u32 range"),
                 &WeightedDoubleTape::new(nonmatching_locations.clone(), 0.0),
             );
             nonmatching.output = "@_NONMATCHING_@".to_string();
@@ -2282,9 +2297,8 @@ impl PmatchTransducer {
         name: String,
     ) -> PmatchTransducer {
         use crate::transducer::TableEntry;
-        let orig_symbol_count =
-            crate::hfst_data_types::size_t_to_uint(alphabet.get_symbol_table().len())
-                as SymbolNumber;
+        let orig_symbol_count = u32::try_from(alphabet.get_symbol_table().len())
+            .expect("value out of u32 range") as SymbolNumber;
         // initialize the stack for local variables
         let mut local_variables = LocalVariables {
             flag_state: FdState::new(alphabet.get_fd_table()),
@@ -2344,9 +2358,8 @@ impl PmatchTransducer {
         alphabet: &PmatchAlphabet,
         name: String,
     ) -> PmatchTransducer {
-        let orig_symbol_count =
-            crate::hfst_data_types::size_t_to_uint(alphabet.get_symbol_table().len())
-                as SymbolNumber;
+        let orig_symbol_count = u32::try_from(alphabet.get_symbol_table().len())
+            .expect("value out of u32 range") as SymbolNumber;
         // initialize the stack for local variables
         let local_variables = LocalVariables {
             flag_state: FdState::new(alphabet.get_fd_table()),

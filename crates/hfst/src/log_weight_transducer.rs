@@ -1241,18 +1241,20 @@ mod construction_io {
                         if arc.ilabel == 1 && arc.olabel == 1 {
                             // cross-product "?:?"
                             for it1 in unknown.iter() {
-                                let inumber: i64 =
-                                    is.get_label(it1).map(|l| l as i64).unwrap_or(-1);
+                                let inumber = is
+                                    .get_label(it1)
+                                    .expect("unknown symbol must be in the symbol table");
                                 for it2 in unknown.iter() {
-                                    let onumber: i64 =
-                                        is.get_label(it2).map(|l| l as i64).unwrap_or(-1);
+                                    let onumber = is
+                                        .get_label(it2)
+                                        .expect("unknown symbol must be in the symbol table");
                                     if inumber != onumber {
                                         result
                                             .add_tr(
                                                 result_s,
                                                 LogTransition::new(
-                                                    inumber as u32,
-                                                    onumber as u32,
+                                                    inumber,
+                                                    onumber,
                                                     arc.weight,
                                                     result_nextstate,
                                                 ),
@@ -1264,7 +1266,7 @@ mod construction_io {
                                     .add_tr(
                                         result_s,
                                         LogTransition::new(
-                                            inumber as u32,
+                                            inumber,
                                             1,
                                             arc.weight,
                                             result_nextstate,
@@ -1276,7 +1278,7 @@ mod construction_io {
                                         result_s,
                                         LogTransition::new(
                                             1,
-                                            inumber as u32,
+                                            inumber,
                                             arc.weight,
                                             result_nextstate,
                                         ),
@@ -1286,13 +1288,15 @@ mod construction_io {
                         } else if arc.ilabel == 2 || arc.olabel == 2 {
                             // identity "?:?"
                             for it in unknown.iter() {
-                                let number: i64 = is.get_label(it).map(|l| l as i64).unwrap_or(-1);
+                                let number = is
+                                    .get_label(it)
+                                    .expect("unknown symbol must be in the symbol table");
                                 result
                                     .add_tr(
                                         result_s,
                                         LogTransition::new(
-                                            number as u32,
-                                            number as u32,
+                                            number,
+                                            number,
                                             arc.weight,
                                             result_nextstate,
                                         ),
@@ -1302,12 +1306,14 @@ mod construction_io {
                         } else if arc.ilabel == 1 {
                             // "?:x"
                             for it in unknown.iter() {
-                                let number: i64 = is.get_label(it).map(|l| l as i64).unwrap_or(-1);
+                                let number = is
+                                    .get_label(it)
+                                    .expect("unknown symbol must be in the symbol table");
                                 result
                                     .add_tr(
                                         result_s,
                                         LogTransition::new(
-                                            number as u32,
+                                            number,
                                             arc.olabel,
                                             arc.weight,
                                             result_nextstate,
@@ -1318,13 +1324,15 @@ mod construction_io {
                         } else if arc.olabel == 1 {
                             // "x:?"
                             for it in unknown.iter() {
-                                let number: i64 = is.get_label(it).map(|l| l as i64).unwrap_or(-1);
+                                let number = is
+                                    .get_label(it)
+                                    .expect("unknown symbol must be in the symbol table");
                                 result
                                     .add_tr(
                                         result_s,
                                         LogTransition::new(
                                             arc.ilabel,
-                                            number as u32,
+                                            number,
                                             arc.weight,
                                             result_nextstate,
                                         ),
@@ -1497,9 +1505,9 @@ mod construction_io {
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.is-final-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.is-final-fn]
-        pub fn is_final(t: &LogVectorFst, s: StateId) -> f32 {
-            // C++ returns '(t->Final(s) != Zero())' implicitly converted to float.
-            if t.is_final(s).unwrap() { 1.0 } else { 0.0 }
+        pub fn is_final(t: &LogVectorFst, s: StateId) -> bool {
+            // C++ declares 'float' but computes '(t->Final(s) != Zero())' — a bool.
+            t.is_final(s).expect("state id comes from the same fst")
         }
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.get-initial-state-fn]
@@ -2020,20 +2028,17 @@ mod operations {
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.has-arc-fn]
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.has-arc-fn]
-        fn has_arc(t: &LogVectorFst, sourcestate: i32, ilabel: i32, olabel: i32) -> i32 {
-            for (position, a) in t
-                .get_trs(sourcestate as StateId)
+        fn has_arc(
+            t: &LogVectorFst,
+            sourcestate: StateId,
+            ilabel: u32,
+            olabel: u32,
+        ) -> Option<usize> {
+            t.get_trs(sourcestate)
                 .unwrap()
                 .trs()
                 .iter()
-                .enumerate()
-            {
-                if (a.ilabel as i32 == ilabel) && (a.olabel as i32 == olabel) {
-                    return position as i32;
-                }
-            }
-
-            -1
+                .position(|a| a.ilabel == ilabel && a.olabel == olabel)
         }
 
         // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-weight-transducer.disjunct-as-tries-fn]
@@ -2055,24 +2060,30 @@ mod operations {
             }
             let trs = t2.get_trs(t2_state).unwrap().trs().to_vec();
             for arc in &trs {
-                let arc_index = LogWeightTransducer::has_arc(
-                    t1,
-                    t1_state as i32,
-                    arc.ilabel as i32,
-                    arc.olabel as i32,
-                );
-                if arc_index == -1 {
-                    let new_state = t1.add_state();
-                    t1.add_tr(
-                        t1_state,
-                        LogTransition::new(arc.ilabel, arc.olabel, arc.weight.clone(), new_state),
-                    )
-                    .unwrap();
-                    LogWeightTransducer::add_sub_trie(t1, new_state, t2, arc.nextstate);
-                } else {
-                    // MutableArcIterator ajter(&t1, t1_state); ajter.Seek(arc_index);
-                    let next = t1.get_trs(t1_state).unwrap().trs()[arc_index as usize].nextstate;
-                    LogWeightTransducer::disjunct_as_tries(t1, next, t2, arc.nextstate);
+                match LogWeightTransducer::has_arc(t1, t1_state, arc.ilabel, arc.olabel) {
+                    None => {
+                        let new_state = t1.add_state();
+                        t1.add_tr(
+                            t1_state,
+                            LogTransition::new(
+                                arc.ilabel,
+                                arc.olabel,
+                                arc.weight.clone(),
+                                new_state,
+                            ),
+                        )
+                        .expect("target state was just added");
+                        LogWeightTransducer::add_sub_trie(t1, new_state, t2, arc.nextstate);
+                    }
+                    Some(arc_index) => {
+                        // MutableArcIterator ajter(&t1, t1_state); ajter.Seek(arc_index);
+                        let next = t1
+                            .get_trs(t1_state)
+                            .expect("t1_state is a valid state")
+                            .trs()[arc_index]
+                            .nextstate;
+                        LogWeightTransducer::disjunct_as_tries(t1, next, t2, arc.nextstate);
+                    }
                 }
             }
         }

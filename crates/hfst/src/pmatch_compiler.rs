@@ -19,7 +19,6 @@
 
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_data_types::StringPairSet;
-use crate::hfst_data_types::double_to_float;
 use crate::hfst_data_types::{ImplementationType, StringPair, StringVector};
 use crate::hfst_symbol_defs::StringSet;
 use crate::hfst_symbol_defs::{
@@ -2502,7 +2501,7 @@ impl PmatchObject for PmatchUnaryOperation {
             } else {
                 HfstTransducer::new_type(ctx.format)?
             };
-            retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
+            retval.set_final_weights(self.weight as f32, true)?;
             if self.cache.is_none() && self.should_use_cache(ctx) == true {
                 self.cache = Some(retval);
                 self.report_time(
@@ -2528,7 +2527,7 @@ impl PmatchObject for PmatchUnaryOperation {
             } else {
                 HfstTransducer::new_type(ctx.format)?
             };
-            retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
+            retval.set_final_weights(self.weight as f32, true)?;
             if self.cache.is_none() && self.should_use_cache(ctx) == true {
                 self.cache = Some(retval);
                 return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
@@ -2765,7 +2764,7 @@ impl PmatchObject for PmatchUnaryOperation {
                 );
             }
         }
-        retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
+        retval.set_final_weights(self.weight as f32, true)?;
 
         if self.name != "" {
             ctx.eval_stack_pop();
@@ -2876,7 +2875,7 @@ impl PmatchObject for PmatchNumericOperation {
         } else if self.op == PmatchNumericOp::RepeatNToK {
             tmp.repeat_n_to_k(self.values[0] as u32, self.values[1] as u32)?;
         }
-        tmp.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
+        tmp.set_final_weights(self.weight as f32, true)?;
         if self.name != "" {
             ctx.eval_stack_pop();
         }
@@ -3043,10 +3042,7 @@ impl PmatchObject for PmatchBinaryOperation {
                     let spv = tok.tokenize(it, false); // XXX
                     retval.disjunct_spv(&spv)?;
                 }
-                retval.set_final_weights(
-                    crate::hfst_data_types::double_to_float(self.weight),
-                    true,
-                )?;
+                retval.set_final_weights(self.weight as f32, true)?;
                 if self.cache.is_none() && self.should_use_cache(ctx) == true {
                     self.cache = Some(retval);
                     // No minimization because we did it the clever way!
@@ -3178,7 +3174,7 @@ impl PmatchObject for PmatchBinaryOperation {
             }
         }
         drop(rhs);
-        lhs.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
+        lhs.set_final_weights(self.weight as f32, true)?;
         if self.name != "" {
             ctx.eval_stack_pop();
         }
@@ -3341,7 +3337,7 @@ impl PmatchObject for PmatchTernaryOperation {
             let _unc_left: HfstTransducer = self.middle.borrow_mut().evaluate(ctx)?;
             let _unc_right: HfstTransducer = self.right.borrow_mut().evaluate(ctx)?;
         }
-        retval.set_final_weights(crate::hfst_data_types::double_to_float(self.weight), true)?;
+        retval.set_final_weights(self.weight as f32, true)?;
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(retval);
             self.cache
@@ -3431,7 +3427,7 @@ impl PmatchObject for PmatchParallelRulesContainer {
                 return HfstTransducer::new_type(ctx.format);
             }
         };
-        retval.set_final_weights(double_to_float(self.weight), true)?;
+        retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, String::new());
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(retval);
@@ -3496,7 +3492,7 @@ impl PmatchObject for PmatchReplaceRuleContainer {
                 return HfstTransducer::new_type(ctx.format);
             }
         };
-        retval.set_final_weights(double_to_float(self.weight), true)?;
+        retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, String::new());
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(retval);
@@ -3563,7 +3559,7 @@ impl PmatchObject for PmatchRestrictionContainer {
         }
         let l: HfstTransducer = self.left.borrow_mut().evaluate(ctx)?;
         let mut retval: HfstTransducer = restriction(&l, &pair_vector)?;
-        retval.set_final_weights(double_to_float(self.weight), true)?;
+        retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, String::new());
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(retval);
@@ -3897,7 +3893,7 @@ impl PmatchObject for PmatchSymbol {
             }
             retval = HfstTransducer::new_symbol(&self.sym, ctx.format)?;
         }
-        retval.set_final_weights(double_to_float(self.weight), true)?;
+        retval.set_final_weights(self.weight as f32, true)?;
         retval.minimize()?;
         self.report_time(ctx, String::new());
         if self.name != "" {
@@ -3993,7 +3989,7 @@ impl PmatchObject for PmatchString {
         } else {
             HfstTransducer::new_symbol(&self.string, ctx.format)?
         };
-        tmp.set_final_weights(double_to_float(self.weight), true)?;
+        tmp.set_final_weights(self.weight as f32, true)?;
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
             self.cache = Some(tmp);
             self.cache
@@ -4055,7 +4051,7 @@ impl PmatchObject for PmatchQuestionMark {
     fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
         self.start_timing(ctx);
         let mut retval: HfstTransducer = HfstTransducer::new_symbol(internal_identity, ctx.format)?;
-        retval.set_final_weights(double_to_float(self.weight), true)?;
+        retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, String::new());
         Ok(retval)
     }
@@ -4132,7 +4128,7 @@ impl PmatchObject for PmatchAcceptor {
                 }
             }
         };
-        retval.set_final_weights(double_to_float(self.weight), true)?;
+        retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, String::new());
         Ok(retval)
     }
@@ -4171,7 +4167,7 @@ impl PmatchObject for PmatchTransducerContainer {
             self.t.convert(ctx.format, String::new())?;
         }
         let mut retval = HfstTransducer::new_copy(&self.t)?;
-        retval.set_final_weights(double_to_float(self.weight), true)?;
+        retval.set_final_weights(self.weight as f32, true)?;
         if self.name != "" {
             retval.set_name(&self.name);
         }
@@ -4220,7 +4216,7 @@ impl PmatchObject for PmatchFunction {
         if self.name != "" {
             ctx.eval_stack_pop();
         }
-        retval.set_final_weights(double_to_float(self.weight), true)?;
+        retval.set_final_weights(self.weight as f32, true)?;
         ctx.call_stack_pop();
         if ctx.verbose {
             let duration = (clock() - self.my_timer) as f64 / CLOCKS_PER_SEC as f64;
@@ -4293,7 +4289,7 @@ impl PmatchObject for PmatchBuiltinFunction {
                 retval.concatenate(&tmp, true)?;
             }
         }
-        retval.set_final_weights(double_to_float(self.weight), true)?;
+        retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, String::new());
         if self.name != "" {
             ctx.eval_stack_pop();

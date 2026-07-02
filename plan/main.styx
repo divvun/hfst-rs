@@ -1796,6 +1796,21 @@ children (
                 id idiom9.sentinels
                 title "sentinel returns → Option + bare typedef → newtype (P2/P3 core; risk REAL, public-API-wide, highest correctness payoff). NO_SYMBOL_NUMBER (= SymbolNumber::MAX, a VALID u16 index — 116 occurrences across transducer/pmatch/ospell) → Option<SymbolNumber>; symbol_from_string/find_key/get_*_symbol → Option. Bare typedefs (SymbolNumber=u16, TransitionTableIndex=u32, Weight=f32, HfstState=u32, …) → newtypes so index/number/state/weight can't be mixed. Folds in the `-1 as u32` label-corruption bug (expand_arcs tropical:1267/log:1262), PushbackReader::get 0xFF/.eof EOF encoding, has_arc -1, is_final f32-as-bool. The `size_t_to_uint`/`double_to_float` narrowing helpers (106 calls) → `try_from`. Lead with tests; ripples to CLI + any C-API. COORDINATE with idiom6.resultify.facade — both rewrite the public contract; ideally one wave."
                 deps (idiom9.signatures)
+                log (
+                    {
+                        at 2026-07-02T14:41:43.952362Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-02T17:46:58.446377Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

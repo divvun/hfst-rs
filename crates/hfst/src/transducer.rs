@@ -20,7 +20,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 use std::time::Instant;
 
-use crate::hfst_data_types::size_t_to_uint;
 use crate::hfst_data_types::{
     HfstOneLevelPath, HfstOneLevelPaths, HfstTwoLevelPath, HfstTwoLevelPaths, StringVector,
 };
@@ -673,7 +672,8 @@ impl TransducerAlphabet {
             alpha.symbol_table.push(str);
             i += 1;
         }
-        alpha.orig_symbol_count = size_t_to_uint(alpha.symbol_table.len()) as SymbolNumber;
+        alpha.orig_symbol_count = u32::try_from(alpha.symbol_table.len())
+            .expect("value out of u32 range") as SymbolNumber;
         Ok(alpha)
     }
 
@@ -721,19 +721,20 @@ impl TransducerAlphabet {
             }
             i += 1;
         }
-        alpha.orig_symbol_count = size_t_to_uint(alpha.symbol_table.len()) as SymbolNumber;
+        alpha.orig_symbol_count = u32::try_from(alpha.symbol_table.len())
+            .expect("value out of u32 range") as SymbolNumber;
         alpha
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-alphabet.symbol-from-string-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-alphabet.symbol-from-string-fn]
-    pub fn symbol_from_string(&self, symbol_string: &str) -> SymbolNumber {
+    pub fn symbol_from_string(&self, symbol_string: &str) -> Option<SymbolNumber> {
         for i in 0..self.symbol_table.len() {
             if self.symbol_table[i] == symbol_string {
-                return i as SymbolNumber;
+                return Some(i as SymbolNumber);
             }
         }
-        NO_SYMBOL_NUMBER
+        None
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-alphabet.build-string-symbol-map-fn]
@@ -1492,7 +1493,7 @@ impl<T: TableEntry + Clone> TransducerTable<T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer-table.size-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-table.size-fn]
     pub fn size(&self) -> u32 {
-        size_t_to_uint(self.table.len())
+        u32::try_from(self.table.len()).expect("value out of u32 range")
     }
 }
 
@@ -1731,21 +1732,24 @@ impl OlLetterTrie {
     // [spec:hfst:def:transducer.hfst-ol.ol-letter-trie.find-key-fn]
     // [spec:hfst:sem:transducer.hfst-ol.ol-letter-trie.find-key-fn]
     // 'p' is an index into 'buf' advanced by reference, mirroring 'char ** p'.
-    pub fn find_key(&self, buf: &[u8], p: &mut usize) -> SymbolNumber {
+    // 'None' is the C++ NO_SYMBOL_NUMBER "no tokenization found" result.
+    pub fn find_key(&self, buf: &[u8], p: &mut usize) -> Option<SymbolNumber> {
+        // The leaf table stores NO_SYMBOL_NUMBER for unmapped bytes.
+        fn leaf(sym: SymbolNumber) -> Option<SymbolNumber> {
+            (sym != NO_SYMBOL_NUMBER).then_some(sym)
+        }
         let old_p = *p;
         *p += 1;
-        if self.letters[buf[old_p] as usize].is_none() {
-            return self.symbols[buf[old_p] as usize];
+        match self.letters[buf[old_p] as usize].as_ref() {
+            None => leaf(self.symbols[buf[old_p] as usize]),
+            Some(child) => match child.find_key(buf, p) {
+                Some(s) => Some(s),
+                None => {
+                    *p -= 1;
+                    leaf(self.symbols[buf[old_p] as usize])
+                }
+            },
         }
-        let s = self.letters[buf[old_p] as usize]
-            .as_ref()
-            .unwrap()
-            .find_key(buf, p);
-        if s == NO_SYMBOL_NUMBER {
-            *p -= 1;
-            return self.symbols[buf[old_p] as usize];
-        }
-        s
     }
 }
 
@@ -1823,7 +1827,7 @@ impl Encoder {
 
     // [spec:hfst:def:transducer.hfst-ol.encoder.find-key-fn]
     // [spec:hfst:sem:transducer.hfst-ol.encoder.find-key-fn]
-    pub fn find_key(&self, buf: &[u8], p: &mut usize) -> SymbolNumber {
+    pub fn find_key(&self, buf: &[u8], p: &mut usize) -> Option<SymbolNumber> {
         if !should_ascii_tokenize(buf[*p])
             || self.ascii_symbols[buf[*p] as usize] == NO_SYMBOL_NUMBER
         {
@@ -1831,7 +1835,7 @@ impl Encoder {
         }
         let s = self.ascii_symbols[buf[*p] as usize];
         *p += 1;
-        s
+        Some(s)
     }
 }
 
@@ -2408,12 +2412,12 @@ impl Transducer {
         let weighted = self.hdr().probe_flag(HeaderFlag::Weighted);
         for i in 0..self.hdr().index_table_size() {
             self.tbl()
-                .get_index(size_t_to_uint(i as usize))
+                .get_index(u32::try_from(i as usize).expect("value out of u32 range"))
                 .write(os, weighted);
         }
         for i in 0..self.hdr().target_table_size() {
             self.tbl()
-                .get_transition(size_t_to_uint(i as usize))
+                .get_transition(u32::try_from(i as usize).expect("value out of u32 range"))
                 .write(os, weighted);
         }
     }
@@ -2652,24 +2656,38 @@ impl Transducer {
         let mut p: usize = 0;
         while buf[p] != 0 {
             let original_input_loc = p;
-            let mut k = self.encoder.as_ref().unwrap().find_key(&buf, &mut p);
-            if k == NO_SYMBOL_NUMBER {
-                // Add what we assume to be an unknown utf-8 symbol to the alphabet
-                p = original_input_loc;
-                let bytes_to_tokenize = nByte_utf8(buf[p]);
-                if bytes_to_tokenize == 0 {
-                    return false; // tokenization failed
+            let k = match self
+                .encoder
+                .as_ref()
+                .expect("encoder is initialized during transducer load")
+                .find_key(&buf, &mut p)
+            {
+                Some(k) => k,
+                None => {
+                    // Add what we assume to be an unknown utf-8 symbol to the alphabet
+                    p = original_input_loc;
+                    let bytes_to_tokenize = nByte_utf8(buf[p]);
+                    if bytes_to_tokenize == 0 {
+                        return false; // tokenization failed
+                    }
+                    let new_symbol =
+                        String::from_utf8_lossy(&buf[p..p + bytes_to_tokenize as usize])
+                            .into_owned();
+                    p += bytes_to_tokenize as usize;
+                    self.alphabet
+                        .as_mut()
+                        .expect("alphabet is initialized during transducer load")
+                        .add_symbol(&new_symbol);
+                    let k = u32::try_from(self.alph().get_symbol_table().len() - 1)
+                        .expect("value out of u32 range")
+                        as SymbolNumber;
+                    self.encoder
+                        .as_mut()
+                        .expect("encoder is initialized during transducer load")
+                        .read_input_symbol(&new_symbol, k as i32);
+                    k
                 }
-                let new_symbol =
-                    String::from_utf8_lossy(&buf[p..p + bytes_to_tokenize as usize]).into_owned();
-                p += bytes_to_tokenize as usize;
-                self.alphabet.as_mut().unwrap().add_symbol(&new_symbol);
-                k = size_t_to_uint(self.alph().get_symbol_table().len() - 1) as SymbolNumber;
-                self.encoder
-                    .as_mut()
-                    .unwrap()
-                    .read_input_symbol(&new_symbol, k as i32);
-            }
+            };
             self.input_tape.write(i, k);
             i += 1;
         }
@@ -2680,11 +2698,11 @@ impl Transducer {
     // [spec:hfst:def:transducer.hfst-ol.transducer.include-symbol-in-alphabet-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.include-symbol-in-alphabet-fn]
     pub fn include_symbol_in_alphabet(&mut self, sym: &str) {
-        let key = self.alph().symbol_from_string(sym);
-        if key != NO_SYMBOL_NUMBER {
+        if self.alph().symbol_from_string(sym).is_some() {
             return;
         }
-        let key = size_t_to_uint(self.alph().get_symbol_table().len()) as SymbolNumber;
+        let key = u32::try_from(self.alph().get_symbol_table().len())
+            .expect("value out of u32 range") as SymbolNumber;
         self.alphabet.as_mut().unwrap().add_symbol_str(sym);
         self.encoder
             .as_mut()

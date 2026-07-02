@@ -36,9 +36,7 @@ use nfst_lexc::{
 use nfst_xre::{SpannedXre, pretty_print};
 
 use crate::hfst_basic_transducer::HfstBasicTransducer;
-use crate::hfst_data_types::{
-    ImplementationType, StringPair, StringPairVector, StringVector, double_to_float, size_t_to_int,
-};
+use crate::hfst_data_types::{ImplementationType, StringPair, StringPairVector, StringVector};
 use crate::hfst_symbol_defs::{HfstSymbolSubstitutions, StringSet};
 use crate::hfst_tokenizer::HfstTokenizer;
 use crate::hfst_transducer::HfstTransducer;
@@ -253,8 +251,8 @@ fn find_med_alingment(s1: &[String], s2: &[String]) -> (Vec<String>, Vec<String>
     let mut medcwordin: Vec<String> = Vec::new();
     let mut medcwordout: Vec<String> = Vec::new();
 
-    let mut x = size_t_to_int(s1.len());
-    let mut y = size_t_to_int(s2.len());
+    let mut x = i32::try_from(s1.len()).expect("value out of i32 range");
+    let mut y = i32::try_from(s2.len()).expect("value out of i32 range");
     while x > 0 || y > 0 {
         let dir_value = dir[x as usize][y as usize];
 
@@ -820,7 +818,7 @@ impl LexcCompiler {
             }
             i += 1;
         }
-        let w = double_to_float(weight);
+        let w = weight as f32;
         self.stringsTrie_.disjunct_path(&new_vector, w);
         self
     }
@@ -929,8 +927,8 @@ impl LexcCompiler {
             let upper_v = self.tokenizer.tokenize(upper, self.split_characters);
             let lower_v = self.tokenizer.tokenize(lower, self.split_characters);
 
-            let upper_size = size_t_to_int(upper_v.len());
-            let lower_size = size_t_to_int(lower_v.len());
+            let upper_size = i32::try_from(upper_v.len()).expect("value out of i32 range");
+            let lower_size = i32::try_from(lower_v.len()).expect("value out of i32 range");
 
             if upper_size > lower_size {
                 let mut epsilons = String::new();
@@ -1031,7 +1029,7 @@ impl LexcCompiler {
             i += 1;
         }
 
-        let w = double_to_float(weight);
+        let w = weight as f32;
         self.stringsTrie_.disjunct_path(&new_vector, w);
         self
     }
@@ -1124,7 +1122,7 @@ impl LexcCompiler {
             &format!("{}{}{}", joiner_enc, regex_key, encoded_cont),
             false,
         );
-        let w = double_to_float(weight);
+        let w = weight as f32;
         self.stringsTrie_.disjunct_path(&new_vector, w);
         Ok(self)
     }

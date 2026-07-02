@@ -15,10 +15,7 @@ use std::io::{BufRead, Write};
 
 use crate::harmonize_unknown_and_identity_symbols::HarmonizeUnknownAndIdentitySymbols;
 use crate::hfst_basic_transition::HfstBasicTransition;
-use crate::hfst_data_types::{
-    HfstOneLevelPath, HfstTwoLevelPath, HfstTwoLevelPaths, StringVector, double_to_float,
-    size_t_to_int, size_t_to_uint,
-};
+use crate::hfst_data_types::{HfstOneLevelPath, HfstTwoLevelPath, HfstTwoLevelPaths, StringVector};
 use crate::hfst_epsilon_handler::HfstEpsilonHandler;
 use crate::hfst_flag_diacritics::FdOperation;
 use crate::hfst_lookup_flag_diacritics::FlagDiacriticTable;
@@ -2288,11 +2285,11 @@ impl HfstBasicTransducer {
         let mut weight: f32 = 0.0;
         if n == 2 {
             // a final state line with weight
-            weight = double_to_float(atof(a(1)));
+            weight = atof(a(1)) as f32;
         }
         if n == 5 {
             // a transition line with weight
-            weight = double_to_float(atof(a(4)));
+            weight = atof(a(4)) as f32;
         }
         if (weight < 0.0) && warn_negs {
             tracing::warn!("Negative weight {:.6} found :-(", weight);
@@ -2900,7 +2897,7 @@ impl HfstBasicTransducer {
         // number_substitutions[from_symbol] = to_symbol
         let mut number_substitutions: Vec<u32> = Vec::new();
         let st: usize = self.coder.get_max_number() as usize + number_substitutions.len() + 1;
-        let no_substitution = size_t_to_uint(st);
+        let no_substitution = u32::try_from(st).expect("value out of u32 range");
 
         number_substitutions.resize((self.coder.get_max_number() + 1) as usize, no_substitution);
         for (first, second) in substitutions.iter() {
@@ -3171,7 +3168,7 @@ impl HfstBasicTransducer {
                     0.0,
                     self.coder_mut(),
                 );
-                let source_state = size_t_to_uint(state);
+                let source_state = u32::try_from(state).expect("value out of u32 range");
                 self.add_transition(source_state, &new_transition, true);
                 self.add_transition(new_state, &marker_transition, true);
             }
@@ -3681,7 +3678,7 @@ impl HfstBasicTransducer {
             return Vec::new();
         }
         let st = st - 1;
-        let biggest_state_number = size_t_to_uint(st);
+        let biggest_state_number = u32::try_from(st).expect("value out of u32 range");
         top_sort.set_biggest_state_number(biggest_state_number);
 
         top_sort.set_state_at_distance(0, current_distance, dist == SortDistance::MaximumDistance);
@@ -3727,7 +3724,7 @@ impl HfstBasicTransducer {
         let states_sorted = self.topsort(SortDistance::MaximumDistance);
         let st = states_sorted.len();
         if st > 0 {
-            for distance in (0..=size_t_to_int(st - 1)).rev() {
+            for distance in (0..=i32::try_from(st - 1).expect("value out of i32 range")).rev() {
                 let states = &states_sorted[distance as usize];
                 for state in states.iter() {
                     if self.is_final_state(*state) {
@@ -3749,7 +3746,7 @@ impl HfstBasicTransducer {
         let states_sorted = self.topsort(SortDistance::MinimumDistance);
         let st = states_sorted.len();
         if st > 0 {
-            for distance in (0..=size_t_to_int(st - 1)).rev() {
+            for distance in (0..=i32::try_from(st - 1).expect("value out of i32 range")).rev() {
                 let states = &states_sorted[distance as usize];
                 for state in states.iter() {
                     if self.is_final_state(*state) {

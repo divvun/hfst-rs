@@ -23,7 +23,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::hfst_data_types::size_t_to_uint;
 use crate::transducer::{
     INFINITE_WEIGHT, NO_TABLE_INDEX, SymbolNumber, TRANSITION_TARGET_TABLE_START, TransducerTable,
     TransitionTableIndex, TransitionW, Weight,
@@ -123,7 +122,7 @@ impl StatePlaceholder {
     pub fn number_of_transitions(&self) -> u32 {
         self.transition_placeholders
             .iter()
-            .map(|it| size_t_to_uint(it.len()))
+            .map(|it| u32::try_from(it.len()).expect("value out of u32 range"))
             .sum()
     }
 
@@ -144,7 +143,7 @@ impl StatePlaceholder {
             self.symbol_to_transition_placeholder_v.push(u32::MAX);
         }
         self.symbol_to_transition_placeholder_v[input as usize] =
-            size_t_to_uint(self.transition_placeholders.len());
+            u32::try_from(self.transition_placeholders.len()).expect("value out of u32 range");
         self.transition_placeholders.push(Vec::new());
         self.inputs += 1;
         if self.ty != IndexingType::nonsimple {
@@ -202,7 +201,8 @@ impl StatePlaceholder {
         let mut offset: u32 = 0;
         if self.input_present(0) {
             // if there are epsilons
-            offset = size_t_to_uint(self.get_transition_placeholders(0).len());
+            offset = u32::try_from(self.get_transition_placeholders(0).len())
+                .expect("value out of u32 range");
         }
         for flag_it in flag_symbols.iter() {
             if self.input_present(*flag_it) {
@@ -210,7 +210,8 @@ impl StatePlaceholder {
                     // Flags go to 0 (even if there's no epsilon)
                     return Ok(0);
                 }
-                offset += size_t_to_uint(self.get_transition_placeholders(*flag_it).len());
+                offset += u32::try_from(self.get_transition_placeholders(*flag_it).len())
+                    .expect("value out of u32 range");
             }
         }
         for i in 1..self.symbol_to_transition_placeholder_v.len() {
@@ -223,7 +224,8 @@ impl StatePlaceholder {
                 if symbol == i {
                     return Ok(offset);
                 }
-                offset += size_t_to_uint(self.get_transition_placeholders(i).len());
+                offset += u32::try_from(self.get_transition_placeholders(i).len())
+                    .expect("value out of u32 range");
             }
         }
         let message = String::from(
@@ -277,7 +279,8 @@ impl IndexPlaceholders {
         while position >= self.indices.len() as u32 {
             self.indices.push(NO_TABLE_INDEX);
         }
-        self.indices[position as usize] = size_t_to_uint(self.targets.len());
+        self.indices[position as usize] =
+            u32::try_from(self.targets.len()).expect("value out of u32 range");
         self.targets.push((target, sym));
     }
 

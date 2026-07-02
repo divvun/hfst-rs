@@ -19,7 +19,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::hfst_data_types::{StringVector, size_t_to_uint};
+use crate::hfst_data_types::StringVector;
 
 // 'fst::StdArc::StateId', i.e. 'unsigned int'. (Gated by 'HAVE_OPENFST'; the
 // OpenFST converters that use it are deferred to the rustfst backend.)
@@ -79,7 +79,8 @@ impl FormatCoder {
         match self.string_to_number.get(str) {
             None => {
                 self.number_to_string.push(str.to_string());
-                let new_index = size_t_to_uint(self.number_to_string.len() - 1);
+                let new_index =
+                    u32::try_from(self.number_to_string.len() - 1).expect("value out of u32 range");
                 self.string_to_number.insert(str.to_string(), new_index);
                 new_index
             }

@@ -2958,9 +2958,10 @@ impl XfstCompiler {
         };
         if let Err(e) = result {
             if matches!(e.kind, crate::error::ErrorKind::TransducerIsCyclic) {
-                let cutoff = crate::hfst_data_types::size_t_to_uint(string_to_size_t(
+                let cutoff = u32::try_from(string_to_size_t(
                     &self.variables["print-words-cycle-cutoff"],
-                ));
+                ))
+                .expect("value out of u32 range");
                 warn!(
                     "transducer is cyclic, limiting the number of cycles to {}",
                     cutoff
@@ -3629,7 +3630,7 @@ impl XfstCompiler {
 
         if !self.xre.define_function(
             &name,
-            crate::hfst_data_types::size_t_to_uint(arguments.len()),
+            u32::try_from(arguments.len()).expect("value out of u32 range"),
             &xre_converted,
         ) {
             // XRE
@@ -3650,7 +3651,7 @@ impl XfstCompiler {
 
         self.function_arguments.insert(
             name.clone(),
-            crate::hfst_data_types::size_t_to_uint(arguments.len()),
+            u32::try_from(arguments.len()).expect("value out of u32 range"),
         );
         let fdef = Self::convert_argument_symbols(&arguments, xre, "", &mut self.xre, true);
         self.function_definitions.insert(name.clone(), fdef);

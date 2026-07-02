@@ -24,12 +24,11 @@
 //!   returns '&HfstAlphabet', i.e. '&BTreeSet<String> = &StringSet').
 //! * 'symbols.count(...) > 0' (count on a 'std::set', 0 or 1) -> '.contains(...)'.
 //! * 'HfstTropicalTransducerTransitionData::get_symbol(hfst::size_t_to_uint(symbol))'
-//!   -> the crate-visible 'get_symbol' plus ['crate::hfst_data_types::size_t_to_uint'].
+//!   -> the crate-visible 'get_symbol' plus an inline 'u32::try_from' narrowing.
 
 use crate::compose_intersect_fst::{ComposeIntersectFst, SymbolSet, TransitionSet};
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_data_types::implementations::HfstState;
-use crate::hfst_data_types::size_t_to_uint;
 use crate::hfst_symbol_defs::StringSet;
 
 // [spec:hfst:def:compose-intersect-rule.hfst.implementations.compose-intersect-rule]
@@ -73,9 +72,12 @@ impl ComposeIntersectRule {
     pub fn known_symbol(&self, symbol: usize) -> crate::error::Result<bool> {
         // 'symbol' is a number in the shared (lexicon/canonical) coding, which the
         // rule has been reindexed onto, so its own coder resolves it.
-        Ok(self
-            .symbols
-            .contains(&self.base.coder().get_symbol(size_t_to_uint(symbol))?))
+        Ok(self.symbols.contains(
+            &self
+                .base
+                .coder()
+                .get_symbol(u32::try_from(symbol).expect("value out of u32 range"))?,
+        ))
     }
 
     // -- inherited (public) interface of ComposeIntersectFst, re-exposed by

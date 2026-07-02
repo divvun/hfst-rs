@@ -19,7 +19,6 @@ use crate::convert::{
 use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
-use crate::hfst_data_types::{double_to_float, size_t_to_uint, size_t_to_ushort};
 use crate::hfst_flag_diacritics::FdOperation;
 use crate::hfst_symbol_defs::{internal_epsilon, is_epsilon};
 use crate::pmatch::PmatchAlphabet;
@@ -52,7 +51,7 @@ pub fn hfst_ol_to_hfst_basic_add_state(
             basic.add_state(new_state);
             // dynamic_cast to TransitionWIndex is the trait's virtual final_weight()
             let w = if weighted {
-                double_to_float(transition_index.final_weight() as f64)
+                transition_index.final_weight()
             } else {
                 0.0f32
             };
@@ -65,7 +64,7 @@ pub fn hfst_ol_to_hfst_basic_add_state(
         if transition.is_final() {
             basic.add_state(new_state);
             let w = if weighted {
-                double_to_float(transition.get_weight() as f64)
+                transition.get_weight()
             } else {
                 0.0f32
             };
@@ -152,14 +151,17 @@ pub fn get_states_and_symbols(
         // 1) epsilon
         string_symbol_map.insert(
             internal_epsilon.to_string(),
-            size_t_to_ushort(symbol_table.len()),
+            u16::try_from(symbol_table.len()).expect("value out of u16 range"),
         );
         symbol_table.push(internal_epsilon.to_string());
 
         // 2) input symbols
         for it in input_symbols.iter() {
             if !is_epsilon(it) {
-                string_symbol_map.insert(it.clone(), size_t_to_ushort(symbol_table.len()));
+                string_symbol_map.insert(
+                    it.clone(),
+                    u16::try_from(symbol_table.len()).expect("value out of u16 range"),
+                );
                 symbol_table.push(it.clone());
                 *seen_input_symbols += 1;
             }
@@ -168,7 +170,10 @@ pub fn get_states_and_symbols(
         // 3) Flag diacritics
         for it in flag_diacritics.iter() {
             if !is_epsilon(it) {
-                string_symbol_map.insert(it.clone(), size_t_to_ushort(symbol_table.len()));
+                string_symbol_map.insert(
+                    it.clone(),
+                    u16::try_from(symbol_table.len()).expect("value out of u16 range"),
+                );
                 flag_symbols.insert(symbol_table.len() as u16);
                 symbol_table.push(it.clone());
                 // don't increment seen_input_symbols - we use it for indexing
@@ -178,7 +183,10 @@ pub fn get_states_and_symbols(
         // 4) non-input symbols
         for it in other_symbols.iter() {
             if !is_epsilon(it) && !input_symbols.contains(it) && !flag_diacritics.contains(it) {
-                string_symbol_map.insert(it.clone(), size_t_to_ushort(symbol_table.len()));
+                string_symbol_map.insert(
+                    it.clone(),
+                    u16::try_from(symbol_table.len()).expect("value out of u16 range"),
+                );
                 symbol_table.push(it.clone());
             }
         }
@@ -414,7 +422,8 @@ impl ConversionFunctions {
 
         let mut greatest_index: u32 = 0;
         if !used_indices.indices.is_empty() {
-            greatest_index = size_t_to_uint(used_indices.indices.len() - 1);
+            greatest_index =
+                u32::try_from(used_indices.indices.len() - 1).expect("value out of u32 range");
         }
 
         for i in 0..=greatest_index {
@@ -463,7 +472,7 @@ impl ConversionFunctions {
         let alphabet = TransducerAlphabet::new_symboltable(&symbol_table);
         let header = TransducerHeader::new_sizes(
             seen_input_symbols,
-            size_t_to_ushort(symbol_table.len()),
+            u16::try_from(symbol_table.len()).expect("value out of u16 range"),
             windex_table.size(),
             wtransition_table.size(),
             weighted,
