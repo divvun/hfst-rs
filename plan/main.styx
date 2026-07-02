@@ -1934,4 +1934,44 @@ children (
             }
         )
     }
+
+    {
+        id unify-cli
+        title "Endgame CLI (operator, 2026-07-02): a single `hfst` binary. Modern clap subcommand interface (`hfst compose ...`) + argv[0] symlink dispatch so the original hfst-* binary names keep working byte-identically + the original getopt-style flags accepted in both invocation modes (subcommand args route through each tool's existing getopt parse_options, so old flags parse exactly; clap owns only the outer layer: subcommand selection, top-level help/version, discoverable per-tool about strings)."
+        children (
+            {
+                id tool-runs
+                title "Convert all 59 bin targets into hfst-cli library modules (crates/hfst-cli/src/tools/) each exposing pub fn run(args: Vec&lt;String&gt;) -&gt; i32 (the former real_main taking argv instead of env::args); delete the [[bin]] files; keep each tool's getopt parse_options/print_usage verbatim (program_name derived from args[0]). One-tool-per-process semantics unchanged (thread-local globals reset not needed)."
+                log (
+                    {
+                        at 2026-07-02T20:59:22.287773Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-02T21:14:29.187513Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id multiplex
+                title "The single `hfst` binary: main() inspects argv[0] basename — a known hfst-* tool name (symlink/hardlink/copy) dispatches straight into that tool's run() with the ORIGINAL argv (byte-identical output incl. program-name prefixes); otherwise clap takes over: subcommand = tool name minus the hfst- prefix, raw trailing args forwarded to run() with args[0] set so program_name renders as \"hfst &lt;sub&gt;\"; `hfst --help` lists all subcommands with one-line about strings; `hfst &lt;sub&gt; --help` forwards to the tool's own print_usage."
+                deps (tool-runs)
+                log (
+                    {
+                        at 2026-07-02T21:14:32.53336Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
+            }
+        )
+    }
 )

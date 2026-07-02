@@ -20,7 +20,8 @@ fn optimized_lookup_matches_golden() {
     let fixture = format!("{dir}/tests/fixtures/lookup.hfstol");
     let golden = include_str!("fixtures/lookup.golden");
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_hfst-optimized-lookup"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_hfst"))
+        .arg("optimized-lookup")
         .arg(&fixture)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

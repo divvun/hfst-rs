@@ -10,7 +10,9 @@
 //! bug-for-bug translation, getopt and all. The shared command-line
 //! infrastructure (hfst-getopt, hfst-commandline, hfst-program-options,
 //! hfst-tool-metadata, hfst-file-to-mem) is ported into the modules below; each
-//! tool's main lives in src/bin/ and drives them.
+//! tool lives as a module under src/tools/ exposing run(args) -> i32, and the
+//! single 'hfst' multiplexer binary (src/bin/hfst.rs) dispatches to them by
+//! invoked basename or subcommand.
 
 pub mod globals;
 pub mod hfst_commandline;
@@ -27,3 +29,7 @@ pub mod inc;
 // tools, lifted out of the per-tool verbatim copies and parameterized by an
 // op descriptor.
 pub mod binary_ops;
+
+// The tools themselves, one module per former standalone binary, plus the
+// TOOLS dispatch table the 'hfst' multiplexer binary drives.
+pub mod tools;

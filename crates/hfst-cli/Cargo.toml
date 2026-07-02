@@ -6,9 +6,11 @@ license.workspace = true
 
 # The HFST command-line tools (tools/src/*.cc), ported faithfully (getopt and
 # all). Shared infra (hfst-getopt, hfst-commandline, hfst-program-options,
-# hfst-tool-metadata) lives in the library; each hfst-<verb> tool is a [[bin]]
-# added as it is ported.
+# hfst-tool-metadata) lives in the library; each hfst-<verb> tool is a module
+# under src/tools/, and the single 'hfst' multiplexer binary dispatches to
+# them by invoked basename (symlink named hfst-<verb>) or subcommand.
 [dependencies]
+clap = "4.6.1"
 hfst = { workspace = true }
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
