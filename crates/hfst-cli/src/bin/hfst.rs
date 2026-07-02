@@ -172,12 +172,125 @@ fn invoked_basename(argv0: &str) -> String {
     }
 }
 
+/// `hfst install-symlinks [DIR] [--force]`: create an `hfst-<tool>` symlink
+/// for every legacy tool name, pointing at this binary. DIR defaults to the
+/// directory containing the running executable; links in that directory are
+/// made relative (to the binary's file name) so the installation stays
+/// relocatable.
+fn install_symlinks(args: &[String]) -> i32 {
+    let mut force = false;
+    let mut dir: Option<std::path::PathBuf> = None;
+    for a in args {
+        match a.as_str() {
+            "-f" | "--force" => force = true,
+            "-h" | "--help" => {
+                println!(
+                    "Usage: hfst install-symlinks [OPTIONS...] [DIR]\n\
+                     Create hfst-<tool> symlinks for all legacy tool names\n\n\
+                     \x20 -f, --force  Replace existing files\n\n\
+                     DIR defaults to the directory containing the hfst binary."
+                );
+                return 0;
+            }
+            other if !other.starts_with('-') && dir.is_none() => dir = Some(other.into()),
+            other => {
+                eprintln!("hfst install-symlinks: unrecognized argument '{other}'");
+                return 1;
+            }
+        }
+    }
+
+    let exe = match std::env::current_exe().and_then(|p| p.canonicalize()) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("hfst install-symlinks: cannot locate the hfst binary: {e}");
+            return 1;
+        }
+    };
+    let exe_dir = exe
+        .parent()
+        .expect("a canonicalized executable path has a parent")
+        .to_path_buf();
+    let target_dir = match dir {
+        Some(d) => match d.canonicalize() {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("hfst install-symlinks: {}: {e}", d.display());
+                return 1;
+            }
+        },
+        None => exe_dir.clone(),
+    };
+    // Same directory as the binary: link to the bare file name so the whole
+    // directory can be moved; elsewhere: link to the absolute binary path.
+    let link_target: std::path::PathBuf = if target_dir == exe_dir {
+        exe.file_name()
+            .expect("a canonicalized executable path has a file name")
+            .into()
+    } else {
+        exe.clone()
+    };
+
+    let (mut created, mut skipped) = (0u32, 0u32);
+    for (tool, _) in TOOLS {
+        let link = target_dir.join(tool);
+        if std::fs::symlink_metadata(&link).is_ok() {
+            if force {
+                if let Err(e) = std::fs::remove_file(&link) {
+                    eprintln!(
+                        "hfst install-symlinks: cannot replace {}: {e}",
+                        link.display()
+                    );
+                    return 1;
+                }
+            } else {
+                skipped += 1;
+                continue;
+            }
+        }
+        #[cfg(unix)]
+        let res = std::os::unix::fs::symlink(&link_target, &link);
+        #[cfg(not(unix))]
+        let res = std::fs::hard_link(&exe, &link);
+        if let Err(e) = res {
+            eprintln!(
+                "hfst install-symlinks: cannot create {}: {e}",
+                link.display()
+            );
+            return 1;
+        }
+        created += 1;
+    }
+    println!(
+        "{created} link(s) created in {}{}",
+        target_dir.display(),
+        if skipped > 0 {
+            format!(", {skipped} existing skipped (use --force to replace)")
+        } else {
+            String::new()
+        }
+    );
+    0
+}
+
 fn build_cli() -> Command {
     let mut cmd = Command::new("hfst")
         .version(env!("CARGO_PKG_VERSION"))
         .about("HFST command-line tools: one binary, one subcommand per tool")
         .subcommand_required(true)
-        .arg_required_else_help(true);
+        .arg_required_else_help(true)
+        .subcommand(
+            Command::new("install-symlinks")
+                .about("Create hfst-<tool> symlinks for all legacy tool names")
+                .disable_help_flag(true)
+                .arg(
+                    Arg::new("args")
+                        .num_args(0..)
+                        .allow_hyphen_values(true)
+                        .trailing_var_arg(true)
+                        .help("[DIR] [--force]"),
+                ),
+        );
     for (tool, _) in TOOLS {
         let sub = tool
             .strip_prefix("hfst-")
@@ -216,6 +329,9 @@ fn main() {
     // are forwarded raw (clap never sees them), so the old getopt flags pass
     // through untouched.
     if let Some(sub) = argv.get(1) {
+        if sub == "install-symlinks" {
+            std::process::exit(install_symlinks(&argv[2..]));
+        }
         if !sub.starts_with('-') {
             if let Some(run) = find_tool(&format!("hfst-{sub}")) {
                 let mut tool_argv = Vec::with_capacity(argv.len() - 1);
