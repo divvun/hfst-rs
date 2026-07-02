@@ -9,16 +9,21 @@
 //! check-params-unary.h); it mirrors hfst-invert's option-parsing skeleton and
 //! adds the tool-specific options.
 
+use hfst::error::ErrorKind;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::{
-    HfstOneLevelPath, HfstOneLevelPaths, HfstTwoLevelPaths, ImplementationType, StringPairVector,
-    StringVector,
+    HfstOneLevelPath, HfstOneLevelPaths, HfstTwoLevelPaths, ImplementationType, StringVector,
 };
 use hfst::hfst_flag_diacritics::FdOperation;
 use hfst::hfst_input_stream::HfstInputStream;
+use hfst::hfst_lookup_format::{
+    self as lookup_format, CascadeStep, CascadeVariant, LookupFormats, LookupInputFormat,
+    LookupOutputFormat, LookupRenderOptions, LookupStats, apply_cascade, is_possible_to_get_result,
+    parse_lookup_line, print_lookups,
+};
 use hfst::hfst_strings2_fst_tokenizer::HfstStrings2FstTokenizer;
 use hfst::hfst_symbol_defs::StringSet;
-use hfst::hfst_symbol_defs::{internal_identity, internal_unknown, is_epsilon};
+use hfst::hfst_symbol_defs::{internal_identity, internal_unknown};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -61,30 +66,11 @@ static mut MAX_NUMBER: isize = -1;
 const DEFAULT_MAX_NUMBER: isize = 5; // the C++ static MAX_NUMBER = 5
 static mut BEAM: f32 = -1.0;
 
-const CASCADE_UNION: i32 = 1;
-const CASCADE_PRIORITY_UNION: i32 = 2;
-const CASCADE_COMPOSITION: i32 = 3;
-static mut CASCADE: i32 = CASCADE_UNION;
+static mut CASCADE: CascadeVariant = CascadeVariant::Union;
 
 // symbols actually seen in (non-ol) transducers
 static mut CASCADE_SYMBOLS_SEEN: Vec<StringSet> = Vec::new();
 static mut CASCADE_UNKNOWN_OR_IDENTITY_SEEN: Vec<bool> = Vec::new();
-
-// [spec:hfst:def:hfst-lookup.lookup-input-format]
-#[derive(Clone, Copy, PartialEq)]
-enum LookupInputFormat {
-    Utf8TokenInput,
-    SpaceSeparatedTokenInput,
-    ApertiumInput,
-}
-
-// [spec:hfst:def:hfst-lookup.lookup-output-format]
-#[derive(Clone, Copy, PartialEq)]
-enum LookupOutputFormat {
-    XeroxOutput,
-    CgOutput,
-    ApertiumOutput,
-}
 
 static mut INPUT_FORMAT: LookupInputFormat = LookupInputFormat::Utf8TokenInput;
 static mut OUTPUT_FORMAT: LookupOutputFormat = LookupOutputFormat::XeroxOutput;
@@ -100,74 +86,23 @@ static mut QUOTE_SPECIAL: bool = false;
 static mut EPSILON_FORMAT: String = String::new();
 static mut SPACE_FORMAT: String = String::new();
 
-// the formats for lookup cases go like so:
-//  BEGIN LOOKUP LOOKUP LOOKUP... END
-// for standard case of more than 0 and less than infinite results:
-static mut BEGIN_SETF: String = String::new(); // print before set of lookups
-static mut LOOKUPF: String = String::new(); // print before each lookup
-static mut END_SETF: String = String::new(); // print for each lookup
-// when there are 0 results:
-static mut EMPTY_BEGIN_SETF: String = String::new();
-static mut EMPTY_LOOKUPF: String = String::new();
-static mut EMPTY_END_SETF: String = String::new();
-// when there are 0 results and token is unrecognizable by analyser:
-static mut UNKNOWN_BEGIN_SETF: String = String::new();
-static mut UNKNOWN_LOOKUPF: String = String::new();
-static mut UNKNOWN_END_SETF: String = String::new();
-// when there are infinite results:
-static mut INFINITE_BEGIN_SETF: String = String::new();
-static mut INFINITE_LOOKUPF: String = String::new();
-static mut INFINITE_END_SETF: String = String::new();
+// the output templates (begin/lookup/end triples for the regular, empty,
+// unknown and infinite cases), chosen from OUTPUT_FORMAT in parse_options.
+static mut FORMATS: Option<LookupFormats> = None;
+
+fn formats() -> &'static LookupFormats {
+    unsafe {
+        (*std::ptr::addr_of!(FORMATS))
+            .as_ref()
+            .expect("output format templates are initialised in parse_options")
+    }
+}
 
 static mut PRINT_STATISTICS: bool = false;
 static mut SHOW_PROGRESS_BAR: bool = false;
 
-// predefined formats
-// Xerox
-const XEROX_BEGIN_SETF: &str = "";
-const XEROX_LOOKUPF: &str = "%i\t%l\t%w%n";
-const XEROX_END_SETF: &str = "%n";
-const XEROX_EMPTY_BEGIN_SETF: &str = "";
-const XEROX_EMPTY_LOOKUPF: &str = "%i\t%i+?\t%w%n";
-const XEROX_EMPTY_END_SETF: &str = "%n";
-const XEROX_UNKNOWN_BEGIN_SETF: &str = "";
-const XEROX_UNKNOWN_LOOKUPF: &str = "%i\t%i+?\t%w%n";
-const XEROX_UNKNOWN_END_SETF: &str = "%n";
-const XEROX_INFINITE_BEGIN_SETF: &str = "";
-const XEROX_INFINITE_LOOKUPF: &str = "%i\t%l\t%w%n";
-const XEROX_INFINITE_END_SETF: &str = "%i\t[...cyclic...]%n%n";
-// CG
-const CG_BEGIN_SETF: &str = "\"<%i>\"%n";
-const CG_LOOKUPF: &str = "\t\"%b\"%a\t%w%n";
-const CG_END_SETF: &str = "%n";
-const CG_EMPTY_BEGIN_SETF: &str = "\"<%i>\"%n";
-const CG_EMPTY_LOOKUPF: &str = "\t\"%i\" ?\tInf%n";
-const CG_EMPTY_END_SETF: &str = "%n";
-const CG_UNKNOWN_BEGIN_SETF: &str = "\"<%i>\"%n";
-const CG_UNKNOWN_LOOKUPF: &str = "\t\"%i\"\t ?\tInf%n";
-const CG_UNKNOWN_END_SETF: &str = "%n";
-const CG_INFINITE_BEGIN_SETF: &str = "\"<%i>\"%n";
-const CG_INFINITE_LOOKUPF: &str = "\t\"%b\"%a\t%w%n";
-const CG_INFINITE_END_SETF: &str = "\t\"%i\"...cyclic...%n%n";
-// apertium
-const APERTIUM_BEGIN_SETF: &str = "^%i";
-const APERTIUM_LOOKUPF: &str = "/%l";
-const APERTIUM_END_SETF: &str = "$%m%n";
-const APERTIUM_EMPTY_BEGIN_SETF: &str = "^%i";
-const APERTIUM_EMPTY_LOOKUPF: &str = "/*%i";
-const APERTIUM_EMPTY_END_SETF: &str = "$%m%n";
-const APERTIUM_UNKNOWN_BEGIN_SETF: &str = " ";
-const APERTIUM_UNKNOWN_LOOKUPF: &str = "%i%m";
-const APERTIUM_UNKNOWN_END_SETF: &str = " ";
-const APERTIUM_INFINITE_BEGIN_SETF: &str = "^%i";
-const APERTIUM_INFINITE_LOOKUPF: &str = "/%l";
-const APERTIUM_INFINITE_END_SETF: &str = "/...$%n";
-
 // statistic counting
-static mut INPUTS: u64 = 0;
-static mut NO_ANALYSES: u64 = 0;
-static mut ANALYSED: u64 = 0;
-static mut ANALYSES: u64 = 0;
+static mut STATS: LookupStats = LookupStats::new();
 
 // which transducer in the cascade we are handling
 static mut TRANSDUCER_NUMBER: u32 = 0;
@@ -446,11 +381,11 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                 }
                 b'C' => {
                     if optarg == "union" {
-                        CASCADE = CASCADE_UNION;
+                        CASCADE = CascadeVariant::Union;
                     } else if optarg == "priority-union" {
-                        CASCADE = CASCADE_PRIORITY_UNION;
+                        CASCADE = CascadeVariant::PriorityUnion;
                     } else if optarg == "composition" {
-                        CASCADE = CASCADE_COMPOSITION;
+                        CASCADE = CascadeVariant::Composition;
                     } else {
                         hfst_error(
                             1,
@@ -469,50 +404,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
             }
         }
 
-        match OUTPUT_FORMAT {
-            LookupOutputFormat::XeroxOutput => {
-                BEGIN_SETF = XEROX_BEGIN_SETF.to_string();
-                LOOKUPF = XEROX_LOOKUPF.to_string();
-                END_SETF = XEROX_END_SETF.to_string();
-                EMPTY_BEGIN_SETF = XEROX_EMPTY_BEGIN_SETF.to_string();
-                EMPTY_LOOKUPF = XEROX_EMPTY_LOOKUPF.to_string();
-                EMPTY_END_SETF = XEROX_EMPTY_END_SETF.to_string();
-                UNKNOWN_BEGIN_SETF = XEROX_UNKNOWN_BEGIN_SETF.to_string();
-                UNKNOWN_LOOKUPF = XEROX_UNKNOWN_LOOKUPF.to_string();
-                UNKNOWN_END_SETF = XEROX_UNKNOWN_END_SETF.to_string();
-                INFINITE_BEGIN_SETF = XEROX_INFINITE_BEGIN_SETF.to_string();
-                INFINITE_LOOKUPF = XEROX_INFINITE_LOOKUPF.to_string();
-                INFINITE_END_SETF = XEROX_INFINITE_END_SETF.to_string();
-            }
-            LookupOutputFormat::CgOutput => {
-                BEGIN_SETF = CG_BEGIN_SETF.to_string();
-                LOOKUPF = CG_LOOKUPF.to_string();
-                END_SETF = CG_END_SETF.to_string();
-                EMPTY_BEGIN_SETF = CG_EMPTY_BEGIN_SETF.to_string();
-                EMPTY_LOOKUPF = CG_EMPTY_LOOKUPF.to_string();
-                EMPTY_END_SETF = CG_EMPTY_END_SETF.to_string();
-                UNKNOWN_BEGIN_SETF = CG_UNKNOWN_BEGIN_SETF.to_string();
-                UNKNOWN_LOOKUPF = CG_UNKNOWN_LOOKUPF.to_string();
-                UNKNOWN_END_SETF = CG_UNKNOWN_END_SETF.to_string();
-                INFINITE_BEGIN_SETF = CG_INFINITE_BEGIN_SETF.to_string();
-                INFINITE_LOOKUPF = CG_INFINITE_LOOKUPF.to_string();
-                INFINITE_END_SETF = CG_INFINITE_END_SETF.to_string();
-            }
-            LookupOutputFormat::ApertiumOutput => {
-                BEGIN_SETF = APERTIUM_BEGIN_SETF.to_string();
-                LOOKUPF = APERTIUM_LOOKUPF.to_string();
-                END_SETF = APERTIUM_END_SETF.to_string();
-                EMPTY_BEGIN_SETF = APERTIUM_EMPTY_BEGIN_SETF.to_string();
-                EMPTY_LOOKUPF = APERTIUM_EMPTY_LOOKUPF.to_string();
-                EMPTY_END_SETF = APERTIUM_EMPTY_END_SETF.to_string();
-                UNKNOWN_BEGIN_SETF = APERTIUM_UNKNOWN_BEGIN_SETF.to_string();
-                UNKNOWN_LOOKUPF = APERTIUM_UNKNOWN_LOOKUPF.to_string();
-                UNKNOWN_END_SETF = APERTIUM_UNKNOWN_END_SETF.to_string();
-                INFINITE_BEGIN_SETF = APERTIUM_INFINITE_BEGIN_SETF.to_string();
-                INFINITE_LOOKUPF = APERTIUM_INFINITE_LOOKUPF.to_string();
-                INFINITE_END_SETF = APERTIUM_INFINITE_END_SETF.to_string();
-            }
-        }
+        FORMATS = Some(LookupFormats::for_output_format(OUTPUT_FORMAT));
 
         if !LOOKUP_GIVEN {
             *lookup_reader() = Some(Box::new(std::io::BufReader::new(std::io::stdin())));
@@ -534,290 +426,25 @@ unsafe fn print_prompt() {
     }
 }
 
-// [spec:hfst:def:hfst-lookup.lookup-printf-fn]
-// [spec:hfst:sem:hfst-lookup.lookup-printf-fn]
-unsafe fn print_lookup_template(
-    format: &str,
-    input: Option<&HfstOneLevelPath>,
-    result: Option<&HfstOneLevelPath>,
-    markup: Option<&str>,
-    ofile: &mut dyn Write,
-) -> i32 {
+// The renderer knobs for the library %-template engine, snapshotted from the
+// tool's option globals.
+unsafe fn render_opts() -> LookupRenderOptions {
     unsafe {
-        let epsilon_format = EPSILON_FORMAT.clone();
-        let space_format = SPACE_FORMAT.clone();
-
-        // Build the lookupform string (the result side).
-        let lookupform: Option<String> = result.map(|r| {
-            let mut p = String::new();
-            let mut first = true;
-            for s in r.second.iter() {
-                if !first && PRINT_SPACE {
-                    p.push_str(&space_format);
-                }
-                if is_epsilon(s) {
-                    p.push_str(&epsilon_format);
-                } else if FdOperation::is_diacritic(s) {
-                    if SHOW_FLAGS {
-                        p.push_str(s);
-                    }
-                } else {
-                    p.push_str(s);
-                }
-                first = false;
-            }
-            p
-        });
-
-        // Build the inputform string.
-        let inputform: String = match input {
-            Some(inp) => {
-                let mut p = String::new();
-                let mut first = true;
-                for s in inp.second.iter() {
-                    if !first && PRINT_SPACE {
-                        p.push_str(&space_format);
-                    }
-                    if is_epsilon(s) {
-                        p.push_str(&epsilon_format);
-                    } else if FdOperation::is_diacritic(s) {
-                        if SHOW_FLAGS {
-                            p.push_str(s);
-                        }
-                    } else {
-                        p.push_str(s);
-                    }
-                    first = false;
-                }
-                p
-            }
-            None => String::new(),
-        };
-
-        // weight
-        let w: f32 = match result {
-            Some(r) => r.first,
-            None => f32::INFINITY,
-        };
-
-        // %i, %l, %b, %a, %m substitution sources
-        let i = inputform.clone();
-        let (l, b, a) = match &lookupform {
-            Some(lf) => {
-                let l = lf.clone();
-                // find the analysis split point (first of '+', ' ', '<', '[')
-                let split = lf
-                    .find('+')
-                    .or_else(|| lf.find(' '))
-                    .or_else(|| lf.find('<'))
-                    .or_else(|| lf.find('['))
-                    .unwrap_or(lf.len());
-                let b = lf[..split].to_string();
-                let a = lf[split..].to_string();
-                (l, b, a)
-            }
-            None => (String::new(), String::new(), String::new()),
-        };
-        let m = markup.map(|s| s.to_string()).unwrap_or_default();
-
-        // Walk the format string, substituting %-escapes.
-        let format_s = format;
-        let mut res = String::new();
-        let mut percent = false;
-        for ch in format_s.chars() {
-            if percent {
-                match ch {
-                    'b' => res.push_str(&b),
-                    'l' => res.push_str(&l),
-                    'i' => res.push_str(&i),
-                    'a' => res.push_str(&a),
-                    'm' => res.push_str(&m),
-                    'n' => res.push('\n'),
-                    'w' => {
-                        // On non-MSC, the C++ never prints "inf" (the test is
-                        // 'if (false)'), always uses %f.
-                        res.push_str(&format!("{:.6}", w));
-                    }
-                    other => {
-                        // unknown format, retain % as well
-                        res.push('%');
-                        res.push(other);
-                    }
-                }
-                percent = false;
-            } else if ch == '%' {
-                percent = true;
-            } else {
-                res.push(ch);
-            }
+        LookupRenderOptions {
+            epsilon_format: EPSILON_FORMAT.clone(),
+            space_format: SPACE_FORMAT.clone(),
+            print_space: PRINT_SPACE,
+            show_flags: SHOW_FLAGS,
+            quote_special: QUOTE_SPECIAL,
+            // hfst-lookup puts an unsplittable lookup form in %b
+            unsplit_to_base: true,
+            beam: BEAM,
         }
-
-        let printed = if !QUOTE_SPECIAL {
-            res
-        } else {
-            get_print_format(&res)
-        };
-        let _ = ofile.write_all(printed.as_bytes());
-        printed.len() as i32
     }
 }
 
-// [spec:hfst:def:hfst-lookup.string-to-utf8-fn]
-// [spec:hfst:sem:hfst-lookup.string-to-utf8-fn]
-unsafe fn string_to_utf8(p: &str) -> Vec<String> {
-    unsafe {
-        let mut path: Vec<String> = Vec::new();
-        let bytes = p.as_bytes();
-        let mut idx = 0usize;
-        while idx < bytes.len() {
-            let c = bytes[idx];
-            let u8len: usize = if c <= 127 {
-                1
-            } else if (c & (128 + 64 + 32 + 16)) == (128 + 64 + 32 + 16) {
-                4
-            } else if (c & (128 + 64 + 32)) == (128 + 64 + 32) {
-                3
-            } else if (c & (128 + 64)) == (128 + 64) {
-                2
-            } else {
-                hfst_error_at_line(
-                    1,
-                    0,
-                    &globals::input_filename(),
-                    LINEN as u32,
-                    &format!("{} not valid UTF-8\n", &p[idx..]),
-                );
-                1
-            };
-            let end = (idx + u8len).min(bytes.len());
-            path.push(String::from_utf8_lossy(&bytes[idx..end]).into_owned());
-            idx += u8len;
-        }
-        path
-    }
-}
-
-/* Add a '\' in front of ':', ' ' and '\'. */
-// [spec:hfst:def:hfst-lookup.escape-special-characters-fn]
-// [spec:hfst:sem:hfst-lookup.escape-special-characters-fn]
-fn escape_special_characters(s: &str) -> String {
-    let mut retval = String::new();
-    for ch in s.chars() {
-        if ch == ':' || ch == '\\' || ch == ' ' {
-            retval.push('\\');
-        }
-        retval.push(ch);
-    }
-    retval
-}
-
-// [spec:hfst:def:hfst-lookup.line-to-lookup-path-fn]
-// [spec:hfst:sem:hfst-lookup.line-to-lookup-path-fn]
-unsafe fn line_to_lookup_path(
-    s: &mut String,
-    tok: &HfstStrings2FstTokenizer,
-    markup: &mut String,
-    outside_sigma: &mut bool,
-    optimized_lookup: bool,
-) -> hfst::error::Result<HfstOneLevelPath> {
-    unsafe {
-        let mut rv = HfstOneLevelPath {
-            first: 0.0,
-            second: Vec::new(),
-        };
-        *outside_sigma = false;
-        INPUTS += 1;
-        match INPUT_FORMAT {
-            LookupInputFormat::SpaceSeparatedTokenInput => {
-                let escaped = escape_special_characters(s);
-                let spv: StringPairVector = tok.tokenize_string_pair(&escaped, true)?;
-                for it in spv.iter() {
-                    rv.second.push(it.0.clone());
-                }
-            }
-            LookupInputFormat::Utf8TokenInput => {
-                if optimized_lookup {
-                    rv.second.push(s.clone());
-                } else {
-                    let escaped = escape_special_characters(s);
-                    let spv: StringPairVector = tok.tokenize_string_pair(&escaped, false)?;
-                    for it in spv.iter() {
-                        // todo: check if symbol is known to transducer
-                        rv.second.push(it.0.clone());
-                    }
-                }
-            }
-            LookupInputFormat::ApertiumInput => {
-                let mut real_s = String::new();
-                let mut m = String::new();
-                let mut inbr = false;
-                let chars: Vec<char> = s.chars().collect();
-                let mut p = 0usize;
-                while p < chars.len() {
-                    let ch = chars[p];
-                    if inbr {
-                        if ch == ']' {
-                            m.push(ch);
-                            inbr = false;
-                        } else if ch == '\\' && p + 1 < chars.len() && chars[p + 1] == ']' {
-                            p += 1;
-                            m.push(chars[p]);
-                        } else {
-                            m.push(ch);
-                        }
-                    } else if ch == '[' {
-                        m.push(ch);
-                        inbr = true;
-                    } else if ch == ']' {
-                        m.push(ch);
-                        p += 1;
-                        continue;
-                    } else if ch == '\\' {
-                        p += 1;
-                        if p < chars.len() {
-                            real_s.push(chars[p]);
-                        }
-                    } else {
-                        real_s.push(ch);
-                    }
-                    p += 1;
-                }
-                let path = string_to_utf8(&real_s);
-                *s = real_s;
-                *markup = m;
-                rv.second = path;
-            }
-        }
-        Ok(rv)
-    }
-}
-
-/* Replace all strings str1 in symbol with str2. */
-// [spec:hfst:def:hfst-lookup.replace-all-fn]
-// [spec:hfst:sem:hfst-lookup.replace-all-fn]
-fn replace_all(symbol: String, str1: &str, str2: &str) -> String {
-    if str1.is_empty() {
-        return symbol;
-    }
-    symbol.replace(str1, str2)
-}
-
-// [spec:hfst:def:hfst-lookup.get-print-format-fn]
-// [spec:hfst:sem:hfst-lookup.get-print-format-fn]
 unsafe fn get_print_format(s: &str) -> String {
-    unsafe {
-        if is_epsilon(s) {
-            return EPSILON_FORMAT.clone();
-        }
-        if QUOTE_SPECIAL {
-            return replace_all(
-                replace_all(replace_all(s.to_string(), "\\", "\\\\"), ":", "\\:"),
-                " ",
-                "\\ ",
-            );
-        }
-        s.to_string()
-    }
+    unsafe { lookup_format::get_print_format(s, &EPSILON_FORMAT, QUOTE_SPECIAL) }
 }
 
 // [spec:hfst:def:hfst-lookup.print-lookup-string-fn]
@@ -840,24 +467,6 @@ unsafe fn get_lookup_string(s: &StringVector) -> String {
         }
         retval
     }
-}
-
-// [spec:hfst:def:hfst-lookup.is-possible-to-get-result-fn]
-// [spec:hfst:sem:hfst-lookup.is-possible-to-get-result-fn]
-fn is_possible_to_get_result(
-    s: &HfstOneLevelPath,
-    symbols_seen: &StringSet,
-    unknown_or_identity_seen: bool,
-) -> bool {
-    if unknown_or_identity_seen {
-        return true;
-    }
-    for it in s.second.iter() {
-        if !symbols_seen.contains(it) {
-            return false;
-        }
-    }
-    true
 }
 
 // [spec:hfst:def:hfst-lookup.lookup-fd-and-print-fn]
@@ -1135,7 +744,8 @@ unsafe fn lookup_simple_basic(
     }
 }
 
-// HfstTransducer (optimized-lookup) cascade variant.
+// HfstTransducer (optimized-lookup) cascade variant: the library cascade
+// engine driving this tool's optimized-lookup single-transducer lookup.
 unsafe fn lookup_cascading_ol(
     s: &HfstOneLevelPath,
     cascade: &[HfstTransducer],
@@ -1143,87 +753,51 @@ unsafe fn lookup_cascading_ol(
     out: &mut dyn Write,
 ) -> HfstOneLevelPaths {
     unsafe {
-        let mut results: HfstOneLevelPaths = HfstOneLevelPaths::new();
-
-        // go through all transducers in the cascade
-        for i in 0..cascade.len() {
-            let result: HfstOneLevelPaths;
-
-            if CASCADE == CASCADE_COMPOSITION && i != 0 {
-                let mut composed: HfstOneLevelPaths = HfstOneLevelPaths::new();
-                // use previous value of 'results' as input to composition
-                let prev: Vec<HfstOneLevelPath> = results.iter().cloned().collect();
-                for it in prev.iter() {
-                    let one_result = lookup_simple_ol(
-                        it,
-                        &cascade[i],
+        let result = apply_cascade(
+            s,
+            cascade.len(),
+            CASCADE,
+            PRINT_PAIRS,
+            &mut |msg: &str| verbose_print(msg),
+            &mut |input: &HfstOneLevelPath, step: &CascadeStep, out: &mut dyn Write| {
+                if step.composed_from.is_some() {
+                    lookup_simple_ol(
+                        input,
+                        &cascade[step.index],
                         infinity,
-                        (i + 1) == cascade.len(),
+                        step.is_last,
                         false,
-                        Some(s),
+                        step.composed_from,
                         true,
-                        &mut *out,
-                    );
-                    for inner in one_result.iter() {
-                        // add the weights
-                        composed.insert(HfstOneLevelPath {
-                            first: inner.first + it.first,
-                            second: inner.second.clone(),
-                        });
-                    }
+                        out,
+                    )
+                } else {
+                    lookup_simple_ol(
+                        input,
+                        &cascade[step.index],
+                        infinity,
+                        false,
+                        false,
+                        None,
+                        false,
+                        out,
+                    )
                 }
-                // zero 'results'
-                results = HfstOneLevelPaths::new();
-
-                // cascading composition done
-                if ((i + 1) == cascade.len()) && PRINT_PAIRS {
-                    if composed.is_empty() {
-                        let mut input = String::new();
-                        for it in s.second.iter() {
-                            input += it;
-                        }
-                        let _ =
-                            out.write_all(format!("{}\t{}+?\tinf\n\n", input, input).as_bytes());
-                    } else {
-                        let _ = out.write_all(b"\n");
-                    }
-                    let _ = out.flush();
-                }
-                result = composed;
-            } else {
-                result = lookup_simple_ol(
-                    s,
-                    &cascade[i],
-                    infinity,
-                    false,
-                    false,
-                    None,
-                    false,
-                    &mut *out,
-                );
-            }
-
-            // (C++ tests 'if (infinity)' on the pointer — always true here.)
-            verbose_print(&format!("Inf results @ level {}\n", i));
-
-            for it in result.iter() {
-                results.insert(it.clone());
-            }
-
-            if CASCADE == CASCADE_PRIORITY_UNION && !results.is_empty() {
-                verbose_print(&format!(
-                    "results found @ level {}, skipping rest of transducers (--cascade=priority-union)\n",
-                    i
-                ));
-                break;
+            },
+            out,
+        );
+        match result {
+            Ok(r) => r,
+            Err(e) => {
+                hfst_error(1, 0, &format!("{e}"));
+                unreachable!()
             }
         }
-        results
     }
 }
 
-// [spec:hfst:def:hfst-lookup.lookup-cascading-fn]
-// [spec:hfst:sem:hfst-lookup.lookup-cascading-fn]
+// HfstBasicTransducer cascade variant: the library cascade engine driving this
+// tool's basic-transducer single-transducer lookup.
 unsafe fn lookup_cascading_basic(
     s: &HfstOneLevelPath,
     cascade: &[HfstBasicTransducer],
@@ -1231,148 +805,48 @@ unsafe fn lookup_cascading_basic(
     out: &mut dyn Write,
 ) -> HfstOneLevelPaths {
     unsafe {
-        let mut results: HfstOneLevelPaths = HfstOneLevelPaths::new();
-
-        // go through all transducers in the cascade
-        for i in 0..cascade.len() {
-            TRANSDUCER_NUMBER = i as u32; // needed for lookup_simple
-
-            let result: HfstOneLevelPaths;
-            if CASCADE == CASCADE_COMPOSITION && i != 0 {
-                let mut composed: HfstOneLevelPaths = HfstOneLevelPaths::new();
-                // use previous value of 'results' as input to composition
-                let prev: Vec<HfstOneLevelPath> = results.iter().cloned().collect();
-                for it in prev.iter() {
+        let result = apply_cascade(
+            s,
+            cascade.len(),
+            CASCADE,
+            PRINT_PAIRS,
+            &mut |msg: &str| verbose_print(msg),
+            &mut |input: &HfstOneLevelPath, step: &CascadeStep, out: &mut dyn Write| {
+                TRANSDUCER_NUMBER = step.index as u32; // needed for lookup_simple
+                if let Some(origin) = step.composed_from {
                     // if last transducer in cascade, print results if
                     // --print-pairs is requested
-                    let one_result = lookup_simple_basic(
-                        it,
-                        &cascade[i],
+                    lookup_simple_basic(
+                        input,
+                        &cascade[step.index],
                         infinity,
-                        (i + 1) == cascade.len(),
+                        step.is_last,
                         false,
-                        Some(s),
+                        Some(origin),
                         true,
-                        &mut *out,
-                    );
-                    for inner in one_result.iter() {
-                        // add the weights
-                        composed.insert(HfstOneLevelPath {
-                            first: inner.first + it.first,
-                            second: inner.second.clone(),
-                        });
-                    }
+                        out,
+                    )
+                } else {
+                    lookup_simple_basic(
+                        input,
+                        &cascade[step.index],
+                        infinity,
+                        CASCADE != CascadeVariant::Composition,
+                        false,
+                        None,
+                        false,
+                        out,
+                    )
                 }
-                // zero 'results'
-                results = HfstOneLevelPaths::new();
-
-                // cascading composition done
-                if ((i + 1) == cascade.len()) && PRINT_PAIRS {
-                    if composed.is_empty() {
-                        let mut input = String::new();
-                        for it in s.second.iter() {
-                            input += it;
-                        }
-                        let _ =
-                            out.write_all(format!("{}\t{}+?\tinf\n\n", input, input).as_bytes());
-                    } else {
-                        let _ = out.write_all(b"\n");
-                    }
-                    let _ = out.flush();
-                }
-                result = composed;
-            } else {
-                result = lookup_simple_basic(
-                    s,
-                    &cascade[i],
-                    infinity,
-                    CASCADE != CASCADE_COMPOSITION,
-                    false,
-                    None,
-                    false,
-                    &mut *out,
-                );
+            },
+            out,
+        );
+        match result {
+            Ok(r) => r,
+            Err(e) => {
+                hfst_error(1, 0, &format!("{e}"));
+                unreachable!()
             }
-
-            // (C++ tests 'if (infinity)' on the pointer — always true here.)
-            verbose_print(&format!("Inf results @ level {}\n", i));
-
-            for it in result.iter() {
-                results.insert(it.clone());
-            }
-
-            if CASCADE == CASCADE_PRIORITY_UNION && !results.is_empty() {
-                verbose_print(&format!(
-                    "results found @ level {}, skipping rest of transducers (--cascade=priority-union)\n",
-                    i
-                ));
-                break;
-            }
-        }
-        results
-    }
-}
-
-// limits kvs with beam
-// [spec:hfst:def:hfst-lookup.print-lookups-fn]
-// [spec:hfst:sem:hfst-lookup.print-lookups-fn]
-unsafe fn print_lookups(
-    kvs: &HfstOneLevelPaths,
-    kv: &HfstOneLevelPath,
-    markup: Option<&str>,
-    outside_sigma: bool,
-    inf: bool,
-    ofile: &mut dyn Write,
-) {
-    unsafe {
-        let mut lowest_weight: f32 = -1.0;
-
-        if outside_sigma {
-            print_lookup_template(&UNKNOWN_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
-            print_lookup_template(&UNKNOWN_LOOKUPF, Some(kv), None, markup, &mut *ofile);
-            print_lookup_template(&UNKNOWN_END_SETF, Some(kv), None, markup, &mut *ofile);
-            NO_ANALYSES += 1;
-        } else if kvs.is_empty() {
-            print_lookup_template(&EMPTY_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
-            print_lookup_template(&EMPTY_LOOKUPF, Some(kv), None, markup, &mut *ofile);
-            print_lookup_template(&EMPTY_END_SETF, Some(kv), None, markup, &mut *ofile);
-            NO_ANALYSES += 1;
-        } else if inf {
-            ANALYSED += 1;
-            print_lookup_template(&INFINITE_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
-            let mut first = true;
-            for lkv in kvs.iter() {
-                if first {
-                    lowest_weight = lkv.first;
-                }
-                first = false;
-                if BEAM < 0.0 || lkv.first <= (lowest_weight + BEAM) {
-                    print_lookup_template(
-                        &INFINITE_LOOKUPF,
-                        Some(kv),
-                        Some(lkv),
-                        markup,
-                        &mut *ofile,
-                    );
-                    ANALYSES += 1;
-                }
-            }
-            print_lookup_template(&INFINITE_END_SETF, Some(kv), None, markup, &mut *ofile);
-        } else {
-            ANALYSED += 1;
-            print_lookup_template(&BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
-            let mut first = true;
-            for lkv in kvs.iter() {
-                if first {
-                    lowest_weight = lkv.first;
-                }
-                first = false;
-                if BEAM < 0.0 || lkv.first <= (lowest_weight + BEAM) {
-                    print_lookup_template(&LOOKUPF, Some(kv), Some(lkv), markup, &mut *ofile);
-                    ANALYSES += 1;
-                }
-            }
-            print_lookup_template(&END_SETF, Some(kv), None, markup, &mut *ofile);
         }
     }
 }
@@ -1607,15 +1081,26 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             let mut unknown = false;
             let mut infinite = false;
 
-            let kv = match line_to_lookup_path(
+            STATS.inputs += 1;
+            let kv = match parse_lookup_line(
                 &mut line,
                 &input_tokenizer,
                 &mut markup,
                 &mut unknown,
                 only_optimized_lookup,
+                INPUT_FORMAT,
             ) {
                 Ok(kv) => kv,
                 Err(e) => {
+                    if e.kind == ErrorKind::IncorrectUtf8Coding {
+                        hfst_error_at_line(
+                            1,
+                            0,
+                            &globals::input_filename(),
+                            LINEN as u32,
+                            e.message.as_deref().unwrap_or(""),
+                        );
+                    }
                     hfst_error(1, 0, &format!("{e}"));
                     return 1;
                 }
@@ -1642,7 +1127,20 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
                 } else {
                     Some(markup.as_str())
                 };
-                print_lookups(&kvs, &kv, markup_opt, unknown, infinite, &mut *outstream);
+                if let Err(e) = print_lookups(
+                    &kvs,
+                    &kv,
+                    markup_opt,
+                    unknown,
+                    infinite,
+                    formats(),
+                    &render_opts(),
+                    &mut STATS,
+                    &mut *outstream,
+                ) {
+                    hfst_error(1, 0, &format!("{e}"));
+                    return 1;
+                }
                 let _ = outstream.flush();
             }
 
@@ -1654,21 +1152,10 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
         }
 
         if PRINT_STATISTICS {
-            let _ = outstream.write_all(
-                format!(
-                    "Strings\tFound\tMissing\tResults\n{}\t{}\t{}\t{}\n",
-                    INPUTS, ANALYSED, NO_ANALYSES, ANALYSES
-                )
-                .as_bytes(),
-            );
-            let _ = outstream.write_all(
-                format!(
-                    "Coverage\tAmbiguity\n{:.6}\t{:.6}\n",
-                    ANALYSED as f32 / INPUTS as f32,
-                    ANALYSES as f32 / INPUTS as f32
-                )
-                .as_bytes(),
-            );
+            if let Err(e) = STATS.write_statistics(&mut *outstream) {
+                hfst_error(1, 0, &format!("{e}"));
+                return 1;
+            }
         }
         0
     }
@@ -1703,6 +1190,7 @@ unsafe fn real_main() -> i32 {
             globals::input_filename(),
             globals::output_filename()
         ));
+        let f = formats();
         verbose_print(&format!(
             "Output formats:\n\
              \x20 regular:'{}''{}...''{}',\n\
@@ -1710,18 +1198,18 @@ unsafe fn real_main() -> i32 {
              \x20 untokenised:'{}''{}''{}',\n\
              \x20 infinite:'{}''{}''{}\n\
              \x20 epsilon: '{}', space: '{}', flags: {}\n",
-            BEGIN_SETF.clone(),
-            LOOKUPF.clone(),
-            END_SETF.clone(),
-            EMPTY_BEGIN_SETF.clone(),
-            EMPTY_LOOKUPF.clone(),
-            EMPTY_END_SETF.clone(),
-            UNKNOWN_BEGIN_SETF.clone(),
-            UNKNOWN_LOOKUPF.clone(),
-            UNKNOWN_END_SETF.clone(),
-            INFINITE_BEGIN_SETF.clone(),
-            INFINITE_LOOKUPF.clone(),
-            INFINITE_END_SETF.clone(),
+            f.begin_setf,
+            f.lookupf,
+            f.end_setf,
+            f.empty_begin_setf,
+            f.empty_lookupf,
+            f.empty_end_setf,
+            f.unknown_begin_setf,
+            f.unknown_lookupf,
+            f.unknown_end_setf,
+            f.infinite_begin_setf,
+            f.infinite_lookupf,
+            f.infinite_end_setf,
             EPSILON_FORMAT.clone(),
             SPACE_FORMAT.clone(),
             SHOW_FLAGS as i32

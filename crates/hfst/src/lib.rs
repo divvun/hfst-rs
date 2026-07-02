@@ -43,6 +43,7 @@ pub mod hfst_extract_strings;
 pub mod hfst_flag_diacritics;
 pub mod hfst_input_stream;
 pub mod hfst_lookup_flag_diacritics;
+pub mod hfst_lookup_format;
 pub mod hfst_ol_transducer;
 pub mod hfst_output_stream;
 pub mod hfst_print_dot;

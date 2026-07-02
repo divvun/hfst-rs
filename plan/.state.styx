@@ -75,4 +75,5 @@ assertions (
     {id idiom9.signatures, kind @complete, author "brendan@necessary.nu", at 2026-07-02T14:40:52.013796Z}
     {id idiom9.sentinels, kind @complete, author "brendan@necessary.nu", at 2026-07-02T17:46:58.446377Z}
     {id c-names, kind @complete, author "brendan@necessary.nu", at 2026-07-02T18:31:47.770684Z}
+    {id librarify.lookup-family, kind @complete, author "brendan@necessary.nu", at 2026-07-02T20:13:27.349829Z}
 )

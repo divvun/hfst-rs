@@ -1054,6 +1054,21 @@ children (
                 title "[Tier3] Lift lookup/flookup verbatim-shared logic into crates/hfst/src/hfst_lookup_format.rs: format_one_level_path (%-engine + %b/%a split), parse_lookup_line (spaced/text/Apertium), apply_cascade (union/priority/compose), + reusable hfst_extract_strings renderer (fst2strings); thin both lookup tools jointly with their stdin/stdout I/O"
                 priority 5
                 deps (librarify.io-foundation)
+                log (
+                    {
+                        at 2026-07-02T19:41:45.570385Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-02T20:13:27.349829Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
