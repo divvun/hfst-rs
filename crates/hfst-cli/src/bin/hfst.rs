@@ -27,6 +27,21 @@ const ABOUTS: &[(&str, &str)] = &[
         "hfst-affix-guessify",
         "Create weighted affix guesser from automaton",
     ),
+    ("hfst-lexc", "Compile lexc files into transducer (alias)"),
+    ("hfst-union", "Disjunct (union, OR) two transducers (alias)"),
+    ("hfst-minus", "Subtract (minus) two transducers (alias)"),
+    (
+        "hfst-intersect",
+        "Conjunct (intersect, AND) two transducers (alias)",
+    ),
+    (
+        "hfst-tokenise",
+        "perform matching/lookup on text streams (alias)",
+    ),
+    (
+        "hfst-optimised-lookup",
+        "Run a transducer on standard input (one word per line) and print analyses (alias)",
+    ),
     ("hfst-binary-tool", "Do things with two transducers"),
     (
         "hfst-check-alpha",
@@ -139,8 +154,16 @@ const ABOUTS: &[(&str, &str)] = &[
     ("hfst-tokenize", "perform matching/lookup on text streams"),
     ("hfst-traverse", "Walk through the transducer arc by arc"),
     (
+        "hfst-twolc",
+        "Read a twolc grammar, compile it and store it",
+    ),
+    (
         "hfst-txt2fst",
         "Convert AT&T or prolog format into a binary transducer",
+    ),
+    (
+        "hfst-xfst",
+        "Compile XFST scripts or execute XFST commands interactively",
     ),
 ];
 

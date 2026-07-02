@@ -79,4 +79,5 @@ assertions (
     {id librarify.pmatch-family, kind @complete, author "brendan@necessary.nu", at 2026-07-02T20:48:01.88415Z}
     {id tool-runs, kind @complete, author "brendan@necessary.nu", at 2026-07-02T21:14:29.187513Z}
     {id multiplex, kind @complete, author "brendan@necessary.nu", at 2026-07-02T21:14:32.53336Z}
+    {id giella-tools, kind @complete, author "brendan@necessary.nu", at 2026-07-02T22:28:58.543152Z}
 )

@@ -1972,6 +1972,26 @@ children (
                     }
                 )
             }
+
+            {
+                id giella-tools
+                title "The two tools Giella builds hard-require that were never in the 59: hfst-twolc (port tools/src/hfst-twolc/src/hfst-twolc.cc, the 229-line single-binary driver, onto crate::twolc::TwolcCompiler) and hfst-xfst (new tool per man/hfst-xfst.1 onto XfstCompiler::parse/parse_line; giella invokes `hfst-xfst -p $(MORE_VERBOSITY) $(HFST_FORMAT)` with the script on stdin). Register in TOOLS/ABOUTS so install-symlinks ships them. Acceptance: lang-sma configure passes its hfst-tool check."
+                log (
+                    {
+                        at 2026-07-02T21:52:07.617377Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-02T22:28:58.543152Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
         )
     }
 )

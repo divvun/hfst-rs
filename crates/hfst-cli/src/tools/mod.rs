@@ -62,12 +62,23 @@ pub mod summarize;
 pub mod tail;
 pub mod tokenize;
 pub mod traverse;
+pub mod twolc;
 pub mod txt2fst;
+pub mod xfst;
 
 /// Dispatch table mapping the original standalone binary names to the
-/// tools' run entry points.
+/// tools' run entry points. Alias names (the C++ suite installed several
+/// of these, plus the British spellings Giella builds use) map to the same
+/// entry points.
 pub const TOOLS: &[(&str, fn(Vec<String>) -> i32)] = &[
     ("hfst-affix-guessify", affix_guessify::run),
+    // aliases
+    ("hfst-lexc", lexc_compiler::run),
+    ("hfst-union", disjunct::run),
+    ("hfst-minus", subtract::run),
+    ("hfst-intersect", conjunct::run),
+    ("hfst-tokenise", tokenize::run),
+    ("hfst-optimised-lookup", optimized_lookup::run),
     ("hfst-binary-tool", binary_tool::run),
     ("hfst-check-alpha", check_alpha::run),
     ("hfst-compare", compare::run),
@@ -128,5 +139,7 @@ pub const TOOLS: &[(&str, fn(Vec<String>) -> i32)] = &[
     ("hfst-tail", tail::run),
     ("hfst-tokenize", tokenize::run),
     ("hfst-traverse", traverse::run),
+    ("hfst-twolc", twolc::run),
     ("hfst-txt2fst", txt2fst::run),
+    ("hfst-xfst", xfst::run),
 ];

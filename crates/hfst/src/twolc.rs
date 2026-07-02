@@ -38,12 +38,13 @@
 //! 'std::panic::panic_any' of the typed exception. Every C++
 //! '// [spec:hfst:def/sem:<id>]' annotation is carried onto its Rust site.
 //!
-//! # Deferred (record as 'unimplemented! ("deferred: ...")')
+//! # Store paths
 //!
-//! - The 'HfstOutputStream' binary store paths: 'Rule::store',
-//!   'RuleContainer::store' and the stream side of
-//!   'TwolCGrammar::compile_and_store'. No binary stream I/O yet; the driver
-//!   instead returns the assembled result transducer so a smoke can run.
+//! The 'HfstOutputStream' binary store paths ('Rule::store',
+//! 'RuleContainer::store', 'TwolCGrammar::compile_and_store_stream' and
+//! 'TwolcCompiler::compile_and_store') write the per-rule archive the C++
+//! driver emitted; 'TwolCGrammar::compile_and_store' additionally offers an
+//! in-memory flavour returning the intersection of every compiled rule.
 
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
@@ -2900,15 +2901,11 @@ impl TwolCGrammar {
         }
     }
 
-    // [spec:hfst:def:twol-c-grammar.twol-c-grammar.compile-and-store-fn]
-    // [spec:hfst:sem:twol-c-grammar.twol-c-grammar.compile-and-store-fn]
-    //
-    // C++ compiles each container, then for every original rule name builds a
-    // 'Rule(name, RuleVector)' intersecting its subcases, adds the missing
-    // diacritics freely, and stores the result. The binary store path is
-    // DEFERRED; this port instead RETURNS the assembled result transducer (the
-    // intersection of every compiled rule), so a smoke can drive the compiler.
-    pub fn compile_and_store(&mut self, cfg: &OstConfig) -> crate::error::Result<HfstTransducer> {
+    // The compile phase shared by both 'compile_and_store' flavours: compile
+    // each container, then for every original rule name build a
+    // 'Rule(name, RuleVector)' intersecting its subcases, and add the missing
+    // diacritics freely. Fills 'compiled_rule_container'.
+    fn compile_rules(&mut self, cfg: &OstConfig) -> crate::error::Result<()> {
         if !self.be_quiet {
             info!("Compiling rules.");
         }
@@ -2932,16 +2929,53 @@ impl TwolCGrammar {
         let diacritics = self.diacritics.clone();
         self.compiled_rule_container
             .add_missing_symbols_freely(cfg, &diacritics)?;
+        Ok(())
+    }
+
+    // [spec:hfst:def:twol-c-grammar.twol-c-grammar.compile-and-store-fn]
+    // [spec:hfst:sem:twol-c-grammar.twol-c-grammar.compile-and-store-fn]
+    //
+    // C++ compiles each container, then for every original rule name builds a
+    // 'Rule(name, RuleVector)' intersecting its subcases, adds the missing
+    // diacritics freely, and stores the result. This flavour RETURNS the
+    // assembled result transducer (the intersection of every compiled rule)
+    // instead of writing to a stream, so a smoke can drive the compiler;
+    // 'compile_and_store_stream' below is the 1:1 stream-store path.
+    pub fn compile_and_store(&mut self, cfg: &OstConfig) -> crate::error::Result<HfstTransducer> {
+        self.compile_rules(cfg)?;
 
         if !self.be_quiet {
             info!("Storing rules.");
         }
 
-        // DEFERRED: 'compiled_rule_container.store(out, ...)'. Instead intersect
-        // the compiled result rules into one transducer and return it as the
-        // grammar's result (the union of all rule constraints over the shared
-        // '?*' universe — intersection of the per-rule 'rule_transducer's).
+        // Intersect the compiled result rules into one transducer and return
+        // it as the grammar's result (the union of all rule constraints over
+        // the shared '?*' universe — intersection of the per-rule
+        // 'rule_transducer's).
         assemble_result_transducer(cfg, &self.compiled_rule_container)
+    }
+
+    // [spec:hfst:def:twol-c-grammar.twol-c-grammar.compile-and-store-fn]
+    // [spec:hfst:sem:twol-c-grammar.twol-c-grammar.compile-and-store-fn]
+    //
+    // The 1:1 port of the C++ 'compile_and_store(HfstOutputStream &out)' store
+    // path: compile every rule, then write ONE transducer PER RULE (named via
+    // 'Rule::store''s info-symbol/name mapping) into the binary output stream
+    // — the rule archive 'hfst-twolc' emits and 'hfst-compose-intersect'
+    // consumes.
+    pub fn compile_and_store_stream(
+        &mut self,
+        cfg: &OstConfig,
+        out: &mut crate::hfst_output_stream::HfstOutputStream,
+    ) -> crate::error::Result<()> {
+        self.compile_rules(cfg)?;
+
+        if !self.be_quiet {
+            info!("Storing rules.");
+        }
+
+        let verbose = (!self.be_quiet) && self.be_verbose;
+        self.compiled_rule_container.store(cfg, out, verbose)
     }
 }
 
@@ -3028,9 +3062,44 @@ impl TwolcCompiler {
     // intersected result transducer (the same Option contract as
     // 'XreCompiler::compile'). A parse failure yields None.
     pub fn compile(&mut self, input: &str) -> Option<HfstTransducer> {
+        let (cfg, mut grammar) = self.build_grammar(input)?;
+        let result = grammar.compile_and_store(&cfg).ok()?;
+        Some(result)
+    }
+
+    // [spec:hfst:def:twolc-compiler.hfst.twolc.twolc-compiler.compile-fn]
+    // [spec:hfst:sem:twolc-compiler.hfst.twolc.twolc-compiler.compile-fn]
+    //
+    // The stream flavour of 'compile': same parse + grammar walk, but the
+    // result is stored through 'TwolCGrammar::compile_and_store_stream' — one
+    // named transducer per rule into the binary output stream (the archive the
+    // C++ 'hfst-twolc' driver writes). A parse or compile failure yields None.
+    pub fn compile_and_store(
+        &mut self,
+        input: &str,
+        out: &mut crate::hfst_output_stream::HfstOutputStream,
+    ) -> Option<()> {
+        let (cfg, mut grammar) = self.build_grammar(input)?;
+        grammar.compile_and_store_stream(&cfg, out).ok()?;
+        Some(())
+    }
+
+    // The shared front half of both 'compile' flavours: parse the grammar
+    // source and walk the AST into a ready-to-compile 'TwolCGrammar' (plus the
+    // per-compile alphabet config). A parse failure reports its diagnostics
+    // (unless silent) and yields None, like the C++ preprocessor passes that
+    // printed to their error stream and made the driver exit.
+    fn build_grammar(&mut self, input: &str) -> Option<(OstConfig, TwolCGrammar)> {
         let file = match nfst_twolc::parse(input) {
             Ok(f) => f,
-            Err(_) => return None,
+            Err(e) => {
+                if !self.silent {
+                    for d in &e.diagnostics {
+                        error!("{}", d.message);
+                    }
+                }
+                return None;
+            }
         };
         let twolc_file = &file.value;
 
@@ -3046,9 +3115,12 @@ impl TwolcCompiler {
             self.resolve_right_conflicts,
         );
 
-        self.register_alphabet(&mut cfg, &twolc_file.alphabet);
-        self.register_diacritics(&mut cfg, &twolc_file.diacritics, &mut grammar);
+        // Sets are registered before the alphabet so the completion pass can
+        // recognise (and skip) set-name pair sides, as the htwolcpre1 lexer's
+        // '__HFST_TWOLC_SET_NAME=' marking let the C++ passes do.
         self.register_sets(&twolc_file.sets);
+        self.register_alphabet(&mut cfg, twolc_file).ok()?;
+        self.register_diacritics(&mut cfg, &twolc_file.diacritics, &mut grammar);
         self.register_definitions(&cfg, &twolc_file.definitions)
             .ok()?;
 
@@ -3056,19 +3128,159 @@ impl TwolcCompiler {
             self.drive_rule(&cfg, &rule.value, &mut grammar).ok()?;
         }
 
-        let result = grammar.compile_and_store(&cfg).ok()?;
-        Some(result)
+        Some((cfg, grammar))
     }
 
     /// Register the 'Alphabet' section: collect the declared symbol pairs and
     /// publish them to ['OtherSymbolTransducer::set_symbol_pairs'] (which also
     /// inserts the diamond:diamond pair).
-    pub fn register_alphabet(&mut self, cfg: &mut OstConfig, pairs: &[Spanned<AlphabetPair>]) {
+    pub fn register_alphabet(
+        &mut self,
+        cfg: &mut OstConfig,
+        twolc_file: &TwolcFile,
+    ) -> crate::error::Result<()> {
         let mut symbol_pairs: BTreeSet<SymbolPair> = BTreeSet::new();
-        for p in pairs {
-            symbol_pairs.insert((p.value.upper.clone(), p.value.lower.clone()));
+        for p in &twolc_file.alphabet {
+            symbol_pairs.insert((
+                normalize_symbol(&p.value.upper),
+                normalize_symbol(&p.value.lower),
+            ));
         }
+        // htwolcpre2's 'complete_alphabet()': add all explicit X:Y pairs used
+        // anywhere in the grammar (rule centers, contexts, definitions —
+        // 'where'-variables expanded first, as htwolcpre1 expanded them before
+        // pre2 ran) which are missing from the Alphabet section, plus the
+        // absolute word boundary pair.
+        self.collect_grammar_pairs(twolc_file, &mut symbol_pairs)?;
+        symbol_pairs.insert((
+            "__HFST_TWOLC_.#.".to_string(),
+            "__HFST_TWOLC_.#.".to_string(),
+        ));
         OtherSymbolTransducer::set_symbol_pairs(cfg, &symbol_pairs);
+        Ok(())
+    }
+
+    /// htwolcpre2's 'complete_alphabet()' / 'insert_alphabet_pairs()': collect
+    /// every explicit concrete 'X:Y' pair appearing anywhere in the grammar
+    /// (rule centers, rule contexts, 'except' contexts and definition bodies)
+    /// into 'pairs', so pairs used only in rules (e.g. 'e:0') complete the
+    /// Alphabet section. Rules with 'where'-variables are expanded first (as
+    /// htwolcpre1 did before the completion pass ran), so variable centers
+    /// like 'Vx:Vy' contribute their substituted pairs. One-sided pairs
+    /// ('e:', ':i' — an 'Any' side) are skipped, as the C++ token scan skipped
+    /// pairs with an internal '__HFST_TWOLC_?' side; pairs with a set-name
+    /// side are skipped like the C++ 'is_set_pair' filter skipped the marked
+    /// '__HFST_TWOLC_SET_NAME=' pairs everywhere they could be observed.
+    fn collect_grammar_pairs(
+        &mut self,
+        file: &TwolcFile,
+        pairs: &mut BTreeSet<SymbolPair>,
+    ) -> crate::error::Result<()> {
+        let empty_vvm = VariableValueMap::new();
+        for def in &file.definitions {
+            self.collect_regex_pairs(&def.value.body, &empty_vvm, pairs);
+        }
+        for rule in &file.rules {
+            for vvm in Self::variable_assignments(&rule.value)? {
+                match &rule.value.center {
+                    RuleCenter::Pair(ps) => {
+                        for p in ps {
+                            let upper = substitute_symbol(&p.upper, &vvm);
+                            let lower = substitute_symbol(&p.lower, &vvm);
+                            self.insert_grammar_pair(upper, lower, pairs);
+                        }
+                    }
+                    RuleCenter::Regex(e) => self.collect_regex_pairs(e, &vvm, pairs),
+                }
+                for ctx in rule
+                    .value
+                    .positive_contexts
+                    .iter()
+                    .chain(rule.value.negative_contexts.iter())
+                {
+                    self.collect_regex_pairs(&ctx.left, &vvm, pairs);
+                    self.collect_regex_pairs(&ctx.right, &vvm, pairs);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The per-rule variable assignments the ['RuleVariables'] odometer yields
+    /// (a single empty assignment when the rule has no 'where'-clause) — the
+    /// same expansion ['expand_rule_variables'] drives rules with.
+    fn variable_assignments(rule: &TwolcRule) -> crate::error::Result<Vec<VariableValueMap>> {
+        let rule_variables = match rule.variables.as_ref() {
+            Some(blocks) if !blocks.is_empty() => TwolcCompiler::build_rule_variables(blocks),
+            _ => RuleVariables::new(),
+        };
+        if rule_variables.empty() {
+            return Ok(vec![VariableValueMap::new()]);
+        }
+        let mut result: Vec<VariableValueMap> = Vec::new();
+        let mut it = rule_variables.begin()?;
+        let end = rule_variables.end()?;
+        while it.ne(&end) {
+            let mut vvm = VariableValueMap::new();
+            it.set_values(&mut vvm);
+            result.push(vvm);
+            it.increment();
+        }
+        Ok(result)
+    }
+
+    /// The regex walk of ['collect_grammar_pairs']: record every 'Pair' node
+    /// whose both sides are concrete symbols under the variable assignment.
+    fn collect_regex_pairs(
+        &self,
+        e: &Spanned<TwolcRegex>,
+        vvm: &VariableValueMap,
+        pairs: &mut BTreeSet<SymbolPair>,
+    ) {
+        match &e.value {
+            TwolcRegex::Pair { upper, lower } => {
+                if let (Some(u), Some(l)) = (
+                    Self::concrete_symbol(upper, vvm),
+                    Self::concrete_symbol(lower, vvm),
+                ) {
+                    self.insert_grammar_pair(u, l, pairs);
+                }
+            }
+            TwolcRegex::Group(inner) | TwolcRegex::Optional(inner) => {
+                self.collect_regex_pairs(inner, vvm, pairs);
+            }
+            TwolcRegex::Binary(_, l, r) => {
+                self.collect_regex_pairs(l, vvm, pairs);
+                self.collect_regex_pairs(r, vvm, pairs);
+            }
+            TwolcRegex::Unary(_, inner)
+            | TwolcRegex::RepeatN(inner, _)
+            | TwolcRegex::RepeatNToK(inner, _, _) => {
+                self.collect_regex_pairs(inner, vvm, pairs);
+            }
+            TwolcRegex::Symbol(_) | TwolcRegex::Epsilon | TwolcRegex::Any => {}
+        }
+    }
+
+    /// Insert one collected pair, skipping pairs with a set-name side (the
+    /// 'is_set_pair' filter).
+    fn insert_grammar_pair(&self, upper: String, lower: String, pairs: &mut BTreeSet<SymbolPair>) {
+        if self.sets.contains_key(&upper) || self.sets.contains_key(&lower) {
+            return;
+        }
+        pairs.insert((upper, lower));
+    }
+
+    /// Resolve a pair side to a concrete internal symbol under the variable
+    /// assignment, or None when the side is non-concrete ('Any' / a nested
+    /// expression).
+    fn concrete_symbol(e: &Spanned<TwolcRegex>, vvm: &VariableValueMap) -> Option<String> {
+        match &e.value {
+            TwolcRegex::Symbol(s) => Some(substitute_symbol(s, vvm)),
+            TwolcRegex::Epsilon => Some(TWOLC_EPSILON.to_string()),
+            TwolcRegex::Group(inner) => Self::concrete_symbol(inner, vvm),
+            _ => None,
+        }
     }
 
     /// Register the 'Diacritics' section: publish the diacritic list to both the
@@ -3302,6 +3514,83 @@ impl TwolcCompiler {
         OtherSymbolTransducer::get_context(cfg, &mut left, &mut right)
     }
 
+    /// The member list of set 'sym', or the singleton '[sym]' when 'sym' names
+    /// no set ('Alphabet::define_singleton_set').
+    fn set_of(&self, sym: &str) -> Vec<String> {
+        match self.sets.get(sym) {
+            Some(members) => members.iter().map(|m| normalize_symbol(m)).collect(),
+            None => vec![sym.to_string()],
+        }
+    }
+
+    // [spec:hfst:def:alphabet.alphabet.is-pair-fn]
+    // [spec:hfst:sem:alphabet.alphabet.is-pair-fn]
+    //
+    // 'Alphabet::is_pair' ('alphabet_src/Alphabet.cc'): whether the concrete
+    // 'input:output' is licensed by the (completed) alphabet.
+    fn is_pair(&self, cfg: &OstConfig, input: &str, output: &str) -> bool {
+        if input == TWOLC_UNKNOWN && output == TWOLC_UNKNOWN {
+            return true;
+        }
+        if cfg.diacritics.contains(input) && input == output {
+            return true;
+        }
+        if cfg.diacritics.contains(input) && output == TWOLC_UNKNOWN {
+            return true;
+        }
+        if input == TWOLC_UNKNOWN {
+            return cfg.output_symbols.contains(output);
+        }
+        if output == TWOLC_UNKNOWN {
+            return cfg.input_symbols.contains(input);
+        }
+        cfg.symbol_pairs
+            .contains(&(input.to_string(), output.to_string()))
+    }
+
+    // 'Alphabet::compute' ('alphabet_src/Alphabet.cc'): expand a pair whose
+    // sides may be set names into the disjunction of the matching declared
+    // alphabet pairs ('a set pair X:Y contains every declared pair x:y with
+    // x in X and y in Y'). Sides that are plain symbols act as singleton
+    // sets; an unknown ('?') side expands through 'new_pair'. An empty
+    // result reproduces the htwolcpre3 'The pair set ... is empty.'
+    // semantic error, which terminated compilation.
+    fn pair_transducer(
+        &mut self,
+        cfg: &OstConfig,
+        input: &str,
+        output: &str,
+    ) -> crate::error::Result<OtherSymbolTransducer> {
+        if cfg.diacritics.contains(input) {
+            if input != output && output != TWOLC_EPSILON && output != TWOLC_UNKNOWN {
+                warn!("Diacritic {input} in pair {input}:{output} will correspond 0.");
+            }
+            return OtherSymbolTransducer::new_pair(cfg, input, input);
+        }
+        let mut pair_transducer = OtherSymbolTransducer::new(cfg)?;
+        for x in self.set_of(input) {
+            for y in self.set_of(output) {
+                if self.is_pair(cfg, &x, &y) {
+                    let pair = OtherSymbolTransducer::new_pair(cfg, &x, &y)?;
+                    pair_transducer.disjunct(cfg, &pair)?;
+                }
+            }
+        }
+        if pair_transducer.is_empty() {
+            if input == output {
+                error!("The pair set {} is empty.", Rule::get_print_name(input));
+            } else {
+                error!(
+                    "The pair set {}:{} is empty.",
+                    Rule::get_print_name(input),
+                    Rule::get_print_name(output)
+                );
+            }
+            crate::bail!(EmptySymbolPairSet);
+        }
+        Ok(pair_transducer)
+    }
+
     /// Evaluate a ['TwolcRegex'] with no variable substitution (used by the
     /// 'Definitions' section, which is evaluated before any rule expansion).
     pub fn eval_regex(
@@ -3327,18 +3616,13 @@ impl TwolcCompiler {
             TwolcRegex::Symbol(s) => {
                 let sym = substitute_symbol(s, vvm);
                 // A symbol naming a definition expands to its transducer; a
-                // symbol naming a set expands to the disjunction of its members;
+                // symbol naming a set expands to the declared pairs of the
+                // 'sym:sym' pair set (the 'Alphabet::compute' semantics);
                 // otherwise it is a literal 'sym:sym' pair.
                 if let Some(def) = self.definitions.get(&sym) {
                     clone_ost(def)
-                } else if let Some(members) = self.sets.get(&sym).cloned() {
-                    let mut t = OtherSymbolTransducer::new(cfg)?;
-                    for m in &members {
-                        let member_sym = substitute_symbol(m, vvm);
-                        let pair = OtherSymbolTransducer::new_symbol(cfg, &member_sym)?;
-                        t.disjunct(cfg, &pair)?;
-                    }
-                    t
+                } else if self.sets.contains_key(&sym) {
+                    self.pair_transducer(cfg, &sym, &sym)?
                 } else {
                     OtherSymbolTransducer::new_symbol(cfg, &sym)?
                 }
@@ -3346,7 +3630,11 @@ impl TwolcCompiler {
             TwolcRegex::Pair { upper, lower } => {
                 let up = symbol_of(upper, vvm);
                 let lo = symbol_of(lower, vvm);
-                OtherSymbolTransducer::new_pair(cfg, &up, &lo)?
+                if self.sets.contains_key(&up) || self.sets.contains_key(&lo) {
+                    self.pair_transducer(cfg, &up, &lo)?
+                } else {
+                    OtherSymbolTransducer::new_pair(cfg, &up, &lo)?
+                }
             }
             TwolcRegex::Epsilon => OtherSymbolTransducer::new_symbol(cfg, TWOLC_EPSILON)?,
             TwolcRegex::Any => OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?,
@@ -3498,13 +3786,27 @@ impl TwolcCompiler {
     }
 }
 
+/// Map a surface symbol from the nfst-twolc AST into the internal
+/// '__HFST_TWOLC_' namespace the rule machinery expects: the epsilon '0' and
+/// the absolute word boundary '.#.'. (The htwolcpre1 lexer performed these
+/// renamings on every symbol token; the other reserved tokens are structural
+/// and never reach the AST as symbols.)
+fn normalize_symbol(sym: &str) -> String {
+    match sym {
+        "0" => TWOLC_EPSILON.to_string(),
+        ".#." => "__HFST_TWOLC_.#.".to_string(),
+        _ => sym.to_string(),
+    }
+}
+
 /// Substitute a single symbol via a variable assignment: if 'sym' is a variable
 /// in 'vvm', return its value, else 'sym' unchanged (the 'RuleSymbolVector'
-/// per-symbol 'vvm' lookup).
+/// per-symbol 'vvm' lookup). The result is mapped into the internal symbol
+/// namespace (the htwolcpre1 lexer renamings).
 fn substitute_symbol(sym: &str, vvm: &VariableValueMap) -> String {
     match vvm.get(sym) {
-        Some(val) => val.clone(),
-        None => sym.to_string(),
+        Some(val) => normalize_symbol(val),
+        None => normalize_symbol(sym),
     }
 }
 
