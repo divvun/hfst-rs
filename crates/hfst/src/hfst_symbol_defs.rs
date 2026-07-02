@@ -160,12 +160,11 @@ pub mod symbols {
 
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.collect-unknown-sets-fn]
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.collect-unknown-sets-fn]
-    pub fn collect_unknown_sets(
-        s1: &StringSet,
-        unknown1: &mut StringSet,
-        s2: &StringSet,
-        unknown2: &mut StringSet,
-    ) {
+    // Returns (unknown1, unknown2): the symbols of s2 missing from s1 and vice
+    // versa.
+    pub fn collect_unknown_sets(s1: &StringSet, s2: &StringSet) -> (StringSet, StringSet) {
+        let mut unknown1 = StringSet::new();
+        let mut unknown2 = StringSet::new();
         for it1 in s1.iter() {
             let sym1 = it1.clone();
             if !s2.contains(&sym1) {
@@ -178,6 +177,7 @@ pub mod symbols {
                 unknown1.insert(sym2);
             }
         }
+        (unknown1, unknown2)
     }
 
     // [spec:hfst:def:hfst-symbol-defs.hfst.symbols.std.string-to-string-fn]

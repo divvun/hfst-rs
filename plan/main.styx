@@ -1775,6 +1775,21 @@ children (
                 id idiom9.signatures
                 title "out-parameters → return values (P1, ~100 sites, mostly risk-none, module-local). `bool`-success + result through `&mut` → `Option`/`Result`: get_prolog_arc_symbols, extract_weight, marker2weight, strip_quotes_*, the 5 parse_prolog_*/add_att_line, xfst extract_function_name/arguments, is_unknown_or_identity_used. `&mut` accumulators → returned collections (collect_unknown_sets, populate_symbol_set, get_initial_transition_pairs). Spurious `&mut` read-only params → `&` (hfst_rules, pmatch *_from_transducer ×7). Plus the get_/set_ field-passthrough accessor layer (613 methods; PmatchObject ~200 lines ×12 node structs) → expose fields / derive a base. GUARD: hfst_rules::restriction genuinely mutates the caller's transducer."
                 deps (idiom9.mechanical)
+                log (
+                    {
+                        at 2026-07-02T14:09:55.040514Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-02T14:40:52.013796Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

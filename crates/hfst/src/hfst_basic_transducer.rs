@@ -1706,39 +1706,36 @@ impl HfstBasicTransducer {
         Ok(())
     }
 
-    // If 'str' is of format ".+", change it to .+ and return true. Else false.
+    // If 'str' is of format ".+", return .+ (quotes stripped). Else None.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-quotes-from-both-sides-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-quotes-from-both-sides-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.strip-quotes-from-both-sides-fn]
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.strip-quotes-from-both-sides-fn]
-    pub fn strip_quotes_from_both_sides(str: &mut String) -> bool {
+    pub fn strip_quotes_from_both_sides(str: &str) -> Option<&str> {
         if str.len() < 3 {
-            return false;
+            return None;
         }
         let bytes = str.as_bytes();
         if bytes[0] != b'"' || bytes[str.len() - 1] != b'"' {
-            return false;
+            return None;
         }
-        str.remove(0); // erase(0, 1)
-        str.pop(); // erase(length-1, 1)
-        true
+        Some(&str[1..str.len() - 1])
     }
 
-    // If 'str' is of format .+)\." change it to .+ and return true. Else false.
+    // If 'str' is of format .+)\." return .+ (suffix stripped). Else None.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-ending-parenthesis-and-comma-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.strip-ending-parenthesis-and-comma-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.strip-ending-parenthesis-and-comma-fn]
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.strip-ending-parenthesis-and-comma-fn]
-    pub fn strip_ending_parenthesis_and_comma(str: &mut String) -> bool {
+    pub fn strip_ending_parenthesis_and_comma(str: &str) -> Option<&str> {
         if str.len() < 3 {
-            return false;
+            return None;
         }
         let bytes = str.as_bytes();
         if bytes[str.len() - 2] != b')' || bytes[str.len() - 1] != b'.' {
-            return false;
+            return None;
         }
-        str.truncate(str.len() - 2); // erase(length-2)
-        true
+        Some(&str[..str.len() - 2])
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-network-line-fn]
@@ -1747,38 +1744,23 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.parse-prolog-network-line-fn]
     //
     // sscanf(line, "network(%s", namearr): match the literal prefix, then '%s'
-    // (skip leading whitespace, read one non-whitespace token).
-    pub fn parse_prolog_network_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
+    // (skip leading whitespace, read one non-whitespace token). Returns the
+    // network name on success.
+    pub fn parse_prolog_network_line(line: &str) -> Option<String> {
         // 'network(NAME).'
-        let n;
-        let mut namearr = String::new();
-        if let Some(rest) = line.strip_prefix("network(") {
-            let tok: String = rest
-                .trim_start()
-                .chars()
-                .take_while(|c| !c.is_whitespace())
-                .collect();
-            if tok.is_empty() {
-                n = 0;
-            } else {
-                namearr = tok;
-                n = 1;
-            }
-        } else {
-            n = 0;
-        }
-        if n != 1 {
-            return false;
+        let rest = line.strip_prefix("network(")?;
+        let tok: String = rest
+            .trim_start()
+            .chars()
+            .take_while(|c| !c.is_whitespace())
+            .collect();
+        if tok.is_empty() {
+            return None;
         }
 
-        let mut namestr = namearr;
-        // strip the ending ")." from namestr
-        if !Self::strip_ending_parenthesis_and_comma(&mut namestr) {
-            return false;
-        }
-
-        graph.name = namestr;
-        true
+        // strip the ending ")." from the name
+        let namestr = Self::strip_ending_parenthesis_and_comma(&tok)?;
+        Some(namestr.to_string())
     }
 
     // Get positions of 'c' in 'str'. If 'esc' precedes 'c', 'c' is not included.
@@ -1802,36 +1784,36 @@ impl HfstBasicTransducer {
     }
 
     // Extract input/output symbols from prolog arc 'str' of format "foo":"bar"
-    // or "foo". Return whether symbols were successfully extracted.
+    // or "foo". Returns (isymbol, osymbol) on success.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-prolog-arc-symbols-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.get-prolog-arc-symbols-fn]
     // [spec:hfst:def:hfst-transition-graph.get-prolog-arc-symbols-fn]
     // [spec:hfst:sem:hfst-transition-graph.get-prolog-arc-symbols-fn]
-    pub fn get_prolog_arc_symbols(str: &str, isymbol: &mut String, osymbol: &mut String) -> bool {
+    pub fn get_prolog_arc_symbols(str: &str) -> Option<(String, String)> {
         // find positions of non-escaped double quotes
         let quote_positions = Self::get_positions_of_unescaped_char(str, '"', '\\');
 
         // "foo"
         if quote_positions.len() == 2 {
             if quote_positions[0] != 0 || quote_positions[1] != (str.len() - 1) as u32 {
-                return false; // extra characters outside quotes
+                return None; // extra characters outside quotes
             }
         }
         // "foo":"bar"
         else if quote_positions.len() == 4 {
             if quote_positions[0] != 0 || quote_positions[3] != (str.len() - 1) as u32 {
-                return false; // extra characters outside quotes
+                return None; // extra characters outside quotes
             }
             if quote_positions[2] - quote_positions[1] != 2 {
-                return false; // missing colon between inner quotes
+                return None; // missing colon between inner quotes
             }
             if str.as_bytes()[(quote_positions[1] + 1) as usize] != b':' {
-                return false; // else than colon between inner quotes
+                return None; // else than colon between inner quotes
             }
         }
         // not valid prolog arc
         else {
-            return false;
+            return None;
         }
 
         // "foo"
@@ -1840,12 +1822,13 @@ impl HfstBasicTransducer {
             let start = (quote_positions[0] + 1) as usize;
             let len = (quote_positions[1] - quote_positions[0] - 1) as usize;
             let symbol = str[start..start + len].to_string();
-            *isymbol = Self::deprologize_symbol(&symbol);
-            if *isymbol == "@_UNKNOWN_SYMBOL_@" {
+            let mut isymbol = Self::deprologize_symbol(&symbol);
+            if isymbol == "@_UNKNOWN_SYMBOL_@" {
                 // single unknown -> identity
-                *isymbol = "@_IDENTITY_SYMBOL_@".to_string();
+                isymbol = "@_IDENTITY_SYMBOL_@".to_string();
             }
-            *osymbol = isymbol.clone();
+            let osymbol = isymbol.clone();
+            Some((isymbol, osymbol))
         }
         // "foo":"bar"
         else {
@@ -1855,28 +1838,25 @@ impl HfstBasicTransducer {
             let s2 = (quote_positions[2] + 1) as usize;
             let l2 = (quote_positions[3] - quote_positions[2] - 1) as usize;
             let outsymbol = str[s2..s2 + l2].to_string();
-            *isymbol = Self::deprologize_symbol(&insymbol);
-            *osymbol = Self::deprologize_symbol(&outsymbol);
+            Some((
+                Self::deprologize_symbol(&insymbol),
+                Self::deprologize_symbol(&outsymbol),
+            ))
         }
-
-        true
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.extract-weight-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.extract-weight-fn]
     // [spec:hfst:def:hfst-transition-graph.extract-weight-fn]
     // [spec:hfst:sem:hfst-transition-graph.extract-weight-fn]
-    pub fn extract_weight(symbol: &mut String, weight: &mut f32) -> bool {
-        let last_double_quote = symbol.rfind('"');
-        let last_space = symbol.rfind(' ');
-
+    // Returns (symbol with any ", W" suffix removed, weight or 0.0).
+    pub fn extract_weight(symbol: &str) -> Option<(String, f32)> {
         // at least one double quote should be found
-        let ldq = match last_double_quote {
-            None => return false,
-            Some(p) => p,
-        };
+        let ldq = symbol.rfind('"')?;
 
-        match last_space {
+        let mut sym = symbol.to_string();
+        let mut weight: f32 = 0.0;
+        match symbol.rfind(' ') {
             None => {
                 // no weight
             }
@@ -1887,23 +1867,27 @@ impl HfstBasicTransducer {
                     // + 2 because of the comma
                     let buffer = &symbol[ls + 1..];
                     match buffer.parse::<f32>() {
-                        Ok(w) => *weight = w,
-                        Err(_) => return false, // a float could not be read
+                        Ok(w) => weight = w,
+                        Err(_) => return None, // a float could not be read
                     }
-                    symbol.truncate(ls - 1); // get rid of the comma and weight
+                    sym.truncate(ls - 1); // get rid of the comma and weight
                 } else {
-                    return false; // not valid symbol and weight
+                    return None; // not valid symbol and weight
                 }
             }
         }
-        true
+        Some((sym, weight))
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-arc-line-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-arc-line-fn]
     // [spec:hfst:def:hfst-transition-graph.parse-prolog-arc-line-fn]
     // [spec:hfst:sem:hfst-transition-graph.parse-prolog-arc-line-fn]
-    pub fn parse_prolog_arc_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
+    // Returns (source, target, isymbol, osymbol, weight) on success.
+    pub fn parse_prolog_arc_line(
+        line: &str,
+        graph_name: &str,
+    ) -> Option<(HfstState, HfstState, String, String, f32)> {
         // sscanf(line, "arc(%[^,], %[^,], %[^,], %[^\t\n]", ...): four scanset
         // fields separated by a literal comma plus optional whitespace.
         let mut n = 0;
@@ -1949,46 +1933,33 @@ impl HfstBasicTransducer {
             }
         }
 
-        let mut symbol = symbolstr;
         // strip the ending ")." from symbolstr
-        if !Self::strip_ending_parenthesis_and_comma(&mut symbol) {
-            return false;
-        }
+        let symbol = Self::strip_ending_parenthesis_and_comma(&symbolstr)?;
 
         if n != 4 {
-            return false;
+            return None;
         }
-        if namestr != graph.name {
-            return false;
+        if namestr != graph_name {
+            return None;
         }
 
         let source: u32 = atoi(&sourcestr);
         let target: u32 = atoi(&targetstr);
 
         // handle the weight that might be included in symbol string
-        let mut weight: f32 = 0.0;
-        if !Self::extract_weight(&mut symbol, &mut weight) {
-            return false;
-        }
+        let (symbol, weight) = Self::extract_weight(symbol)?;
 
-        let mut isymbol = String::new();
-        let mut osymbol = String::new();
+        let (isymbol, osymbol) = Self::get_prolog_arc_symbols(&symbol)?;
 
-        if !Self::get_prolog_arc_symbols(&symbol, &mut isymbol, &mut osymbol) {
-            return false;
-        }
-
-        let tr =
-            HfstBasicTransition::new_symbols(target, isymbol, osymbol, weight, graph.coder_mut());
-        graph.add_transition(source, &tr, true);
-        true
+        Some((source, target, isymbol, osymbol, weight))
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-final-line-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-final-line-fn]
     // [spec:hfst:def:hfst-transition-graph.parse-prolog-final-line-fn]
     // [spec:hfst:sem:hfst-transition-graph.parse-prolog-final-line-fn]
-    pub fn parse_prolog_final_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
+    // Returns (final state, weight) on success.
+    pub fn parse_prolog_final_line(line: &str, graph_name: &str) -> Option<(HfstState, f32)> {
         // 'final(NAME, number).' or 'final(NAME, number, weight).'
         let mut weight: f32 = 0.0;
         let number_of_commas = line.chars().filter(|&c| c == ',').count();
@@ -1998,76 +1969,61 @@ impl HfstBasicTransducer {
 
         if number_of_commas == 1 {
             // sscanf(line, "final(%[^,], %[^)]).", namestr, finalstr)
-            let rest = match line.strip_prefix("final(") {
-                Some(r) => r,
-                None => return false,
-            };
+            let rest = line.strip_prefix("final(")?;
             let name: String = rest.chars().take_while(|&c| c != ',').collect();
             if name.is_empty() {
-                return false;
+                return None;
             }
             let after = &rest[name.len()..];
-            let r = match after.strip_prefix(',') {
-                Some(x) => x.trim_start(),
-                None => return false,
-            };
+            let r = after.strip_prefix(',')?.trim_start();
             let fin: String = r.chars().take_while(|&c| c != ')').collect();
             if fin.is_empty() {
-                return false;
+                return None;
             }
             namestr = name;
             finalstr = fin;
         } else if number_of_commas == 2 {
             // sscanf(line, "final(%[^,], %[^,], %[^)]).", namestr, finalstr, weightstr)
-            let rest = match line.strip_prefix("final(") {
-                Some(r) => r,
-                None => return false,
-            };
+            let rest = line.strip_prefix("final(")?;
             let name: String = rest.chars().take_while(|&c| c != ',').collect();
             if name.is_empty() {
-                return false;
+                return None;
             }
             let after = &rest[name.len()..];
-            let r = match after.strip_prefix(',') {
-                Some(x) => x.trim_start(),
-                None => return false,
-            };
+            let r = after.strip_prefix(',')?.trim_start();
             let fin: String = r.chars().take_while(|&c| c != ',').collect();
             if fin.is_empty() {
-                return false;
+                return None;
             }
             let after2 = &r[fin.len()..];
-            let r2 = match after2.strip_prefix(',') {
-                Some(x) => x.trim_start(),
-                None => return false,
-            };
+            let r2 = after2.strip_prefix(',')?.trim_start();
             let weightstr: String = r2.chars().take_while(|&c| c != ')').collect();
             if weightstr.is_empty() {
-                return false;
+                return None;
             }
             match weightstr.parse::<f32>() {
                 Ok(w) => weight = w,
-                Err(_) => return false, // a float could not be read
+                Err(_) => return None, // a float could not be read
             }
             namestr = name;
             finalstr = fin;
         } else {
-            return false;
+            return None;
         }
 
-        if namestr != graph.name {
-            return false;
+        if namestr != graph_name {
+            return None;
         }
 
-        graph.set_final_weight(atoi(&finalstr), &weight);
-        true
+        Some((atoi(&finalstr), weight))
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-symbol-line-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-symbol-line-fn]
     // [spec:hfst:def:hfst-transition-graph.parse-prolog-symbol-line-fn]
     // [spec:hfst:sem:hfst-transition-graph.parse-prolog-symbol-line-fn]
-    pub fn parse_prolog_symbol_line(line: &str, graph: &mut HfstBasicTransducer) -> bool {
+    // Returns the deprologized alphabet symbol on success.
+    pub fn parse_prolog_symbol_line(line: &str, graph_name: &str) -> Option<String> {
         // sscanf(line, "symbol(%[^,], %s", namearr, symbolarr)
         let mut n = 0;
         let mut namearr = String::new();
@@ -2093,26 +2049,19 @@ impl HfstBasicTransducer {
         }
 
         if n != 2 {
-            return false;
+            return None;
         }
 
         let namestr = namearr;
-        let mut symbolstr = symbolarr;
 
-        if namestr != graph.name {
-            return false;
+        if namestr != graph_name {
+            return None;
         }
 
-        if !Self::strip_ending_parenthesis_and_comma(&mut symbolstr) {
-            return false;
-        }
+        let symbolstr = Self::strip_ending_parenthesis_and_comma(&symbolarr)?;
+        let symbolstr = Self::strip_quotes_from_both_sides(symbolstr)?;
 
-        if !Self::strip_quotes_from_both_sides(&mut symbolstr) {
-            return false;
-        }
-
-        graph.add_symbol_to_alphabet(&Self::deprologize_symbol(&symbolstr));
-        true
+        Some(Self::deprologize_symbol(symbolstr))
     }
 
     // Erase newlines from the end of 'str' and return 'str'.
@@ -2325,7 +2274,12 @@ impl HfstBasicTransducer {
     // fields; 'n' is how many were read.
     // [spec:hfst:def:hfst-transition-graph.add-att-line-fn]
     // [spec:hfst:sem:hfst-transition-graph.add-att-line-fn]
-    pub fn add_att_line(&mut self, line: &str, epsilon_symbol: &str, warn_negs: bool) -> bool {
+    pub fn add_att_line(
+        &mut self,
+        line: &str,
+        epsilon_symbol: &str,
+        warn_negs: bool,
+    ) -> crate::error::Result<()> {
         let tokens: Vec<&str> = line.split_whitespace().collect();
         let n = tokens.len().min(5);
         let a = |i: usize| -> &str { tokens.get(i).copied().unwrap_or("") };
@@ -2380,9 +2334,10 @@ impl HfstBasicTransducer {
             self.add_transition(atoi(a(0)), &tr, true);
         } else {
             // line could not be parsed
-            return false;
+            let message = line.to_string();
+            crate::bail!(NotValidAttFormat, message);
         }
-        true
+        Ok(())
     }
 
     // HfstBasicTransducer(FILE*) — read an AT&T transducer from 'file'.
@@ -2455,9 +2410,12 @@ impl HfstBasicTransducer {
             }
         }
 
-        if !Self::parse_prolog_network_line(&linestr, &mut retval) {
-            let message = format!("first line not valid prolog: {linestr}");
-            crate::bail!(NotValidPrologFormat, message);
+        match Self::parse_prolog_network_line(&linestr) {
+            Some(name) => retval.name = name,
+            None => {
+                let message = format!("first line not valid prolog: {linestr}");
+                crate::bail!(NotValidPrologFormat, message);
+            }
         }
 
         loop {
@@ -2472,10 +2430,24 @@ impl HfstBasicTransducer {
                 None => return Ok(retval),
             }
 
-            if !(Self::parse_prolog_arc_line(&linestr, &mut retval)
-                || Self::parse_prolog_final_line(&linestr, &mut retval)
-                || Self::parse_prolog_symbol_line(&linestr, &mut retval))
+            if let Some((source, target, isymbol, osymbol, weight)) =
+                Self::parse_prolog_arc_line(&linestr, &retval.name)
             {
+                let tr = HfstBasicTransition::new_symbols(
+                    target,
+                    isymbol,
+                    osymbol,
+                    weight,
+                    retval.coder_mut(),
+                );
+                retval.add_transition(source, &tr, true);
+            } else if let Some((state, weight)) =
+                Self::parse_prolog_final_line(&linestr, &retval.name)
+            {
+                retval.set_final_weight(state, &weight);
+            } else if let Some(symbol) = Self::parse_prolog_symbol_line(&linestr, &retval.name) {
+                retval.add_symbol_to_alphabet(&symbol);
+            } else {
                 let message = format!("line not valid prolog: {linestr}");
                 crate::bail!(NotValidPrologFormat, message);
             }
@@ -2537,10 +2509,7 @@ impl HfstBasicTransducer {
                 return Ok(retval);
             }
 
-            if !retval.add_att_line(&line, epsilon_symbol, warn_negs) {
-                let message = line.clone();
-                crate::bail!(NotValidAttFormat, message);
-            }
+            retval.add_att_line(&line, epsilon_symbol, warn_negs)?;
         }
         Ok(retval)
     }
@@ -3243,20 +3212,16 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.marker2weight-fn]
     // [spec:hfst:def:hfst-transition-graph.marker2weight-fn]
     // [spec:hfst:sem:hfst-transition-graph.marker2weight-fn]
-    pub fn marker2weight(str: &str, weight: &mut f32) -> bool {
+    pub fn marker2weight(str: &str) -> Option<f32> {
         if str.len() < 3 {
-            return false;
+            return None;
         }
         let bytes = str.as_bytes();
         if bytes[0] != b'@' || bytes[str.len() - 1] != b'@' {
-            return false;
+            return None;
         }
         let weight_string = &str[1..str.len() - 1];
-        match weight_string.parse::<f32>() {
-            Ok(w) => *weight = w,
-            Err(_) => return false,
-        }
-        true
+        weight_string.parse::<f32>().ok()
     }
 
     /** @brief Replace '@w@' marker arcs with transition weights. */
@@ -3270,23 +3235,22 @@ impl HfstBasicTransducer {
                 let data = self.state_vector[state][i].get_transition_data().clone();
                 let isym = data.get_input_symbol(&self.coder);
                 let osym = data.get_output_symbol(&self.coder);
-                let mut weight: f32 = 0.0;
-                if !Self::marker2weight(&isym, &mut weight)
-                    && Self::marker2weight(&osym, &mut weight)
-                {
-                    let target = self.state_vector[state][i].get_target_state();
-                    new_transitions.push(HfstBasicTransition::new_symbols(
-                        target,
-                        isym,
-                        crate::hfst_symbol_defs::internal_epsilon.to_string(),
-                        weight,
-                        self.coder_mut(),
-                    ));
-                    old_indices.push(i);
-                } else if Self::marker2weight(&isym, &mut weight)
-                    && Self::marker2weight(&osym, &mut weight)
-                {
-                    old_indices.push(i);
+                match (Self::marker2weight(&isym), Self::marker2weight(&osym)) {
+                    (None, Some(weight)) => {
+                        let target = self.state_vector[state][i].get_target_state();
+                        new_transitions.push(HfstBasicTransition::new_symbols(
+                            target,
+                            isym,
+                            crate::hfst_symbol_defs::internal_epsilon.to_string(),
+                            weight,
+                            self.coder_mut(),
+                        ));
+                        old_indices.push(i);
+                    }
+                    (Some(_), Some(_)) => {
+                        old_indices.push(i);
+                    }
+                    _ => {}
                 }
             }
 
@@ -3301,8 +3265,7 @@ impl HfstBasicTransducer {
         // Remove weight-marker symbols from the alphabet.
         let mut weight_markers: Vec<HfstSymbol> = Vec::new();
         for it in self.alphabet.iter() {
-            let mut foo: f32 = 0.0;
-            if Self::marker2weight(it, &mut foo) {
+            if Self::marker2weight(it).is_some() {
                 weight_markers.push(it.clone());
             }
         }

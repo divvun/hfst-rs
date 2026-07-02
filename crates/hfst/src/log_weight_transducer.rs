@@ -1366,16 +1366,10 @@ mod construction_io {
             let mut t2 = t2.clone();
 
             // 1. unknown symbols for t1 and t2
-            let mut unknown_t1 = StringSet::new();
-            let mut unknown_t2 = StringSet::new();
             let t1_symbols = Self::get_alphabet(&t1);
             let t2_symbols = Self::get_alphabet(&t2);
-            crate::hfst_symbol_defs::symbols::collect_unknown_sets(
-                &t1_symbols,
-                &mut unknown_t1,
-                &t2_symbols,
-                &mut unknown_t2,
-            );
+            let (mut unknown_t1, mut unknown_t2) =
+                crate::hfst_symbol_defs::symbols::collect_unknown_sets(&t1_symbols, &t2_symbols);
 
             // 2. add new symbols from t1 to t2's symbol table...
             // (the Log .cc has NO '< 3' sanity check that the Tropical port carries)

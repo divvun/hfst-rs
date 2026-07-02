@@ -1384,16 +1384,10 @@ mod construction_io {
             let debug = false;
 
             // 1. unknown symbols for t1 and t2
-            let mut unknown_t1 = StringSet::new();
-            let mut unknown_t2 = StringSet::new();
             let t1_symbols = Self::get_alphabet(&t1);
             let t2_symbols = Self::get_alphabet(&t2);
-            crate::hfst_symbol_defs::symbols::collect_unknown_sets(
-                &t1_symbols,
-                &mut unknown_t1,
-                &t2_symbols,
-                &mut unknown_t2,
-            );
+            let (mut unknown_t1, mut unknown_t2) =
+                crate::hfst_symbol_defs::symbols::collect_unknown_sets(&t1_symbols, &t2_symbols);
 
             if debug {
                 let line1: String = unknown_t1.iter().map(|it| format!("'{}', ", it)).collect();

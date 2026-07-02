@@ -1426,13 +1426,11 @@ impl OtherSymbolTransducer {
     /// state.
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.get-initial-transition-pairs-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.get-initial-transition-pairs-fn]
-    pub fn get_initial_transition_pairs(
-        &self,
-        pair_container: &mut SymbolPairVector,
-    ) -> crate::error::Result<()> {
+    pub fn get_initial_transition_pairs(&self) -> crate::error::Result<SymbolPairVector> {
         if self.is_broken {
             crate::bail!(UndefinedSymbolPairsFound);
         }
+        let mut pair_container = SymbolPairVector::new();
         let fst = HfstBasicTransducer::from_transducer(&self.transducer);
         for jt in fst
             .index(0)
@@ -1443,7 +1441,7 @@ impl OtherSymbolTransducer {
             let output = jt.get_transition_data().get_output_symbol(fst.coder());
             pair_container.push((input, output));
         }
-        Ok(())
+        Ok(pair_container)
     }
 
     /// 'bool is_empty_intersection(const OtherSymbolTransducer &another,

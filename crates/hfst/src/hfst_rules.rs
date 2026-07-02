@@ -61,14 +61,14 @@ use crate::hfst_symbol_defs::internal_epsilon;
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-fn]
 pub fn replace(
-    t: &mut HfstTransducer,
+    t: &HfstTransducer,
     repl_type: ReplaceType,
     optional: bool,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     let ty = t.get_type();
 
-    let mut t_proj = t.clone();
+    let mut t_proj = (*t).clone();
     if repl_type == ReplaceType::REPL_UP {
         t_proj.input_project()?;
     } else if repl_type == ReplaceType::REPL_DOWN {
@@ -112,7 +112,7 @@ pub fn replace_transducer(
     lm: String,
     rm: String,
     repl_type: ReplaceType,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     t.optimize()?;
 
@@ -129,7 +129,7 @@ pub fn replace_transducer(
 
     tm.optimize()?;
 
-    let mut retval = replace(&mut tm, repl_type, false, alphabet)?;
+    let mut retval = replace(&tm, repl_type, false, alphabet)?;
 
     retval.optimize()?;
     return Ok(retval);
@@ -140,15 +140,15 @@ pub fn replace_transducer(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-context-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-context-fn]
 pub fn replace_context(
-    t: &mut HfstTransducer,
+    t: &HfstTransducer,
     m1: String,
     m2: String,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     // ct = .* ( m1 >> ( m2 >> t ))  ||  !(.* m1)
 
     // m1 >> ( m2 >> t )
-    let mut t_copy = t.clone();
+    let mut t_copy = (*t).clone();
     t_copy.insert_freely_pair(&(m1.clone(), m1.clone()), true)?;
     t_copy.insert_freely_pair(&(m2.clone(), m2.clone()), true)?;
 
@@ -205,9 +205,9 @@ pub fn replace_context(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-fn]
 pub fn two_level_if(
-    context: &mut HfstTransducerPair,
-    mappings: &mut StringPairSet,
-    alphabet: &mut StringPairSet,
+    context: &HfstTransducerPair,
+    mappings: &StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     if context.0.get_type() != context.1.get_type() {
         crate::bail!(TransducerTypeMismatch, "rules::two_level_if");
@@ -265,9 +265,9 @@ pub fn two_level_if(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-two-level-only-if-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-two-level-only-if-fn]
 pub fn two_level_only_if(
-    context: &mut HfstTransducerPair,
-    mappings: &mut StringPairSet,
-    alphabet: &mut StringPairSet,
+    context: &HfstTransducerPair,
+    mappings: &StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     if context.0.get_type() != context.1.get_type() {
         crate::bail!(TransducerTypeMismatch, "rules::two_level_only_if");
@@ -313,9 +313,9 @@ pub fn two_level_only_if(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-and-only-if-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-and-only-if-fn]
 pub fn two_level_if_and_only_if(
-    context: &mut HfstTransducerPair,
-    mappings: &mut StringPairSet,
-    alphabet: &mut StringPairSet,
+    context: &HfstTransducerPair,
+    mappings: &StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     let mut if_rule = two_level_if(context, mappings, alphabet)?;
     let only_if_rule = two_level_only_if(context, mappings, alphabet)?;
@@ -327,7 +327,7 @@ pub fn two_level_if_and_only_if(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-in-context-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-in-context-fn]
 pub fn replace_in_context(
-    context: &mut HfstTransducerPair,
+    context: &HfstTransducerPair,
     repl_type: ReplaceType,
     t: &mut HfstTransducer,
     optional: bool,
@@ -386,7 +386,7 @@ pub fn replace_in_context(
     cbt.optimize()?;
 
     // left context transducer .* (<R> >> (<L> >> LEFT_CONTEXT)) || !(.*<L>)
-    let mut lct = replace_context(&mut context.0, leftm.clone(), rightm.clone(), alphabet)?;
+    let mut lct = replace_context(&context.0, leftm.clone(), rightm.clone(), alphabet)?;
 
     lct.optimize()?;
 
@@ -397,7 +397,7 @@ pub fn replace_in_context(
     right_rev.reverse()?;
     right_rev.optimize()?;
 
-    let mut rct = replace_context(&mut right_rev, rightm.clone(), leftm.clone(), alphabet)?;
+    let mut rct = replace_context(&right_rev, rightm.clone(), leftm.clone(), alphabet)?;
     rct.reverse()?;
     rct.optimize()?;
 
@@ -480,7 +480,7 @@ pub fn replace_in_context(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-up-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-up-fn]
 pub fn replace_up(
-    context: &mut HfstTransducerPair,
+    context: &HfstTransducerPair,
     mapping: &mut HfstTransducer,
     optional: bool,
     alphabet: &mut StringPairSet,
@@ -493,7 +493,7 @@ pub fn replace_up(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-down-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-down-fn]
 pub fn replace_down(
-    context: &mut HfstTransducerPair,
+    context: &HfstTransducerPair,
     mapping: &mut HfstTransducer,
     optional: bool,
     alphabet: &mut StringPairSet,
@@ -506,7 +506,7 @@ pub fn replace_down(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-down-karttunen-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-down-karttunen-fn]
 pub fn replace_down_karttunen(
-    context: &mut HfstTransducerPair,
+    context: &HfstTransducerPair,
     mapping: &mut HfstTransducer,
     optional: bool,
     alphabet: &mut StringPairSet,
@@ -525,7 +525,7 @@ pub fn replace_down_karttunen(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-right-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-right-fn]
 pub fn replace_right(
-    context: &mut HfstTransducerPair,
+    context: &HfstTransducerPair,
     mapping: &mut HfstTransducer,
     optional: bool,
     alphabet: &mut StringPairSet,
@@ -544,7 +544,7 @@ pub fn replace_right(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-left-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-left-fn]
 pub fn replace_left(
-    context: &mut HfstTransducerPair,
+    context: &HfstTransducerPair,
     mapping: &mut HfstTransducer,
     optional: bool,
     alphabet: &mut StringPairSet,
@@ -553,17 +553,17 @@ pub fn replace_left(
 }
 
 pub fn replace_up_mapping(
-    mapping: &mut HfstTransducer,
+    mapping: &HfstTransducer,
     optional: bool,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     return replace(mapping, ReplaceType::REPL_UP, optional, alphabet);
 }
 
 pub fn replace_down_mapping(
-    mapping: &mut HfstTransducer,
+    mapping: &HfstTransducer,
     optional: bool,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     return replace(mapping, ReplaceType::REPL_DOWN, optional, alphabet);
 }
@@ -574,9 +574,9 @@ pub fn replace_down_mapping(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-up-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-up-fn]
 pub fn left_replace_up_mapping(
-    mapping: &mut HfstTransducer,
+    mapping: &HfstTransducer,
     optional: bool,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     if optional {
         return Ok(replace_up_mapping(mapping, true, alphabet)?
@@ -591,7 +591,7 @@ pub fn left_replace_up_mapping(
 
 // Left arrow replace up
 pub fn left_replace_up(
-    context: &mut HfstTransducerPair,
+    context: &HfstTransducerPair,
     mapping: &mut HfstTransducer,
     optional: bool,
     alphabet: &mut StringPairSet,
@@ -613,7 +613,7 @@ pub fn left_replace_up(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-karttunen-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-karttunen-fn]
 pub fn left_replace_down_karttunen(
-    context: &mut HfstTransducerPair,
+    context: &HfstTransducerPair,
     mapping: &mut HfstTransducer,
     optional: bool,
     alphabet: &mut StringPairSet,
@@ -635,7 +635,7 @@ pub fn left_replace_down_karttunen(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-fn]
 pub fn left_replace_down(
-    context: &mut HfstTransducerPair,
+    context: &HfstTransducerPair,
     mapping: &mut HfstTransducer,
     optional: bool,
     alphabet: &mut StringPairSet,
@@ -657,7 +657,7 @@ pub fn left_replace_down(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-left-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-left-fn]
 pub fn left_replace_left(
-    context: &mut HfstTransducerPair,
+    context: &HfstTransducerPair,
     mapping: &mut HfstTransducer,
     optional: bool,
     alphabet: &mut StringPairSet,
@@ -679,7 +679,7 @@ pub fn left_replace_left(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-right-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-right-fn]
 pub fn left_replace_right(
-    context: &mut HfstTransducerPair,
+    context: &HfstTransducerPair,
     mapping: &mut HfstTransducer,
     optional: bool,
     alphabet: &mut StringPairSet,
@@ -700,9 +700,9 @@ pub fn left_replace_right(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-restriction-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-restriction-fn]
 pub fn restriction(
-    contexts: &mut HfstTransducerPairVector,
+    contexts: &HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
     twol_type: TwolType,
     direction: i32,
 ) -> crate::error::Result<HfstTransducer> {
@@ -806,9 +806,9 @@ pub fn restriction(
 }
 
 pub fn restriction_default(
-    contexts: &mut HfstTransducerPairVector,
+    contexts: &HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_right, 0);
 }
@@ -818,9 +818,9 @@ pub fn restriction_default(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-coercion-fn]
 pub fn coercion(
-    contexts: &mut HfstTransducerPairVector,
+    contexts: &HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_left, 0);
 }
@@ -830,9 +830,9 @@ pub fn coercion(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-restriction-and-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-restriction-and-coercion-fn]
 pub fn restriction_and_coercion(
-    contexts: &mut HfstTransducerPairVector,
+    contexts: &HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_both, 0);
 }
@@ -842,9 +842,9 @@ pub fn restriction_and_coercion(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-fn]
 pub fn surface_restriction(
-    contexts: &mut HfstTransducerPairVector,
+    contexts: &HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_right, 1);
 }
@@ -854,9 +854,9 @@ pub fn surface_restriction(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-surface-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-surface-coercion-fn]
 pub fn surface_coercion(
-    contexts: &mut HfstTransducerPairVector,
+    contexts: &HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_left, 1);
 }
@@ -866,9 +866,9 @@ pub fn surface_coercion(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-and-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-and-coercion-fn]
 pub fn surface_restriction_and_coercion(
-    contexts: &mut HfstTransducerPairVector,
+    contexts: &HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_both, 1);
 }
@@ -878,9 +878,9 @@ pub fn surface_restriction_and_coercion(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-fn]
 pub fn deep_restriction(
-    contexts: &mut HfstTransducerPairVector,
+    contexts: &HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_right, -1);
 }
@@ -890,9 +890,9 @@ pub fn deep_restriction(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-deep-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-deep-coercion-fn]
 pub fn deep_coercion(
-    contexts: &mut HfstTransducerPairVector,
+    contexts: &HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_left, -1);
 }
@@ -902,9 +902,9 @@ pub fn deep_coercion(
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-and-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-and-coercion-fn]
 pub fn deep_restriction_and_coercion(
-    contexts: &mut HfstTransducerPairVector,
+    contexts: &HfstTransducerPairVector,
     mapping: &mut HfstTransducer,
-    alphabet: &mut StringPairSet,
+    alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_both, -1);
 }

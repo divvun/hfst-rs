@@ -19,10 +19,7 @@ fn main() -> hfst::error::Result<()> {
         if line.is_empty() {
             continue;
         }
-        assert!(
-            g2.add_att_line(line, "@_EPSILON_SYMBOL_@", false),
-            "line not parsed: {line}"
-        );
+        g2.add_att_line(line, "@_EPSILON_SYMBOL_@", false)?;
     }
 
     assert_eq!(g2.get_max_state(), 1);

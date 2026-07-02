@@ -20,18 +20,26 @@ fn main() -> hfst::error::Result<()> {
     let mut g2 = HfstBasicTransducer::new();
     let mut lines = text.lines();
     let net = lines.next().unwrap();
-    assert!(
-        HfstBasicTransducer::parse_prolog_network_line(net, &mut g2),
-        "network line failed: {net}"
-    );
+    g2.name = HfstBasicTransducer::parse_prolog_network_line(net)
+        .unwrap_or_else(|| panic!("network line failed: {net}"));
     for line in lines {
         if line.is_empty() {
             continue;
         }
-        let ok = HfstBasicTransducer::parse_prolog_arc_line(line, &mut g2)
-            || HfstBasicTransducer::parse_prolog_final_line(line, &mut g2)
-            || HfstBasicTransducer::parse_prolog_symbol_line(line, &mut g2);
-        assert!(ok, "line not parsed: {line}");
+        if let Some((source, target, isym, osym, weight)) =
+            HfstBasicTransducer::parse_prolog_arc_line(line, &g2.name)
+        {
+            let tr = HfstBasicTransition::new_symbols(target, isym, osym, weight, g2.coder_mut());
+            g2.add_transition(source, &tr, true);
+        } else if let Some((state, weight)) =
+            HfstBasicTransducer::parse_prolog_final_line(line, &g2.name)
+        {
+            g2.set_final_weight(state, &weight);
+        } else if let Some(symbol) = HfstBasicTransducer::parse_prolog_symbol_line(line, &g2.name) {
+            g2.add_symbol_to_alphabet(&symbol);
+        } else {
+            panic!("line not parsed: {line}");
+        }
     }
 
     assert_eq!(g2.name, "foo");

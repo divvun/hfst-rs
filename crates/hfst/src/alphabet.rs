@@ -262,8 +262,6 @@ impl Alphabet {
         pair: &SymbolPair,
     ) -> crate::error::Result<SymbolPairVector> {
         let result_fst = self.get_transducer(cfg, pair)?.clone();
-        let mut result = SymbolPairVector::new();
-        result_fst.get_initial_transition_pairs(&mut result)?;
-        Ok(result)
+        result_fst.get_initial_transition_pairs()
     }
 }

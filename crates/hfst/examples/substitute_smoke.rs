@@ -29,8 +29,7 @@ fn main() -> hfst::error::Result<()> {
 
     // weight<->marker encoding round-trip
     let m = HfstBasicTransducer::weight2marker(0.5);
-    let mut w = 0.0f32;
-    assert!(HfstBasicTransducer::marker2weight(&m, &mut w));
+    let w = HfstBasicTransducer::marker2weight(&m).expect("weight marker round-trips");
     assert!((w - 0.5).abs() < 1e-6);
     println!("weight2marker/marker2weight OK ({m} -> {w})");
 

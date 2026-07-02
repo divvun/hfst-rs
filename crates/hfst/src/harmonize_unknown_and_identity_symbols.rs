@@ -99,7 +99,8 @@ impl HarmonizeUnknownAndIdentitySymbols {
 
     // [spec:hfst:def:harmonize-unknown-and-identity-symbols.hfst.harmonize-unknown-and-identity-symbols.populate-symbol-set-fn]
     // [spec:hfst:sem:harmonize-unknown-and-identity-symbols.hfst.harmonize-unknown-and-identity-symbols.populate-symbol-set-fn]
-    pub fn populate_symbol_set(t: &HfstBasicTransducer, s: &mut StringSet) {
+    pub fn populate_symbol_set(t: &HfstBasicTransducer) -> StringSet {
+        let mut s = StringSet::new();
         let coder = t.coder();
         for it in t.state_vector.iter() {
             for jt in it.iter() {
@@ -107,6 +108,7 @@ impl HarmonizeUnknownAndIdentitySymbols {
                 s.insert(jt.get_output_symbol(coder));
             }
         }
+        s
     }
 
     // [spec:hfst:def:harmonize-unknown-and-identity-symbols.hfst.harmonize-unknown-and-identity-symbols.add-symbols-to-alphabet-fn]

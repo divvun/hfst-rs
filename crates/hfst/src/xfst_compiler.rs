@@ -2393,9 +2393,7 @@ impl XfstCompiler {
         let alpha = t.borrow().get_alphabet()?;
 
         // find out whether unknown or identity is used in transitions
-        let mut unknown = false;
-        let mut identity = false;
-        let _ = is_unknown_or_identity_used_in_transducer(&t.borrow(), &mut unknown, &mut identity);
+        let (unknown, identity) = is_unknown_or_identity_used_in_transducer(&t.borrow());
 
         self.print_alphabet(&alpha, unknown, identity, oss);
         if prompt {
@@ -3066,13 +3064,10 @@ fn is_special_symbol(s: &str) -> bool {
 
 // [spec:hfst:def:xfst-compiler.hfst.xfst.is-unknown-or-identity-used-in-transducer-fn]
 // [spec:hfst:sem:xfst-compiler.hfst.xfst.is-unknown-or-identity-used-in-transducer-fn]
-fn is_unknown_or_identity_used_in_transducer(
-    t: &HfstTransducer,
-    unknown: &mut bool,
-    identity: &mut bool,
-) -> bool {
-    *unknown = false;
-    *identity = false;
+// Returns (unknown used, identity used).
+fn is_unknown_or_identity_used_in_transducer(t: &HfstTransducer) -> (bool, bool) {
+    let mut unknown = false;
+    let mut identity = false;
 
     let fsm = HfstBasicTransducer::new_from_transducer(t);
     for it in fsm.iter() {
@@ -3082,25 +3077,21 @@ fn is_unknown_or_identity_used_in_transducer(
             if istr == crate::hfst_symbol_defs::internal_unknown
                 || ostr == crate::hfst_symbol_defs::internal_unknown
             {
-                *unknown = true;
+                unknown = true;
             } else if istr == crate::hfst_symbol_defs::internal_identity
                 || ostr == crate::hfst_symbol_defs::internal_identity
             // should not happen
             {
-                *identity = true;
+                identity = true;
             } else {
                 // ;
             }
-            if *unknown == true && *identity == true {
-                return true;
+            if unknown && identity {
+                return (unknown, identity);
             }
         }
     }
-    if *unknown == true || *identity == true {
-        return true;
-    } else {
-        return false;
-    }
+    (unknown, identity)
 }
 
 // [spec:hfst:def:xfst-compiler.hfst.xfst.is-valid-string-fn]
@@ -3605,10 +3596,7 @@ impl XfstCompiler {
     // @brief Define regex macro function
     // @todo Regex parser does not support macro functions
     pub fn define_function(&mut self, prototype: &str, xre: &str) -> &mut Self {
-        let mut name = String::new();
-        let mut arguments: Vec<String> = Vec::new();
-
-        if !Self::extract_function_name(prototype, &mut name) {
+        let Some(name) = Self::extract_function_name(prototype) else {
             error!(
                 "Error extracting function name from prototype '{}'",
                 prototype
@@ -3616,9 +3604,9 @@ impl XfstCompiler {
             self.xfst_fail();
             self.prompt();
             return self;
-        }
+        };
 
-        if !Self::extract_function_arguments(prototype, &mut arguments) {
+        let Some(arguments) = Self::extract_function_arguments(prototype) else {
             error!(
                 "Error extracting function arguments from prototype '{}'",
                 prototype
@@ -3626,7 +3614,7 @@ impl XfstCompiler {
             self.xfst_fail();
             self.prompt();
             return self;
-        }
+        };
 
         let xre_converted =
             Self::convert_argument_symbols(&arguments, xre, &name, &mut self.xre, false);
@@ -3801,35 +3789,36 @@ impl XfstCompiler {
         self
     }
 
-    // Store function name in 'prototype' to 'name'.
-    // Return whether extraction succeeded.
+    // Extract the function name (up to and including the '(') from 'prototype'.
     // 'prototype' must be of format "functionname(arg1, arg2, ... argN)"
     // [spec:hfst:def:xfst-compiler.hfst.xfst.extract-function-name-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.extract-function-name-fn]
-    fn extract_function_name(prototype: &str, name: &mut String) -> bool {
+    fn extract_function_name(prototype: &str) -> Option<String> {
+        let mut name = String::new();
         for ch in prototype.chars() {
             name.push(ch);
             if ch == '(' {
-                return true;
+                return Some(name);
             }
         }
-        false // no starting parenthesis found
+        None // no starting parenthesis found
     }
 
-    // Store names of function arguments in 'prototype' to 'args'.
-    // Return whether extraction succeeded.
+    // Extract the names of function arguments from 'prototype'.
     // 'prototype' must be of format "functionname(arg1, arg2, ... argN)"
     // [spec:hfst:def:xfst-compiler.hfst.xfst.extract-function-arguments-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.extract-function-arguments-fn]
-    fn extract_function_arguments(prototype: &str, args: &mut Vec<String>) -> bool {
+    fn extract_function_arguments(prototype: &str) -> Option<Vec<String>> {
         let p: Vec<char> = prototype.chars().collect();
         let at = |i: usize| -> char { p.get(i).copied().unwrap_or('\0') };
+
+        let mut args: Vec<String> = Vec::new();
 
         // skip the function name
         let mut i: usize = 0;
         while at(i) != '(' {
             if at(i) == '\0' {
-                return false; // function name ended too early
+                return None; // function name ended too early
             }
             i += 1;
         }
@@ -3840,7 +3829,7 @@ impl XfstCompiler {
         while at(i) != ')' {
             if at(i) == '\0' {
                 // no closing parenthesis found
-                return false;
+                return None;
             } else if at(i) == ' ' {
                 // skip whitespace
             } else if at(i) == ',' {
@@ -3855,7 +3844,7 @@ impl XfstCompiler {
         // last argument
         args.push(arg);
 
-        true
+        Some(args)
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.convert-argument-symbols-fn]
