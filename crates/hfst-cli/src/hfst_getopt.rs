@@ -148,6 +148,26 @@ pub fn getopt_long(args: &mut Vec<String>, longopts: &[GetOpt]) -> i32 {
             }
         }
 
+        // GNU short-option-with-attached-argument: '-Wall' is '-W' with the
+        // argument 'all' when the token has exactly one leading dash and 'W'
+        // is an argument-taking option. (The system getopt_long the C tools
+        // normally used did this; the shipped fallback this module ports did
+        // not, so Giella invocations like 'hfst-lexc -Wall' relied on it.)
+        if token.as_bytes().first() == Some(&b'-')
+            && token.as_bytes().get(1) != Some(&b'-')
+            && name.chars().count() > 1
+        {
+            for opt in longopts {
+                if opt.val == first_char && opt.has_arg != NO_ARGUMENT {
+                    OPTIND += 1;
+                    // everything after the option letter, including any '='
+                    // (GNU keeps it verbatim in optarg for attached args)
+                    OPTARG = Some(stripped[1..].to_string());
+                    return opt.val;
+                }
+            }
+        }
+
         // no match found
         OPTIND += 1;
         OPTOPT = if short_option { first_char } else { -2 };

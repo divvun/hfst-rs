@@ -580,10 +580,28 @@ impl XreCompiler {
         chars_read: &mut u32,
     ) -> Option<HfstTransducer> {
         self.contains_only_comments = false;
+        // Whitespace/comment-only input: the C++ lexer consumed it to EOF and
+        // set contains_only_comments; nfst's parse_all errors on it instead.
+        if is_only_whitespace_or_comments(expression) {
+            self.contains_only_comments = true;
+            *chars_read = 0;
+            return None;
+        }
         match parse_all(expression) {
             Ok(exprs) if !exprs.is_empty() => {
                 let first = &exprs[0];
-                *chars_read = first.span.end() as u32;
+                // nfst spans exclude the ';' terminator; the C++ lexer position
+                // this mirrors sat just past it. Consume through the ';' so the
+                // caller's next slice starts on the following expression.
+                let bytes = expression.as_bytes();
+                let mut end = first.span.end();
+                while end < bytes.len() && bytes[end] != b';' {
+                    end += 1;
+                }
+                if end < bytes.len() {
+                    end += 1;
+                }
+                *chars_read = end as u32;
                 let mut t = self.eval(first).ok()?;
                 t.optimize_with_config(&self.opt_cfg()).ok()?;
                 Some(t)
@@ -605,6 +623,10 @@ impl XreCompiler {
     // matching the 'XRE: (empty) { contains_only_comments = true; }' action).
     fn compile_impl(&mut self, src: &str) -> Option<HfstTransducer> {
         self.contains_only_comments = false;
+        if is_only_whitespace_or_comments(src) {
+            self.contains_only_comments = true;
+            return None;
+        }
         match parse(src) {
             Ok(expr) => {
                 let mut t = self.eval(&expr).ok()?;
@@ -623,6 +645,13 @@ impl XreCompiler {
             }
         }
     }
+}
+
+/// Whether `src` contains only whitespace and `!`-to-end-of-line XRE comments
+/// (what the C++ lexer silently consumed before reporting comments-only).
+fn is_only_whitespace_or_comments(src: &str) -> bool {
+    src.lines()
+        .all(|line| line.trim_start().is_empty() || line.trim_start().starts_with('!'))
 }
 
 // ====================== core recursive evaluator ===========================
