@@ -169,11 +169,11 @@ unsafe fn real_main() -> i32 {
             return 1;
         }
 
-        let type_ = instream.get_type();
+        let ty = instream.get_type();
         let outstream_result = if output_opened {
-            HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), ty, true)
         } else {
-            HfstOutputStream::new(type_, true)
+            HfstOutputStream::new(ty, true)
         };
         let mut outstream = match outstream_result {
             Ok(s) => s,

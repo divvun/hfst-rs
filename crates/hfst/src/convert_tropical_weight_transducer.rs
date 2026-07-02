@@ -268,13 +268,13 @@ impl ConversionFunctions {
             for tr_it in it.iter() {
                 // Copy the transition
 
-                let in_: u32 = tr_it.get_input_number();
+                let input: u32 = tr_it.get_input_number();
                 let out: u32 = tr_it.get_output_number();
 
                 t.add_tr(
                     state_vector[source_state],
                     StdTransition::new(
-                        in_,
+                        input,
                         out,
                         tr_it.get_weight(),
                         state_vector[tr_it.get_target_state() as usize],

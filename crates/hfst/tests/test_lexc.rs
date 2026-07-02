@@ -53,13 +53,13 @@ fn fixture_path(name: &str) -> String {
 
 // C++: cat | dog | mouse, each built with a default tokenizer (no multichar
 // symbols) and disjuncted into an initially empty transducer.
-fn build_animals(type_: ImplementationType) -> Result<HfstTransducer, hfst::error::Error> {
+fn build_animals(ty: ImplementationType) -> Result<HfstTransducer, hfst::error::Error> {
     let tok = HfstTokenizer::new();
-    let cat = HfstTransducer::new_tokenized("cat", &tok, type_)?;
-    let dog = HfstTransducer::new_tokenized("dog", &tok, type_)?;
-    let mouse = HfstTransducer::new_tokenized("mouse", &tok, type_)?;
+    let cat = HfstTransducer::new_tokenized("cat", &tok, ty)?;
+    let dog = HfstTransducer::new_tokenized("dog", &tok, ty)?;
+    let mouse = HfstTransducer::new_tokenized("mouse", &tok, ty)?;
 
-    let mut animals = HfstTransducer::new_type(type_)?;
+    let mut animals = HfstTransducer::new_type(ty)?;
     animals.disjunct(&cat, true)?;
     animals.disjunct(&dog, true)?;
     animals.disjunct(&mouse, true)?;
@@ -69,8 +69,8 @@ fn build_animals(type_: ImplementationType) -> Result<HfstTransducer, hfst::erro
 // Mirrors C++ "LexcCompiler compiler(type); compiler.parse(filename);
 // HfstTransducer * parsed = compiler.compileLexical();". Returns None when the
 // C++ would have produced a null pointer (parse error or unopenable file).
-fn parse_and_compile(filename: &str, type_: ImplementationType) -> Option<HfstTransducer> {
-    let mut compiler = LexcCompiler::new(type_);
+fn parse_and_compile(filename: &str, ty: ImplementationType) -> Option<HfstTransducer> {
+    let mut compiler = LexcCompiler::new(ty);
     let source = match std::fs::read_to_string(filename) {
         Ok(s) => s,
         // C++ parse() could not open the file -> parseErrors set ->
@@ -81,15 +81,15 @@ fn parse_and_compile(filename: &str, type_: ImplementationType) -> Option<HfstTr
 }
 
 // (1) A file in valid lexc format: parse + compileLexical, then compare.
-fn valid_file_parse(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    let parsed = parse_and_compile(&fixture_path("test_lexc.lexc"), type_);
+fn valid_file_parse(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    let parsed = parse_and_compile(&fixture_path("test_lexc.lexc"), ty);
     assert!(
         parsed.is_some(),
         "compileLexical() returned 0 for a valid file"
     );
     let parsed = parsed.expect("valid lexc file must compile to a transducer");
 
-    let animals = build_animals(type_)?;
+    let animals = build_animals(ty)?;
     assert!(animals.compare_default(&parsed)?);
     Ok(())
 }
@@ -97,16 +97,16 @@ fn valid_file_parse(type_: ImplementationType) -> Result<(), hfst::error::Error>
 // (1) The same valid file via HfstTransducer::read_lexc. C++ catches
 // FunctionNotImplementedException and asserts false; for TROPICAL/LOG read_lexc
 // does not throw it.
-fn valid_file_read_lexc(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    let animals = build_animals(type_)?;
-    let rlexc = HfstTransducer::read_lexc(&fixture_path("test_lexc.lexc"), type_, false)?;
+fn valid_file_read_lexc(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    let animals = build_animals(ty)?;
+    let rlexc = HfstTransducer::read_lexc(&fixture_path("test_lexc.lexc"), ty, false)?;
     assert!(animals.compare_default(&rlexc)?);
     Ok(())
 }
 
 // (2) A file that does not follow lexc format: compileLexical returns 0.
-fn invalid_file_parse(type_: ImplementationType) {
-    let parsed = parse_and_compile(&fixture_path("test_lexc_fail.lexc"), type_);
+fn invalid_file_parse(ty: ImplementationType) {
+    let parsed = parse_and_compile(&fixture_path("test_lexc_fail.lexc"), ty);
     assert!(
         parsed.is_none(),
         "compileLexical() should return 0 for a malformed file"
@@ -114,8 +114,8 @@ fn invalid_file_parse(type_: ImplementationType) {
 }
 
 // (3) A file that does not exist: compileLexical returns 0.
-fn missing_file_parse(type_: ImplementationType) {
-    let parsed = parse_and_compile(&fixture_path("nonexistent.lexc"), type_);
+fn missing_file_parse(ty: ImplementationType) {
+    let parsed = parse_and_compile(&fixture_path("nonexistent.lexc"), ty);
     assert!(
         parsed.is_none(),
         "compileLexical() should return 0 for a missing file"

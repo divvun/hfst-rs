@@ -7,25 +7,25 @@ use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 
-fn roundtrip(type_: ImplementationType, label: &str) -> hfst::error::Result<()> {
-    let path = std::env::temp_dir().join(format!("hfst_bin_roundtrip_{label}.hfst"));
+fn roundtrip(ty: ImplementationType, label: &str) -> hfst::error::Result<()> {
+    let path = std::env::temp_dir().join(format!("hfst_bin_roundtrip{label}.hfst"));
     let path = path
         .to_str()
         .expect("temp_dir path is valid UTF-8 on this platform")
         .to_string();
 
     // Build [a:b] of the requested type and write it to a binary HFST file.
-    let mut t = HfstTransducer::new_symbol_pair("a", "b", type_)?;
+    let mut t = HfstTransducer::new_symbol_pair("a", "b", ty)?;
     t.set_name("ab");
     {
-        let mut out = HfstOutputStream::new_filename(&path, type_, true)?;
+        let mut out = HfstOutputStream::new_filename(&path, ty, true)?;
         out.redirect(&mut t)?;
         out.close();
     }
 
     // Read it back through the binary reader.
     let mut input = HfstInputStream::new_filename(&path)?;
-    assert_eq!(input.get_type(), type_, "{label}: type survived the header");
+    assert_eq!(input.get_type(), ty, "{label}: type survived the header");
     assert!(
         input.is_hfst_header_included(),
         "{label}: writer emits an HFST header"
@@ -33,7 +33,7 @@ fn roundtrip(type_: ImplementationType, label: &str) -> hfst::error::Result<()> 
     assert!(!input.is_eof(), "{label}: not at eof before the first read");
 
     let t2 = HfstTransducer::new_from_stream(&mut input)?;
-    assert_eq!(t2.get_type(), type_, "{label}: read type");
+    assert_eq!(t2.get_type(), ty, "{label}: read type");
     assert_eq!(t2.get_name(), "ab", "{label}: name survived");
 
     // After one transducer the single-transducer stream is exhausted.
@@ -54,35 +54,35 @@ fn roundtrip(type_: ImplementationType, label: &str) -> hfst::error::Result<()> 
 // acceptor, convert it to optimized-lookup form, write it with the now-wired
 // HfstOlOutputStream behind HfstOutputStream, then read it back.
 fn roundtrip_hfst_ol(weighted: bool, label: &str) -> hfst::error::Result<()> {
-    let type_ = if weighted {
+    let ty = if weighted {
         ImplementationType::HFST_OLW_TYPE
     } else {
         ImplementationType::HFST_OL_TYPE
     };
 
     let mut t = HfstTransducer::new_symbol("a", ImplementationType::TROPICAL_OPENFST_TYPE)?;
-    t.convert(type_, String::new())?;
+    t.convert(ty, String::new())?;
     t.set_name("ol_ab");
 
-    let path = std::env::temp_dir().join(format!("hfst_bin_roundtrip_{label}.hfst"));
+    let path = std::env::temp_dir().join(format!("hfst_bin_roundtrip{label}.hfst"));
     let path = path
         .to_str()
         .expect("temp_dir path is valid UTF-8 on this platform")
         .to_string();
     {
-        let mut out = HfstOutputStream::new_filename(&path, type_, true)?;
+        let mut out = HfstOutputStream::new_filename(&path, ty, true)?;
         out.redirect(&mut t)?;
         out.close();
     }
 
     let mut input = HfstInputStream::new_filename(&path)?;
-    assert_eq!(input.get_type(), type_, "{label}: OL type from header");
+    assert_eq!(input.get_type(), ty, "{label}: OL type from header");
     assert!(
         input.is_hfst_header_included(),
         "{label}: OL header written"
     );
     let t2 = HfstTransducer::new_from_stream(&mut input)?;
-    assert_eq!(t2.get_type(), type_, "{label}: read OL type");
+    assert_eq!(t2.get_type(), ty, "{label}: read OL type");
     assert!(input.is_eof(), "{label}: at eof after the only transducer");
     input.close();
 
@@ -91,7 +91,7 @@ fn roundtrip_hfst_ol(weighted: bool, label: &str) -> hfst::error::Result<()> {
     Ok(())
 }
 
-// Exercise the facade AT&T text reader HfstTransducer::read_in_att_format_*.
+// Exercise the facade AT&T text reader HfstTransducer::read_in_att_format*.
 fn read_att_facade() -> hfst::error::Result<()> {
     let path = std::env::temp_dir().join("hfst_bin_roundtrip_att.att");
     let path = path

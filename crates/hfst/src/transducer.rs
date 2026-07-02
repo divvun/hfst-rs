@@ -956,7 +956,7 @@ pub trait IndexEntry {
     fn get_target(&self) -> TransitionTableIndex;
     fn get_input_symbol(&self) -> SymbolNumber;
     fn matches(&self, s: SymbolNumber) -> bool;
-    fn final_(&self) -> bool;
+    fn is_final(&self) -> bool;
     fn final_weight(&self) -> Weight;
     fn write(&self, os: &mut dyn std::io::Write, weighted: bool);
     fn display(&self);
@@ -975,7 +975,7 @@ pub trait TransitionEntry {
     fn get_output_symbol(&self) -> SymbolNumber;
     fn get_input_symbol(&self) -> SymbolNumber;
     fn matches(&self, s: SymbolNumber) -> bool;
-    fn final_(&self) -> bool;
+    fn is_final(&self) -> bool;
     fn get_weight(&self) -> Weight;
     fn write(&self, os: &mut dyn std::io::Write, weighted: bool);
     fn display(&self);
@@ -1039,7 +1039,7 @@ impl TransitionIndex {
             "input_symbol: {}, target: {}{}",
             self.input_symbol,
             self.first_transition_index,
-            if self.final_() { " (final)" } else { "" }
+            if self.is_final() { " (final)" } else { "" }
         );
     }
 
@@ -1050,7 +1050,7 @@ impl TransitionIndex {
     }
     // [spec:hfst:def:transducer.hfst-ol.transition-index.final-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transition-index.final-fn]
-    pub fn final_(&self) -> bool {
+    pub fn is_final(&self) -> bool {
         self.input_symbol == NO_SYMBOL_NUMBER && self.first_transition_index != NO_TABLE_INDEX
     }
     // [spec:hfst:def:transducer.hfst-ol.transition-index.final-weight-fn]
@@ -1102,8 +1102,8 @@ impl IndexEntry for TransitionIndex {
     fn matches(&self, s: SymbolNumber) -> bool {
         self.matches(s)
     }
-    fn final_(&self) -> bool {
-        self.final_()
+    fn is_final(&self) -> bool {
+        self.is_final()
     }
     fn final_weight(&self) -> Weight {
         self.final_weight()
@@ -1151,8 +1151,8 @@ impl TransitionWIndex {
     pub fn matches(&self, s: SymbolNumber) -> bool {
         self.base.matches(s)
     }
-    pub fn final_(&self) -> bool {
-        self.base.final_()
+    pub fn is_final(&self) -> bool {
+        self.base.is_final()
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transition-w-index.final-weight-fn]
@@ -1206,8 +1206,8 @@ impl IndexEntry for TransitionWIndex {
     fn matches(&self, s: SymbolNumber) -> bool {
         self.matches(s)
     }
-    fn final_(&self) -> bool {
-        self.final_()
+    fn is_final(&self) -> bool {
+        self.is_final()
     }
     fn final_weight(&self) -> Weight {
         self.final_weight()
@@ -1247,11 +1247,11 @@ impl Transition {
         }
     }
 
-    pub fn new_final(final_: bool) -> Self {
+    pub fn new_final(is_final: bool) -> Self {
         Transition {
             input_symbol: NO_SYMBOL_NUMBER,
             output_symbol: NO_SYMBOL_NUMBER,
-            target_index: if final_ { 1 } else { NO_TABLE_INDEX },
+            target_index: if is_final { 1 } else { NO_TABLE_INDEX },
         }
     }
 
@@ -1278,7 +1278,7 @@ impl Transition {
     }
     // [spec:hfst:def:transducer.hfst-ol.transition.final-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transition.final-fn]
-    pub fn final_(&self) -> bool {
+    pub fn is_final(&self) -> bool {
         self.input_symbol == NO_SYMBOL_NUMBER
             && self.output_symbol == NO_SYMBOL_NUMBER
             && self.target_index == 1
@@ -1297,7 +1297,7 @@ impl Transition {
             self.input_symbol,
             self.output_symbol,
             self.target_index,
-            if self.final_() { " (final)" } else { "" }
+            if self.is_final() { " (final)" } else { "" }
         );
     }
 
@@ -1338,8 +1338,8 @@ impl TransitionEntry for Transition {
     fn matches(&self, s: SymbolNumber) -> bool {
         self.matches(s)
     }
-    fn final_(&self) -> bool {
-        self.final_()
+    fn is_final(&self) -> bool {
+        self.is_final()
     }
     fn get_weight(&self) -> Weight {
         self.get_weight()
@@ -1372,9 +1372,9 @@ impl TransitionW {
         }
     }
 
-    pub fn new_final(final_: bool, w: Weight) -> Self {
+    pub fn new_final(is_final: bool, w: Weight) -> Self {
         TransitionW {
-            base: Transition::new_final(final_),
+            base: Transition::new_final(is_final),
             transition_weight: w,
         }
     }
@@ -1391,8 +1391,8 @@ impl TransitionW {
     pub fn matches(&self, s: SymbolNumber) -> bool {
         self.base.matches(s)
     }
-    pub fn final_(&self) -> bool {
-        self.base.final_()
+    pub fn is_final(&self) -> bool {
+        self.base.is_final()
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transition-w.get-weight-fn]
@@ -1410,7 +1410,7 @@ impl TransitionW {
             self.base.output_symbol,
             self.base.target_index,
             self.transition_weight,
-            if self.final_() { " (final)" } else { "" }
+            if self.is_final() { " (final)" } else { "" }
         );
     }
 
@@ -1449,8 +1449,8 @@ impl TransitionEntry for TransitionW {
     fn matches(&self, s: SymbolNumber) -> bool {
         self.matches(s)
     }
-    fn final_(&self) -> bool {
-        self.final_()
+    fn is_final(&self) -> bool {
+        self.is_final()
     }
     fn get_weight(&self) -> Weight {
         self.get_weight()
@@ -1681,7 +1681,7 @@ impl<T1: IndexEntry + TableEntry + Clone + IndexCtor, T2: TransitionEntry + Tabl
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-transition-finality-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-transition-finality-fn]
     fn get_transition_finality(&self, i: TransitionTableIndex) -> bool {
-        self.transition_table.at(i).final_()
+        self.transition_table.at(i).is_final()
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-index-input-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-index-input-fn]
@@ -1696,7 +1696,7 @@ impl<T1: IndexEntry + TableEntry + Clone + IndexCtor, T2: TransitionEntry + Tabl
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-index-finality-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-index-finality-fn]
     fn get_index_finality(&self, i: TransitionTableIndex) -> bool {
-        self.index_table.at(i).final_()
+        self.index_table.at(i).is_final()
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-final-weight-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-final-weight-fn]
@@ -1911,11 +1911,11 @@ impl DoubleTape {
         DoubleTape { inner: Vec::new() }
     }
 
-    pub fn write_pair(&mut self, pos: u32, in_: SymbolNumber, out: SymbolNumber) {
+    pub fn write_pair(&mut self, pos: u32, input: SymbolNumber, out: SymbolNumber) {
         while pos as usize >= self.inner.len() {
             self.inner.push(SymbolPair::new());
         }
-        self.inner[pos as usize] = SymbolPair::new_values(in_, out);
+        self.inner[pos as usize] = SymbolPair::new_values(input, out);
     }
 
     pub fn write_vec(&mut self, pos: u32, vec: &Vec<SymbolNumber>) {

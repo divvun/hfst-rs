@@ -19,14 +19,14 @@ fn main() -> hfst::error::Result<()> {
 
     // Match: the runtime tags recognised input. We assert it runs and that the
     // recognised word survives in the output.
-    let out = container.match_("cat", 0.0, 0.0);
+    let out = container.do_match("cat", 0.0, 0.0);
     println!("pmatch container match(\"cat\") = {out:?}");
     assert!(
         out.contains("cat"),
         "expected 'cat' in match output, got {out:?}"
     );
 
-    let out2 = container.match_("dog", 0.0, 0.0);
+    let out2 = container.do_match("dog", 0.0, 0.0);
     assert!(
         out2.contains("dog"),
         "expected 'dog' in match output, got {out2:?}"

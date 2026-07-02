@@ -444,7 +444,7 @@ unsafe fn real_main() -> i32 {
         lexc.set_rename_flags(RENAME_FLAGS);
         lexc.set_flag_is_epsilon(FLAG_IS_EPSILON);
         lexc.set_xerox_composition(XEROX_COMPOSITION);
-        // lexc.with_flags_ = with_flags;
+        // lexc.with_flags = with_flags;
         if globals::SILENT {
             lexc.set_verbosity(0);
         } else {

@@ -1452,12 +1452,10 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
                     return 1;
                 }
             };
-            let type_ = trans.get_type();
+            let ty = trans.get_type();
             let mut symbols_seen: StringSet = StringSet::new();
 
-            if type_ != ImplementationType::HFST_OL_TYPE
-                && type_ != ImplementationType::HFST_OLW_TYPE
-            {
+            if ty != ImplementationType::HFST_OL_TYPE && ty != ImplementationType::HFST_OLW_TYPE {
                 only_optimized_lookup = false;
             }
 
@@ -1472,10 +1470,10 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             }
 
             // add multicharacter symbols to mc_symbols
-            if type_ == ImplementationType::SFST_TYPE
-                || type_ == ImplementationType::TROPICAL_OPENFST_TYPE
-                || type_ == ImplementationType::LOG_OPENFST_TYPE
-                || type_ == ImplementationType::FOMA_TYPE
+            if ty == ImplementationType::SFST_TYPE
+                || ty == ImplementationType::TROPICAL_OPENFST_TYPE
+                || ty == ImplementationType::LOG_OPENFST_TYPE
+                || ty == ImplementationType::FOMA_TYPE
             {
                 // [spec:hfst:def:hfst-lookup.basic-fn]
                 // [spec:hfst:sem:hfst-lookup.basic-fn]

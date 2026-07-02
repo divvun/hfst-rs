@@ -33,12 +33,12 @@ static mut OPTIONS: String = String::new();
 
 // [spec:hfst:def:hfst-fst2fst.set-output-type-fn]
 // [spec:hfst:sem:hfst-fst2fst.set-output-type-fn]
-unsafe fn set_output_type(type_: ImplementationType) {
+unsafe fn set_output_type(ty: ImplementationType) {
     unsafe {
         if OUTPUT_TYPE != ImplementationType::UNSPECIFIED_TYPE {
             error(1, 0, "Output type defined several times.");
         }
-        OUTPUT_TYPE = type_;
+        OUTPUT_TYPE = ty;
     }
 }
 

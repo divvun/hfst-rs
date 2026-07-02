@@ -19,10 +19,10 @@ fn main() -> hfst::error::Result<()> {
 
     // TransitionIndex finality semantics.
     let fin = TransitionIndex::create_final();
-    assert!(fin.final_());
+    assert!(fin.is_final());
     assert_eq!(fin.final_weight(), 0.0);
     let nonfin = TransitionIndex::new_values(3, 100);
-    assert!(!nonfin.final_());
+    assert!(!nonfin.is_final());
     assert!(nonfin.matches(3));
     assert!(!nonfin.matches(4));
     println!("transition-index OK");

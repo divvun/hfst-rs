@@ -222,7 +222,7 @@ pub struct HfstInputStream<'a> {
     /// Fidelity placeholder; see ['StreamImplementation'].
     implementation: StreamImplementation<'a>,
     /// Implementation type (the discriminant selecting the live 'implementation' member).
-    type_: ImplementationType,
+    ty: ImplementationType,
     /// Name of next transducer, given in the hfst header.
     name: String,
     props: BTreeMap<String, String>,
@@ -361,7 +361,7 @@ mod input_impl {
             _index: u32,
         ) -> bool {
             // #if HAVE_SFST || HAVE_LEAN_SFST
-            match self.type_ {
+            match self.ty {
                 ImplementationType::SFST_TYPE => {
                     //return this->implementation.sfst->
                     //set_implementation_specific_header_data(data, index);
@@ -390,7 +390,7 @@ mod input_impl {
         // 'load'), so for those types we read the payload directly off the owned
         // reader and rebuild the fst here.
         pub fn read_transducer(&mut self, t: &mut HfstTransducer) -> crate::error::Result<()> {
-            if self.type_ != ImplementationType::XFSM_TYPE {
+            if self.ty != ImplementationType::XFSM_TYPE {
                 if self.input_stream_active {
                     // first transducer in the stream
                     self.input_stream_active = false;
@@ -416,7 +416,7 @@ mod input_impl {
                 }
             }
 
-            match self.type_ {
+            match self.ty {
                 ImplementationType::SFST_TYPE => {
                     // implementation.sfst->read_transducer() — no SFST backend.
                     unimplemented!("deferred: SfstInputStream::read_transducer (no SFST backend)")
@@ -496,7 +496,7 @@ mod input_impl {
                     unimplemented!("deferred: FomaInputStream::read_transducer (no foma backend)")
                 }
                 ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    let weighted = self.type_ == ImplementationType::HFST_OLW_TYPE;
+                    let weighted = self.ty == ImplementationType::HFST_OLW_TYPE;
                     // Build a transient backend stream that borrows the owned
                     // reader (positioned just after the header that probing
                     // consumed), then read with has_header = false.
@@ -510,9 +510,9 @@ mod input_impl {
                     let mut ol_in = HfstOlBackendInputStream::new_istream(is, weighted);
                     let tr = ol_in.read_transducer(false)?;
                     t.implementation = TransducerImplementation::HfstOl(Box::new(tr));
-                    if t.get_type() != self.type_ {
+                    if t.get_type() != self.ty {
                         // weights need to be added or removed
-                        t.convert(self.type_, String::new())?;
+                        t.convert(self.ty, String::new())?;
                     }
                 }
                 // case ERROR_TYPE: default:
@@ -522,7 +522,7 @@ mod input_impl {
                 }
             }
 
-            if self.type_ != ImplementationType::XFSM_TYPE {
+            if self.ty != ImplementationType::XFSM_TYPE {
                 let nm = self.name.clone();
                 t.set_name(&nm);
                 let props: Vec<(String, String)> = self
@@ -667,21 +667,21 @@ mod input_impl {
             }
 
             if "SFST" == header_data[1].1.as_str() {
-                self.type_ = ImplementationType::SFST_TYPE;
+                self.ty = ImplementationType::SFST_TYPE;
             } else if "FOMA" == header_data[1].1.as_str() {
-                self.type_ = ImplementationType::FOMA_TYPE;
+                self.ty = ImplementationType::FOMA_TYPE;
             } else if "TROPICAL_OPENFST" == header_data[1].1.as_str()
                 || "TROPICAL_OFST" == header_data[1].1.as_str()
             {
-                self.type_ = ImplementationType::TROPICAL_OPENFST_TYPE;
+                self.ty = ImplementationType::TROPICAL_OPENFST_TYPE;
             } else if "LOG_OPENFST" == header_data[1].1.as_str()
                 || "LOG_OFST" == header_data[1].1.as_str()
             {
-                self.type_ = ImplementationType::LOG_OPENFST_TYPE;
+                self.ty = ImplementationType::LOG_OPENFST_TYPE;
             } else if "HFST_OL" == header_data[1].1.as_str() {
-                self.type_ = ImplementationType::HFST_OL_TYPE;
+                self.ty = ImplementationType::HFST_OL_TYPE;
             } else if "HFST_OLW" == header_data[1].1.as_str() {
-                self.type_ = ImplementationType::HFST_OLW_TYPE;
+                self.ty = ImplementationType::HFST_OLW_TYPE;
             } else {
                 crate::bail!(
                     TransducerHeader,
@@ -734,8 +734,8 @@ mod input_impl {
             // try to read a pre-release HFST version 3.0 header
             if self.read_library_header_old(&mut header_bytes) {
                 let mut type_bytes: i32 = 0;
-                self.type_ = self.get_fst_type_old(&mut type_bytes)?; // throws error
-                if self.type_ == ImplementationType::ERROR_TYPE {
+                self.ty = self.get_fst_type_old(&mut type_bytes)?; // throws error
+                if self.ty == ImplementationType::ERROR_TYPE {
                     crate::bail!(NotTransducerStream);
                 }
                 *bytes_read = header_bytes + type_bytes;
@@ -925,7 +925,7 @@ mod input_impl {
             if self.read_hfst_header(&mut bytes_read)? {
                 self.has_hfst_header = true;
                 self.bytes_to_skip = bytes_read as u32;
-                return Ok(self.type_);
+                return Ok(self.ty);
             }
 
             // whether the stream contains an HFST version <3.0 transducer
@@ -964,7 +964,7 @@ mod input_impl {
         ) -> crate::error::Result<Self> {
             let mut this = HfstInputStream {
                 implementation: StreamImplementation::default(),
-                type_: ImplementationType::ERROR_TYPE,
+                ty: ImplementationType::ERROR_TYPE,
                 name: String::new(),
                 props: BTreeMap::new(),
                 bytes_to_skip: 0,
@@ -978,16 +978,16 @@ mod input_impl {
             if this.stream_eof() {
                 crate::bail!(EndOfStream);
             }
-            this.type_ = this.stream_fst_type()?;
+            this.ty = this.stream_fst_type()?;
 
-            if !HfstTransducer::is_lean_implementation_type_available(this.type_) {
-                crate::bail!(ImplementationTypeNotAvailable(this.type_));
+            if !HfstTransducer::is_lean_implementation_type_available(this.ty) {
+                crate::bail!(ImplementationTypeNotAvailable(this.ty));
             }
 
             // C++ 'switch (type)' constructs the per-type backend stream here. We
             // build it transiently in 'read_transducer'; this switch only rejects
             // the unsupported / unrecognised types up front.
-            match this.type_ {
+            match this.ty {
                 ImplementationType::TROPICAL_OPENFST_TYPE
                 | ImplementationType::LOG_OPENFST_TYPE
                 | ImplementationType::HFST_OL_TYPE
@@ -1102,7 +1102,7 @@ mod input_impl {
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.get-type-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.get-type-fn]
         pub fn get_type(&self) -> ImplementationType {
-            self.type_
+            self.ty
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.is-hfst-header-included-fn]

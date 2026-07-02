@@ -43,8 +43,8 @@ fn serialized() -> std::sync::MutexGuard<'static, ()> {
 
 // Shared helper inlined from test/libhfst/auxiliary_functions.cc (verbose_print).
 // get_bin is also defined there but is unused by this suite, so it is omitted.
-fn verbose_print(msg: &str, type_: ImplementationType) {
-    eprintln!("Testing:\t{msg} for type {type_:?}...");
+fn verbose_print(msg: &str, ty: ImplementationType) {
+    eprintln!("Testing:\t{msg} for type {ty:?}...");
 }
 
 fn fixture_path(name: &str) -> String {
@@ -62,37 +62,37 @@ fn temp_path(stem: &str) -> String {
 // --- The empty / epsilon / one-transition constructors, plus the destructor.
 // These C++ blocks construct without asserting; the port verifies they do not
 // panic.
-fn smoke_constructors(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("The empty transducer", type_);
-    let _empty = HfstTransducer::new_type(type_)?;
+fn smoke_constructors(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("The empty transducer", ty);
+    let _empty = HfstTransducer::new_type(ty)?;
 
-    verbose_print("The epsilon transducer", type_);
-    let _epsilon = HfstTransducer::new_symbol("@_EPSILON_SYMBOL_@", type_)?;
+    verbose_print("The epsilon transducer", ty);
+    let _epsilon = HfstTransducer::new_symbol("@_EPSILON_SYMBOL_@", ty)?;
 
-    verbose_print("One-transition transducer", type_);
-    let _foo = HfstTransducer::new_symbol("foo", type_)?;
-    let _foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+    verbose_print("One-transition transducer", ty);
+    let _foo = HfstTransducer::new_symbol("foo", ty)?;
+    let _foobar = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
 
     // Destructor: C++ does 'new HfstTransducer("new", type); delete nu;'.
-    verbose_print("Destructor", type_);
-    let nu = Box::new(HfstTransducer::new_symbol("new", type_)?);
+    verbose_print("Destructor", ty);
+    let nu = Box::new(HfstTransducer::new_symbol("new", ty)?);
     drop(nu);
     Ok(())
 }
 
 // --- The copy constructor.
-fn copy_constructor(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("The copy constructor", type_);
-    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+fn copy_constructor(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("The copy constructor", ty);
+    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
     let foobar_copy = HfstTransducer::new_copy(&foobar)?;
     assert!(foobar.compare_default(&foobar_copy)?);
     Ok(())
 }
 
 // --- Conversion from HfstBasicTransducer.
-fn conversion_from_basic(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Conversion from HfstBasicTransducer", type_);
-    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+fn conversion_from_basic(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("Conversion from HfstBasicTransducer", ty);
+    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
 
     let mut basic = HfstBasicTransducer::new();
     basic.add_state(1);
@@ -106,39 +106,39 @@ fn conversion_from_basic(type_: ImplementationType) -> Result<(), hfst::error::E
     basic.add_transition(0, &tr, true);
     basic.set_final_weight(1, &0.0);
 
-    let foobar_basic = HfstTransducer::new_from_basic(&basic, type_)?;
+    let foobar_basic = HfstTransducer::new_from_basic(&basic, ty)?;
     assert!(foobar.compare_default(&foobar_basic)?);
     Ok(())
 }
 
 // --- Construction by tokenization.
-fn construction_by_tokenization(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Construction by tokenization", type_);
-    let foo = HfstTransducer::new_symbol("foo", type_)?;
-    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+fn construction_by_tokenization(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("Construction by tokenization", ty);
+    let foo = HfstTransducer::new_symbol("foo", ty)?;
+    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
 
     let mut tok = HfstTokenizer::new();
     tok.add_skip_symbol("baz");
     tok.add_multichar_symbol("foo");
     tok.add_multichar_symbol("bar");
 
-    let foo_tok = HfstTransducer::new_tokenized("bazfoobaz", &tok, type_)?;
-    let foobar_tok = HfstTransducer::new_tokenized_pair("bazfoo", "barbaz", &tok, type_)?;
+    let foo_tok = HfstTransducer::new_tokenized("bazfoobaz", &tok, ty)?;
+    let foobar_tok = HfstTransducer::new_tokenized_pair("bazfoo", "barbaz", &tok, ty)?;
     assert!(foo.compare_default(&foo_tok)?);
     assert!(foobar.compare_default(&foobar_tok)?);
     Ok(())
 }
 
 // --- Construction from AT&T format.
-fn construction_from_att(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Construction from AT&T format", type_);
-    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+fn construction_from_att(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("Construction from AT&T format", ty);
+    let foobar = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
 
     let path = fixture_path("foobar.att");
     // C++ uses the (FILE*, type, epsilon_symbol, linecount) constructor with
     // epsilon "@0@"; read_in_att_format_filename is the facade equivalent that
     // opens the file itself. warn_negs defaults to false.
-    let foobar_att = HfstTransducer::read_in_att_format_filename(&path, type_, "@0@", false)
+    let foobar_att = HfstTransducer::read_in_att_format_filename(&path, ty, "@0@", false)
         .expect("foobar.att fixture reads as a valid AT&T transducer");
     foobar_att.minimize()?;
     assert!(foobar.compare_default(foobar_att)?);
@@ -149,11 +149,11 @@ fn construction_from_att(type_: ImplementationType) -> Result<(), hfst::error::E
 }
 
 // --- Construction from HfstInputStream (also tests get_type, set_name, get_name).
-fn construction_from_stream(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Construction from HfstInputStream", type_);
-    let mut foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+fn construction_from_stream(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("Construction from HfstInputStream", ty);
+    let mut foobar = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
 
-    let path = temp_path(&format!("hfst_test_constructors_{type_:?}.hfst"));
+    let path = temp_path(&format!("hfst_test_constructors{ty:?}.hfst"));
     {
         let mut out = HfstOutputStream::new_filename(&path, foobar.get_type(), true)?;
         foobar.set_name("foobar");
@@ -167,19 +167,19 @@ fn construction_from_stream(type_: ImplementationType) -> Result<(), hfst::error
 
     assert!(foobar.compare_default(&foobar_stream)?);
     assert_eq!(foobar_stream.get_name(), "foobar");
-    assert_eq!(foobar_stream.get_type(), type_);
+    assert_eq!(foobar_stream.get_type(), ty);
     Ok(())
 }
 
 // --- Operator= (the non-OL part of the C++ operator= block).
-fn operator_assign(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Operator=", type_);
+fn operator_assign(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("Operator=", ty);
     // In C++ foobar already carries name "foobar" from the stream block; set it
     // explicitly here so this group is self-contained.
-    let mut foobar = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+    let mut foobar = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
     foobar.set_name("foobar");
 
-    let mut foobar2 = HfstTransducer::new_symbol("baz", type_)?;
+    let mut foobar2 = HfstTransducer::new_symbol("baz", ty)?;
     assert_eq!(foobar.get_name(), "foobar");
     foobar2.operator_assign(&foobar)?;
     assert_eq!(foobar2.get_name(), "foobar");
@@ -202,10 +202,10 @@ fn copy_constructor_preserves_name_after_olw_convert() -> Result<(), hfst::error
 // --- The HFST_OL / HFST_OLW part of the C++ operator= block.
 // Faithful port: constructs empty HFST_OL / HFST_OLW transducers and assigns
 // converted copies of foobar2 into them, checking the name survives.
-fn operator_assign_ol(type_: ImplementationType) -> Result<(), hfst::error::Error> {
+fn operator_assign_ol(ty: ImplementationType) -> Result<(), hfst::error::Error> {
     // foobar2 corresponds to C++ foobar2 after 'foobar2 = foobar': the foo:bar
     // transducer named "foobar".
-    let mut foobar2 = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+    let mut foobar2 = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
     foobar2.set_name("foobar");
 
     let mut empty_ol = HfstTransducer::new_type(HFST_OL_TYPE)?;

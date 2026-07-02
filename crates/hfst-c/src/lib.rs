@@ -128,8 +128,8 @@ pub extern "C" fn hfst_transducer_from_stream(his: *mut c_void) -> *mut c_void {
 // [spec:hfst:def:libhfst-c.hfst-lookup-fn]
 // [spec:hfst:sem:libhfst-c.hfst-lookup-fn]
 #[unsafe(no_mangle)]
-pub extern "C" fn hfst_lookup(self_: *mut c_void, s: *const c_char) -> *mut c_void {
-    let fsa = self_ as *mut HfstTransducer;
+pub extern "C" fn hfst_lookup(this: *mut c_void, s: *const c_char) -> *mut c_void {
+    let fsa = this as *mut HfstTransducer;
     let input = unsafe { std::ffi::CStr::from_ptr(s) }.to_string_lossy();
     let rv = unsafe { (*fsa).lookup_string(&input, -1, 0.0) };
     rv as *mut c_void

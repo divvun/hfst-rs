@@ -9,8 +9,8 @@
 //! 'libhfst/src/parsers/lexc-utils.{h,cc}'.
 //!
 //! # C++ globals / file-statics folded onto the instance
-//!   * the 'lexc_' singleton becomes '&mut self';
-//!   * 'static bool firstLexicon' becomes the 'first_lexicon_' field;
+//!   * the 'lexc' singleton becomes '&mut self';
+//!   * 'static bool firstLexicon' becomes the 'first_lexicon' field;
 //!   * the unused 'static StringVector multichar_symbols' is dropped.
 //!
 //! # Stream / WINDOWS plumbing dropped — error text via 'tracing'.
@@ -47,46 +47,46 @@ use tracing::{debug, error, info, warn};
 
 // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler]
 pub struct LexcCompiler {
-    pub(crate) format_: ImplementationType,
-    pub(crate) tokenizer_: HfstTokenizer,
-    pub(crate) xre_: XreCompiler,
+    pub(crate) format: ImplementationType,
+    pub(crate) tokenizer: HfstTokenizer,
+    pub(crate) xre: XreCompiler,
     pub(crate) initialLexiconName_: String,
     pub(crate) currentLexiconName_: String,
     pub(crate) stringsTrie_: HfstBasicTransducer,
-    pub(crate) regexps_: BTreeMap<String, HfstTransducer>, // owning HfstTransducer* -> owned
+    pub(crate) regexps: BTreeMap<String, HfstTransducer>, // owning HfstTransducer* -> owned
     pub(crate) lexiconNames_: BTreeSet<String>,
     pub(crate) noFlags_: BTreeSet<String>,
-    pub(crate) continuations_: BTreeSet<String>,
-    pub(crate) alphabets_: BTreeSet<String>,
+    pub(crate) continuations: BTreeSet<String>,
+    pub(crate) alphabets: BTreeSet<String>,
     pub(crate) totalEntries_: usize,
     pub(crate) currentEntries_: usize,
-    pub(crate) align_strings_: bool,
-    pub(crate) with_flags_: bool,
-    pub(crate) minimize_flags_: bool,
-    pub(crate) rename_flags_: bool,
-    pub(crate) split_characters_: bool,
-    pub(crate) treat_warnings_as_errors_: bool,
-    pub(crate) warn_everything_: bool,
-    pub(crate) warn_missing_lexicons_: bool,
-    pub(crate) warn_unused_lexicons_: bool,
-    pub(crate) warn_repeated_lexicons_: bool,
-    pub(crate) warn_missing_alphabets_: bool,
-    pub(crate) warn_one_sided_flags_: bool, // C++ leaves this UNINITIALIZED; default false
-    pub(crate) warn_unnecessary_escapes_: bool,
-    pub(crate) verbose_: bool,
-    pub(crate) quiet_: bool,
-    pub(crate) first_lexicon_: bool, // folded 'static bool firstLexicon'
-    pub parseErrors_: bool,          // public field in C++ header
+    pub(crate) align_strings: bool,
+    pub(crate) with_flags: bool,
+    pub(crate) minimize_flags: bool,
+    pub(crate) rename_flags: bool,
+    pub(crate) split_characters: bool,
+    pub(crate) treat_warnings_as_errors: bool,
+    pub(crate) warn_everything: bool,
+    pub(crate) warn_missing_lexicons: bool,
+    pub(crate) warn_unused_lexicons: bool,
+    pub(crate) warn_repeated_lexicons: bool,
+    pub(crate) warn_missing_alphabets: bool,
+    pub(crate) warn_one_sided_flags: bool, // C++ leaves this UNINITIALIZED; default false
+    pub(crate) warn_unnecessary_escapes: bool,
+    pub(crate) verbose: bool,
+    pub(crate) quiet: bool,
+    pub(crate) first_lexicon: bool, // folded 'static bool firstLexicon'
+    pub parseErrors_: bool,         // public field in C++ header
     /// Whether composition treats flag diacritics as epsilons (the former
     /// 'flag_is_epsilon_in_composition' file-static global, default 'false');
     /// threaded into 'compile_lexical's composes. hfst-lexc-compiler's
     /// '--xfst flag-is-epsilon' toggles it.
-    pub(crate) flag_is_epsilon_: bool,
+    pub(crate) flag_is_epsilon: bool,
     /// Whether composition treats flag diacritics as ordinary symbols, Xerox-style
     /// (the former 'xerox_composition' file-static global, default 'false');
     /// threaded into 'compile_lexical's composes. hfst-lexc-compiler defaults this
     /// ON, toggled by its '--xerox-composition' option.
-    pub(crate) xerox_composition_: bool,
+    pub(crate) xerox_composition: bool,
 }
 // (followed by a doc-comment roster of every method + lexc-utils helper the
 //  bodies fill — public API, AST-walk driver compile/compile_file, and the
@@ -316,56 +316,56 @@ impl LexcCompiler {
     /// Common body of the 'LexcCompiler(impl)' and
     /// 'LexcCompiler(impl, withFlags, alignStrings)' constructors: seeds the
     /// tokenizer with the epsilon/zero multichars + the '#' joiner, registers
-    /// '#' as a lexicon name, and configures 'xre_'.
+    /// '#' as a lexicon name, and configures 'xre'.
     fn seeded(format: ImplementationType) -> LexcCompiler {
         let mut compiler = LexcCompiler {
-            format_: format,
-            tokenizer_: HfstTokenizer::new(),
-            xre_: XreCompiler::new(format),
+            format: format,
+            tokenizer: HfstTokenizer::new(),
+            xre: XreCompiler::new(format),
             initialLexiconName_: "Root".to_string(),
             currentLexiconName_: String::new(),
             stringsTrie_: HfstBasicTransducer::new(),
-            regexps_: BTreeMap::new(),
+            regexps: BTreeMap::new(),
             lexiconNames_: BTreeSet::new(),
             noFlags_: BTreeSet::new(),
-            continuations_: BTreeSet::new(),
-            alphabets_: BTreeSet::new(),
+            continuations: BTreeSet::new(),
+            alphabets: BTreeSet::new(),
             totalEntries_: 0,
             currentEntries_: 0,
-            align_strings_: false,
-            with_flags_: false,
-            minimize_flags_: false,
-            rename_flags_: false,
-            split_characters_: false,
-            treat_warnings_as_errors_: false,
-            warn_everything_: false,
-            warn_missing_lexicons_: false,
-            warn_unused_lexicons_: false,
-            warn_repeated_lexicons_: false,
-            warn_missing_alphabets_: false,
-            warn_one_sided_flags_: false,
-            warn_unnecessary_escapes_: false,
-            verbose_: false,
-            quiet_: false,
-            first_lexicon_: true,
+            align_strings: false,
+            with_flags: false,
+            minimize_flags: false,
+            rename_flags: false,
+            split_characters: false,
+            treat_warnings_as_errors: false,
+            warn_everything: false,
+            warn_missing_lexicons: false,
+            warn_unused_lexicons: false,
+            warn_repeated_lexicons: false,
+            warn_missing_alphabets: false,
+            warn_one_sided_flags: false,
+            warn_unnecessary_escapes: false,
+            verbose: false,
+            quiet: false,
+            first_lexicon: true,
             parseErrors_: false,
-            flag_is_epsilon_: false,
-            xerox_composition_: false,
+            flag_is_epsilon: false,
+            xerox_composition: false,
         };
         compiler
-            .tokenizer_
+            .tokenizer
             .add_multichar_symbol("@_EPSILON_SYMBOL_@");
-        compiler.tokenizer_.add_multichar_symbol("@0@");
-        compiler.tokenizer_.add_multichar_symbol("@ZERO@");
+        compiler.tokenizer.add_multichar_symbol("@0@");
+        compiler.tokenizer.add_multichar_symbol("@ZERO@");
         compiler
-            .tokenizer_
+            .tokenizer
             .add_multichar_symbol("@@ANOTHER_EPSILON@@");
         let hash = "#".to_string();
         compiler.lexiconNames_.insert(hash.clone());
         let enc = joiner_encode(&hash);
-        compiler.tokenizer_.add_multichar_symbol(&enc);
-        compiler.xre_.set_expand_definitions(true);
-        compiler.xre_.set_verbosity(!compiler.quiet_);
+        compiler.tokenizer.add_multichar_symbol(&enc);
+        compiler.xre.set_expand_definitions(true);
+        compiler.xre.set_verbosity(!compiler.quiet);
         compiler
     }
 
@@ -383,91 +383,91 @@ impl LexcCompiler {
         align_strings: bool,
     ) -> LexcCompiler {
         let mut compiler = LexcCompiler::seeded(format);
-        compiler.align_strings_ = align_strings;
-        compiler.with_flags_ = with_flags;
+        compiler.align_strings = align_strings;
+        compiler.with_flags = with_flags;
         compiler
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.reset-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.reset-fn]
     pub fn reset(&mut self) {
-        self.tokenizer_ = HfstTokenizer::new();
-        self.tokenizer_.add_multichar_symbol("@_EPSILON_SYMBOL_@");
-        self.tokenizer_.add_multichar_symbol("@0@");
-        self.tokenizer_.add_multichar_symbol("@ZERO@");
-        self.tokenizer_.add_multichar_symbol("@@ANOTHER_EPSILON@@");
+        self.tokenizer = HfstTokenizer::new();
+        self.tokenizer.add_multichar_symbol("@_EPSILON_SYMBOL_@");
+        self.tokenizer.add_multichar_symbol("@0@");
+        self.tokenizer.add_multichar_symbol("@ZERO@");
+        self.tokenizer.add_multichar_symbol("@@ANOTHER_EPSILON@@");
         self.initialLexiconName_ = "Root".to_string();
         self.totalEntries_ = 0;
         self.currentEntries_ = 0;
         self.parseErrors_ = false;
         self.lexiconNames_.clear();
         self.noFlags_.clear();
-        self.continuations_.clear();
-        self.alphabets_.clear();
+        self.continuations.clear();
+        self.alphabets.clear();
         self.currentLexiconName_ = String::new(); // ?
         self.lexiconNames_.insert("#".to_string());
         self.stringsTrie_ = HfstBasicTransducer::new(); // ?
-        // The owned regexps_ transducers are dropped by clear() (C++ delete'd
+        // The owned regexps transducers are dropped by clear() (C++ delete'd
         // the raw pointers here). The C++ 'static bool firstLexicon' was a
-        // function-static and is NOT touched by reset(); first_lexicon_ is left
+        // function-static and is NOT touched by reset(); first_lexicon is left
         // untouched to mirror that.
-        self.regexps_.clear();
+        self.regexps.clear();
     }
 
     // ----- option setters / getters -----
 
     pub fn set_verbosity(&mut self, verbose: u32) -> &mut Self {
         if verbose == 0 {
-            self.quiet_ = true;
-            self.verbose_ = false;
+            self.quiet = true;
+            self.verbose = false;
         } else if verbose == 1 {
-            self.quiet_ = false;
-            self.verbose_ = false;
+            self.quiet = false;
+            self.verbose = false;
         } else {
-            self.quiet_ = false;
-            self.verbose_ = true;
+            self.quiet = false;
+            self.verbose = true;
         }
-        self.xre_.set_verbosity(!self.quiet_);
+        self.xre.set_verbosity(!self.quiet);
         self
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.get-verbosity-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.get-verbosity-fn]
     pub fn get_verbosity(&self) -> u32 {
-        if self.quiet_ && !self.verbose_ {
+        if self.quiet && !self.verbose {
             return 0;
         }
-        if !self.quiet_ && !self.verbose_ {
+        if !self.quiet && !self.verbose {
             return 1;
         }
-        if !self.quiet_ && self.verbose_ {
+        if !self.quiet && self.verbose {
             return 2;
         }
         std::panic::panic_any("LexcCompiler::getVerbosity() failed".to_string())
     }
 
     pub fn set_treat_warnings_as_errors(&mut self, value: bool) -> &mut Self {
-        self.treat_warnings_as_errors_ = value;
+        self.treat_warnings_as_errors = value;
         self
     }
 
     pub fn set_align_strings(&mut self, value: bool) -> &mut Self {
-        self.align_strings_ = value;
+        self.align_strings = value;
         self
     }
 
     pub fn set_with_flags(&mut self, value: bool) -> &mut Self {
-        self.with_flags_ = value;
+        self.with_flags = value;
         self
     }
 
     pub fn set_minimize_flags(&mut self, value: bool) -> &mut Self {
-        self.minimize_flags_ = value;
+        self.minimize_flags = value;
         self
     }
 
     pub fn set_rename_flags(&mut self, value: bool) -> &mut Self {
-        self.rename_flags_ = value;
+        self.rename_flags = value;
         self
     }
 
@@ -475,7 +475,7 @@ impl LexcCompiler {
     /// 'hfst::set_flag_is_epsilon_in_composition' file-static global; the
     /// '--xfst flag-is-epsilon' option of hfst-lexc-compiler toggles it).
     pub fn set_flag_is_epsilon(&mut self, value: bool) -> &mut Self {
-        self.flag_is_epsilon_ = value;
+        self.flag_is_epsilon = value;
         self
     }
 
@@ -483,7 +483,7 @@ impl LexcCompiler {
     /// Xerox-style (was the 'hfst::set_xerox_composition' file-static global; the
     /// '--xerox-composition' option of hfst-lexc-compiler toggles it).
     pub fn set_xerox_composition(&mut self, value: bool) -> &mut Self {
-        self.xerox_composition_ = value;
+        self.xerox_composition = value;
         self
     }
 
@@ -492,8 +492,8 @@ impl LexcCompiler {
     /// and 'xerox_composition'.
     fn compose_cfg(&self) -> crate::hfst_transducer::EngineConfig {
         crate::hfst_transducer::EngineConfig {
-            flag_is_epsilon_in_composition: self.flag_is_epsilon_,
-            xerox_composition: self.xerox_composition_,
+            flag_is_epsilon_in_composition: self.flag_is_epsilon,
+            xerox_composition: self.xerox_composition,
             ..crate::hfst_transducer::EngineConfig::default()
         }
     }
@@ -502,19 +502,19 @@ impl LexcCompiler {
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.set-warning-fn]
     pub fn set_warning(&mut self, warning: &str, value: bool) {
         match warning {
-            "-Wone-sided-flags" => self.warn_one_sided_flags_ = value,
-            "-Wmissing-lexicons" => self.warn_missing_lexicons_ = value,
-            "-Wunused-lexicons" => self.warn_unused_lexicons_ = value,
-            "-Wrepeated-lexicons" => self.warn_repeated_lexicons_ = value,
-            "-Wmissing-alphabets" => self.warn_missing_alphabets_ = value,
-            "-Wunnecessary-escapes" => self.warn_unnecessary_escapes_ = value,
+            "-Wone-sided-flags" => self.warn_one_sided_flags = value,
+            "-Wmissing-lexicons" => self.warn_missing_lexicons = value,
+            "-Wunused-lexicons" => self.warn_unused_lexicons = value,
+            "-Wrepeated-lexicons" => self.warn_repeated_lexicons = value,
+            "-Wmissing-alphabets" => self.warn_missing_alphabets = value,
+            "-Wunnecessary-escapes" => self.warn_unnecessary_escapes = value,
             _ => error!("unknown warning {}", warning),
         }
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.set-error-stream-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.set-error-stream-fn]
-    /// The C++ stored an 'std::ostream*' and forwarded it to 'xre_'; the port
+    /// The C++ stored an 'std::ostream*' and forwarded it to 'xre'; the port
     /// drops the stream plumbing (errors go to stderr), so this is a no-op.
     pub fn set_error_stream<T>(&mut self, _os: T) {}
 
@@ -543,13 +543,13 @@ impl LexcCompiler {
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.set-output-to-console-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.set-output-to-console-fn]
     /// On non-WINDOWS the C++ 'setOutputToConsole' is a no-op ('(void)value');
-    /// the WINDOWS-only 'output_to_console_' field is dropped from the port.
+    /// the WINDOWS-only 'output_to_console' field is dropped from the port.
     pub fn set_output_to_console(&mut self, _value: bool) {}
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.get-output-to-console-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.get-output-to-console-fn]
     /// On non-WINDOWS the C++ 'getOutputToConsole' always returns false; the
-    /// WINDOWS-only 'output_to_console_' field is dropped from the port.
+    /// WINDOWS-only 'output_to_console' field is dropped from the port.
     pub fn get_output_to_console(&self) -> bool {
         false
     }
@@ -557,54 +557,54 @@ impl LexcCompiler {
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.is-quiet-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.is-quiet-fn]
     pub fn is_quiet(&self) -> bool {
-        self.quiet_
+        self.quiet
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.are-warnings-treated-as-errors-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.are-warnings-treated-as-errors-fn]
     pub fn are_warnings_treated_as_errors(&self) -> bool {
-        self.treat_warnings_as_errors_
+        self.treat_warnings_as_errors
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.is-strict-alphabets-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.is-strict-alphabets-fn]
     pub fn is_strict_alphabets(&self) -> bool {
-        self.warn_missing_alphabets_
+        self.warn_missing_alphabets
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.set-strict-alphabets-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.set-strict-alphabets-fn]
     pub fn set_strict_alphabets(&mut self, strictness: bool) {
-        self.warn_missing_alphabets_ = strictness;
+        self.warn_missing_alphabets = strictness;
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.has-split-characters-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.has-split-characters-fn]
     pub fn has_split_characters(&self) -> bool {
-        self.split_characters_
+        self.split_characters
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.set-split-characters-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.set-split-characters-fn]
     pub fn set_split_characters(&mut self, splitness: bool) {
-        self.split_characters_ = splitness;
+        self.split_characters = splitness;
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.is-warning-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.is-warning-fn]
     pub fn is_warning(&self, warning: &str) -> bool {
         if warning == "-Wone-sided-flags" {
-            self.warn_one_sided_flags_
+            self.warn_one_sided_flags
         } else if warning == "-Wmissing-lexicons" {
-            self.warn_missing_lexicons_
+            self.warn_missing_lexicons
         } else if warning == "-Wunused-lexicons" {
-            self.warn_unused_lexicons_
+            self.warn_unused_lexicons
         } else if warning == "-Wrepeated-lexicons" {
-            self.warn_repeated_lexicons_
+            self.warn_repeated_lexicons
         } else if warning == "-Wmissing-alphabets" {
-            self.warn_missing_alphabets_
+            self.warn_missing_alphabets
         } else if warning == "-Wunnecessary-escapes" {
-            self.warn_unnecessary_escapes_
+            self.warn_unnecessary_escapes
         } else {
             error!("unknown warning {}", warning);
             false
@@ -633,7 +633,7 @@ impl LexcCompiler {
     // Port of the char*-returning 'hfst::lexc::strip_percents(const char *s,
     // bool do_zeros)' (distinct from the std::string '&'-returning
     // 'stripPercents', which is ported as the 'strip_percents_str' free fn).
-    // The C++ reached the 'lexc_' singleton for warnings; the re-entrant port
+    // The C++ reached the 'lexc' singleton for warnings; the re-entrant port
     // takes '&mut self'. NULL becomes 'None'. The computed-but-unused 'err'
     // ostream at the top of the C++ body is dropped with the rest of the stream
     // plumbing (errors go to stderr).
@@ -715,11 +715,11 @@ impl LexcCompiler {
     }
 
     /// Port of 'LexcCompiler::unicodeCheck_'. The ICU grapheme-segmentation
-    /// guard (auto-adding multi-codepoint graphemes to 'alphabets_') is deferred;
+    /// guard (auto-adding multi-codepoint graphemes to 'alphabets') is deferred;
     /// for the common single-codepoint-grapheme path the C++ adds nothing, so
     /// this is faithful for ASCII and only skips the multi-codepoint warning.
-    fn unicode_check_(&mut self, _data: &str) -> &mut Self {
-        if self.split_characters_ {
+    fn unicode_check(&mut self, _data: &str) -> &mut Self {
+        if self.split_characters {
             return self;
         }
         self
@@ -733,11 +733,11 @@ impl LexcCompiler {
     }
 
     pub fn add_alphabet(&mut self, alpha: &str) -> &mut Self {
-        self.alphabets_.insert(alpha.to_string());
-        self.tokenizer_.add_multichar_symbol(alpha);
-        if !self.quiet_ && self.verbose_ {
+        self.alphabets.insert(alpha.to_string());
+        self.tokenizer.add_multichar_symbol(alpha);
+        if !self.quiet && self.verbose {
             // warn about undefined multichars
-            self.xre_.add_defined_multichar_symbol(alpha);
+            self.xre.add_defined_multichar_symbol(alpha);
         }
         self
     }
@@ -746,9 +746,9 @@ impl LexcCompiler {
     pub fn add_string_entry(&mut self, data: &str, continuation: &str, weight: f64) -> &mut Self {
         self.currentEntries_ += 1;
         self.totalEntries_ += 1;
-        self.unicode_check_(data);
-        self.continuations_.insert(continuation.to_string());
-        let encoded_cont = if self.with_flags_ {
+        self.unicode_check(data);
+        self.continuations.insert(continuation.to_string());
+        let encoded_cont = if self.with_flags {
             if !self.noFlags_.contains(continuation) {
                 flag_joiner_encode(continuation, false)
             } else {
@@ -757,11 +757,11 @@ impl LexcCompiler {
         } else {
             joiner_encode(continuation)
         };
-        self.tokenizer_.add_multichar_symbol(&encoded_cont);
+        self.tokenizer.add_multichar_symbol(&encoded_cont);
 
         // build string pair vector map
         let cur = self.currentLexiconName_.clone();
-        let joiner_enc = if self.with_flags_ {
+        let joiner_enc = if self.with_flags {
             if !self.noFlags_.contains(&cur) {
                 flag_joiner_encode(&cur, true)
             } else {
@@ -770,12 +770,12 @@ impl LexcCompiler {
         } else {
             joiner_encode(&cur)
         };
-        self.tokenizer_.add_multichar_symbol(&joiner_enc);
-        self.tokenizer_.add_multichar_symbol("0"); // epsilon
-        self.tokenizer_.add_multichar_symbol("@ZERO@"); // literal zero
-        let mut new_vector = self.tokenizer_.tokenize(
+        self.tokenizer.add_multichar_symbol(&joiner_enc);
+        self.tokenizer.add_multichar_symbol("0"); // epsilon
+        self.tokenizer.add_multichar_symbol("@ZERO@"); // literal zero
+        let mut new_vector = self.tokenizer.tokenize(
             &format!("{}{}{}", joiner_enc, data, encoded_cont),
-            self.split_characters_,
+            self.split_characters,
         );
         // "0"      -> "@0@"  (single symbols)
         // "@ZERO@" -> "0"    (everywhere)
@@ -798,7 +798,7 @@ impl LexcCompiler {
                     .replace_range(start_pos..start_pos + "@ZERO@".len(), "0");
             }
             let first = new_vector[i].0.clone();
-            if !self.alphabets_.contains(&first) {
+            if !self.alphabets.contains(&first) {
                 if first.starts_with('@') && first.ends_with('@') {
                     i += 1;
                     continue;
@@ -807,9 +807,9 @@ impl LexcCompiler {
                     i += 1;
                     continue;
                 }
-                if self.warn_missing_alphabets_ {
+                if self.warn_missing_alphabets {
                     let errm = format!("Adding {} to Alphabets [Wmissing-alphabets]", first);
-                    if self.treat_warnings_as_errors_ {
+                    if self.treat_warnings_as_errors {
                         self.error_at_current_token(&errm);
                         self.parseErrors_ = true;
                     } else {
@@ -828,7 +828,7 @@ impl LexcCompiler {
     // callback function to stuff so static and uses global singleton :-(
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.warn-about-one-sided-flags-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.warn-about-one-sided-flags-fn]
-    /// In the C++ this was a static tokenize callback reaching the 'lexc_'
+    /// In the C++ this was a static tokenize callback reaching the 'lexc'
     /// global; the re-entrant port applies it to the tokenized pairs directly.
     fn warn_about_one_sided_flags(&mut self, symbol_pair: &StringPair) {
         if crate::hfst_flag_diacritics::FdOperation::is_diacritic(&symbol_pair.0) {
@@ -837,11 +837,11 @@ impl LexcCompiler {
                     "one-sided flag diacritic {}:{} [-Wone-sided-flags]",
                     symbol_pair.0, symbol_pair.1
                 );
-                if self.warn_one_sided_flags_ && self.treat_warnings_as_errors_ {
+                if self.warn_one_sided_flags && self.treat_warnings_as_errors {
                     self.error_at_current_token(&errm);
                     self.parseErrors_ = true;
                 }
-                if self.warn_one_sided_flags_ {
+                if self.warn_one_sided_flags {
                     self.warning_at_current_token(&errm);
                 }
             }
@@ -851,11 +851,11 @@ impl LexcCompiler {
                 "one-sided flag diacritic {}:{} [-Wone-sided-flags]",
                 symbol_pair.0, symbol_pair.1
             );
-            if self.warn_one_sided_flags_ && self.treat_warnings_as_errors_ {
+            if self.warn_one_sided_flags && self.treat_warnings_as_errors {
                 self.error_at_current_token(&errm);
                 self.parseErrors_ = true;
             }
-            if self.warn_one_sided_flags_ {
+            if self.warn_one_sided_flags {
                 self.warning_at_current_token(&errm);
             }
         }
@@ -870,10 +870,10 @@ impl LexcCompiler {
     ) -> &mut Self {
         self.currentEntries_ += 1;
         self.totalEntries_ += 1;
-        self.unicode_check_(upper);
-        self.unicode_check_(lower);
-        self.continuations_.insert(continuation.to_string());
-        let encoded_cont = if self.with_flags_ {
+        self.unicode_check(upper);
+        self.unicode_check(lower);
+        self.continuations.insert(continuation.to_string());
+        let encoded_cont = if self.with_flags {
             if !self.noFlags_.contains(continuation) {
                 flag_joiner_encode(continuation, false)
             } else {
@@ -882,11 +882,11 @@ impl LexcCompiler {
         } else {
             joiner_encode(continuation)
         };
-        self.tokenizer_.add_multichar_symbol(&encoded_cont);
+        self.tokenizer.add_multichar_symbol(&encoded_cont);
 
         // build string pair vector map
         let cur = self.currentLexiconName_.clone();
-        let joiner_enc = if self.with_flags_ {
+        let joiner_enc = if self.with_flags {
             if !self.noFlags_.contains(&cur) {
                 flag_joiner_encode(&cur, true)
             } else {
@@ -895,16 +895,16 @@ impl LexcCompiler {
         } else {
             joiner_encode(&cur)
         };
-        self.tokenizer_.add_multichar_symbol(&joiner_enc);
-        self.tokenizer_.add_multichar_symbol("0"); // epsilon
-        self.tokenizer_.add_multichar_symbol("@ZERO@"); // literal zero
+        self.tokenizer.add_multichar_symbol(&joiner_enc);
+        self.tokenizer.add_multichar_symbol("0"); // epsilon
+        self.tokenizer.add_multichar_symbol("@ZERO@"); // literal zero
 
         let mut new_vector: StringPairVector;
 
-        if self.align_strings_ {
+        if self.align_strings {
             let tmp = self
-                .tokenizer_
-                .tokenize_pair(upper, lower, self.split_characters_);
+                .tokenizer
+                .tokenize_pair(upper, lower, self.split_characters);
             let mut one: Vec<String> = Vec::new();
             let mut two: Vec<String> = Vec::new();
             for it in &tmp {
@@ -920,14 +920,14 @@ impl LexcCompiler {
             let as1: String = med_vectors.0.concat();
             let as2: String = med_vectors.1.concat();
 
-            new_vector = self.tokenizer_.tokenize_pair(
+            new_vector = self.tokenizer.tokenize_pair(
                 &format!("{}{}{}", joiner_enc, as1, encoded_cont),
                 &format!("{}{}{}", joiner_enc, as2, encoded_cont),
-                self.split_characters_,
+                self.split_characters,
             );
         } else {
-            let upper_v = self.tokenizer_.tokenize(upper, self.split_characters_);
-            let lower_v = self.tokenizer_.tokenize(lower, self.split_characters_);
+            let upper_v = self.tokenizer.tokenize(upper, self.split_characters);
+            let lower_v = self.tokenizer.tokenize(lower, self.split_characters);
 
             let upper_size = size_t_to_int(upper_v.len());
             let lower_size = size_t_to_int(lower_v.len());
@@ -937,26 +937,26 @@ impl LexcCompiler {
                 for _ in 1..=(upper_size - lower_size) {
                     epsilons.push_str("@@ANOTHER_EPSILON@@");
                 }
-                new_vector = self.tokenizer_.tokenize_pair(
+                new_vector = self.tokenizer.tokenize_pair(
                     &format!("{}{}{}", joiner_enc, upper, encoded_cont),
                     &format!("{}{}{}{}", joiner_enc, lower, epsilons, encoded_cont),
-                    self.split_characters_,
+                    self.split_characters,
                 );
             } else if upper_size < lower_size {
                 let mut epsilons = String::new();
                 for _ in 1..=(lower_size - upper_size) {
                     epsilons.push_str("@@ANOTHER_EPSILON@@");
                 }
-                new_vector = self.tokenizer_.tokenize_pair(
+                new_vector = self.tokenizer.tokenize_pair(
                     &format!("{}{}{}{}", joiner_enc, upper, epsilons, encoded_cont),
                     &format!("{}{}{}", joiner_enc, lower, encoded_cont),
-                    self.split_characters_,
+                    self.split_characters,
                 );
             } else {
-                new_vector = self.tokenizer_.tokenize_pair(
+                new_vector = self.tokenizer.tokenize_pair(
                     &format!("{}{}{}", joiner_enc, upper, encoded_cont),
                     &format!("{}{}{}", joiner_enc, lower, encoded_cont),
-                    self.split_characters_,
+                    self.split_characters,
                 );
             }
         }
@@ -987,7 +987,7 @@ impl LexcCompiler {
                     .replace_range(start_pos..start_pos + "@ZERO@".len(), "0");
             }
             let first = new_vector[i].0.clone();
-            if !self.alphabets_.contains(&first) {
+            if !self.alphabets.contains(&first) {
                 if first.starts_with('@') && first.ends_with('@') {
                     i += 1;
                     continue;
@@ -996,9 +996,9 @@ impl LexcCompiler {
                     i += 1;
                     continue;
                 }
-                if self.warn_missing_alphabets_ {
+                if self.warn_missing_alphabets {
                     let errm = format!("Adding {} to Alphabets [-Wmissing-alphabets]", first);
-                    if self.treat_warnings_as_errors_ {
+                    if self.treat_warnings_as_errors {
                         self.error_at_current_token(&errm);
                         self.parseErrors_ = true;
                     } else {
@@ -1008,7 +1008,7 @@ impl LexcCompiler {
                 self.add_alphabet(&first);
             }
             let second = new_vector[i].1.clone();
-            if !self.alphabets_.contains(&second) {
+            if !self.alphabets.contains(&second) {
                 if second.starts_with('@') && second.ends_with('@') {
                     i += 1;
                     continue;
@@ -1017,9 +1017,9 @@ impl LexcCompiler {
                     i += 1;
                     continue;
                 }
-                if self.warn_missing_alphabets_ {
+                if self.warn_missing_alphabets {
                     let errm = format!("Adding {} to Alphabets [-Wmissing-alphabets]", second);
-                    if self.treat_warnings_as_errors_ {
+                    if self.treat_warnings_as_errors {
                         self.error_at_current_token(&errm);
                         self.parseErrors_ = true;
                     } else {
@@ -1045,8 +1045,8 @@ impl LexcCompiler {
     ) -> crate::error::Result<&mut Self> {
         self.currentEntries_ += 1;
         self.totalEntries_ += 1;
-        self.continuations_.insert(continuation.to_string());
-        let encoded_cont = if self.with_flags_ {
+        self.continuations.insert(continuation.to_string());
+        let encoded_cont = if self.with_flags {
             if !self.noFlags_.contains(continuation) {
                 flag_joiner_encode(continuation, false)
             } else {
@@ -1055,9 +1055,9 @@ impl LexcCompiler {
         } else {
             joiner_encode(continuation)
         };
-        self.tokenizer_.add_multichar_symbol(&encoded_cont);
+        self.tokenizer.add_multichar_symbol(&encoded_cont);
 
-        let Some(mut new_paths) = self.xre_.compile(regexp) else {
+        let Some(mut new_paths) = self.xre.compile(regexp) else {
             self.error_at_current_token("Unable to parse regular expression");
             self.parseErrors_ = true;
             return Ok(self);
@@ -1065,7 +1065,7 @@ impl LexcCompiler {
         new_paths.optimize()?;
         let new_alphabets = new_paths.get_alphabet()?;
         for new_alpha in &new_alphabets {
-            if self.alphabets_.contains(new_alpha) {
+            if self.alphabets.contains(new_alpha) {
                 continue;
             }
             if matches!(
@@ -1081,10 +1081,10 @@ impl LexcCompiler {
             if new_alpha.chars().count() > 1 {
                 self.warning_at_current_token(&errm);
                 warn!("you shoudl add {} to Multichar_Symbols section", new_alpha);
-            } else if self.warn_missing_alphabets_ && self.treat_warnings_as_errors_ {
+            } else if self.warn_missing_alphabets && self.treat_warnings_as_errors {
                 self.error_at_current_token(&errm);
                 self.parseErrors_ = true;
-            } else if self.warn_missing_alphabets_ {
+            } else if self.warn_missing_alphabets {
                 self.warning_at_current_token(&errm);
             }
             self.add_alphabet(new_alpha);
@@ -1093,10 +1093,10 @@ impl LexcCompiler {
         // encode key; keep regexps with different continuations separate
         let mut regex_key = format!("{}_{}", self.currentLexiconName_, continuation);
         regex_key = reg_expresion_encode(&regex_key);
-        self.tokenizer_.add_multichar_symbol(&regex_key);
+        self.tokenizer.add_multichar_symbol(&regex_key);
 
-        let format = self.format_;
-        let entry = match self.regexps_.entry(regex_key.clone()) {
+        let format = self.format;
+        let entry = match self.regexps.entry(regex_key.clone()) {
             std::collections::btree_map::Entry::Occupied(e) => e.into_mut(),
             std::collections::btree_map::Entry::Vacant(e) => {
                 e.insert(HfstTransducer::new_type(format)?)
@@ -1104,13 +1104,13 @@ impl LexcCompiler {
         };
         entry.disjunct(&new_paths, true)?.optimize()?;
 
-        if !self.quiet_ && (self.currentEntries_ % 10000) == 0 {
+        if !self.quiet && (self.currentEntries_ % 10000) == 0 {
             info!("{}...", self.currentEntries_);
         }
 
         // add key to trie
         let cur = self.currentLexiconName_.clone();
-        let joiner_enc = if self.with_flags_ {
+        let joiner_enc = if self.with_flags {
             if !self.noFlags_.contains(&cur) {
                 flag_joiner_encode(&cur, true)
             } else {
@@ -1119,8 +1119,8 @@ impl LexcCompiler {
         } else {
             joiner_encode(&cur)
         };
-        self.tokenizer_.add_multichar_symbol(&joiner_enc);
-        let new_vector = self.tokenizer_.tokenize(
+        self.tokenizer.add_multichar_symbol(&joiner_enc);
+        let new_vector = self.tokenizer.tokenize(
             &format!("{}{}{}", joiner_enc, regex_key, encoded_cont),
             false,
         );
@@ -1131,8 +1131,8 @@ impl LexcCompiler {
 
     pub fn add_xre_definition(&mut self, definition_name: &str, xre: &str) -> &mut Self {
         // FIXME: collect implicit characters
-        self.xre_.define(definition_name, xre);
-        if !self.quiet_ {
+        self.xre.define(definition_name, xre);
+        if !self.quiet {
             info!(
                 "Defined '{}': ? Kb., ? states, ? arcs, ? paths.",
                 definition_name
@@ -1145,12 +1145,12 @@ impl LexcCompiler {
         self.currentLexiconName_ = lexicon_name.to_string();
 
         if self.lexiconNames_.contains(lexicon_name) {
-            if !self.warn_repeated_lexicons_ && self.treat_warnings_as_errors_ {
+            if !self.warn_repeated_lexicons && self.treat_warnings_as_errors {
                 self.error_at_current_token(
                     "Lexicon is defined more than once! [-Wrepeated-lexicons]",
                 );
                 self.parseErrors_ = true;
-            } else if self.warn_repeated_lexicons_ {
+            } else if self.warn_repeated_lexicons {
                 self.warning_at_current_token(
                     "Lexicon is defined more than once! [-Wrepeated-lexicons]",
                 );
@@ -1164,26 +1164,26 @@ impl LexcCompiler {
             // NOTE: faithful to the C++, the second encode is applied to the
             // already-'$P'-encoded string (flagJoinerEncode mutated in place).
             let mut encoded_name = flag_joiner_encode(lexicon_name, false);
-            self.tokenizer_.add_multichar_symbol(&encoded_name);
+            self.tokenizer.add_multichar_symbol(&encoded_name);
             encoded_name = flag_joiner_encode(&encoded_name, true);
-            self.tokenizer_.add_multichar_symbol(&encoded_name);
+            self.tokenizer.add_multichar_symbol(&encoded_name);
         } else {
             let encoded_name = joiner_encode(lexicon_name);
-            self.tokenizer_.add_multichar_symbol(&encoded_name);
+            self.tokenizer.add_multichar_symbol(&encoded_name);
         }
 
-        if self.first_lexicon_ && lexicon_name == "Root" {
+        if self.first_lexicon && lexicon_name == "Root" {
             self.set_initial_lexicon_name(lexicon_name);
-        } else if self.first_lexicon_ && lexicon_name != "Root" {
-            if self.treat_warnings_as_errors_ {
+        } else if self.first_lexicon && lexicon_name != "Root" {
+            if self.treat_warnings_as_errors {
                 self.error_at_current_token("first lexicon is not named Root");
                 self.parseErrors_ = true;
             } else {
                 self.warning_at_current_token("first lexicon is not named Root");
             }
             self.set_initial_lexicon_name(lexicon_name);
-        } else if !self.first_lexicon_ && lexicon_name == "Root" {
-            if self.treat_warnings_as_errors_ {
+        } else if !self.first_lexicon && lexicon_name == "Root" {
+            if self.treat_warnings_as_errors {
                 self.error_at_current_token("Root is not first the first lexicon");
                 self.parseErrors_ = true;
             } else {
@@ -1191,15 +1191,15 @@ impl LexcCompiler {
             }
             self.set_initial_lexicon_name(lexicon_name);
         }
-        if !self.quiet_ {
+        if !self.quiet {
             let mut line = String::new();
-            if !self.first_lexicon_ {
+            if !self.first_lexicon {
                 line.push_str(&format!("{} ", self.currentEntries_));
             }
             line.push_str(&format!("{}...", lexicon_name));
             info!("{}", line);
         }
-        self.first_lexicon_ = false;
+        self.first_lexicon = false;
 
         self.currentEntries_ = 0;
         self
@@ -1209,7 +1209,7 @@ impl LexcCompiler {
         self.initialLexiconName_ = lexicon_name.to_string();
         self.lexiconNames_.insert(lexicon_name.to_string());
         // for connectedness calculation:
-        self.continuations_.insert(lexicon_name.to_string());
+        self.continuations.insert(lexicon_name.to_string());
         self
     }
 
@@ -1219,11 +1219,11 @@ impl LexcCompiler {
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.parse-fn]
     /// INCREMENTAL entry point: parse 'lexc_source' via 'nfst_lexc::parse' and
     /// walk the typed AST through the registration API, accumulating its
-    /// lexicons/entries into 'self' (the trie 'stringsTrie_', 'regexps_',
+    /// lexicons/entries into 'self' (the trie 'stringsTrie_', 'regexps',
     /// 'lexiconNames_', etc.). This is the AST-walk port of the Flex/Bison
     /// 'parse(FILE*)' / 'parse(const char*)': both '.cc' overloads ran
     /// 'hlexcparse()' (accumulating into the singleton) then
-    /// 'xre_.remove_defined_multichar_symbols()' and set 'parseErrors_' on
+    /// 'xre.remove_defined_multichar_symbols()' and set 'parseErrors_' on
     /// failure. It does NOT run 'compileLexical': call 'compile_lexical' once
     /// after every source has been parsed. Multi-file flow: call 'parse' on each
     /// source into one compiler, then 'compile_lexical' once. Returns '&mut self'
@@ -1232,8 +1232,8 @@ impl LexcCompiler {
         match nfst_lexc::parse(lexc_source) {
             Ok(ast) => {
                 self.compile_file(&ast.value)?;
-                // mirrors 'xre_.remove_defined_multichar_symbols()' in parse()
-                self.xre_.remove_defined_multichar_symbols();
+                // mirrors 'xre.remove_defined_multichar_symbols()' in parse()
+                self.xre.remove_defined_multichar_symbols();
             }
             Err(_e) => {
                 // mirrors the 'hlexcnerrs > 0' branch setting parseErrors_
@@ -1273,7 +1273,7 @@ impl LexcCompiler {
             // mirror the C++ titlecase-'Lexicon' warning (lexc-parser.yy
             // LEXICON_START_WRONG_CASE), emitted before the lexicon is set.
             if lex.value.case_warning {
-                if self.treat_warnings_as_errors_ {
+                if self.treat_warnings_as_errors {
                     self.error_at_current_token(
                         "Keyword 'Lexicon' used instead of 'LEXICON'. [--Werror]",
                     );
@@ -1328,12 +1328,12 @@ impl LexcCompiler {
         }
         let mut warnings_generated = false;
         self.print_connectedness(&mut warnings_generated);
-        if warnings_generated && self.treat_warnings_as_errors_ {
+        if warnings_generated && self.treat_warnings_as_errors {
             error!("missing or unused LEXICONs (see above) and -Werror has been enabled");
             return Ok(None);
         }
 
-        let mut lexicons = HfstTransducer::new_from_basic(&self.stringsTrie_, self.format_)?;
+        let mut lexicons = HfstTransducer::new_from_basic(&self.stringsTrie_, self.format)?;
 
         lexicons.optimize()?;
 
@@ -1355,12 +1355,11 @@ impl LexcCompiler {
 
         let mut all_joiners_to_epsilon = HfstSymbolSubstitutions::new();
 
-        if !self.with_flags_ {
+        if !self.with_flags {
             let start_joiner = joiner_encode(&self.initialLexiconName_);
-            let start =
-                HfstTransducer::new_tokenized(&start_joiner, &self.tokenizer_, self.format_)?;
+            let start = HfstTransducer::new_tokenized(&start_joiner, &self.tokenizer, self.format)?;
             let end_string = joiner_encode("#");
-            let end = HfstTransducer::new_tokenized(&end_string, &self.tokenizer_, self.format_)?;
+            let end = HfstTransducer::new_tokenized(&end_string, &self.tokenizer, self.format)?;
             // lexicons = start.concatenate(lexicons).concatenate(end).optimize();
             let mut bracketed = start;
             bracketed
@@ -1370,14 +1369,14 @@ impl LexcCompiler {
             lexicons = bracketed;
 
             for s in &self.lexiconNames_ {
-                if self.verbose_ {
+                if self.verbose {
                     debug!("Morphotaxing... {} ", s);
                 }
                 let joiner_enc = joiner_encode(s);
 
                 // joiners trie version (later compose)
                 let doubled = format!("{}{}", joiner_enc, joiner_enc);
-                let new_vector = self.tokenizer_.tokenize(&doubled, false);
+                let new_vector = self.tokenizer.tokenize(&doubled, false);
                 joiners_trie.disjunct_path(&new_vector, 0.0f32);
 
                 all_joiners_to_epsilon.insert(joiner_enc, "@_EPSILON_SYMBOL_@".to_string());
@@ -1392,19 +1391,18 @@ impl LexcCompiler {
             let root_p = flag_joiner_encode(&self.initialLexiconName_, false);
             let root_r = flag_joiner_encode(&self.initialLexiconName_, true);
 
-            let start_p = HfstTransducer::new_tokenized(&root_p, &self.tokenizer_, self.format_)?;
-            let _start_r = HfstTransducer::new_tokenized(&root_r, &self.tokenizer_, self.format_)?;
+            let start_p = HfstTransducer::new_tokenized(&root_p, &self.tokenizer, self.format)?;
+            let _start_r = HfstTransducer::new_tokenized(&root_r, &self.tokenizer, self.format)?;
 
             let end_string_p = flag_joiner_encode("#", false);
             let end_string_r = flag_joiner_encode("#", true);
 
-            self.tokenizer_.add_multichar_symbol(&end_string_p);
-            self.tokenizer_.add_multichar_symbol(&end_string_r);
+            self.tokenizer.add_multichar_symbol(&end_string_p);
+            self.tokenizer.add_multichar_symbol(&end_string_r);
 
             let _end_p =
-                HfstTransducer::new_tokenized(&end_string_p, &self.tokenizer_, self.format_)?;
-            let end_r =
-                HfstTransducer::new_tokenized(&end_string_r, &self.tokenizer_, self.format_)?;
+                HfstTransducer::new_tokenized(&end_string_p, &self.tokenizer, self.format)?;
+            let end_r = HfstTransducer::new_tokenized(&end_string_r, &self.tokenizer, self.format)?;
 
             // lexicons = startP.concatenate(lexicons).concatenate(endR).optimize();
             let mut bracketed = start_p;
@@ -1415,7 +1413,7 @@ impl LexcCompiler {
             lexicons = bracketed;
 
             for s in &self.lexiconNames_ {
-                if self.verbose_ {
+                if self.verbose {
                     debug!("Morphotaxing... {} ", s);
                 }
                 let flag_p_string = flag_joiner_encode(s, false);
@@ -1423,7 +1421,7 @@ impl LexcCompiler {
 
                 // joiners trie version (later compose)
                 let combined = format!("{}{}", flag_p_string, flag_r_string);
-                let new_vector = self.tokenizer_.tokenize(&combined, false);
+                let new_vector = self.tokenizer.tokenize(&combined, false);
                 joiners_trie.disjunct_path(&new_vector, 0.0f32);
             }
         }
@@ -1449,12 +1447,12 @@ impl LexcCompiler {
         }
 
         for alph in &right_symbols {
-            self.tokenizer_.add_multichar_symbol(alph);
-            let new_vector = self.tokenizer_.tokenize(alph, false);
+            self.tokenizer.add_multichar_symbol(alph);
+            let new_vector = self.tokenizer.tokenize(alph, false);
             joiners_trie.disjunct_path(&new_vector, 0.0f32);
         }
 
-        let mut joiners_all = HfstTransducer::new_from_basic(&joiners_trie, self.format_)?;
+        let mut joiners_all = HfstTransducer::new_from_basic(&joiners_trie, self.format)?;
 
         joiners_all.repeat_star()?;
         joiners_all.optimize()?;
@@ -1464,8 +1462,8 @@ impl LexcCompiler {
             .optimize()?;
 
         let mut all_substitutions = HfstSymbolSubstitutions::new();
-        if self.with_flags_ {
-            if self.verbose_ {
+        if self.with_flags {
+            if self.verbose {
                 debug!("Changing flags...");
             }
             let mut fake_flags_to_real_flags = HfstSymbolSubstitutions::new();
@@ -1490,13 +1488,13 @@ impl LexcCompiler {
         lexicons.prune_alphabet(true)?;
 
         // replace reg exp key with transducers
-        if self.verbose_ {
+        if self.verbose {
             debug!("Inserting regular expressions...");
         }
 
         // substitute all reg expression into special, unharmonizible symbols
         let mut fake_regexpr_to_real = HfstSymbolSubstitutions::new();
-        for key in self.regexps_.keys() {
+        for key in self.regexps.keys() {
             if key.starts_with('$') {
                 // TODO: do this only for strings that look like $.....$
                 let alph = key.replace('$', "@");
@@ -1510,7 +1508,7 @@ impl LexcCompiler {
 
         let mut reg_mark_to_tr: crate::hfst_basic_transducer::SubstMap = BTreeMap::new();
 
-        for (key, tr) in self.regexps_.iter() {
+        for (key, tr) in self.regexps.iter() {
             let alph = if key.starts_with('$') {
                 // TODO: do this only for strings that look like $.....$
                 key.replace('$', "@")
@@ -1526,12 +1524,12 @@ impl LexcCompiler {
 
         lexicons_basic.prune_alphabet(true);
 
-        let mut rv = HfstTransducer::new_from_basic(&lexicons_basic, self.format_)?;
+        let mut rv = HfstTransducer::new_from_basic(&lexicons_basic, self.format)?;
 
         // Preserve only first flag of consecutive P and R lexname flag series,
         // e.g. change P.LEXNAME.1 R.LEXNAME.1 P.LEXNAME.2 R.LEXNAME.2 into
         // P.LEXNAME.1
-        if self.with_flags_ {
+        if self.with_flags {
             let transducer_alphabet = rv.get_alphabet()?;
             let mut flag_d: StringSet = BTreeSet::new();
             for s in &transducer_alphabet {
@@ -1561,7 +1559,7 @@ impl LexcCompiler {
             flag_remover_regexp.push_str(&context_regexp);
             flag_remover_regexp.push_str(" _ ");
 
-            let mut xre_comp = XreCompiler::new(self.format_);
+            let mut xre_comp = XreCompiler::new(self.format);
 
             let mut flag_filter = xre_comp.compile(&flag_remover_regexp).unwrap();
             flag_filter.optimize()?;
@@ -1595,19 +1593,15 @@ impl LexcCompiler {
     // differences (also sorted). The 'COLOUR_*' escapes are dropped (the
     // 'tracing' subscriber owns formatting), and 'flush(err)' is dropped.
     pub fn print_connectedness(&self, warnings_generated: &mut bool) -> &Self {
-        if self.lexiconNames_ != self.continuations_ {
-            let lex_minus_cont: Vec<&String> = self
-                .lexiconNames_
-                .difference(&self.continuations_)
-                .collect();
-            let cont_minus_lex: Vec<&String> = self
-                .continuations_
-                .difference(&self.lexiconNames_)
-                .collect();
+        if self.lexiconNames_ != self.continuations {
+            let lex_minus_cont: Vec<&String> =
+                self.lexiconNames_.difference(&self.continuations).collect();
+            let cont_minus_lex: Vec<&String> =
+                self.continuations.difference(&self.lexiconNames_).collect();
             if !cont_minus_lex.is_empty() {
                 for s in &cont_minus_lex {
-                    if !self.quiet_ && self.warn_missing_lexicons_ {
-                        if self.treat_warnings_as_errors_ {
+                    if !self.quiet && self.warn_missing_lexicons {
+                        if self.treat_warnings_as_errors {
                             error!(
                                 "Sublexicon is mentioned but not defined. [-Wmissing-lexicons] ({}) ",
                                 s
@@ -1624,13 +1618,13 @@ impl LexcCompiler {
             }
             if !lex_minus_cont.is_empty() {
                 *warnings_generated = true;
-                if !self.quiet_ && self.warn_unused_lexicons_ {
+                if !self.quiet && self.warn_unused_lexicons {
                     let mut line = String::new();
                     for s in &lex_minus_cont {
                         line.push_str(s);
                         line.push(' ');
                     }
-                    if self.treat_warnings_as_errors_ {
+                    if self.treat_warnings_as_errors {
                         error!(
                             "Sublexicons defined but not used [-Wunused-lexicons]\n{}",
                             line

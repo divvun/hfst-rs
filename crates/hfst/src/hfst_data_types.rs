@@ -135,8 +135,8 @@ pub mod implementations {
 
 // [spec:hfst:def:hfst-data-types.hfst.implementation-type-to-string-fn]
 // [spec:hfst:sem:hfst-data-types.hfst.implementation-type-to-string-fn]
-pub fn implementation_type_to_string(type_: ImplementationType) -> &'static str {
-    match type_ {
+pub fn implementation_type_to_string(ty: ImplementationType) -> &'static str {
+    match ty {
         ImplementationType::SFST_TYPE => "SFST_TYPE",
         ImplementationType::TROPICAL_OPENFST_TYPE => "TROPICAL_OPENFST_TYPE",
         ImplementationType::LOG_OPENFST_TYPE => "LOG_OPENFST_TYPE",
@@ -152,8 +152,8 @@ pub fn implementation_type_to_string(type_: ImplementationType) -> &'static str 
 
 // [spec:hfst:def:hfst-data-types.hfst.implementation-type-to-format-fn]
 // [spec:hfst:sem:hfst-data-types.hfst.implementation-type-to-format-fn]
-pub fn implementation_type_to_format(type_: ImplementationType) -> &'static str {
-    match type_ {
+pub fn implementation_type_to_format(ty: ImplementationType) -> &'static str {
+    match ty {
         ImplementationType::SFST_TYPE => "sfst",
         ImplementationType::TROPICAL_OPENFST_TYPE => "openfst-tropical",
         ImplementationType::LOG_OPENFST_TYPE => "openfst-log",

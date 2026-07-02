@@ -622,7 +622,7 @@ pub struct PmatchBuiltinFunction {
     pub my_timer: clock_t,
     pub cache: Option<HfstTransducer>,
     pub args: Vec<ObjRef>,
-    pub type_: PmatchBuiltin,
+    pub ty: PmatchBuiltin,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc]
@@ -720,7 +720,7 @@ pub struct PmatchContextsContainer {
     pub line_defined: i32,
     pub my_timer: clock_t,
     pub cache: Option<HfstTransducer>,
-    pub type_: ReplaceType,
+    pub ty: ReplaceType,
     pub context_pairs: MappingPairVector,
 }
 
@@ -732,7 +732,7 @@ pub struct PmatchReplaceRuleContainer {
     pub my_timer: clock_t,
     pub cache: Option<HfstTransducer>,
     pub arrow: ReplaceArrow,
-    pub type_: ReplaceType,
+    pub ty: ReplaceType,
     pub mapping: MappingPairVector,
     pub context: MappingPairVector,
 }
@@ -898,7 +898,7 @@ impl PmatchBuiltinFunction {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-builtin-function.pmatch-builtin-function-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-builtin-function.pmatch-builtin-function-fn]
     pub fn new(
-        type_: PmatchBuiltin,
+        ty: PmatchBuiltin,
         argument_vector: Vec<ObjRef>,
     ) -> Rc<RefCell<PmatchBuiltinFunction>> {
         Rc::new(RefCell::new(PmatchBuiltinFunction {
@@ -908,7 +908,7 @@ impl PmatchBuiltinFunction {
             my_timer: 0,
             cache: None,
             args: argument_vector,
-            type_,
+            ty,
         }))
     }
 }
@@ -1009,7 +1009,7 @@ impl PmatchContextsContainer {
             line_defined: 0,
             my_timer: 0,
             cache: None,
-            type_: t,
+            ty: t,
             context_pairs: context.context_pairs.clone(),
         }))
     }
@@ -1040,7 +1040,7 @@ impl PmatchReplaceRuleContainer {
             my_timer: 0,
             cache: None,
             arrow: a,
-            type_: t,
+            ty: t,
             mapping: m,
             context: c,
         }))
@@ -1076,36 +1076,36 @@ pub struct PmatchUtilityTransducers {
 // ---------------------------------------------------------------------------
 pub struct PmatchEvalContext {
     // --- scalar / pointer state ---
-    data_: String,
-    len_: usize,
-    format_: ImplementationType,
-    verbose_: bool,
-    flatten_: bool,
-    include_cosine_distances_: bool,
-    timer_: clock_t,
-    minimization_guard_count_: i32,
-    named_object_evaluation_stack_depth_: i32,
-    need_delimiters_: bool,
-    vector_similarity_projection_factor_: WordVecFloat,
-    utils_: Option<PmatchUtilityTransducers>,
-    pmatchnerrs_: i32,
+    data: String,
+    len: usize,
+    format: ImplementationType,
+    verbose: bool,
+    flatten: bool,
+    include_cosine_distances: bool,
+    timer: clock_t,
+    minimization_guard_count: i32,
+    named_object_evaluation_stack_depth: i32,
+    need_delimiters: bool,
+    vector_similarity_projection_factor: WordVecFloat,
+    utils: Option<PmatchUtilityTransducers>,
+    pmatchnerrs: i32,
     // --- collection state ---
-    definitions_table_: BTreeMap<String, ObjRef>,
-    variables_: BTreeMap<String, String>,
-    call_stack_: Vec<BTreeMap<String, ObjRef>>,
-    eval_stack_: Vec<String>,
-    def_insed_expressions_: BTreeMap<String, ObjRef>,
-    inserted_names_: BTreeSet<String>,
-    uncomposed_: BTreeSet<String>,
-    unsatisfied_insertions_: BTreeSet<String>,
-    used_definitions_: BTreeSet<String>,
-    function_names_: BTreeSet<String>,
-    capture_names_: BTreeSet<String>,
-    word_vectors_: Vec<WordVector>,
-    named_transducers_: BTreeMap<String, HfstTransducer>,
-    includedir_: String,
-    lst_line_map_: BTreeMap<String, i32>,
-    lst_overlap_warned_: BTreeSet<String>,
+    definitions_table: BTreeMap<String, ObjRef>,
+    variables: BTreeMap<String, String>,
+    call_stack: Vec<BTreeMap<String, ObjRef>>,
+    eval_stack: Vec<String>,
+    def_insed_expressions: BTreeMap<String, ObjRef>,
+    inserted_names: BTreeSet<String>,
+    uncomposed: BTreeSet<String>,
+    unsatisfied_insertions: BTreeSet<String>,
+    used_definitions: BTreeSet<String>,
+    function_names: BTreeSet<String>,
+    capture_names: BTreeSet<String>,
+    word_vectors: Vec<WordVector>,
+    named_transducers: BTreeMap<String, HfstTransducer>,
+    includedir: String,
+    lst_line_map: BTreeMap<String, i32>,
+    lst_overlap_warned: BTreeSet<String>,
 }
 
 macro_rules! pmatch_ctx_string_set {
@@ -1140,35 +1140,35 @@ impl Default for PmatchEvalContext {
 impl PmatchEvalContext {
     pub fn new() -> Self {
         PmatchEvalContext {
-            data_: String::new(),
-            len_: 0,
-            format_: ImplementationType::TROPICAL_OPENFST_TYPE,
-            verbose_: false,
-            flatten_: false,
-            include_cosine_distances_: false,
-            timer_: 0,
-            minimization_guard_count_: 0,
-            named_object_evaluation_stack_depth_: 0,
-            need_delimiters_: false,
-            vector_similarity_projection_factor_: 0.0,
-            utils_: None,
-            pmatchnerrs_: 0,
-            definitions_table_: BTreeMap::new(),
-            variables_: BTreeMap::new(),
-            call_stack_: Vec::new(),
-            eval_stack_: Vec::new(),
-            def_insed_expressions_: BTreeMap::new(),
-            inserted_names_: BTreeSet::new(),
-            uncomposed_: BTreeSet::new(),
-            unsatisfied_insertions_: BTreeSet::new(),
-            used_definitions_: BTreeSet::new(),
-            function_names_: BTreeSet::new(),
-            capture_names_: BTreeSet::new(),
-            word_vectors_: Vec::new(),
-            named_transducers_: BTreeMap::new(),
-            includedir_: String::new(),
-            lst_line_map_: BTreeMap::new(),
-            lst_overlap_warned_: BTreeSet::new(),
+            data: String::new(),
+            len: 0,
+            format: ImplementationType::TROPICAL_OPENFST_TYPE,
+            verbose: false,
+            flatten: false,
+            include_cosine_distances: false,
+            timer: 0,
+            minimization_guard_count: 0,
+            named_object_evaluation_stack_depth: 0,
+            need_delimiters: false,
+            vector_similarity_projection_factor: 0.0,
+            utils: None,
+            pmatchnerrs: 0,
+            definitions_table: BTreeMap::new(),
+            variables: BTreeMap::new(),
+            call_stack: Vec::new(),
+            eval_stack: Vec::new(),
+            def_insed_expressions: BTreeMap::new(),
+            inserted_names: BTreeSet::new(),
+            uncomposed: BTreeSet::new(),
+            unsatisfied_insertions: BTreeSet::new(),
+            used_definitions: BTreeSet::new(),
+            function_names: BTreeSet::new(),
+            capture_names: BTreeSet::new(),
+            word_vectors: Vec::new(),
+            named_transducers: BTreeMap::new(),
+            includedir: String::new(),
+            lst_line_map: BTreeMap::new(),
+            lst_overlap_warned: BTreeSet::new(),
         }
     }
 
@@ -1176,146 +1176,146 @@ impl PmatchEvalContext {
     // subset the C++ reset, leaving 'uncomposed'/'word_vectors'/
     // 'named_transducers'/'includedir' alone (as the original did).
     fn init_globals(&mut self) {
-        self.definitions_table_.clear();
-        self.variables_.clear();
-        self.variables_
+        self.definitions_table.clear();
+        self.variables.clear();
+        self.variables
             .insert("count-patterns".to_string(), "off".to_string());
-        self.variables_
+        self.variables
             .insert("delete-patterns".to_string(), "off".to_string());
-        self.variables_
+        self.variables
             .insert("extract-patterns".to_string(), "off".to_string());
-        self.variables_
+        self.variables
             .insert("locate-patterns".to_string(), "off".to_string());
-        self.variables_
+        self.variables
             .insert("mark-patterns".to_string(), "on".to_string());
-        self.variables_
+        self.variables
             .insert("max-context-length".to_string(), "254".to_string());
-        self.variables_
+        self.variables
             .insert("max-recursion".to_string(), "5000".to_string());
-        self.variables_
+        self.variables
             .insert("need-separators".to_string(), "on".to_string());
-        self.variables_
+        self.variables
             .insert("unicode-character-classes".to_string(), "off".to_string());
-        self.variables_
+        self.variables
             .insert("xerox-composition".to_string(), "on".to_string());
-        self.variables_.insert(
+        self.variables.insert(
             "vector-similarity-projection-factor".to_string(),
             "1.0".to_string(),
         );
-        self.call_stack_.clear();
-        self.eval_stack_.clear();
-        self.def_insed_expressions_.clear();
-        self.inserted_names_.clear();
-        self.unsatisfied_insertions_.clear();
-        self.used_definitions_.clear();
-        self.function_names_.clear();
-        self.capture_names_.clear();
+        self.call_stack.clear();
+        self.eval_stack.clear();
+        self.def_insed_expressions.clear();
+        self.inserted_names.clear();
+        self.unsatisfied_insertions.clear();
+        self.used_definitions.clear();
+        self.function_names.clear();
+        self.capture_names.clear();
         self.zero_minimization_guard();
-        self.named_object_evaluation_stack_depth_ = 0;
-        self.need_delimiters_ = false;
-        self.pmatchnerrs_ = 0;
-        self.lst_line_map_.clear();
-        self.lst_overlap_warned_.clear();
+        self.named_object_evaluation_stack_depth = 0;
+        self.need_delimiters = false;
+        self.pmatchnerrs = 0;
+        self.lst_line_map.clear();
+        self.lst_overlap_warned.clear();
     }
 
     // --- scalar accessors ---
     fn data(&self) -> String {
-        self.data_.clone()
+        self.data.clone()
     }
     fn set_data(&mut self, v: String) {
-        self.data_ = v;
+        self.data = v;
     }
     fn len(&self) -> usize {
-        self.len_
+        self.len
     }
     fn set_len(&mut self, v: usize) {
-        self.len_ = v;
+        self.len = v;
     }
     fn format(&self) -> ImplementationType {
-        self.format_
+        self.format
     }
     fn set_format(&mut self, v: ImplementationType) {
-        self.format_ = v;
+        self.format = v;
     }
     fn verbose(&self) -> bool {
-        self.verbose_
+        self.verbose
     }
     fn set_verbose(&mut self, v: bool) {
-        self.verbose_ = v;
+        self.verbose = v;
     }
     fn flatten(&self) -> bool {
-        self.flatten_
+        self.flatten
     }
     fn set_flatten(&mut self, v: bool) {
-        self.flatten_ = v;
+        self.flatten = v;
     }
     fn include_cosine_distances(&self) -> bool {
-        self.include_cosine_distances_
+        self.include_cosine_distances
     }
     fn set_include_cosine_distances(&mut self, v: bool) {
-        self.include_cosine_distances_ = v;
+        self.include_cosine_distances = v;
     }
     fn timer(&self) -> clock_t {
-        self.timer_
+        self.timer
     }
     fn set_timer(&mut self, v: clock_t) {
-        self.timer_ = v;
+        self.timer = v;
     }
     fn minimization_guard_count(&self) -> i32 {
-        self.minimization_guard_count_
+        self.minimization_guard_count
     }
     fn set_minimization_guard_count(&mut self, v: i32) {
-        self.minimization_guard_count_ = v;
+        self.minimization_guard_count = v;
     }
     fn named_object_evaluation_stack_depth(&self) -> i32 {
-        self.named_object_evaluation_stack_depth_
+        self.named_object_evaluation_stack_depth
     }
     fn set_named_object_evaluation_stack_depth(&mut self, v: i32) {
-        self.named_object_evaluation_stack_depth_ = v;
+        self.named_object_evaluation_stack_depth = v;
     }
     fn need_delimiters(&self) -> bool {
-        self.need_delimiters_
+        self.need_delimiters
     }
     fn set_need_delimiters(&mut self, v: bool) {
-        self.need_delimiters_ = v;
+        self.need_delimiters = v;
     }
     fn vector_similarity_projection_factor(&self) -> WordVecFloat {
-        self.vector_similarity_projection_factor_
+        self.vector_similarity_projection_factor
     }
     fn set_vector_similarity_projection_factor(&mut self, v: WordVecFloat) {
-        self.vector_similarity_projection_factor_ = v;
+        self.vector_similarity_projection_factor = v;
     }
     fn pmatchnerrs(&self) -> i32 {
-        self.pmatchnerrs_
+        self.pmatchnerrs
     }
     fn set_pmatchnerrs(&mut self, v: i32) {
-        self.pmatchnerrs_ = v;
+        self.pmatchnerrs = v;
     }
 
     // --- DEFINITIONS (BTreeMap<String, ObjRef>) ---
     fn definitions_get(&self, k: &str) -> Option<ObjRef> {
-        self.definitions_table_.get(k).cloned()
+        self.definitions_table.get(k).cloned()
     }
     fn definitions_contains(&self, k: &str) -> bool {
-        self.definitions_table_.contains_key(k)
+        self.definitions_table.contains_key(k)
     }
     fn definitions_insert(&mut self, k: String, v: ObjRef) {
-        self.definitions_table_.insert(k, v);
+        self.definitions_table.insert(k, v);
     }
     fn definitions_clear(&mut self) {
-        self.definitions_table_.clear();
+        self.definitions_table.clear();
     }
     fn definitions_len(&self) -> usize {
-        self.definitions_table_.len()
+        self.definitions_table.len()
     }
     fn definitions_is_empty(&self) -> bool {
-        self.definitions_table_.is_empty()
+        self.definitions_table.is_empty()
     }
     fn definitions_keys(&self) -> Vec<String> {
-        self.definitions_table_.keys().cloned().collect()
+        self.definitions_table.keys().cloned().collect()
     }
     fn definitions_snapshot(&self) -> Vec<(String, ObjRef)> {
-        self.definitions_table_
+        self.definitions_table
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
@@ -1323,84 +1323,84 @@ impl PmatchEvalContext {
 
     // --- DEF_INSED_EXPRESSIONS (BTreeMap<String, ObjRef>) ---
     fn def_insed_expressions_get(&self, k: &str) -> Option<ObjRef> {
-        self.def_insed_expressions_.get(k).cloned()
+        self.def_insed_expressions.get(k).cloned()
     }
     fn def_insed_expressions_contains(&self, k: &str) -> bool {
-        self.def_insed_expressions_.contains_key(k)
+        self.def_insed_expressions.contains_key(k)
     }
     fn def_insed_expressions_insert(&mut self, k: String, v: ObjRef) {
-        self.def_insed_expressions_.insert(k, v);
+        self.def_insed_expressions.insert(k, v);
     }
     fn def_insed_expressions_clear(&mut self) {
-        self.def_insed_expressions_.clear();
+        self.def_insed_expressions.clear();
     }
     fn def_insed_expressions_len(&self) -> usize {
-        self.def_insed_expressions_.len()
+        self.def_insed_expressions.len()
     }
     fn def_insed_expressions_is_empty(&self) -> bool {
-        self.def_insed_expressions_.is_empty()
+        self.def_insed_expressions.is_empty()
     }
 
     // --- VARIABLES (BTreeMap<String, String>) ---
     fn variables_get(&self, k: &str) -> Option<String> {
-        self.variables_.get(k).cloned()
+        self.variables.get(k).cloned()
     }
     fn variables_insert(&mut self, k: String, v: String) {
-        self.variables_.insert(k, v);
+        self.variables.insert(k, v);
     }
     fn variables_clear(&mut self) {
-        self.variables_.clear();
+        self.variables.clear();
     }
     fn variables_snapshot(&self) -> Vec<(String, String)> {
-        self.variables_
+        self.variables
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }
     fn variables_entry_or_default(&mut self, k: &str) -> String {
-        self.variables_.entry(k.to_string()).or_default().clone()
+        self.variables.entry(k.to_string()).or_default().clone()
     }
     fn variables_index(&self, k: &str) -> String {
-        self.variables_[k].clone()
+        self.variables[k].clone()
     }
 
     // --- CALL_STACK (Vec<BTreeMap<String, ObjRef>>) ---
     fn call_stack_len(&self) -> usize {
-        self.call_stack_.len()
+        self.call_stack.len()
     }
     fn call_stack_last_get(&self, k: &str) -> Option<ObjRef> {
-        self.call_stack_.last().and_then(|f| f.get(k).cloned())
+        self.call_stack.last().and_then(|f| f.get(k).cloned())
     }
     fn call_stack_last_clone(&self) -> BTreeMap<String, ObjRef> {
-        self.call_stack_.last().unwrap().clone()
+        self.call_stack.last().unwrap().clone()
     }
     fn call_stack_push(&mut self, frame: BTreeMap<String, ObjRef>) {
-        self.call_stack_.push(frame);
+        self.call_stack.push(frame);
     }
     fn call_stack_pop(&mut self) {
-        self.call_stack_.pop();
+        self.call_stack.pop();
     }
     fn call_stack_clear(&mut self) {
-        self.call_stack_.clear();
+        self.call_stack.clear();
     }
 
     // --- EVAL_STACK (Vec<String>) ---
     fn eval_stack_push(&mut self, v: String) {
-        self.eval_stack_.push(v);
+        self.eval_stack.push(v);
     }
     fn eval_stack_pop(&mut self) {
-        self.eval_stack_.pop();
+        self.eval_stack.pop();
     }
     fn eval_stack_last(&self) -> Option<String> {
-        self.eval_stack_.last().cloned()
+        self.eval_stack.last().cloned()
     }
     fn eval_stack_clear(&mut self) {
-        self.eval_stack_.clear();
+        self.eval_stack.clear();
     }
 
     // --- string-set collections ---
     pmatch_ctx_string_set!(
-        inserted_names_,
+        inserted_names,
         inserted_names_contains,
         inserted_names_insert,
         inserted_names_clear,
@@ -1409,7 +1409,7 @@ impl PmatchEvalContext {
         inserted_names_snapshot
     );
     pmatch_ctx_string_set!(
-        uncomposed_,
+        uncomposed,
         uncomposed_contains,
         uncomposed_insert,
         uncomposed_clear,
@@ -1418,7 +1418,7 @@ impl PmatchEvalContext {
         uncomposed_snapshot
     );
     pmatch_ctx_string_set!(
-        unsatisfied_insertions_,
+        unsatisfied_insertions,
         unsatisfied_insertions_contains,
         unsatisfied_insertions_insert,
         unsatisfied_insertions_clear,
@@ -1427,7 +1427,7 @@ impl PmatchEvalContext {
         unsatisfied_insertions_snapshot
     );
     pmatch_ctx_string_set!(
-        used_definitions_,
+        used_definitions,
         used_definitions_contains,
         used_definitions_insert,
         used_definitions_clear,
@@ -1436,7 +1436,7 @@ impl PmatchEvalContext {
         used_definitions_snapshot
     );
     pmatch_ctx_string_set!(
-        function_names_,
+        function_names,
         function_names_contains,
         function_names_insert,
         function_names_clear,
@@ -1445,7 +1445,7 @@ impl PmatchEvalContext {
         function_names_snapshot
     );
     pmatch_ctx_string_set!(
-        capture_names_,
+        capture_names,
         capture_names_contains,
         capture_names_insert,
         capture_names_clear,
@@ -1454,7 +1454,7 @@ impl PmatchEvalContext {
         capture_names_snapshot
     );
     pmatch_ctx_string_set!(
-        lst_overlap_warned_,
+        lst_overlap_warned,
         lst_overlap_warned_contains,
         lst_overlap_warned_insert,
         lst_overlap_warned_clear,
@@ -1465,50 +1465,50 @@ impl PmatchEvalContext {
 
     // --- INCLUDEDIR (String) ---
     fn includedir_get(&self) -> String {
-        self.includedir_.clone()
+        self.includedir.clone()
     }
     fn includedir_set(&mut self, v: String) {
-        self.includedir_ = v;
+        self.includedir = v;
     }
     fn includedir_len(&self) -> usize {
-        self.includedir_.len()
+        self.includedir.len()
     }
 
     // --- LST_LINE_MAP (BTreeMap<String, i32>) ---
     fn lst_line_map_contains(&self, k: &str) -> bool {
-        self.lst_line_map_.contains_key(k)
+        self.lst_line_map.contains_key(k)
     }
     fn lst_line_map_get(&self, k: &str) -> Option<i32> {
-        self.lst_line_map_.get(k).copied()
+        self.lst_line_map.get(k).copied()
     }
     fn lst_line_map_insert(&mut self, k: String, v: i32) {
-        self.lst_line_map_.insert(k, v);
+        self.lst_line_map.insert(k, v);
     }
     fn lst_line_map_clear(&mut self) {
-        self.lst_line_map_.clear();
+        self.lst_line_map.clear();
     }
     fn lst_line_map_snapshot(&self) -> BTreeMap<String, i32> {
-        self.lst_line_map_.clone()
+        self.lst_line_map.clone()
     }
 
     // --- WORD_VECTORS (Vec<WordVector>) ---
     fn word_vectors_len(&self) -> usize {
-        self.word_vectors_.len()
+        self.word_vectors.len()
     }
     fn word_vectors_clear(&mut self) {
-        self.word_vectors_.clear();
+        self.word_vectors.clear();
     }
     fn word_vectors_reserve(&mut self, n: usize) {
-        self.word_vectors_.reserve(n);
+        self.word_vectors.reserve(n);
     }
     fn word_vectors_push(&mut self, wv: WordVector) {
-        self.word_vectors_.push(wv);
+        self.word_vectors.push(wv);
     }
     fn word_vectors_snapshot(&self) -> Vec<WordVector> {
-        self.word_vectors_.clone()
+        self.word_vectors.clone()
     }
     fn word_vectors_first_vector_len(&self) -> usize {
-        self.word_vectors_[0].vector.len()
+        self.word_vectors[0].vector.len()
     }
 
     // --- utility-transducer cache (formerly the 'UTILS' thread-local) ---
@@ -1519,16 +1519,16 @@ impl PmatchEvalContext {
         &mut self,
         f: impl FnOnce(&mut PmatchUtilityTransducers) -> crate::error::Result<R>,
     ) -> crate::error::Result<R> {
-        if self.utils_.is_none() {
-            self.utils_ = Some(PmatchUtilityTransducers::new()?);
+        if self.utils.is_none() {
+            self.utils = Some(PmatchUtilityTransducers::new()?);
         }
-        f(self.utils_.as_mut().unwrap())
+        f(self.utils.as_mut().unwrap())
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.zero-minimization-guard-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.zero-minimization-guard-fn]
     fn zero_minimization_guard(&mut self) {
-        self.minimization_guard_count_ = 0;
+        self.minimization_guard_count = 0;
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-minimization-guard-fn]
@@ -1537,20 +1537,20 @@ impl PmatchEvalContext {
         &mut self,
     ) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
         let mut guard = String::new();
-        if self.minimization_guard_count_ == 0 {
+        if self.minimization_guard_count == 0 {
             guard.push_str(internal_epsilon);
         } else {
-            let mgc = self.minimization_guard_count_;
+            let mgc = self.minimization_guard_count;
             guard.push_str(&format!("@PMATCH_GUARD_{}@", mgc));
         }
-        self.minimization_guard_count_ += 1;
+        self.minimization_guard_count += 1;
         epsilon_to_symbol_container(self, guard)
     }
 
     // [spec:hfst:def:pmatch-utils.pmatcherror-fn]
     // [spec:hfst:sem:pmatch-utils.pmatcherror-fn]
     fn pmatcherror(&self, msg: &str) {
-        let buf = self.data_.clone();
+        let buf = self.data.clone();
         let bytes = buf.as_bytes();
         let parsedata: String = if bytes.is_empty() {
             String::new()
@@ -1581,12 +1581,12 @@ pub fn add_to_pmatch_symbols(symbols: StringSet) {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.acceptor-from-cstr-fn]
 pub fn acceptor_from_cstr(
     strings: &[&str],
-    type_: ImplementationType,
+    ty: ImplementationType,
 ) -> crate::error::Result<HfstTransducer> {
-    let mut retval: HfstTransducer = HfstTransducer::new_type(type_)?;
+    let mut retval: HfstTransducer = HfstTransducer::new_type(ty)?;
     let mut i = 0;
     while i < array_len(strings) {
-        let tmp = HfstTransducer::new_symbol(strings[i], type_)?;
+        let tmp = HfstTransducer::new_symbol(strings[i], ty)?;
         retval.disjunct(&tmp, true)?;
         i += 1;
     }
@@ -1604,12 +1604,12 @@ pub fn array_len(strings: &[&str]) -> usize {
 /// 'PmatchObject' definitions + TOP from a pmatch source string and return the
 /// evaluated transducers ('map<string, HfstTransducer*>' in C++).
 pub struct PmatchCompiler {
-    pub type_: ImplementationType,
+    pub ty: ImplementationType,
     pub verbose: bool,
     pub flatten: bool,
     pub include_cosine_distances: bool,
     pub includedir: String,
-    pub definitions_: BTreeMap<String, HfstTransducer>,
+    pub definitions: BTreeMap<String, HfstTransducer>,
     // Per-compile working state (formerly the 'hfst::pmatch' namespace globals).
     // Persists across 'compile' so 'define' can read the definition table after
     // a compile, mirroring the old thread-local persistence.
@@ -1660,7 +1660,7 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-acceptor-fn]
-    pub fn make_latin1_acceptor(type_: ImplementationType) -> crate::error::Result<HfstTransducer> {
+    pub fn make_latin1_acceptor(ty: ImplementationType) -> crate::error::Result<HfstTransducer> {
         let mut retval: HfstTransducer = PmatchUtilityTransducers::make_latin1_alpha_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
         )?;
@@ -1685,7 +1685,7 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
     pub fn make_latin1_alpha_acceptor(
-        type_: ImplementationType,
+        ty: ImplementationType,
     ) -> crate::error::Result<HfstTransducer> {
         let mut retval: HfstTransducer = PmatchUtilityTransducers::make_latin1_lowercase_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
@@ -1703,9 +1703,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
     pub fn make_latin1_lowercase_acceptor(
-        type_: ImplementationType,
+        ty: ImplementationType,
     ) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = acceptor_from_cstr(latin1_lower, type_)?;
+        let mut retval: HfstTransducer = acceptor_from_cstr(latin1_lower, ty)?;
         let tmp: HfstTransducer = PmatchUtilityTransducers::make_combining_accent_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
         )?;
@@ -1719,9 +1719,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
     pub fn make_latin1_uppercase_acceptor(
-        type_: ImplementationType,
+        ty: ImplementationType,
     ) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = acceptor_from_cstr(latin1_upper, type_)?;
+        let mut retval: HfstTransducer = acceptor_from_cstr(latin1_upper, ty)?;
         let tmp: HfstTransducer = PmatchUtilityTransducers::make_combining_accent_acceptor(
             ImplementationType::TROPICAL_OPENFST_TYPE,
         )?;
@@ -1735,9 +1735,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
     pub fn make_combining_accent_acceptor(
-        type_: ImplementationType,
+        ty: ImplementationType,
     ) -> crate::error::Result<HfstTransducer> {
-        acceptor_from_cstr(combining_accents, type_)
+        acceptor_from_cstr(combining_accents, ty)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
@@ -1745,12 +1745,12 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
     pub fn make_latin1_numeral_acceptor(
-        type_: ImplementationType,
+        ty: ImplementationType,
     ) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = HfstTransducer::new_type(type_)?;
+        let mut retval: HfstTransducer = HfstTransducer::new_type(ty)?;
         let num: String = "0123456789".to_string();
         for it in num.chars() {
-            retval.disjunct(&HfstTransducer::new_symbol(&it.to_string(), type_)?, true)?;
+            retval.disjunct(&HfstTransducer::new_symbol(&it.to_string(), ty)?, true)?;
         }
         // retval->minimize(); ?
         Ok(retval)
@@ -1761,9 +1761,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
     pub fn make_latin1_punct_acceptor(
-        type_: ImplementationType,
+        ty: ImplementationType,
     ) -> crate::error::Result<HfstTransducer> {
-        acceptor_from_cstr(latin1_punct, type_)
+        acceptor_from_cstr(latin1_punct, ty)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
@@ -1771,25 +1771,22 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
     pub fn make_latin1_whitespace_acceptor(
-        type_: ImplementationType,
+        ty: ImplementationType,
     ) -> crate::error::Result<HfstTransducer> {
-        acceptor_from_cstr(latin1_whitespace, type_)
+        acceptor_from_cstr(latin1_whitespace, ty)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-capify-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-capify-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-capify-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-capify-fn]
-    pub fn make_capify(
-        &mut self,
-        type_: ImplementationType,
-    ) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = HfstTransducer::new_type(type_)?;
+    pub fn make_capify(&mut self, ty: ImplementationType) -> crate::error::Result<HfstTransducer> {
+        let mut retval: HfstTransducer = HfstTransducer::new_type(ty)?;
         let tok: HfstTokenizer = HfstTokenizer::new();
         let mut i: usize = 0;
         while i < array_len(latin1_upper) {
             retval.disjunct(
-                &HfstTransducer::new_tokenized_pair(latin1_lower[i], latin1_upper[i], &tok, type_)?,
+                &HfstTransducer::new_tokenized_pair(latin1_lower[i], latin1_upper[i], &tok, ty)?,
                 true,
             )?;
             i += 1;
@@ -1806,16 +1803,13 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-lowerfy-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-lowerfy-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-lowerfy-fn]
-    pub fn make_lowerfy(
-        &mut self,
-        type_: ImplementationType,
-    ) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = HfstTransducer::new_type(type_)?;
+    pub fn make_lowerfy(&mut self, ty: ImplementationType) -> crate::error::Result<HfstTransducer> {
+        let mut retval: HfstTransducer = HfstTransducer::new_type(ty)?;
         let tok: HfstTokenizer = HfstTokenizer::new();
         let mut i: usize = 0;
         while i < array_len(latin1_upper) {
             retval.disjunct(
-                &HfstTransducer::new_tokenized_pair(latin1_upper[i], latin1_lower[i], &tok, type_)?,
+                &HfstTransducer::new_tokenized_pair(latin1_upper[i], latin1_lower[i], &tok, ty)?,
                 true,
             )?;
             i += 1;
@@ -3823,7 +3817,7 @@ impl PmatchReplaceRuleContainer {
             );
             context_vector.push(p);
         }
-        Rule::new_mapping_context_repl_type(&pair_vector, &context_vector, self.type_)
+        Rule::new_mapping_context_repl_type(&pair_vector, &context_vector, self.ty)
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-restriction-container.evaluate-fn]
@@ -4943,7 +4937,7 @@ impl PmatchObject for PmatchBuiltinFunction {
         }
         self.start_timing(ctx);
         let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format())?;
-        if self.type_ == PmatchBuiltin::Interpolate {
+        if self.ty == PmatchBuiltin::Interpolate {
             if self.args.len() < 3 {
                 let errstring = format!(
                     "Builtin function Interpolate called with {} arguments, but it expects at least 3.\n",
@@ -5735,11 +5729,11 @@ pub fn expand_includes(ctx: &mut PmatchEvalContext, script: &str) -> String {
 pub fn compile(
     pmatch: &str,
     defs: &HashMap<String, HfstTransducer>,
-    impl_: ImplementationType,
+    format: ImplementationType,
     be_verbose: bool,
     do_flatten: bool,
     do_include_cosine_distances: bool,
-    includedir_: String,
+    includedir: String,
 ) -> crate::error::Result<HashMap<String, HfstTransducer>> {
     // lock here?
     let mut ctx_owned = PmatchEvalContext::new();
@@ -5751,7 +5745,7 @@ pub fn compile(
     ctx.set_verbose(be_verbose);
     ctx.set_flatten(do_flatten);
     ctx.set_include_cosine_distances(do_include_cosine_distances);
-    ctx.includedir_set(includedir_);
+    ctx.includedir_set(includedir);
     ctx.set_vector_similarity_projection_factor(1.0);
     for (key, value) in defs.iter() {
         ctx.definitions_insert(
@@ -5761,7 +5755,7 @@ pub fn compile(
             )?)),
         );
     }
-    ctx.set_format(impl_);
+    ctx.set_format(format);
     if ctx.verbose() {
         ctx.set_timer(clock());
         debug!("");
@@ -6065,11 +6059,11 @@ pub fn write_compilation_stack_indentation_to_err(ctx: &mut PmatchEvalContext) {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-text-fn]
 pub fn read_text(
     filename: String,
-    type_: ImplementationType,
+    ty: ImplementationType,
     spaced_text: bool,
 ) -> crate::error::Result<HfstTransducer> {
     let tok = HfstTokenizer::new();
-    let mut retval: HfstTransducer = HfstTransducer::new_type(type_)?;
+    let mut retval: HfstTransducer = HfstTransducer::new_type(ty)?;
     match fs::read_to_string(&filename) {
         Err(_) => {
             error!("Pmatch: could not open text file {} for reading", filename);
@@ -6096,9 +6090,9 @@ pub fn read_text(
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-spaced-text-fn]
 pub fn read_spaced_text(
     filename: String,
-    type_: ImplementationType,
+    ty: ImplementationType,
 ) -> crate::error::Result<HfstTransducer> {
-    read_text(filename, type_, true)
+    read_text(filename, ty, true)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.path-from-filename-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.path-from-filename-fn]
@@ -6712,7 +6706,7 @@ pub fn build_object(
                     my_timer: 0,
                     cache: None,
                     arrow: mapped_arrow,
-                    type_: rtype,
+                    ty: rtype,
                     mapping,
                     context,
                 })));
@@ -6875,7 +6869,7 @@ pub fn build_object(
                 my_timer: 0,
                 cache: None,
                 args: argvec,
-                type_: PmatchBuiltin::Interpolate,
+                ty: PmatchBuiltin::Interpolate,
             })))
         }
         PE::Substitute(a, b, c) => pmb_ternary(
@@ -7108,14 +7102,14 @@ impl Default for PmatchCompiler {
 }
 
 impl PmatchCompiler {
-    pub fn new(type_: ImplementationType) -> Self {
+    pub fn new(ty: ImplementationType) -> Self {
         PmatchCompiler {
-            type_,
+            ty,
             verbose: false,
             flatten: false,
             include_cosine_distances: false,
             includedir: String::new(),
-            definitions_: BTreeMap::new(),
+            definitions: BTreeMap::new(),
             eval_ctx: PmatchEvalContext::new(),
         }
     }
@@ -7142,14 +7136,14 @@ impl PmatchCompiler {
     // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.define-fn]
     //
     // Reads the global 'definitions' map (populated by 'compile') and stores the
-    // evaluated transducer into the member 'definitions_', mirroring the C++.
+    // evaluated transducer into the member 'definitions', mirroring the C++.
     pub fn define(&mut self, name: &str, pmatch: &str) -> crate::error::Result<()> {
         self.compile(pmatch)?;
         let ctx = &mut self.eval_ctx;
         if ctx.definitions_contains(name) {
             let obj = ctx.definitions_get(name).unwrap();
             let evaluated = obj.borrow_mut().evaluate(ctx)?;
-            self.definitions_.insert(name.to_string(), evaluated);
+            self.definitions.insert(name.to_string(), evaluated);
         }
         Ok(())
     }
@@ -7168,7 +7162,7 @@ impl PmatchCompiler {
             ctx.set_include_cosine_distances(self.include_cosine_distances);
             ctx.includedir_set(self.includedir.clone());
             ctx.set_vector_similarity_projection_factor(1.0);
-            ctx.set_format(self.type_);
+            ctx.set_format(self.ty);
             if ctx.verbose() {
                 ctx.set_timer(clock());
                 debug!("");

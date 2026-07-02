@@ -50,8 +50,8 @@ fn serialized() -> std::sync::MutexGuard<'static, ()> {
 }
 
 // Shared helper inlined from test/libhfst/auxiliary_functions.cc (verbose_print).
-fn verbose_print(msg: &str, type_: ImplementationType) {
-    eprintln!("Testing:\t{msg} for type {type_:?}...");
+fn verbose_print(msg: &str, ty: ImplementationType) {
+    eprintln!("Testing:\t{msg} for type {ty:?}...");
 }
 
 // Run a closure that is expected to throw an HFST exception (a panic_any
@@ -162,12 +162,12 @@ fn build_disj() -> HfstBasicTransducer {
 }
 
 // --- Block 1a: expanding unknowns (the disjunct/minimize oracle).
-fn run_expanding_unknowns(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("expanding unknowns", type_);
+fn run_expanding_unknowns(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("expanding unknowns", ty);
 
-    let mut tr1 = HfstTransducer::new_from_basic(&build_tr1(), type_)?;
-    let tr2 = HfstTransducer::new_from_basic(&build_tr2(), type_)?;
-    let disj = HfstTransducer::new_from_basic(&build_disj(), type_)?;
+    let mut tr1 = HfstTransducer::new_from_basic(&build_tr1(), ty)?;
+    let tr2 = HfstTransducer::new_from_basic(&build_tr2(), ty)?;
+    let disj = HfstTransducer::new_from_basic(&build_disj(), ty)?;
 
     // Tr1.disjunct(Tr2).minimize(); C++ disjunct/compare default harmonize=true.
     tr1.disjunct(&tr2, true)?.minimize()?;
@@ -184,15 +184,14 @@ fn run_expanding_unknowns(type_: ImplementationType) -> Result<(), hfst::error::
 // NotValidAttFormatException. The C++ uses the (FILE*, type, epsilon, linecount)
 // constructor; read_in_att_format_filename is the facade equivalent that opens
 // the file itself.
-fn run_not_valid_att_format(type_: ImplementationType) {
-    verbose_print("testing NotValidAttFormatException", type_);
+fn run_not_valid_att_format(ty: ImplementationType) {
+    verbose_print("testing NotValidAttFormatException", ty);
 
-    let path = std::env::temp_dir().join(format!("test_examples_{type_:?}.att"));
+    let path = std::env::temp_dir().join(format!("test_examples_{ty:?}.att"));
     std::fs::write(&path, "0 1 a b 0.4\n1 c d\n").unwrap();
     let path_str = path.to_str().unwrap().to_string();
 
-    let r =
-        HfstTransducer::read_in_att_format_filename(&path_str, type_, "@_EPSILON_SYMBOL_@", false);
+    let r = HfstTransducer::read_in_att_format_filename(&path_str, ty, "@_EPSILON_SYMBOL_@", false);
     assert!(
         matches!(&r, Err(e) if matches!(e.kind, hfst::error::ErrorKind::NotValidAttFormat)),
         "expected NotValidAttFormatException"

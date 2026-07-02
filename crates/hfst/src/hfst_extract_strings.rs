@@ -203,5 +203,5 @@ pub trait ExtractStringsCb {
     // path up to that point, and whether or not the path ends at a final state.
     // [spec:hfst:def:hfst-extract-strings.hfst.extract-strings-cb.operator-fn]
     // [spec:hfst:sem:hfst-extract-strings.hfst.extract-strings-cb.operator-fn]
-    fn operator_call(&mut self, path: &mut HfstTwoLevelPath, final_: bool) -> RetVal;
+    fn operator_call(&mut self, path: &mut HfstTwoLevelPath, is_final: bool) -> RetVal;
 }

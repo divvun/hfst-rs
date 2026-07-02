@@ -31,7 +31,7 @@ fn name_then_print_name_finds_it() {
     let mut c = XfstCompiler::new_with_impl(TROPICAL_OPENFST_TYPE);
     c.parse("regex a:b ;\n");
     assert_eq!(c.get_stack().len(), 1);
-    // name_net aliases the stack-top transducer into names_; print_name finds
+    // name_net aliases the stack-top transducer into names; print_name finds
     // it by identity. This is the path the conversion must preserve.
     c.name_net("foo");
     let mut buf: Vec<u8> = Vec::new();

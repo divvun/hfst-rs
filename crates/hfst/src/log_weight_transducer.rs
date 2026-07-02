@@ -43,7 +43,6 @@ use crate::hfst_symbol_defs::{
 use crate::transducer::IStream;
 
 // [spec:hfst:def:log-weight-transducer.int64]
-pub type i64_ = i64;
 
 // [spec:hfst:def:log-weight-transducer.hfst.implementations.state-id]
 pub type StateId = u32;
@@ -1258,16 +1257,16 @@ mod construction_io {
                     let result_nextstate = arc.nextstate;
 
                     if unknown_symbols_in_use {
-                        let is_ = t.input_symbols().unwrap();
+                        let is = t.input_symbols().unwrap();
 
                         if arc.ilabel == 1 && arc.olabel == 1 {
                             // cross-product "?:?"
                             for it1 in unknown.iter() {
                                 let inumber: i64 =
-                                    is_.get_label(it1).map(|l| l as i64).unwrap_or(-1);
+                                    is.get_label(it1).map(|l| l as i64).unwrap_or(-1);
                                 for it2 in unknown.iter() {
                                     let onumber: i64 =
-                                        is_.get_label(it2).map(|l| l as i64).unwrap_or(-1);
+                                        is.get_label(it2).map(|l| l as i64).unwrap_or(-1);
                                     if inumber != onumber {
                                         result
                                             .add_tr(
@@ -1308,7 +1307,7 @@ mod construction_io {
                         } else if arc.ilabel == 2 || arc.olabel == 2 {
                             // identity "?:?"
                             for it in unknown.iter() {
-                                let number: i64 = is_.get_label(it).map(|l| l as i64).unwrap_or(-1);
+                                let number: i64 = is.get_label(it).map(|l| l as i64).unwrap_or(-1);
                                 result
                                     .add_tr(
                                         result_s,
@@ -1324,7 +1323,7 @@ mod construction_io {
                         } else if arc.ilabel == 1 {
                             // "?:x"
                             for it in unknown.iter() {
-                                let number: i64 = is_.get_label(it).map(|l| l as i64).unwrap_or(-1);
+                                let number: i64 = is.get_label(it).map(|l| l as i64).unwrap_or(-1);
                                 result
                                     .add_tr(
                                         result_s,
@@ -1340,7 +1339,7 @@ mod construction_io {
                         } else if arc.olabel == 1 {
                             // "x:?"
                             for it in unknown.iter() {
-                                let number: i64 = is_.get_label(it).map(|l| l as i64).unwrap_or(-1);
+                                let number: i64 = is.get_label(it).map(|l| l as i64).unwrap_or(-1);
                                 result
                                     .add_tr(
                                         result_s,
@@ -1792,26 +1791,26 @@ mod operations {
             // a copy of t2 is created so that its symbol table check sum is
             // the same as t1's
             // (else OpenFst complains about non-matching check sums... )
-            let mut t2_ = LogWeightTransducer::expand_arcs(t2, &mut foo, false);
+            let mut t2_copy = LogWeightTransducer::expand_arcs(t2, &mut foo, false);
 
             // C++ mutates t1 (sets/sorts); operate on a local clone.
-            let mut t1_ = t1.clone();
+            let mut t1_copy = t1.clone();
 
             // t2_->SetInputSymbols(t1->InputSymbols());
-            let in_syms = t1_.input_symbols().map(|s| std::sync::Arc::clone(s));
+            let in_syms = t1_copy.input_symbols().map(|s| std::sync::Arc::clone(s));
             if let Some(a) = in_syms.clone() {
-                t2_.set_input_symbols(a);
+                t2_copy.set_input_symbols(a);
             }
             // t1->SetOutputSymbols(t1->InputSymbols());
             if let Some(a) = in_syms {
-                t1_.set_output_symbols(a);
+                t1_copy.set_output_symbols(a);
             }
 
-            algorithms::ArcSortOutput(&mut t1_);
-            algorithms::ArcSortInput(&mut t2_);
+            algorithms::ArcSortOutput(&mut t1_copy);
+            algorithms::ArcSortInput(&mut t2_copy);
 
             let mut result = LogVectorFst::new();
-            algorithms::Compose(&t1_, &t2_, &mut result);
+            algorithms::Compose(&t1_copy, &t2_copy, &mut result);
 
             // result->SetInputSymbols(t1->InputSymbols());
             copy_input_symbol_table(t1, &mut result);
@@ -2190,8 +2189,8 @@ mod lookup_extract_misc {
         *path_visitations.entry(s).or_insert(0) += 1;
 
         if !spv.is_empty() {
-            let final_ = t.is_final(s).unwrap();
-            let fw = if final_ {
+            let is_final = t.is_final(s).unwrap();
+            let fw = if is_final {
                 *t.final_weight(s).unwrap().unwrap().value()
             } else {
                 0.0
@@ -2200,7 +2199,7 @@ mod lookup_extract_misc {
                 first: weight_sum + fw,
                 second: spv.clone(),
             };
-            let ret = callback.operator_call(&mut path, final_);
+            let ret = callback.operator_call(&mut path, is_final);
             if !ret.continueSearch || !ret.continuePath {
                 *path_visitations.entry(s).or_insert(0) -= 1;
                 return ret.continueSearch;

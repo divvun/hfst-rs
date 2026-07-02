@@ -30,7 +30,7 @@ pub struct FomaOutputStream;
 pub struct XfsmOutputStream;
 
 /// Port of the C++ 'union StreamImplementation' (backend implementation). Exactly
-/// one field is 'Some', selected by 'HfstOutputStream::type_'.
+/// one field is 'Some', selected by 'HfstOutputStream::ty'.
 // [spec:hfst:def:hfst-output-stream.hfst.hfst-output-stream.stream-implementation]
 #[derive(Default)]
 pub struct StreamImplementation {
@@ -47,7 +47,7 @@ pub struct StreamImplementation {
 pub struct HfstOutputStream {
     /// Type of the stream implementation (the discriminant selecting the live
     /// 'implementation' member).
-    type_: ImplementationType,
+    ty: ImplementationType,
     /// Whether an hfst header is written before every transducer.
     hfst_format: bool,
     /// Backend implementation (C++ 'StreamImplementation implementation').
@@ -71,11 +71,11 @@ mod output_impl {
     impl HfstOutputStream {
         /// 'HfstOutputStream(ImplementationType type, bool hfst_format=true)' — a
         /// stream to standard output. (No '[spec:]' id in the C++ for this ctor.)
-        pub fn new(type_: ImplementationType, hfst_format: bool) -> crate::error::Result<Self> {
-            if !HfstTransducer::is_lean_implementation_type_available(type_) {
+        pub fn new(ty: ImplementationType, hfst_format: bool) -> crate::error::Result<Self> {
+            if !HfstTransducer::is_lean_implementation_type_available(ty) {
                 // 'throw ImplementationTypeNotAvailableException(...)' — a direct
-                // panic_any rather than HFST_THROW (which can't carry the 'type_').
-                crate::bail!(ImplementationTypeNotAvailable(type_));
+                // panic_any rather than HFST_THROW (which can't carry the 'ty').
+                crate::bail!(ImplementationTypeNotAvailable(ty));
             }
 
             let mut implementation = StreamImplementation {
@@ -87,7 +87,7 @@ mod output_impl {
                 hfst_ol: None,
             };
 
-            match type_ {
+            match ty {
                 ImplementationType::SFST_TYPE => {
                     // implementation.sfst = new hfst::implementations::SfstOutputStream();
                     unimplemented!("deferred: SfstOutputStream");
@@ -117,7 +117,7 @@ mod output_impl {
             }
 
             Ok(HfstOutputStream {
-                type_,
+                ty,
                 hfst_format,
                 implementation,
                 is_open: true,
@@ -132,17 +132,17 @@ mod output_impl {
         /// bool hfst_format=true)'.
         pub fn new_filename(
             filename: &str,
-            type_: ImplementationType,
+            ty: ImplementationType,
             hfst_format: bool,
         ) -> crate::error::Result<Self> {
             // The CLI passes the sentinel "<stdout>" (and "") for standard output;
             // route those to the stdout constructor rather than creating a file
             // literally named "<stdout>".
             if filename.is_empty() || filename == "<stdout>" {
-                return Self::new(type_, hfst_format);
+                return Self::new(ty, hfst_format);
             }
-            if !HfstTransducer::is_lean_implementation_type_available(type_) {
-                crate::bail!(ImplementationTypeNotAvailable(type_));
+            if !HfstTransducer::is_lean_implementation_type_available(ty) {
+                crate::bail!(ImplementationTypeNotAvailable(ty));
             }
 
             let mut implementation = StreamImplementation {
@@ -154,7 +154,7 @@ mod output_impl {
                 hfst_ol: None,
             };
 
-            match type_ {
+            match ty {
                 ImplementationType::SFST_TYPE => {
                     // implementation.sfst = new SfstOutputStream(filename);
                     unimplemented!("deferred: SfstOutputStream");
@@ -197,7 +197,7 @@ mod output_impl {
             }
 
             Ok(HfstOutputStream {
-                type_,
+                ty,
                 hfst_format,
                 implementation,
                 is_open: true,
@@ -232,7 +232,7 @@ mod output_impl {
         // [spec:hfst:def:hfst-output-stream.hfst.hfst-output-stream.write-fn]
         // [spec:hfst:sem:hfst-output-stream.hfst.hfst-output-stream.write-fn]
         fn write_char(&mut self, c: char) {
-            match self.type_ {
+            match self.ty {
                 ImplementationType::SFST_TYPE => unimplemented!("deferred: SfstOutputStream"),
                 ImplementationType::TROPICAL_OPENFST_TYPE => {
                     self.implementation.tropical_ofst.as_mut().unwrap().write(c);
@@ -263,7 +263,7 @@ mod output_impl {
             Self::append(header, "3.3");
             Self::append(header, "type");
 
-            let type_value: String = match self.type_ {
+            let type_value: String = match self.ty {
                 ImplementationType::SFST_TYPE => "SFST".to_string(),
                 ImplementationType::TROPICAL_OPENFST_TYPE => "TROPICAL_OPENFST".to_string(),
                 ImplementationType::LOG_OPENFST_TYPE => "LOG_OPENFST".to_string(),
@@ -290,7 +290,7 @@ mod output_impl {
         ) {
             // HAVE_SFST/HAVE_LEAN_SFST branch: only SFST contributes implementation-specific
             // header data (its alphabet); every other type is a no-op.
-            match self.type_ {
+            match self.ty {
                 ImplementationType::SFST_TYPE => {
                     // implementation.sfst->append_implementation_specific_header_data(
                     //     header, transducer.implementation.sfst);
@@ -304,7 +304,7 @@ mod output_impl {
             if !self.is_open {
                 crate::bail!(StreamIsClosed);
             }
-            if self.type_ == ImplementationType::XFSM_TYPE {
+            if self.ty == ImplementationType::XFSM_TYPE {
                 // implementation.xfsm->flush();
                 unimplemented!("deferred: XfsmOutputStream");
             }
@@ -328,7 +328,7 @@ mod output_impl {
                 crate::bail!(StreamIsClosed);
             }
 
-            if self.type_ != transducer.type_ {
+            if self.ty != transducer.ty {
                 crate::bail!(
                     TransducerTypeMismatch,
                     "operator<<: HfstOutputStream and HfstTransducer do not have the same type"
@@ -392,7 +392,7 @@ mod output_impl {
                 self.write_char_vector(&header);
             } // if (hfst_format)
 
-            Ok(match self.type_ {
+            Ok(match self.ty {
                 ImplementationType::SFST_TYPE => {
                     // implementation.sfst->write_transducer(transducer.implementation.sfst);
                     unimplemented!("deferred: SfstOutputStream")
@@ -440,7 +440,7 @@ mod output_impl {
         // [spec:hfst:def:hfst-output-stream.hfst.hfst-output-stream.close-fn]
         // [spec:hfst:sem:hfst-output-stream.hfst.hfst-output-stream.close-fn]
         pub fn close(&mut self) {
-            match self.type_ {
+            match self.ty {
                 ImplementationType::SFST_TYPE => unimplemented!("deferred: SfstOutputStream"),
                 ImplementationType::TROPICAL_OPENFST_TYPE => {
                     self.implementation.tropical_ofst.as_mut().unwrap().close();

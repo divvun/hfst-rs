@@ -385,7 +385,7 @@ mod ol_construction_io {
     }
 
     // ===========================================================================
-    // HfstOlTransducer — construction / alphabet accessors / is_* predicate
+    // HfstOlTransducer — construction / alphabet accessors / is* predicate
     // ===========================================================================
     #[allow(dead_code)]
     impl HfstOlTransducer {
@@ -459,19 +459,19 @@ mod ol_lookup_ops {
 
         if !spv.is_empty() {
             // check for finality
-            let mut final_ = false;
+            let mut is_final = false;
             let mut final_weight = 0.0f32;
             if indexes_transition_index_table(s) {
-                if t.get_index(s).final_() {
-                    final_ = true;
+                if t.get_index(s).is_final() {
+                    is_final = true;
                     final_weight = if t.get_header().probe_flag(HeaderFlag::Weighted) {
                         t.get_index(s).final_weight()
                     } else {
                         0.0f32
                     };
                 }
-            } else if t.get_transition(s).final_() {
-                final_ = true;
+            } else if t.get_transition(s).is_final() {
+                is_final = true;
                 final_weight = if t.get_header().probe_flag(HeaderFlag::Weighted) {
                     t.get_transition(s).get_weight()
                 } else {
@@ -484,7 +484,7 @@ mod ol_lookup_ops {
                 second: spv.clone(),
             };
 
-            let ret = callback.operator_call(&mut path, final_);
+            let ret = callback.operator_call(&mut path, is_final);
             if !ret.continueSearch || !ret.continuePath {
                 *path_visitations.entry(s).or_insert(0) -= 1;
                 return ret.continueSearch;

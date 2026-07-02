@@ -66,7 +66,7 @@ pub fn replace(
     optional: bool,
     alphabet: &mut StringPairSet,
 ) -> crate::error::Result<HfstTransducer> {
-    let type_ = t.get_type();
+    let ty = t.get_type();
 
     let mut t_proj = t.clone();
     if repl_type == ReplaceType::REPL_UP {
@@ -79,7 +79,7 @@ pub fn replace(
         crate::bail!(Fatal, "impossible replace type");
     }
 
-    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
 
     // tc = ( .* t_proj .* )
     let mut tc = pi_star.clone();
@@ -116,14 +116,14 @@ pub fn replace_transducer(
 ) -> crate::error::Result<HfstTransducer> {
     t.optimize()?;
 
-    let type_ = t.get_type();
+    let ty = t.get_type();
 
     // tm = ( L (L >> (R >> t)) R )
     let mut tc = t.clone();
     tc.insert_freely_pair(&(rm.clone(), rm.clone()), true)?;
     tc.insert_freely_pair(&(lm.clone(), lm.clone()), true)?;
-    let mut tm = HfstTransducer::from_symbol(&lm, type_)?;
-    let rmtr = HfstTransducer::from_symbol(&rm, type_)?;
+    let mut tm = HfstTransducer::from_symbol(&lm, ty)?;
+    let rmtr = HfstTransducer::from_symbol(&rm, ty)?;
     tm.concatenate(&tc, true)?;
     tm.concatenate(&rmtr, true)?;
 
@@ -212,7 +212,7 @@ pub fn two_level_if(
     if context.0.get_type() != context.1.get_type() {
         crate::bail!(TransducerTypeMismatch, "rules::two_level_if");
     }
-    let type_ = context.0.get_type();
+    let ty = context.0.get_type();
 
     assert!(context.1.get_type() != ImplementationType::ERROR_TYPE);
     assert!(context.1.get_type() != ImplementationType::ERROR_TYPE);
@@ -228,25 +228,25 @@ pub fn two_level_if(
     }
 
     // center == [ a:. ]
-    let mut center = HfstTransducer::from_string_pair_set(&input_to_any, type_, false)?;
+    let mut center = HfstTransducer::from_string_pair_set(&input_to_any, ty, false)?;
 
     // calculate [ .* - a:b ]
-    let mut neg_mappings = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+    let mut neg_mappings = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
     //neg_mappings.repeat_star();
 
-    let mappings_tr = HfstTransducer::from_string_pair_set(&*mappings, type_, false)?;
+    let mappings_tr = HfstTransducer::from_string_pair_set(&*mappings, ty, false)?;
     neg_mappings.subtract(&mappings_tr, true)?;
 
     // center == [ a:. & !a:b ]
     center.intersect(&neg_mappings, true)?;
 
     // left context == [ .* l ]
-    let mut left_context = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+    let mut left_context = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
     left_context.concatenate(&context.0, true)?;
 
     // right_context == [ r .* ]
     let mut right_context = context.1.clone();
-    let universal = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+    let universal = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
     right_context.concatenate(&universal, true)?;
 
     let inside = left_context
@@ -272,25 +272,25 @@ pub fn two_level_only_if(
     if context.0.get_type() != context.1.get_type() {
         crate::bail!(TransducerTypeMismatch, "rules::two_level_only_if");
     }
-    let type_ = context.0.get_type();
+    let ty = context.0.get_type();
 
     assert!(context.1.get_type() != ImplementationType::ERROR_TYPE);
     assert!(context.1.get_type() != ImplementationType::ERROR_TYPE);
 
     // center = a:b
-    let center = HfstTransducer::from_string_pair_set(&*mappings, type_, false)?;
+    let center = HfstTransducer::from_string_pair_set(&*mappings, ty, false)?;
 
     // left_neg = !(.* l)
-    let mut left = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+    let mut left = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
     left.concatenate(&context.0, true)?;
-    let mut left_neg = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+    let mut left_neg = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
     left_neg.subtract(&left, true)?;
 
     // right_neg = !(r .*)
-    let universal = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+    let universal = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
     let mut right = context.1.clone();
     right.concatenate(&universal, true)?;
-    let mut right_neg = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+    let mut right_neg = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
     right_neg.subtract(&right, true)?;
 
     // left_neg + center + universal  |  universal + center + right_neg
@@ -302,7 +302,7 @@ pub fn two_level_only_if(
     rule_right.concatenate(&right_neg, true)?;
     rule.disjunct(&rule_right, true)?;
 
-    let mut rule_neg = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+    let mut rule_neg = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
     rule_neg.subtract(&rule, true)?;
 
     return Ok(rule_neg);
@@ -337,7 +337,7 @@ pub fn replace_in_context(
     if context.0.get_type() != context.1.get_type() || context.0.get_type() != t.get_type() {
         crate::bail!(TransducerTypeMismatch, "rules::replace_in_context");
     }
-    let type_ = t.get_type();
+    let ty = t.get_type();
 
     // test that both context transducers are automata
     // this could be done more efficiently...
@@ -360,23 +360,23 @@ pub fn replace_in_context(
     let mut pi1 = alphabet.clone();
     pi1.insert((internal_epsilon.to_string(), leftm.clone()));
     pi1.insert((internal_epsilon.to_string(), rightm.clone()));
-    let ibt = HfstTransducer::from_string_pair_set(&pi1, type_, true)?;
+    let ibt = HfstTransducer::from_string_pair_set(&pi1, ty, true)?;
 
     // Create the remove boundary transducer (.|<L>:<>|<R>:<>)*
     let mut pi2 = alphabet.clone();
     pi2.insert((leftm.clone(), internal_epsilon.to_string()));
     pi2.insert((rightm.clone(), internal_epsilon.to_string()));
-    let rbt = HfstTransducer::from_string_pair_set(&pi2, type_, true)?;
+    let rbt = HfstTransducer::from_string_pair_set(&pi2, ty, true)?;
 
     // Add the markers to the alphabet
     alphabet.insert((leftm.clone(), leftm.clone()));
     alphabet.insert((rightm.clone(), rightm.clone()));
 
-    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
 
     // Create the constrain boundary transducer !(.*<L><R>.*)
-    let leftm_to_leftm = HfstTransducer::from_isymbol_osymbol(&leftm, &leftm, type_)?;
-    let rightm_to_rightm = HfstTransducer::from_isymbol_osymbol(&rightm, &rightm, type_)?;
+    let leftm_to_leftm = HfstTransducer::from_isymbol_osymbol(&leftm, &leftm, ty)?;
+    let rightm_to_rightm = HfstTransducer::from_isymbol_osymbol(&rightm, &rightm, ty)?;
     let mut tmp = pi_star.clone();
     tmp.concatenate(&leftm_to_leftm, true)?;
     tmp.concatenate(&rightm_to_rightm, true)?;
@@ -402,7 +402,7 @@ pub fn replace_in_context(
     rct.optimize()?;
 
     // unconditional replace transducer
-    let mut rt = HfstTransducer::from_type(type_)?;
+    let mut rt = HfstTransducer::from_type(ty)?;
     if repl_type == ReplaceType::REPL_UP
         || repl_type == ReplaceType::REPL_RIGHT
         || repl_type == ReplaceType::REPL_LEFT
@@ -467,8 +467,8 @@ pub fn replace_in_context(
     alphabet.remove(&(rightm.clone(), rightm.clone()));
 
     if optional {
-        let pi_star_ = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
-        result.disjunct(&pi_star_, true)?;
+        let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+        result.disjunct(&pi_star, true)?;
     }
 
     result.optimize()?;
@@ -708,18 +708,18 @@ pub fn restriction(
 ) -> crate::error::Result<HfstTransducer> {
     // Make sure that contexts contains at least one transducer pair and that
     // all transducers in the set have the same type.
-    let mut type_ = ImplementationType::ERROR_TYPE;
+    let mut ty = ImplementationType::ERROR_TYPE;
     let mut type_defined = false;
     for it in contexts.iter() {
         if !type_defined {
-            type_ = it.0.get_type();
+            ty = it.0.get_type();
             type_defined = true;
         } else {
-            if type_ != it.0.get_type() {
+            if ty != it.0.get_type() {
                 crate::bail!(TransducerTypeMismatch, "rules::restriction");
             }
         }
-        if type_ != it.1.get_type() {
+        if ty != it.1.get_type() {
             crate::bail!(TransducerTypeMismatch, "rules::restriction");
         }
     }
@@ -728,18 +728,18 @@ pub fn restriction(
     }
 
     let marker: String = "@_MARKER_@".to_string();
-    let mt = HfstTransducer::from_symbol(&marker, type_)?;
-    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+    let mt = HfstTransducer::from_symbol(&marker, ty)?;
+    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
 
     // center transducer
-    let mut l1 = HfstTransducer::from_symbol(internal_epsilon, type_)?;
+    let mut l1 = HfstTransducer::from_symbol(internal_epsilon, ty)?;
     l1.concatenate(&pi_star, true)?;
     l1.concatenate(&mt, true)?;
     l1.concatenate(&*mapping, true)?;
     l1.concatenate(&mt, true)?;
     l1.concatenate(&pi_star, true)?;
 
-    let mut tmp = HfstTransducer::from_type(type_)?;
+    let mut tmp = HfstTransducer::from_type(ty)?;
     if direction == 0 {
         tmp = pi_star.clone();
     } else if direction == 1 {
@@ -751,9 +751,9 @@ pub fn restriction(
 
     // context transducer
     // pi_star + left[i] + mt + tmp + mt + + right[i] + pi_star
-    let mut l2 = HfstTransducer::from_type(type_)?;
+    let mut l2 = HfstTransducer::from_type(ty)?;
     for it in contexts.iter() {
-        let mut ct = HfstTransducer::from_symbol(internal_epsilon, type_)?;
+        let mut ct = HfstTransducer::from_symbol(internal_epsilon, ty)?;
         ct.concatenate(&pi_star, true)?;
         ct.concatenate(&it.0, true)?;
         ct.concatenate(&mt, true)?;
@@ -764,11 +764,11 @@ pub fn restriction(
         l2.disjunct(&ct, true)?;
     }
 
-    let result = HfstTransducer::from_type(type_)?;
+    let result = HfstTransducer::from_type(ty)?;
 
     if twol_type == TwolType::twol_right {
         // TheAlphabet - ( l1 - l2 ).substitute(marker,epsilon, true, true)
-        let mut retval = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+        let mut retval = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
         let mut tmp1 = l1.clone();
         tmp1.subtract(&l2, true)?;
         tmp1.substitute(&marker, internal_epsilon, true, true)?;
@@ -776,7 +776,7 @@ pub fn restriction(
         return Ok(retval);
     } else if twol_type == TwolType::twol_left {
         // TheAlphabet - ( l2 - l1 ).substitute(marker,epsilon, true, true)
-        let mut retval = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+        let mut retval = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
         let mut tmp1 = l2.clone();
         tmp1.subtract(&l1, true)?;
         tmp1.substitute(&marker, internal_epsilon, true, true)?;
@@ -786,13 +786,13 @@ pub fn restriction(
         // TheAlphabet - ( l1 - l2 ).substitute(marker,epsilon, true, true)
         // TheAlphabet - ( l2 - l1 ).substitute(marker,epsilon, true, true)
         // intersect
-        let mut retval1 = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+        let mut retval1 = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
         let mut tmp1 = l1.clone();
         tmp1.subtract(&l2, true)?;
         tmp1.substitute(&marker, internal_epsilon, true, true)?;
         retval1.subtract(&tmp1, true)?;
 
-        let mut retval2 = HfstTransducer::from_string_pair_set(&*alphabet, type_, true)?;
+        let mut retval2 = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
         let mut tmp2 = l2.clone();
         tmp2.subtract(&l1, true)?;
         tmp2.substitute(&marker, internal_epsilon, true, true)?;
@@ -801,7 +801,7 @@ pub fn restriction(
         return Ok(retval1.intersect(&retval2, true)?.clone());
     } else {
         assert!(false);
-        return HfstTransducer::from_type(type_); // make compiler happy
+        return HfstTransducer::from_type(ty); // make compiler happy
     }
 }
 

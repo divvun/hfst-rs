@@ -307,7 +307,7 @@ unsafe fn get_print_format(s: &str) -> String {
 struct Callback<'a> {
     count: i32,
     max_num: i32,
-    out_: &'a mut dyn std::io::Write,
+    out: &'a mut dyn std::io::Write,
 }
 
 impl<'a> Callback<'a> {
@@ -317,7 +317,7 @@ impl<'a> Callback<'a> {
         Callback {
             count: 0,
             max_num: max,
-            out_: out,
+            out: out,
         }
     }
 }
@@ -325,7 +325,7 @@ impl<'a> Callback<'a> {
 impl ExtractStringsCb for Callback<'_> {
     // [spec:hfst:def:hfst-fst2strings.callback.operator-fn]
     // [spec:hfst:sem:hfst-fst2strings.callback.operator-fn]
-    fn operator_call(&mut self, path: &mut HfstTwoLevelPath, final_: bool) -> RetVal {
+    fn operator_call(&mut self, path: &mut HfstTwoLevelPath, is_final: bool) -> RetVal {
         unsafe {
             let mut istring = String::new();
             let mut ostring = String::new();
@@ -374,27 +374,27 @@ impl ExtractStringsCb for Callback<'_> {
                 // continue searching, break off this path
             }
             // the path passed the checks. Print it if it is final
-            if final_ {
+            if is_final {
                 if PRINT_IN_PAIRSTRING_FORMAT {
                     let mut first_pair = true;
                     for it in path.second.iter() {
                         if (!FILTER_FD) || (!FdOperation::is_diacritic(&it.0)) {
                             if PRINT_SPACES && !first_pair {
-                                let _ = self.out_.write_all(b" ");
+                                let _ = self.out.write_all(b" ");
                             }
 
-                            let _ = self.out_.write_all(get_print_format(&it.0).as_bytes());
+                            let _ = self.out.write_all(get_print_format(&it.0).as_bytes());
                             first_pair = false;
                         }
 
                         if it.0 != it.1 && ((!FILTER_FD) || (!FdOperation::is_diacritic(&it.1))) {
-                            let _ = write!(self.out_, ":{}", get_print_format(&it.1));
+                            let _ = write!(self.out, ":{}", get_print_format(&it.1));
                         }
                     }
                     if DISPLAY_WEIGHTS {
-                        let _ = write!(self.out_, "\t{}", path.first);
+                        let _ = write!(self.out, "\t{}", path.first);
                     }
-                    let _ = self.out_.write_all(b"\n");
+                    let _ = self.out.write_all(b"\n");
                 } else {
                     let mut is_automaton = true;
 
@@ -402,38 +402,38 @@ impl ExtractStringsCb for Callback<'_> {
                     for it in path.second.iter() {
                         if (!FILTER_FD) || (!FdOperation::is_diacritic(&it.0)) {
                             if PRINT_SPACES && !first_symbol {
-                                let _ = self.out_.write_all(b" ");
+                                let _ = self.out.write_all(b" ");
                             }
                             if it.0 != it.1 {
                                 is_automaton = false;
                             }
 
-                            let _ = self.out_.write_all(get_print_format(&it.0).as_bytes());
+                            let _ = self.out.write_all(get_print_format(&it.0).as_bytes());
                         }
                         first_symbol = false;
                     }
                     if PRINT_SPACES {
-                        let _ = self.out_.write_all(b" ");
+                        let _ = self.out.write_all(b" ");
                     }
 
                     if !is_automaton {
-                        let _ = self.out_.write_all(b":");
+                        let _ = self.out.write_all(b":");
                         for it in path.second.iter() {
                             if (!FILTER_FD) || (!FdOperation::is_diacritic(&it.1)) {
                                 if PRINT_SPACES {
-                                    let _ = self.out_.write_all(b" ");
+                                    let _ = self.out.write_all(b" ");
                                 }
-                                let _ = self.out_.write_all(get_print_format(&it.1).as_bytes());
+                                let _ = self.out.write_all(get_print_format(&it.1).as_bytes());
                             }
                         }
                     }
 
                     if DISPLAY_WEIGHTS {
-                        let _ = write!(self.out_, "\t{}", path.first);
+                        let _ = write!(self.out, "\t{}", path.first);
                     }
-                    let _ = self.out_.write_all(b"\n");
+                    let _ = self.out.write_all(b"\n");
                     // std::endl flushes
-                    let _ = self.out_.flush();
+                    let _ = self.out.flush();
                 }
                 self.count += 1;
             }

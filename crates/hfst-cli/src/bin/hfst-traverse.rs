@@ -309,11 +309,11 @@ unsafe fn real_main() -> i32 {
         // The C constructs an HfstOutputStream from the input type even though
         // this tool never writes to it (traversal only reads). Mirror that
         // construction so the buffer-handling part matches the source.
-        let type_ = instream.get_type();
+        let ty = instream.get_type();
         let _outstream = match if output_opened {
-            HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), ty, true)
         } else {
-            HfstOutputStream::new(type_, true)
+            HfstOutputStream::new(ty, true)
         } {
             Ok(v) => v,
             Err(e) => {

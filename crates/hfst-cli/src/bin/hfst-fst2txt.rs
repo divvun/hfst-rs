@@ -208,21 +208,21 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
             }
 
             let printw: bool; // whether weights are printed
-            let type_ = t.get_type();
+            let ty = t.get_type();
             if PRINT_WEIGHTS {
                 printw = true;
             } else if DO_NOT_PRINT_WEIGHTS {
                 printw = false;
-            } else if type_ == ImplementationType::SFST_TYPE
-                || type_ == ImplementationType::FOMA_TYPE
-                || type_ == ImplementationType::XFSM_TYPE
+            } else if ty == ImplementationType::SFST_TYPE
+                || ty == ImplementationType::FOMA_TYPE
+                || ty == ImplementationType::XFSM_TYPE
             {
                 printw = false;
-            } else if type_.is_weighted() {
+            } else if ty.is_weighted() {
                 // tropical/log OpenFST and weighted optimized-lookup; the prior
                 // SFST/foma/xfsm arm already returned false, and the else arm
                 // below also yields true, so this is byte-for-byte equivalent to
-                // the original `type_ == TROPICAL_OPENFST || type_ == LOG_OPENFST`.
+                // the original `ty == TROPICAL_OPENFST || ty == LOG_OPENFST`.
                 printw = true;
             } else {
                 // this should not happen
@@ -251,7 +251,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
                     // C: catches HfstException -> error "Error encountered when
                     // writing in prolog format". The Rust impl panics; the catch
                     // arm is not reproduced here.
-                    if type_ == ImplementationType::XFSM_TYPE {
+                    if ty == ImplementationType::XFSM_TYPE {
                         // no name or weights printed
                         t.write_xfsm_transducer_in_prolog_format(&globals::output_filename());
                     } else {

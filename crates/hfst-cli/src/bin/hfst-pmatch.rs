@@ -107,7 +107,7 @@ unsafe fn match_and_print(
             let _ = write!(
                 outstream,
                 "{}",
-                container.match_(input_text, TIME_CUTOFF, WEIGHT_CUTOFF)
+                container.do_match(input_text, TIME_CUTOFF, WEIGHT_CUTOFF)
             );
             let _ = write!(outstream, "\n");
             if BLANKLINE_SEPARATED {

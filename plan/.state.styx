@@ -66,4 +66,6 @@ assertions (
     {id idiom6.resultify.internal-catches, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:15.656515Z}
     {id idiom6.resultify.facade, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:22.036572Z}
     {id idiom6.resultify.compilers, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:28.769206Z}
+    {id librarify.binary-fold, kind @doing, author "brendan@necessary.nu", at 2026-07-02T12:03:34.312211Z}
+    {id idiom8, kind @complete, author "brendan@necessary.nu", at 2026-07-02T12:31:09.979133Z}
 )

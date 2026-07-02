@@ -1032,6 +1032,14 @@ children (
                 title "[Tier2] Shared hfst-cli binary_fold_streams(op) driver (n-ary stream loop + conversion_type resolve + harmonize-flags gate) collapsing the verbatim scaffolding of subtract, concatenate, disjunct, conjunct, compose, compose-intersect, priority-disjunct, shuffle, compare (×9)"
                 priority 5
                 deps (librarify.io-foundation)
+                log (
+                    {
+                        at 2026-07-02T12:03:34.312211Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+                )
             }
 
             {
@@ -1721,6 +1729,21 @@ children (
         id idiom8
         title "Stage 8 — drop the C++ trailing-underscore private-field convention. Rename `field_`→`field` across the hfst lib (the port kept C++ member names verbatim), except where the bare name collides with a Rust keyword (`type_`, `match_`, `loop_`, `ref_`, …) — those get a non-underscore rename or stay justified. No behaviour change; 153 tests as oracle. Deps idiom6."
         deps (idiom6)
+        log (
+            {
+                at 2026-07-02T12:04:29.19653Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-07-02T12:31:09.979133Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
+        )
     }
 
     {

@@ -92,19 +92,17 @@ impl Rule {
         let mut TOK = HfstTokenizer::new();
         TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
 
-        let type_: ImplementationType = mappingPairVector[0].0.get_type();
+        let ty: ImplementationType = mappingPairVector[0].0.get_type();
         // Check if all transducer types are the same
         for i in 0..mappingPairVector.len() {
-            if mappingPairVector[i].0.get_type() != type_
-                || mappingPairVector[i].1.get_type() != type_
-            {
+            if mappingPairVector[i].0.get_type() != ty || mappingPairVector[i].1.get_type() != ty {
                 crate::bail!(TransducerTypeMismatch, "Rule mapping");
             }
         }
 
         let contextPair: HfstTransducerPair = (
-            HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?,
-            HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?,
+            HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?,
+            HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?,
         );
         let mut epsilonContext: HfstTransducerPairVector = Vec::new();
         epsilonContext.push(contextPair);
@@ -133,16 +131,14 @@ impl Rule {
         a_replType: ReplaceType,
     ) -> crate::error::Result<Self> {
         // Check if all transducer types are the same
-        let type_: ImplementationType = mappingPairVector[0].0.get_type();
+        let ty: ImplementationType = mappingPairVector[0].0.get_type();
         for i in 0..mappingPairVector.len() {
-            if mappingPairVector[i].0.get_type() != type_
-                || mappingPairVector[i].1.get_type() != type_
-            {
+            if mappingPairVector[i].0.get_type() != ty || mappingPairVector[i].1.get_type() != ty {
                 crate::bail!(TransducerTypeMismatch, "Rule mapping");
             }
         }
         for j in 0..a_context.len() {
-            if a_context[j].0.get_type() != type_ || a_context[j].1.get_type() != type_ {
+            if a_context[j].0.get_type() != ty || a_context[j].1.get_type() != ty {
                 crate::bail!(TransducerTypeMismatch, "Rule context");
             }
         }
@@ -179,10 +175,10 @@ impl Rule {
     pub fn new() -> crate::error::Result<Self> {
         let mut TOK = HfstTokenizer::new();
         TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
-        let type_: ImplementationType = ImplementationType::TROPICAL_OPENFST_TYPE;
+        let ty: ImplementationType = ImplementationType::TROPICAL_OPENFST_TYPE;
         let contextPair: HfstTransducerPair = (
-            HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?,
-            HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?,
+            HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?,
+            HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?,
         );
         let mut epsilonContext: HfstTransducerPairVector = Vec::new();
         epsilonContext.push(contextPair);
@@ -478,10 +474,10 @@ pub fn insertFreelyAllTheBrackets(
     TOK.add_multichar_symbol(&leftMarker2);
     TOK.add_multichar_symbol(&rightMarker2);
 
-    let type_ = t.get_type();
+    let ty = t.get_type();
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
 
     t.insert_freely_transducer(&leftBracket, false)?
         .optimize()?;
@@ -489,8 +485,8 @@ pub fn insertFreelyAllTheBrackets(
         .optimize()?;
 
     if !optional {
-        let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, type_)?;
-        let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, type_)?;
+        let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, ty)?;
+        let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, ty)?;
 
         t.insert_freely_transducer(&leftBracket2, false)?
             .optimize()?;
@@ -509,9 +505,9 @@ pub fn expandContextsWithMapping(
     replType: ReplaceType,
     optional: bool,
 ) -> crate::error::Result<HfstTransducer> {
-    let type_ = identityExpanded.get_type();
+    let ty = identityExpanded.get_type();
 
-    let mut unionContextReplace = HfstTransducer::new_type(type_)?;
+    let mut unionContextReplace = HfstTransducer::new_type(ty)?;
 
     let mut TOK = HfstTokenizer::new();
     // TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
@@ -525,7 +521,7 @@ pub fn expandContextsWithMapping(
 
         // Lc = (*. Lc) << {<,>}
 
-        let identityPair = HfstTransducer::identity_pair(type_);
+        let identityPair = HfstTransducer::identity_pair(ty);
         let mut identityStar = identityPair.clone();
         identityStar.repeat_star()?;
 
@@ -550,8 +546,8 @@ pub fn expandContextsWithMapping(
          * down        down    down
          */
 
-        let mut leftContextExpanded = HfstTransducer::new_type(type_)?;
-        let mut rightContextExpanded = HfstTransducer::new_type(type_)?;
+        let mut leftContextExpanded = HfstTransducer::new_type(ty)?;
+        let mut rightContextExpanded = HfstTransducer::new_type(ty)?;
 
         // both contexts are in upper language
         if replType == ReplaceType::REPL_UP {
@@ -605,7 +601,7 @@ pub fn expandContextsWithMapping(
         // add boundary symbol before/after contexts
         let boundaryMarker: String = ".#.".to_string();
         TOK.add_multichar_symbol(&boundaryMarker);
-        let boundary = HfstTransducer::new_tokenized(&boundaryMarker, &TOK, type_)?;
+        let boundary = HfstTransducer::new_tokenized(&boundaryMarker, &TOK, ty)?;
 
         identityStar.insert_to_alphabet_symbol(&boundaryMarker)?;
 
@@ -697,15 +693,15 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
     let ContextVector: HfstTransducerPairVector = ruletmp.get_context();
     let replType: ReplaceType = ruletmp.get_replType();
 
-    let type_ = mappingPairVector[0].0.get_type();
+    let ty = mappingPairVector[0].0.get_type();
 
     // Identity (normal)
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     let mut identity = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
-    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?;
-    let mut mapping = HfstTransducer::new_type(type_)?;
+    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
+    let mut mapping = HfstTransducer::new_type(ty)?;
     for i in 0..mappingPairVector.len() {
         let mut oneMappingPair = mappingPairVector[i].0.clone();
 
@@ -719,7 +715,7 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
         let mut identityWithoutBoundary = identity.clone();
         identityWithoutBoundary.insert_to_alphabet_symbol(".#.")?;
         let mut removeHash = identityWithoutBoundary.clone();
-        let boundary = HfstTransducer::new_tokenized(".#.", &TOK, type_)?;
+        let boundary = HfstTransducer::new_tokenized(".#.", &TOK, ty)?;
         removeHash
             .concatenate(&boundary, true)?
             .concatenate(&identityWithoutBoundary, true)?
@@ -742,7 +738,7 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
     // If left side is empty, return identity transducer
     // If right side is empty, return identity transducer
     //    with alphabet from the left side
-    let empty = HfstTransducer::new_type(type_)?;
+    let empty = HfstTransducer::new_type(ty)?;
     if mapping.compare(&empty, true)? {
         mapping = identity.clone();
         if mappingPairVector[0].1.compare(&empty, true)? {
@@ -757,11 +753,11 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
     mapping.insert_to_alphabet_symbol(&rightMarker)?;
     mapping.insert_to_alphabet_symbol(&tmpMarker)?;
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
-    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, type_)?;
-    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, type_)?;
-    let tmpBracket = HfstTransducer::new_tokenized(&tmpMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
+    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, ty)?;
+    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, ty)?;
+    let tmpBracket = HfstTransducer::new_tokenized(&tmpMarker, &TOK, ty)?;
 
     // Surround mapping with brackets
     let mut tmpMapping = leftBracket.clone();
@@ -825,7 +821,7 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
 
     // when there aren't any contexts, result is identityExpanded
     if ContextVector.len() == 1 {
-        let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
         if ContextVector[0].0.compare(&epsilon, true)?
             && ContextVector[0].1.compare(&epsilon, true)?
         {
@@ -947,17 +943,17 @@ pub fn parallelBracketedReplace(
     TOK.add_multichar_symbol(&tmpMarker);
     TOK.add_multichar_symbol(".#.");
 
-    let type_ = ruleVector[0].get_mapping()[0].0.get_type();
+    let ty = ruleVector[0].get_mapping()[0].0.get_type();
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
-    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, type_)?;
-    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, type_)?;
-    let tmpBracket = HfstTransducer::new_tokenized(&tmpMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
+    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, ty)?;
+    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, ty)?;
+    let tmpBracket = HfstTransducer::new_tokenized(&tmpMarker, &TOK, ty)?;
 
     // Identity pair (unknowns/identities must not be expanded to marker
     // symbols)
-    let mut identityPair = HfstTransducer::identity_pair(type_);
+    let mut identityPair = HfstTransducer::identity_pair(ty);
     identityPair.insert_to_alphabet_set(&marker_symbols)?;
 
     let mut identity = identityPair.clone();
@@ -980,7 +976,7 @@ pub fn parallelBracketedReplace(
     // (must not be expanded to marker symbols)
     identityWithoutBoundary.insert_to_alphabet_set(&marker_symbols)?;
     let mut removeHash = identityWithoutBoundary.clone();
-    let boundary = HfstTransducer::new_tokenized(".#.", &TOK, type_)?;
+    let boundary = HfstTransducer::new_tokenized(".#.", &TOK, ty)?;
     removeHash
         .concatenate(&boundary, true)?
         .concatenate(&identityWithoutBoundary, true)?
@@ -995,11 +991,11 @@ pub fn parallelBracketedReplace(
         ruletmp.encodeFlags()?;
 
         let mappingPairVector = ruletmp.get_mapping();
-        let mut mapping = HfstTransducer::new_type(type_)?;
+        let mut mapping = HfstTransducer::new_type(ty)?;
         for j in 0..mappingPairVector.len() {
             // i+1 because @0@ is epsilon..
             let marker_string = getMarkerString((i + 1) as u32);
-            let marker = HfstTransducer::new_symbol(&marker_string, type_)?;
+            let marker = HfstTransducer::new_symbol(&marker_string, ty)?;
             let mut oneMappingPair = mappingPairVector[j].0.clone();
             // unknowns/identities must not be expanded to marker symbols
             oneMappingPair.insert_to_alphabet_set(&marker_symbols)?;
@@ -1024,7 +1020,7 @@ pub fn parallelBracketedReplace(
 
         // when there aren't any contexts, result is identityExpanded
         if contextVector.len() == 1 {
-            let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?;
+            let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
             if !(contextVector[0].0.compare(&epsilon, true)?
                 && contextVector[0].1.compare(&epsilon, true)?)
             {
@@ -1037,7 +1033,7 @@ pub fn parallelBracketedReplace(
         // If left side is empty, return identity transducer
         // If right side is empty, return identity transducer
         //    with alphabet from the left side
-        let empty = HfstTransducer::new_type(type_)?;
+        let empty = HfstTransducer::new_type(ty)?;
 
         if mapping.compare(&empty, true)? {
             mapping = identity.clone();
@@ -1113,8 +1109,8 @@ pub fn parallelBracketedReplace(
     > = std::collections::BTreeMap::new();
     let _ = &contextReplaceMap;
 
-    let mut unionContextReplace = HfstTransducer::new_type(type_)?;
-    let mut bracketedReplace = HfstTransducer::new_type(type_)?;
+    let mut unionContextReplace = HfstTransducer::new_type(ty)?;
+    let mut bracketedReplace = HfstTransducer::new_type(ty)?;
     for i in 0..ruleVector.len() {
         let mut ruletmp = ruleVector[i].clone();
         ruletmp.encodeFlags()?;
@@ -1138,7 +1134,7 @@ pub fn parallelBracketedReplace(
             .optimize()?;
 
         //Create context part
-        let mut unionContextReplaceTmp = HfstTransducer::new_type(type_)?;
+        let mut unionContextReplaceTmp = HfstTransducer::new_type(ty)?;
 
         // For each context that uses the output side (REPL_DOWN,
         // REPL_LEFT, REPL_RIGHT) we must freely allow all markers that can
@@ -1216,7 +1212,7 @@ pub fn parallelBracketedReplace(
 // which is used in some constraints
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.constraints-right-part-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.constraints-right-part-fn]
-pub fn constraintsRightPart(type_: ImplementationType) -> crate::error::Result<HfstTransducer> {
+pub fn constraintsRightPart(ty: ImplementationType) -> crate::error::Result<HfstTransducer> {
     let mut TOK = HfstTokenizer::new();
     TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
 
@@ -1226,20 +1222,20 @@ pub fn constraintsRightPart(type_: ImplementationType) -> crate::error::Result<H
     TOK.add_multichar_symbol(&rightMarker);
 
     // Identity pair (normal)
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
 
     // Create Right Part
     let mut B = leftBracket.clone();
     B.disjunct(&rightBracket, true)?.optimize()?;
 
-    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?;
+    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let epsilonToLeftMark =
-        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &leftMarker, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &leftMarker, &TOK, ty)?;
     let LeftMarkToEpsilon =
-        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let _ = (&epsilonToLeftMark, &LeftMarkToEpsilon);
 
     let mut epsilonToBrackets = epsilon.clone();
@@ -1269,7 +1265,7 @@ pub fn constraintsRightPart(type_: ImplementationType) -> crate::error::Result<H
 pub fn oneBetterthanNoneConstraint(
     uncondidtionalTr: &HfstTransducer,
 ) -> crate::error::Result<HfstTransducer> {
-    let type_ = uncondidtionalTr.get_type();
+    let ty = uncondidtionalTr.get_type();
     let mut TOK = HfstTokenizer::new();
     TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
     TOK.add_multichar_symbol(".#.");
@@ -1280,16 +1276,16 @@ pub fn oneBetterthanNoneConstraint(
     TOK.add_multichar_symbol(&rightMarker);
 
     // Identity (normal)
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     let mut identity = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
     let leftBracketToZero =
-        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let rightBracketToZero =
-        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
 
-    let boundary = HfstTransducer::new_tokenized(".#.", &TOK, type_)?;
+    let boundary = HfstTransducer::new_tokenized(".#.", &TOK, ty)?;
     let mut Constraint = boundary.clone();
     Constraint.concatenate(&identity, true)?;
     Constraint
@@ -1324,21 +1320,21 @@ pub fn leftMostConstraint(
     TOK.add_multichar_symbol(&leftMarker);
     TOK.add_multichar_symbol(&rightMarker);
 
-    let type_ = uncondidtionalTr.get_type();
+    let ty = uncondidtionalTr.get_type();
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
 
     // Identity (normal)
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     let mut identity = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
-    let rightPart = constraintsRightPart(type_)?;
+    let rightPart = constraintsRightPart(ty)?;
 
     // epsilon
-    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?;
+    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
     // B
     let mut B = leftBracket.clone();
     B.disjunct(&rightBracket, true)?.optimize()?;
@@ -1359,9 +1355,9 @@ pub fn leftMostConstraint(
     identityPairMinusBracketsPlus.repeat_plus()?.optimize()?;
 
     let LeftBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
 
-    let boundary = HfstTransducer::new_tokenized(".#.", &TOK, type_)?;
+    let boundary = HfstTransducer::new_tokenized(".#.", &TOK, ty)?;
 
     let mut Constraint = boundary.clone();
     Constraint.concatenate(&identity, true)?;
@@ -1400,21 +1396,21 @@ pub fn rightMostConstraint(
     TOK.add_multichar_symbol(&leftMarker);
     TOK.add_multichar_symbol(&rightMarker);
 
-    let type_ = uncondidtionalTr.get_type();
+    let ty = uncondidtionalTr.get_type();
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
 
     // Identity (normal)
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     let mut identity = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
-    let rightPart = constraintsRightPart(type_)?;
+    let rightPart = constraintsRightPart(ty)?;
 
     // epsilon
-    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?;
+    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
     // B
     let mut B = leftBracket.clone();
     B.disjunct(&rightBracket, true)?.optimize()?;
@@ -1437,7 +1433,7 @@ pub fn rightMostConstraint(
     identityPairMinusBracketsStar.repeat_star()?.optimize()?;
 
     let RightBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
 
     let mut Constraint = rightPart.clone();
     // [ B:0 | 0:B | ?-B ]* [I-B]+  >:0 [ ?-B ]*
@@ -1476,18 +1472,18 @@ pub fn longestMatchLeftMostConstraint(
     TOK.add_multichar_symbol(&leftMarker);
     TOK.add_multichar_symbol(&rightMarker);
 
-    let type_: ImplementationType = uncondidtionalTr.get_type();
+    let ty: ImplementationType = uncondidtionalTr.get_type();
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
 
     // Identity
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     let mut identity = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
     // epsilon
-    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?;
+    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
     // B
     let mut B = leftBracket.clone();
     B.disjunct(&rightBracket, true)?.optimize()?;
@@ -1507,17 +1503,17 @@ pub fn longestMatchLeftMostConstraint(
     identityPairMinusBracketsPlus.repeat_plus()?.optimize()?;
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
-    let mut rightPart = HfstTransducer::new_type(type_)?;
-    rightPart = constraintsRightPart(type_)?;
+    let mut rightPart = HfstTransducer::new_type(ty)?;
+    rightPart = constraintsRightPart(ty)?;
 
     let RightBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let epsilonToRightBracket =
-        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &rightMarker, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &rightMarker, &TOK, ty)?;
     let LeftBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let epsilonToLeftBracket =
-        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &leftMarker, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &leftMarker, &TOK, ty)?;
 
     //[ ? | 0:< | <:0 | 0:> | B ]
     //     HfstTransducer nonClosingBracketInsertion(identityPair);
@@ -1555,7 +1551,7 @@ pub fn longestMatchLeftMostConstraint(
     //Constraint.write_in_att_format(stdout, 1);
 
     //uncondidtionalTr should be left most for the left most longest match
-    let mut retval = HfstTransducer::new_type(type_)?;
+    let mut retval = HfstTransducer::new_type(ty)?;
     retval = constraintComposition(uncondidtionalTr, &Constraint)?;
 
     Ok(retval)
@@ -1575,18 +1571,18 @@ pub fn longestMatchRightMostConstraint(
     TOK.add_multichar_symbol(&leftMarker);
     TOK.add_multichar_symbol(&rightMarker);
 
-    let type_: ImplementationType = uncondidtionalTr.get_type();
+    let ty: ImplementationType = uncondidtionalTr.get_type();
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
 
     // Identity
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     let mut identity = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
     // epsilon
-    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?;
+    let epsilon = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
     // B
     let mut B = leftBracket.clone();
     B.disjunct(&rightBracket, true)?.optimize()?;
@@ -1606,18 +1602,18 @@ pub fn longestMatchRightMostConstraint(
     identityPairMinusBracketsPlus.repeat_plus()?.optimize()?;
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
-    let mut rightPart = HfstTransducer::new_type(type_)?;
-    rightPart = constraintsRightPart(type_)?;
+    let mut rightPart = HfstTransducer::new_type(ty)?;
+    rightPart = constraintsRightPart(ty)?;
 
     let RightBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
 
     let epsilonToRightBracket =
-        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &rightMarker, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &rightMarker, &TOK, ty)?;
     let LeftBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let epsilonToLeftBracket =
-        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &leftMarker, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &leftMarker, &TOK, ty)?;
 
     //[ ? | 0:< | >:0 | 0:> | B ]
     let mut nonClosingBracketInsertion = identityPair.clone();
@@ -1644,7 +1640,7 @@ pub fn longestMatchRightMostConstraint(
     //Constraint.write_in_att_format(stdout, 1);
 
     //uncondidtionalTr should be left most for the left most longest match
-    let mut retval = HfstTransducer::new_type(type_)?;
+    let mut retval = HfstTransducer::new_type(ty)?;
     retval = constraintComposition(uncondidtionalTr, &Constraint)?;
 
     Ok(retval)
@@ -1668,19 +1664,19 @@ pub fn shortestMatchLeftMostConstraint(
     TOK.add_multichar_symbol(&leftMarker);
     TOK.add_multichar_symbol(&rightMarker);
 
-    let type_: ImplementationType = uncondidtionalTr.get_type();
+    let ty: ImplementationType = uncondidtionalTr.get_type();
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
 
     // Identity
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     let mut identity = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
-    let mut rightPart = HfstTransducer::new_type(type_)?;
-    rightPart = constraintsRightPart(type_)?;
+    let mut rightPart = HfstTransducer::new_type(ty)?;
+    rightPart = constraintsRightPart(ty)?;
 
     // [?-B] and [?-B]+
     let mut B = leftBracket.clone();
@@ -1691,13 +1687,13 @@ pub fn shortestMatchLeftMostConstraint(
     identityPairMinusBracketsPlus.repeat_plus()?.optimize()?;
 
     let RightBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let epsilonToRightBracket =
-        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &rightMarker, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &rightMarker, &TOK, ty)?;
     let LeftBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let epsilonToLeftBracket =
-        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &leftMarker, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &leftMarker, &TOK, ty)?;
 
     // [ 0:< | <:0 | >:0 | B ][?-B]+
     let mut nonClosingBracketInsertion = epsilonToLeftBracket.clone();
@@ -1737,7 +1733,7 @@ pub fn shortestMatchLeftMostConstraint(
     //Constraint.write_in_att_format(stdout, 1);
 
     //uncondidtionalTr should be left most for the left most shortest match
-    let mut retval = HfstTransducer::new_type(type_)?;
+    let mut retval = HfstTransducer::new_type(ty)?;
     retval = constraintComposition(uncondidtionalTr, &Constraint)?;
 
     Ok(retval)
@@ -1761,19 +1757,19 @@ pub fn shortestMatchRightMostConstraint(
     TOK.add_multichar_symbol(&leftMarker);
     TOK.add_multichar_symbol(&rightMarker);
 
-    let type_: ImplementationType = uncondidtionalTr.get_type();
+    let ty: ImplementationType = uncondidtionalTr.get_type();
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
 
     // Identity
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     let mut identity = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
     // Create Right Part:  [ B:0 | 0:B | ?-B ]*
-    let mut rightPart = HfstTransducer::new_type(type_)?;
-    rightPart = constraintsRightPart(type_)?;
+    let mut rightPart = HfstTransducer::new_type(ty)?;
+    rightPart = constraintsRightPart(ty)?;
 
     // [?-B] and [?-B]+
     let mut B = leftBracket.clone();
@@ -1784,13 +1780,13 @@ pub fn shortestMatchRightMostConstraint(
     identityPairMinusBracketsPlus.repeat_plus()?.optimize()?;
 
     let RightBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&rightMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let epsilonToRightBracket =
-        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &rightMarker, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &rightMarker, &TOK, ty)?;
     let LeftBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&leftMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let epsilonToLeftBracket =
-        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &leftMarker, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &leftMarker, &TOK, ty)?;
 
     // [?-B]+ [ 0:> | >:0 | <:0 | B ]
     let mut nonClosingBracketInsertionTmp = epsilonToRightBracket.clone();
@@ -1826,7 +1822,7 @@ pub fn shortestMatchRightMostConstraint(
     //Constraint.write_in_att_format(stdout, 1);
 
     //uncondidtionalTr should be left most for the left most longest match
-    let mut retval = HfstTransducer::new_type(type_)?;
+    let mut retval = HfstTransducer::new_type(ty)?;
     retval = constraintComposition(uncondidtionalTr, &Constraint)?;
 
     Ok(retval)
@@ -1851,15 +1847,15 @@ pub fn mostBracketsPlusConstraint(
     TOK.add_multichar_symbol(&leftMarker2);
     TOK.add_multichar_symbol(&rightMarker2);
 
-    let type_: ImplementationType = uncondidtionalTr.get_type();
+    let ty: ImplementationType = uncondidtionalTr.get_type();
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
-    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, type_)?;
-    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
+    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, ty)?;
+    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, ty)?;
 
     // Identity (normal)
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     let mut identity = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
@@ -1873,10 +1869,9 @@ pub fn mostBracketsPlusConstraint(
     let epsilon = String::from("@_EPSILON_SYMBOL_@");
 
     // BL:0 ( <1 : 0, <2 : 0)
-    let leftBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&leftMarker, &epsilon, &TOK, type_)?;
+    let leftBracketToEpsilon = HfstTransducer::new_tokenized_pair(&leftMarker, &epsilon, &TOK, ty)?;
     let leftBracket2ToEpsilon =
-        HfstTransducer::new_tokenized_pair(&leftMarker2, &epsilon, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&leftMarker2, &epsilon, &TOK, ty)?;
     let mut allLeftBracketsToEpsilon = leftBracketToEpsilon.clone();
     allLeftBracketsToEpsilon
         .disjunct(&leftBracket2ToEpsilon, true)?
@@ -1887,9 +1882,9 @@ pub fn mostBracketsPlusConstraint(
 
     // BR:0 ( >1 : 0, >2 : 0)
     let rightBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&rightMarker, &epsilon, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&rightMarker, &epsilon, &TOK, ty)?;
     let rightBracket2ToEpsilon =
-        HfstTransducer::new_tokenized_pair(&rightMarker2, &epsilon, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&rightMarker2, &epsilon, &TOK, ty)?;
     let mut allRightBracketsToEpsilon = rightBracketToEpsilon.clone();
     allRightBracketsToEpsilon
         .disjunct(&rightBracket2ToEpsilon, true)?
@@ -1931,7 +1926,7 @@ pub fn mostBracketsPlusConstraint(
     // tmp = t.1 .o. Constr .o. t.1
     // (t.1 - tmp.2) .o. t
 
-    let mut retval = HfstTransducer::new_type(type_)?;
+    let mut retval = HfstTransducer::new_type(ty)?;
     retval = constraintComposition(uncondidtionalTr, &Constraint)?;
 
     //printf("After composition: \n");
@@ -1958,16 +1953,16 @@ pub fn mostBracketsStarConstraint(
     TOK.add_multichar_symbol(&leftMarker2);
     TOK.add_multichar_symbol(&rightMarker2);
 
-    let type_: ImplementationType = uncondidtionalTr.get_type();
+    let ty: ImplementationType = uncondidtionalTr.get_type();
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
 
-    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, type_)?;
-    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, type_)?;
+    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, ty)?;
+    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, ty)?;
 
     // Identity (normal)
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     let mut identity = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
@@ -1981,10 +1976,9 @@ pub fn mostBracketsStarConstraint(
     let epsilon = String::from("@_EPSILON_SYMBOL_@");
 
     // BL:0 ( <1 : 0, <2 : 0)
-    let leftBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&leftMarker, &epsilon, &TOK, type_)?;
+    let leftBracketToEpsilon = HfstTransducer::new_tokenized_pair(&leftMarker, &epsilon, &TOK, ty)?;
     let leftBracket2ToEpsilon =
-        HfstTransducer::new_tokenized_pair(&leftMarker2, &epsilon, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&leftMarker2, &epsilon, &TOK, ty)?;
     let mut allLeftBracketsToEpsilon = leftBracketToEpsilon.clone();
     allLeftBracketsToEpsilon
         .disjunct(&leftBracket2ToEpsilon, true)?
@@ -1995,9 +1989,9 @@ pub fn mostBracketsStarConstraint(
 
     // BR:0 ( >1 : 0, >2 : 0)
     let rightBracketToEpsilon =
-        HfstTransducer::new_tokenized_pair(&rightMarker, &epsilon, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&rightMarker, &epsilon, &TOK, ty)?;
     let rightBracket2ToEpsilon =
-        HfstTransducer::new_tokenized_pair(&rightMarker2, &epsilon, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&rightMarker2, &epsilon, &TOK, ty)?;
     let mut allRightBracketsToEpsilon = rightBracketToEpsilon.clone();
     allRightBracketsToEpsilon
         .disjunct(&rightBracket2ToEpsilon, true)?
@@ -2038,7 +2032,7 @@ pub fn mostBracketsStarConstraint(
     //// Compose with unconditional replace transducer
     // tmp = t.1 .o. Constr .o. t.1
     // (t.1 - tmp.2) .o. t
-    let mut retval = HfstTransducer::new_type(type_)?;
+    let mut retval = HfstTransducer::new_type(ty)?;
     retval = constraintComposition(uncondidtionalTr, &Constraint)?;
 
     //printf("After composition: \n");
@@ -2059,13 +2053,13 @@ pub fn removeB2Constraint(t: &HfstTransducer) -> crate::error::Result<HfstTransd
     TOK.add_multichar_symbol(&leftMarker2);
     TOK.add_multichar_symbol(&rightMarker2);
 
-    let type_: ImplementationType = t.get_type();
+    let ty: ImplementationType = t.get_type();
 
-    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, type_)?;
-    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, type_)?;
+    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, ty)?;
+    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, ty)?;
 
     // Identity (normal)
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     let mut identity = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
@@ -2084,7 +2078,7 @@ pub fn removeB2Constraint(t: &HfstTransducer) -> crate::error::Result<HfstTransd
     // tmp = t.1 .o. Constr .o. t.1
     // (t.1 - tmp.2) .o. t
 
-    let mut retval = HfstTransducer::new_type(type_)?;
+    let mut retval = HfstTransducer::new_type(ty)?;
     retval = constraintComposition(t, &Constraint)?;
 
     retval.remove_from_alphabet(&leftMarker2)?;
@@ -2125,13 +2119,13 @@ pub fn noRepetitionConstraint(t: &HfstTransducer) -> crate::error::Result<HfstTr
     TOK.add_multichar_symbol(&leftMarker2);
     TOK.add_multichar_symbol(&rightMarker2);
 
-    let type_: ImplementationType = t.get_type();
+    let ty: ImplementationType = t.get_type();
 
-    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
-    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
+    let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, ty)?;
+    let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, ty)?;
 
-    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, type_)?;
-    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, type_)?;
+    let leftBracket2 = HfstTransducer::new_tokenized(&leftMarker2, &TOK, ty)?;
+    let rightBracket2 = HfstTransducer::new_tokenized(&rightMarker2, &TOK, ty)?;
 
     let mut leftBrackets = leftBracket.clone();
     if !optional {
@@ -2143,7 +2137,7 @@ pub fn noRepetitionConstraint(t: &HfstTransducer) -> crate::error::Result<HfstTr
         rightBrackets.disjunct(&rightBracket2, true)?.optimize()?;
     }
     // Identity (normal)
-    let identityPair = HfstTransducer::identity_pair(type_);
+    let identityPair = HfstTransducer::identity_pair(ty);
     /*
     identityPair.insert_to_alphabet(leftMarker);
     identityPair.insert_to_alphabet(rightMarker);
@@ -2170,7 +2164,7 @@ pub fn noRepetitionConstraint(t: &HfstTransducer) -> crate::error::Result<HfstTr
     //printf("...Constraint: \n");
     //Constraint.write_in_att_format(stdout, 1);
 
-    let mut retval = HfstTransducer::new_type(type_)?;
+    let mut retval = HfstTransducer::new_type(ty)?;
     retval = constraintComposition(t, &Constraint)?;
 
     //    retval = removeB2Constraint(retval);
@@ -2195,13 +2189,13 @@ pub fn applyBoundaryMark(t: &HfstTransducer) -> crate::error::Result<HfstTransdu
     TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
     TOK.add_multichar_symbol("@_UNKNOWN_SYMBOL_@");
     TOK.add_multichar_symbol("@TMP_UNKNOWN@");
-    let type_: ImplementationType = t.get_type();
+    let ty: ImplementationType = t.get_type();
 
     let boundaryMarker = String::from(".#.");
     TOK.add_multichar_symbol(&boundaryMarker);
-    let boundary = HfstTransducer::new_tokenized(&boundaryMarker, &TOK, type_)?;
+    let boundary = HfstTransducer::new_tokenized(&boundaryMarker, &TOK, ty)?;
 
-    let mut identityPair = HfstTransducer::identity_pair(type_);
+    let mut identityPair = HfstTransducer::identity_pair(ty);
     identityPair.insert_to_alphabet(&boundaryMarker)?;
     // ? - .#.
     let mut identityMinusBoundary = identityPair.clone();
@@ -2222,7 +2216,7 @@ pub fn applyBoundaryMark(t: &HfstTransducer) -> crate::error::Result<HfstTransdu
 
     // [0:.#. | ? - .#.]*
     let zeroToBoundary =
-        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &boundaryMarker, &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &boundaryMarker, &TOK, ty)?;
     let mut retval = zeroToBoundary.clone();
     retval
         .disjunct(&identityMinusBoundary, true)?
@@ -2234,7 +2228,7 @@ pub fn applyBoundaryMark(t: &HfstTransducer) -> crate::error::Result<HfstTransdu
     //retval.write_in_att_format(stdout, 1);
     // [.#.:0 | ? - .#.]*
     let boundaryToZero =
-        HfstTransducer::new_tokenized_pair(&boundaryMarker, "@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_tokenized_pair(&boundaryMarker, "@_EPSILON_SYMBOL_@", &TOK, ty)?;
     let mut removeBoundary = boundaryToZero.clone();
     removeBoundary
         .disjunct(&identityMinusBoundary, true)?
@@ -2300,17 +2294,17 @@ pub fn create_mapping_for_mark_up_replace(
     TOK.add_multichar_symbol(&epsilon);
     TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
 
-    let type_: ImplementationType = mappingPair.0.get_type();
+    let ty: ImplementationType = mappingPair.0.get_type();
 
     let leftMark = marks.0.clone();
     let rightMark = marks.1.clone();
 
-    let mut epsilonToLeftMark = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, type_)?;
+    let mut epsilonToLeftMark = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK, ty)?;
     epsilonToLeftMark
         .cross_product(&leftMark, true)?
         .optimize()?;
 
-    let mut epsilonToRightMark = HfstTransducer::new_tokenized(&epsilon, &TOK, type_)?;
+    let mut epsilonToRightMark = HfstTransducer::new_tokenized(&epsilon, &TOK, ty)?;
     epsilonToRightMark
         .cross_product(&rightMark, true)?
         .optimize()?;
@@ -2326,7 +2320,7 @@ pub fn create_mapping_for_mark_up_replace(
 
     mappingCrossProduct.set_property("isMarkup", "yes");
 
-    let epsilonTr = HfstTransducer::new_tokenized(&epsilon, &TOK, type_)?;
+    let epsilonTr = HfstTransducer::new_tokenized(&epsilon, &TOK, ty)?;
     let retval: HfstTransducerPair = (mappingCrossProduct, epsilonTr);
 
     Ok(retval)
@@ -2824,7 +2818,7 @@ pub fn restriction(
         crate::bail!(TransducersAreNotAutomata, "HfstXeroxRules::restriction");
     }
 
-    let type_: ImplementationType = _center.get_type();
+    let ty: ImplementationType = _center.get_type();
     let restrictionMark: String = "@_D_@".to_string();
 
     let mut TOK: HfstTokenizer = HfstTokenizer::new();
@@ -2832,12 +2826,12 @@ pub fn restriction(
     TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
 
     let mark: HfstTransducer =
-        HfstTransducer::new_string_tokenizer_type(&restrictionMark, &TOK, type_)?;
+        HfstTransducer::new_string_tokenizer_type(&restrictionMark, &TOK, ty)?;
     let epsilon: HfstTransducer =
-        HfstTransducer::new_string_tokenizer_type("@_EPSILON_SYMBOL_@", &TOK, type_)?;
+        HfstTransducer::new_string_tokenizer_type("@_EPSILON_SYMBOL_@", &TOK, ty)?;
 
     // Identity
-    let identityPair: HfstTransducer = HfstTransducer::identity_pair(type_);
+    let identityPair: HfstTransducer = HfstTransducer::identity_pair(ty);
     let mut identity: HfstTransducer = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
@@ -2851,7 +2845,7 @@ pub fn restriction(
         "@_EPSILON_SYMBOL_@",
         &restrictionMark,
         &TOK,
-        type_,
+        ty,
     )?;
     noDUpper
         .disjunct(&universalWithoutD, true)?
@@ -2863,7 +2857,7 @@ pub fn restriction(
         &restrictionMark,
         "@_EPSILON_SYMBOL_@",
         &TOK,
-        type_,
+        ty,
     )?;
     noDLower
         .disjunct(&universalWithoutD, true)?
@@ -2952,10 +2946,10 @@ pub fn before(
         crate::bail!(TransducersAreNotAutomata, "HfstXeroxRules::restriction");
     }
 
-    let type_: ImplementationType = left.get_type();
+    let ty: ImplementationType = left.get_type();
 
     // Identity
-    let identityPair: HfstTransducer = HfstTransducer::identity_pair(type_);
+    let identityPair: HfstTransducer = HfstTransducer::identity_pair(ty);
     let mut identity: HfstTransducer = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 
@@ -2997,10 +2991,10 @@ pub fn after(
         crate::bail!(TransducersAreNotAutomata, "HfstXeroxRules::restriction");
     }
 
-    let type_: ImplementationType = left.get_type();
+    let ty: ImplementationType = left.get_type();
 
     // Identity
-    let identityPair: HfstTransducer = HfstTransducer::identity_pair(type_);
+    let identityPair: HfstTransducer = HfstTransducer::identity_pair(ty);
     let mut identity: HfstTransducer = identityPair.clone();
     identity.repeat_star()?.optimize()?;
 

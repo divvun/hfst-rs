@@ -37,8 +37,8 @@ fn serialized() -> std::sync::MutexGuard<'static, ()> {
 
 // Shared helper inlined from test/libhfst/auxiliary_functions.cc (verbose_print).
 // get_bin is also defined there but is unused by this suite, so it is omitted.
-fn verbose_print(msg: &str, type_: ImplementationType) {
-    eprintln!("Testing:\t{msg} for type {type_:?}...");
+fn verbose_print(msg: &str, ty: ImplementationType) {
+    eprintln!("Testing:\t{msg} for type {ty:?}...");
 }
 
 fn fixture_path(name: &str) -> String {
@@ -77,10 +77,10 @@ fn temp_path(stem: &str) -> String {
 // like the C++) it is only checked if a read actually throws. The loop continues
 // while the BufReader still has bytes buffered/available (the BufRead analogue of
 // 'not feof'); either way this mirrors the C++ behaviour.
-fn construction_from_att_format(type_: ImplementationType) {
+fn construction_from_att_format(ty: ImplementationType) {
     use std::io::BufRead;
 
-    verbose_print("Construction from AT&T format", type_);
+    verbose_print("Construction from AT&T format", ty);
 
     let bytes = std::fs::read(fixture_path("test_transducers.att")).unwrap();
     let mut reader = std::io::BufReader::new(std::io::Cursor::new(bytes));
@@ -90,7 +90,7 @@ fn construction_from_att_format(type_: ImplementationType) {
     // until the first Err, then assert the same count the catch path checked.
     let result: std::result::Result<(), hfst::error::Error> = (|| {
         while !reader.fill_buf().map(|b| b.is_empty()).unwrap_or(true) {
-            let t = HfstTransducer::read_in_att_format_file(&mut reader, type_, "<eps>", false)?;
+            let t = HfstTransducer::read_in_att_format_file(&mut reader, ty, "<eps>", false)?;
             // Reclaim the Box::leak-ed heap transducer and drop it (the C++ stack
             // object t is destroyed at the end of each loop iteration).
             drop(unsafe { Box::from_raw(t as *mut HfstTransducer) });
@@ -111,19 +111,19 @@ fn construction_from_att_format(type_: ImplementationType) {
 // minimizes it, writes it to transducer2.att with weights, then asserts the two
 // files are byte-identical (system("diff ...") == 0). Here the golden is an
 // in-memory string and the produced file is read back and compared to it.
-fn writing_att_format(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Writing in AT&T format", type_);
+fn writing_att_format(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("Writing in AT&T format", ty);
 
     const GOLDEN: &str = "0\t1\tbaz\t@0@\t0.000000\n\
                           1\t2\tfoo\tbar\t0.000000\n\
                           2\t0.000000\n";
 
-    let t1 = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
-    let mut t2 = HfstTransducer::new_symbol_pair("baz", "@_EPSILON_SYMBOL_@", type_)?;
+    let t1 = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
+    let mut t2 = HfstTransducer::new_symbol_pair("baz", "@_EPSILON_SYMBOL_@", ty)?;
     t2.concatenate(&t1, true)?;
     t2.minimize()?;
 
-    let out_path = temp_path(&format!("hfst_test_streams_att_{type_:?}.att"));
+    let out_path = temp_path(&format!("hfst_test_streams_att{ty:?}.att"));
     unsafe {
         t2.write_in_att_format_filename(&out_path, true)?;
     }
@@ -139,17 +139,17 @@ fn writing_att_format(type_: ImplementationType) -> Result<(), hfst::error::Erro
 // C++ writes tr1..tr4 to testfile.hfst via HfstOutputStream, reads them back via
 // HfstInputStream while (not in.is_eof()), asserts exactly 4 were read and that
 // each read transducer compares equal to the original.
-fn stream_round_trip(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Writing to HfstOutputStream", type_);
+fn stream_round_trip(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("Writing to HfstOutputStream", ty);
 
-    let mut tr1 = HfstTransducer::new_symbol("foo", type_)?;
-    let mut tr2 = HfstTransducer::new_symbol_pair("bar", "foo", type_)?;
-    let mut tr3 = HfstTransducer::new_symbol("a", type_)?;
-    let mut tr4 = HfstTransducer::new_symbol_pair("b", "c", type_)?;
+    let mut tr1 = HfstTransducer::new_symbol("foo", ty)?;
+    let mut tr2 = HfstTransducer::new_symbol_pair("bar", "foo", ty)?;
+    let mut tr3 = HfstTransducer::new_symbol("a", ty)?;
+    let mut tr4 = HfstTransducer::new_symbol_pair("b", "c", ty)?;
 
-    let path = temp_path(&format!("hfst_test_streams_{type_:?}.hfst"));
+    let path = temp_path(&format!("hfst_test_streams{ty:?}.hfst"));
     {
-        let mut out = HfstOutputStream::new_filename(&path, type_, true)?;
+        let mut out = HfstOutputStream::new_filename(&path, ty, true)?;
         out.operator_shl(&mut tr1)?;
         out.operator_shl(&mut tr2)?;
         out.operator_shl(&mut tr3)?;
@@ -157,7 +157,7 @@ fn stream_round_trip(type_: ImplementationType) -> Result<(), hfst::error::Error
         out.close();
     }
 
-    verbose_print("Construction from HfstInputStream", type_);
+    verbose_print("Construction from HfstInputStream", ty);
 
     let mut instream = HfstInputStream::new_filename(&path)?;
     let mut transducers: Vec<HfstTransducer> = Vec::new();
@@ -260,18 +260,18 @@ fn stream_round_trip_log() -> Result<(), hfst::error::Error> {
 // table serialized a row count (len, incl. the empty slot) larger than the rows
 // emitted, so the reader over-read past the table, misread the FST body, and
 // threw NotTransducerStreamException. Fixed in rustfst's bin_symt serializer.
-fn sparse_symtable_round_trip(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Sparse symbol-table round trip", type_);
+fn sparse_symtable_round_trip(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("Sparse symbol-table round trip", ty);
 
     // Build {a, x}, then kill "x"; its symbol number is left as a hole.
-    let mut t = HfstTransducer::new_symbol_pair("a", "a", type_)?;
-    let tx = HfstTransducer::new_symbol_pair("x", "x", type_)?;
+    let mut t = HfstTransducer::new_symbol_pair("a", "a", ty)?;
+    let tx = HfstTransducer::new_symbol_pair("x", "x", ty)?;
     t.disjunct(&tx, true)?;
     let mut killed = t.kill_paths("x");
 
-    let path = temp_path(&format!("hfst_sparse_symt_{type_:?}.hfst"));
+    let path = temp_path(&format!("hfst_sparse_symt{ty:?}.hfst"));
     {
-        let mut out = HfstOutputStream::new_filename(&path, type_, true)?;
+        let mut out = HfstOutputStream::new_filename(&path, ty, true)?;
         out.operator_shl(&mut killed)?;
         out.close();
     }

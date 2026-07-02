@@ -1636,10 +1636,10 @@ impl HfstBasicTransducer {
         w_fputs(file, &format!("network({}).\n", identifier));
 
         // Print symbols that are in the alphabet but not used in arcs.
-        let mut symbols_used_ = self.symbols_used();
-        Self::initialize_alphabet(&mut symbols_used_); // exclude special symbols
+        let mut symbols_used = self.symbols_used();
+        Self::initialize_alphabet(&mut symbols_used); // exclude special symbols
         for it in self.alphabet.iter() {
-            if !symbols_used_.contains(it) {
+            if !symbols_used.contains(it) {
                 w_fputs(
                     file,
                     &format!(
@@ -1703,10 +1703,10 @@ impl HfstBasicTransducer {
         let _ = writeln!(os, "network({}).", name);
 
         // Print symbols that are in the alphabet but not used in arcs.
-        let mut symbols_used_ = self.symbols_used();
-        Self::initialize_alphabet(&mut symbols_used_); // exclude special symbols
+        let mut symbols_used = self.symbols_used();
+        Self::initialize_alphabet(&mut symbols_used); // exclude special symbols
         for it in self.alphabet.iter() {
-            if !symbols_used_.contains(it) {
+            if !symbols_used.contains(it) {
                 let _ = writeln!(os, "symbol({}, \"{}\").", name, Self::prologize_symbol(it));
             }
         }
@@ -2963,19 +2963,19 @@ impl HfstBasicTransducer {
             let _ = self.get_symbol_number(second);
         }
 
-        // substitutions_[from_symbol] = to_symbol
-        let mut substitutions_: Vec<u32> = Vec::new();
-        let st: usize = self.coder.get_max_number() as usize + substitutions.len() + 1;
+        // number_substitutions[from_symbol] = to_symbol
+        let mut number_substitutions: Vec<u32> = Vec::new();
+        let st: usize = self.coder.get_max_number() as usize + number_substitutions.len() + 1;
         let no_substitution = size_t_to_uint(st);
 
-        substitutions_.resize((self.coder.get_max_number() + 1) as usize, no_substitution);
+        number_substitutions.resize((self.coder.get_max_number() + 1) as usize, no_substitution);
         for (first, second) in substitutions.iter() {
             let from_symbol = self.get_symbol_number(first);
             let to_symbol = self.get_symbol_number(second);
-            substitutions_[from_symbol as usize] = to_symbol;
+            number_substitutions[from_symbol as usize] = to_symbol;
         }
 
-        self.substitute_in_place_numbers(&substitutions_, no_substitution);
+        self.substitute_in_place_numbers(&number_substitutions, no_substitution);
 
         self
     }
@@ -2993,17 +2993,17 @@ impl HfstBasicTransducer {
         substitutions: &HfstSymbolPairSubstitutions,
     ) -> &mut Self {
         // Convert from symbols to numbers
-        let mut substitutions_: HfstNumberPairSubstitutions = BTreeMap::new();
+        let mut number_substitutions: HfstNumberPairSubstitutions = BTreeMap::new();
         for (from, to) in substitutions.iter() {
             let from_transition = (
                 self.get_symbol_number(&from.0),
                 self.get_symbol_number(&from.1),
             );
             let to_transition = (self.get_symbol_number(&to.0), self.get_symbol_number(&to.1));
-            substitutions_.insert(from_transition, to_transition);
+            number_substitutions.insert(from_transition, to_transition);
         }
 
-        self.substitute_in_place_number_pairs(&substitutions_);
+        self.substitute_in_place_number_pairs(&number_substitutions);
 
         self
     }

@@ -1795,8 +1795,8 @@ impl Rule {
                 self.rule_transducer.add_symbol_to_alphabet(cfg, d)?;
                 self.rule_transducer.apply_symbol_pair(
                     cfg,
-                    |t_, p_| {
-                        t_.insert_freely_pair(p_, false)?;
+                    |t, p| {
+                        t.insert_freely_pair(p, false)?;
                         Ok(())
                     },
                     &(d.clone(), d.clone()),
@@ -3361,8 +3361,8 @@ impl TwolcCompiler {
             TwolcRegex::Group(inner) => self.eval_regex_with_vars(cfg, inner, vvm)?,
             TwolcRegex::Optional(inner) => {
                 let mut t = self.eval_regex_with_vars(cfg, inner, vvm)?;
-                t.apply_zero(cfg, |t_| {
-                    t_.optionalize()?;
+                t.apply_zero(cfg, |t| {
+                    t.optionalize()?;
                     Ok(())
                 })?;
                 t
@@ -3373,8 +3373,8 @@ impl TwolcCompiler {
                 let mut t = self.eval_regex_with_vars(cfg, inner, vvm)?;
                 t.apply_num(
                     cfg,
-                    |t_, n_| {
-                        t_.repeat_n(n_)?;
+                    |t, n| {
+                        t.repeat_n(n)?;
                         Ok(())
                     },
                     *n,
@@ -3385,8 +3385,8 @@ impl TwolcCompiler {
                 let mut t = self.eval_regex_with_vars(cfg, inner, vvm)?;
                 t.apply_two_num(
                     cfg,
-                    |t_, a_, b_| {
-                        t_.repeat_n_to_k(a_, b_)?;
+                    |t, a, b| {
+                        t.repeat_n_to_k(a, b)?;
                         Ok(())
                     },
                     *n,
@@ -3408,38 +3408,38 @@ impl TwolcCompiler {
         let mut t = self.eval_regex_with_vars(cfg, inner, vvm)?;
         match op {
             UnaryOp::Star => {
-                t.apply_zero(cfg, |t_| {
-                    t_.repeat_star()?;
+                t.apply_zero(cfg, |t| {
+                    t.repeat_star()?;
                     Ok(())
                 })?;
             }
             UnaryOp::Plus => {
-                t.apply_zero(cfg, |t_| {
-                    t_.repeat_plus()?;
+                t.apply_zero(cfg, |t| {
+                    t.repeat_plus()?;
                     Ok(())
                 })?;
             }
             UnaryOp::Reverse => {
-                t.apply_zero(cfg, |t_| {
-                    t_.reverse()?;
+                t.apply_zero(cfg, |t| {
+                    t.reverse()?;
                     Ok(())
                 })?;
             }
             UnaryOp::Invert => {
-                t.apply_zero(cfg, |t_| {
-                    t_.invert()?;
+                t.apply_zero(cfg, |t| {
+                    t.invert()?;
                     Ok(())
                 })?;
             }
             UnaryOp::UpperProject => {
-                t.apply_zero(cfg, |t_| {
-                    t_.input_project()?;
+                t.apply_zero(cfg, |t| {
+                    t.input_project()?;
                     Ok(())
                 })?;
             }
             UnaryOp::LowerProject => {
-                t.apply_zero(cfg, |t_| {
-                    t_.output_project()?;
+                t.apply_zero(cfg, |t| {
+                    t.output_project()?;
                     Ok(())
                 })?;
             }
@@ -3489,8 +3489,8 @@ impl TwolcCompiler {
             BinaryOp::Compose => {
                 left.apply_one_bool(
                     cfg,
-                    |t_, o_, h_| {
-                        t_.compose(o_, h_)?;
+                    |t, o, h| {
+                        t.compose(o, h)?;
                         Ok(())
                     },
                     &right,

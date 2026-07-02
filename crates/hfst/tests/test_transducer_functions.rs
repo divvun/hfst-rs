@@ -54,8 +54,8 @@ fn serialized() -> std::sync::MutexGuard<'static, ()> {
 }
 
 // Shared helper inlined from test/libhfst/auxiliary_functions.cc (verbose_print).
-fn verbose_print(msg: &str, type_: ImplementationType) {
-    eprintln!("Testing:\t{msg} for type {type_:?}...");
+fn verbose_print(msg: &str, ty: ImplementationType) {
+    eprintln!("Testing:\t{msg} for type {ty:?}...");
 }
 
 // Inlined from the test file's compare_alphabets.
@@ -154,34 +154,34 @@ const IN_SCOPE_TYPES: [ImplementationType; 2] = [TROPICAL_OPENFST_TYPE, LOG_OPEN
 // =====================================================================
 
 // --- Function compare.
-fn function_compare(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("function compare", type_);
+fn function_compare(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("function compare", ty);
 
-    let t1 = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
-    let mut t2 = HfstTransducer::new_symbol_pair("foo", "@_EPSILON_SYMBOL_@", type_)?;
-    let t3 = HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "bar", type_)?;
+    let t1 = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
+    let mut t2 = HfstTransducer::new_symbol_pair("foo", "@_EPSILON_SYMBOL_@", ty)?;
+    let t3 = HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "bar", ty)?;
     t2.concatenate(&t3, true)?;
     t2.minimize()?;
     // Alignments must be the same.
     assert!(!t1.compare_default(&t2)?);
 
-    let mut t4 = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
-    let t5 = HfstTransducer::new_symbol("@_EPSILON_SYMBOL_@", type_)?;
+    let mut t4 = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
+    let t5 = HfstTransducer::new_symbol("@_EPSILON_SYMBOL_@", ty)?;
     t4.concatenate(&t5, true)?;
     // One transducer is minimal, another is not.
     assert!(t1.compare_default(&t4)?);
 
     // Weights (TROPICAL or LOG -- both in scope here).
-    if type_ == TROPICAL_OPENFST_TYPE || type_ == LOG_OPENFST_TYPE {
-        let mut t6 = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+    if ty == TROPICAL_OPENFST_TYPE || ty == LOG_OPENFST_TYPE {
+        let mut t6 = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
         t6.set_final_weights(0.3, false)?;
-        let mut t7 = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+        let mut t7 = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
         t7.set_final_weights(0.1, false)?;
 
         // Weights differ.
         assert!(!t6.compare_default(&t7)?);
 
-        let mut t8 = HfstTransducer::new_symbol("@_EPSILON_SYMBOL_@", type_)?;
+        let mut t8 = HfstTransducer::new_symbol("@_EPSILON_SYMBOL_@", ty)?;
         t8.set_final_weights(0.2, false)?;
         t7.concatenate(&t8, true)?;
         // Weights are the same on each path.
@@ -191,14 +191,14 @@ fn function_compare(type_: ImplementationType) -> Result<(), hfst::error::Error>
 }
 
 // --- Function compose.
-fn function_compose(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("function compose", type_);
+fn function_compose(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("function compose", ty);
 
-    let mut t1 = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+    let mut t1 = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
     t1.set_final_weights(2.0, false)?;
-    let mut t2 = HfstTransducer::new_symbol_pair("bar", "baz", type_)?;
+    let mut t2 = HfstTransducer::new_symbol_pair("bar", "baz", ty)?;
     t2.set_final_weights(3.0, false)?;
-    let mut t3 = HfstTransducer::new_symbol_pair("foo", "baz", type_)?;
+    let mut t3 = HfstTransducer::new_symbol_pair("foo", "baz", ty)?;
     t3.set_final_weights(5.0, false)?;
     t1.compose(&t2, true)?;
     assert!(t1.compare_default(&t3)?);
@@ -206,16 +206,16 @@ fn function_compose(type_: ImplementationType) -> Result<(), hfst::error::Error>
 }
 
 // --- Function shuffle.
-fn function_shuffle(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("function shuffle", type_);
+fn function_shuffle(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("function shuffle", ty);
 
     let tok = HfstTokenizer::new();
-    let mut t1 = HfstTransducer::new_tokenized_pair("abc", "abc", &tok, type_)?;
-    let _t1_ = HfstTransducer::new_copy(&t1)?; // C++ keeps an (unused) copy here.
-    let t2 = HfstTransducer::new_tokenized_pair("cde", "cde", &tok, type_)?;
+    let mut t1 = HfstTransducer::new_tokenized_pair("abc", "abc", &tok, ty)?;
+    let _t1 = HfstTransducer::new_copy(&t1)?; // C++ keeps an (unused) copy here.
+    let t2 = HfstTransducer::new_tokenized_pair("cde", "cde", &tok, ty)?;
     t1.shuffle(&t2, false)?;
 
-    let mut t3 = HfstTransducer::new_tokenized_pair("abc", "abC", &tok, type_)?;
+    let mut t3 = HfstTransducer::new_tokenized_pair("abc", "abC", &tok, ty)?;
     // t3 is not an automaton, so shuffle must return a TransducersAreNotAutomata
     // error (the C++ suite caught this as a thrown exception).
     let r = t3.shuffle(&t2, false);
@@ -228,16 +228,16 @@ fn function_shuffle(type_: ImplementationType) -> Result<(), hfst::error::Error>
 
 // --- Function convert: go through every in-scope format and back to the
 // original, checking the alphabet survives at each step.
-fn function_convert(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("function convert", type_);
+fn function_convert(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("function convert", ty);
 
-    let mut t1 = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
-    let t2 = HfstTransducer::new_symbol_pair("foo", "bar", type_)?;
+    let mut t1 = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
+    let t2 = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
 
     let i = IN_SCOPE_TYPES
         .iter()
-        .position(|&t| t == type_)
-        .expect("type_ is always one of IN_SCOPE_TYPES");
+        .position(|&t| t == ty)
+        .expect("ty is always one of IN_SCOPE_TYPES");
     let n = IN_SCOPE_TYPES.len();
     for j in 0..=n {
         let index = (i + j) % n;
@@ -250,19 +250,17 @@ fn function_convert(type_: ImplementationType) -> Result<(), hfst::error::Error>
 }
 
 // --- Functions extract_paths / lookup / n_best (the big C++ block).
-fn function_extract_paths_lookup_nbest(
-    type_: ImplementationType,
-) -> Result<(), hfst::error::Error> {
-    verbose_print("function extract_paths(_fd)", type_);
+fn function_extract_paths_lookup_nbest(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("function extract_paths(_fd)", ty);
 
     let tok = HfstTokenizer::new();
-    let mut cat = HfstTransducer::new_tokenized_pair("cat", "cats", &tok, type_)?;
+    let mut cat = HfstTransducer::new_tokenized_pair("cat", "cats", &tok, ty)?;
     cat.set_final_weights(3.0, false)?;
-    let mut dog = HfstTransducer::new_tokenized_pair("dog", "dogs", &tok, type_)?;
+    let mut dog = HfstTransducer::new_tokenized_pair("dog", "dogs", &tok, ty)?;
     dog.set_final_weights(2.5, false)?;
-    let mut mouse = HfstTransducer::new_tokenized_pair("mouse", "mice", &tok, type_)?;
+    let mut mouse = HfstTransducer::new_tokenized_pair("mouse", "mice", &tok, ty)?;
     mouse.set_final_weights(1.7, false)?;
-    let mut animals = HfstTransducer::new_type(type_)?;
+    let mut animals = HfstTransducer::new_type(ty)?;
     animals.disjunct(&cat, true)?;
     animals.disjunct(&dog, true)?;
     animals.disjunct(&mouse, true)?;
@@ -292,7 +290,7 @@ fn function_extract_paths_lookup_nbest(
         let sp = (istring.clone(), ostring.clone());
         assert!(expected_results.contains(&sp));
 
-        if type_ == TROPICAL_OPENFST_TYPE || type_ == LOG_OPENFST_TYPE {
+        if ty == TROPICAL_OPENFST_TYPE || ty == LOG_OPENFST_TYPE {
             // Rounding can affect precision.
             if istring == "cat" {
                 assert!(it.first > 2.99 && it.first < 3.01);
@@ -309,18 +307,18 @@ fn function_extract_paths_lookup_nbest(
     // Functions is_lookup_infinitely_ambiguous, lookup and lookup_fd.
     verbose_print(
         "functions is_lookup_infinitely_ambiguous and lookup(_fd)",
-        type_,
+        ty,
     );
 
     // Add an animal with two possible plural forms. For LOG this hits a fatal
     // "EncodeMapper: Weight-encoded arc has non-trivial weight", so it is
     // skipped (faithful to the C++ guard).
-    if type_ != LOG_OPENFST_TYPE {
+    if ty != LOG_OPENFST_TYPE {
         let mut hippopotamus1 =
-            HfstTransducer::new_tokenized_pair("hippopotamus", "hippopotami", &tok, type_)?;
+            HfstTransducer::new_tokenized_pair("hippopotamus", "hippopotami", &tok, ty)?;
         hippopotamus1.set_final_weights(1.2, false)?;
         let mut hippopotamus2 =
-            HfstTransducer::new_tokenized_pair("hippopotamus", "hippopotamuses", &tok, type_)?;
+            HfstTransducer::new_tokenized_pair("hippopotamus", "hippopotamuses", &tok, ty)?;
         hippopotamus2.set_final_weights(1.4, false)?;
         animals.disjunct(&hippopotamus1, true)?;
         animals.disjunct(&hippopotamus2, true)?;
@@ -352,11 +350,11 @@ fn function_extract_paths_lookup_nbest(
     assert_eq!(results_cat.len(), 1);
     assert_eq!(results_dog.len(), 1);
     assert_eq!(results_mouse.len(), 1);
-    if type_ != LOG_OPENFST_TYPE {
+    if ty != LOG_OPENFST_TYPE {
         assert_eq!(results_hippopotamus.len(), 2);
     }
 
-    let test_weight = type_ == TROPICAL_OPENFST_TYPE || type_ == LOG_OPENFST_TYPE;
+    let test_weight = ty == TROPICAL_OPENFST_TYPE || ty == LOG_OPENFST_TYPE;
 
     let mut expected_path = tok.tokenize_one_level("cats", false);
     assert!(do_hfst_lookup_paths_contain(
@@ -383,7 +381,7 @@ fn function_extract_paths_lookup_nbest(
     ));
 
     expected_path = tok.tokenize_one_level("hippopotami", false);
-    if type_ != LOG_OPENFST_TYPE {
+    if ty != LOG_OPENFST_TYPE {
         assert!(do_hfst_lookup_paths_contain(
             &results_hippopotamus,
             &expected_path,
@@ -393,7 +391,7 @@ fn function_extract_paths_lookup_nbest(
     }
 
     expected_path = tok.tokenize_one_level("hippopotamuses", false);
-    if type_ != LOG_OPENFST_TYPE {
+    if ty != LOG_OPENFST_TYPE {
         assert!(do_hfst_lookup_paths_contain(
             &results_hippopotamus,
             &expected_path,
@@ -405,10 +403,10 @@ fn function_extract_paths_lookup_nbest(
     // Function n_best. For LOG this hits a fatal "SingleShortestPath: Weight
     // needs to have the path property" so the whole n_best block is skipped
     // (faithful to the C++ guard).
-    if type_ != LOG_OPENFST_TYPE {
-        verbose_print("function n_best", type_);
+    if ty != LOG_OPENFST_TYPE {
+        verbose_print("function n_best", ty);
 
-        let weighted = type_ == TROPICAL_OPENFST_TYPE || type_ == LOG_OPENFST_TYPE;
+        let weighted = ty == TROPICAL_OPENFST_TYPE || ty == LOG_OPENFST_TYPE;
 
         let mut animals1 = HfstTransducer::new_copy(&animals)?;
         animals1.n_best(1)?;
@@ -483,20 +481,20 @@ fn function_extract_paths_lookup_nbest(
 }
 
 // --- Functions insert_freely.
-fn function_insert_freely(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("functions insert_freely", type_);
+fn function_insert_freely(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("functions insert_freely", ty);
 
-    let mut t1 = HfstTransducer::new_symbol_pair("a", "b", type_)?;
+    let mut t1 = HfstTransducer::new_symbol_pair("a", "b", ty)?;
     t1.insert_freely_pair(&("c".to_string(), "d".to_string()), true)?;
 
-    let mut t2 = HfstTransducer::new_symbol_pair("a", "b", type_)?;
-    let tr = HfstTransducer::new_symbol_pair("c", "d", type_)?;
+    let mut t2 = HfstTransducer::new_symbol_pair("a", "b", ty)?;
+    let tr = HfstTransducer::new_symbol_pair("c", "d", ty)?;
     t2.insert_freely(&tr, true)?;
     assert!(t1.compare_default(&t2)?);
 
-    let mut cd_star = HfstTransducer::new_symbol_pair("c", "d", type_)?;
+    let mut cd_star = HfstTransducer::new_symbol_pair("c", "d", ty)?;
     cd_star.repeat_star()?;
-    let ab = HfstTransducer::new_symbol_pair("a", "b", type_)?;
+    let ab = HfstTransducer::new_symbol_pair("a", "b", ty)?;
     let mut test = HfstTransducer::new_copy(&cd_star)?;
     test.concatenate(&ab, true)?;
     test.concatenate(&cd_star, true)?;
@@ -505,31 +503,31 @@ fn function_insert_freely(type_: ImplementationType) -> Result<(), hfst::error::
     assert!(t2.compare_default(&test)?);
 
     let mut unk2unk =
-        HfstTransducer::new_symbol_pair("@_UNKNOWN_SYMBOL_@", "@_UNKNOWN_SYMBOL_@", type_)?;
+        HfstTransducer::new_symbol_pair("@_UNKNOWN_SYMBOL_@", "@_UNKNOWN_SYMBOL_@", ty)?;
     unk2unk.insert_freely_pair(&("c".to_string(), "d".to_string()), true)?;
-    let dc = HfstTransducer::new_symbol_pair("d", "c", type_)?;
+    let dc = HfstTransducer::new_symbol_pair("d", "c", ty)?;
 
-    let empty = HfstTransducer::new_type(type_)?;
+    let empty = HfstTransducer::new_type(ty)?;
     unk2unk.intersect(&dc, true)?;
     assert!(!unk2unk.compare_default(&empty)?);
 
-    let mut unk2unk_ =
-        HfstTransducer::new_symbol_pair("@_UNKNOWN_SYMBOL_@", "@_UNKNOWN_SYMBOL_@", type_)?;
-    let cd_ = HfstTransducer::new_symbol_pair("c", "d", type_)?;
-    unk2unk_.insert_freely(&cd_, true)?;
+    let mut unk2unk =
+        HfstTransducer::new_symbol_pair("@_UNKNOWN_SYMBOL_@", "@_UNKNOWN_SYMBOL_@", ty)?;
+    let cd = HfstTransducer::new_symbol_pair("c", "d", ty)?;
+    unk2unk.insert_freely(&cd, true)?;
 
-    let dc_ = HfstTransducer::new_symbol_pair("d", "c", type_)?;
-    let empty_ = HfstTransducer::new_type(type_)?;
-    unk2unk_.intersect(&dc_, true)?;
-    assert!(!unk2unk_.compare_default(&empty_)?);
+    let dc = HfstTransducer::new_symbol_pair("d", "c", ty)?;
+    let empty = HfstTransducer::new_type(ty)?;
+    unk2unk.intersect(&dc, true)?;
+    assert!(!unk2unk.compare_default(&empty)?);
     Ok(())
 }
 
 // --- Function is_cyclic.
-fn function_is_cyclic(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("function is_cyclic", type_);
+fn function_is_cyclic(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("function is_cyclic", ty);
 
-    let mut t1 = HfstTransducer::new_symbol_pair("a", "b", type_)?;
+    let mut t1 = HfstTransducer::new_symbol_pair("a", "b", ty)?;
     assert!(!t1.is_cyclic()?);
     t1.repeat_star()?;
     assert!(t1.is_cyclic()?);
@@ -571,9 +569,9 @@ fn function_push_weights() -> Result<(), hfst::error::Error> {
 
 // --- Functions set_final_weights and transform_weights (TROPICAL or LOG).
 fn function_set_final_weights_transform_weights(
-    type_: ImplementationType,
+    ty: ImplementationType,
 ) -> Result<(), hfst::error::Error> {
-    verbose_print("functions set_final_weights and transform_weights", type_);
+    verbose_print("functions set_final_weights and transform_weights", ty);
 
     let mut t = HfstBasicTransducer::new();
     t.add_state(1);
@@ -582,7 +580,7 @@ fn function_set_final_weights_transform_weights(
     t.add_transition(0, &arc, true);
     t.set_final_weight(1, &0.5);
 
-    let mut tr = HfstTransducer::new_from_basic(&t, type_)?;
+    let mut tr = HfstTransducer::new_from_basic(&t, ty)?;
     tr.set_final_weights(0.2, false)?;
     tr.transform_weights(modify_weights)?;
     tr.push_weights(TO_FINAL_STATE)?;
@@ -593,12 +591,12 @@ fn function_set_final_weights_transform_weights(
 }
 
 // --- Functions substitute.
-fn function_substitute(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("functions substitute", type_);
+fn function_substitute(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("functions substitute", ty);
 
     let mut tok = HfstTokenizer::new();
     tok.add_multichar_symbol("<eps>");
-    let t = HfstTransducer::new_tokenized_pair("cat", "cats", &tok, type_)?;
+    let t = HfstTransducer::new_tokenized_pair("cat", "cats", &tok, ty)?;
 
     // String with String.
     let mut t1 = HfstTransducer::new_copy(&t)?;
@@ -608,8 +606,8 @@ fn function_substitute(type_: ImplementationType) -> Result<(), hfst::error::Err
     t1.substitute_string("a", "A", true, true)?;
     t1.substitute_string("T", "T", true, true)?; // special
     t1.substitute_string("foo", "bar", true, true)?; // cases
-    let t1_ = HfstTransducer::new_tokenized_pair("CAt<eps>", "cATs", &tok, type_)?;
-    assert!(t1.compare_default(&t1_)?);
+    let t1_expected = HfstTransducer::new_tokenized_pair("CAt<eps>", "cATs", &tok, ty)?;
+    assert!(t1.compare_default(&t1_expected)?);
 
     // StringPair with StringPair.
     let mut t2 = HfstTransducer::new_copy(&t)?;
@@ -629,8 +627,8 @@ fn function_substitute(type_: ImplementationType) -> Result<(), hfst::error::Err
         &("foo".to_string(), "bar".to_string()),
         &("f".to_string(), "b".to_string()),
     )?; // cases
-    let t2_ = HfstTransducer::new_tokenized_pair("Hat", "hats", &tok, type_)?;
-    assert!(t2.compare_default(&t2_)?);
+    let t2_expected = HfstTransducer::new_tokenized_pair("Hat", "hats", &tok, ty)?;
+    assert!(t2.compare_default(&t2_expected)?);
 
     // StringPair with StringPairSet.
     let mut t3 = HfstTransducer::new_copy(&t)?;
@@ -640,29 +638,30 @@ fn function_substitute(type_: ImplementationType) -> Result<(), hfst::error::Err
     sps.insert(("h".to_string(), "h".to_string()));
     sps.insert(("H".to_string(), "H".to_string()));
     t3.substitute_pair_with_pair_set(&("c".to_string(), "c".to_string()), &sps)?;
-    let mut t3_ = HfstTransducer::new_tokenized_pair("cat", "cats", &tok, type_)?;
-    let t3_1 = HfstTransducer::new_tokenized_pair("Cat", "Cats", &tok, type_)?;
-    let t3_2 = HfstTransducer::new_tokenized_pair("hat", "hats", &tok, type_)?;
-    let t3_3 = HfstTransducer::new_tokenized_pair("Hat", "Hats", &tok, type_)?;
-    t3_.disjunct(&t3_1, true)?;
-    t3_.disjunct(&t3_2, true)?;
-    t3_.disjunct(&t3_3, true)?;
-    t3_.minimize()?;
-    assert!(t3.compare_default(&t3_)?);
+    let mut t3_expected = HfstTransducer::new_tokenized_pair("cat", "cats", &tok, ty)?;
+    let t3_1 = HfstTransducer::new_tokenized_pair("Cat", "Cats", &tok, ty)?;
+    let t3_2 = HfstTransducer::new_tokenized_pair("hat", "hats", &tok, ty)?;
+    let t3_3 = HfstTransducer::new_tokenized_pair("Hat", "Hats", &tok, ty)?;
+    t3_expected.disjunct(&t3_1, true)?;
+    t3_expected.disjunct(&t3_2, true)?;
+    t3_expected.disjunct(&t3_3, true)?;
+    t3_expected.minimize()?;
+    assert!(t3.compare_default(&t3_expected)?);
 
     // StringPair with HfstTransducer.
     let mut t4 = HfstTransducer::new_copy(&t)?;
-    let mut subs = HfstTransducer::new_tokenized("ch", &tok, type_)?;
+    let mut subs = HfstTransducer::new_tokenized("ch", &tok, ty)?;
     t4.substitute_pair_with_transducer(&("c".to_string(), "c".to_string()), &mut subs, true)?;
-    let t4_ = HfstTransducer::new_tokenized_pair("chat", "chats", &tok, type_)?;
-    assert!(t4.compare_default(&t4_)?);
+    let t4_expected = HfstTransducer::new_tokenized_pair("chat", "chats", &tok, ty)?;
+    assert!(t4.compare_default(&t4_expected)?);
 
     // Substitute with function.
     let mut t5 = HfstTransducer::new_copy(&t)?;
     t5.substitute_with_func(modify_transitions)?;
     tok.add_multichar_symbol("<ID>");
-    let t5_ = HfstTransducer::new_tokenized_pair("<ID><ID><ID>", "<ID><ID><ID>s", &tok, type_)?;
-    assert!(t5.compare_default(&t5_)?);
+    let t5_expected =
+        HfstTransducer::new_tokenized_pair("<ID><ID><ID>", "<ID><ID><ID>s", &tok, ty)?;
+    assert!(t5.compare_default(&t5_expected)?);
 
     // Multiple string-to-string substitutions.
     let mut t6 = HfstTransducer::new_copy(&t)?;
@@ -672,8 +671,8 @@ fn function_substitute(type_: ImplementationType) -> Result<(), hfst::error::Err
     subs_symbol.insert("t".to_string(), "T".to_string());
     subs_symbol.insert("s".to_string(), "S".to_string());
     t6.substitute_symbol_substitutions(&subs_symbol)?;
-    let t6_ = HfstTransducer::new_tokenized_pair("CAT", "CATS", &tok, type_)?;
-    assert!(t6.compare_default(&t6_)?);
+    let t6_expected = HfstTransducer::new_tokenized_pair("CAT", "CATS", &tok, ty)?;
+    assert!(t6.compare_default(&t6_expected)?);
 
     // Multiple string pair-to-string pair substitutions.
     let mut t7 = HfstTransducer::new_copy(&t)?;
@@ -691,16 +690,16 @@ fn function_substitute(type_: ImplementationType) -> Result<(), hfst::error::Err
         ("t".to_string(), "T".to_string()),
     );
     t7.substitute_symbol_pair_substitutions(&subs_pair)?;
-    let t7_ = HfstTransducer::new_tokenized_pair("cAt", "caTs", &tok, type_)?;
-    assert!(t7.compare_default(&t7_)?);
+    let t7_expected = HfstTransducer::new_tokenized_pair("cAt", "caTs", &tok, ty)?;
+    assert!(t7.compare_default(&t7_expected)?);
     Ok(())
 }
 
 // --- alphabets.
-fn function_alphabets(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("alphabets", type_);
+fn function_alphabets(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("alphabets", ty);
 
-    let mut a2unk = HfstTransducer::new_symbol_pair("a", "@_UNKNOWN_SYMBOL_@", type_)?;
+    let mut a2unk = HfstTransducer::new_symbol_pair("a", "@_UNKNOWN_SYMBOL_@", ty)?;
     assert_eq!(a2unk.get_alphabet()?.len(), 4);
     a2unk.insert_to_alphabet("FOO")?;
     assert_eq!(a2unk.get_alphabet()?.len(), 5);
@@ -712,11 +711,11 @@ fn function_alphabets(type_: ImplementationType) -> Result<(), hfst::error::Erro
 }
 
 // --- Test that binary operations do not change the transducer argument.
-fn function_binary_operations(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("binary operations", type_);
+fn function_binary_operations(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("binary operations", ty);
 
-    let id2id = HfstTransducer::new_symbol_pair(internal_identity, internal_identity, type_)?;
-    let a2b = HfstTransducer::new_symbol_pair("a", "b", type_)?;
+    let id2id = HfstTransducer::new_symbol_pair(internal_identity, internal_identity, ty)?;
+    let a2b = HfstTransducer::new_symbol_pair("a", "b", ty)?;
 
     {
         let mut a2b_copy = HfstTransducer::new_copy(&a2b)?;
@@ -772,11 +771,11 @@ fn function_binary_operations(type_: ImplementationType) -> Result<(), hfst::err
     // held, so an identical copy is used as the argument; the tested semantics
     // (concatenating a transducer with an identical one) are preserved.
     {
-        let mut foo = HfstTransducer::new_symbol("foo", type_)?;
+        let mut foo = HfstTransducer::new_symbol("foo", ty)?;
         let foo_arg = HfstTransducer::new_copy(&foo)?;
         foo.concatenate(&foo_arg, true)?;
-        let mut foofoo = HfstTransducer::new_symbol("foo", type_)?;
-        let foo2 = HfstTransducer::new_symbol("foo", type_)?;
+        let mut foofoo = HfstTransducer::new_symbol("foo", ty)?;
+        let foo2 = HfstTransducer::new_symbol("foo", ty)?;
         foofoo.concatenate(&foo2, true)?;
         assert!(foo.compare_default(&foofoo)?);
     }

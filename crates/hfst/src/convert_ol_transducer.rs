@@ -48,7 +48,7 @@ pub fn hfst_ol_to_hfst_basic_add_state(
     if indexes_transition_index_table(index) {
         let transition_index = t.get_index(index);
 
-        if transition_index.final_() {
+        if transition_index.is_final() {
             basic.add_state(new_state);
             // dynamic_cast to TransitionWIndex is the trait's virtual final_weight()
             let w = if weighted {
@@ -62,7 +62,7 @@ pub fn hfst_ol_to_hfst_basic_add_state(
         // indexes transition table
         let transition = t.get_transition(index);
 
-        if transition.final_() {
+        if transition.is_final() {
             basic.add_state(new_state);
             let w = if weighted {
                 double_to_float(transition.get_weight() as f64)
@@ -236,12 +236,12 @@ impl ConversionFunctions {
         t: &Transducer,
     ) -> crate::error::Result<crate::hfst_transducer::HfstTransducer> {
         use crate::hfst_data_types::ImplementationType::*;
-        let type_ = if t.is_weighted() {
+        let ty = if t.is_weighted() {
             HFST_OLW_TYPE
         } else {
             HFST_OL_TYPE
         };
-        let mut retval = crate::hfst_transducer::HfstTransducer::new_type(type_)?;
+        let mut retval = crate::hfst_transducer::HfstTransducer::new_type(ty)?;
         retval.implementation = crate::hfst_transducer::TransducerImplementation::HfstOl(Box::new(
             Transducer::copy(t, t.is_weighted())?,
         ));
@@ -257,7 +257,7 @@ impl ConversionFunctions {
         t: &mut crate::hfst_transducer::HfstTransducer,
     ) -> crate::error::Result<*mut Transducer> {
         use crate::hfst_data_types::ImplementationType::*;
-        if t.type_ != HFST_OL_TYPE && t.type_ != HFST_OLW_TYPE {
+        if t.ty != HFST_OL_TYPE && t.ty != HFST_OLW_TYPE {
             t.convert(HFST_OLW_TYPE, String::new())?;
         }
         Ok(t.implementation.as_hfst_ol_ptr())
@@ -424,7 +424,7 @@ impl ConversionFunctions {
             } else if used_indices.get_target(i).1 == NO_SYMBOL_NUMBER {
                 // finality markers
                 let first = used_indices.get_target(i).0 as usize;
-                if state_placeholders[first].final_ {
+                if state_placeholders[first].is_final {
                     windex_table.append(TransitionWIndex::create_final_weight(
                         state_placeholders[first].final_weight,
                     ));

@@ -31,7 +31,7 @@ fn compile_and_match(src: &str, input: &str) -> Result<String, hfst::error::Erro
     let top = defs.get("TOP").expect("no TOP in pmatch result");
     let top_owned = top.clone();
     let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_owned])?;
-    Ok(container.match_(input, 0.0, 0.0))
+    Ok(container.do_match(input, 0.0, 0.0))
 }
 
 #[test]

@@ -71,9 +71,9 @@ pub struct StatePlaceholder {
     pub first_transition: u32,
     pub symbol_to_transition_placeholder_v: Vec<u32>,
     pub transition_placeholders: Vec<Vec<TransitionPlaceholder>>,
-    pub type_: IndexingType,
+    pub ty: IndexingType,
     pub inputs: SymbolNumber,
-    pub final_: bool,
+    pub is_final: bool,
     pub final_weight: f32,
 }
 
@@ -87,13 +87,13 @@ impl StatePlaceholder {
             first_transition: first,
             symbol_to_transition_placeholder_v: Vec::new(),
             transition_placeholders: Vec::new(),
-            type_: if state == 0 {
+            ty: if state == 0 {
                 IndexingType::nonsimple
             } else {
                 IndexingType::empty
             },
             inputs: 0,
-            final_: finality,
+            is_final: finality,
             final_weight,
         }
     }
@@ -105,9 +105,9 @@ impl StatePlaceholder {
             first_transition: u32::MAX,
             symbol_to_transition_placeholder_v: Vec::new(),
             transition_placeholders: Vec::new(),
-            type_: IndexingType::empty,
+            ty: IndexingType::empty,
             inputs: 0,
-            final_: false,
+            is_final: false,
             final_weight: 0.0,
         }
     }
@@ -115,7 +115,7 @@ impl StatePlaceholder {
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.is-simple-fn]
     // [spec:hfst:sem:convert.hfst-ol.state-placeholder.is-simple-fn]
     pub fn is_simple(&self) -> bool {
-        self.type_ != IndexingType::nonsimple
+        self.ty != IndexingType::nonsimple
     }
 
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.number-of-transitions-fn]
@@ -148,24 +148,24 @@ impl StatePlaceholder {
             size_t_to_uint(self.transition_placeholders.len());
         self.transition_placeholders.push(Vec::new());
         self.inputs += 1;
-        if self.type_ != IndexingType::nonsimple {
+        if self.ty != IndexingType::nonsimple {
             // Depending on what type of inputs we now have, adjust the index
             // type. Epsilons and flags both index to 0. If we have only one
             // input symbol, we're simple.
-            if self.type_ == IndexingType::empty {
+            if self.ty == IndexingType::empty {
                 if input == 0 || flag_symbols.contains(&input) {
-                    self.type_ = IndexingType::simple_zero_index;
+                    self.ty = IndexingType::simple_zero_index;
                 } else {
-                    self.type_ = IndexingType::simple_nonzero_index;
+                    self.ty = IndexingType::simple_nonzero_index;
                 }
-            } else if self.type_ == IndexingType::simple_zero_index {
+            } else if self.ty == IndexingType::simple_zero_index {
                 if input != 0 && !flag_symbols.contains(&input) {
-                    self.type_ = IndexingType::nonsimple;
+                    self.ty = IndexingType::nonsimple;
                 }
             } else {
                 // simple_nonzero_index
                 if self.inputs > 1 || input == 0 || flag_symbols.contains(&input) {
-                    self.type_ = IndexingType::nonsimple;
+                    self.ty = IndexingType::nonsimple;
                 }
             }
         }
@@ -348,7 +348,7 @@ pub fn write_transitions_from_state_placeholders(
         // Insert a finality marker unless this is the first state, the finality
         // of which is determined by the index table
         if it.state_number != 0 {
-            transition_table.append(TransitionW::new_final(it.final_, it.final_weight));
+            transition_table.append(TransitionW::new_final(it.is_final, it.final_weight));
         }
 
         // Then we iterate through the symbols each state has. First we do a pass

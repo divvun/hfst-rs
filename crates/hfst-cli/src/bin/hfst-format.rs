@@ -270,11 +270,11 @@ unsafe fn real_main() {
 
         hfst_set_program_name(&argv0, "0.1", "HfstFormat");
         globals::VERBOSE = true;
-        let type_ = parse_options(&mut args);
+        let ty = parse_options(&mut args);
         verbose_printf(&format!(
             "Transducers in {} are of type {}\n",
             globals::input_filename(),
-            hfst_strformat(type_)
+            hfst_strformat(ty)
         ));
     }
 }

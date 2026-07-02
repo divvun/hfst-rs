@@ -49,8 +49,8 @@ fn serialized() -> std::sync::MutexGuard<'static, ()> {
 }
 
 // Shared helper inlined from test/libhfst/auxiliary_functions.cc (verbose_print).
-fn verbose_print(msg: &str, type_: ImplementationType) {
-    eprintln!("Testing:\t{msg} for type {type_:?}...");
+fn verbose_print(msg: &str, ty: ImplementationType) {
+    eprintln!("Testing:\t{msg} for type {ty:?}...");
 }
 
 // C++ StringPair("a", "b").
@@ -61,17 +61,17 @@ fn sp(a: &str, b: &str) -> StringPair {
 // ---------------------------------------------------------------------------
 // Block 1: two_level_if / two_level_only_if / two_level_if_and_only_if.
 // ---------------------------------------------------------------------------
-fn run_two_level_rules(type_: ImplementationType) -> Result<(), hfst::error::Error> {
+fn run_two_level_rules(ty: ImplementationType) -> Result<(), hfst::error::Error> {
     let _guard = serialized();
 
     verbose_print(
         "HfstTransducer two_level_if(HfstTransducerPair &context, StringPairSet &mappings, \
          StringPairSet &alphabet, ImplementationType type",
-        type_,
+        ty,
     );
 
-    let leftc = HfstTransducer::new_symbol("c", type_)?;
-    let rightc = HfstTransducer::new_symbol("c", type_)?;
+    let leftc = HfstTransducer::new_symbol("c", ty)?;
+    let rightc = HfstTransducer::new_symbol("c", ty)?;
     let mut context: HfstTransducerPair = (leftc, rightc);
 
     let mut mappings: StringPairSet = StringPairSet::new();
@@ -112,14 +112,14 @@ fn two_level_rules_log() -> Result<(), hfst::error::Error> {
 // ---------------------------------------------------------------------------
 // Block 2: replace_down_karttunen.
 // ---------------------------------------------------------------------------
-fn run_replace_down_karttunen(type_: ImplementationType) -> Result<(), hfst::error::Error> {
+fn run_replace_down_karttunen(ty: ImplementationType) -> Result<(), hfst::error::Error> {
     let _guard = serialized();
 
     let mut tok = HfstTokenizer::new();
     tok.add_multichar_symbol("@_EPSILON_SYMBOL_@");
-    let mut mapping = HfstTransducer::new_tokenized_pair("ab", "x", &tok, type_)?;
-    let left_context = HfstTransducer::new_tokenized_pair("ab", "ab", &tok, type_)?;
-    let right_context = HfstTransducer::new_symbol("a", type_)?;
+    let mut mapping = HfstTransducer::new_tokenized_pair("ab", "x", &tok, ty)?;
+    let left_context = HfstTransducer::new_tokenized_pair("ab", "ab", &tok, ty)?;
+    let right_context = HfstTransducer::new_symbol("a", ty)?;
     let mut context: HfstTransducerPair = (left_context, right_context);
     let mut alphabet: StringPairSet = StringPairSet::new();
     alphabet.insert(sp("a", "a"));
@@ -130,13 +130,13 @@ fn run_replace_down_karttunen(type_: ImplementationType) -> Result<(), hfst::err
     let replace_down_transducer =
         hfst_rules::replace_down_karttunen(&mut context, &mut mapping, optional, &mut alphabet)?;
 
-    let mut test_abababa = HfstTransducer::new_tokenized("abababa", &tok, type_)?;
+    let mut test_abababa = HfstTransducer::new_tokenized("abababa", &tok, ty)?;
     test_abababa.compose(&replace_down_transducer, true)?;
     let abxaba =
-        HfstTransducer::new_tokenized_pair("abababa", "abx@_EPSILON_SYMBOL_@aba", &tok, type_)?;
+        HfstTransducer::new_tokenized_pair("abababa", "abx@_EPSILON_SYMBOL_@aba", &tok, ty)?;
     let ababxa =
-        HfstTransducer::new_tokenized_pair("abababa", "ababx@_EPSILON_SYMBOL_@a", &tok, type_)?;
-    let mut expected_result = HfstTransducer::new_type(type_)?;
+        HfstTransducer::new_tokenized_pair("abababa", "ababx@_EPSILON_SYMBOL_@a", &tok, ty)?;
+    let mut expected_result = HfstTransducer::new_type(ty)?;
     expected_result.disjunct(&abxaba, true)?;
     expected_result.disjunct(&ababxa, true)?;
     assert!(expected_result.compare(&test_abababa, true)?);

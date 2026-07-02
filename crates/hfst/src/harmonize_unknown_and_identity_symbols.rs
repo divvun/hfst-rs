@@ -15,7 +15,7 @@ use crate::pmatch::PmatchAlphabet;
 
 // [spec:hfst:def:harmonize-unknown-and-identity-symbols.hfst.max-fn]
 // [spec:hfst:sem:harmonize-unknown-and-identity-symbols.hfst.max-fn]
-pub fn max_(t1: usize, t2: usize) -> usize {
+pub fn max(t1: usize, t2: usize) -> usize {
     if t1 < t2 { t2 } else { t1 }
 }
 

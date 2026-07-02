@@ -270,11 +270,11 @@ unsafe fn real_main() -> i32 {
         // currently panics on a bad file rather than throwing, so the catch arm
         // is not reproduced here.)
 
-        let type_ = instream.get_type();
+        let ty = instream.get_type();
         let mut outstream = match if output_opened {
-            HfstOutputStream::new_filename(&globals::output_filename(), type_, true)
+            HfstOutputStream::new_filename(&globals::output_filename(), ty, true)
         } else {
-            HfstOutputStream::new(type_, true)
+            HfstOutputStream::new(ty, true)
         } {
             Ok(s) => s,
             Err(e) => {

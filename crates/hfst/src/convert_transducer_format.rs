@@ -121,7 +121,7 @@ impl ConversionFunctions {
         t: &crate::hfst_transducer::HfstTransducer,
     ) -> crate::error::Result<crate::hfst_basic_transducer::HfstBasicTransducer> {
         use crate::hfst_data_types::ImplementationType::*;
-        if t.type_ == TROPICAL_OPENFST_TYPE {
+        if t.ty == TROPICAL_OPENFST_TYPE {
             let mut retval = ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
                 t.implementation.as_tropical(),
                 true,
@@ -129,7 +129,7 @@ impl ConversionFunctions {
             retval.name = t.get_name();
             return Ok(retval);
         }
-        if t.type_ == LOG_OPENFST_TYPE {
+        if t.ty == LOG_OPENFST_TYPE {
             let mut retval = ConversionFunctions::log_ofst_to_hfst_basic_transducer(
                 t.implementation.as_log(),
                 true,
@@ -137,7 +137,7 @@ impl ConversionFunctions {
             retval.name = t.get_name();
             return Ok(retval);
         }
-        if t.type_ == HFST_OL_TYPE || t.type_ == HFST_OLW_TYPE {
+        if t.ty == HFST_OL_TYPE || t.ty == HFST_OLW_TYPE {
             let mut retval = ConversionFunctions::hfst_ol_to_hfst_basic_transducer(
                 t.implementation.as_hfst_ol(),
             );

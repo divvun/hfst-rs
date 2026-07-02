@@ -54,8 +54,8 @@ fn serialized() -> std::sync::MutexGuard<'static, ()> {
 }
 
 // Shared helper inlined from test/libhfst/auxiliary_functions.cc (verbose_print).
-fn verbose_print(msg: &str, type_: ImplementationType) {
-    eprintln!("Testing:\t{msg} for type {type_:?}...");
+fn verbose_print(msg: &str, ty: ImplementationType) {
+    eprintln!("Testing:\t{msg} for type {ty:?}...");
 }
 
 // Build the HfstBasicTransducer t from the top of the C++ main:
@@ -106,21 +106,21 @@ fn build_t() -> HfstBasicTransducer {
 // compare equal after minimization (the identity symbol expands to cover a/b).
 // The intermediate ab_flag transducer is dead code in the C++ (never asserted
 // on) but is ported faithfully because concatenate(id) reads id.
-fn identities_with_flags(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Identitites with flags", type_);
+fn identities_with_flags(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("Identitites with flags", ty);
 
-    let mut id = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", type_)?;
+    let mut id = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", ty)?;
     id.repeat_star()?;
-    let mut ab_flag = HfstTransducer::new_symbol_pair("a", "b", type_)?;
-    let flag = HfstTransducer::new_symbol("@U.F.A@", type_)?;
+    let mut ab_flag = HfstTransducer::new_symbol_pair("a", "b", ty)?;
+    let flag = HfstTransducer::new_symbol("@U.F.A@", ty)?;
     ab_flag.disjunct(&flag, true)?;
 
     ab_flag.concatenate(&id, true)?;
     id.minimize()?;
 
-    let a_tr = HfstTransducer::new_symbol("a", type_)?;
-    let b_tr = HfstTransducer::new_symbol("b", type_)?;
-    let mut abid = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", type_)?;
+    let a_tr = HfstTransducer::new_symbol("a", ty)?;
+    let b_tr = HfstTransducer::new_symbol("b", ty)?;
+    let mut abid = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", ty)?;
     abid.disjunct(&a_tr, true)?;
     abid.disjunct(&b_tr, true)?;
     abid.repeat_star()?;
@@ -135,11 +135,11 @@ fn identities_with_flags(type_: ImplementationType) -> Result<(), hfst::error::E
 // Converts the basic transducer t to an HfstTransducer of the given type,
 // extracts paths with flags filtered, and asserts exactly the two unifying
 // strings "ac" and "bd" survive.
-fn unification_flags(type_: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Unification flags", type_);
+fn unification_flags(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+    verbose_print("Unification flags", ty);
 
     let t = build_t();
-    let tr = HfstTransducer::new_from_basic(&t, type_)?;
+    let tr = HfstTransducer::new_from_basic(&t, ty)?;
     let mut results: HfstTwoLevelPaths = BTreeSet::new();
 
     // C++ extract_paths_fd(results) defaults: max_num=-1, cycles=-1, filter_fd=true.

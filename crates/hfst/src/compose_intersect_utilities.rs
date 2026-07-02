@@ -35,7 +35,7 @@ pub struct SpaceSavingSet<X, C>
 where
     C: Comparator<X>,
 {
-    container_: XVector<X>,
+    container: XVector<X>,
     // C++ carries 'static C comparator;' and 'static ReverseCompare reverse_comp;'
     // as static members; in Rust the comparator lives in the type parameter 'C',
     // so we only need a phantom to retain it.
@@ -47,7 +47,7 @@ where
 // const_iterator / iterator are 'XVector::const_iterator' / 'XVector::iterator';
 // in Rust these are slice iterators (see the begin/end methods below). The C++
 // index-by-iterator used in 'add_value'/'insert' is represented here as a 'usize'
-// position into 'container_'.
+// position into 'container'.
 pub type ConstIterator<'a, X> = std::slice::Iter<'a, X>;
 pub type Iterator<'a, X> = std::slice::IterMut<'a, X>;
 
@@ -58,7 +58,7 @@ where
 {
     pub fn new() -> Self {
         SpaceSavingSet {
-            container_: XVector::new(),
+            container: XVector::new(),
             _comparator: PhantomData,
         }
     }
@@ -66,22 +66,22 @@ where
     // [spec:hfst:sem:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.begin-fn]
     // [spec:hfst:def:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.begin-fn]
     pub fn begin(&self) -> ConstIterator<'_, X> {
-        self.container_.iter()
+        self.container.iter()
     }
 
     // [spec:hfst:sem:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.end-fn]
     // [spec:hfst:def:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.end-fn]
     pub fn end(&self) -> ConstIterator<'_, X> {
-        self.container_[self.container_.len()..].iter()
+        self.container[self.container.len()..].iter()
     }
 
     pub fn begin_mut(&mut self) -> Iterator<'_, X> {
-        self.container_.iter_mut()
+        self.container.iter_mut()
     }
 
     pub fn end_mut(&mut self) -> Iterator<'_, X> {
-        let len = self.container_.len();
-        self.container_[len..].iter_mut()
+        let len = self.container.len();
+        self.container[len..].iter_mut()
     }
 
     // SpaceSavingSet &operator=(const SpaceSavingSet &another)
@@ -89,7 +89,7 @@ where
     where
         X: Clone,
     {
-        self.container_ = another.container_.clone();
+        self.container = another.container.clone();
         self
     }
 
@@ -99,7 +99,7 @@ where
     where
         X: Clone,
     {
-        // 'least_upper_bound' is an index position into 'container_'; the C++
+        // 'least_upper_bound' is an index position into 'container'; the C++
         //   'iterator least_upper_bound = get_least_upper_bound(x);'
         // yields the position of the least element not less than 'x' (== end()
         // when all elements are less than 'x').
@@ -112,8 +112,8 @@ where
         // it equals end() (UB in C++), but it is only read in the '!(x == new_x)'
         // branch, which is short-circuited away when 'least_upper_bound == end()'.
         // We reproduce the observable behaviour by guarding the dereference.
-        let at_end = least_upper_bound == self.container_.len();
-        if at_end || !(*x == self.container_[least_upper_bound]) {
+        let at_end = least_upper_bound == self.container.len();
+        if at_end || !(*x == self.container[least_upper_bound]) {
             self.add_value(x, least_upper_bound);
         }
     }
@@ -122,31 +122,31 @@ where
     // [spec:hfst:def:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.find-fn]
     pub fn find(&self, x: &X) -> ConstIterator<'_, X> {
         let least_upper_bound = self.get_least_upper_bound_index(x);
-        if least_upper_bound == self.container_.len() {
+        if least_upper_bound == self.container.len() {
             return self.end();
         }
 
-        let new_x = &self.container_[least_upper_bound];
+        let new_x = &self.container[least_upper_bound];
         if *new_x != *x {
             return self.end();
         }
 
-        self.container_[least_upper_bound..].iter()
+        self.container[least_upper_bound..].iter()
     }
 
     /// Index-based equivalent of 'find', returning the matched position or
-    /// 'container_.len()' (the end() sentinel) when not present. Provided so
+    /// 'container.len()' (the end() sentinel) when not present. Provided so
     /// callers can mirror C++ iterator comparisons ('find(x) != end()') without
     /// juggling slice iterators.
     pub fn find_index(&self, x: &X) -> usize {
         let least_upper_bound = self.get_least_upper_bound_index(x);
-        if least_upper_bound == self.container_.len() {
-            return self.container_.len();
+        if least_upper_bound == self.container.len() {
+            return self.container.len();
         }
 
-        let new_x = &self.container_[least_upper_bound];
+        let new_x = &self.container[least_upper_bound];
         if *new_x != *x {
-            return self.container_.len();
+            return self.container.len();
         }
 
         least_upper_bound
@@ -155,32 +155,32 @@ where
     // [spec:hfst:sem:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.clear-fn]
     // [spec:hfst:def:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.clear-fn]
     pub fn clear(&mut self) {
-        self.container_.clear();
+        self.container.clear();
     }
 
     // [spec:hfst:sem:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.has-element-fn]
     // [spec:hfst:def:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.has-element-fn]
     pub fn has_element(&self, x: &X) -> bool {
         // C++: find(x) != end()
-        self.find_index(x) != self.container_.len()
+        self.find_index(x) != self.container.len()
     }
 
     // [spec:hfst:sem:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.size-fn]
     // [spec:hfst:def:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.size-fn]
     pub fn size(&self) -> usize {
-        self.container_.len()
+        self.container.len()
     }
 
     // [spec:hfst:sem:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.get-least-upper-bound-fn]
     // [spec:hfst:def:compose-intersect-utilities.hfst.implementations.compose-intersect-utilities.space-saving-set.get-least-upper-bound-fn]
     //
     // C++ had two overloads (const_iterator / iterator) that share a body. Here
-    // a single index-returning helper covers both; 'container_.len()' is the
+    // a single index-returning helper covers both; 'container.len()' is the
     // end() sentinel.
     fn get_least_upper_bound_index(&self, x: &X) -> usize {
         let mut it = 0usize;
-        while it != self.container_.len() {
-            if !C::compare(&self.container_[it], x) {
+        while it != self.container.len() {
+            if !C::compare(&self.container[it], x) {
                 break;
             }
             it += 1;
@@ -194,8 +194,8 @@ where
     where
         X: Clone,
     {
-        // C++: container_.insert(least_upper_bound, x);
-        self.container_.insert(least_upper_bound, x.clone());
+        // C++: container.insert(least_upper_bound, x);
+        self.container.insert(least_upper_bound, x.clone());
     }
 }
 

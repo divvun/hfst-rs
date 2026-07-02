@@ -1660,7 +1660,7 @@ impl PmatchContainer {
             let old_input_pos = input_pos;
             // toplevel->match(input_pos, tape_pos);
             let mut top = self.toplevel.take().unwrap();
-            top.match_(input_pos, tape_pos, self);
+            top.do_match(input_pos, tape_pos, self);
             self.toplevel = Some(top);
             if self.candidate_found() {
                 // We got some output
@@ -1741,7 +1741,7 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.match-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.match-fn]
-    pub fn match_(&mut self, input: &str, time_cutoff: f64, weight_cutoff: Weight) -> String {
+    pub fn do_match(&mut self, input: &str, time_cutoff: f64, weight_cutoff: Weight) -> String {
         self.max_time = time_cutoff;
         self.max_weight = weight_cutoff;
         if self.max_time > 0.0 {
@@ -2408,9 +2408,9 @@ impl PmatchTransducer {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.is-final-fn]
     pub fn is_final(&self, i: TransitionTableIndex) -> bool {
         if Self::indexes_transition_table(i) {
-            self.transition_table[(i - TRANSITION_TARGET_TABLE_START) as usize].final_()
+            self.transition_table[(i - TRANSITION_TARGET_TABLE_START) as usize].is_final()
         } else {
-            self.index_table[i as usize].final_()
+            self.index_table[i as usize].is_final()
         }
     }
 
@@ -2445,9 +2445,9 @@ impl PmatchTransducer {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.final-index-fn]
     pub fn final_index(&self, i: TransitionTableIndex) -> bool {
         if Self::indexes_transition_table(i) {
-            self.transition_table[i as usize].final_()
+            self.transition_table[i as usize].is_final()
         } else {
-            self.index_table[i as usize].final_()
+            self.index_table[i as usize].is_final()
         }
     }
 
@@ -2982,7 +2982,7 @@ impl PmatchTransducer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-transducer.match-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.match-fn]
-    pub fn match_(&mut self, input_pos: u32, tape_pos: u32, container: &mut PmatchContainer) {
+    pub fn do_match(&mut self, input_pos: u32, tape_pos: u32, container: &mut PmatchContainer) {
         {
             let top = self.local_stack.last_mut().unwrap();
             top.context = ContextChecking::none;
