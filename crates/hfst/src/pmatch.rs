@@ -3105,3 +3105,31 @@ impl PmatchContainer {
         unsafe { (*a).stringify(str, self) }
     }
 }
+
+/// The locate-mode renderer of the hfst-pmatch tool, lifted from
+/// tools/src/hfst-pmatch.cc: print one 'start|length|output|tag' line (with
+/// '|weight' appended when 'print_weights') for the first location of every
+/// matching location vector. Returns whether anything was printed (the tool
+/// follows up with a separating blank line if so).
+pub fn print_locate_matches(
+    locations: &LocationVectorVector,
+    outstream: &mut dyn std::io::Write,
+    print_weights: bool,
+) -> bool {
+    let mut printed_something = false;
+    for it in locations.iter() {
+        if it[0].output != "@_NONMATCHING_@" {
+            printed_something = true;
+            let _ = write!(
+                outstream,
+                "{}|{}|{}|{}",
+                it[0].start, it[0].length, it[0].output, it[0].tag
+            );
+            if print_weights {
+                let _ = write!(outstream, "|{}", it[0].weight);
+            }
+            let _ = write!(outstream, "\n");
+        }
+    }
+    printed_something
+}

@@ -1076,6 +1076,21 @@ children (
                 title "[Tier3] Finish crates/hfst/src/pmatch_tokenize.rs format handlers (make_naive_tokenizer, process_input/0delim/VISL, TokenizeSettings) for tokenize; pmatch_compiler write_archive + shared harmonizer for pmatch2fst; pmatch-locate formatter for pmatch; jointly with their I/O"
                 priority 5
                 deps (librarify.io-foundation)
+                log (
+                    {
+                        at 2026-07-02T20:13:58.550952Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-02T20:48:01.88415Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

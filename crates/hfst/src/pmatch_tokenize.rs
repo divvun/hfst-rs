@@ -8,10 +8,14 @@
 //! C++ 'std::cerr' diagnostics become 'tracing' events.
 
 use std::collections::BTreeSet;
-use std::io::Write;
+use std::io::{BufRead, Write};
 
-use crate::hfst_data_types::StringVector;
+use crate::convert_transducer_format::ConversionFunctions;
+use crate::error::Result;
+use crate::hfst_data_types::{ImplementationType, StringVector};
+use crate::hfst_transducer::HfstTransducer;
 use crate::pmatch::{Location, LocationVector, LocationVectorVector, PmatchContainer};
+use crate::pmatch_compiler;
 use crate::transducer::{INFINITE_WEIGHT, Weight};
 
 use icu::properties::CodePointMapData;
@@ -1293,4 +1297,391 @@ pub fn process_input(
             match_and_print(container, outstream, &input_text, s);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// The hfst-tokenize tool engine, lifted from tools/src/hfst-tokenize.cc: the
+// naive-tokenizer construction and the input-segmentation drivers (plain
+// line/blank-line input, NUL-delimited giellacg input with optional apertium
+// superblanks, and VISL CG 3 input). The tool keeps only its option parsing
+// and stream opening. Nothing here touches process stdin/stdout or exits:
+// input is a '&mut dyn BufRead', output and verbose diagnostics are
+// caller-supplied writers, and every knob arrives via 'TokenizeSettings' and
+// 'TokenizeInputSettings'.
+// ---------------------------------------------------------------------------
+
+/// How the tokenize driver segments its text input — the tool-level
+/// input-mode switches of hfst-tokenize (its C++ file-scope statics),
+/// companion to the per-format 'TokenizeSettings'.
+#[derive(Clone, Copy)]
+pub struct TokenizeInputSettings {
+    /// Input is apertium-style superblanks (overrides blankline_separated).
+    pub superblanks: bool,
+    /// Input is separated by blank lines (as opposed to single newlines).
+    pub blankline_separated: bool,
+    /// Keep the final newline of each chunk.
+    pub keep_newlines: bool,
+    /// Emit per-chunk processing diagnostics (the tool's -v).
+    pub verbose: bool,
+}
+
+impl Default for TokenizeInputSettings {
+    fn default() -> TokenizeInputSettings {
+        TokenizeInputSettings {
+            superblanks: false,
+            blankline_separated: true,
+            keep_newlines: false,
+            verbose: false,
+        }
+    }
+}
+
+// [spec:hfst:def:hfst-tokenize.make-naive-tokenizer-fn]
+// [spec:hfst:sem:hfst-tokenize.make-naive-tokenizer-fn]
+pub fn make_naive_tokenizer(
+    dictionary: &mut HfstTransducer,
+    format: ImplementationType,
+) -> Result<PmatchContainer> {
+    let mut word_boundary =
+        pmatch_compiler::PmatchUtilityTransducers::make_latin1_whitespace_acceptor(format)?;
+    let punctuation =
+        pmatch_compiler::PmatchUtilityTransducers::make_latin1_punct_acceptor(format)?;
+    word_boundary.disjunct(&punctuation, true)?;
+    let mut others = pmatch_compiler::make_exc_list(&word_boundary, format)?;
+    others.repeat_plus()?;
+    // make the default token less likely than any dictionary token
+    others.set_final_weights(f32::MAX, false)?;
+    let mut word_boundary_list = pmatch_compiler::make_list(&word_boundary, format)?;
+    // @BOUNDARY@ is pmatch's special input boundary marker
+    let boundary = HfstTransducer::new_symbol("@BOUNDARY@", format)?;
+    word_boundary_list.disjunct(&boundary, true)?;
+    let mut left_context = HfstTransducer::new_symbol_pair(
+        crate::hfst_symbol_defs::internal_epsilon,
+        pmatch_compiler::LC_ENTRY_SYMBOL,
+        format,
+    )?;
+    let mut right_context = HfstTransducer::new_symbol_pair(
+        crate::hfst_symbol_defs::internal_epsilon,
+        pmatch_compiler::RC_ENTRY_SYMBOL,
+        format,
+    )?;
+    left_context.concatenate(&word_boundary_list, true)?;
+    right_context.concatenate(&word_boundary_list, true)?;
+    let left_context_exit = HfstTransducer::new_symbol_pair(
+        crate::hfst_symbol_defs::internal_epsilon,
+        pmatch_compiler::LC_EXIT_SYMBOL,
+        format,
+    )?;
+    let right_context_exit = HfstTransducer::new_symbol_pair(
+        crate::hfst_symbol_defs::internal_epsilon,
+        pmatch_compiler::RC_EXIT_SYMBOL,
+        format,
+    )?;
+    left_context.concatenate(&left_context_exit, true)?;
+    right_context.concatenate(&right_context_exit, true)?;
+    let mut dict_name = dictionary.get_name();
+    if dict_name.is_empty() {
+        dict_name = "unknown_pmatch_tokenized_dict".to_string();
+        dictionary.set_name(&dict_name);
+    }
+    let dict_ins_arc =
+        HfstTransducer::new_symbol(&pmatch_compiler::get_Ins_transition(&dict_name), format)?;
+    // We now make the center of the tokenizer
+    others.disjunct(&dict_ins_arc, true)?;
+    // And combine it with the context conditions
+    left_context.concatenate(&others, true)?;
+    left_context.concatenate(&right_context, true)?;
+    // Because there are context conditions we need delimiter markers
+    let mut tokenizer = pmatch_compiler::add_pmatch_delimiters(&left_context)?;
+    tokenizer.set_name("TOP");
+    tokenizer.minimize()?;
+    // Convert the dictionary to olw if it wasn't already
+    dictionary.convert(ImplementationType::HFST_OLW_TYPE, String::new())?;
+    // Get the alphabets
+    let dict_syms = dictionary.get_alphabet()?;
+    let tokenizer_syms = tokenizer.get_alphabet()?;
+    // What to add to the dictionary
+    let tokenizer_minus_dict: Vec<String> =
+        tokenizer_syms.difference(&dict_syms).cloned().collect();
+    for it in tokenizer_minus_dict.iter() {
+        dictionary.insert_to_alphabet(it.as_str())?;
+    }
+    let tokenizer_basic =
+        ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&tokenizer)?;
+    // The C++ 'hfst_basic_transducer_to_hfst_ol' takes the HfstTransducer
+    // dictionary directly as its harmonizer and converts it internally; the
+    // Rust port shifts that to the caller, so we first obtain the dictionary's
+    // optimized-lookup backend ('hfst_transducer_to_hfst_ol' converts the
+    // dictionary in place to HFST_OLW and returns its ol::Transducer) and pass
+    // that as the harmonizer. This is also the same backend used for add_rtn
+    // below.
+    let dict_backend = ConversionFunctions::hfst_transducer_to_hfst_ol(dictionary)?;
+    // The backend pointer aliases 'dictionary', which stays alive (and is not
+    // otherwise touched) for the rest of this function.
+    let tokenizer_ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
+        &tokenizer_basic,
+        true,                            // weighted
+        "",                              // no special options
+        Some(unsafe { &*dict_backend }), // harmonize with the dictionary
+    )?;
+    let mut retval = PmatchContainer::new_from_transducer(Box::new(tokenizer_ol))?;
+    retval.add_rtn(unsafe { &*dict_backend }, &dict_name)?;
+    Ok(retval)
+}
+
+// TODO: lambda this when C++11 available everywhere
+// [spec:hfst:def:hfst-tokenize.process-input-0delim-print-fn]
+// [spec:hfst:sem:hfst-tokenize.process-input-0delim-print-fn]
+fn process_input_0delim_print(
+    container: &mut PmatchContainer,
+    outstream: &mut dyn Write,
+    cur: &mut String,
+    s: &TokenizeSettings,
+) {
+    let input_text = cur.clone();
+    if !input_text.is_empty() {
+        match_and_print(container, outstream, &input_text, s);
+    }
+    cur.clear();
+}
+
+// Equivalent of the C++ 'feof(inputfile)': no bytes remain on the reader.
+fn is_eof(input: &mut dyn BufRead) -> bool {
+    match input.fill_buf() {
+        Ok(b) => b.is_empty(),
+        Err(_) => true,
+    }
+}
+
+// [spec:hfst:def:hfst-tokenize.trim-fn]
+// [spec:hfst:sem:hfst-tokenize.trim-fn]
+fn trim(s: &mut String) {
+    while !s.is_empty() {
+        let c = *s.as_bytes().last().expect("checked non-empty");
+        if (c as char).is_ascii_whitespace() || c == 0 {
+            s.pop();
+        } else {
+            break;
+        }
+    }
+    while !s.is_empty() {
+        let c = s.as_bytes()[0];
+        if (c as char).is_ascii_whitespace() || c == 0 {
+            s.remove(0);
+        } else {
+            break;
+        }
+    }
+}
+
+// [spec:hfst:def:hfst-tokenize.process-input-visl-fn]
+// [spec:hfst:sem:hfst-tokenize.process-input-visl-fn]
+pub fn process_input_visl(
+    container: &mut PmatchContainer,
+    input: &mut dyn BufRead,
+    outstream: &mut dyn Write,
+    s: &TokenizeSettings,
+) -> i32 {
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        buf.clear();
+        // C: hfst_getline keeps the trailing newline; Ok(0) at EOF == len<=0.
+        let n = input.read_until(b'\n', &mut buf).unwrap_or(0);
+        if !(n > 0) {
+            break;
+        }
+        let mut line = String::from_utf8_lossy(&buf).into_owned();
+        trim(&mut line);
+        if !line.is_empty() {
+            if line.as_bytes()[0] == b'<'
+                && *line.as_bytes().last().expect("checked non-empty") == b'>'
+            {
+                print_nonmatching_sequence(&line, outstream, s);
+            } else {
+                match_and_print(container, outstream, &line, s);
+            }
+        } else {
+            let _ = write!(outstream, "\n");
+        }
+        let _ = outstream.flush();
+
+        // C: *buffer = 0; len = 0; — the post-loop tail then handles an empty
+        // line, which trims to nothing and is a no-op. Mirrored by stopping at
+        // EOF here without a separate tail block.
+        if is_eof(input) {
+            break;
+        }
+    }
+    let _ = outstream.flush();
+
+    0
+}
+
+// 'template <bool do_superblank>'
+// [spec:hfst:def:hfst-tokenize.process-input-0delim-fn]
+// [spec:hfst:sem:hfst-tokenize.process-input-0delim-fn]
+pub fn process_input_0delim(
+    container: &mut PmatchContainer,
+    input: &mut dyn BufRead,
+    outstream: &mut dyn Write,
+    do_superblank: bool,
+    s: &TokenizeSettings,
+    verbose: bool,
+) -> i32 {
+    let mut buf: Vec<u8> = Vec::new();
+    let mut in_blank = false;
+    let mut cur = String::new();
+    loop {
+        buf.clear();
+        // C: hfst_getdelim keeps the trailing '\0'; Ok(0) at EOF == len<=0.
+        let len = input.read_until(b'\0', &mut buf).unwrap_or(0) as isize;
+        if !(len > 0) {
+            break;
+        }
+        let bytes: &[u8] = &buf;
+        let mut escaped = false; // beginning of line is necessarily unescaped
+        let mut i: isize = 0;
+        while i < len {
+            let ch = bytes[i as usize];
+            if escaped {
+                cur.push(ch as char);
+                escaped = false;
+                i += 1;
+                continue;
+            } else if do_superblank && !in_blank && ch == b'[' {
+                process_input_0delim_print(container, outstream, &mut cur, s);
+                cur.push(ch as char);
+                in_blank = true;
+            } else if do_superblank && in_blank && ch == b']' {
+                cur.push(ch as char);
+                if i + 1 < len && bytes[(i + 1) as usize] == b'[' {
+                    // Join consecutive superblanks
+                    i += 1;
+                    cur.push(bytes[i as usize] as char);
+                } else {
+                    in_blank = false;
+                    print_nonmatching_sequence(&cur, outstream, s);
+                    cur.clear();
+                }
+            } else if !in_blank && ch == b'\n' {
+                cur.push(ch as char);
+                if verbose {
+                    let _ = writeln!(outstream, "processing: {}\\n", cur);
+                }
+                process_input_0delim_print(container, outstream, &mut cur, s);
+            } else if ch == b'\0' {
+                if verbose {
+                    let _ = writeln!(outstream, "processing: {}\\0", cur);
+                }
+                process_input_0delim_print(container, outstream, &mut cur, s);
+                let _ = writeln!(outstream, "<STREAMCMD:FLUSH>"); // CG format uses this instead of \0
+                if outstream.flush().is_err() {
+                    eprintln!("hfst-tokenize: Could not flush file");
+                }
+            } else {
+                cur.push(ch as char);
+            }
+            escaped = ch == b'\\';
+            i += 1;
+        }
+        if is_eof(input) {
+            break;
+        }
+    }
+    if in_blank {
+        print_nonmatching_sequence(&cur, outstream, s);
+    } else {
+        process_input_0delim_print(container, outstream, &mut cur, s);
+    }
+    0
+}
+
+// [spec:hfst:def:hfst-tokenize.maybe-erase-newline-fn]
+// [spec:hfst:sem:hfst-tokenize.maybe-erase-newline-fn]
+fn maybe_erase_newline(input_text: &mut String, keep_newlines: bool) {
+    if !keep_newlines
+        && !input_text.is_empty()
+        && *input_text.as_bytes().last().expect("checked non-empty") == b'\n'
+    {
+        // Remove final newline
+        input_text.pop();
+    }
+}
+
+/// The tokenize tool's input driver: dispatch on the output format and the
+/// input-mode settings and drive the matching over the whole text input,
+/// writing verbose diagnostics to 'msg'.
+// [spec:hfst:def:hfst-tokenize.process-input-fn]
+// [spec:hfst:sem:hfst-tokenize.process-input-fn]
+pub fn process_input_stream(
+    container: &mut PmatchContainer,
+    input: &mut dyn BufRead,
+    outstream: &mut dyn Write,
+    msg: &mut dyn Write,
+    s: &TokenizeSettings,
+    is: &TokenizeInputSettings,
+) -> i32 {
+    // (The C++ sets std::fixed/setprecision(10) on the stream for cg/giellacg/
+    // visl; the library print functions format weights themselves, so there is
+    // no stream-wide formatting flag to mirror here.)
+    if s.output_format == OutputFormat::giellacg || is.superblanks {
+        if is.superblanks {
+            if is.verbose {
+                let _ = write!(msg, "Processign giellacg with superblanks\n");
+            }
+            return process_input_0delim(container, input, outstream, true, s, is.verbose);
+        } else {
+            if is.verbose {
+                let _ = write!(msg, "Processign giellacg without superblanks\n");
+            }
+            return process_input_0delim(container, input, outstream, false, s, is.verbose);
+        }
+    }
+    if s.output_format == OutputFormat::visl {
+        if is.verbose {
+            let _ = write!(msg, "Processign VISL CG 3\n");
+        }
+        return process_input_visl(container, input, outstream, s);
+    }
+    let mut input_text = String::new();
+    let mut line = String::new();
+    if is.blankline_separated {
+        if is.verbose {
+            let _ = write!(msg, "Processing blankline separated input\n");
+        }
+        loop {
+            line.clear();
+            // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
+            if input.read_line(&mut line).unwrap_or(0) == 0 {
+                break;
+            }
+            if line.as_bytes().first() == Some(&b'\n') {
+                maybe_erase_newline(&mut input_text, is.keep_newlines);
+                match_and_print(container, outstream, &input_text, s);
+                input_text.clear();
+            } else {
+                input_text.push_str(&line);
+            }
+        }
+        if !input_text.is_empty() {
+            maybe_erase_newline(&mut input_text, is.keep_newlines);
+            match_and_print(container, outstream, &input_text, s);
+        }
+    } else {
+        // newline or non-separated
+        if is.verbose {
+            let _ = write!(msg, "Processing non-separated input\n");
+        }
+        loop {
+            line.clear();
+            if input.read_line(&mut line).unwrap_or(0) == 0 {
+                break;
+            }
+            input_text = line.clone();
+            maybe_erase_newline(&mut input_text, is.keep_newlines);
+            match_and_print(container, outstream, &input_text, s);
+        }
+    }
+
+    0
 }

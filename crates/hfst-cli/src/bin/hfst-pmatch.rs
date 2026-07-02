@@ -9,7 +9,7 @@
 //! opens it as a plain binary stream, builds a hfst_ol::PmatchContainer from it,
 //! and then matches the lines of stdin against it, printing to stdout.
 
-use hfst::pmatch::PmatchContainer;
+use hfst::pmatch::{PmatchContainer, print_locate_matches};
 use hfst::transducer::{INFINITE_WEIGHT, IStream, Weight};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -116,24 +116,11 @@ unsafe fn match_and_print(
             }
         } else {
             let locations = container.locate(input_text, TIME_CUTOFF, WEIGHT_CUTOFF);
-            let mut printed_something = false;
-            for it in locations.iter() {
-                if it[0].output != "@_NONMATCHING_@" {
-                    printed_something = true;
-                    let _ = write!(
-                        outstream,
-                        "{}|{}|{}|{}",
-                        it[0].start, it[0].length, it[0].output, it[0].tag
-                    );
-                    // bug-for-bug: C tests 'if (print_weights)' on the raw enum,
-                    // so 'on' (discriminant 0) is false and only off/not_defined
-                    // are truthy.
-                    if (PRINT_WEIGHTS as i32) != 0 {
-                        let _ = write!(outstream, "|{}", it[0].weight);
-                    }
-                    let _ = write!(outstream, "\n");
-                }
-            }
+            // bug-for-bug: C tests 'if (print_weights)' on the raw enum, so
+            // 'on' (discriminant 0) is false and only off/not_defined are
+            // truthy.
+            let printed_something =
+                print_locate_matches(&locations, &mut *outstream, (PRINT_WEIGHTS as i32) != 0);
             if printed_something {
                 let _ = write!(outstream, "\n");
             }

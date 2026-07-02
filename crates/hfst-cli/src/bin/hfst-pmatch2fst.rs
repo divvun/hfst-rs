@@ -3,12 +3,10 @@
 //! (globals, getopt, commandline, program-options) plus the hfst pmatch
 //! compiler and the OL conversion functions.
 
-use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst::pmatch_compiler::PmatchCompiler;
-use hfst::pmatch_compiler::{CLOCKS_PER_SEC, clock, clock_t};
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, print_more_info,
@@ -31,8 +29,6 @@ static mut EPSILONNAME: Option<String> = None;
 static mut FLATTEN: bool = false;
 // C: static bool include_cosine_distances = false;
 static mut INCLUDE_COSINE_DISTANCES: bool = false;
-// C: static clock_t timer;
-static mut TIMER: clock_t = 0;
 
 // C: the compilation format, chosen at compile time from the available
 // back-ends. The Rust crate links the tropical OpenFST back-end.
@@ -206,189 +202,28 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
             };
         }
 
-        if globals::VERBOSE {
-            TIMER = clock();
-            eprint!("Building hfst-ol alphabet... ");
-        }
-
-        // A dummy transducer with an alphabet with all the symbols
-        let mut harmonizer = match HfstTransducer::new_type(COMPILATION_FORMAT) {
-            Ok(t) => t,
+        // Harmonization + archive writing live in the library
+        // ('hfst::pmatch_compiler::write_archive'); verbose progress goes to
+        // stderr as before.
+        match hfst::pmatch_compiler::write_archive(
+            &mut definitions,
+            COMPILATION_FORMAT,
+            outstream,
+            globals::VERBOSE,
+            &mut std::io::stderr(),
+        ) {
+            Ok(true) => {}
+            Ok(false) => {
+                eprintln!(
+                    "{}: Empty ruleset, nothing to write",
+                    globals::program_name()
+                );
+                return 1;
+            }
             Err(e) => {
                 eprintln!("{e}");
                 return 1;
             }
-        };
-        // First we need to collect a unified alphabet from all the transducers.
-        let mut symbols_seen: hfst::hfst_symbol_defs::StringSet = std::collections::BTreeSet::new();
-        // Iterate in key order to mirror std::map's ordered iteration.
-        let mut keys: Vec<&String> = definitions.keys().collect();
-        keys.sort();
-        for key in &keys {
-            let t = &definitions[*key];
-            let string_set = match t.get_alphabet() {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("{e}");
-                    return 1;
-                }
-            };
-            for sym in string_set.iter() {
-                if !symbols_seen.contains(sym) {
-                    if let Err(e) = harmonizer.insert_to_alphabet(sym) {
-                        eprintln!("{e}");
-                        return 1;
-                    }
-                    symbols_seen.insert(sym.clone());
-                }
-            }
-        }
-        if symbols_seen.is_empty() {
-            // We don't recognise anything, go home early
-            eprintln!(
-                "{}: Empty ruleset, nothing to write",
-                globals::program_name()
-            );
-            return 1;
-        }
-
-        // Then we convert it...
-        if let Err(e) = harmonizer.convert(ImplementationType::HFST_OLW_TYPE, String::new()) {
-            eprintln!("{e}");
-            return 1;
-        }
-        // Use these for naughty intermediate steps to make sure
-        // everything has the same alphabet
-        // C passes 'HfstTransducer* harmonizer' to the conversion functions,
-        // which read its hfst_ol backend; the Rust signature takes that backend
-        // directly, so unwrap it here (harmonizer is now HFST_OLW_TYPE).
-        let harmonizer_ol = match ConversionFunctions::hfst_transducer_to_hfst_ol(&mut harmonizer) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("{e}");
-                return 1;
-            }
-        };
-
-        if globals::VERBOSE {
-            let duration = (clock() - TIMER) as f64 / CLOCKS_PER_SEC as f64;
-            TIMER = clock();
-            eprintln!("built in {:.2} seconds", duration);
-            eprint!("Converting TOP... ");
-        }
-
-        // When done compiling everything, look for TOP and output it first.
-        if definitions.contains_key("TOP") {
-            let properties: std::collections::BTreeMap<String, String> =
-                definitions["TOP"].get_properties().clone();
-            let intermediate_tmp =
-                match ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(
-                    &definitions["TOP"],
-                ) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        eprintln!("{e}");
-                        return 1;
-                    }
-                };
-            let harmonized_tmp = match ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
-                &intermediate_tmp,
-                true,                  // weighted
-                "",                    // no special options
-                Some(&*harmonizer_ol), // harmonize with this
-            ) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("{e}");
-                    return 1;
-                }
-            };
-            let mut output_tmp =
-                match ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        eprintln!("{e}");
-                        return 1;
-                    }
-                };
-            output_tmp.set_name("TOP");
-            for (k, v) in properties.iter() {
-                output_tmp.set_property(k, v);
-            }
-            if let Err(e) = outstream.redirect(&mut output_tmp) {
-                eprintln!("{e}");
-                return 1;
-            }
-            definitions.remove("TOP");
-
-            if globals::VERBOSE {
-                let duration = (clock() - TIMER) as f64 / CLOCKS_PER_SEC as f64;
-                TIMER = clock();
-                eprintln!("converted in {:.2} seconds", duration);
-            }
-
-            let mut rest_keys: Vec<String> = definitions.keys().cloned().collect();
-            rest_keys.sort();
-            for key in &rest_keys {
-                let t = &definitions[key];
-                if globals::VERBOSE {
-                    eprintln!("Converting {}... ", key);
-                    TIMER = clock();
-                }
-                let intermediate_tmp =
-                    match ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t) {
-                        Ok(t) => t,
-                        Err(e) => {
-                            eprintln!("{e}");
-                            return 1;
-                        }
-                    };
-                let harmonized_tmp = if !key.contains("UNCOMPOSE") {
-                    ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
-                        &intermediate_tmp,
-                        true,                  // weighted
-                        "empty_alphabet",      // empty alphabet in RTNs, they'll use the main one
-                        Some(&*harmonizer_ol), // harmonize with this
-                    )
-                } else {
-                    ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
-                        &intermediate_tmp,
-                        true,                  // weighted
-                        "",                    // alphabet in UNCs,
-                        Some(&*harmonizer_ol), // harmonize with this
-                    )
-                };
-                let harmonized_tmp = match harmonized_tmp {
-                    Ok(t) => t,
-                    Err(e) => {
-                        eprintln!("{e}");
-                        return 1;
-                    }
-                };
-                let mut output_tmp =
-                    match ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp) {
-                        Ok(t) => t,
-                        Err(e) => {
-                            eprintln!("{e}");
-                            return 1;
-                        }
-                    };
-                output_tmp.set_name(key);
-                if let Err(e) = outstream.redirect(&mut output_tmp) {
-                    eprintln!("{e}");
-                    return 1;
-                }
-                if globals::VERBOSE {
-                    let duration = (clock() - TIMER) as f64 / CLOCKS_PER_SEC as f64;
-                    eprintln!("converted in {:.2} seconds", duration);
-                }
-            }
-        } else {
-            eprintln!(
-                "{}: Empty ruleset, nothing to write",
-                globals::program_name()
-            );
-            return 1;
         }
         outstream.close();
         0

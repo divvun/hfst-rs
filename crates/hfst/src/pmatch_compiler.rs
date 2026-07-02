@@ -6769,3 +6769,152 @@ impl PmatchCompiler {
         self.includedir = path;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Archive writing, lifted from tools/src/hfst-pmatch2fst.cc: turn a compiled
+// ruleset (the definitions map from 'PmatchCompiler::compile') into a
+// weighted optimized-lookup archive with every transducer harmonized against
+// one shared alphabet, TOP first. The tool keeps its option parsing, stream
+// opening and the includedir computation; verbose progress goes to a
+// caller-supplied writer.
+// ---------------------------------------------------------------------------
+
+/// Build the shared harmonizer for a compiled ruleset: a transducer holding
+/// the union of every definition's alphabet, converted to HFST_OLW so its
+/// optimized-lookup backend can harmonize each archive member. Returns None
+/// when the definitions carry no symbols at all (an empty ruleset).
+pub fn build_archive_harmonizer(
+    definitions: &HashMap<String, HfstTransducer>,
+    format: ImplementationType,
+) -> crate::error::Result<Option<HfstTransducer>> {
+    // A dummy transducer with an alphabet with all the symbols
+    let mut harmonizer = HfstTransducer::new_type(format)?;
+    // First we need to collect a unified alphabet from all the transducers.
+    let mut symbols_seen: StringSet = BTreeSet::new();
+    // Iterate in key order to mirror std::map's ordered iteration.
+    let mut keys: Vec<&String> = definitions.keys().collect();
+    keys.sort();
+    for key in &keys {
+        let t = &definitions[*key];
+        let string_set = t.get_alphabet()?;
+        for sym in string_set.iter() {
+            if !symbols_seen.contains(sym) {
+                harmonizer.insert_to_alphabet(sym)?;
+                symbols_seen.insert(sym.clone());
+            }
+        }
+    }
+    if symbols_seen.is_empty() {
+        // We don't recognise anything, go home early
+        return Ok(None);
+    }
+
+    // Then we convert it...
+    harmonizer.convert(ImplementationType::HFST_OLW_TYPE, String::new())?;
+    Ok(Some(harmonizer))
+}
+
+/// Write a compiled ruleset as a weighted optimized-lookup archive: TOP
+/// first, then the remaining definitions in name order, each harmonized
+/// against the shared alphabet from ['build_archive_harmonizer']. Returns
+/// false — writing nothing — when the ruleset is empty (no symbols or no TOP
+/// definition); the caller reports that in its own voice. Verbose progress
+/// (with timings) goes to 'msg'.
+pub fn write_archive(
+    definitions: &mut HashMap<String, HfstTransducer>,
+    format: ImplementationType,
+    outstream: &mut crate::hfst_output_stream::HfstOutputStream,
+    verbose: bool,
+    msg: &mut dyn std::io::Write,
+) -> crate::error::Result<bool> {
+    use crate::convert_transducer_format::ConversionFunctions;
+
+    let mut timer: clock_t = 0;
+    if verbose {
+        timer = clock();
+        let _ = write!(msg, "Building hfst-ol alphabet... ");
+    }
+
+    let mut harmonizer = match build_archive_harmonizer(definitions, format)? {
+        Some(h) => h,
+        None => return Ok(false),
+    };
+    // Use these for naughty intermediate steps to make sure
+    // everything has the same alphabet
+    // C passes 'HfstTransducer* harmonizer' to the conversion functions,
+    // which read its hfst_ol backend; the Rust signature takes that backend
+    // directly, so unwrap it here (harmonizer is now HFST_OLW_TYPE).
+    let harmonizer_ol = ConversionFunctions::hfst_transducer_to_hfst_ol(&mut harmonizer)?;
+    // The backend pointer aliases 'harmonizer', which stays alive (and is not
+    // otherwise touched) for the rest of this function.
+    let harmonizer_ol = unsafe { &*harmonizer_ol };
+
+    if verbose {
+        let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
+        timer = clock();
+        let _ = write!(msg, "built in {:.2} seconds\n", duration);
+        let _ = write!(msg, "Converting TOP... ");
+    }
+
+    // When done compiling everything, look for TOP and output it first.
+    if !definitions.contains_key("TOP") {
+        return Ok(false);
+    }
+    let properties: BTreeMap<String, String> = definitions["TOP"].get_properties().clone();
+    let intermediate_tmp =
+        ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&definitions["TOP"])?;
+    let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
+        &intermediate_tmp,
+        true,                // weighted
+        "",                  // no special options
+        Some(harmonizer_ol), // harmonize with this
+    )?;
+    let mut output_tmp = ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp)?;
+    output_tmp.set_name("TOP");
+    for (k, v) in properties.iter() {
+        output_tmp.set_property(k, v);
+    }
+    outstream.redirect(&mut output_tmp)?;
+    definitions.remove("TOP");
+
+    if verbose {
+        let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
+        timer = clock();
+        let _ = write!(msg, "converted in {:.2} seconds\n", duration);
+    }
+
+    let mut rest_keys: Vec<String> = definitions.keys().cloned().collect();
+    rest_keys.sort();
+    for key in &rest_keys {
+        let t = &definitions[key];
+        if verbose {
+            let _ = write!(msg, "Converting {}... \n", key);
+            timer = clock();
+        }
+        let intermediate_tmp = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)?;
+        let harmonized_tmp = if !key.contains("UNCOMPOSE") {
+            ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
+                &intermediate_tmp,
+                true,                // weighted
+                "empty_alphabet",    // empty alphabet in RTNs, they'll use the main one
+                Some(harmonizer_ol), // harmonize with this
+            )
+        } else {
+            ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
+                &intermediate_tmp,
+                true,                // weighted
+                "",                  // alphabet in UNCs,
+                Some(harmonizer_ol), // harmonize with this
+            )
+        };
+        let harmonized_tmp = harmonized_tmp?;
+        let mut output_tmp = ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp)?;
+        output_tmp.set_name(key);
+        outstream.redirect(&mut output_tmp)?;
+        if verbose {
+            let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
+            let _ = write!(msg, "converted in {:.2} seconds\n", duration);
+        }
+    }
+    Ok(true)
+}
