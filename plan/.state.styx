@@ -63,4 +63,7 @@ assertions (
     {id idiom5.lexer-cgtag-globals, kind @complete, author "brendan@necessary.nu", at 2026-06-30T18:52:35.95305Z}
     {id idiom6.rename, kind @complete, author "brendan@necessary.nu", at 2026-06-30T19:34:53.986091Z}
     {id idiom6.unify, kind @complete, author "brendan@necessary.nu", at 2026-06-30T19:50:32.954779Z}
+    {id idiom6.resultify.internal-catches, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:15.656515Z}
+    {id idiom6.resultify.facade, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:22.036572Z}
+    {id idiom6.resultify.compilers, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:28.769206Z}
 )
