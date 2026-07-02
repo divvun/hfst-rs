@@ -8,7 +8,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
+    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -152,17 +152,17 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             let inputname = hfst_get_name(&trans, &globals::input_filename());
             if transducer_n == 1 {
                 if PROJECT_INPUT {
-                    verbose_printf(&format!("Projecting first {}...\n", inputname));
+                    verbose_print(&format!("Projecting first {}...\n", inputname));
                 } else {
-                    verbose_printf(&format!("Projecting second {}...\n", inputname));
+                    verbose_print(&format!("Projecting second {}...\n", inputname));
                 }
             } else if PROJECT_INPUT {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Projecting first {}... {}\n",
                     inputname, transducer_n
                 ));
             } else {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Projecting second {}... {}\n",
                     inputname, transducer_n
                 ));
@@ -219,7 +219,7 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

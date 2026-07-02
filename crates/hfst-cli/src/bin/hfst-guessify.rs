@@ -11,7 +11,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_printf,
+    print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -174,7 +174,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, out: &mut HfstOutputStr
                 }
             };
 
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Compiling guesser from the transducer {}.\n",
                 analyzer.get_name()
             ));
@@ -187,9 +187,9 @@ unsafe fn process_stream(instream: &mut HfstInputStream, out: &mut HfstOutputStr
             };
 
             if COMPILE_GENERATOR {
-                verbose_printf("Compiling generator and storing guesser and generator.\n");
+                verbose_print("Compiling generator and storing guesser and generator.\n");
             } else {
-                verbose_printf("Storing guesser.\n");
+                verbose_print("Storing guesser.\n");
             }
 
             if let Err(e) = store_guesser(&mut guesser, out, COMPILE_GENERATOR) {
@@ -225,7 +225,7 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
 
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

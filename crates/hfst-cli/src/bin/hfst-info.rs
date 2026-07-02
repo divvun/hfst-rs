@@ -9,7 +9,7 @@
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, print_more_info,
-    print_report_bugs, print_version, verbose_printf,
+    print_report_bugs, print_version, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
@@ -43,7 +43,7 @@ static mut REQUIRED_FEATURES: Option<BTreeSet<String>> = None;
 // strtoul(s, &endptr, 10): parse a leading run of base-10 digits from 's',
 // returning the parsed value and the unparsed remainder (the C 'endptr'). Like
 // libc strtoul it accepts no digits (value 0, whole string remaining).
-fn strtoul10(s: &str) -> (u64, &str) {
+fn parse_u64_prefix(s: &str) -> (u64, &str) {
     let end = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
     let val = s[..end].parse::<u64>().unwrap_or(0);
     (val, &s[end..])
@@ -52,7 +52,7 @@ fn strtoul10(s: &str) -> (u64, &str) {
 // [spec:hfst:def:hfst-info.parse-version-string-fn]
 // [spec:hfst:sem:hfst-info.parse-version-string-fn]
 fn parse_version_string(s: &str) -> i64 {
-    let (major, endptr) = strtoul10(s);
+    let (major, endptr) = parse_u64_prefix(s);
     let major = major as i64;
     if endptr.is_empty() {
         return major * 10000 * 10000;
@@ -64,7 +64,7 @@ fn parse_version_string(s: &str) -> i64 {
         );
     }
     let s = &endptr[1..];
-    let (minor, endptr) = strtoul10(s);
+    let (minor, endptr) = parse_u64_prefix(s);
     let minor = minor as i64;
     if endptr.is_empty() {
         return (major * 10000 * 10000) + (minor * 10000);
@@ -76,7 +76,7 @@ fn parse_version_string(s: &str) -> i64 {
         );
     }
     let s = &endptr[1..];
-    let (patch, endptr) = strtoul10(s);
+    let (patch, endptr) = parse_u64_prefix(s);
     let patch = patch as i64;
     if endptr.is_empty() {
         return (major * 10000 * 10000) + (minor * 10000) + patch;
@@ -176,7 +176,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
             && (!globals::VERBOSE)
         {
             globals::VERBOSE = true;
-            verbose_printf("No tests selected; printing known data\n");
+            verbose_print("No tests selected; printing known data\n");
         }
         EXIT_CONTINUE
     }
@@ -197,7 +197,7 @@ unsafe fn real_main() -> i32 {
         hfst_set_program_name(&argv0, "0.1", "HfstInfo");
         parse_options(&mut args);
         if MIN_VERSION != -1 {
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Requiring current version {} to be greater than {}\n",
                 HFST_LONGVERSION, MIN_VERSION
             ));
@@ -206,7 +206,7 @@ unsafe fn real_main() -> i32 {
             }
         }
         if EXACT_VERSION != -1 {
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Requiring current version {} to be exactly {}\n",
                 HFST_LONGVERSION, EXACT_VERSION
             ));
@@ -215,7 +215,7 @@ unsafe fn real_main() -> i32 {
             }
         }
         if MAX_VERSION != -1 {
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Requiring current version {} to be greater than {}\n",
                 HFST_LONGVERSION, MAX_VERSION
             ));
@@ -226,7 +226,7 @@ unsafe fn real_main() -> i32 {
         if let Some(features) = REQUIRED_FEATURES.as_ref() {
             for f in features.iter() {
                 if (f == "sfst") || (f == "SFST") || (f == "HAVE_SFST") {
-                    verbose_printf("Requiring SFST support from library");
+                    verbose_print("Requiring SFST support from library");
                     if !HAVE_SFST {
                         if !HAVE_LEAN_SFST {
                             error(EXIT_FAILURE, 0, "Required SFST support not present");
@@ -239,22 +239,22 @@ unsafe fn real_main() -> i32 {
                         }
                     }
                 } else if (f == "foma") || (f == "FOMA") || (f == "HAVE_FOMA") {
-                    verbose_printf("Requiring foma support from library");
+                    verbose_print("Requiring foma support from library");
                     if HAVE_FOMA {
                         error(EXIT_FAILURE, 0, "Required foma support not present");
                     }
                 } else if (f == "xfsm") || (f == "XFSM") || (f == "HAVE_XFSM") {
-                    verbose_printf("Requiring xfsm support from library");
+                    verbose_print("Requiring xfsm support from library");
                     if HAVE_XFSM {
                         error(EXIT_FAILURE, 0, "Required xfsm support not present");
                     }
                 } else if (f == "openfst") || (f == "OPENFST") || (f == "HAVE_OPENFST") {
-                    verbose_printf("Requiring OpenFst support from library");
+                    verbose_print("Requiring OpenFst support from library");
                     if HAVE_OPENFST {
                         error(EXIT_FAILURE, 0, "Required OpenFst support not present");
                     }
                 } else if (f == "icu") || (f == "USE_ICU_UNICODE") {
-                    verbose_printf("Requiring Unicode parsed by ICU");
+                    verbose_print("Requiring Unicode parsed by ICU");
                 } else {
                     error(
                         EXIT_FAILURE,
@@ -267,7 +267,7 @@ unsafe fn real_main() -> i32 {
                 }
             }
         }
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "HFST info version: {}\nHFST packaging: {}\nHFST version: {}\nHFST long version: {}\n",
             globals::hfst_tool_version(),
             PACKAGE_STRING,
@@ -275,20 +275,20 @@ unsafe fn real_main() -> i32 {
             HFST_LONGVERSION
         ));
         if HAVE_OPENFST {
-            verbose_printf("OpenFst supported\n");
+            verbose_print("OpenFst supported\n");
         }
         if HAVE_SFST {
-            verbose_printf("SFST supported\n");
+            verbose_print("SFST supported\n");
         } else if HAVE_LEAN_SFST {
-            verbose_printf("SFST limitedly supported\n");
+            verbose_print("SFST limitedly supported\n");
         }
         if HAVE_FOMA {
-            verbose_printf("foma supported\n");
+            verbose_print("foma supported\n");
         }
         if HAVE_XFSM {
-            verbose_printf("xfsm supported\n");
+            verbose_print("xfsm supported\n");
         }
-        verbose_printf("Unicode support: ICU\n");
+        verbose_print("Unicode support: ICU\n");
 
         EXIT_SUCCESS
     }

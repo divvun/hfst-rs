@@ -17,7 +17,7 @@ use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, conversion_type, error, extend_options_getenv, hfst_set_program_name,
     hfst_strformat, is_input_stream_in_ol_format, print_more_info, print_report_bugs,
-    verbose_printf, warning,
+    verbose_print, warning,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -337,9 +337,9 @@ unsafe fn compose_streams(
             }
             let rulename = rule.get_name();
             if rulename.len() > 0 {
-                verbose_printf(&format!("Reading and minimizing rule {}...\n", rulename));
+                verbose_print(&format!("Reading and minimizing rule {}...\n", rulename));
             } else {
-                verbose_printf(&format!("Reading and minimizing rule {}...\n", rule_n));
+                verbose_print(&format!("Reading and minimizing rule {}...\n", rule_n));
             }
             if let Err(e) = rule.minimize_with_config(&EngineConfig {
                 encode_weights: ENCODE_WEIGHTS,
@@ -354,7 +354,7 @@ unsafe fn compose_streams(
         }
 
         while firststream.is_good() {
-            verbose_printf("Reading lexicon...");
+            verbose_print("Reading lexicon...");
             let mut lexicon = match HfstTransducer::new_from_stream(firststream) {
                 Ok(t) => t,
                 Err(e) => {
@@ -367,9 +367,9 @@ unsafe fn compose_streams(
                 return 1;
             }
             let lexiconname = hfst_get_name(&lexicon, &globals::first_filename());
-            verbose_printf(&format!(" {} read\n", lexiconname));
+            verbose_print(&format!(" {} read\n", lexiconname));
 
-            verbose_printf("Computing intersecting composition...\n");
+            verbose_print("Computing intersecting composition...\n");
 
             if rules.len() > 0 {
                 let symbol = match check_all_symbols(&lexicon, &rules[0]) {
@@ -485,7 +485,7 @@ unsafe fn compose_streams(
             let src = lexicon.clone();
             hfst_set_formula_unary(&mut lexicon, &src, " \u{2218} \u{22c2}R");
 
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Storing result in {}...\n",
                 globals::output_filename()
             ));
@@ -520,7 +520,7 @@ unsafe fn real_main() -> i32 {
             return retval;
         }
         // close buffers, we use streams
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {} and {}, writing to {}\n",
             globals::first_filename(),
             globals::second_filename(),

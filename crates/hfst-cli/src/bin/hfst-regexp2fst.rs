@@ -10,7 +10,7 @@ use hfst::xre::XreCompiler;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_error_at_line, hfst_parse_format_name,
-    hfst_set_program_name, print_more_info, print_report_bugs, verbose_printf,
+    hfst_set_program_name, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -222,7 +222,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
         check_common_params();
         check_unary_params(args);
         if OUTPUT_FORMAT == ImplementationType::UNSPECIFIED_TYPE {
-            verbose_printf("Output format not specified, defaulting to openfst tropical\n");
+            verbose_print("Output format not specified, defaulting to openfst tropical\n");
             OUTPUT_FORMAT = ImplementationType::TROPICAL_OPENFST_TYPE;
         }
         EXIT_CONTINUE
@@ -264,7 +264,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
 
             loop {
                 transducer_n += 1;
-                verbose_printf(&format!("Compiling expression #{}\n", transducer_n as i32));
+                verbose_print(&format!("Compiling expression #{}\n", transducer_n as i32));
                 let remaining = &content[offset..];
                 let compiled = comp.compile_first(remaining, &mut chars_read);
                 // (the C wraps compile_first in try/catch on HfstException; the
@@ -344,11 +344,11 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 let exp = line.trim_start_matches(['\n', '\r', ' ']).to_string();
                 line_count += 1;
                 if exp.is_empty() {
-                    verbose_printf(&format!("Skipping whitespace expression #{}", line_count));
+                    verbose_print(&format!("Skipping whitespace expression #{}", line_count));
                     continue;
                 }
                 transducer_n += 1;
-                verbose_printf(&format!("Compiling expression {}\n", line_count));
+                verbose_print(&format!("Compiling expression {}\n", line_count));
                 let compiled = comp.compile(&exp);
                 // (the C wraps compile in try/catch on HfstException calling
                 // hfst_error_at_line; the Rust path panics rather than throwing,
@@ -420,7 +420,7 @@ unsafe fn real_main() -> i32 {
 
         // close buffers, we use streams
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

@@ -1281,10 +1281,10 @@ pub fn process_input(
 ) {
     container.set_single_codepoint_tokenization(!s.tokenize_multichar);
     // C++ reads fixed-size lines (bufsize 4096) via std::istream::getline as the
-    // loop condition; the IStream wrapper getline reads up to the delimiter and
+    // loop condition; the IStream wrapper read_until reads up to the delimiter and
     // sets the fail flag on an immediate EOF with no bytes read.
     loop {
-        let line = instream.getline(b'\n');
+        let line = instream.read_until(b'\n');
         if !instream.good() {
             break;
         }

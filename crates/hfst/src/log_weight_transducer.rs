@@ -137,8 +137,8 @@ mod construction_io {
     /// A weight written with 6 decimals matches the C++ '%f' formatting;
     /// 'operator<<' (ostream) uses the default float formatting, which we
     /// approximate with 'Display'.
-    fn fmt_w(w: f32, c_style: bool) -> String {
-        if c_style {
+    fn fmt_w(w: f32, fixed_decimals: bool) -> String {
+        if fixed_decimals {
             format!("{:.6}", w)
         } else {
             format!("{}", w)
@@ -163,7 +163,7 @@ mod construction_io {
         os: &mut dyn Write,
         s: StateId,
         number: bool,
-        c_style: bool,
+        fixed_decimals: bool,
         initial_state: StateId,
         zero_print: StateId,
     ) {
@@ -179,7 +179,7 @@ mod construction_io {
                     target,
                     arc.ilabel,
                     arc.olabel,
-                    fmt_w(w, c_style)
+                    fmt_w(w, fixed_decimals)
                 );
             } else {
                 let st = t.input_symbols().unwrap();
@@ -192,17 +192,22 @@ mod construction_io {
                     target,
                     isym,
                     osym,
-                    fmt_w(w, c_style)
+                    fmt_w(w, fixed_decimals)
                 );
             }
         }
         if t.is_final(s).unwrap() {
             let fw = *t.final_weight(s).unwrap().unwrap().value();
-            let _ = write!(os, "{}\t{}\n", origin, fmt_w(fw, c_style));
+            let _ = write!(os, "{}\t{}\n", origin, fmt_w(fw, fixed_decimals));
         }
     }
 
-    fn write_in_att_format_core(t: &LogVectorFst, os: &mut dyn Write, number: bool, c_style: bool) {
+    fn write_in_att_format_core(
+        t: &LogVectorFst,
+        os: &mut dyn Write,
+        number: bool,
+        fixed_decimals: bool,
+    ) {
         if !number {
             assert!(t.input_symbols().is_some());
         }
@@ -215,26 +220,26 @@ mod construction_io {
         // pass 1: the initial state only
         for s in t.states_iter() {
             if s == initial_state {
-                write_att_state(t, os, s, number, c_style, initial_state, zero_print);
+                write_att_state(t, os, s, number, fixed_decimals, initial_state, zero_print);
                 break;
             }
         }
         // pass 2: the rest
         for s in t.states_iter() {
             if s != initial_state {
-                write_att_state(t, os, s, number, c_style, initial_state, zero_print);
+                write_att_state(t, os, s, number, fixed_decimals, initial_state, zero_print);
             }
         }
     }
 
     /// C 'atof': parse a leading float, 0.0 on failure (Rust 'parse' is stricter —
     /// trailing garbage is not tolerated, a faithfulness gap).
-    fn att_atof(s: &str) -> f32 {
+    fn parse_att_weight(s: &str) -> f32 {
         s.trim().parse::<f32>().unwrap_or(0.0)
     }
 
     /// C 'atoi': parse a leading int, 0 on failure.
-    fn att_atoi(s: &str) -> i32 {
+    fn parse_att_int(s: &str) -> i32 {
         s.trim().parse::<i32>().unwrap_or(0)
     }
 
@@ -925,21 +930,21 @@ mod construction_io {
                 // set value of weight
                 let mut weight: f32 = 0.0;
                 if n == 2 {
-                    weight = att_atof(toks[1]);
+                    weight = parse_att_weight(toks[1]);
                 }
                 if n == 5 {
-                    weight = att_atof(toks[4]);
+                    weight = parse_att_weight(toks[4]);
                 }
 
                 if n == 1 || n == 2 {
                     // final state line
-                    let final_number = att_atoi(toks[0]);
+                    let final_number = parse_att_int(toks[0]);
                     let final_state = Self::add_and_map_state(&mut t, final_number, &mut state_map);
                     t.set_final(final_state, weight).unwrap();
                 } else if n == 4 || n == 5 {
                     // transition line
-                    let origin_number = att_atoi(toks[0]);
-                    let target_number = att_atoi(toks[1]);
+                    let origin_number = parse_att_int(toks[0]);
+                    let target_number = parse_att_int(toks[1]);
                     let origin_state =
                         Self::add_and_map_state(&mut t, origin_number, &mut state_map);
                     let target_state =

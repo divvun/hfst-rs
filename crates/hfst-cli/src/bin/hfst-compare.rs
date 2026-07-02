@@ -8,7 +8,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, hfst_strformat,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
+    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -169,9 +169,9 @@ unsafe fn compare_streams(
                 secondname = globals::second_filename();
             }
             if transducer_n_first == 1 {
-                verbose_printf(&format!("Comparing {} and {}...\n", firstname, secondname));
+                verbose_print(&format!("Comparing {} and {}...\n", firstname, secondname));
             } else {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Comparing {} and {}... {}\n",
                     firstname, secondname, transducer_n_first
                 ));
@@ -182,7 +182,7 @@ unsafe fn compare_streams(
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
                 || -> hfst::error::Result<bool> {
                     if ELIMINATE_FLAGS {
-                        verbose_printf("Eliminating flags...\n");
+                        verbose_print("Eliminating flags...\n");
                         first.eliminate_flags()?;
                         second_ref.eliminate_flags()?;
                     }
@@ -275,10 +275,10 @@ unsafe fn compare_streams(
         secondstream.close();
         let _ = out.flush();
         if mismatches == 0 {
-            verbose_printf(&format!("All {} transducers matched\n", transducer_n_first));
+            verbose_print(&format!("All {} transducers matched\n", transducer_n_first));
             0
         } else {
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "{}/{} were not equal\n",
                 mismatches, transducer_n_first
             ));
@@ -307,7 +307,7 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let first_is_stdin = globals::first_filename() == "<stdin>";
         let second_is_stdin = globals::second_filename() == "<stdin>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {} and {}, writing log to {}\n",
             globals::first_filename(),
             globals::second_filename(),

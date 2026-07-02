@@ -12,7 +12,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_set_program_name,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
+    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -254,13 +254,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             let mut pairs: Vec<(String, String)> = Vec::new();
             if let Some(from) = only_from_label() {
                 let to = only_to_label().unwrap_or_default();
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "using single commandline extension {} with {}\n",
                     from, to
                 ));
                 pairs.push((from, to));
             } else if let Some(tsv_name) = tsv_file_name() {
-                verbose_printf(&format!("reading extensions from {}...\n", tsv_name));
+                verbose_print(&format!("reading extensions from {}...\n", tsv_name));
                 let file = match std::fs::File::open(&tsv_name) {
                     Ok(f) => f,
                     Err(e) => {
@@ -276,7 +276,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                     }
                 }
             } else if ACX_FILE_OPENED {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Reading ACX from {}...\n",
                     acx_file_name().unwrap_or_default()
                 ));
@@ -325,7 +325,7 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

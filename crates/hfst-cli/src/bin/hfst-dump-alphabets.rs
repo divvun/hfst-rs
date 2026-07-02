@@ -9,7 +9,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_printf,
+    print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -136,15 +136,15 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                     if optarg == "tsv" {
                         OUTPUT_FORMAT = AlphaDumpFormat::Tsv;
                         ONLY_MULTICHARS = false;
-                        verbose_printf("printing one symbol per line\n");
+                        verbose_print("printing one symbol per line\n");
                     } else if optarg == "vislcg3-list" {
                         OUTPUT_FORMAT = AlphaDumpFormat::Vislcg3List;
                         ONLY_MULTICHARS = true;
-                        verbose_printf("printing LIST x = x ; for VISL CG 3...\n");
+                        verbose_print("printing LIST x = x ; for VISL CG 3...\n");
                     } else if optarg == "vislcg3-tags" {
                         OUTPUT_FORMAT = AlphaDumpFormat::Vislcg3Tags;
                         ONLY_MULTICHARS = true;
-                        verbose_printf("printing STRICT-TAGS += for VISL CG 3...\n");
+                        verbose_print("printing STRICT-TAGS += for VISL CG 3...\n");
                     } else {
                         eprintln!("Error: unrecognised format {}", optarg);
                         std::process::exit(1);
@@ -192,9 +192,9 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
         while instream.is_good() {
             transducer_n += 1;
             if transducer_n < 2 {
-                verbose_printf("Alphadumping...\n");
+                verbose_print("Alphadumping...\n");
             } else {
-                verbose_printf(&format!("Alphadumping... {}\n", transducer_n));
+                verbose_print(&format!("Alphadumping... {}\n", transducer_n));
             }
             let trans = match HfstTransducer::new_from_stream(instream) {
                 Ok(t) => t,
@@ -286,7 +286,7 @@ unsafe fn real_main() -> i32 {
         }
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

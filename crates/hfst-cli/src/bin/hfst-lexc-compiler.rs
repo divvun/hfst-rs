@@ -11,7 +11,7 @@ use hfst::lexc::LexcCompiler;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_parse_format_name, hfst_set_program_name,
-    hfst_warning, print_more_info, print_report_bugs, verbose_printf,
+    hfst_warning, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
@@ -333,7 +333,7 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
     unsafe {
         let lexcfilenames = &*std::ptr::addr_of!(LEXCFILENAMES);
         for i in 0..(LEXCCOUNT as usize) {
-            verbose_printf(&format!("Parsing lexc file {}\n", lexcfilenames[i]));
+            verbose_print(&format!("Parsing lexc file {}\n", lexcfilenames[i]));
             if lexcfilenames[i] == "<stdin>" {
                 // The new Rust LexcCompiler::parse takes the source text, so we
                 // read the whole of standard input into a string (mirroring the
@@ -355,7 +355,7 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
                 }
             }
         }
-        verbose_printf("Compiling... ");
+        verbose_print("Compiling... ");
         let compiled = match lexc.compile_lexical() {
             Ok(c) => c,
             Err(e) => {
@@ -387,12 +387,12 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
         };
         hfst_set_name(&mut res, &lexcfilenames[0], "lexc");
         hfst_set_formula(&mut res, &lexcfilenames[0], "L");
-        verbose_printf("\nWriting... ");
+        verbose_print("\nWriting... ");
         if let Err(e) = outstream.redirect(&mut res) {
             error(1, 0, &format!("{e}"));
             return 1;
         }
-        verbose_printf("done\n");
+        verbose_print("done\n");
         // C++ 'delete res' — owned value drops at end of scope.
         outstream.close();
 
@@ -419,12 +419,12 @@ unsafe fn real_main() -> i32 {
             return retval;
         }
         // close buffers, we use streams
-        verbose_printf("Reading from ");
+        verbose_print("Reading from ");
         let lexcfilenames = &*std::ptr::addr_of!(LEXCFILENAMES);
         for i in 0..(LEXCCOUNT as usize) {
-            verbose_printf(&format!("{}, ", lexcfilenames[i]));
+            verbose_print(&format!("{}, ", lexcfilenames[i]));
         }
-        verbose_printf(&format!("writing to {}\n", globals::output_filename()));
+        verbose_print(&format!("writing to {}\n", globals::output_filename()));
         // here starts the buffer handling part
         let output_opened = globals::output_filename() != "<stdout>";
         let outstream_res = if output_opened {

@@ -2,7 +2,7 @@
 //! 'hfst_ol') — the two-transducer spellchecker ('Speller') plus the
 //! 'TreeNode'/'InputString'/'AlphabetTranslationException'/priority-queue types
 //! it uses (declared in 'transducer.h', defined here; co-located in this module
-//! since they form one coherent ospell unit). 'nByte_utf8''s body lives in
+//! since they form one coherent ospell unit). 'utf8_sequence_length''s body lives in
 //! 'transducer.rs' (it is declared in 'transducer.h').
 //!
 //! The 'mutator'/'lexicon' 'Transducer*' raw pointers are non-owning in the
@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, VecDeque};
 use crate::hfst_flag_diacritics::FdState;
 use crate::transducer::{
     Encoder, NO_SYMBOL_NUMBER, STransition, StringWeightPair, SymbolNumber, SymbolNumberVector,
-    SymbolTable, Transducer, TransitionTableIndex, Weight, nByte_utf8,
+    SymbolTable, Transducer, TransitionTableIndex, Weight, utf8_sequence_length,
 };
 
 // [spec:hfst:def:transducer.hfst-ol.string-weight-comparison]
@@ -281,14 +281,13 @@ impl InputString {
             match encoder.find_key(&buf, &mut p) {
                 None => {
                     // no tokenization from alphabet
-                    let n = nByte_utf8(buf[oldp]);
-                    if n == 0 {
+                    let Some(n) = utf8_sequence_length(buf[oldp]) else {
                         return false; // can't parse utf-8 character, admit failure
-                    }
+                    };
                     if other == NO_SYMBOL_NUMBER {
                         return false; // if we don't have an "other" symbol
                     }
-                    p = oldp + n as usize;
+                    p = oldp + n;
                     self.s.push(other);
                 }
                 Some(k) => {

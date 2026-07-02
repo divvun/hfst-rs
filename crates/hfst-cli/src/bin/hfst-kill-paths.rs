@@ -11,7 +11,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
+    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -154,9 +154,9 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             };
             let inputname = hfst_get_name(&trans, &globals::input_filename());
             if transducer_n == 1 {
-                verbose_printf(&format!("Path killing {}...\n", inputname));
+                verbose_print(&format!("Path killing {}...\n", inputname));
             } else {
-                verbose_printf(&format!("Path killing {}...{}\n", inputname, transducer_n));
+                verbose_print(&format!("Path killing {}...{}\n", inputname, transducer_n));
             }
             if TSV_FILE.is_none() {
                 do_killing(&mut trans);
@@ -172,7 +172,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 let _ = tsv_file.seek(SeekFrom::Start(0));
                 SYMBOL = None;
                 let mut _linen: usize = 0;
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Reading reweights from {}\n",
                     TSV_FILE_NAME.clone().unwrap_or_default()
                 ));
@@ -199,7 +199,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                     }
                     let sym = String::from_utf8_lossy(&bytes[..endptr]).into_owned();
                     SYMBOL = Some(sym.clone());
-                    verbose_printf(&format!("Killing patsh with symbol {}\n", sym));
+                    verbose_print(&format!("Killing patsh with symbol {}\n", sym));
                     do_killing(&mut trans);
                 } // getline
                 let src = trans.clone();
@@ -244,14 +244,14 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()
         ));
-        verbose_printf("Killing paths\n");
+        verbose_print("Killing paths\n");
         if let Some(sym) = &SYMBOL {
-            verbose_printf(&format!("only if arc has symbol {}\n", sym));
+            verbose_print(&format!("only if arc has symbol {}\n", sym));
         }
 
         // here starts the buffer handling part

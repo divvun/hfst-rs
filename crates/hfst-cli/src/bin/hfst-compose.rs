@@ -11,7 +11,7 @@ use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, conversion_type, convert_transducers, error, extend_options_getenv,
     hfst_set_program_name, hfst_strformat, is_input_stream_in_ol_format, print_more_info,
-    print_report_bugs, verbose_printf, warning,
+    print_report_bugs, verbose_print, warning,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -267,9 +267,9 @@ unsafe fn compose_streams(
             }
             let secondname = hfst_get_name(second.as_ref().unwrap(), &globals::second_filename());
             if transducer_n_first == 1 {
-                verbose_printf(&format!("Composing {} and {}...\n", firstname, secondname));
+                verbose_print(&format!("Composing {} and {}...\n", firstname, secondname));
             } else {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Composing {} and {}... {}\n",
                     firstname, secondname, transducer_n_first
                 ));
@@ -483,7 +483,7 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let first_opened = globals::first_filename() != "<stdin>";
         let second_opened = globals::second_filename() != "<stdin>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {} and {}, writing to {}\n",
             globals::first_filename(),
             globals::second_filename(),

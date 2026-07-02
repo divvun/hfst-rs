@@ -30,7 +30,7 @@ use crate::string_utils::replace_all;
 
 // C 'atoi': parse the leading integer, 0 on failure. State numbers here are
 // non-negative, so only leading whitespace and ASCII digits are consumed.
-fn atoi(s: &str) -> u32 {
+fn parse_state_number(s: &str) -> u32 {
     let s = s.trim_start();
     let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
     digits.parse::<u32>().unwrap_or(0)
@@ -38,7 +38,7 @@ fn atoi(s: &str) -> u32 {
 
 // C 'atof': parse the leading float, 0.0 on failure. The inputs here are clean
 // whitespace-delimited tokens, so a plain parse suffices.
-fn atof(s: &str) -> f64 {
+fn parse_weight(s: &str) -> f64 {
     s.trim_start().parse::<f64>().unwrap_or(0.0)
 }
 
@@ -1940,8 +1940,8 @@ impl HfstBasicTransducer {
             return None;
         }
 
-        let source: u32 = atoi(&sourcestr);
-        let target: u32 = atoi(&targetstr);
+        let source: u32 = parse_state_number(&sourcestr);
+        let target: u32 = parse_state_number(&targetstr);
 
         // handle the weight that might be included in symbol string
         let (symbol, weight) = Self::extract_weight(symbol)?;
@@ -2012,7 +2012,7 @@ impl HfstBasicTransducer {
             return None;
         }
 
-        Some((atoi(&finalstr), weight))
+        Some((parse_state_number(&finalstr), weight))
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.parse-prolog-symbol-line-fn]
@@ -2285,11 +2285,11 @@ impl HfstBasicTransducer {
         let mut weight: f32 = 0.0;
         if n == 2 {
             // a final state line with weight
-            weight = atof(a(1)) as f32;
+            weight = parse_weight(a(1)) as f32;
         }
         if n == 5 {
             // a transition line with weight
-            weight = atof(a(4)) as f32;
+            weight = parse_weight(a(4)) as f32;
         }
         if (weight < 0.0) && warn_negs {
             tracing::warn!("Negative weight {:.6} found :-(", weight);
@@ -2297,7 +2297,7 @@ impl HfstBasicTransducer {
 
         if n == 1 || n == 2 {
             // a final state line
-            self.set_final_weight(atoi(a(0)), &weight);
+            self.set_final_weight(parse_state_number(a(0)), &weight);
         } else if n == 4 || n == 5 {
             // a transition line
             let mut input_symbol = a(2).to_string();
@@ -2322,13 +2322,13 @@ impl HfstBasicTransducer {
             }
 
             let tr = HfstBasicTransition::new_symbols(
-                atoi(a(1)),
+                parse_state_number(a(1)),
                 input_symbol,
                 output_symbol,
                 weight,
                 self.coder_mut(),
             );
-            self.add_transition(atoi(a(0)), &tr, true);
+            self.add_transition(parse_state_number(a(0)), &tr, true);
         } else {
             // line could not be parsed
             let message = line.to_string();

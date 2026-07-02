@@ -15,7 +15,7 @@ use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_error, hfst_error_at_line,
     hfst_set_program_name, hfst_strtoweight, hfst_warning, is_input_stream_in_ol_format,
-    print_more_info, print_report_bugs, verbose_printf,
+    print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -349,9 +349,9 @@ weights will be discarded",
             }
             let inputname = hfst_get_name(&trans, &globals::input_filename());
             if transducer_n == 1 {
-                verbose_printf(&format!("Reweighting {}...\n", inputname));
+                verbose_print(&format!("Reweighting {}...\n", inputname));
             } else {
-                verbose_printf(&format!("Reweighting {}...{}\n", inputname, transducer_n));
+                verbose_print(&format!("Reweighting {}...{}\n", inputname, transducer_n));
             }
             if TSV_FILE.is_none() {
                 if let Err(e) = do_reweight(&mut trans) {
@@ -369,7 +369,7 @@ weights will be discarded",
                 ADDITION = 0.0;
                 MULTIPLIER = 1.0;
                 let mut linen: usize = 0;
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Reading reweights from {}\n",
                     TSV_FILE_NAME.clone().unwrap_or_default()
                 ));
@@ -418,7 +418,7 @@ weights will be discarded",
                     } else {
                         MULTIPLIER = hfst_strtoweight(&weightspec);
                     }
-                    verbose_printf(&format!(
+                    verbose_print(&format!(
                         "Modifying weights {} < w < {} as {} * {}(w) + {} for symbol {}\n",
                         LOWER_BOUND,
                         UPPER_BOUND,
@@ -474,12 +474,12 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()
         ));
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Modifying weights {} < w < {} as {} * {}(w) + {}\n",
             LOWER_BOUND,
             UPPER_BOUND,
@@ -488,19 +488,19 @@ unsafe fn real_main() -> i32 {
             ADDITION
         ));
         if let Some(symbol) = SYMBOL.clone() {
-            verbose_printf(&format!("only if arc has symbol {}\n", symbol));
+            verbose_print(&format!("only if arc has symbol {}\n", symbol));
         }
         if let Some(isym) = INPUT_SYMBOL.clone() {
-            verbose_printf(&format!("only if input symbol is {}\n", isym));
+            verbose_print(&format!("only if input symbol is {}\n", isym));
         }
         if let Some(osym) = OUTPUT_SYMBOL.clone() {
-            verbose_printf(&format!("only if output symbol is {}\n", osym));
+            verbose_print(&format!("only if output symbol is {}\n", osym));
         }
         if ENDS_ONLY {
-            verbose_printf("only on final weights, no arcs\n");
+            verbose_print("only on final weights, no arcs\n");
         }
         if ARCS_ONLY {
-            verbose_printf("only on arc weights, no end states\n");
+            verbose_print("only on arc weights, no end states\n");
         }
 
         // here starts the buffer handling part

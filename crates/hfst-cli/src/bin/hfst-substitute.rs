@@ -14,7 +14,7 @@ use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, conversion_type, error, extend_options_getenv, hfst_error, hfst_error_at_line,
     hfst_set_program_name, hfst_strformat, hfst_warning, is_input_stream_in_ol_format,
-    print_more_info, print_report_bugs, verbose_printf,
+    print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -275,7 +275,7 @@ unsafe fn do_substitute(
         let to_label = (*(&raw const TO_LABEL)).clone();
         let has_to_transducer = (*(&raw const TO_TRANSDUCER)).is_some();
         if let (Some(fp), Some(tp)) = (&from_pair, &to_pair) {
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Substituting pair {}:{} with pair {}:{}...\n",
                 fp.0, fp.1, tp.0, tp.1
             ));
@@ -283,12 +283,12 @@ unsafe fn do_substitute(
         } else if let (Some(fl), Some(tl)) = (&from_label, &to_label) {
             if COMPOSE {
                 if transducer_n < 2 {
-                    verbose_printf(&format!(
+                    verbose_print(&format!(
                         "Delaying substitution of label {} with label {}...\n",
                         fl, tl
                     ));
                 } else {
-                    verbose_printf(&format!(
+                    verbose_print(&format!(
                         "Delaying substitution of label {} with label {}... {}\n",
                         fl, tl, transducer_n
                     ));
@@ -301,9 +301,9 @@ unsafe fn do_substitute(
                 DELAYED = true;
             } else {
                 if transducer_n < 2 {
-                    verbose_printf(&format!("Substituting label {} with label {}...\n", fl, tl));
+                    verbose_print(&format!("Substituting label {} with label {}...\n", fl, tl));
                 } else {
-                    verbose_printf(&format!(
+                    verbose_print(&format!(
                         "Substituting label {} with label {}... {}\n",
                         fl, tl, transducer_n
                     ));
@@ -313,12 +313,12 @@ unsafe fn do_substitute(
         } else if let (Some(fp), true) = (&from_pair, has_to_transducer) {
             let to_name = to_transducer_name();
             if transducer_n < 2 {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Substituting pair {}:{} with transducer {}...\n",
                     fp.0, fp.1, to_name
                 ));
             } else {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Substituting pair {}:{} with transducer {}... {}\n",
                     fp.0, fp.1, to_name, transducer_n
                 ));
@@ -330,12 +330,12 @@ unsafe fn do_substitute(
         } else if let (Some(fl), true) = (&from_label, has_to_transducer) {
             let to_name = to_transducer_name();
             if transducer_n < 2 {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Substituting id. label {} with transducer {}...\n",
                     fl, to_name
                 ));
             } else {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Substituting id. label {} with transducer {}... {}\n",
                     fl, to_name, transducer_n
                 ));
@@ -354,7 +354,7 @@ unsafe fn do_substitute(
 // [spec:hfst:sem:hfst-substitute.perform-delayed-fn]
 unsafe fn perform_delayed(trans: &mut HfstTransducer) -> hfst::error::Result<()> {
     unsafe {
-        verbose_printf("Finalising substitution transducer...\n");
+        verbose_print("Finalising substitution transducer...\n");
         trans.substitute_by_composition(
             (*(&raw const SUBSTITUTION_TRANS))
                 .as_ref()
@@ -483,9 +483,9 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                 }
             };
             if transducer_n == 1 {
-                verbose_printf(&format!("performing substitutions in {}...\n", inputname));
+                verbose_print(&format!("performing substitutions in {}...\n", inputname));
             } else {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "performing substitutions in {}... {}\n",
                     inputname, transducer_n
                 ));
@@ -501,7 +501,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             if (*(&raw const FROM_FILE)).is_some() {
                 let from_file_name = (*(&raw const FROM_FILE_NAME)).clone().unwrap();
                 let mut line_n: u32 = 0;
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "reading substitutions from {}...\n",
                     from_file_name
                 ));
@@ -704,7 +704,7 @@ unsafe fn real_main() -> i32 {
         }
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

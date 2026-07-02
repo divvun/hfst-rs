@@ -12,7 +12,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_parse_format_name, hfst_set_program_name,
-    hfst_strformat, print_more_info, print_report_bugs, verbose_printf, warning,
+    hfst_strformat, print_more_info, print_report_bugs, verbose_print, warning,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -261,9 +261,9 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
 
             let inputname = hfst_get_name(&orig, &globals::input_filename());
             if transducer_n == 1 {
-                verbose_printf(&format!("Converting {}...\n", inputname));
+                verbose_print(&format!("Converting {}...\n", inputname));
             } else {
-                verbose_printf(&format!("Converting {}...{}\n", inputname, transducer_n));
+                verbose_print(&format!("Converting {}...{}\n", inputname, transducer_n));
             }
             // C wraps the conversion in try/catch on HfstException; the Rust
             // conversion currently panics rather than throwing, so the catch arm
@@ -314,18 +314,18 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()
         ));
         if HFST_FORMAT && (OUTPUT_TYPE != ImplementationType::XFSM_TYPE) {
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Writing {} format transducers with HFST3 headers\n",
                 hfst_strformat(OUTPUT_TYPE)
             ));
         } else {
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Writing {} format transducers without HFST specific headers\n",
                 hfst_strformat(OUTPUT_TYPE)
             ));

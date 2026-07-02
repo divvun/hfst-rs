@@ -12,8 +12,8 @@ use hfst::hfst_symbol_defs::is_epsilon;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, hfst_strtoul,
-    print_more_info, print_report_bugs, verbose_printf, warning,
+    EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, parse_u64, print_more_info,
+    print_report_bugs, verbose_print, warning,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -181,13 +181,13 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
             let optarg = getopt::optarg();
             match c as u8 as char {
                 'n' => {
-                    MAX_STRINGS = hfst_strtoul(&optarg, 10) as i32;
+                    MAX_STRINGS = parse_u64(&optarg, 10) as i32;
                 }
                 'N' => {
-                    NBEST_STRINGS = hfst_strtoul(&optarg, 10) as i32;
+                    NBEST_STRINGS = parse_u64(&optarg, 10) as i32;
                 }
                 'r' => {
-                    MAX_RANDOM_STRINGS = hfst_strtoul(&optarg, 10) as i32;
+                    MAX_RANDOM_STRINGS = parse_u64(&optarg, 10) as i32;
                 }
                 'b' => {
                     BEAM = optarg.trim().parse::<f32>().unwrap_or(0.0);
@@ -197,7 +197,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                     }
                 }
                 'c' => {
-                    CYCLES = hfst_strtoul(&optarg, 10) as i32;
+                    CYCLES = parse_u64(&optarg, 10) as i32;
                 }
                 'w' => {
                     DISPLAY_WEIGHTS = true;
@@ -222,10 +222,10 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                     }
                 }
                 'l' => {
-                    MAX_INPUT_LENGTH = hfst_strtoul(&optarg, 10) as u32;
+                    MAX_INPUT_LENGTH = parse_u64(&optarg, 10) as u32;
                 }
                 'L' => {
-                    MAX_OUTPUT_LENGTH = hfst_strtoul(&optarg, 10) as u32;
+                    MAX_OUTPUT_LENGTH = parse_u64(&optarg, 10) as u32;
                 }
                 'p' => {
                     INPUT_PREFIX = optarg;
@@ -477,11 +477,11 @@ unsafe fn process_stream(
             }
 
             if !INPUT_PREFIX.is_empty() {
-                verbose_printf(&format!("input_prefix: '{}'\n", INPUT_PREFIX));
+                verbose_print(&format!("input_prefix: '{}'\n", INPUT_PREFIX));
             }
 
             if BEAM >= 0.0 {
-                verbose_printf("Finding the weight of the best path...\n");
+                verbose_print("Finding the weight of the best path...\n");
                 // (the C wraps this in try/catch on FunctionNotImplementedException
                 // and HfstFatalException; in Rust these surface as panics rather
                 // than being caught here.)
@@ -502,7 +502,7 @@ unsafe fn process_stream(
             }
 
             if NBEST_STRINGS > 0 {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Pruning transducer to {} best path(s)...\n",
                     NBEST_STRINGS
                 ));
@@ -536,14 +536,14 @@ unsafe fn process_stream(
             }
 
             if MAX_STRINGS > 0 {
-                verbose_printf(&format!("Finding at most {} path(s)...\n", MAX_STRINGS));
+                verbose_print(&format!("Finding at most {} path(s)...\n", MAX_STRINGS));
             } else if MAX_RANDOM_STRINGS > 0 {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Finding at most {} random path(s)...\n",
                     MAX_RANDOM_STRINGS
                 ));
             } else {
-                verbose_printf("Finding strings...\n");
+                verbose_print("Finding strings...\n");
             }
 
             /* not random strings */
@@ -558,7 +558,7 @@ unsafe fn process_stream(
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
-                verbose_printf(&format!("Printed {} string(s)\n", cb.count));
+                verbose_print(&format!("Printed {} string(s)\n", cb.count));
             }
             /* random strings */
             else {
@@ -580,7 +580,7 @@ unsafe fn process_stream(
                     let mut path: HfstTwoLevelPath = it.clone();
                     cb.operator_call(&mut path, true /*final*/);
                 }
-                verbose_printf(&format!("Printed {} random string(s)\n", cb.count));
+                verbose_print(&format!("Printed {} random string(s)\n", cb.count));
             }
         }
 
@@ -618,7 +618,7 @@ unsafe fn real_main() -> i32 {
         // (C closes outfile here when it is not stdout and re-opens an ofstream
         // to outfilename inside; the foundation now models the output as a std
         // writer opened from OUTFILENAME, written to directly.)
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

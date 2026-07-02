@@ -7,8 +7,8 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, hfst_strtoul, print_more_info,
-    print_report_bugs, verbose_printf,
+    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, parse_u64, print_more_info,
+    print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -101,8 +101,8 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
             // ordering (getopt-cases-error.h precedes them textually but its
             // arms only fire on '?'/ ':' / default, so the named cases below
             // are reached for 'n'/'p'/'t').
-            let c_u8 = c as u8;
-            match c_u8 {
+            let byte = c as u8;
+            match byte {
                 b'n' => {
                     *std::ptr::addr_of_mut!(TRANSDUCER_NAME) = getopt::optarg();
                     NAME_OPTION_GIVEN = true;
@@ -113,7 +113,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                     continue;
                 }
                 b't' => {
-                    TRUNCATE_LENGTH = hfst_strtoul(&getopt::optarg(), 10);
+                    TRUNCATE_LENGTH = parse_u64(&getopt::optarg(), 10);
                     continue;
                 }
                 _ => {}
@@ -140,9 +140,9 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             }
 
             if transducer_n == 1 {
-                verbose_printf(&format!("Naming {}...\n", globals::input_filename()));
+                verbose_print(&format!("Naming {}...\n", globals::input_filename()));
             } else {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Naming {}...{}\n",
                     globals::input_filename(),
                     transducer_n
@@ -209,7 +209,7 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

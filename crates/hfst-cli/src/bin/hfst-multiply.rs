@@ -9,8 +9,8 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, hfst_strtoul,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
+    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, is_input_stream_in_ol_format,
+    parse_u64, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -89,7 +89,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                 CaseResult::NotHandled => {}
             }
             if c == 'n' as i32 {
-                DUPE_COUNT = hfst_strtoul(&getopt::optarg(), 10);
+                DUPE_COUNT = parse_u64(&getopt::optarg(), 10);
                 continue;
             }
             return handle_error_case(c);
@@ -121,7 +121,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 inputname = globals::input_filename();
             }
 
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Duplicate {} times {}...{}\n",
                 inputname, DUPE_COUNT, transducer_n
             ));
@@ -158,7 +158,7 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

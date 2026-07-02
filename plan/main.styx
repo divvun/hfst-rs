@@ -1875,6 +1875,26 @@ children (
                     }
                 )
             }
+
+            {
+                id c-names
+                title "Eradicate surviving C-named identifiers (the names, not just the shapes): lib — string_to_size_t, xfst_getline, c_stringify/c_locatefy/c_proj1/c_proj2, att_atoi/att_atof, hfst_fopen/xfst_fopen/xfst_fclose, hfst_fprintf*, stale size_t_to_uint doc refs; CLI — verbose_printf (~370), lookup_printf family, hfst_getline, hfst_fopen, hfst_strtol, get_size_t/string_to_size_t. Rename to idiomatic Rust names or absorb trivial shims; C++ provenance quotes in comments stay."
+                log (
+                    {
+                        at 2026-07-02T18:00:55.391335Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-02T18:31:47.770684Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
         )
     }
 )

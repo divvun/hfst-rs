@@ -13,7 +13,7 @@ use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    hfst_set_program_name, hfst_strformat, print_more_info, print_report_bugs, verbose_printf,
+    hfst_set_program_name, hfst_strformat, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -271,7 +271,7 @@ unsafe fn real_main() {
         hfst_set_program_name(&argv0, "0.1", "HfstFormat");
         globals::VERBOSE = true;
         let ty = parse_options(&mut args);
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Transducers in {} are of type {}\n",
             globals::input_filename(),
             hfst_strformat(ty)

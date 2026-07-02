@@ -2803,12 +2803,12 @@ pub fn restriction(
     context: &HfstTransducerPairVector,
 ) -> crate::error::Result<HfstTransducer> {
     //check if the center is automata
-    let mut c_proj1: HfstTransducer = _center.clone();
-    c_proj1.input_project()?;
-    let mut c_proj2: HfstTransducer = _center.clone();
-    c_proj2.output_project()?;
+    let mut proj1: HfstTransducer = _center.clone();
+    proj1.input_project()?;
+    let mut proj2: HfstTransducer = _center.clone();
+    proj2.output_project()?;
 
-    if !c_proj1.compare(_center, true)? || !c_proj2.compare(_center, true)? {
+    if !proj1.compare(_center, true)? || !proj2.compare(_center, true)? {
         crate::bail!(TransducersAreNotAutomata, "HfstXeroxRules::restriction");
     }
 

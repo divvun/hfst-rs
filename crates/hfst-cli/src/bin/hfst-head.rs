@@ -8,8 +8,8 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, hfst_strtol, print_more_info,
-    print_report_bugs, verbose_printf, warning,
+    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, parse_i64, print_more_info,
+    print_report_bugs, verbose_print, warning,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -90,7 +90,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                 CaseResult::NotHandled => {}
             }
             if c == 'n' as i32 {
-                HEAD_COUNT = hfst_strtol(&getopt::optarg(), 10);
+                HEAD_COUNT = parse_i64(&getopt::optarg(), 10);
                 continue;
             }
             return handle_error_case(c);
@@ -124,7 +124,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 if inputname.is_empty() {
                     inputname = globals::input_filename();
                 }
-                verbose_printf(&format!("Forwarding {}...{}\n", inputname, transducer_n));
+                verbose_print(&format!("Forwarding {}...{}\n", inputname, transducer_n));
                 if let Err(e) = outstream.redirect(&mut trans) {
                     hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
                     return 1;
@@ -132,7 +132,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             }
         } else if HEAD_COUNT < 0 {
             let mut first_but_n: VecDeque<HfstTransducer> = VecDeque::new();
-            verbose_printf(&format!("Counting all but last {}\n", HEAD_COUNT));
+            verbose_print(&format!("Counting all but last {}\n", HEAD_COUNT));
             while instream.is_good() {
                 transducer_n += 1;
                 let trans = match HfstTransducer::new_from_stream(instream) {
@@ -166,7 +166,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 if inputname.is_empty() {
                     inputname = globals::input_filename();
                 }
-                verbose_printf(&format!("Forwarding {}...{}\n", inputname, transducer_n));
+                verbose_print(&format!("Forwarding {}...{}\n", inputname, transducer_n));
                 if let Err(e) = outstream.redirect(&mut trans) {
                     hfst_cli::hfst_commandline::error(1, 0, &format!("{e}"));
                     return 1;
@@ -204,7 +204,7 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

@@ -1684,7 +1684,7 @@ impl PmatchContainer {
                     // nonmatching parts we've seen
                     if !nonmatching_locations.inner.is_empty() {
                         let mut ls: LocationVector = LocationVector::new();
-                        let mut nonmatching = self.c_locatefy(
+                        let mut nonmatching = self.locatefy(
                             printable_input_pos
                                 - u32::try_from(nonmatching_locations.inner.len())
                                     .expect("value out of u32 range"),
@@ -1701,7 +1701,7 @@ impl PmatchContainer {
                     let mut ls: LocationVector = LocationVector::new();
                     let tape_locations = self.tape_locations.clone();
                     for it in tape_locations.iter() {
-                        let l = self.c_locatefy(printable_input_pos, it);
+                        let l = self.locatefy(printable_input_pos, it);
                         if self.verbose {
                             debug!("located? {}:{}", l.input, l.output);
                         }
@@ -1739,7 +1739,7 @@ impl PmatchContainer {
         }
         if self.locate_mode && !nonmatching_locations.inner.is_empty() {
             let mut ls: LocationVector = LocationVector::new();
-            let mut nonmatching = self.c_locatefy(
+            let mut nonmatching = self.locatefy(
                 printable_input_pos
                     - u32::try_from(nonmatching_locations.inner.len())
                         .expect("value out of u32 range"),
@@ -1767,7 +1767,7 @@ impl PmatchContainer {
         self.locate_mode = false;
         self.process(input);
         let result = self.result.clone();
-        self.c_stringify(&result)
+        self.stringify(&result)
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.locate-fn]
@@ -1809,8 +1809,8 @@ impl PmatchContainer {
         {
             let discarded = self.tape.extract_slice(0, tape_pos);
             let best_result = self.best_result.clone();
-            let kept = self.c_stringify(&best_result);
-            let disc = self.c_stringify(&discarded);
+            let kept = self.stringify(&best_result);
+            let disc = self.stringify(&discarded);
             debug!(
                 "\n\tline {}: conflicting equally weighted matches found, keeping:\n\t{}\n\tdiscarding:\n\t{}\n",
                 self.line_number, kept, disc
@@ -3096,11 +3096,11 @@ impl PmatchTransducer {
 // alphabet's own fields and mutate 'container.pattern_counts' (disjoint), so the
 // split borrow is sound; modelled with a raw pointer per the port conventions.
 impl PmatchContainer {
-    fn c_locatefy(&mut self, input_offset: u32, str: &WeightedDoubleTape) -> Location {
+    fn locatefy(&mut self, input_offset: u32, str: &WeightedDoubleTape) -> Location {
         let a: *const PmatchAlphabet = &self.alphabet;
         unsafe { (*a).locatefy(input_offset, str, self) }
     }
-    fn c_stringify(&mut self, str: &DoubleTape) -> String {
+    fn stringify(&mut self, str: &DoubleTape) -> String {
         let a: *const PmatchAlphabet = &self.alphabet;
         unsafe { (*a).stringify(str, self) }
     }

@@ -23,7 +23,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, extend_options_getenv, hfst_error, hfst_error_at_line, hfst_set_program_name,
-    hfst_strformat, hfst_warning, print_more_info, print_report_bugs, verbose_printf,
+    hfst_strformat, hfst_warning, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -536,7 +536,7 @@ unsafe fn print_prompt() {
 
 // [spec:hfst:def:hfst-lookup.lookup-printf-fn]
 // [spec:hfst:sem:hfst-lookup.lookup-printf-fn]
-unsafe fn lookup_printf(
+unsafe fn print_lookup_template(
     format: &str,
     input: Option<&HfstOneLevelPath>,
     result: Option<&HfstOneLevelPath>,
@@ -1062,7 +1062,7 @@ unsafe fn lookup_simple_ol(
         }
 
         if results.is_empty() {
-            verbose_printf("Got no results\n");
+            verbose_print("Got no results\n");
         }
         results
     }
@@ -1129,7 +1129,7 @@ unsafe fn lookup_simple_basic(
         }
 
         if results.is_empty() {
-            verbose_printf("Got no results\n");
+            verbose_print("Got no results\n");
         }
         results
     }
@@ -1204,14 +1204,14 @@ unsafe fn lookup_cascading_ol(
             }
 
             // (C++ tests 'if (infinity)' on the pointer — always true here.)
-            verbose_printf(&format!("Inf results @ level {}\n", i));
+            verbose_print(&format!("Inf results @ level {}\n", i));
 
             for it in result.iter() {
                 results.insert(it.clone());
             }
 
             if CASCADE == CASCADE_PRIORITY_UNION && !results.is_empty() {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "results found @ level {}, skipping rest of transducers (--cascade=priority-union)\n",
                     i
                 ));
@@ -1295,14 +1295,14 @@ unsafe fn lookup_cascading_basic(
             }
 
             // (C++ tests 'if (infinity)' on the pointer — always true here.)
-            verbose_printf(&format!("Inf results @ level {}\n", i));
+            verbose_print(&format!("Inf results @ level {}\n", i));
 
             for it in result.iter() {
                 results.insert(it.clone());
             }
 
             if CASCADE == CASCADE_PRIORITY_UNION && !results.is_empty() {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "results found @ level {}, skipping rest of transducers (--cascade=priority-union)\n",
                     i
                 ));
@@ -1328,18 +1328,18 @@ unsafe fn print_lookups(
         let mut lowest_weight: f32 = -1.0;
 
         if outside_sigma {
-            lookup_printf(&UNKNOWN_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
-            lookup_printf(&UNKNOWN_LOOKUPF, Some(kv), None, markup, &mut *ofile);
-            lookup_printf(&UNKNOWN_END_SETF, Some(kv), None, markup, &mut *ofile);
+            print_lookup_template(&UNKNOWN_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
+            print_lookup_template(&UNKNOWN_LOOKUPF, Some(kv), None, markup, &mut *ofile);
+            print_lookup_template(&UNKNOWN_END_SETF, Some(kv), None, markup, &mut *ofile);
             NO_ANALYSES += 1;
         } else if kvs.is_empty() {
-            lookup_printf(&EMPTY_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
-            lookup_printf(&EMPTY_LOOKUPF, Some(kv), None, markup, &mut *ofile);
-            lookup_printf(&EMPTY_END_SETF, Some(kv), None, markup, &mut *ofile);
+            print_lookup_template(&EMPTY_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
+            print_lookup_template(&EMPTY_LOOKUPF, Some(kv), None, markup, &mut *ofile);
+            print_lookup_template(&EMPTY_END_SETF, Some(kv), None, markup, &mut *ofile);
             NO_ANALYSES += 1;
         } else if inf {
             ANALYSED += 1;
-            lookup_printf(&INFINITE_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
+            print_lookup_template(&INFINITE_BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
             let mut first = true;
             for lkv in kvs.iter() {
                 if first {
@@ -1347,14 +1347,20 @@ unsafe fn print_lookups(
                 }
                 first = false;
                 if BEAM < 0.0 || lkv.first <= (lowest_weight + BEAM) {
-                    lookup_printf(&INFINITE_LOOKUPF, Some(kv), Some(lkv), markup, &mut *ofile);
+                    print_lookup_template(
+                        &INFINITE_LOOKUPF,
+                        Some(kv),
+                        Some(lkv),
+                        markup,
+                        &mut *ofile,
+                    );
                     ANALYSES += 1;
                 }
             }
-            lookup_printf(&INFINITE_END_SETF, Some(kv), None, markup, &mut *ofile);
+            print_lookup_template(&INFINITE_END_SETF, Some(kv), None, markup, &mut *ofile);
         } else {
             ANALYSED += 1;
-            lookup_printf(&BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
+            print_lookup_template(&BEGIN_SETF, Some(kv), None, markup, &mut *ofile);
             let mut first = true;
             for lkv in kvs.iter() {
                 if first {
@@ -1362,11 +1368,11 @@ unsafe fn print_lookups(
                 }
                 first = false;
                 if BEAM < 0.0 || lkv.first <= (lowest_weight + BEAM) {
-                    lookup_printf(&LOOKUPF, Some(kv), Some(lkv), markup, &mut *ofile);
+                    print_lookup_template(&LOOKUPF, Some(kv), Some(lkv), markup, &mut *ofile);
                     ANALYSES += 1;
                 }
             }
-            lookup_printf(&END_SETF, Some(kv), None, markup, &mut *ofile);
+            print_lookup_template(&END_SETF, Some(kv), None, markup, &mut *ofile);
         }
     }
 }
@@ -1464,9 +1470,9 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
                 inputname = globals::input_filename();
             }
             if transducer_n == 1 {
-                verbose_printf(&format!("Reading {}...\n", inputname));
+                verbose_print(&format!("Reading {}...\n", inputname));
             } else {
-                verbose_printf(&format!("Reading {}...{}\n", inputname, transducer_n));
+                verbose_print(&format!("Reading {}...{}\n", inputname, transducer_n));
             }
 
             // add multicharacter symbols to mc_symbols
@@ -1493,7 +1499,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
                         }
                         if mcs.chars().count() > 1 {
                             mc_symbols.push(mcs.clone());
-                            verbose_printf(&format!("multicharacter symbol: {}\n", mcs));
+                            verbose_print(&format!("multicharacter symbol: {}\n", mcs));
                         }
                     }
                 }
@@ -1588,7 +1594,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             if let Some(pos) = line.find(['\n', '\r']) {
                 line.truncate(pos);
             }
-            verbose_printf(&format!("Looking up {}...\n", line));
+            verbose_print(&format!("Looking up {}...\n", line));
             if SHOW_PROGRESS_BAR {
                 if filesize != -1 {
                     eprint!("{} / {}...\r", filepos, filesize);
@@ -1616,11 +1622,11 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             };
 
             if globals::VERBOSE {
-                verbose_printf("Tokenized to: ");
+                verbose_print("Tokenized to: ");
                 for s in kv.second.iter() {
-                    verbose_printf(&format!("{} ", s));
+                    verbose_print(&format!("{} ", s));
                 }
-                verbose_printf("\n");
+                verbose_print("\n");
             }
 
             let kvs = if only_optimized_lookup {
@@ -1692,12 +1698,12 @@ unsafe fn real_main() -> i32 {
         }
 
         // close buffers, we use streams
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()
         ));
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Output formats:\n\
              \x20 regular:'{}''{}...''{}',\n\
              \x20 unanalysed:'{}''{}''{}',\n\

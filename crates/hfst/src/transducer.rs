@@ -156,7 +156,7 @@ pub struct IStream<'a> {
     fail: bool,
     eof: bool,
     // Bytes pushed back via 'putback'/'unget' (std::istream's get-area), LIFO:
-    // the last pushed byte is the next one returned by get()/read()/getline().
+    // the last pushed byte is the next one returned by get()/read()/read_until().
     putback: Vec<u8>,
 }
 
@@ -283,7 +283,7 @@ impl<'a> IStream<'a> {
 
     /// 'std::getline(is, str, delim)': collect bytes up to (not including)
     /// 'delim'; an immediate EOF with no bytes sets the fail flag.
-    pub fn getline(&mut self, delim: u8) -> String {
+    pub fn read_until(&mut self, delim: u8) -> String {
         let mut bytes: Vec<u8> = Vec::new();
         let mut got_any = false;
         loop {
@@ -653,7 +653,7 @@ impl TransducerAlphabet {
         };
         let mut i: SymbolNumber = 0;
         while i < symbol_count {
-            let mut str = is.getline(b'\0');
+            let mut str = is.read_until(b'\0');
             if FdOperation::is_diacritic(&str) {
                 alpha.fd_table.define_diacritic(i, &str);
                 if !preserve_diacritic_strings {
@@ -682,7 +682,7 @@ impl TransducerAlphabet {
     pub fn fake_read_alphabet(is: &mut IStream, symbol_count: SymbolNumber) {
         let mut i: SymbolNumber = 0;
         while i < symbol_count {
-            let _str = is.getline(b'\0');
+            let _str = is.read_until(b'\0');
             i += 1;
         }
     }
@@ -2023,19 +2023,17 @@ impl STransition {
 // [spec:hfst:def:ospell.hfst-ol.n-byte-utf8-fn]
 // [spec:hfst:sem:ospell.hfst-ol.n-byte-utf8-fn]
 // (declared in transducer.h, defined in ospell.cc — one function, two ids)
-pub fn nByte_utf8(c: u8) -> i32 {
-    /* utility function to determine how many bytes to peel off as
-    a utf-8 character for representing as OTHER */
-    if c <= 127 {
-        1
-    } else if (c & (128 + 64 + 32 + 16)) == (128 + 64 + 32 + 16) {
-        4
-    } else if (c & (128 + 64 + 32)) == (128 + 64 + 32) {
-        3
-    } else if (c & (128 + 64)) == (128 + 64) {
-        2
-    } else {
-        0
+/// How many bytes to peel off the tape as one UTF-8 character (for
+/// representing it as OTHER), judged from the lead byte; `None` on a
+/// continuation byte. Like the C original, invalid `11111xxx` lead bytes
+/// are leniently treated as 4-byte sequences.
+pub fn utf8_sequence_length(lead: u8) -> Option<usize> {
+    match lead.leading_ones() {
+        0 => Some(1),
+        2 => Some(2),
+        3 => Some(3),
+        n if n >= 4 => Some(4),
+        _ => None,
     }
 }
 
@@ -2666,14 +2664,12 @@ impl Transducer {
                 None => {
                     // Add what we assume to be an unknown utf-8 symbol to the alphabet
                     p = original_input_loc;
-                    let bytes_to_tokenize = nByte_utf8(buf[p]);
-                    if bytes_to_tokenize == 0 {
+                    let Some(bytes_to_tokenize) = utf8_sequence_length(buf[p]) else {
                         return false; // tokenization failed
-                    }
+                    };
                     let new_symbol =
-                        String::from_utf8_lossy(&buf[p..p + bytes_to_tokenize as usize])
-                            .into_owned();
-                    p += bytes_to_tokenize as usize;
+                        String::from_utf8_lossy(&buf[p..p + bytes_to_tokenize]).into_owned();
+                    p += bytes_to_tokenize;
                     self.alphabet
                         .as_mut()
                         .expect("alphabet is initialized during transducer load")

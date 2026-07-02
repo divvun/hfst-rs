@@ -14,7 +14,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_printf,
+    print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -42,7 +42,7 @@ fn model_form_filename() -> &'static mut String {
 
 // [spec:hfst:def:hfst-guess.get-size-t-fn]
 // [spec:hfst:sem:hfst-guess.get-size-t-fn]
-fn get_size_t(str: &str) -> Result<usize, &'static str> {
+fn parse_size(str: &str) -> Result<usize, &'static str> {
     // istringstream extraction into a size_t: skip leading whitespace then
     // consume the leading run of decimal digits; failbit (no digits) -> "fail".
     let trimmed = str.trim_start();
@@ -204,7 +204,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                     continue;
                 }
                 'n' => {
-                    match get_size_t(&getopt::optarg()) {
+                    match parse_size(&getopt::optarg()) {
                         Ok(v) => MAX_NUMBER_OF_GUESSES = v,
                         Err(_msg) => {
                             error(
@@ -220,7 +220,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                     continue;
                 }
                 'm' => {
-                    match get_size_t(&getopt::optarg()) {
+                    match parse_size(&getopt::optarg()) {
                         Ok(v) => MAX_NUMBER_OF_FORMS = v,
                         Err(_msg) => {
                             error(
@@ -273,7 +273,7 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
 
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()
@@ -334,7 +334,7 @@ unsafe fn real_main() -> i32 {
 
         if GENERATE_MODEL_FORMS {
             if !instream.is_good() {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "No generator found in {}. Compiling generator from guesser.\n",
                     globals::input_filename()
                 ));
@@ -368,7 +368,7 @@ unsafe fn real_main() -> i32 {
         let mut model_forms: StringVectorVector = StringVectorVector::new();
 
         if GENERATE_MODEL_FORMS {
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Reading inflectional information for model forms\nfrom {}.\n",
                 model_form_filename()
             ));

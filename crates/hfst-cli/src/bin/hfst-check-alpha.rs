@@ -10,7 +10,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_printf,
+    print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -117,9 +117,9 @@ unsafe fn process_stream(
             transducer_n += 1;
 
             if transducer_n < 2 {
-                verbose_printf("Checking alphas...\n");
+                verbose_print("Checking alphas...\n");
             } else {
-                verbose_printf(&format!("Checking alphas... {}\n", transducer_n));
+                verbose_print(&format!("Checking alphas... {}\n", transducer_n));
             }
             // read first alphas
             let first = match HfstTransducer::new_from_stream(firststream) {
@@ -307,7 +307,7 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let first_opened = globals::first_filename() != "<stdin>";
         let second_opened = globals::second_filename() != "<stdin>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {} and {}, writing to {}\n",
             globals::first_filename(),
             globals::second_filename(),

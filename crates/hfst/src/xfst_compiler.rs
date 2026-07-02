@@ -15,7 +15,7 @@
 //! 'names'/'definitions' and 'print_name's pointer-identity check). The port
 //! expresses that shared ownership with 'NetRef = Rc<RefCell<HfstTransducer>>'
 //! and pointer identity with 'Rc::ptr_eq'. The only remaining 'unsafe' wraps C
-//! FFI (libc / hfst_fopen / HfstInputStream) and ownership recovery from
+//! FFI (libc / open_file / HfstInputStream) and ownership recovery from
 //! pointer-returning HFST APIs.
 #![allow(dead_code)]
 #![allow(unused_variables)]
@@ -507,7 +507,7 @@ impl XfstCompiler {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fclose-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fclose-fn]
     /* A wrapper around file close function. */
-    pub fn xfst_fclose(&mut self, name: &str) -> i32 {
+    pub fn close_file(&mut self, name: &str) -> i32 {
         // The redesigned signature carries no FILE handle (file I/O is done via
         // std::fs / HfstInputStream elsewhere), so there is nothing to close;
         // mirror the success path of the C++ wrapper.
@@ -523,8 +523,8 @@ impl XfstCompiler {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fopen-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fopen-fn]
     /* A wrapper around file open function. */
-    pub fn xfst_fopen(&mut self, path: &str, mode: &str) {
-        match crate::hfst_data_types::hfst_fopen(path, mode) {
+    pub fn open_file(&mut self, path: &str, mode: &str) {
+        match crate::hfst_data_types::open_file(path, mode) {
             Err(_) => {
                 error!("could not open file {}", path);
                 self.flush();
@@ -630,7 +630,7 @@ impl XfstCompiler {
             return std::ptr::null_mut();
         }
 
-        match crate::hfst_data_types::hfst_fopen(filename, "r") {
+        match crate::hfst_data_types::open_file(filename, "r") {
             Err(_) => {
                 error!("Could not open file {}", filename);
                 self.flush();
@@ -854,7 +854,7 @@ impl XfstCompiler {
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
     // @brief Get next line from \a file. Return NULL if end of file is reached.
     // Use \a promptstr as prompt for readline, or print it to stderr if readline is not in use.
-    fn xfst_getline(&mut self, promptstr: &str) -> Option<String> {
+    fn read_prompted_line(&mut self, promptstr: &str) -> Option<String> {
         // The HAVE_READLINE and WINDOWS branches are not ported; mirror the
         // generic getline path: print the prompt, then read a line from stdin.
         print!("{}", promptstr);
@@ -903,7 +903,7 @@ impl XfstCompiler {
     fn get_precision(&mut self) -> i32 {
         // std::istringstream iss(variables["precision"]); iss >> retval;
         let s = self.variables["precision"].clone();
-        Self::atoi(&s)
+        Self::parse_int(&s)
     }
 
     // ------------------------------------------------------------------
@@ -2958,10 +2958,8 @@ impl XfstCompiler {
         };
         if let Err(e) = result {
             if matches!(e.kind, crate::error::ErrorKind::TransducerIsCyclic) {
-                let cutoff = u32::try_from(string_to_size_t(
-                    &self.variables["print-words-cycle-cutoff"],
-                ))
-                .expect("value out of u32 range");
+                let cutoff = u32::try_from(parse_size(&self.variables["print-words-cycle-cutoff"]))
+                    .expect("value out of u32 range");
                 warn!(
                     "transducer is cyclic, limiting the number of cycles to {}",
                     cutoff
@@ -3183,7 +3181,7 @@ fn is_valid_string(sv: &crate::hfst_symbol_defs::StringVector) -> bool {
 
 // [spec:hfst:def:xfst-compiler.hfst.xfst.string-to-size-t-fn]
 // [spec:hfst:sem:xfst-compiler.hfst.xfst.string-to-size-t-fn]
-fn string_to_size_t(str: &str) -> usize {
+fn parse_size(str: &str) -> usize {
     // Mirror 'std::istringstream iss(str); size_t size; iss >> size;':
     // read the leading integer, defaulting to 0 if none is present.
     let trimmed = str.trim_start();
@@ -4387,7 +4385,7 @@ impl XfstCompiler {
 
         // the while loop begins, keep on reading from user
         loop {
-            let line = match self.xfst_getline("") {
+            let line = match self.read_prompted_line("") {
                 Some(l) => l,
                 None => break,
             };
@@ -4409,7 +4407,7 @@ impl XfstCompiler {
             }
             // case (2): back to state number N
             else if line.as_bytes().first() == Some(&b'-') {
-                let level = Self::atoi(&line[1..]); // skip '-'
+                let level = Self::parse_int(&line[1..]); // skip '-'
                 if !self.can_level_be_reached(level, whole_path.len()) {
                     continue;
                 } else if !Self::return_to_level(&mut whole_path, &mut shortest_path, level as u32)
@@ -4428,7 +4426,7 @@ impl XfstCompiler {
             }
             // case (4): follow arc
             else {
-                let number = Self::atoi(&line); // FIX: atoi is not portable
+                let number = Self::parse_int(&line); // FIX: atoi is not portable
                 if !self.can_transition_be_followed(number, number_of_arcs) {
                     continue;
                 } else {
@@ -4696,8 +4694,9 @@ impl XfstCompiler {
         true
     }
 
-    // A C-style atoi used by 'inspect_net' to parse user input.
-    fn atoi(s: &str) -> i32 {
+    // Leading-prefix integer parse (the C 'atoi' shape) used by 'inspect_net'
+    // to parse user input.
+    fn parse_int(s: &str) -> i32 {
         crate::string_manipulation::parse_int_prefix(s.as_bytes(), 0).0
     }
 
@@ -4947,7 +4946,7 @@ impl XfstCompiler {
         direction: ApplyDirection,
     ) -> crate::error::Result<&mut Self> {
         // The C++ overload read lines from a FILE*; here lines come from stdin
-        // via 'xfst_getline' so the 'indata' source is unused.
+        // via 'read_prompted_line' so the 'indata' source is unused.
         let _ = indata;
 
         if self.stack.len() < 1 {
@@ -4961,7 +4960,7 @@ impl XfstCompiler {
         // number of cycles needs to be limited for an infinitely ambiguous ol
         // transducer because it doesn't support
         // is_lookup_infinitely_ambiguous(const string &)
-        let mut ol_cutoff: usize = string_to_size_t(&self.variables["lookup-cycle-cutoff"]);
+        let mut ol_cutoff: usize = parse_size(&self.variables["lookup-cycle-cutoff"]);
 
         // Owned inverted copy for apply-up; None means operate on the shared top.
         let mut owned_t: Option<HfstTransducer> = None;
@@ -5013,7 +5012,7 @@ impl XfstCompiler {
                     .is_lookup_infinitely_ambiguous_string_vector(&foo),
             };
             if inf {
-                ol_cutoff = string_to_size_t(&self.variables["lookup-cycle-cutoff"]);
+                ol_cutoff = parse_size(&self.variables["lookup-cycle-cutoff"]);
                 if self.verbose {
                     warn!(
                         "transducer is infinitely ambiguous, limiting number of cycles to {}",
@@ -5034,7 +5033,7 @@ impl XfstCompiler {
 
         // get lines from stdin..
         loop {
-            let line_opt = self.xfst_getline(&promptstr);
+            let line_opt = self.read_prompted_line(&promptstr);
             // .. until end of file...
             match line_opt {
                 None => {
@@ -5111,7 +5110,7 @@ impl XfstCompiler {
             &lookup_path,
             self.variables["obey-flags"] == "ON",
         ) {
-            cutoff = string_to_size_t(&self.variables["lookup-cycle-cutoff"]);
+            cutoff = parse_size(&self.variables["lookup-cycle-cutoff"]);
             if self.verbose {
                 warn!(
                     "lookup is infinitely ambiguous, limiting the number of cycles to {}",
@@ -5200,13 +5199,13 @@ impl XfstCompiler {
             return Ok(self.lookup_basic(line, &fsm));
         }
 
-        let mut ol_cutoff: usize = string_to_size_t(&self.variables["lookup-cycle-cutoff"]); // -1; fix this
+        let mut ol_cutoff: usize = parse_size(&self.variables["lookup-cycle-cutoff"]); // -1; fix this
         // this gets ignored by ol transducer's is_lookup_infinitely_ambiguous
         let foo: Vec<String> = Vec::new();
         if t.borrow()
             .is_lookup_infinitely_ambiguous_string_vector(&foo)
         {
-            ol_cutoff = string_to_size_t(&self.variables["lookup-cycle-cutoff"]);
+            ol_cutoff = parse_size(&self.variables["lookup-cycle-cutoff"]);
             if self.verbose {
                 warn!(
                     "transducer is infinitely ambiguous, limiting number of cycles to {}",

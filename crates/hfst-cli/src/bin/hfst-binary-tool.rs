@@ -8,7 +8,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_printf, warning,
+    print_report_bugs, verbose_print, warning,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -111,13 +111,13 @@ unsafe fn binaryoperate_streams(
         while both_inputs {
             transducer_n += 1;
             if transducer_n == 1 {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Doing things with {} and {}...\n",
                     globals::first_filename(),
                     globals::second_filename()
                 ));
             } else {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Doing things with {} and {}... {}\n",
                     globals::first_filename(),
                     globals::second_filename(),
@@ -198,7 +198,7 @@ unsafe fn real_main() -> i32 {
         let first_opened = globals::first_filename() != "<stdin>";
         let second_opened = globals::second_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {} and {}, writing to {}\n",
             globals::first_filename(),
             globals::second_filename(),

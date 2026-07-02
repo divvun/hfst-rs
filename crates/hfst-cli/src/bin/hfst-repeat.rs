@@ -9,7 +9,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, hfst_strtonumber,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_printf,
+    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -151,29 +151,29 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             let inputname = hfst_get_name(&trans, &globals::input_filename());
             if transducer_n == 1 {
                 if !FROM_INFINITY && !TO_INFINITY {
-                    verbose_printf(&format!(
+                    verbose_print(&format!(
                         "Repeating [{}..{}] {}...\n",
                         AT_LEAST, AT_MOST, inputname
                     ));
                 } else if FROM_INFINITY && TO_INFINITY {
-                    verbose_printf(&format!("Repeating star {}...\n", inputname));
+                    verbose_print(&format!("Repeating star {}...\n", inputname));
                 } else if !FROM_INFINITY && TO_INFINITY {
-                    verbose_printf(&format!("Repeating [{}..*] {}...\n", AT_LEAST, inputname));
+                    verbose_print(&format!("Repeating [{}..*] {}...\n", AT_LEAST, inputname));
                 } else if FROM_INFINITY && TO_INFINITY {
                     error(1, 0, &format!("Repeating *..{}?", AT_MOST));
                 }
             } else if !FROM_INFINITY && !TO_INFINITY {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Repeating [{}..{}] {}... {}\n",
                     AT_LEAST, AT_MOST, inputname, transducer_n
                 ));
             } else if FROM_INFINITY && TO_INFINITY {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Repeating star {}... {}\n",
                     inputname, transducer_n
                 ));
             } else if !FROM_INFINITY && TO_INFINITY {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Repeating [{}..*] {}... {}\n",
                     AT_LEAST, inputname, transducer_n
                 ));
@@ -246,20 +246,20 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()
         ));
         if !FROM_INFINITY && !TO_INFINITY {
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Repeating from {} to {} times\n",
                 AT_LEAST, AT_MOST
             ));
         } else if FROM_INFINITY && TO_INFINITY {
-            verbose_printf("Repeating star infinitely\n");
+            verbose_print("Repeating star infinitely\n");
         } else if !FROM_INFINITY && TO_INFINITY {
-            verbose_printf(&format!("Repeating from {} to infinite times\n", AT_LEAST));
+            verbose_print(&format!("Repeating from {} to infinite times\n", AT_LEAST));
         } else if FROM_INFINITY && !TO_INFINITY {
             error(
                 1,

@@ -8,8 +8,8 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, hfst_strtol, print_more_info,
-    print_report_bugs, verbose_printf,
+    EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, parse_i64, print_more_info,
+    print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -92,9 +92,9 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
                 let optarg = getopt::optarg();
                 if optarg.starts_with('+') {
                     // swap sign haha lol
-                    TAIL_COUNT = -hfst_strtol(&optarg, 10);
+                    TAIL_COUNT = -parse_i64(&optarg, 10);
                 } else {
-                    TAIL_COUNT = hfst_strtol(&optarg, 10);
+                    TAIL_COUNT = parse_i64(&optarg, 10);
                 }
                 continue;
             }
@@ -114,7 +114,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut last_n: VecDeque<HfstTransducer> = VecDeque::new();
         let mut transducer_n: i64 = 0;
         if TAIL_COUNT > 0 {
-            verbose_printf(&format!("Counting last {} transducers...\n", TAIL_COUNT));
+            verbose_print(&format!("Counting last {} transducers...\n", TAIL_COUNT));
             while instream.is_good() {
                 transducer_n += 1;
                 let trans = match HfstTransducer::new_from_stream(instream) {
@@ -136,7 +136,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             }
             while !last_n.is_empty() {
                 transducer_n += 1;
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Forwarding {}...{}\n",
                     globals::input_filename(),
                     transducer_n
@@ -150,7 +150,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 }
             }
         } else if TAIL_COUNT < 0 {
-            verbose_printf(&format!("Skipping {} transducers...\n", -TAIL_COUNT));
+            verbose_print(&format!("Skipping {} transducers...\n", -TAIL_COUNT));
             while instream.is_good() {
                 transducer_n += 1;
                 let mut trans = match HfstTransducer::new_from_stream(instream) {
@@ -161,7 +161,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                     }
                 };
                 if transducer_n >= -TAIL_COUNT {
-                    verbose_printf(&format!(
+                    verbose_print(&format!(
                         "Forwarding {}...{}\n",
                         globals::input_filename(),
                         transducer_n
@@ -203,7 +203,7 @@ unsafe fn real_main() -> i32 {
         // close buffers, we use streams
         let input_opened = globals::input_filename() != "<stdin>";
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

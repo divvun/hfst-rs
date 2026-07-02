@@ -13,7 +13,7 @@ use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_error, hfst_error_at_line,
     hfst_parse_format_name, hfst_set_program_name, hfst_strtoweight, hfst_warning_at_line,
-    print_more_info, print_report_bugs, verbose_printf,
+    print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -275,7 +275,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
         check_common_params();
         check_unary_params(args);
         if OUTPUT_FORMAT == ImplementationType::UNSPECIFIED_TYPE {
-            verbose_printf("Output format not specified, defaulting to openfst tropical\n");
+            verbose_print("Output format not specified, defaulting to openfst tropical\n");
             OUTPUT_FORMAT = ImplementationType::TROPICAL_OPENFST_TYPE;
         }
         if (*std::ptr::addr_of!(EPSILONNAME)).is_none() {
@@ -318,7 +318,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
             }
             transducer_n += 1;
             line_n += 1;
-            verbose_printf(&format!("Parsing line {}...\n", line_n));
+            verbose_print(&format!("Parsing line {}...\n", line_n));
 
             // parse line end and weight (the C++ mutated the buffer in place,
             // writing '\0' at the tab/newline; here we slice instead).
@@ -419,7 +419,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
             if weighted {
                 SUM_OF_WEIGHTS += weight as f32;
                 path_weight = weight as f32;
-                verbose_printf(&format!("Using final weight {:.6}...\n", weight));
+                verbose_print(&format!("Using final weight {:.6}...\n", weight));
             }
 
             if !DISJUNCT_STRINGS {
@@ -462,20 +462,20 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
             };
 
             if NORMALIZE_WEIGHTS {
-                verbose_printf("Normalising weights...\n");
+                verbose_print("Normalising weights...\n");
                 if let Err(e) = res.transform_weights(divide_by_sum_of_weights) {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             }
             if LOGARITHMIC_WEIGHTS_E {
-                verbose_printf("Taking negative logarithm...\n");
+                verbose_print("Taking negative logarithm...\n");
                 if let Err(e) = res.transform_weights(take_negative_logarithm_e) {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             } else if LOGARITHMIC_WEIGHTS_10 {
-                verbose_printf("Taking negative logarithm...\n");
+                verbose_print("Taking negative logarithm...\n");
                 if let Err(e) = res.transform_weights(take_negative_logarithm_10) {
                     error(1, 0, &format!("{e}"));
                     return 1;
@@ -511,12 +511,12 @@ unsafe fn real_main() -> i32 {
         }
 
         if let Some(fname) = (*std::ptr::addr_of!(MULTICHAR_SYMBOL_FILENAME)).clone() {
-            verbose_printf(&format!("Reading multichar symbols from {}\n", fname));
+            verbose_print(&format!("Reading multichar symbols from {}\n", fname));
             match std::fs::read_to_string(&fname) {
                 Ok(contents) => {
                     for multichar_line in contents.lines() {
                         if !multichar_line.is_empty() {
-                            verbose_printf(&format!(
+                            verbose_print(&format!(
                                 "Defining multichar symbol {}\n",
                                 multichar_line
                             ));
@@ -533,7 +533,7 @@ unsafe fn real_main() -> i32 {
 
         // close output buffers, we use output streams
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

@@ -11,7 +11,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, extend_options_getenv, hfst_error, hfst_parse_format_name,
-    hfst_set_program_name, hfst_warning, print_more_info, print_report_bugs, verbose_printf,
+    hfst_set_program_name, hfst_warning, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -199,7 +199,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
         check_unary_params(args);
         if (*std::ptr::addr_of!(EPSILONNAME)).is_none() {
             *std::ptr::addr_of_mut!(EPSILONNAME) = Some("@0@".to_string());
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Using default epsilon representation {}\n",
                 (*std::ptr::addr_of!(EPSILONNAME))
                     .clone()
@@ -208,7 +208,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
         }
         if OUTPUT_FORMAT == ImplementationType::UNSPECIFIED_TYPE {
             OUTPUT_FORMAT = ImplementationType::TROPICAL_OPENFST_TYPE;
-            verbose_printf("Using default output format OpenFst with tropical weight class\n");
+            verbose_print("Using default output format OpenFst with tropical weight class\n");
         }
 
         if OUTPUT_FORMAT == ImplementationType::XFSM_TYPE
@@ -243,9 +243,9 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         while !is_eof(input) {
             transducer_n += 1;
             if transducer_n < 2 {
-                verbose_printf("Reading transducer table...\n");
+                verbose_print("Reading transducer table...\n");
             } else {
-                verbose_printf(&format!("Reading transducer table {}...\n", transducer_n));
+                verbose_print(&format!("Reading transducer table {}...\n", transducer_n));
             }
             if READ_PROLOG_FORMAT {
                 if OUTPUT_FORMAT == ImplementationType::XFSM_TYPE {
@@ -276,7 +276,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     };
 
                 if CHECK_NEGATIVE_EPSILON_CYCLES {
-                    verbose_printf(
+                    verbose_print(
                         "Checking if the transducer has epsilon cycles with a negative weight...\n",
                     );
                     if fsm.has_negative_epsilon_cycles() {
@@ -288,7 +288,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                             );
                         }
                     } else {
-                        verbose_printf("No epsilon cycles with a negative weight detected...\n");
+                        verbose_print("No epsilon cycles with a negative weight detected...\n");
                     }
                 }
 
@@ -379,7 +379,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 hfst_set_name(&mut t, &inputfilename, "text");
                 hfst_set_formula(&mut t, &inputfilename, "T");
                 if CHECK_NEGATIVE_EPSILON_CYCLES {
-                    verbose_printf(
+                    verbose_print(
                         "Checking if the transducer has epsilon cycles with a negative weight...\n",
                     );
                     let fsm = HfstBasicTransducer::new_from_transducer(&t);
@@ -392,7 +392,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                             );
                         }
                     } else {
-                        verbose_printf("No epsilon cycles with a negative weight detected...\n");
+                        verbose_print("No epsilon cycles with a negative weight detected...\n");
                     }
                 }
                 if let Err(e) = outstream.redirect(&mut t) {
@@ -426,32 +426,32 @@ unsafe fn real_main() -> i32 {
         }
         // close buffers, we use streams
         let output_opened = globals::output_filename() != "<stdout>";
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()
         ));
         match OUTPUT_FORMAT {
             ImplementationType::SFST_TYPE => {
-                verbose_printf("Using SFST as output handler\n");
+                verbose_print("Using SFST as output handler\n");
             }
             ImplementationType::TROPICAL_OPENFST_TYPE => {
-                verbose_printf("Using OpenFst's tropical weights as output\n");
+                verbose_print("Using OpenFst's tropical weights as output\n");
             }
             ImplementationType::LOG_OPENFST_TYPE => {
-                verbose_printf("Using OpenFst's log weight output\n");
+                verbose_print("Using OpenFst's log weight output\n");
             }
             ImplementationType::FOMA_TYPE => {
-                verbose_printf("Using foma as output handler\n");
+                verbose_print("Using foma as output handler\n");
             }
             ImplementationType::XFSM_TYPE => {
-                verbose_printf("Using xfsm as output handler\n");
+                verbose_print("Using xfsm as output handler\n");
             }
             ImplementationType::HFST_OL_TYPE => {
-                verbose_printf("Using optimized lookup output\n");
+                verbose_print("Using optimized lookup output\n");
             }
             ImplementationType::HFST_OLW_TYPE => {
-                verbose_printf("Using optimized lookup weighted output\n");
+                verbose_print("Using optimized lookup weighted output\n");
             }
             _ => {
                 hfst_error(1, 0, "Unknown format cannot be used as output\n");

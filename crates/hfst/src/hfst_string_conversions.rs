@@ -14,7 +14,7 @@
 // string; we write it to the output stream. Rust strings are UTF-8, so no
 // codepage conversion is needed. Returns a non-negative value on success and a
 // negative value on a write error, mirroring 'fputs'.
-pub fn hfst_fprintf_console(stream: &mut dyn std::io::Write, s: &str) -> i32 {
+pub fn write_console(stream: &mut dyn std::io::Write, s: &str) -> i32 {
     match stream.write_all(s.as_bytes()) {
         Ok(()) => 0,
         Err(_) => -1,

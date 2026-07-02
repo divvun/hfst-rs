@@ -20,8 +20,8 @@ use hfst_cli::globals;
 use hfst_cli::globals::ColourTristate;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, error_at_line, extend_options_getenv, hfst_parse_format_name,
-    hfst_set_program_name, hfst_strtoul, print_more_info, print_report_bugs, print_short_help,
-    verbose_printf, warning,
+    hfst_set_program_name, parse_u64, print_more_info, print_report_bugs, print_short_help,
+    verbose_print, warning,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -308,7 +308,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
             } else if c == INVERT_OPT {
                 INVERT_MATCHES = true;
             } else if c == b'm' as i32 {
-                MAX_COUNT = hfst_strtoul(&getopt::optarg(), 10);
+                MAX_COUNT = parse_u64(&getopt::optarg(), 10);
                 COUNT_MATCHES = true;
             } else if c == b'b' as i32 {
                 PRINT_OFFSET = true;
@@ -344,12 +344,12 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
             } else if c == b'Z' as i32 {
                 PRINT_FILENAME_NULL = true;
             } else if c == b'A' as i32 {
-                BEFORE_CONTEXT = hfst_strtoul(&getopt::optarg(), 10);
+                BEFORE_CONTEXT = parse_u64(&getopt::optarg(), 10);
             } else if c == b'B' as i32 {
-                AFTER_CONTEXT = hfst_strtoul(&getopt::optarg(), 10);
+                AFTER_CONTEXT = parse_u64(&getopt::optarg(), 10);
             } else if c == b'C' as i32 {
-                BEFORE_CONTEXT = hfst_strtoul(&getopt::optarg(), 10);
-                AFTER_CONTEXT = hfst_strtoul(&getopt::optarg(), 10);
+                BEFORE_CONTEXT = parse_u64(&getopt::optarg(), 10);
+                AFTER_CONTEXT = parse_u64(&getopt::optarg(), 10);
             } else if c == b'u' as i32 || c == b'U' as i32 {
                 error(
                     1,
@@ -474,15 +474,15 @@ unsafe fn read_matcher_stream(instream: &mut HfstInputStream) -> i32 {
                 inputname = INPUTFILENAME.clone();
             }
             if transducer_n == 1 {
-                verbose_printf(&format!("Reading matcher {}...\n", inputname));
+                verbose_print(&format!("Reading matcher {}...\n", inputname));
             } else {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Reading matcher {}...{}\n",
                     inputname, transducer_n
                 ));
             }
             if transducer_n > 1 {
-                verbose_printf("and disjuncting...\n");
+                verbose_print("and disjuncting...\n");
             }
             if let Err(e) = trans.input_project() {
                 error(1, 0, &format!("{e}"));
@@ -493,7 +493,7 @@ unsafe fn read_matcher_stream(instream: &mut HfstInputStream) -> i32 {
                 return 1;
             }
         }
-        verbose_printf("minimising matchers...\n");
+        verbose_print("minimising matchers...\n");
         if let Err(e) = (*MATCHER).minimize() {
             error(1, 0, &format!("{e}"));
             return 1;
@@ -514,7 +514,7 @@ unsafe fn read_matcher(expression: &str) {
         }));
         if DIALECT_XEROX {
             let mut comp = XreCompiler::new(FORMAT);
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "parsing {} as Xerox style regular expression...\n",
                 expression
             ));
@@ -528,7 +528,7 @@ unsafe fn read_matcher(expression: &str) {
                 return;
             }
         } else if DIALECT_FIXED_STRINGS {
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "parsing {} as fixed string of UTF-8 symbols...\n",
                 expression
             ));
@@ -548,13 +548,13 @@ unsafe fn read_matcher(expression: &str) {
         } else {
             error(1, 0, "dialect unsupported");
         }
-        verbose_printf("minimizing...\n");
+        verbose_print("minimizing...\n");
         if let Err(e) = (*MATCHER).minimize() {
             error(1, 0, &format!("{e}"));
             return;
         }
         if globals::VERBOSE {
-            verbose_printf("Resulting FSM:\n");
+            verbose_print("Resulting FSM:\n");
             // C: std::cerr << *matcher;
             hfst::hfst_transducer::operator_shl_os(&mut std::io::stderr(), &*MATCHER);
         }
@@ -566,7 +566,7 @@ unsafe fn read_matcher(expression: &str) {
 unsafe fn extend_matcher_with_options() {
     unsafe {
         if globals::COLOUR == ColourTristate::COLOUR_ALWAYS {
-            verbose_printf("Adding color codes to match boundaries...\n");
+            verbose_print("Adding color codes to match boundaries...\n");
             let color_start =
                 match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "[31m", FORMAT) {
                     Ok(t) => t,
@@ -595,7 +595,7 @@ unsafe fn extend_matcher_with_options() {
             MATCHER = Box::into_raw(Box::new(coloured));
         } else {
             // bracket matches for now
-            verbose_printf("Adding brackets to match boundaries...\n");
+            verbose_print("Adding brackets to match boundaries...\n");
             let color_start =
                 match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "{{{", FORMAT) {
                     Ok(t) => t,
@@ -624,7 +624,7 @@ unsafe fn extend_matcher_with_options() {
             MATCHER = Box::into_raw(Box::new(coloured));
         }
         if MATCH_WORD {
-            verbose_printf("Delimiting matcher to word boundaries (currently space)...\n");
+            verbose_print("Delimiting matcher to word boundaries (currently space)...\n");
             let non_word_char_left = match HfstTransducer::new_symbol(" ", FORMAT) {
                 Ok(t) => t,
                 Err(e) => {
@@ -651,7 +651,7 @@ unsafe fn extend_matcher_with_options() {
             MATCHER = Box::into_raw(Box::new(word_bounded));
         }
         if !MATCH_FULL_LINE {
-            verbose_printf("Extending matcher for repetitions and rest...\n");
+            verbose_print("Extending matcher for repetitions and rest...\n");
             let mut left_any = match HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", FORMAT) {
                 Ok(t) => t,
                 Err(e) => {
@@ -689,13 +689,13 @@ unsafe fn extend_matcher_with_options() {
                 return;
             }
         }
-        verbose_printf("Minimising extended matcher...\n");
+        verbose_print("Minimising extended matcher...\n");
         if let Err(e) = (*MATCHER).minimize() {
             error(1, 0, &format!("{e}"));
             return;
         }
         if globals::VERBOSE {
-            verbose_printf("Resulting FSM:\n");
+            verbose_print("Resulting FSM:\n");
             hfst::hfst_transducer::operator_shl_os(&mut std::io::stderr(), &*MATCHER);
         }
     }
@@ -766,7 +766,7 @@ unsafe fn print_match_transducer(path: &HfstTransducer, out: &mut dyn Write) {
 // [spec:hfst:sem:hfst-grep.match-lines-fn]
 unsafe fn match_lines(infile: &mut dyn BufRead, infilename: &str, out: &mut dyn Write) -> bool {
     unsafe {
-        verbose_printf(&format!("matching against {}...\n", infilename));
+        verbose_print(&format!("matching against {}...\n", infilename));
         let mut matched = false;
         let mut matches_n: usize = 0;
         // #ifndef HFST_OPTIMISED_LOOKUP_CAN_IDENTITY
@@ -786,7 +786,7 @@ unsafe fn match_lines(infile: &mut dyn BufRead, infilename: &str, out: &mut dyn 
             if let Some(pos) = line.find('\n') {
                 line.truncate(pos);
             }
-            verbose_printf(&format!("matching {}...\n", line));
+            verbose_print(&format!("matching {}...\n", line));
             // #else branch (active: HFST_OPTIMISED_LOOKUP_CAN_IDENTITY undefined)
             if line.is_empty() {
                 continue;
@@ -801,7 +801,7 @@ unsafe fn match_lines(infile: &mut dyn BufRead, infilename: &str, out: &mut dyn 
                     return false;
                 }
             };
-            verbose_printf("composing...\n");
+            verbose_print("composing...\n");
             let mut results_t = match HfstTransducer::new_copy(&line_trans) {
                 Ok(t) => t,
                 Err(e) => {
@@ -832,12 +832,12 @@ unsafe fn match_lines(infile: &mut dyn BufRead, infilename: &str, out: &mut dyn 
                 }
             };
             if is_empty {
-                verbose_printf("no matches\n");
+                verbose_print("no matches\n");
                 if INVERT_MATCHES {
                     print_match_transducer(&line_trans, &mut *out);
                 }
             } else {
-                verbose_printf("matches\n");
+                verbose_print("matches\n");
                 if !INVERT_MATCHES {
                     print_match_transducer(&results_t, &mut *out);
                 }
@@ -861,7 +861,7 @@ unsafe fn match_lines(infile: &mut dyn BufRead, infilename: &str, out: &mut dyn 
 #[allow(dead_code)]
 unsafe fn optimise_matcher() {
     unsafe {
-        verbose_printf("Optimising...\n");
+        verbose_print("Optimising...\n");
         OPTIMISED_MATCHER = Box::into_raw(Box::new(
             match HfstTransducer::convert_static(&*MATCHER, ImplementationType::HFST_OL_TYPE) {
                 Ok(t) => t,
@@ -891,7 +891,7 @@ unsafe fn real_main() -> i32 {
         if retval != EXIT_CONTINUE {
             return retval;
         }
-        verbose_printf(&format!("Writing to {}\n", globals::output_filename()));
+        verbose_print(&format!("Writing to {}\n", globals::output_filename()));
         read_matcher(&regexp().unwrap_or_default());
         extend_matcher_with_options();
         let mut out = match globals::output_writer() {

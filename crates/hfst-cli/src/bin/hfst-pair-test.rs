@@ -13,7 +13,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_getenv, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_printf,
+    print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -609,9 +609,9 @@ unsafe fn process_stream(
         while inputstream.is_good() {
             transducer_n += 1;
             if transducer_n == 1 {
-                verbose_printf(&format!("Reading {}...\n", globals::input_filename()));
+                verbose_print(&format!("Reading {}...\n", globals::input_filename()));
             } else {
-                verbose_printf(&format!(
+                verbose_print(&format!(
                     "Reading {}...{}\n",
                     globals::input_filename(),
                     transducer_n
@@ -633,10 +633,10 @@ unsafe fn process_stream(
 
         let mut known_symbols: SymbolSet = BTreeSet::new();
         if !grammar.is_empty() {
-            verbose_printf("Defining known symbols.\n");
+            verbose_print("Defining known symbols.\n");
             get_symbols(&grammar[0], &mut known_symbols);
             for it in known_symbols.iter() {
-                verbose_printf(&format!("Symbol {}\n", it));
+                verbose_print(&format!("Symbol {}\n", it));
             }
         }
 
@@ -681,7 +681,7 @@ unsafe fn process_stream(
                 if is_empty_or_comment(&line_str) {
                     continue;
                 }
-                verbose_printf(&format!("Pair test on {}...\n", line_str));
+                verbose_print(&format!("Pair test on {}...\n", line_str));
 
                 let line_for_panic = line_str.clone();
                 let tok_result = input_tokenizer.tokenize_pair_string(&line_str, true);
@@ -763,7 +763,7 @@ unsafe fn process_stream(
                     let test_case =
                         strip_space(&substr_from_bytes(&strip_space(&line_str), marker_len));
 
-                    verbose_printf(&format!("Positive test case: {}...\n", test_case));
+                    verbose_print(&format!("Positive test case: {}...\n", test_case));
                     positive_test_cases.push(test_case);
                 } else if is_negative_test_line(&line_str) {
                     // "!!$ xyz" -> "xyz"
@@ -771,7 +771,7 @@ unsafe fn process_stream(
                     let test_case =
                         strip_space(&substr_from_bytes(&strip_space(&line_str), marker_len));
 
-                    verbose_printf(&format!(
+                    verbose_print(&format!(
                         "Negative test case: {} {}...\n",
                         line_str, test_case
                     ));
@@ -925,7 +925,7 @@ unsafe fn real_main() -> i32 {
             return retval;
         }
         // close buffers, we use streams
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

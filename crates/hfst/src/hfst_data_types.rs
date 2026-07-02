@@ -175,7 +175,7 @@ pub fn implementation_type_to_format(ty: ImplementationType) -> &'static str {
 // 'std::fs', returning an owned handle in place of the raw 'FILE *'. 'mode'
 // distinguishes read access from write/create (the only distinction the callers
 // rely on); a 'w'/'a' anywhere in the mode selects the write path.
-pub fn hfst_fopen(filename: &str, mode: &str) -> std::io::Result<std::fs::File> {
+pub fn open_file(filename: &str, mode: &str) -> std::io::Result<std::fs::File> {
     if mode.contains('w') || mode.contains('a') {
         std::fs::File::create(filename)
     } else {

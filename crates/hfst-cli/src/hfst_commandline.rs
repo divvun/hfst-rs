@@ -211,7 +211,7 @@ pub fn debug_save_transducer(t: &HfstTransducer, name: &str) -> hfst::error::Res
         let Ok(mut debug_out) = HfstOutputStream::new_filename(name, t.get_type(), true) else {
             return Ok(());
         };
-        debug_printf(&format!(
+        debug_print(&format!(
             "*** DEBUG ({}): saving current transducer to {}\n",
             globals::program_name(),
             name
@@ -224,7 +224,7 @@ pub fn debug_save_transducer(t: &HfstTransducer, name: &str) -> hfst::error::Res
 
 // [spec:hfst:def:hfst-commandline.debug-printf-fn]
 // [spec:hfst:sem:hfst-commandline.debug-printf-fn]
-pub fn debug_printf(msg: &str) {
+pub fn debug_print(msg: &str) {
     if unsafe { globals::DEBUG } {
         let f = &mut std::io::stderr();
         let _ = write!(f, "\nDEBUG: {}\n", msg);
@@ -233,7 +233,7 @@ pub fn debug_printf(msg: &str) {
 
 // [spec:hfst:def:hfst-commandline.verbose-printf-fn]
 // [spec:hfst:sem:hfst-commandline.verbose-printf-fn]
-pub fn verbose_printf(msg: &str) {
+pub fn verbose_print(msg: &str) {
     if unsafe { globals::VERBOSE } {
         let _ = write!(globals::message_writer(), "{}", msg);
     }
@@ -371,7 +371,7 @@ pub fn hfst_strtonumber(s: &str, infinite: Option<&mut bool>) -> i32 {
 
 // [spec:hfst:def:hfst-commandline.hfst-strtoul-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strtoul-fn]
-pub fn hfst_strtoul(s: &str, base: i32) -> u64 {
+pub fn parse_u64(s: &str, base: i32) -> u64 {
     match u64::from_str_radix(s, base as u32) {
         Ok(rv) => rv,
         Err(_) => {
@@ -387,7 +387,7 @@ pub fn hfst_strtoul(s: &str, base: i32) -> u64 {
 
 // [spec:hfst:def:hfst-commandline.hfst-strtol-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strtol-fn]
-pub fn hfst_strtol(s: &str, base: i32) -> i64 {
+pub fn parse_i64(s: &str, base: i32) -> i64 {
     match i64::from_str_radix(s, base as u32) {
         Ok(rv) => rv,
         Err(_) => {

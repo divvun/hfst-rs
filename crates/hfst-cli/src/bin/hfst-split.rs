@@ -9,7 +9,7 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_printf,
+    print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
@@ -141,7 +141,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             transducer_n += 1;
             let outfilename = format!("{}{}{}", prefix(), transducer_n, extension());
             globals::set_output_filename(outfilename.clone());
-            verbose_printf(&format!(
+            verbose_print(&format!(
                 "Writing {} of {} to {}...\n",
                 transducer_n,
                 globals::input_filename(),
@@ -196,7 +196,7 @@ unsafe fn real_main() -> i32 {
             return retval;
         }
         // close buffers, we use streams
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}...{}\n",
             globals::input_filename(),
             prefix(),

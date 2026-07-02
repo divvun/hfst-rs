@@ -10,7 +10,7 @@
 use hfst::hfst_input_stream::strip_hfst3_headers;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
-    EXIT_CONTINUE, hfst_set_program_name, print_more_info, print_report_bugs, verbose_printf,
+    EXIT_CONTINUE, hfst_set_program_name, print_more_info, print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{
@@ -129,7 +129,7 @@ unsafe fn real_main() -> i32 {
         if retval != EXIT_CONTINUE {
             return retval;
         }
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             globals::input_filename(),
             globals::output_filename()

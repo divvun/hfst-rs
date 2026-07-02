@@ -20,7 +20,7 @@ use hfst::pmatch_tokenize::{
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
     EXIT_CONTINUE, extend_options_getenv, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_printf,
+    print_report_bugs, verbose_print,
 };
 use hfst_cli::hfst_getopt as getopt;
 use hfst_cli::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
@@ -397,21 +397,21 @@ unsafe fn process_input(
         // no stream-wide formatting flag to mirror here.)
         if settings().output_format == OutputFormat::giellacg || SUPERBLANKS {
             if SUPERBLANKS {
-                verbose_printf("Processign giellacg with superblanks\n");
+                verbose_print("Processign giellacg with superblanks\n");
                 return process_input_0delim(container, outstream, true, input);
             } else {
-                verbose_printf("Processign giellacg without superblanks\n");
+                verbose_print("Processign giellacg without superblanks\n");
                 return process_input_0delim(container, outstream, false, input);
             }
         }
         if settings().output_format == OutputFormat::visl {
-            verbose_printf("Processign VISL CG 3\n");
+            verbose_print("Processign VISL CG 3\n");
             return process_input_visl(container, outstream, input);
         }
         let mut input_text = String::new();
         let mut line = String::new();
         if BLANKLINE_SEPARATED {
-            verbose_printf("Processing blankline separated input\n");
+            verbose_print("Processing blankline separated input\n");
             loop {
                 line.clear();
                 // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
@@ -432,7 +432,7 @@ unsafe fn process_input(
             }
         } else {
             // newline or non-separated
-            verbose_printf("Processing non-separated input\n");
+            verbose_print("Processing non-separated input\n");
             loop {
                 line.clear();
                 if input.read_line(&mut line).unwrap_or(0) == 0 {
@@ -609,7 +609,7 @@ unsafe fn real_main() -> i32 {
             let ptr = &raw const TOKENIZER_FILENAME;
             (*ptr).clone()
         };
-        verbose_printf(&format!(
+        verbose_print(&format!(
             "Reading from {}, writing to {}\n",
             tokenizer_filename,
             globals::output_filename()
@@ -654,7 +654,7 @@ unsafe fn real_main() -> i32 {
             }
         };
         if first_header_attributes.get("name").map(|s| s.as_str()) != Some("TOP") {
-            verbose_printf("No TOP automaton found, using naive tokeniser?\n");
+            verbose_print("No TOP automaton found, using naive tokeniser?\n");
             let mut is = match HfstInputStream::new_filename(&tokenizer_filename) {
                 Ok(s) => s,
                 Err(e) => {
@@ -680,7 +680,7 @@ unsafe fn real_main() -> i32 {
             container.set_single_codepoint_tokenization(!settings().tokenize_multichar);
             process_input(&mut container, &mut stdout, &mut *input)
         } else {
-            verbose_printf("TOP automaton seen, treating as pmatch script...\n");
+            verbose_print("TOP automaton seen, treating as pmatch script...\n");
             let mut is = hfst::transducer::IStream::new(&mut file as &mut dyn std::io::Read);
             let mut container = match PmatchContainer::new_from_stream(&mut is) {
                 Ok(c) => c,
