@@ -12,28 +12,6 @@
 
 use crate::twolc::replace_substr;
 
-// @brief Thrown when a string manipulation function receives incorrect
-// string input.
-// [spec:hfst:def:string-manipulation.faulty-string-input]
-pub struct FaultyStringInput {
-    // @var Name of the function which threw this instance.
-    pub function: String,
-
-    // @var The incorrect input @function received.
-    pub input: String,
-}
-
-impl FaultyStringInput {
-    // [spec:hfst:def:string-manipulation.faulty-string-input.faulty-string-input-fn]
-    // [spec:hfst:sem:string-manipulation.faulty-string-input.faulty-string-input-fn]
-    pub fn new(function: &str, input: &str) -> Self {
-        FaultyStringInput {
-            function: function.to_string(),
-            input: input.to_string(),
-        }
-    }
-}
-
 // [spec:hfst:def:string-manipulation.new-string-fn]
 // [spec:hfst:sem:string-manipulation.new-string-fn]
 pub fn new_string(lgth: usize) -> String {
@@ -52,38 +30,41 @@ pub fn remove_sign_str(str: &str, sign: &str) -> String {
 
 // [spec:hfst:def:string-manipulation.unescape-fn]
 // [spec:hfst:sem:string-manipulation.unescape-fn]
-pub fn unescape(str: &str) -> String {
+pub fn unescape(str: &str) -> crate::error::Result<String> {
     if str.contains('\n') {
-        std::panic::panic_any(FaultyStringInput::new("unescape", str));
+        crate::bail!(FaultyStringInput, format!("{}: {}", "unescape", str));
     }
     // Change "%%" to "\n", remove all remaining %'s
     // and change all '\n's to '%'.
-    replace_substr(
+    Ok(replace_substr(
         &remove_sign_char(&replace_substr(str, "%%", "\n"), '%'),
         "\n",
         "%",
-    )
+    ))
 }
 
 // [spec:hfst:def:string-manipulation.strcmp-unescaped-fn]
 // [spec:hfst:sem:string-manipulation.strcmp-unescaped-fn]
-pub fn strcmp_unescaped(str1: &str, str2: &str) -> i32 {
+pub fn strcmp_unescaped(str1: &str, str2: &str) -> crate::error::Result<i32> {
     // Remove all escapes from str1 and str2 and
     // compare them.
-    let str1_copy = unescape(str1);
-    let str2_copy = unescape(str2);
-    match str1_copy.cmp(&str2_copy) {
+    let str1_copy = unescape(str1)?;
+    let str2_copy = unescape(str2)?;
+    Ok(match str1_copy.cmp(&str2_copy) {
         std::cmp::Ordering::Less => -1,
         std::cmp::Ordering::Equal => 0,
         std::cmp::Ordering::Greater => 1,
-    }
+    })
 }
 
 // [spec:hfst:def:string-manipulation.remove-white-space-fn]
 // [spec:hfst:sem:string-manipulation.remove-white-space-fn]
-pub fn remove_white_space(str: &str) -> String {
+pub fn remove_white_space(str: &str) -> crate::error::Result<String> {
     if str.contains('\n') {
-        std::panic::panic_any(FaultyStringInput::new("remove_white_space", str));
+        crate::bail!(
+            FaultyStringInput,
+            format!("{}: {}", "remove_white_space", str)
+        );
     }
     let mut str = replace_substr(
         &remove_sign_char(&replace_substr(str, "% ", "\n"), ' '),
@@ -108,30 +89,30 @@ pub fn remove_white_space(str: &str) -> String {
         "\n",
         "__HFST_TWOLC_\\n",
     );
-    str
+    Ok(str)
 }
 
 // [spec:hfst:def:string-manipulation.unescape-and-remove-white-space-fn]
 // [spec:hfst:sem:string-manipulation.unescape-and-remove-white-space-fn]
-pub fn unescape_and_remove_white_space(str: &str) -> String {
-    unescape(&remove_white_space(str))
+pub fn unescape_and_remove_white_space(str: &str) -> crate::error::Result<String> {
+    unescape(&remove_white_space(str)?)
 }
 
 // [spec:hfst:def:string-manipulation.unquote-fn]
 // [spec:hfst:sem:string-manipulation.unquote-fn]
-pub fn unquote(str: &str) -> String {
+pub fn unquote(str: &str) -> crate::error::Result<String> {
     let bytes = str.as_bytes();
     if str.len() < 2 || bytes[0] != b'"' || bytes[str.len() - 1] != b'"' {
-        std::panic::panic_any(FaultyStringInput::new("unquote", str));
+        crate::bail!(FaultyStringInput, format!("{}: {}", "unquote", str));
     }
     // Return the substring of str spanning from the
     // second to the next to final character.
-    str[1..str.len() - 1].to_string()
+    Ok(str[1..str.len() - 1].to_string())
 }
 
 // [spec:hfst:def:string-manipulation.str2int-fn]
 // [spec:hfst:sem:string-manipulation.str2int-fn]
-pub fn str2int(str: &str) -> i32 {
+pub fn str2int(str: &str) -> crate::error::Result<i32> {
     // Mirror 'std::istringstream in(str); in >> number;': skip leading
     // whitespace, read an optional sign, then the run of decimal digits;
     // fail (no digits) -> FaultyStringInput.
@@ -152,10 +133,10 @@ pub fn str2int(str: &str) -> i32 {
         i += 1;
     }
     if i == digit_start {
-        std::panic::panic_any(FaultyStringInput::new("str2int", str));
+        crate::bail!(FaultyStringInput, format!("{}: {}", "str2int", str));
     }
     let number = if neg { -value } else { value };
-    number as i32
+    Ok(number as i32)
 }
 
 // [spec:hfst:def:string-manipulation.print-kill-symbol-fn]
@@ -232,7 +213,7 @@ pub struct relaxed_str_cmp;
 impl relaxed_str_cmp {
     // [spec:hfst:def:string-manipulation.relaxed-str-cmp.operator-fn]
     // [spec:hfst:sem:string-manipulation.relaxed-str-cmp.operator-fn]
-    pub fn operator_call(str1: &str, str2: &str) -> bool {
-        strcmp_unescaped(str1, str2) < 0
+    pub fn operator_call(str1: &str, str2: &str) -> crate::error::Result<bool> {
+        Ok(strcmp_unescaped(str1, str2)? < 0)
     }
 }

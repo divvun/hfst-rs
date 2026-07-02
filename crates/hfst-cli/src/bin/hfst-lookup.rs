@@ -719,7 +719,7 @@ unsafe fn line_to_lookup_path(
     markup: &mut String,
     outside_sigma: &mut bool,
     optimized_lookup: bool,
-) -> HfstOneLevelPath {
+) -> hfst::error::Result<HfstOneLevelPath> {
     unsafe {
         let mut rv = HfstOneLevelPath {
             first: 0.0,
@@ -730,7 +730,7 @@ unsafe fn line_to_lookup_path(
         match INPUT_FORMAT {
             LookupInputFormat::SpaceSeparatedTokenInput => {
                 let escaped = escape_special_characters(s);
-                let spv: StringPairVector = tok.tokenize_string_pair(&escaped, true);
+                let spv: StringPairVector = tok.tokenize_string_pair(&escaped, true)?;
                 for it in spv.iter() {
                     rv.second.push(it.0.clone());
                 }
@@ -740,7 +740,7 @@ unsafe fn line_to_lookup_path(
                     rv.second.push(s.clone());
                 } else {
                     let escaped = escape_special_characters(s);
-                    let spv: StringPairVector = tok.tokenize_string_pair(&escaped, false);
+                    let spv: StringPairVector = tok.tokenize_string_pair(&escaped, false)?;
                     for it in spv.iter() {
                         // todo: check if symbol is known to transducer
                         rv.second.push(it.0.clone());
@@ -788,7 +788,7 @@ unsafe fn line_to_lookup_path(
                 rv.second = path;
             }
         }
-        rv
+        Ok(rv)
     }
 }
 
@@ -1530,7 +1530,13 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
         let mut line: String;
 
         let epsilon_format = EPSILON_FORMAT.clone();
-        let input_tokenizer = HfstStrings2FstTokenizer::new(&mc_symbols, &epsilon_format);
+        let input_tokenizer = match HfstStrings2FstTokenizer::new(&mc_symbols, &epsilon_format) {
+            Ok(t) => t,
+            Err(e) => {
+                hfst_error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
 
         if !only_optimized_lookup && !globals::SILENT {
             hfst_warning(
@@ -1597,13 +1603,19 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             let mut unknown = false;
             let mut infinite = false;
 
-            let kv = line_to_lookup_path(
+            let kv = match line_to_lookup_path(
                 &mut line,
                 &input_tokenizer,
                 &mut markup,
                 &mut unknown,
                 only_optimized_lookup,
-            );
+            ) {
+                Ok(kv) => kv,
+                Err(e) => {
+                    hfst_error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
 
             if globals::VERBOSE {
                 verbose_printf("Tokenized to: ");

@@ -297,10 +297,13 @@ unsafe fn compose_streams(
                     if let Err(e) = harmonize_res {
                         if matches!(e.kind, hfst::error::ErrorKind::TransducerTypeMismatch) {
                             if globals::ALLOW_TRANSDUCER_CONVERSION {
-                                convert_transducers(
+                                if let Err(e) = convert_transducers(
                                     first.as_mut().expect("first transducer is present"),
                                     second.as_mut().expect("second transducer is present"),
-                                );
+                                ) {
+                                    error(1, 0, &format!("{e}"));
+                                    return 1;
+                                }
                                 if let Err(e2) = first
                                     .as_mut()
                                     .expect("first transducer is present")
@@ -352,10 +355,13 @@ unsafe fn compose_streams(
             if let Err(e) = compose_res {
                 if matches!(e.kind, hfst::error::ErrorKind::TransducerTypeMismatch) {
                     if globals::ALLOW_TRANSDUCER_CONVERSION {
-                        convert_transducers(
+                        if let Err(e) = convert_transducers(
                             first.as_mut().expect("first transducer is present"),
                             second.as_mut().expect("second transducer is present"),
-                        );
+                        ) {
+                            error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
                         if let Err(e2) = first
                             .as_mut()
                             .expect("first transducer is present")

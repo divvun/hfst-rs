@@ -5751,7 +5751,7 @@ impl XfstCompiler {
         let tok = crate::hfst_strings2_fst_tokenizer::HfstStrings2FstTokenizer::new(
             &mcs,
             crate::hfst_symbol_defs::internal_epsilon,
-        );
+        )?;
         let mut reader = std::io::BufReader::new(infile);
 
         loop {
@@ -5762,7 +5762,7 @@ impl XfstCompiler {
                 Err(_) => break,
             }
             let line = self.remove_newline(buf);
-            let spv = tok.tokenize_pair_string(&line, spaces);
+            let spv = tok.tokenize_pair_string(&line, spaces)?;
             // [spec:hfst:def:xfst-compiler.hfst.xfst.line-tr-fn]
             // [spec:hfst:sem:xfst-compiler.hfst.xfst.line-tr-fn]
             let line_tr = HfstTransducer::new_string_pair_vector(&spv, self.format_)?;

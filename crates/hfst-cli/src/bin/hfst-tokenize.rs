@@ -191,7 +191,7 @@ unsafe fn make_naive_tokenizer(
         let dict_backend =
             hfst::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_ol(
                 dictionary,
-            );
+            )?;
         let tokenizer_ol =
             hfst::convert_transducer_format::ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                 &tokenizer_basic,

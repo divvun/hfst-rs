@@ -246,7 +246,10 @@ unsafe fn conjunct_streams(
                         // C: 'first->harmonize_flag_diacritics(*second)' — relies
                         // on the default 'insert_renamed_flags=true'.
                         let second_t = second.as_mut().unwrap();
-                        first_t.harmonize_flag_diacritics(second_t, true);
+                        if let Err(e) = first_t.harmonize_flag_diacritics(second_t, true) {
+                            error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
                     }
                 }
             }
@@ -265,7 +268,10 @@ unsafe fn conjunct_streams(
                 if globals::ALLOW_TRANSDUCER_CONVERSION {
                     let first_t = first.as_mut().expect("first transducer present");
                     let second_t = second.as_mut().expect("second transducer present");
-                    convert_transducers(first_t, second_t);
+                    if let Err(e) = convert_transducers(first_t, second_t) {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                     let second_ref = second.as_ref().expect("second transducer present");
                     if let Err(e) = first
                         .as_mut()

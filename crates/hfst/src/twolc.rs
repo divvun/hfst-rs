@@ -91,19 +91,9 @@ pub enum Matcher {
     MIXED,
 }
 
-// Typed empty-marker "exceptions" (thrown via panic_any):
-// [spec:hfst:def:other-symbol-transducer.empty-symbol-pair-set]
-#[derive(Clone, Copy, Debug)]
-pub struct EmptySymbolPairSet;
-// [spec:hfst:def:other-symbol-transducer.undefined-symbol-pairs-found]
-#[derive(Clone, Copy, Debug)]
-pub struct UndefinedSymbolPairsFound;
 // [spec:hfst:def:variable-defs.empty-container]
 #[derive(Clone, Copy, Debug)]
 pub struct EmptyContainer;
-// [spec:hfst:def:variable-defs.unequal-set-size]
-#[derive(Clone, Copy, Debug)]
-pub struct UnequalSetSize;
 
 // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer]
 pub struct OtherSymbolTransducer {
@@ -592,19 +582,19 @@ impl OtherSymbolTransducer {
 
     /// 'apply(HfstTransducerZeroArgMember p)' — apply a zero-arg 'HfstTransducer'
     /// op then minimize. The C++ member-fn-pointer becomes a closure.
-    pub fn apply_zero<F>(&mut self, cfg: &OstConfig, p: F) -> &mut Self
+    pub fn apply_zero<F>(&mut self, cfg: &OstConfig, p: F) -> crate::error::Result<&mut Self>
     where
-        F: FnOnce(&mut HfstTransducer),
+        F: FnOnce(&mut HfstTransducer) -> crate::error::Result<()>,
     {
         if Self::config_symbol_pairs_empty(cfg) {
-            std::panic::panic_any(EmptySymbolPairSet);
+            crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
-        p(&mut self.transducer);
-        self.transducer.minimize();
-        self
+        p(&mut self.transducer)?;
+        self.transducer.minimize()?;
+        Ok(self)
     }
 
     /// 'apply(const HfstTransducerOneArgMember, const OtherSymbolTransducer&)'.
@@ -618,18 +608,18 @@ impl OtherSymbolTransducer {
         cfg: &OstConfig,
         p: F,
         another: &OtherSymbolTransducer,
-    ) -> &mut Self
+    ) -> crate::error::Result<&mut Self>
     where
-        F: FnOnce(&mut HfstTransducer, &HfstTransducer),
+        F: FnOnce(&mut HfstTransducer, &HfstTransducer) -> crate::error::Result<()>,
     {
         if Self::config_symbol_pairs_empty(cfg) {
-            std::panic::panic_any(EmptySymbolPairSet);
+            crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
         if another.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
         // [spec:hfst:def:other-symbol-transducer.another-copy-fn]
         // [spec:hfst:sem:other-symbol-transducer.another-copy-fn]
@@ -638,9 +628,9 @@ impl OtherSymbolTransducer {
             self.harmonize_diacritics(cfg, &mut another_copy);
             another_copy.harmonize_diacritics(cfg, self);
         }
-        p(&mut self.transducer, &another_copy.transducer);
-        self.transducer.minimize();
-        self
+        p(&mut self.transducer, &another_copy.transducer)?;
+        self.transducer.minimize()?;
+        Ok(self)
     }
 
     /// 'apply(const HfstTransducerBoolArgMember, const OtherSymbolTransducer&)'.
@@ -652,27 +642,27 @@ impl OtherSymbolTransducer {
         cfg: &OstConfig,
         p: F,
         another: &OtherSymbolTransducer,
-    ) -> &mut Self
+    ) -> crate::error::Result<&mut Self>
     where
-        F: FnOnce(&mut HfstTransducer, &HfstTransducer, bool),
+        F: FnOnce(&mut HfstTransducer, &HfstTransducer, bool) -> crate::error::Result<()>,
     {
         if Self::config_symbol_pairs_empty(cfg) {
-            std::panic::panic_any(EmptySymbolPairSet);
+            crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
         if another.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
         let mut another_copy = another.clone();
         if Self::config_has_diacritics(cfg) {
             self.harmonize_diacritics(cfg, &mut another_copy);
             another_copy.harmonize_diacritics(cfg, self);
         }
-        p(&mut self.transducer, &another_copy.transducer, true);
-        self.transducer.minimize();
-        self
+        p(&mut self.transducer, &another_copy.transducer, true)?;
+        self.transducer.minimize()?;
+        Ok(self)
     }
 
     /// 'bool apply(const HfstTransducerOneArgMemberBool,
@@ -687,70 +677,86 @@ impl OtherSymbolTransducer {
         cfg: &OstConfig,
         p: F,
         another: &OtherSymbolTransducer,
-    ) -> bool
+    ) -> crate::error::Result<bool>
     where
         F: FnOnce(&mut HfstTransducer, &HfstTransducer) -> bool,
     {
         if Self::config_symbol_pairs_empty(cfg) {
-            std::panic::panic_any(EmptySymbolPairSet);
+            crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
         if another.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
         let mut copy = self.clone();
         let another_copy = another.clone();
-        p(&mut copy.transducer, &another_copy.transducer)
+        Ok(p(&mut copy.transducer, &another_copy.transducer))
     }
 
     /// 'apply(const HfstTransducerOneNumArgMember, unsigned int number)'.
-    pub fn apply_num<F>(&mut self, cfg: &OstConfig, p: F, number: u32) -> &mut Self
+    pub fn apply_num<F>(
+        &mut self,
+        cfg: &OstConfig,
+        p: F,
+        number: u32,
+    ) -> crate::error::Result<&mut Self>
     where
-        F: FnOnce(&mut HfstTransducer, u32),
+        F: FnOnce(&mut HfstTransducer, u32) -> crate::error::Result<()>,
     {
         if Self::config_symbol_pairs_empty(cfg) {
-            std::panic::panic_any(EmptySymbolPairSet);
+            crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
-        p(&mut self.transducer, number);
-        self.transducer.minimize();
-        self
+        p(&mut self.transducer, number)?;
+        self.transducer.minimize()?;
+        Ok(self)
     }
 
     /// 'apply(const HfstTransducerTwoNumArgMember, unsigned int, unsigned int)'.
-    pub fn apply_two_num<F>(&mut self, cfg: &OstConfig, p: F, num1: u32, num2: u32) -> &mut Self
+    pub fn apply_two_num<F>(
+        &mut self,
+        cfg: &OstConfig,
+        p: F,
+        num1: u32,
+        num2: u32,
+    ) -> crate::error::Result<&mut Self>
     where
-        F: FnOnce(&mut HfstTransducer, u32, u32),
+        F: FnOnce(&mut HfstTransducer, u32, u32) -> crate::error::Result<()>,
     {
         if Self::config_symbol_pairs_empty(cfg) {
-            std::panic::panic_any(EmptySymbolPairSet);
+            crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
-        p(&mut self.transducer, num1, num2);
-        self.transducer.minimize();
-        self
+        p(&mut self.transducer, num1, num2)?;
+        self.transducer.minimize()?;
+        Ok(self)
     }
 
     /// 'apply(const HfstTransducerOneSymbolPairArgMember, const SymbolPair&)'.
-    pub fn apply_symbol_pair<F>(&mut self, cfg: &OstConfig, p: F, pair: &SymbolPair) -> &mut Self
+    pub fn apply_symbol_pair<F>(
+        &mut self,
+        cfg: &OstConfig,
+        p: F,
+        pair: &SymbolPair,
+    ) -> crate::error::Result<&mut Self>
     where
-        F: FnOnce(&mut HfstTransducer, &SymbolPair),
+        F: FnOnce(&mut HfstTransducer, &SymbolPair) -> crate::error::Result<()>,
     {
         if Self::config_symbol_pairs_empty(cfg) {
-            std::panic::panic_any(EmptySymbolPairSet);
+            crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
-        p(&mut self.transducer, pair);
-        self.transducer.minimize();
-        self
+        p(&mut self.transducer, pair)?;
+        self.transducer.minimize()?;
+        Ok(self)
     }
 
     /// 'apply(const HfstTransducerOneSymbolPairBoolArgMember,
@@ -761,19 +767,19 @@ impl OtherSymbolTransducer {
         p: F,
         pair: &SymbolPair,
         b: bool,
-    ) -> &mut Self
+    ) -> crate::error::Result<&mut Self>
     where
-        F: FnOnce(&mut HfstTransducer, &SymbolPair, bool),
+        F: FnOnce(&mut HfstTransducer, &SymbolPair, bool) -> crate::error::Result<()>,
     {
         if Self::config_symbol_pairs_empty(cfg) {
-            std::panic::panic_any(EmptySymbolPairSet);
+            crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
-        p(&mut self.transducer, pair, b);
-        self.transducer.minimize();
-        self
+        p(&mut self.transducer, pair, b)?;
+        self.transducer.minimize()?;
+        Ok(self)
     }
 
     /// 'apply(const HfstTransducerSubstMember, const std::string&,
@@ -785,16 +791,16 @@ impl OtherSymbolTransducer {
         str2: &str,
         b1: bool,
         b2: bool,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         if Self::config_symbol_pairs_empty(cfg) {
-            std::panic::panic_any(EmptySymbolPairSet);
+            crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
-        self.transducer.substitute_string(str1, str2, b1, b2);
-        self.transducer.minimize();
-        self
+        self.transducer.substitute_string(str1, str2, b1, b2)?;
+        self.transducer.minimize()?;
+        Ok(self)
     }
 
     /// 'apply(const HfstTransducerSubstPairMember, const SymbolPair&,
@@ -804,16 +810,16 @@ impl OtherSymbolTransducer {
         cfg: &OstConfig,
         p1: &SymbolPair,
         p2: &SymbolPair,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         if Self::config_symbol_pairs_empty(cfg) {
-            std::panic::panic_any(EmptySymbolPairSet);
+            crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
-        self.transducer.substitute_pair_with_pair(p1, p2);
-        self.transducer.minimize();
-        self
+        self.transducer.substitute_pair_with_pair(p1, p2)?;
+        self.transducer.minimize()?;
+        Ok(self)
     }
 
     /// 'apply(const HfstTransducerSubstPairFstMember, const SymbolPair&,
@@ -827,18 +833,18 @@ impl OtherSymbolTransducer {
         p1: &SymbolPair,
         t: &OtherSymbolTransducer,
         b: bool,
-    ) -> &mut Self {
+    ) -> crate::error::Result<&mut Self> {
         if Self::config_symbol_pairs_empty(cfg) {
-            std::panic::panic_any(EmptySymbolPairSet);
+            crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
         let mut t_copy = t.clone();
         self.transducer
-            .substitute_symbol_pair_with_transducer(p1, &mut t_copy.transducer, b);
-        self.transducer.minimize();
-        self
+            .substitute_symbol_pair_with_transducer(p1, &mut t_copy.transducer, b)?;
+        self.transducer.minimize()?;
+        Ok(self)
     }
 
     // -------------------------------------------------------------------------
@@ -846,130 +852,173 @@ impl OtherSymbolTransducer {
     // -------------------------------------------------------------------------
 
     /// 'apply(&HfstTransducer::disjunct, another)'.
-    pub fn disjunct(&mut self, cfg: &OstConfig, another: &OtherSymbolTransducer) -> &mut Self {
+    pub fn disjunct(
+        &mut self,
+        cfg: &OstConfig,
+        another: &OtherSymbolTransducer,
+    ) -> crate::error::Result<&mut Self> {
         self.apply_one(
             cfg,
             |t, o| {
-                t.disjunct(o, true);
+                t.disjunct(o, true)?;
+                Ok(())
             },
             another,
         )
     }
 
     /// 'apply(&HfstTransducer::intersect, another)'.
-    pub fn intersect(&mut self, cfg: &OstConfig, another: &OtherSymbolTransducer) -> &mut Self {
+    pub fn intersect(
+        &mut self,
+        cfg: &OstConfig,
+        another: &OtherSymbolTransducer,
+    ) -> crate::error::Result<&mut Self> {
         self.apply_one(
             cfg,
             |t, o| {
-                t.intersect(o, true);
+                t.intersect(o, true)?;
+                Ok(())
             },
             another,
         )
     }
 
     /// 'apply(&HfstTransducer::subtract, another)'.
-    pub fn subtract(&mut self, cfg: &OstConfig, another: &OtherSymbolTransducer) -> &mut Self {
+    pub fn subtract(
+        &mut self,
+        cfg: &OstConfig,
+        another: &OtherSymbolTransducer,
+    ) -> crate::error::Result<&mut Self> {
         self.apply_one(
             cfg,
             |t, o| {
-                t.subtract(o, true);
+                t.subtract(o, true)?;
+                Ok(())
             },
             another,
         )
     }
 
     /// 'apply(&HfstTransducer::concatenate, another)'.
-    pub fn concatenate(&mut self, cfg: &OstConfig, another: &OtherSymbolTransducer) -> &mut Self {
+    pub fn concatenate(
+        &mut self,
+        cfg: &OstConfig,
+        another: &OtherSymbolTransducer,
+    ) -> crate::error::Result<&mut Self> {
         self.apply_one(
             cfg,
             |t, o| {
-                t.concatenate(o, true);
+                t.concatenate(o, true)?;
+                Ok(())
             },
             another,
         )
     }
 
     /// 'apply(&HfstTransducer::compose, another)'.
-    pub fn compose(&mut self, cfg: &OstConfig, another: &OtherSymbolTransducer) -> &mut Self {
+    pub fn compose(
+        &mut self,
+        cfg: &OstConfig,
+        another: &OtherSymbolTransducer,
+    ) -> crate::error::Result<&mut Self> {
         self.apply_one(
             cfg,
             |t, o| {
-                t.compose(o, true);
+                t.compose(o, true)?;
+                Ok(())
             },
             another,
         )
     }
 
     /// 'apply(&HfstTransducer::insert_freely, another)' (bool-arg overload).
-    pub fn insert_freely(&mut self, cfg: &OstConfig, another: &OtherSymbolTransducer) -> &mut Self {
+    pub fn insert_freely(
+        &mut self,
+        cfg: &OstConfig,
+        another: &OtherSymbolTransducer,
+    ) -> crate::error::Result<&mut Self> {
         self.apply_one_bool(
             cfg,
             |t, o, h| {
-                t.insert_freely(o, h);
+                t.insert_freely(o, h)?;
+                Ok(())
             },
             another,
         )
     }
 
     /// 'apply(&HfstTransducer::repeat_star)'.
-    pub fn repeat_star(&mut self, cfg: &OstConfig) -> &mut Self {
+    pub fn repeat_star(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
         self.apply_zero(cfg, |t| {
-            t.repeat_star();
+            t.repeat_star()?;
+            Ok(())
         })
     }
 
     /// 'apply(&HfstTransducer::minimize)'.
-    pub fn minimize(&mut self, cfg: &OstConfig) -> &mut Self {
+    pub fn minimize(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
         self.apply_zero(cfg, |t| {
-            t.minimize();
+            t.minimize()?;
+            Ok(())
         })
     }
 
     /// 'apply(&HfstTransducer::optionalize)'.
-    pub fn optionalize(&mut self, cfg: &OstConfig) -> &mut Self {
+    pub fn optionalize(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
         self.apply_zero(cfg, |t| {
-            t.optionalize();
+            t.optionalize()?;
+            Ok(())
         })
     }
 
     /// 'apply(&HfstTransducer::invert)'.
-    pub fn invert(&mut self, cfg: &OstConfig) -> &mut Self {
+    pub fn invert(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
         self.apply_zero(cfg, |t| {
-            t.invert();
+            t.invert()?;
+            Ok(())
         })
     }
 
     /// 'apply(&HfstTransducer::input_project)'.
-    pub fn input_project(&mut self, cfg: &OstConfig) -> &mut Self {
+    pub fn input_project(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
         self.apply_zero(cfg, |t| {
-            t.input_project();
+            t.input_project()?;
+            Ok(())
         })
     }
 
     /// 'apply(&HfstTransducer::output_project)'.
-    pub fn output_project(&mut self, cfg: &OstConfig) -> &mut Self {
+    pub fn output_project(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
         self.apply_zero(cfg, |t| {
-            t.output_project();
+            t.output_project()?;
+            Ok(())
         })
     }
 
     /// 'apply(&HfstTransducer::repeat_n, n)'.
-    pub fn repeat_n(&mut self, cfg: &OstConfig, n: u32) -> &mut Self {
+    pub fn repeat_n(&mut self, cfg: &OstConfig, n: u32) -> crate::error::Result<&mut Self> {
         self.apply_num(
             cfg,
             |t, n| {
-                t.repeat_n(n);
+                t.repeat_n(n)?;
+                Ok(())
             },
             n,
         )
     }
 
     /// 'apply(&HfstTransducer::repeat_n_to_k, n, k)'.
-    pub fn repeat_n_to_k(&mut self, cfg: &OstConfig, n: u32, k: u32) -> &mut Self {
+    pub fn repeat_n_to_k(
+        &mut self,
+        cfg: &OstConfig,
+        n: u32,
+        k: u32,
+    ) -> crate::error::Result<&mut Self> {
         self.apply_two_num(
             cfg,
             |t, n, k| {
-                t.repeat_n_to_k(n, k);
+                t.repeat_n_to_k(n, k)?;
+                Ok(())
             },
             n,
             k,
@@ -978,7 +1027,10 @@ impl OtherSymbolTransducer {
 
     /// Replace the diamond pair '(DIAMOND, DIAMOND)' with the HFST epsilon on
     /// both sides: 'substitute(DIAMOND, HFST_EPSILON, true, true)'.
-    pub fn substitute_diamond_to_epsilon(&mut self, cfg: &OstConfig) -> &mut Self {
+    pub fn substitute_diamond_to_epsilon(
+        &mut self,
+        cfg: &OstConfig,
+    ) -> crate::error::Result<&mut Self> {
         self.apply_subst(cfg, TWOLC_DIAMOND, HFST_EPSILON, true, true)
     }
 
@@ -1059,21 +1111,22 @@ impl OtherSymbolTransducer {
     ) -> crate::error::Result<OtherSymbolTransducer> {
         let mut universal = Self::get_universal(cfg)?;
         universal.apply_zero(cfg, |t| {
-            t.repeat_star();
-        });
+            t.repeat_star()?;
+            Ok(())
+        })?;
         let mut result = universal.clone();
         let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND)?;
         universal.apply_zero(cfg, |t| {
-            t.repeat_star();
-        });
+            t.repeat_star()?;
+            Ok(())
+        })?;
 
-        result
-            .concatenate(cfg, left)
-            .concatenate(cfg, &diamond)
-            .concatenate(cfg, &universal)
-            .concatenate(cfg, &diamond)
-            .concatenate(cfg, right)
-            .concatenate(cfg, &universal);
+        result.concatenate(cfg, left)?;
+        result.concatenate(cfg, &diamond)?;
+        result.concatenate(cfg, &universal)?;
+        result.concatenate(cfg, &diamond)?;
+        result.concatenate(cfg, right)?;
+        result.concatenate(cfg, &universal)?;
         Ok(result)
     }
 
@@ -1139,22 +1192,23 @@ impl OtherSymbolTransducer {
     /// 'd:d' to 'd:0'.
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.remove-diacritics-from-output-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.remove-diacritics-from-output-fn]
-    pub fn remove_diacritics_from_output(&mut self, cfg: &OstConfig) {
+    pub fn remove_diacritics_from_output(&mut self, cfg: &OstConfig) -> crate::error::Result<()> {
         let diac = cfg.diacritics.iter().cloned().collect::<Vec<_>>();
         for it in diac.iter() {
             self.apply_subst_pair(
                 cfg,
                 &(it.clone(), it.clone()),
                 &(it.clone(), TWOLC_EPSILON.to_string()),
-            );
+            )?;
         }
+        Ok(())
     }
 
     /// 'OtherSymbolTransducer &add_info_symbol(const std::string &info_symbol)'
     /// — append 'info_symbol' to the wrapped transducer's name.
-    pub fn add_info_symbol(&mut self, info_symbol: &str) -> &mut Self {
+    pub fn add_info_symbol(&mut self, info_symbol: &str) -> crate::error::Result<&mut Self> {
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
         let mut name = self.transducer.get_name();
         if !name.is_empty() {
@@ -1162,7 +1216,7 @@ impl OtherSymbolTransducer {
         }
         name += info_symbol;
         self.transducer.set_name(&name);
-        self
+        Ok(self)
     }
 
     /// 'static void add_transition(HfstBasicTransducer &center_t,
@@ -1212,7 +1266,7 @@ impl OtherSymbolTransducer {
         cfg: &OstConfig,
     ) -> crate::error::Result<OtherSymbolTransducer> {
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
         let fst = HfstBasicTransducer::from_transducer(&self.transducer);
         let mut new_fst = HfstBasicTransducer::new();
@@ -1295,8 +1349,9 @@ impl OtherSymbolTransducer {
         copy.transducer =
             HfstTransducer::new_from_basic(&new_fst, Self::config_transducer_type(cfg))?;
         copy.apply_zero(cfg, |t| {
-            t.minimize();
-        });
+            t.minimize()?;
+            Ok(())
+        })?;
         Ok(copy)
     }
 
@@ -1306,10 +1361,12 @@ impl OtherSymbolTransducer {
         // [spec:hfst:sem:other-symbol-transducer.universal-fn]
         let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         universal.apply_zero(cfg, |t| {
-            t.repeat_star();
-        });
+            t.repeat_star()?;
+            Ok(())
+        })?;
         let mut result = universal.clone();
-        result.concatenate(cfg, self).concatenate(cfg, &universal);
+        result.concatenate(cfg, self)?;
+        result.concatenate(cfg, &universal)?;
         *self = result;
         Ok(self)
     }
@@ -1319,17 +1376,18 @@ impl OtherSymbolTransducer {
     pub fn contained_once(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
         let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         universal.apply_zero(cfg, |t| {
-            t.repeat_star();
-        });
+            t.repeat_star()?;
+            Ok(())
+        })?;
         let mut result1 = universal.clone();
-        result1.concatenate(cfg, self).concatenate(cfg, &universal);
+        result1.concatenate(cfg, self)?;
+        result1.concatenate(cfg, &universal)?;
         let mut result2 = universal.clone();
-        result2
-            .concatenate(cfg, self)
-            .concatenate(cfg, &universal)
-            .concatenate(cfg, self)
-            .concatenate(cfg, &universal);
-        result1.subtract(cfg, &result2);
+        result2.concatenate(cfg, self)?;
+        result2.concatenate(cfg, &universal)?;
+        result2.concatenate(cfg, self)?;
+        result2.concatenate(cfg, &universal)?;
+        result1.subtract(cfg, &result2)?;
         *self = result1;
         Ok(self)
     }
@@ -1338,9 +1396,10 @@ impl OtherSymbolTransducer {
     pub fn negated(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
         let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         universal.apply_zero(cfg, |t| {
-            t.repeat_star();
-        });
-        universal.subtract(cfg, self);
+            t.repeat_star()?;
+            Ok(())
+        })?;
+        universal.subtract(cfg, self)?;
         *self = universal;
         Ok(self)
     }
@@ -1348,7 +1407,7 @@ impl OtherSymbolTransducer {
     /// 'OtherSymbolTransducer &term_complemented(void)' — '? - X'.
     pub fn term_complemented(&mut self, cfg: &OstConfig) -> crate::error::Result<&mut Self> {
         let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
-        universal.subtract(cfg, self);
+        universal.subtract(cfg, self)?;
         *self = universal;
         Ok(self)
     }
@@ -1358,7 +1417,7 @@ impl OtherSymbolTransducer {
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.get-transducer-fn]
     pub fn get_transducer(&self) -> crate::error::Result<HfstTransducer> {
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
         HfstTransducer::new_copy(&self.transducer)
     }
@@ -1368,9 +1427,12 @@ impl OtherSymbolTransducer {
     /// state.
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.get-initial-transition-pairs-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.get-initial-transition-pairs-fn]
-    pub fn get_initial_transition_pairs(&self, pair_container: &mut SymbolPairVector) {
+    pub fn get_initial_transition_pairs(
+        &self,
+        pair_container: &mut SymbolPairVector,
+    ) -> crate::error::Result<()> {
         if self.is_broken {
-            std::panic::panic_any(UndefinedSymbolPairsFound);
+            crate::bail!(UndefinedSymbolPairsFound);
         }
         let fst = HfstBasicTransducer::from_transducer(&self.transducer);
         for jt in fst
@@ -1382,6 +1444,7 @@ impl OtherSymbolTransducer {
             let output = jt.get_transition_data().get_output_symbol(fst.coder());
             pair_container.push((input, output));
         }
+        Ok(())
     }
 
     /// 'bool is_empty_intersection(const OtherSymbolTransducer &another,
@@ -1641,14 +1704,13 @@ impl Rule {
         cfg: &OstConfig,
     ) -> crate::error::Result<OtherSymbolTransducer> {
         let mut universal = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
-        universal.repeat_star(cfg);
+        universal.repeat_star(cfg)?;
         let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND)?;
         let mut universal_with_diamonds = universal.clone();
-        universal_with_diamonds
-            .concatenate(cfg, &diamond)
-            .concatenate(cfg, &universal)
-            .concatenate(cfg, &diamond)
-            .concatenate(cfg, &universal);
+        universal_with_diamonds.concatenate(cfg, &diamond)?;
+        universal_with_diamonds.concatenate(cfg, &universal)?;
+        universal_with_diamonds.concatenate(cfg, &diamond)?;
+        universal_with_diamonds.concatenate(cfg, &universal)?;
         Ok(universal_with_diamonds)
     }
 
@@ -1662,15 +1724,14 @@ impl Rule {
         output: &str,
     ) -> crate::error::Result<OtherSymbolTransducer> {
         let mut unknown = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
-        unknown.repeat_star(cfg);
+        unknown.repeat_star(cfg)?;
         let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND)?;
         let mut center = unknown.clone();
         let center_pair = OtherSymbolTransducer::new_pair(cfg, input, output)?;
-        center
-            .concatenate(cfg, &diamond)
-            .concatenate(cfg, &center_pair)
-            .concatenate(cfg, &diamond)
-            .concatenate(cfg, &unknown);
+        center.concatenate(cfg, &diamond)?;
+        center.concatenate(cfg, &center_pair)?;
+        center.concatenate(cfg, &diamond)?;
+        center.concatenate(cfg, &unknown)?;
         Ok(center)
     }
 
@@ -1683,19 +1744,18 @@ impl Rule {
         v: &SymbolPairVector,
     ) -> crate::error::Result<OtherSymbolTransducer> {
         let mut unknown = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
-        unknown.repeat_star(cfg);
+        unknown.repeat_star(cfg)?;
         let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND)?;
         let mut center_pair_transducer = OtherSymbolTransducer::new(cfg)?;
         for pair in v.iter() {
             let p = OtherSymbolTransducer::new_pair(cfg, &pair.0, &pair.1)?;
-            center_pair_transducer.disjunct(cfg, &p);
+            center_pair_transducer.disjunct(cfg, &p)?;
         }
         let mut center = unknown.clone();
-        center
-            .concatenate(cfg, &diamond)
-            .concatenate(cfg, &center_pair_transducer)
-            .concatenate(cfg, &diamond)
-            .concatenate(cfg, &unknown);
+        center.concatenate(cfg, &diamond)?;
+        center.concatenate(cfg, &center_pair_transducer)?;
+        center.concatenate(cfg, &diamond)?;
+        center.concatenate(cfg, &unknown)?;
         Ok(center)
     }
 
@@ -1708,14 +1768,13 @@ impl Rule {
         restricted_center: &OtherSymbolTransducer,
     ) -> crate::error::Result<OtherSymbolTransducer> {
         let mut unknown = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
-        unknown.repeat_star(cfg);
+        unknown.repeat_star(cfg)?;
         let diamond = OtherSymbolTransducer::new_symbol(cfg, TWOLC_DIAMOND)?;
         let mut center = unknown.clone();
-        center
-            .concatenate(cfg, &diamond)
-            .concatenate(cfg, restricted_center)
-            .concatenate(cfg, &diamond)
-            .concatenate(cfg, &unknown);
+        center.concatenate(cfg, &diamond)?;
+        center.concatenate(cfg, restricted_center)?;
+        center.concatenate(cfg, &diamond)?;
+        center.concatenate(cfg, &unknown)?;
         Ok(center)
     }
 
@@ -1736,10 +1795,11 @@ impl Rule {
                 self.rule_transducer.apply_symbol_pair(
                     cfg,
                     |t_, p_| {
-                        t_.insert_freely_pair(p_, false);
+                        t_.insert_freely_pair(p_, false)?;
+                        Ok(())
                     },
                     &(d.clone(), d.clone()),
-                );
+                )?;
             }
         }
         Ok(())
@@ -1801,15 +1861,14 @@ impl RuleT for RightArrowRule {
     // [spec:hfst:sem:right-arrow-rule.right-arrow-rule.compile-fn]
     fn compile(&mut self, cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer> {
         let context = std::mem::replace(&mut self.base.context, OtherSymbolTransducer::new(cfg)?);
-        self.base
-            .center
-            .subtract(cfg, &context)
-            .substitute_diamond_to_epsilon(cfg);
+        self.base.center.subtract(cfg, &context)?;
+        self.base.center.substitute_diamond_to_epsilon(cfg)?;
         self.base.context = context;
 
         let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         let center = std::mem::replace(&mut self.base.center, OtherSymbolTransducer::new(cfg)?);
-        rule_transducer.repeat_star(cfg).subtract(cfg, &center);
+        rule_transducer.repeat_star(cfg)?;
+        rule_transducer.subtract(cfg, &center)?;
         self.base.center = center;
 
         self.base.rule_transducer = rule_transducer.clone();
@@ -1861,16 +1920,15 @@ impl RuleT for LeftArrowRule {
         let abstract_center = self.base.center.get_inverse_of_upper_projection(cfg)?;
         // context.intersect(cfg, abstract_center).subtract(cfg, center).substitute(<D>->0)
         let center = std::mem::replace(&mut self.base.center, OtherSymbolTransducer::new(cfg)?);
-        self.base
-            .context
-            .intersect(cfg, &abstract_center)
-            .subtract(cfg, &center)
-            .substitute_diamond_to_epsilon(cfg);
+        self.base.context.intersect(cfg, &abstract_center)?;
+        self.base.context.subtract(cfg, &center)?;
+        self.base.context.substitute_diamond_to_epsilon(cfg)?;
         self.base.center = center;
 
         let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         let context = std::mem::replace(&mut self.base.context, OtherSymbolTransducer::new(cfg)?);
-        rule_transducer.repeat_star(cfg).subtract(cfg, &context);
+        rule_transducer.repeat_star(cfg)?;
+        rule_transducer.subtract(cfg, &context)?;
         self.base.context = context;
 
         self.base.rule_transducer = rule_transducer.clone();
@@ -1940,15 +1998,14 @@ impl RuleT for LeftRestrictionArrowRule {
     // [spec:hfst:sem:left-restriction-arrow-rule.left-restriction-arrow-rule.compile-fn]
     fn compile(&mut self, cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer> {
         let context = std::mem::replace(&mut self.base.context, OtherSymbolTransducer::new(cfg)?);
-        self.base
-            .center
-            .intersect(cfg, &context)
-            .substitute_diamond_to_epsilon(cfg);
+        self.base.center.intersect(cfg, &context)?;
+        self.base.center.substitute_diamond_to_epsilon(cfg)?;
         self.base.context = context;
 
         let mut rule_transducer = OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?;
         let center = std::mem::replace(&mut self.base.center, OtherSymbolTransducer::new(cfg)?);
-        rule_transducer.repeat_star(cfg).subtract(cfg, &center);
+        rule_transducer.repeat_star(cfg)?;
+        rule_transducer.subtract(cfg, &center)?;
         self.base.center = center;
 
         self.base.rule_transducer = rule_transducer.clone();
@@ -2004,16 +2061,18 @@ impl ConflictResolvingRightArrowRule {
     /// 'this' (disjunct + minimize) and appends its name.
     // [spec:hfst:def:conflict-resolving-right-arrow-rule.conflict-resolving-right-arrow-rule.resolve-conflict-fn]
     // [spec:hfst:sem:conflict-resolving-right-arrow-rule.conflict-resolving-right-arrow-rule.resolve-conflict-fn]
-    pub fn resolve_conflict(&mut self, cfg: &OstConfig, another: &ConflictResolvingRightArrowRule) {
+    pub fn resolve_conflict(
+        &mut self,
+        cfg: &OstConfig,
+        another: &ConflictResolvingRightArrowRule,
+    ) -> crate::error::Result<()> {
         let another_context = another.base.base.context.clone();
-        self.base
-            .base
-            .context
-            .disjunct(cfg, &another_context)
-            .minimize(cfg);
+        self.base.base.context.disjunct(cfg, &another_context)?;
+        self.base.base.context.minimize(cfg)?;
         let another_name = another.base.base.name.clone();
         self.base.base.name += " and ";
         self.base.base.name += &another_name;
+        Ok(())
     }
 }
 
@@ -3115,8 +3174,8 @@ impl TwolcCompiler {
         }
 
         // Odometer over the cross-product of the where-blocks.
-        let mut it = rule_variables.begin();
-        let end = rule_variables.end();
+        let mut it = rule_variables.begin()?;
+        let end = rule_variables.end()?;
         while it.ne(&end) {
             let mut vvm = VariableValueMap::new();
             it.set_values(&mut vvm);
@@ -3279,7 +3338,7 @@ impl TwolcCompiler {
                     for m in &members {
                         let member_sym = substitute_symbol(m, vvm);
                         let pair = OtherSymbolTransducer::new_symbol(cfg, &member_sym)?;
-                        t.disjunct(cfg, &pair);
+                        t.disjunct(cfg, &pair)?;
                     }
                     t
                 } else {
@@ -3297,8 +3356,9 @@ impl TwolcCompiler {
             TwolcRegex::Optional(inner) => {
                 let mut t = self.eval_regex_with_vars(cfg, inner, vvm)?;
                 t.apply_zero(cfg, |t_| {
-                    t_.optionalize();
-                });
+                    t_.optionalize()?;
+                    Ok(())
+                })?;
                 t
             }
             TwolcRegex::Binary(op, l, r) => self.eval_binary(cfg, *op, l, r, vvm)?,
@@ -3308,10 +3368,11 @@ impl TwolcCompiler {
                 t.apply_num(
                     cfg,
                     |t_, n_| {
-                        t_.repeat_n(n_);
+                        t_.repeat_n(n_)?;
+                        Ok(())
                     },
                     *n,
-                );
+                )?;
                 t
             }
             TwolcRegex::RepeatNToK(inner, n, k) => {
@@ -3319,11 +3380,12 @@ impl TwolcCompiler {
                 t.apply_two_num(
                     cfg,
                     |t_, a_, b_| {
-                        t_.repeat_n_to_k(a_, b_);
+                        t_.repeat_n_to_k(a_, b_)?;
+                        Ok(())
                     },
                     *n,
                     *k,
-                );
+                )?;
                 t
             }
         })
@@ -3341,33 +3403,39 @@ impl TwolcCompiler {
         match op {
             UnaryOp::Star => {
                 t.apply_zero(cfg, |t_| {
-                    t_.repeat_star();
-                });
+                    t_.repeat_star()?;
+                    Ok(())
+                })?;
             }
             UnaryOp::Plus => {
                 t.apply_zero(cfg, |t_| {
-                    t_.repeat_plus();
-                });
+                    t_.repeat_plus()?;
+                    Ok(())
+                })?;
             }
             UnaryOp::Reverse => {
                 t.apply_zero(cfg, |t_| {
-                    t_.reverse();
-                });
+                    t_.reverse()?;
+                    Ok(())
+                })?;
             }
             UnaryOp::Invert => {
                 t.apply_zero(cfg, |t_| {
-                    t_.invert();
-                });
+                    t_.invert()?;
+                    Ok(())
+                })?;
             }
             UnaryOp::UpperProject => {
                 t.apply_zero(cfg, |t_| {
-                    t_.input_project();
-                });
+                    t_.input_project()?;
+                    Ok(())
+                })?;
             }
             UnaryOp::LowerProject => {
                 t.apply_zero(cfg, |t_| {
-                    t_.output_project();
-                });
+                    t_.output_project()?;
+                    Ok(())
+                })?;
             }
             UnaryOp::Complement => {
                 t.negated(cfg)?;
@@ -3401,25 +3469,26 @@ impl TwolcCompiler {
         let right = self.eval_regex_with_vars(cfg, r, vvm)?;
         match op {
             BinaryOp::Concatenate => {
-                left.concatenate(cfg, &right);
+                left.concatenate(cfg, &right)?;
             }
             BinaryOp::Union => {
-                left.disjunct(cfg, &right);
+                left.disjunct(cfg, &right)?;
             }
             BinaryOp::Intersect => {
-                left.intersect(cfg, &right);
+                left.intersect(cfg, &right)?;
             }
             BinaryOp::Subtract => {
-                left.subtract(cfg, &right);
+                left.subtract(cfg, &right)?;
             }
             BinaryOp::Compose => {
                 left.apply_one_bool(
                     cfg,
                     |t_, o_, h_| {
-                        t_.compose(o_, h_);
+                        t_.compose(o_, h_)?;
+                        Ok(())
                     },
                     &right,
-                );
+                )?;
             }
             other => {
                 std::panic::panic_any(format!(
@@ -3547,11 +3616,11 @@ impl RuleVariables {
             && self.mixed_blocks.is_empty()
     }
     // [spec:hfst:def:rule-variables.rule-variables.begin-fn]
-    pub fn begin(&self) -> RuleVariablesConstIterator {
+    pub fn begin(&self) -> crate::error::Result<RuleVariablesConstIterator> {
         RuleVariablesConstIterator::new(self, false)
     }
     // [spec:hfst:def:rule-variables.rule-variables.end-fn]
-    pub fn end(&self) -> RuleVariablesConstIterator {
+    pub fn end(&self) -> crate::error::Result<RuleVariablesConstIterator> {
         RuleVariablesConstIterator::new(self, true)
     }
 }
@@ -3578,7 +3647,7 @@ pub struct RuleVariablesConstIterator {
 }
 
 impl RuleVariablesConstIterator {
-    fn new(rv: &RuleVariables, end: bool) -> Self {
+    fn new(rv: &RuleVariables, end: bool) -> crate::error::Result<Self> {
         let mut dims: Vec<VarDim> = Vec::new();
         // freely: every variable is its own independent dimension.
         for block in &rv.freely_blocks {
@@ -3595,7 +3664,7 @@ impl RuleVariablesConstIterator {
             let size = block.first().map(|v| v.values.len()).unwrap_or(0);
             for vv in block {
                 if vv.values.len() != size {
-                    std::panic::panic_any(UnequalSetSize);
+                    crate::bail!(UnequalSetSize);
                 }
             }
             dims.push(VarDim {
@@ -3651,11 +3720,11 @@ impl RuleVariablesConstIterator {
         }
         let any_empty = dims.iter().any(|d| d.size == 0);
         let indices = vec![0usize; dims.len()];
-        RuleVariablesConstIterator {
+        Ok(RuleVariablesConstIterator {
             dims,
             indices,
             at_end: end || any_empty,
-        }
+        })
     }
 
     // [spec:hfst:def:rule-variables-const-iterator.rule-variables-const-iterator.set-values-fn]

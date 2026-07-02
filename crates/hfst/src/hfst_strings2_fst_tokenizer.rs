@@ -26,14 +26,6 @@ const COL_ESCAPE: &str = "@_COLON_@";
 const TAB_ESCAPE: &str = "@_TAB_@";
 const SPACE_ESCAPE: &str = "@_SPACE_@";
 
-// [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.empty-multichar-symbol]
-#[derive(Debug)]
-pub struct EmptyMulticharSymbol;
-
-// [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.unescaped-cols-found]
-#[derive(Debug)]
-pub struct UnescapedColsFound;
-
 // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer]
 pub struct HfstStrings2FstTokenizer {
     tokenizer: HfstTokenizer,
@@ -44,7 +36,7 @@ pub struct HfstStrings2FstTokenizer {
 impl HfstStrings2FstTokenizer {
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.hfst-strings2-fst-tokenizer-fn]
     // [spec:hfst:sem:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.hfst-strings2-fst-tokenizer-fn]
-    pub fn new(multichar_symbols: &StringVector, eps: &str) -> Self {
+    pub fn new(multichar_symbols: &StringVector, eps: &str) -> crate::error::Result<Self> {
         let mut t = HfstStrings2FstTokenizer {
             tokenizer: HfstTokenizer::new(),
             eps: eps.to_string(),
@@ -63,15 +55,15 @@ impl HfstStrings2FstTokenizer {
 
         if !eps.is_empty() {
             t.tokenizer.add_multichar_symbol(eps);
-            t.add_multichar_symbol_head(eps);
+            t.add_multichar_symbol_head(eps)?;
         }
-        t.add_multichar_symbol_head(SPACE_ESCAPE);
+        t.add_multichar_symbol_head(SPACE_ESCAPE)?;
 
         for it in multichar_symbols.iter() {
-            t.add_multichar_symbol_head(it);
+            t.add_multichar_symbol_head(it)?;
             t.add_multichar_symbol(it);
         }
-        t
+        Ok(t)
     }
 
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.add-multichar-symbol-fn]
@@ -82,19 +74,27 @@ impl HfstStrings2FstTokenizer {
 
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.add-multichar-symbol-head-fn]
     // [spec:hfst:sem:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.add-multichar-symbol-head-fn]
-    pub fn add_multichar_symbol_head(&mut self, multichar_symbol: &str) {
+    pub fn add_multichar_symbol_head(
+        &mut self,
+        multichar_symbol: &str,
+    ) -> crate::error::Result<()> {
         if multichar_symbol.is_empty() {
-            std::panic::panic_any(EmptyMulticharSymbol);
+            crate::bail!(EmptyMulticharSymbol);
         }
         let tokenized_multichar_symbol = self.tokenizer.tokenize_one_level(multichar_symbol, false);
         let multichar_symbol_head = tokenized_multichar_symbol[0].clone();
         self.tokenizer
             .add_multichar_symbol(&(BACKSLASH.to_string() + &multichar_symbol_head));
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.tokenize-pair-string-fn]
     // [spec:hfst:sem:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.tokenize-pair-string-fn]
-    pub fn tokenize_pair_string(&self, str: &str, spaces: bool) -> StringPairVector {
+    pub fn tokenize_pair_string(
+        &self,
+        str: &str,
+        spaces: bool,
+    ) -> crate::error::Result<StringPairVector> {
         let tokenized_str = if spaces {
             self.split_at_spaces(str)
         } else {
@@ -108,7 +108,11 @@ impl HfstStrings2FstTokenizer {
 
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.tokenize-string-pair-fn]
     // [spec:hfst:sem:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.tokenize-string-pair-fn]
-    pub fn tokenize_string_pair(&self, str: &str, spaces: bool) -> StringPairVector {
+    pub fn tokenize_string_pair(
+        &self,
+        str: &str,
+        spaces: bool,
+    ) -> crate::error::Result<StringPairVector> {
         let tokenized_str = if spaces {
             self.split_at_spaces(str)
         } else {
@@ -124,12 +128,12 @@ impl HfstStrings2FstTokenizer {
         }
     }
 
-    fn make_pair_vector_v(&self, v: &StringVector) -> StringPairVector {
+    fn make_pair_vector_v(&self, v: &StringVector) -> crate::error::Result<StringPairVector> {
         let mut spv = StringPairVector::new();
         let mut i = 0;
         while i < v.len() {
             if !self.is_pair_input_symbol(v, i) {
-                let mut symbol = self.unescape(v[i].clone());
+                let mut symbol = self.unescape(v[i].clone())?;
                 symbol = if symbol.is_empty() || symbol == self.eps {
                     EPSILON_SYMBOL.to_string()
                 } else {
@@ -140,30 +144,34 @@ impl HfstStrings2FstTokenizer {
                 let input = if v[i].is_empty() || v[i] == self.eps {
                     EPSILON_SYMBOL.to_string()
                 } else {
-                    self.unescape(v[i].clone())
+                    self.unescape(v[i].clone())?
                 };
                 i += 2; // ++(++it)
                 let output = if v[i].is_empty() || v[i] == self.eps {
                     EPSILON_SYMBOL.to_string()
                 } else {
-                    self.unescape(v[i].clone())
+                    self.unescape(v[i].clone())?
                 };
                 spv.push((input, output));
             }
             i += 1;
         }
-        spv
+        Ok(spv)
     }
 
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.make-pair-vector-fn]
     // [spec:hfst:sem:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.make-pair-vector-fn]
-    fn make_pair_vector_io(&self, input: &StringVector, output: &StringVector) -> StringPairVector {
+    fn make_pair_vector_io(
+        &self,
+        input: &StringVector,
+        output: &StringVector,
+    ) -> crate::error::Result<StringPairVector> {
         let mut spv = StringPairVector::new();
         let mut input_it = 0;
         let mut output_it = 0;
         while input_it < input.len() && output_it < output.len() {
-            let input_symbol = self.unescape(input[input_it].clone());
-            let output_symbol = self.unescape(output[output_it].clone());
+            let input_symbol = self.unescape(input[input_it].clone())?;
+            let output_symbol = self.unescape(output[output_it].clone())?;
 
             spv.push((
                 if input_symbol.is_empty() || input_symbol == self.eps {
@@ -187,7 +195,7 @@ impl HfstStrings2FstTokenizer {
                     if output[output_it].is_empty() || output[output_it] == self.eps {
                         EPSILON_SYMBOL.to_string()
                     } else {
-                        self.unescape(output[output_it].clone())
+                        self.unescape(output[output_it].clone())?
                     },
                 ));
                 output_it += 1;
@@ -198,24 +206,24 @@ impl HfstStrings2FstTokenizer {
                     if input[input_it].is_empty() || input[input_it] == self.eps {
                         EPSILON_SYMBOL.to_string()
                     } else {
-                        self.unescape(input[input_it].clone())
+                        self.unescape(input[input_it].clone())?
                     },
                     EPSILON_SYMBOL.to_string(),
                 ));
                 input_it += 1;
             }
         }
-        spv
+        Ok(spv)
     }
 
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.unescape-fn]
     // [spec:hfst:sem:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.unescape-fn]
-    fn unescape(&self, mut symbol: String) -> String {
-        self.check_cols(&symbol);
+    fn unescape(&self, mut symbol: String) -> crate::error::Result<String> {
+        self.check_cols(&symbol)?;
 
         if symbol == "\\\\" {
             // BACKSLASH BACKSLASH
-            return BACKSLASH.to_string();
+            return Ok(BACKSLASH.to_string());
         }
 
         while let Some(pos) = symbol.find("\\\\") {
@@ -242,7 +250,7 @@ impl HfstStrings2FstTokenizer {
             symbol.replace_range(pos..pos + COL_ESCAPE.len(), ":");
         }
 
-        symbol
+        Ok(symbol)
     }
 
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.is-pair-input-symbol-fn]
@@ -267,11 +275,11 @@ impl HfstStrings2FstTokenizer {
 
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.check-cols-fn]
     // [spec:hfst:sem:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.check-cols-fn]
-    fn check_cols(&self, symbol: &str) {
+    fn check_cols(&self, symbol: &str) -> crate::error::Result<()> {
         let bytes = symbol.as_bytes();
         if !symbol.is_empty() {
             if bytes[0] == COL_CHAR {
-                std::panic::panic_any(UnescapedColsFound);
+                crate::bail!(UnescapedColsFound);
             }
             let mut pos = 0usize;
             loop {
@@ -281,15 +289,16 @@ impl HfstStrings2FstTokenizer {
                     Some(off) => {
                         pos = pos + 1 + off;
                         if bytes[pos - 1] != BACKSLASH_CHAR {
-                            std::panic::panic_any(UnescapedColsFound);
+                            crate::bail!(UnescapedColsFound);
                         }
                         if pos > 1 && bytes[pos - 2] == BACKSLASH_CHAR {
-                            std::panic::panic_any(UnescapedColsFound);
+                            crate::bail!(UnescapedColsFound);
                         }
                     }
                 }
             }
         }
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.get-col-pos-fn]

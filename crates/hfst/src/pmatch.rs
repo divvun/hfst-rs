@@ -3014,7 +3014,9 @@ impl PmatchTransducer {
         self.local_stack.push(new_top);
         self.get_analyses(input_pos, tape_pos, 0, container);
         self.local_stack.pop();
-        container.decrease_stack_depth();
+        container
+            .decrease_stack_depth()
+            .expect("pmatch stack-depth invariant: decrease is balanced with a prior increase");
         container.rtn_stack_pop();
     }
 
@@ -3036,14 +3038,18 @@ impl PmatchTransducer {
         self.local_stack.push(new_top);
         self.get_analyses(input_pos, tape_pos, 0, container);
         self.local_stack.pop();
-        container.decrease_stack_depth();
+        container
+            .decrease_stack_depth()
+            .expect("pmatch stack-depth invariant: decrease is balanced with a prior increase");
         container.rtn_stack_pop();
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-transducer.rtn-return-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.rtn-return-fn]
     pub fn rtn_return(&mut self, input_pos: u32, tape_pos: u32, container: &mut PmatchContainer) {
-        container.decrease_stack_depth();
+        container
+            .decrease_stack_depth()
+            .expect("pmatch stack-depth invariant: decrease is balanced with a prior increase");
         let entry_index = container.rtn_stack_top().caller_index;
         self.get_analyses(input_pos, tape_pos, entry_index, container);
         container.increase_stack_depth();

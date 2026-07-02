@@ -257,7 +257,10 @@ unsafe fn subtract_streams(
                         // on the default 'insert_renamed_flags=true'.
                         let second_t = second.as_mut().unwrap();
                         let first_t = first.as_mut().unwrap();
-                        first_t.harmonize_flag_diacritics(second_t, true);
+                        if let Err(e) = first_t.harmonize_flag_diacritics(second_t, true) {
+                            error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
                     }
                 }
             }
@@ -280,7 +283,10 @@ unsafe fn subtract_streams(
                     let second_t = second
                         .as_mut()
                         .expect("second transducer present (just read)");
-                    convert_transducers(first_t, second_t);
+                    if let Err(e) = convert_transducers(first_t, second_t) {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                     let first_t = first
                         .as_mut()
                         .expect("first transducer present (just read)");

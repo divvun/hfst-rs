@@ -2193,8 +2193,8 @@ impl XreCompiler {
                 // not): warn iff both sides are plain expressions.
                 if matches!(mp.upper, MappingSide::Expr(_)) && matches!(lower, MappingSide::Expr(_))
                 {
-                    self.warn_about_special_symbols_in_replace(&upper);
-                    self.warn_about_special_symbols_in_replace(&lower_tr);
+                    self.warn_about_special_symbols_in_replace(&upper)?;
+                    self.warn_about_special_symbols_in_replace(&lower_tr)?;
                 }
                 (upper, lower_tr)
             }

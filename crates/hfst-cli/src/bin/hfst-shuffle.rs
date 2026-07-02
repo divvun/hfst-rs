@@ -224,10 +224,13 @@ unsafe fn shuffle_streams(
                     // inner catch (TransducerTypeMismatchException)
                     if globals::ALLOW_TRANSDUCER_CONVERSION {
                         let mut second_t = second.take().expect("second transducer present");
-                        convert_transducers(
+                        if let Err(e) = convert_transducers(
                             first.as_mut().expect("first transducer present"),
                             &mut second_t,
-                        );
+                        ) {
+                            error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
                         if let Err(e) = first
                             .as_mut()
                             .expect("first transducer present")

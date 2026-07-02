@@ -255,12 +255,12 @@ impl ConversionFunctions {
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-ol-fn]
     pub fn hfst_transducer_to_hfst_ol(
         t: &mut crate::hfst_transducer::HfstTransducer,
-    ) -> *mut Transducer {
+    ) -> crate::error::Result<*mut Transducer> {
         use crate::hfst_data_types::ImplementationType::*;
         if t.type_ != HFST_OL_TYPE && t.type_ != HFST_OLW_TYPE {
-            t.convert(HFST_OLW_TYPE, String::new());
+            t.convert(HFST_OLW_TYPE, String::new())?;
         }
-        t.implementation.as_hfst_ol_ptr()
+        Ok(t.implementation.as_hfst_ol_ptr())
     }
 
     /* Create an HfstBasicTransducer equivalent to hfst_ol::Transducer 't'. */

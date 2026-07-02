@@ -137,7 +137,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 return 1;
             }
         }
-        outstream.flush();
+        if let Err(e) = outstream.flush() {
+            error(1, 0, &format!("{e}"));
+            return 1;
+        }
         instream.close();
         outstream.close();
         0

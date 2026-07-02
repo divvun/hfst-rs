@@ -7,7 +7,7 @@ use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::hfst_data_types::implementations::HfstState;
 use hfst::hfst_data_types::{ImplementationType, StringPairVector};
 use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_strings2_fst_tokenizer::{HfstStrings2FstTokenizer, UnescapedColsFound};
+use hfst::hfst_strings2_fst_tokenizer::HfstStrings2FstTokenizer;
 use hfst::hfst_symbol_defs::{internal_epsilon, is_epsilon};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
@@ -657,7 +657,13 @@ unsafe fn process_stream(
             // Define tokenizer with no multi character symbols and an
             // empty epsilon representation.
             let empty_v: StringVector = Vec::new();
-            let input_tokenizer = HfstStrings2FstTokenizer::new(&empty_v, "0");
+            let input_tokenizer = match HfstStrings2FstTokenizer::new(&empty_v, "0") {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
 
             let mut raw_line = String::new();
             loop {
@@ -678,9 +684,7 @@ unsafe fn process_stream(
                 verbose_printf(&format!("Pair test on {}...\n", line_str));
 
                 let line_for_panic = line_str.clone();
-                let tok_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    input_tokenizer.tokenize_pair_string(&line_str, true)
-                }));
+                let tok_result = input_tokenizer.tokenize_pair_string(&line_str, true);
 
                 match tok_result {
                     Ok(mut tokenized_pair_string) => {
@@ -704,7 +708,7 @@ unsafe fn process_stream(
                         }
                     }
                     Err(e) => {
-                        if e.downcast_ref::<UnescapedColsFound>().is_some() {
+                        if e.kind == hfst::error::ErrorKind::UnescapedColsFound {
                             error(
                                 1,
                                 0,
@@ -716,7 +720,7 @@ unsafe fn process_stream(
                                 ),
                             );
                         } else {
-                            std::panic::resume_unwind(e);
+                            error(1, 0, &format!("{e}"));
                         }
                     }
                 }
@@ -734,7 +738,13 @@ unsafe fn process_stream(
 
             let symbols: StringVector = known_symbols.iter().cloned().collect();
 
-            let input_tokenizer = HfstStrings2FstTokenizer::new(&symbols, "0");
+            let input_tokenizer = match HfstStrings2FstTokenizer::new(&symbols, "0") {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
 
             let mut raw_line = String::new();
             loop {
@@ -798,16 +808,14 @@ unsafe fn process_stream(
                     backslash_escape(input_case.clone()),
                     backslash_escape(output_case.clone())
                 );
-                let tok_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    // We need to convert the %-escaped input and output
-                    // string to \-escpaed strings for input_toknizer.
-                    input_tokenizer.tokenize_string_pair(&to_tokenize, false)
-                }));
+                // We need to convert the %-escaped input and output
+                // string to \-escpaed strings for input_toknizer.
+                let tok_result = input_tokenizer.tokenize_string_pair(&to_tokenize, false);
 
                 let mut test_case = match tok_result {
                     Ok(tc) => tc,
                     Err(e) => {
-                        if e.downcast_ref::<UnescapedColsFound>().is_some() {
+                        if e.kind == hfst::error::ErrorKind::UnescapedColsFound {
                             error(
                                 1,
                                 0,
@@ -817,10 +825,10 @@ unsafe fn process_stream(
                                     input_case, output_case
                                 ),
                             );
-                            unreachable!()
                         } else {
-                            std::panic::resume_unwind(e);
+                            error(1, 0, &format!("{e}"));
                         }
+                        unreachable!("error(1, ...) exits the process")
                     }
                 };
                 test_case.insert(0, ("@#@".to_string(), internal_epsilon.to_string()));
@@ -852,16 +860,14 @@ unsafe fn process_stream(
                     backslash_escape(input_case.clone()),
                     backslash_escape(output_case.clone())
                 );
-                let tok_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    // We need to convert the %-escaped input and output
-                    // string to \-escpaed strings for input_toknizer.
-                    input_tokenizer.tokenize_string_pair(&to_tokenize, false)
-                }));
+                // We need to convert the %-escaped input and output
+                // string to \-escpaed strings for input_toknizer.
+                let tok_result = input_tokenizer.tokenize_string_pair(&to_tokenize, false);
 
                 let mut test_case = match tok_result {
                     Ok(tc) => tc,
                     Err(e) => {
-                        if e.downcast_ref::<UnescapedColsFound>().is_some() {
+                        if e.kind == hfst::error::ErrorKind::UnescapedColsFound {
                             error(
                                 1,
                                 0,
@@ -871,10 +877,10 @@ unsafe fn process_stream(
                                     input_case, output_case
                                 ),
                             );
-                            unreachable!()
                         } else {
-                            std::panic::resume_unwind(e);
+                            error(1, 0, &format!("{e}"));
                         }
+                        unreachable!("error(1, ...) exits the process")
                     }
                 };
                 test_case.insert(0, ("@#@".to_string(), internal_epsilon.to_string()));

@@ -7,9 +7,7 @@
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_strings2_fst_tokenizer::{
-    HfstStrings2FstTokenizer, StringPairVector, UnescapedColsFound,
-};
+use hfst::hfst_strings2_fst_tokenizer::{HfstStrings2FstTokenizer, StringPairVector};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst_cli::globals;
 use hfst_cli::hfst_commandline::{
@@ -298,8 +296,16 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         let epsilonname = (*std::ptr::addr_of!(EPSILONNAME))
             .clone()
             .unwrap_or_default();
-        let multichar_symbol_tokenizer =
-            HfstStrings2FstTokenizer::new(&*std::ptr::addr_of!(MULTICHAR_SYMBOLS), &epsilonname);
+        let multichar_symbol_tokenizer = match HfstStrings2FstTokenizer::new(
+            &*std::ptr::addr_of!(MULTICHAR_SYMBOLS),
+            &epsilonname,
+        ) {
+            Ok(t) => t,
+            Err(e) => {
+                hfst_error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
 
         let inputfilename = globals::input_filename();
 
@@ -360,18 +366,15 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
             let has_spaces = HAS_SPACES;
             let tok_ref = &multichar_symbol_tokenizer;
             let pl = parse_line.clone();
-            let spv: StringPairVector = match std::panic::catch_unwind(
-                std::panic::AssertUnwindSafe(|| {
-                    if pairstrings {
-                        tok_ref.tokenize_pair_string(&pl, has_spaces)
-                    } else {
-                        tok_ref.tokenize_string_pair(&pl, has_spaces)
-                    }
-                }),
-            ) {
+            let tok_result = if pairstrings {
+                tok_ref.tokenize_pair_string(&pl, has_spaces)
+            } else {
+                tok_ref.tokenize_string_pair(&pl, has_spaces)
+            };
+            let spv: StringPairVector = match tok_result {
                 Ok(v) => v,
                 Err(e) => {
-                    if e.downcast_ref::<UnescapedColsFound>().is_some() {
+                    if e.kind == hfst::error::ErrorKind::UnescapedColsFound {
                         if pairstrings {
                             error_at_line(
                                 1,

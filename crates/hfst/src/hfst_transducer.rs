@@ -2028,7 +2028,7 @@ impl HfstTransducer {
 
     pub fn prune(&mut self) -> crate::error::Result<&mut HfstTransducer> {
         // slow for xfsm type...
-        self.convert(ImplementationType::TROPICAL_OPENFST_TYPE, "".to_string());
+        self.convert(ImplementationType::TROPICAL_OPENFST_TYPE, "".to_string())?;
         let temp = crate::tropical_weight_transducer::TropicalWeightTransducer::prune(
             self.implementation.as_tropical(),
         );
@@ -2951,7 +2951,7 @@ impl HfstTransducer {
         if (original_type == ImplementationType::SFST_TYPE)
             || (original_type == ImplementationType::FOMA_TYPE)
         {
-            self.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
+            self.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())?;
         }
 
         match self.type_ {
@@ -2974,7 +2974,7 @@ impl HfstTransducer {
                 unimplemented!("n_best: not implemented for this transducer type");
             }
         }
-        self.convert(original_type, String::new());
+        self.convert(original_type, String::new())?;
         Ok(self)
     }
 
@@ -3902,9 +3902,9 @@ impl HfstTransducer {
     /// Lifted verbatim from hfst-realign (the boundary-symbol variant is dead /
     /// commented out in the C++; this is the only realignment it performs).
     pub fn realign(&mut self) -> crate::error::Result<&mut HfstTransducer> {
-        self.invert();
-        self.push_labels(PushType::TO_INITIAL_STATE);
-        self.invert();
+        self.invert()?;
+        self.push_labels(PushType::TO_INITIAL_STATE)?;
+        self.invert()?;
         self.push_labels(PushType::TO_INITIAL_STATE)
     }
 
@@ -4627,7 +4627,7 @@ impl HfstTransducer {
         if v.len() == 1 {
             let mut rule_fst = v[0].clone();
             if convert_to_openfst {
-                rule_fst.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new());
+                rule_fst.convert(ImplementationType::TROPICAL_OPENFST_TYPE, String::new())?;
             }
 
             if invert {
@@ -4999,13 +4999,13 @@ impl HfstTransducer {
         file: &mut dyn std::io::Write,
         name: &str,
         write_weights: bool,
-    ) {
+    ) -> crate::error::Result<()> {
         /* For big transducers, converting from xfsm is slow. */
         if self.type_ == ImplementationType::XFSM_TYPE {
             unimplemented!("write_in_prolog_format: not implemented for this transducer type");
         }
         let fsm = HfstBasicTransducer::new_from_hfst_transducer(self);
-        fsm.write_in_prolog_format_file(file, name, write_weights);
+        fsm.write_in_prolog_format_file(file, name, write_weights)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.prolog-file-to-xfsm-transducer-fn]
@@ -5432,8 +5432,11 @@ fn substitute_output_flag_with_epsilon(sp: &StringPair, sps: &mut StringPairSet)
 
 // ===== integration shims: alphabet / substitute overload-name aliases =====
 impl HfstTransducer {
-    pub fn insert_to_alphabet_symbol<S: AsRef<str>>(&mut self, symbol: S) {
-        self.insert_to_alphabet_string(symbol.as_ref());
+    pub fn insert_to_alphabet_symbol<S: AsRef<str>>(
+        &mut self,
+        symbol: S,
+    ) -> crate::error::Result<()> {
+        self.insert_to_alphabet_string(symbol.as_ref())
     }
     pub fn insert_to_alphabet<S: AsRef<str>>(&mut self, symbol: S) -> crate::error::Result<()> {
         self.insert_to_alphabet_string(symbol.as_ref())

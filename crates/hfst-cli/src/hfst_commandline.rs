@@ -202,23 +202,24 @@ pub fn get_compatible_fst_format() -> i32 {
 
 // [spec:hfst:def:hfst-commandline.debug-save-transducer-fn]
 // [spec:hfst:sem:hfst-commandline.debug-save-transducer-fn]
-pub fn debug_save_transducer(t: &HfstTransducer, name: &str) {
+pub fn debug_save_transducer(t: &HfstTransducer, name: &str) -> hfst::error::Result<()> {
     if unsafe { globals::DEBUG } {
         // C built "DEBUG %s" with sprintf; that always succeeds here.
         let mut t = t.clone();
         let debug_name = format!("DEBUG {}", name);
         t.set_name(&debug_name);
         let Ok(mut debug_out) = HfstOutputStream::new_filename(name, t.get_type(), true) else {
-            return;
+            return Ok(());
         };
         debug_printf(&format!(
             "*** DEBUG ({}): saving current transducer to {}\n",
             globals::program_name(),
             name
         ));
-        debug_out.redirect(&mut t);
+        debug_out.redirect(&mut t)?;
         debug_out.close();
     }
+    Ok(())
 }
 
 // [spec:hfst:def:hfst-commandline.debug-printf-fn]
@@ -259,7 +260,10 @@ pub fn conversion_type(type1: ImplementationType, type2: ImplementationType) -> 
 
 // [spec:hfst:def:hfst-commandline.convert-transducers-fn]
 // [spec:hfst:sem:hfst-commandline.convert-transducers-fn]
-pub fn convert_transducers(first: &mut HfstTransducer, second: &mut HfstTransducer) {
+pub fn convert_transducers(
+    first: &mut HfstTransducer,
+    second: &mut HfstTransducer,
+) -> hfst::error::Result<()> {
     let type1 = first.get_type();
     let type2 = second.get_type();
     let ct = conversion_type(type1, type2);
@@ -274,7 +278,7 @@ pub fn convert_transducers(first: &mut HfstTransducer, second: &mut HfstTransduc
                 hfst_strformat(type1)
             ),
         );
-        second.convert(type1, String::new());
+        second.convert(type1, String::new())?;
     } else if ct == 2 {
         hfst_warning(
             0,
@@ -284,7 +288,7 @@ pub fn convert_transducers(first: &mut HfstTransducer, second: &mut HfstTransduc
                 hfst_strformat(type2)
             ),
         );
-        first.convert(type2, String::new());
+        first.convert(type2, String::new())?;
     } else if ct == -1 {
         hfst_warning(
             0,
@@ -294,7 +298,7 @@ pub fn convert_transducers(first: &mut HfstTransducer, second: &mut HfstTransduc
                 hfst_strformat(type1)
             ),
         );
-        second.convert(type1, String::new());
+        second.convert(type1, String::new())?;
     } else {
         // This should not happen.
         hfst::HFST_THROW_MESSAGE!(
@@ -302,6 +306,7 @@ pub fn convert_transducers(first: &mut HfstTransducer, second: &mut HfstTransduc
             "convert_transducers: conversion_type returned an invalid integer"
         );
     }
+    Ok(())
 }
 
 // [spec:hfst:def:hfst-commandline.is-input-stream-in-ol-format-fn]

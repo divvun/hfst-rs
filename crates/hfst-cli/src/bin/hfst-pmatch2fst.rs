@@ -262,7 +262,13 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
         // C passes 'HfstTransducer* harmonizer' to the conversion functions,
         // which read its hfst_ol backend; the Rust signature takes that backend
         // directly, so unwrap it here (harmonizer is now HFST_OLW_TYPE).
-        let harmonizer_ol = ConversionFunctions::hfst_transducer_to_hfst_ol(&mut harmonizer);
+        let harmonizer_ol = match ConversionFunctions::hfst_transducer_to_hfst_ol(&mut harmonizer) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("{e}");
+                return 1;
+            }
+        };
 
         if globals::VERBOSE {
             let duration = (clock() - TIMER) as f64 / CLOCKS_PER_SEC as f64;

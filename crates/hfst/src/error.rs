@@ -147,6 +147,23 @@ pub enum ErrorKind {
     /// class); the detail travels in `message`.
     #[error("HFST error")]
     Hfst,
+    // Former local (non-`hfst_exception_defs`) exception structs, folded in.
+    #[error("empty symbol pair set")]
+    EmptySymbolPairSet,
+    #[error("undefined symbol pairs found")]
+    UndefinedSymbolPairsFound,
+    #[error("unequal set size")]
+    UnequalSetSize,
+    /// A faulty string given to a `string_manipulation` helper; the failing
+    /// operation and input travel in `message`.
+    #[error("faulty string input")]
+    FaultyStringInput,
+    #[error("unescaped colons found")]
+    UnescapedColsFound,
+    #[error("invalid model file")]
+    InvalidModelFile,
+    #[error("empty multichar symbol")]
+    EmptyMulticharSymbol,
 }
 
 /// Build an [`Error`] without returning it. `crate::err!(Kind)`, `crate::err!(Kind, message)`,

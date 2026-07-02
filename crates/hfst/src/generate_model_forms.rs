@@ -46,11 +46,6 @@ impl InvalidModelLine {
     }
 }
 
-// [spec:hfst:def:generate-model-forms.invalid-model-file]
-// 'struct InvalidModelFile {}'.
-#[derive(Clone, Debug)]
-pub struct InvalidModelFile;
-
 // Whether `t` is a guesser. hfst-guessify marks the guessers it builds with the
 // "reverse input" property (set in guessify_fst::guessify_analyzer), so a
 // guesser is exactly a transducer carrying that property. The C++ checked
@@ -274,20 +269,25 @@ fn read_model_form(
 pub fn read_model_forms(
     model_form_filename: &str,
     tokenizer: &mut HfstTokenizer,
-) -> Result<StringVectorVector, InvalidModelLine> {
+) -> crate::error::Result<StringVectorVector> {
     // A failed open behaves like an empty stream ('peek() == EOF').
     let content = std::fs::read(model_form_filename).unwrap_or_default();
 
     let mut pos: usize = 0;
 
     if pos >= content.len() {
-        std::panic::panic_any(InvalidModelFile);
+        crate::bail!(InvalidModelFile);
     }
 
     let mut results: StringVectorVector = StringVectorVector::new();
 
     while pos < content.len() {
-        results.push(read_model_form(&content, &mut pos, tokenizer)?);
+        results.push(read_model_form(&content, &mut pos, tokenizer).map_err(|e| {
+            crate::err!(
+                Hfst,
+                format!("Invalid model form line in model form file:\n{}", e.line)
+            )
+        })?);
     }
 
     Ok(results)

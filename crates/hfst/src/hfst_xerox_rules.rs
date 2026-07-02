@@ -607,7 +607,7 @@ pub fn expandContextsWithMapping(
         TOK.add_multichar_symbol(&boundaryMarker);
         let boundary = HfstTransducer::new_tokenized(&boundaryMarker, &TOK, type_)?;
 
-        identityStar.insert_to_alphabet_symbol(&boundaryMarker);
+        identityStar.insert_to_alphabet_symbol(&boundaryMarker)?;
 
         // to firstContext
         let firstContextAlphabet = firstContext.get_alphabet()?;
@@ -619,7 +619,7 @@ pub fn expandContextsWithMapping(
         }
 
         if hasBoundary == false {
-            firstContext.insert_to_alphabet_symbol(&boundaryMarker);
+            firstContext.insert_to_alphabet_symbol(&boundaryMarker)?;
             let mut tmp = boundary.clone();
             tmp.concatenate(&identityStar, true)?.optimize()?;
             tmp.concatenate(&firstContext, true)?;
@@ -636,7 +636,7 @@ pub fn expandContextsWithMapping(
         }
 
         if hasBoundary == false {
-            secondContext.insert_to_alphabet_symbol(&boundaryMarker);
+            secondContext.insert_to_alphabet_symbol(&boundaryMarker)?;
             secondContext
                 .concatenate(&identityStar, true)?
                 .concatenate(&boundary, true)?
@@ -691,7 +691,7 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
 
     //first, encode all flag diacritics
     let mut ruletmp = rule.clone();
-    ruletmp.encodeFlags();
+    ruletmp.encodeFlags()?;
 
     let mappingPairVector: HfstTransducerPairVector = ruletmp.get_mapping();
     let ContextVector: HfstTransducerPairVector = ruletmp.get_context();
@@ -717,7 +717,7 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
 
         // for removing .#. from the center
         let mut identityWithoutBoundary = identity.clone();
-        identityWithoutBoundary.insert_to_alphabet_symbol(".#.");
+        identityWithoutBoundary.insert_to_alphabet_symbol(".#.")?;
         let mut removeHash = identityWithoutBoundary.clone();
         let boundary = HfstTransducer::new_tokenized(".#.", &TOK, type_)?;
         removeHash
@@ -748,14 +748,14 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
         if mappingPairVector[0].1.compare(&empty, true)? {
             let transducerAlphabet = mappingPairVector[0].0.get_alphabet()?;
             for s in transducerAlphabet.iter() {
-                mapping.insert_to_alphabet_symbol(s);
+                mapping.insert_to_alphabet_symbol(s)?;
             }
         }
     }
 
-    mapping.insert_to_alphabet_symbol(&leftMarker);
-    mapping.insert_to_alphabet_symbol(&rightMarker);
-    mapping.insert_to_alphabet_symbol(&tmpMarker);
+    mapping.insert_to_alphabet_symbol(&leftMarker)?;
+    mapping.insert_to_alphabet_symbol(&rightMarker)?;
+    mapping.insert_to_alphabet_symbol(&tmpMarker)?;
 
     let leftBracket = HfstTransducer::new_tokenized(&leftMarker, &TOK, type_)?;
     let rightBracket = HfstTransducer::new_tokenized(&rightMarker, &TOK, type_)?;
@@ -786,11 +786,11 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
                 .optimize()?;
         }
         // needed in case of ? -> x replacement
-        leftMappingUnion.insert_to_alphabet_symbol(&leftMarker2);
-        leftMappingUnion.insert_to_alphabet_symbol(&rightMarker2);
-        leftMappingUnion.insert_to_alphabet_symbol(&leftMarker);
-        leftMappingUnion.insert_to_alphabet_symbol(&rightMarker);
-        leftMappingUnion.insert_to_alphabet_symbol(&tmpMarker);
+        leftMappingUnion.insert_to_alphabet_symbol(&leftMarker2)?;
+        leftMappingUnion.insert_to_alphabet_symbol(&rightMarker2)?;
+        leftMappingUnion.insert_to_alphabet_symbol(&leftMarker)?;
+        leftMappingUnion.insert_to_alphabet_symbol(&rightMarker)?;
+        leftMappingUnion.insert_to_alphabet_symbol(&tmpMarker)?;
 
         mappingWithBrackets2
             .concatenate(&leftMappingUnion, true)?
@@ -798,8 +798,8 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
             .optimize()?;
 
         // mappingWithBrackets...... expanded
-        mappingWithBrackets.insert_to_alphabet_symbol(&leftMarker2);
-        mappingWithBrackets.insert_to_alphabet_symbol(&rightMarker2);
+        mappingWithBrackets.insert_to_alphabet_symbol(&leftMarker2)?;
+        mappingWithBrackets.insert_to_alphabet_symbol(&rightMarker2)?;
         mappingWithBrackets
             .disjunct(&mappingWithBrackets2, true)?
             .optimize()?;
@@ -809,13 +809,13 @@ pub fn bracketedReplace(rule: &Rule, optional: bool) -> crate::error::Result<Hfs
     // [I:I | <a:b>]* (+ tmpMarker in alphabet)
     let mut identityExpanded = identityPair.clone();
 
-    identityExpanded.insert_to_alphabet_symbol(&leftMarker);
-    identityExpanded.insert_to_alphabet_symbol(&rightMarker);
-    identityExpanded.insert_to_alphabet_symbol(&tmpMarker);
+    identityExpanded.insert_to_alphabet_symbol(&leftMarker)?;
+    identityExpanded.insert_to_alphabet_symbol(&rightMarker)?;
+    identityExpanded.insert_to_alphabet_symbol(&tmpMarker)?;
 
     if optional != true {
-        identityExpanded.insert_to_alphabet_symbol(&leftMarker2);
-        identityExpanded.insert_to_alphabet_symbol(&rightMarker2);
+        identityExpanded.insert_to_alphabet_symbol(&leftMarker2)?;
+        identityExpanded.insert_to_alphabet_symbol(&rightMarker2)?;
     }
 
     identityExpanded
@@ -966,17 +966,17 @@ pub fn parallelBracketedReplace(
     identity.repeat_star()?.optimize()?;
 
     let mut identityExpanded = identityPair.clone();
-    identityExpanded.insert_to_alphabet_symbol(&leftMarker);
-    identityExpanded.insert_to_alphabet_symbol(&rightMarker);
-    identityExpanded.insert_to_alphabet_symbol(&leftMarker2);
-    identityExpanded.insert_to_alphabet_symbol(&rightMarker2);
-    identityExpanded.insert_to_alphabet_symbol(&tmpMarker);
+    identityExpanded.insert_to_alphabet_symbol(&leftMarker)?;
+    identityExpanded.insert_to_alphabet_symbol(&rightMarker)?;
+    identityExpanded.insert_to_alphabet_symbol(&leftMarker2)?;
+    identityExpanded.insert_to_alphabet_symbol(&rightMarker2)?;
+    identityExpanded.insert_to_alphabet_symbol(&tmpMarker)?;
     identityExpanded.insert_to_alphabet_set(&marker_symbols)?;
     // will be expanded with mappings
 
     // for removing .#. from the center
     let mut identityWithoutBoundary = identity.clone();
-    identityWithoutBoundary.insert_to_alphabet_symbol(".#.");
+    identityWithoutBoundary.insert_to_alphabet_symbol(".#.")?;
     // (must not be expanded to marker symbols)
     identityWithoutBoundary.insert_to_alphabet_set(&marker_symbols)?;
     let mut removeHash = identityWithoutBoundary.clone();
@@ -992,7 +992,7 @@ pub fn parallelBracketedReplace(
     // go through vector and do everything for each rule
     for i in 0..ruleVector.len() {
         let mut ruletmp = ruleVector[i].clone();
-        ruletmp.encodeFlags();
+        ruletmp.encodeFlags()?;
 
         let mappingPairVector = ruletmp.get_mapping();
         let mut mapping = HfstTransducer::new_type(type_)?;
@@ -1044,15 +1044,15 @@ pub fn parallelBracketedReplace(
             if mappingPairVector[0].1.compare(&empty, true)? {
                 let transducerAlphabet = mappingPairVector[0].0.get_alphabet()?;
                 for s in transducerAlphabet.iter() {
-                    mapping.insert_to_alphabet_symbol(s);
+                    mapping.insert_to_alphabet_symbol(s)?;
                 }
             }
         }
         //////////////////////////////////////////////////////////////////
 
-        mapping.insert_to_alphabet_symbol(&leftMarker);
-        mapping.insert_to_alphabet_symbol(&rightMarker);
-        mapping.insert_to_alphabet_symbol(&tmpMarker);
+        mapping.insert_to_alphabet_symbol(&leftMarker)?;
+        mapping.insert_to_alphabet_symbol(&rightMarker)?;
+        mapping.insert_to_alphabet_symbol(&tmpMarker)?;
 
         // Surround mapping with brackets
         let mut mappingWithBrackets = leftBracket.clone();
@@ -1065,10 +1065,10 @@ pub fn parallelBracketedReplace(
         // mapping = <a:b> u <2a:a>2
         if optional != true {
             // needed in case of ? -> x replacement
-            mapping.insert_to_alphabet_symbol(&leftMarker2);
-            mapping.insert_to_alphabet_symbol(&rightMarker2);
-            mappingWithBrackets.insert_to_alphabet_symbol(&leftMarker2);
-            mappingWithBrackets.insert_to_alphabet_symbol(&rightMarker2);
+            mapping.insert_to_alphabet_symbol(&leftMarker2)?;
+            mapping.insert_to_alphabet_symbol(&rightMarker2)?;
+            mappingWithBrackets.insert_to_alphabet_symbol(&leftMarker2)?;
+            mappingWithBrackets.insert_to_alphabet_symbol(&rightMarker2)?;
 
             let mut mappingProject = mapping.clone();
             mappingProject.input_project()?.optimize()?;
@@ -1117,7 +1117,7 @@ pub fn parallelBracketedReplace(
     let mut bracketedReplace = HfstTransducer::new_type(type_)?;
     for i in 0..ruleVector.len() {
         let mut ruletmp = ruleVector[i].clone();
-        ruletmp.encodeFlags();
+        ruletmp.encodeFlags()?;
 
         // Surround mapping with brackets with tmp boudaries
         let mut mappingWithBracketsAndTmpBoundary = tmpBracket.clone();

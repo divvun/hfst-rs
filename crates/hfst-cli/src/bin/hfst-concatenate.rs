@@ -269,7 +269,10 @@ unsafe fn concatenate_streams(
                 if globals::ALLOW_TRANSDUCER_CONVERSION {
                     let mut f = first.take().expect("first transducer is present");
                     let mut s = second.take().expect("second transducer is present");
-                    convert_transducers(&mut f, &mut s);
+                    if let Err(e) = convert_transducers(&mut f, &mut s) {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
                     if let Err(e2) = f.concatenate(&s, harmonize).map(|_| ()) {
                         error(1, 0, &format!("{e2}"));
                         return 1;

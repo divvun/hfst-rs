@@ -376,8 +376,7 @@ unsafe fn real_main() -> i32 {
             match read_model_forms(model_form_filename().as_str(), &mut tokenizer) {
                 Ok(mf) => model_forms = mf,
                 Err(e) => {
-                    eprintln!("Invalid model form line in model form file:");
-                    eprintln!("{}", e.line);
+                    eprintln!("{e}");
                     return 1;
                 }
             }

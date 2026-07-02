@@ -271,7 +271,14 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
                             }
                             alt_namestr
                         };
-                        t.write_in_prolog_format(outf, &namestr, printw);
+                        if let Err(e) = t.write_in_prolog_format(outf, &namestr, printw) {
+                            error(
+                                1,
+                                0,
+                                &format!("Error encountered when writing in prolog format: {e}"),
+                            );
+                            return 1;
+                        }
                     }
                 }
             }
