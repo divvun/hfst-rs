@@ -11,7 +11,7 @@
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, extend_options_from_env, hfst_error, hfst_error_at_line, hfst_set_program_name,
-    hfst_strformat, hfst_warning, print_more_info, print_report_bugs, verbose_print,
+    hfst_strformat, hfst_warning, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -180,9 +180,6 @@ fn print_usage() {
     );
 
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-flookup.parse-options-fn]

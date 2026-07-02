@@ -4,8 +4,8 @@
 
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, parse_u64,
-    print_more_info, print_report_bugs, verbose_print, warning,
+    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, parse_u64, verbose_print,
+    warning,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -69,9 +69,6 @@ fn print_usage() {
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(msg, "If PNAME is omitted, all values are printed\n");
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-edit-metadata.parse-options-fn]

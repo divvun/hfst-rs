@@ -8,7 +8,7 @@
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_from_env, hfst_parse_format_name, hfst_set_program_name,
-    hfst_warning, print_more_info, print_report_bugs, verbose_print,
+    hfst_warning, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
@@ -86,9 +86,6 @@ fn print_usage() {
         "\nExamples:\n  {0} -o cat.hfst cat.lexc               Compile single-file lexicon\n  {0} -o L.hfst Root.lexc 2.lexc 3.lexc  Compile multi-file lexicon\n\nUsing weights:\n  LEXICON Root\n  cat # \"weight: 2\" ;    Define weight for a word\n  <[dog::1]+> # ;        Use weights in regular expressions\n\nUsing weights has an effect only if FORMAT is weighted, i.e.\n{{ openfst-tropical, openfst-log, optimized-lookup-weighted }}.\n\n",
         globals::program_name()
     );
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-lexc-compiler.parse-options-fn]

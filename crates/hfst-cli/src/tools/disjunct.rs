@@ -7,10 +7,7 @@
 
 use crate::binary_ops::{BinaryOpSpec, LoopStyle, RetryPolicy, run_binary_streams_tool};
 use crate::globals;
-use crate::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, print_more_info,
-    print_report_bugs,
-};
+use crate::hfst_commandline::{EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name};
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
     hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
@@ -50,9 +47,6 @@ fn print_usage() {
         "\nExamples:\n  {} -o cat_or_dog.hfst cat.hfst dog.hfst\n\n",
         program_name
     );
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-disjunct.parse-options-fn]

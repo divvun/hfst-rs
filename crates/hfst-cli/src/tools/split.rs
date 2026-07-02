@@ -5,8 +5,7 @@
 
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_print,
+    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
@@ -50,9 +49,6 @@ fn print_usage() {
         "If INFILE is omitted or -, stdin is used.\nIf PRE is omitted, no prefix is used.\nIf EXT is omitted, .hfst is used.\nThe extracted files are named \"PRE\" + N + \"EXT\",\nwhere N is the number of the transducer in the archive.\n\nAn example:\n   cat transducer_a transducer_b | hfst-split -p \"rule\" -e \".tr\"\n\nThis command creates files \"rule1.tr\" (equivalent to transducer_a)\nand \"rule2.tr\" (equivalent to transducer_b). \n"
     );
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-split.parse-options-fn]

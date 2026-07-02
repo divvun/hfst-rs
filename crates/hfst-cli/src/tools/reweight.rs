@@ -10,7 +10,7 @@ use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_from_env, hfst_error, hfst_error_at_line,
     hfst_set_program_name, hfst_strtoweight, hfst_warning, is_input_stream_in_ol_format,
-    print_more_info, print_report_bugs, verbose_print,
+    verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -109,9 +109,6 @@ Weights are by default modified for all arcs and end states,\n\
 unless option --end-states-only or --arcs-only is used.\n"
     );
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-reweight.parse-options-fn]

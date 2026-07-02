@@ -7,7 +7,7 @@
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, extend_options_from_env, hfst_error, hfst_parse_format_name,
-    hfst_set_program_name, hfst_warning, print_more_info, print_report_bugs, verbose_print,
+    hfst_set_program_name, hfst_warning, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -79,9 +79,6 @@ fn print_usage() {
         "If OUTFILE or INFILE is missing or -, standard streams will be used.\nIf FMT is not given, OpenFst's tropical format will be used.\nThe possible values for FMT are {{ foma, openfst-tropical, openfst-log,\nsfst, optimized-lookup-weighted, optimized-lookup-unweighted }}.\nIf EPS is not given, @0@ will be used.\n\nSpace in transition symbols must be escaped as '@_SPACE_@' when using\natt format.\n",
     );
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-txt2fst.parse-options-fn]

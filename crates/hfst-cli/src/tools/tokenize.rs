@@ -16,8 +16,7 @@
 
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_print,
+    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
@@ -98,10 +97,6 @@ fn print_usage() {
         msg,
         "Use standard streams for input and output (for now).\n\n"
     );
-
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
     let _ = write!(msg, "\n");
 }
 

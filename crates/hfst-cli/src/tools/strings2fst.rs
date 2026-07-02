@@ -8,7 +8,7 @@ use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, error_at_line, extend_options_from_env, hfst_error, hfst_error_at_line,
     hfst_parse_format_name, hfst_set_program_name, hfst_strtoweight, hfst_warning_at_line,
-    print_more_info, print_report_bugs, verbose_print,
+    verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -127,9 +127,6 @@ fn print_usage() {
         "Examples:\n  echo \"cat:dog\" | {}            create cat:dog fst\n  echo \"c:da:ot:g\" | {} -p       same as pairstring\n  echo \"c:d a:o t:g\" | {} -p -S  same as pairstring with spaces\n  echo \"c a t:d o g\" | {} -S     same with spaces\n\n",
         program_name, program_name, program_name, program_name
     );
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
     let _ = write!(msg, "\n");
 }
 

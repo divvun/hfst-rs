@@ -8,9 +8,7 @@
 //! byte copy + HFST3-header stripping to hfst_input_stream::strip_hfst3_headers.
 
 use crate::globals;
-use crate::hfst_commandline::{
-    EXIT_CONTINUE, hfst_set_program_name, print_more_info, print_report_bugs, verbose_print,
-};
+use crate::hfst_commandline::{EXIT_CONTINUE, hfst_set_program_name, verbose_print};
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
     hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
@@ -38,9 +36,6 @@ fn print_usage() {
     let _ = write!(msg, "\n");
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-strip-header.parse-options-fn]

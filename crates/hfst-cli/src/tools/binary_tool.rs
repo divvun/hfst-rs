@@ -4,8 +4,7 @@
 
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_print, warning,
+    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, verbose_print, warning,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -42,8 +41,6 @@ fn print_usage() {
         "\nExamples:\n  {} -o catdog.hfst cat.hfst dog.hfst  does things\n\n",
         program_name
     );
-    print_report_bugs();
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-binary-tool.parse-options-fn]

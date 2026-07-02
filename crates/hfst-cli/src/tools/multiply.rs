@@ -7,7 +7,7 @@
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, is_input_stream_in_ol_format,
-    parse_u64, print_more_info, print_report_bugs, verbose_print,
+    parse_u64, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -49,9 +49,6 @@ fn print_usage() {
         "NUMBER must be a positive integer as parsed by strtoul base 10\n"
     );
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-multiply.parse-options-fn]

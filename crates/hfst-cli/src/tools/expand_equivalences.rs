@@ -6,7 +6,7 @@
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, error_at_line, extend_options_from_env, hfst_set_program_name,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print,
+    is_input_stream_in_ol_format, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -89,8 +89,6 @@ fn print_usage() {
          equivalences\n\n",
         program_name
     );
-    print_report_bugs();
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-expand-equivalences.parse-options-fn]

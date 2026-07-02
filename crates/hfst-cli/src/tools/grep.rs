@@ -14,8 +14,7 @@ use crate::globals;
 use crate::globals::ColourTristate;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, error_at_line, extend_options_from_env, hfst_parse_format_name,
-    hfst_set_program_name, parse_u64, print_more_info, print_report_bugs, print_short_help,
-    verbose_print, warning,
+    hfst_set_program_name, parse_u64, print_short_help, verbose_print, warning,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -184,9 +183,7 @@ fn print_usage() {
     // parameter details
     let _ = write!(msg, "\n");
     // bug report address
-    print_report_bugs();
     // external docs
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-grep.parse-options-fn]

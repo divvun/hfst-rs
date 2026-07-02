@@ -5,8 +5,7 @@
 
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, print_more_info,
-    print_report_bugs, verbose_print,
+    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -62,9 +61,6 @@ fn print_usage() {
         "Examples:\n  echo \"Define TOP  UppercaseAlpha Alpha* LC({{professor}}) EndTag(ProfName);\" | {} \n  create matcher that tags \"professor Chomsky\" as \"professor <ProfName>Chomsky</ProfName>\"\n\n",
         globals::program_name()
     );
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
     let _ = write!(msg, "\n");
 }
 

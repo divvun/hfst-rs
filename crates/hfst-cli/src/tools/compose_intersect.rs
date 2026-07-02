@@ -9,7 +9,7 @@ use crate::binary_ops::{open_output_stream, open_two_input_streams, resolve_outp
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print, warning,
+    is_input_stream_in_ol_format, verbose_print, warning,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -83,9 +83,6 @@ fn print_usage() {
          compose rules with lexicon\n\n",
         program_name
     );
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-compose-intersect.parse-options-fn]

@@ -6,7 +6,7 @@
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print,
+    is_input_stream_in_ol_format, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -62,9 +62,6 @@ fn print_usage() {
         "DIRECTION must be one of start, initial, begin or end, final\n"
     );
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-push-weights.parse-options-fn]

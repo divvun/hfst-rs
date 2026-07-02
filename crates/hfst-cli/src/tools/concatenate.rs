@@ -11,8 +11,7 @@ use crate::binary_ops::{
 };
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, print_more_info,
-    print_report_bugs, warning,
+    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, warning,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -54,9 +53,6 @@ fn print_usage() {
         "\nExamples:\n  {} -o catdog.hfst cat.hfst dog.hfst\nconcatenates cat.hfst with dog.hfst and writes results to catdog.hfst\n\n",
         program_name
     );
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-concatenate.parse-options-fn]

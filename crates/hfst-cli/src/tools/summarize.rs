@@ -4,8 +4,7 @@
 
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, parse_u64,
-    print_more_info, print_report_bugs, verbose_print,
+    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, parse_u64, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -57,9 +56,6 @@ fn print_usage() {
         "The parameter --verbose gives more extensive information on\nthe properties of a transducer.\n",
     );
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-summarize.parse-options-fn]

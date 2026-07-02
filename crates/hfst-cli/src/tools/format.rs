@@ -9,9 +9,7 @@
 //! very thin and simply prints the type returned by parse_options.
 
 use crate::globals;
-use crate::hfst_commandline::{
-    hfst_set_program_name, hfst_strformat, print_more_info, print_report_bugs, verbose_print,
-};
+use crate::hfst_commandline::{hfst_set_program_name, hfst_strformat, verbose_print};
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
     hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
@@ -68,9 +66,6 @@ fn print_usage() {
     let _ = write!(msg, "\n");
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-format.parse-options-fn]

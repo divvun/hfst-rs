@@ -8,7 +8,7 @@
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_from_env, hfst_parse_format_name, hfst_set_program_name,
-    hfst_strformat, print_more_info, print_report_bugs, verbose_print, warning,
+    hfst_strformat, verbose_print, warning,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -78,9 +78,6 @@ fn print_usage() {
          Note that xfsm format is always written in native format without HFST wrappers.\n"
     );
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-fst2fst.parse-options-fn]

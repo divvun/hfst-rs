@@ -8,8 +8,8 @@
 
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, print_more_info,
-    print_report_bugs, print_version, verbose_print,
+    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, print_version,
+    verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
@@ -110,9 +110,6 @@ fn print_usage() {
         msg,
         "MVER, EVER or UVER version vectors must be composed of one to three full stop separated runs of digits.\nFEAT should be name of feature supported by HFST, such as SFST, foma or openfst\n\n"
     );
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-info.parse-options-fn]

@@ -6,7 +6,7 @@
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, hfst_strtonumber,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print,
+    is_input_stream_in_ol_format, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -52,9 +52,6 @@ fn print_usage() {
         "FNUM and TNUM must be positive integers or infinities as parsed by strtod(3)\nif FNUM is omitted it defaults to 0, if TNUM is omitted it defaults to Inf\nFNUM must be less than TNUM\n"
     );
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-repeat.parse-options-fn]

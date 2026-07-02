@@ -13,7 +13,6 @@ use crate::hfst_getopt as getopt;
 // config.h-defined constants
 // ---------------------------------------------------------------------------
 const PACKAGE_NAME: &str = "hfst-optimized-lookup";
-const PACKAGE_BUGREPORT: &str = "hfst-bugs@helsinki.fi";
 const PACKAGE_STRING: &str = "hfst-optimized-lookup 1.2";
 
 // ---------------------------------------------------------------------------
@@ -478,10 +477,8 @@ STREAM can be {{ input, output, both }}. If not given, defaults to {{both}}.\n\
 Input is read interactively line by line from the user. If you redirect input\n\
 from a file, use --pipe-mode=input. --pipe-mode=output is ignored on non-windows\n\
 platforms.\n\
-\n\
-Report bugs to {}\n\
 \n",
-        PACKAGE_NAME, PACKAGE_BUGREPORT
+        PACKAGE_NAME
     ));
     true
 }

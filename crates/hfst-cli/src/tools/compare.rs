@@ -7,7 +7,7 @@ use crate::binary_ops::open_two_input_streams;
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, hfst_strformat,
-    is_input_stream_in_ol_format, print_more_info, print_report_bugs, verbose_print,
+    is_input_stream_in_ol_format, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -52,9 +52,6 @@ fn print_usage() {
         "\nExamples:\n  $ {0} cat.hfst dog.hfst\n  cat.hfst[1] != dog.hfst[1]\n  $ {0} cat.hfst cat.hfst\n  cat.hfst[1] == cat.hfst[1]\n\n",
         program_name
     );
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-compare.parse-options-fn]

@@ -31,8 +31,6 @@ pub const GETOPT_COLOUR: i32 = 27;
 /// successful return value for argument parsing routine
 pub const EXIT_CONTINUE: i32 = 42;
 
-pub const WIKI_URL: &str = "https://github.com/hfst/hfst/wiki";
-
 pub const COLOUR_BOLD: &str = "\x1b[01m";
 pub const COLOUR_RED: &str = "\x1b[31m";
 pub const COLOUR_GREEN: &str = "\x1b[32m";
@@ -44,7 +42,6 @@ pub const COLOUR_RESET: &str = "\x1b[0m";
 
 // PACKAGE_STRING / PACKAGE_BUGREPORT expand to "" when config.h is absent.
 const PACKAGE_STRING: &str = "";
-const PACKAGE_BUGREPORT: &str = "";
 
 // ---------------------------------------------------------------------------
 // internal helpers
@@ -564,21 +561,6 @@ pub fn print_short_help() {
     );
 }
 
-// print web site reference
-// [spec:hfst:def:hfst-commandline.print-more-info-fn]
-// [spec:hfst:sem:hfst-commandline.print-more-info-fn]
-pub fn print_more_info() {
-    let mut mw = globals::message_writer();
-    let _ = write!(
-        mw,
-        "{} home page: \n<{}/{}>\nGeneral help using HFST software: \n<{}>\n",
-        globals::program_name(),
-        WIKI_URL,
-        globals::hfst_tool_wikiname(),
-        WIKI_URL
-    );
-}
-
 // print version message
 // [spec:hfst:def:hfst-commandline.print-version-fn]
 // [spec:hfst:sem:hfst-commandline.print-version-fn]
@@ -597,17 +579,6 @@ pub fn print_version() {
          License GPLv3: GNU GPL version 3 <http://gnu.org/licenses/gpl.html>\n\
          This is free software: you are free to change and redistribute it.\n\
          There is NO WARRANTY, to the extent permitted by law.\n",
-    );
-}
-
-// [spec:hfst:def:hfst-commandline.print-report-bugs-fn]
-// [spec:hfst:sem:hfst-commandline.print-report-bugs-fn]
-pub fn print_report_bugs() {
-    let mut mw = globals::message_writer();
-    let _ = write!(
-        mw,
-        "Report bugs to <{}> or directly to our bug tracker at:\n<https://github.com/hfst/hfst/issues>\n",
-        PACKAGE_BUGREPORT
     );
 }
 

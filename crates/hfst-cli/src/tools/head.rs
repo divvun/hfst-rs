@@ -5,8 +5,8 @@
 
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, parse_i64, print_more_info,
-    print_report_bugs, verbose_print, warning,
+    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, parse_i64, verbose_print,
+    warning,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -50,9 +50,6 @@ fn print_usage() {
         "K must be an integer, as parsed by strtoul base 10, and not 0.\nIf K is omitted default is 1."
     );
     let _ = write!(msg, "\n");
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-head.parse-options-fn]

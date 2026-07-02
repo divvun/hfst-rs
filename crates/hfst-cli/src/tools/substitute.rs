@@ -9,7 +9,7 @@ use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, conversion_type, error, extend_options_from_env, hfst_error, hfst_error_at_line,
     hfst_set_program_name, hfst_strformat, hfst_warning, is_input_stream_in_ol_format,
-    print_more_info, print_report_bugs, verbose_print,
+    verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -111,9 +111,6 @@ fn print_usage() {
          \x20     replace all arcs 'a:b' with transducer repl.hfst\n\n",
         pn = program_name
     );
-    print_report_bugs();
-    let _ = write!(msg, "\n");
-    print_more_info();
 }
 
 // [spec:hfst:def:hfst-substitute.parse-options-fn]
