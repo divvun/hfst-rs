@@ -246,14 +246,11 @@ fn split(line: &str, separator: &str) -> crate::hfst_symbol_defs::StringPair {
 // [spec:hfst:def:generate-model-forms.read-model-form-fn]
 // [spec:hfst:sem:generate-model-forms.read-model-form-fn]
 fn read_model_form(
-    content: &[u8],
-    pos: &mut usize,
+    line: &str,
     tokenizer: &mut HfstTokenizer,
 ) -> Result<StringVector, InvalidModelLine> {
-    let line = getline(content, pos);
-
     if line.find(MODEL_FORM_PREFIX) != Some(0) {
-        return Err(InvalidModelLine::new(line));
+        return Err(InvalidModelLine::new(line.to_string()));
     }
 
     let model_form = line[MODEL_FORM_PREFIX.len()..].to_string();
@@ -273,16 +270,19 @@ pub fn read_model_forms(
     // A failed open behaves like an empty stream ('peek() == EOF').
     let content = std::fs::read(model_form_filename).unwrap_or_default();
 
-    let mut pos: usize = 0;
-
-    if pos >= content.len() {
+    if content.is_empty() {
         crate::bail!(InvalidModelFile);
     }
 
+    let content = String::from_utf8_lossy(&content);
+    // 'std::getline' consumes a trailing final newline without yielding an
+    // extra empty line after it.
+    let body = content.strip_suffix('\n').unwrap_or(&content);
+
     let mut results: StringVectorVector = StringVectorVector::new();
 
-    while pos < content.len() {
-        results.push(read_model_form(&content, &mut pos, tokenizer).map_err(|e| {
+    for line in body.split('\n') {
+        results.push(read_model_form(line, tokenizer).map_err(|e| {
             crate::err!(
                 Hfst,
                 format!("Invalid model form line in model form file:\n{}", e.line)
@@ -363,23 +363,4 @@ pub fn get_paradigms(
     }
 
     Ok(paradigm_guesses)
-}
-
-// Models 'std::getline(in, line)' over a byte stream: reads up to (and
-// consuming) the next '\n', returning the bytes before it as a UTF-8 line.
-fn getline(content: &[u8], pos: &mut usize) -> String {
-    let start = *pos;
-
-    while *pos < content.len() && content[*pos] != b'\n' {
-        *pos += 1;
-    }
-
-    let line = String::from_utf8_lossy(&content[start..*pos]).into_owned();
-
-    if *pos < content.len() {
-        // Consume the '\n'.
-        *pos += 1;
-    }
-
-    line
 }

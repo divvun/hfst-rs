@@ -1829,6 +1829,21 @@ children (
                 id idiom9.io-shape
                 title "C-style I/O cleanup (the trigger for this audit). Unify the 3 fgets line-readers — bufread_fgets (hfst_basic_transducer:60) + the verbatim copies in tropical_weight_transducer:929 and log_weight_transducer:917 — into one `read_until(b'\\n', …)` + from_utf8_lossy helper; quirk: drops the C `fgets(buf,255)` 254-byte line chunking (behaviour-equivalent for all real AT&T/prolog/text input; documented version bump). Cursor-getline scans → `slice.split` (generate_model_forms:366, pmatch_compiler:5322/5367/5407). codepoint_to_utf8 `[u8;5]` manual UTF-8 encoder → `char::from_u32` (pmatch_compiler:2375). w_fputs/fwrite_bytes/fmt_* printf-emulators → `write!`/`writeln!` (hfst_basic_transducer:39, hfst_print_dot:34, hfst_print_pckimmo:21-47). EXCLUDES the load-bearing IStream/PushbackReader/OL byte readers (real risk — istream fail/eof semantics; leave)."
                 deps (idiom9.mechanical)
+                log (
+                    {
+                        at 2026-07-02T13:48:05.3158Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-02T14:09:09.59678Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
         )
     }

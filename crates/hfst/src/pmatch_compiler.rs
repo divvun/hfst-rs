@@ -2442,44 +2442,12 @@ pub fn get_delimited(s: &str, delim: char) -> String {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.codepoint-to-utf8-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.codepoint-to-utf8-fn]
 pub fn codepoint_to_utf8(codepoint: u32) -> String {
-    let mut buf: [u8; 5] = [0; 5];
-    let mut u_parse_err = false;
-    // The following is adapted from an answer at
-    // http://stackoverflow.com/questions/4607413/c-library-to-convert-unicode-code-points-to-utf8
-    // My understanding of the magic numbers:
-    // 0x80 = 128 = 2^7
-    // 64 = 2^6, 192 = 2^6 + 2^7
-    // 0x800 = 2048 = 2^11
-    // 0x1000 = 2^16 etc.
-    if codepoint < 0x80 {
-        buf[0] = codepoint as u8;
-        buf[1] = b'\0';
-    } else if codepoint < 0x800 {
-        buf[0] = (192 + codepoint / 64) as u8;
-        buf[1] = (128 + codepoint % 64) as u8;
-        buf[2] = b'\0';
-    } else if codepoint.wrapping_sub(0xd800u32) < 0x800 {
-        u_parse_err = true;
-    } else if codepoint < 0x10000 {
-        buf[0] = (224 + codepoint / 4096) as u8;
-        buf[1] = (128 + codepoint / 64 % 64) as u8;
-        buf[2] = (128 + codepoint % 64) as u8;
-        buf[3] = b'\0';
-    } else if codepoint < 0x110000 {
-        buf[0] = (240 + codepoint / 262144) as u8;
-        buf[1] = (128 + codepoint / 4096 % 64) as u8;
-        buf[2] = (128 + codepoint / 64 % 64) as u8;
-        buf[3] = (128 + codepoint % 64) as u8;
-        buf[4] = b'\0';
-    } else {
-        u_parse_err = true;
-    }
-    if u_parse_err {
-        "".to_string()
-    } else {
-        // std::string(buf) constructs up to the first NUL byte.
-        let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-        unsafe { String::from_utf8_unchecked(buf[..end].to_vec()) }
+    // Invalid codepoints (surrogates, > U+10FFFF) yield the empty string, as
+    // the C 'u_parse_err' path did. So does NUL: the original wrote it into a
+    // C buffer whose 'std::string(buf)' constructor truncated at the NUL.
+    match char::from_u32(codepoint) {
+        None | Some('\0') => String::new(),
+        Some(c) => String::from(c),
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.parse-range-fn]
@@ -5441,19 +5409,13 @@ pub fn read_vec(ctx: &mut PmatchEvalContext, filename: String) {
         return;
     }
     // Cursor over the raw file bytes, mirroring std::ifstream semantics.
-    let mut cursor: usize = 0;
     // Read the header line (up to '\n').
-    let header_line: String = {
-        let start = cursor;
-        while cursor < all_bytes.len() && all_bytes[cursor] != b'\n' {
-            cursor += 1;
-        }
-        let line = String::from_utf8_lossy(&all_bytes[start..cursor]).into_owned();
-        if cursor < all_bytes.len() {
-            cursor += 1; // skip '\n'
-        }
-        line
-    };
+    let header_end = all_bytes
+        .iter()
+        .position(|&b| b == b'\n')
+        .unwrap_or(all_bytes.len());
+    let header_line: String = String::from_utf8_lossy(&all_bytes[..header_end]).into_owned();
+    let mut cursor: usize = (header_end + 1).min(all_bytes.len());
     let mut lexicon_size: usize = 0;
     let mut dimension: usize = 0;
     {
@@ -5488,14 +5450,12 @@ pub fn read_vec(ctx: &mut PmatchEvalContext, filename: String) {
             // The actual number of vectors is 1 more than lexicon_size
             // due to <s>
             // std::getline(infile, line, separator)
-            let start = cursor;
-            while cursor < all_bytes.len() && all_bytes[cursor] != separator {
-                cursor += 1;
-            }
-            let line = String::from_utf8_lossy(&all_bytes[start..cursor]).into_owned();
-            if cursor < all_bytes.len() {
-                cursor += 1; // consume separator
-            }
+            let word_end = all_bytes[cursor..]
+                .iter()
+                .position(|&b| b == separator)
+                .map_or(all_bytes.len(), |i| cursor + i);
+            let line = String::from_utf8_lossy(&all_bytes[cursor..word_end]).into_owned();
+            cursor = (word_end + 1).min(all_bytes.len());
             // infile.read(&vector_data[0], vector_data_size)
             let read_end = std::cmp::min(cursor + vector_data_size, all_bytes.len());
             let vector_data: Vec<u8> = all_bytes[cursor..read_end].to_vec();
@@ -5528,36 +5488,38 @@ pub fn read_vec(ctx: &mut PmatchEvalContext, filename: String) {
             words_read += 1;
         }
     } else {
-        while cursor < all_bytes.len() && words_read <= lexicon_size {
-            // std::getline(infile, line)
-            let start = cursor;
-            while cursor < all_bytes.len() && all_bytes[cursor] != b'\n' {
-                cursor += 1;
+        let text = &all_bytes[cursor..];
+        // 'std::getline(infile, line)' consumes a trailing final newline
+        // without yielding an extra empty line after it.
+        let text = text.strip_suffix(b"\n").unwrap_or(text);
+        for raw_line in text.split(|&b| b == b'\n') {
+            if words_read > lexicon_size {
+                break;
             }
-            let line = String::from_utf8_lossy(&all_bytes[start..cursor]).into_owned();
-            if cursor < all_bytes.len() {
-                cursor += 1; // skip '\n'
-            }
+            let line = String::from_utf8_lossy(raw_line).into_owned();
             if line.is_empty() {
                 continue;
             }
             words_read += 1;
             let line_bytes = line.as_bytes();
-            let mut pos_opt: Option<usize> = line_bytes.iter().position(|&b| b == separator);
-            if pos_opt.is_none() {
-                separator = b'\t';
-                pos_opt = line_bytes.iter().position(|&b| b == separator);
-                if pos_opt.is_none() {
-                    warn!(
-                        "pmatch: vector file {} doesn't appear to be tab- or \
+            let mut pos = match line_bytes.iter().position(|&b| b == separator) {
+                Some(p) => p,
+                None => {
+                    separator = b'\t';
+                    match line_bytes.iter().position(|&b| b == separator) {
+                        Some(p) => p,
+                        None => {
+                            warn!(
+                                "pmatch: vector file {} doesn't appear to be tab- or \
 space-separated\n  (reading line {})",
-                        filename,
-                        words_read + 1
-                    );
-                    break;
+                                filename,
+                                words_read + 1
+                            );
+                            break;
+                        }
+                    }
                 }
-            }
-            let mut pos = pos_opt.unwrap();
+            };
             let word: String = line[0..pos].to_string();
             let mut components: Vec<WordVecFloat> = Vec::new();
             // while (npos != (nextpos = line.find(separator, pos + 1)))

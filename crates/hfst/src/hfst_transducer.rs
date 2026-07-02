@@ -4946,22 +4946,31 @@ impl HfstTransducer {
             }
         };
         let mut ofile = std::io::BufWriter::new(file);
-        self.write_in_att_format_file(&mut ofile, print_weights);
-        let _ = std::io::Write::flush(&mut ofile);
+        self.write_in_att_format_file(&mut ofile, print_weights)
+            .and_then(|()| std::io::Write::flush(&mut ofile))
+            .map_err(|_| crate::err!(StreamCannotBeWritten, filename))?;
         Ok(())
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.write-in-att-format-number-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.write-in-att-format-number-fn]
-    pub fn write_in_att_format_number(&self, ofile: &mut dyn std::io::Write, print_weights: bool) {
+    pub fn write_in_att_format_number(
+        &self,
+        ofile: &mut dyn std::io::Write,
+        print_weights: bool,
+    ) -> std::io::Result<()> {
         let net = HfstBasicTransducer::new_from_hfst_transducer(self);
-        net.write_in_att_format_number_file(ofile, print_weights);
+        net.write_in_att_format_number_file(ofile, print_weights)
     }
 
-    pub fn write_in_att_format_file(&self, ofile: &mut dyn std::io::Write, print_weights: bool) {
+    pub fn write_in_att_format_file(
+        &self,
+        ofile: &mut dyn std::io::Write,
+        print_weights: bool,
+    ) -> std::io::Result<()> {
         // Implemented only for internal transducer format.
         let net = HfstBasicTransducer::new_from_hfst_transducer(self);
-        net.write_in_att_format_file(ofile, print_weights);
+        net.write_in_att_format_file(ofile, print_weights)
     }
 
     /* Implemented only for XFSM_TYPE. */

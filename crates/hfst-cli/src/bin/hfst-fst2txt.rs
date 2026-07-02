@@ -228,24 +228,24 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
                 // this should not happen
                 printw = true;
             }
-            match FORMAT {
+            let write_result = match FORMAT {
                 FstTextFormat::AttText => {
                     if USE_NUMBERS {
                         // xfsm case checked earlier
-                        t.write_in_att_format_number(outf, printw);
+                        t.write_in_att_format_number(outf, printw)
                     } else {
                         // xfsm not yet supported
-                        t.write_in_att_format_file(outf, printw);
+                        t.write_in_att_format_file(outf, printw)
                     }
                 }
                 FstTextFormat::DotText => {
                     // xfsm case checked earlier
-                    let _ = outf.write_all(b"// This graph generated with hfst-fst2txt\n");
-                    print_dot_file(outf, &mut t);
+                    outf.write_all(b"// This graph generated with hfst-fst2txt\n")
+                        .and_then(|()| print_dot_file(outf, &mut t))
                 }
                 FstTextFormat::PckimmoText => {
                     // xfsm case checked earlier
-                    print_pckimmo(outf, &t);
+                    print_pckimmo(outf, &t)
                 }
                 FstTextFormat::PrologText => {
                     // C: catches HfstException -> error "Error encountered when
@@ -254,6 +254,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
                     if ty == ImplementationType::XFSM_TYPE {
                         // no name or weights printed
                         t.write_xfsm_transducer_in_prolog_format(&globals::output_filename());
+                        Ok(())
                     } else {
                         let namestr = t.get_name();
                         let alt_namestr = format!("NO_NAME_{}", transducer_n);
@@ -279,8 +280,17 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
                             );
                             return 1;
                         }
+                        Ok(())
                     }
                 }
+            };
+            if let Err(e) = write_result {
+                error(
+                    1,
+                    0,
+                    &format!("Error encountered when writing in text format: {e}"),
+                );
+                return 1;
             }
             // C: delete t; (Rust drops at end of loop iteration).
         }

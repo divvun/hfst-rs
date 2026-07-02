@@ -28,13 +28,6 @@ const DOT_MAX_LABEL_SIZE: usize = 64;
 // [spec:hfst:def:hfst-print-dot.hfst.c99-snprintf-fn]
 // [spec:hfst:sem:hfst-print-dot.hfst.c99-snprintf-fn]
 
-// 'fputs'-of-bytes helper mirroring 'fprintf' of a pre-formatted string: the raw
-// bytes are written verbatim, so 'std::string''s non-UTF-8-checked byte semantics
-// are preserved. Write errors are ignored, as the original 'fwrite' path did.
-fn w_fputs(file: &mut dyn Write, s: &str) {
-    let _ = file.write_all(s.as_bytes());
-}
-
 // C++ 'HfstBasicTransducer mutt {t};' invokes the
 // 'HfstBasicTransducer(const HfstTransducer&)' conversion constructor. The facade
 // exposes it as 'HfstTransducer::get_basic_transducer'.
@@ -140,16 +133,16 @@ fn arc_label(old_label: &str, arc: &HfstBasicTransition, coder: &SymbolCoder) ->
 
 // [spec:hfst:def:hfst-print-dot.hfst.print-dot-fn]
 // [spec:hfst:sem:hfst-print-dot.hfst.print-dot-fn]
-pub fn print_dot_file(out: &mut dyn Write, t: &mut HfstTransducer) {
+pub fn print_dot_file(out: &mut dyn Write, t: &mut HfstTransducer) -> std::io::Result<()> {
     //fprintf(out, "// This graph generated with hfst-fst2txt\n");
     if t.get_name() != "" {
-        w_fputs(out, &format!("digraph \"{}\" {{\n", t.get_name()));
+        writeln!(out, "digraph \"{}\" {{", t.get_name())?;
     } else {
-        w_fputs(out, "digraph H {\n");
+        writeln!(out, "digraph H {{")?;
     }
-    w_fputs(out, "charset = UTF8;\n");
-    w_fputs(out, "rankdir = LR;\n");
-    w_fputs(out, "node [shape=circle,style=filled,fillcolor=yellow]\n");
+    writeln!(out, "charset = UTF8;")?;
+    writeln!(out, "rankdir = LR;")?;
+    writeln!(out, "node [shape=circle,style=filled,fillcolor=yellow]")?;
     let mutt: HfstBasicTransducer = hfst_transducer_to_basic(t);
     let mut s: HfstState = 0;
     // for some reason, dot works nicer if I first have all nodes, then arcs
@@ -160,24 +153,19 @@ pub fn print_dot_file(out: &mut dyn Write, t: &mut HfstTransducer) {
                 .expect("state was confirmed final via is_final_state")
                 > 0.0
             {
-                w_fputs(
+                writeln!(
                     out,
-                    &format!(
-                        "q{} [shape=doublecircle,label=\"q{}/\\n{:.2}\"] \n",
-                        s,
-                        s,
-                        mutt.get_final_weight(s)
-                            .expect("state was confirmed final via is_final_state")
-                    ),
-                );
+                    "q{} [shape=doublecircle,label=\"q{}/\\n{:.2}\"] ",
+                    s,
+                    s,
+                    mutt.get_final_weight(s)
+                        .expect("state was confirmed final via is_final_state")
+                )?;
             } else {
-                w_fputs(
-                    out,
-                    &format!("q{} [shape=doublecircle,label=\"q{}\"] \n", s, s),
-                );
+                writeln!(out, "q{} [shape=doublecircle,label=\"q{}\"] ", s, s)?;
             }
         } else {
-            w_fputs(out, &format!("q{} [label=\"q{}\"] \n", s, s));
+            writeln!(out, "q{} [label=\"q{}\"] ", s, s)?;
         }
         s += 1;
     } // each state
@@ -193,12 +181,12 @@ pub fn print_dot_file(out: &mut dyn Write, t: &mut HfstTransducer) {
             target_labels.insert(arc.get_target_state(), sl);
         } // each arc
         for (key, value) in &target_labels {
-            w_fputs(out, &format!("q{} -> q{} ", s, key));
-            w_fputs(out, &format!("[label=\"{} \"];\n", value));
+            write!(out, "q{} -> q{} ", s, key)?;
+            writeln!(out, "[label=\"{} \"];", value)?;
         }
         s += 1;
     } // each state
-    w_fputs(out, "}\n");
+    writeln!(out, "}}")
 }
 
 pub fn print_dot_os(out: &mut dyn Write, t: &mut HfstTransducer) {

@@ -71,4 +71,5 @@ assertions (
     {id idiom9.mechanical, kind @complete, author "brendan@necessary.nu", at 2026-07-02T13:17:04.592704Z}
     {id idiom9.control-flow, kind @complete, author "brendan@necessary.nu", at 2026-07-02T13:39:32.203607Z}
     {id idiom9.parsers, kind @complete, author "brendan@necessary.nu", at 2026-07-02T13:47:41.040901Z}
+    {id idiom9.io-shape, kind @complete, author "brendan@necessary.nu", at 2026-07-02T14:09:09.59678Z}
 )

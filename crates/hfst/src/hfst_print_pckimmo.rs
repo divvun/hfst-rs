@@ -14,57 +14,35 @@ use std::io::Write;
 use crate::hfst_basic_transducer::{HfstBasicTransducer, HfstState};
 use crate::hfst_symbol_defs::{internal_epsilon, internal_unknown};
 
-// Raw byte-faithful stand-in for 'fprintf''s output side: write the
-// already-formatted bytes verbatim. Symbols may be truncated by '%.*s' at an
-// arbitrary byte boundary (mid-UTF-8), so the buffer is '[u8]' rather than
-// 'str'. Write errors are ignored, as the original 'fwrite' path did.
-fn fwrite_bytes(out: &mut dyn Write, bytes: &[u8]) {
-    let _ = out.write_all(bytes);
+// C printf '%.*s' of a symbol: at most 'precision' bytes, so a multibyte
+// symbol may be cut mid-UTF-8. Rust's '{:.n$}' truncates by chars, not bytes,
+// so the byte-exact truncation is done here and written raw.
+fn write_symbol_truncated(
+    out: &mut dyn Write,
+    precision: usize,
+    symbol: &str,
+) -> std::io::Result<()> {
+    let bytes = symbol.as_bytes();
+    out.write_all(&bytes[..precision.min(bytes.len())])?;
+    out.write_all(b" ")
 }
 
-// C printf '%*s': right-justify 's' in a field of minimum 'width' bytes,
-// padding with spaces on the left.
-fn fmt_star_s(width: usize, s: &[u8]) -> Vec<u8> {
-    let mut out: Vec<u8> = Vec::new();
-    if s.len() < width {
-        for _ in 0..(width - s.len()) {
-            out.push(b' ');
-        }
-    }
-    out.extend_from_slice(s);
-    out
-}
-
-// C printf '%.*s': print at most 'precision' bytes of 's'.
-fn fmt_dot_star_s(precision: usize, s: &[u8]) -> Vec<u8> {
-    let n = std::cmp::min(precision, s.len());
-    s[..n].to_vec()
-}
-
-// C printf '%.*d': decimal with a minimum of 'precision' digits, zero-padded on
-// the left. The value is read as a signed 'int' (the '%d' conversion). Per ISO
-// C, converting a zero value with a precision of zero yields no characters.
-fn fmt_dot_star_d(precision: usize, value: i32) -> Vec<u8> {
+// C printf '%.*d' for the non-negative values used here: zero-pad to a minimum
+// of 'precision' digits. Per ISO C, converting a zero value with a precision of
+// zero yields no characters — that case is not expressible with '{:0n$}'.
+fn write_state_number(out: &mut dyn Write, precision: usize, value: i32) -> std::io::Result<()> {
     if precision == 0 && value == 0 {
-        return Vec::new();
+        return Ok(());
     }
-    let neg = value < 0;
-    let mut digits = (value as i64).unsigned_abs().to_string().into_bytes();
-    while digits.len() < precision {
-        digits.insert(0, b'0');
-    }
-    if neg {
-        let mut v = vec![b'-'];
-        v.extend_from_slice(&digits);
-        v
-    } else {
-        digits
-    }
+    write!(out, "{value:0precision$}")
 }
 
 // [spec:hfst:def:hfst-print-pc-kimmo.hfst.print-pckimmo-fn]
 // [spec:hfst:sem:hfst-print-pc-kimmo.hfst.print-pckimmo-fn]
-pub fn print_pckimmo(out: &mut dyn Write, t: &crate::hfst_transducer::HfstTransducer) {
+pub fn print_pckimmo(
+    out: &mut dyn Write,
+    t: &crate::hfst_transducer::HfstTransducer,
+) -> std::io::Result<()> {
     // C++: 'HfstBasicTransducer mutt {t};' — build the interchange graph from
     // the facade. get_basic_transducer is the HfstBasicTransducer(const
     // HfstTransducer&) conversion.
@@ -93,60 +71,37 @@ pub fn print_pckimmo(out: &mut dyn Write, t: &crate::hfst_transducer::HfstTransd
     }
     // first line is input symbols per pair
     // (left corner is digit width + 2)
-    {
-        let mut buf = fmt_star_s(numwidth as usize, b" ");
-        buf.extend_from_slice(b"  ");
-        fwrite_bytes(out, &buf);
-    }
+    write!(out, "{:>width$}  ", " ", width = numwidth as usize)?;
     for p in &pairs {
         if p.0.as_str() == internal_epsilon {
-            let mut buf = fmt_dot_star_s(numwidth as usize, b"0");
-            buf.extend_from_slice(b" ");
-            fwrite_bytes(out, &buf);
+            write_symbol_truncated(out, numwidth as usize, "0")?;
         } else if p.0.as_str() == internal_unknown {
-            let mut buf = fmt_dot_star_s(numwidth as usize, b"@");
-            buf.extend_from_slice(b" ");
-            fwrite_bytes(out, &buf);
+            write_symbol_truncated(out, numwidth as usize, "@")?;
         } else {
-            let mut buf = fmt_dot_star_s(numwidth as usize, p.0.as_bytes());
-            buf.extend_from_slice(b" ");
-            fwrite_bytes(out, &buf);
+            write_symbol_truncated(out, numwidth as usize, &p.0)?;
         }
     }
     // second line is output symbols per pair
-    fwrite_bytes(out, b"\n");
+    writeln!(out)?;
     // (left corner is digit width + 2)
-    {
-        let mut buf = fmt_star_s(numwidth as usize, b" ");
-        buf.extend_from_slice(b"  ");
-        fwrite_bytes(out, &buf);
-    }
+    write!(out, "{:>width$}  ", " ", width = numwidth as usize)?;
     for p in &pairs {
         if p.1.as_str() == internal_epsilon {
-            let mut buf = fmt_dot_star_s(numwidth as usize, b"0");
-            buf.extend_from_slice(b" ");
-            fwrite_bytes(out, &buf);
+            write_symbol_truncated(out, numwidth as usize, "0")?;
         } else if p.1.as_str() == internal_unknown {
-            let mut buf = fmt_dot_star_s(numwidth as usize, b"@");
-            buf.extend_from_slice(b" ");
-            fwrite_bytes(out, &buf);
+            write_symbol_truncated(out, numwidth as usize, "@")?;
         } else {
-            let mut buf = fmt_dot_star_s(numwidth as usize, p.1.as_bytes());
-            buf.extend_from_slice(b" ");
-            fwrite_bytes(out, &buf);
+            write_symbol_truncated(out, numwidth as usize, &p.1)?;
         }
     }
     // the transition table per state
-    fwrite_bytes(out, b"\n");
+    writeln!(out)?;
     for state in mutt.iter() {
+        write_state_number(out, numwidth as usize, s.wrapping_add(1) as i32)?;
         if mutt.is_final_state(s) {
-            let mut buf = fmt_dot_star_d(numwidth as usize, s.wrapping_add(1) as i32);
-            buf.extend_from_slice(b". ");
-            fwrite_bytes(out, &buf);
+            write!(out, ". ")?;
         } else {
-            let mut buf = fmt_dot_star_d(numwidth as usize, s.wrapping_add(1) as i32);
-            buf.extend_from_slice(b": ");
-            fwrite_bytes(out, &buf);
+            write!(out, ": ")?;
         }
         // map everything to sink state 0 first
         let mut transitions: BTreeMap<(String, String), HfstState> = BTreeMap::new();
@@ -159,11 +114,11 @@ pub fn print_pckimmo(out: &mut dyn Write, t: &crate::hfst_transducer::HfstTransd
             transitions.insert((first, second), arc.get_target_state());
         }
         for (_k, v) in &transitions {
-            let mut buf = fmt_dot_star_d(numwidth as usize, v.wrapping_add(1) as i32);
-            buf.extend_from_slice(b" ");
-            fwrite_bytes(out, &buf);
+            write_state_number(out, numwidth as usize, v.wrapping_add(1) as i32)?;
+            write!(out, " ")?;
         }
-        fwrite_bytes(out, b"\n");
+        writeln!(out)?;
         s += 1;
     } // for each state
+    Ok(())
 }

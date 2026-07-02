@@ -31,15 +31,6 @@ use crate::hfst_tropical_transducer_transition_data::{
 };
 use crate::string_utils::replace_all;
 
-// Raw byte-faithful stand-in for 'fprintf' to an output stream: writes the
-// already-formatted 's' verbatim (no NUL handling needed, so any bytes are
-// safe). '%f' conversions are pre-rendered as '{:.6}' to match printf's default
-// precision; the rest become ordinary 'format!'. Write errors are ignored, as
-// the original 'fwrite'-to-FILE path did.
-fn w_fputs(w: &mut dyn Write, s: &str) {
-    let _ = w.write_all(s.as_bytes());
-}
-
 // C 'atoi': parse the leading integer, 0 on failure. State numbers here are
 // non-negative, so only leading whitespace and ASCII digits are consumed.
 fn atoi(s: &str) -> u32 {
@@ -52,35 +43,6 @@ fn atoi(s: &str) -> u32 {
 // whitespace-delimited tokens, so a plain parse suffices.
 fn atof(s: &str) -> f64 {
     s.trim_start().parse::<f64>().unwrap_or(0.0)
-}
-
-// 'fgets(buf, 255, file)': read up to 254 bytes or through a newline; None at
-// EOF (when no bytes at all could be read). A trailing newline (if any) is kept,
-// matching fgets. Faithful BufRead stand-in for the original C 'c_fgets'.
-fn bufread_fgets(is: &mut dyn BufRead) -> Option<String> {
-    let mut line: Vec<u8> = Vec::new();
-    loop {
-        let mut byte = [0u8; 1];
-        match is.read(&mut byte) {
-            Ok(0) => break, // EOF
-            Ok(_) => {
-                line.push(byte[0]);
-                if byte[0] == b'\n' {
-                    break;
-                }
-                // fgets reads at most 'size - 1' (254) bytes.
-                if line.len() >= 254 {
-                    break;
-                }
-            }
-            Err(_) => break,
-        }
-    }
-    if line.is_empty() {
-        None
-    } else {
-        Some(String::from_utf8_lossy(&line).into_owned())
-    }
 }
 
 // Approximation of 'std::istream::eof()' for a fresh reader: no bytes remain.
@@ -1372,8 +1334,9 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-weight-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.write-weight-fn]
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.write-weight-fn]
-    pub fn write_weight_file(file: &mut dyn Write, weight: f32) {
-        w_fputs(file, &format!("{:.6}", weight));
+    // The C '%f' conversion renders with printf's default 6-digit precision.
+    pub fn write_weight_file(file: &mut dyn Write, weight: f32) -> std::io::Result<()> {
+        write!(file, "{:.6}", weight)
     }
 
     // The C++ ostream '<<' float formatting (6 significant digits) differs from
@@ -1433,14 +1396,18 @@ impl HfstBasicTransducer {
         let _ = write!(os, "s{}", state);
     }
 
-    pub fn print_xfst_state_file(&self, file: &mut dyn Write, state: HfstState) {
+    pub fn print_xfst_state_file(
+        &self,
+        file: &mut dyn Write,
+        state: HfstState,
+    ) -> std::io::Result<()> {
         if state == Self::INITIAL_STATE {
-            w_fputs(file, "S");
+            write!(file, "S")?;
         }
         if self.is_final_state(state) {
-            w_fputs(file, "f");
+            write!(file, "f")?;
         }
-        w_fputs(file, &format!("s{}", state));
+        write!(file, "s{}", state)
     }
 
     pub fn print_xfst_arc_os(
@@ -1475,24 +1442,25 @@ impl HfstBasicTransducer {
         &self,
         file: &mut dyn Write,
         data: &HfstTropicalTransducerTransitionData,
-    ) {
+    ) -> std::io::Result<()> {
         let isym = data.get_input_symbol(&self.coder);
         let osym = data.get_output_symbol(&self.coder);
         if isym != osym {
-            w_fputs(file, "<");
+            write!(file, "<")?;
         }
         // replace all spaces, epsilons and tabs
         let mut s = isym.clone();
         Self::xfstize_symbol(&mut s);
-        w_fputs(file, &s);
+        write!(file, "{}", s)?;
         if isym != osym || osym == "@_UNKNOWN_SYMBOL_@" {
             s = osym.clone();
             Self::xfstize_symbol(&mut s);
-            w_fputs(file, &format!(":{}", s));
+            write!(file, ":{}", s)?;
         }
         if isym != osym {
-            w_fputs(file, ">");
+            write!(file, ">")?;
         }
+        Ok(())
     }
 
     /** @brief Write the graph in xfst text format to ostream 'os'. */
@@ -1580,16 +1548,17 @@ impl HfstBasicTransducer {
         file: &mut dyn Write,
         data: &HfstTropicalTransducerTransitionData,
         coder: &SymbolCoder,
-    ) {
+    ) -> std::io::Result<()> {
         let isym = data.get_input_symbol(coder);
         let osym = data.get_output_symbol(coder);
         let symbol = Self::prologize_symbol(&isym);
-        w_fputs(file, &format!("\"{}\"", symbol));
+        write!(file, "\"{}\"", symbol)?;
 
         if isym != osym || isym == "@_UNKNOWN_SYMBOL_@" {
             let symbol = Self::prologize_symbol(&osym);
-            w_fputs(file, &format!(":\"{}\"", symbol));
+            write!(file, ":\"{}\"", symbol)?;
         }
+        Ok(())
     }
 
     pub fn print_prolog_arc_symbols_os(
@@ -1619,60 +1588,65 @@ impl HfstBasicTransducer {
         name: &str,
         write_weights: bool,
     ) -> crate::error::Result<()> {
-        let identifier = name;
         // Print the name.
         if name.contains(',') {
             let msg = "no commas allowed in the name of prolog networks".to_string();
             crate::bail!(Hfst, msg);
         }
-        w_fputs(file, &format!("network({}).\n", identifier));
+        self.write_in_prolog_format_file_body(file, name, write_weights)
+            .map_err(|e| crate::err!(StreamCannotBeWritten, e.to_string()))
+    }
+
+    fn write_in_prolog_format_file_body(
+        &self,
+        file: &mut dyn Write,
+        identifier: &str,
+        write_weights: bool,
+    ) -> std::io::Result<()> {
+        writeln!(file, "network({}).", identifier)?;
 
         // Print symbols that are in the alphabet but not used in arcs.
         let mut symbols_used = self.symbols_used();
         Self::initialize_alphabet(&mut symbols_used); // exclude special symbols
         for it in self.alphabet.iter() {
             if !symbols_used.contains(it) {
-                w_fputs(
+                writeln!(
                     file,
-                    &format!(
-                        "symbol({}, \"{}\").\n",
-                        identifier,
-                        Self::prologize_symbol(it)
-                    ),
-                );
+                    "symbol({}, \"{}\").",
+                    identifier,
+                    Self::prologize_symbol(it)
+                )?;
             }
         }
 
         // Print arcs.
         for (source_state, it) in self.state_vector.iter().enumerate() {
             for tr_it in it.iter() {
-                w_fputs(
+                write!(
                     file,
-                    &format!(
-                        "arc({}, {}, {}, ",
-                        identifier,
-                        source_state,
-                        tr_it.get_target_state()
-                    ),
-                );
+                    "arc({}, {}, {}, ",
+                    identifier,
+                    source_state,
+                    tr_it.get_target_state()
+                )?;
                 let data = tr_it.get_transition_data();
-                Self::print_prolog_arc_symbols_file(file, data, &self.coder);
+                Self::print_prolog_arc_symbols_file(file, data, &self.coder)?;
                 if write_weights {
-                    w_fputs(file, ", ");
-                    Self::write_weight_file(file, data.get_weight());
+                    write!(file, ", ")?;
+                    Self::write_weight_file(file, data.get_weight())?;
                 }
-                w_fputs(file, ").\n");
+                writeln!(file, ").")?;
             }
         }
 
         // Print final states.
         for (k, v) in self.final_weight_map.iter() {
-            w_fputs(file, &format!("final({}, {}", identifier, k));
+            write!(file, "final({}, {}", identifier, k)?;
             if write_weights {
-                w_fputs(file, ", ");
-                Self::write_weight_file(file, *v);
+                write!(file, ", ")?;
+                Self::write_weight_file(file, *v)?;
             }
-            w_fputs(file, ").\n");
+            writeln!(file, ").")?;
         }
         Ok(())
     }
@@ -2165,29 +2139,34 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.write-in-xfst-format-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.write-in-xfst-format-fn]
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.write-in-xfst-format-fn]
-    pub fn write_in_xfst_format_file(&self, file: &mut dyn Write, write_weights: bool) {
+    pub fn write_in_xfst_format_file(
+        &self,
+        file: &mut dyn Write,
+        write_weights: bool,
+    ) -> std::io::Result<()> {
         let _ = write_weights;
         for (source_state, it) in self.state_vector.iter().enumerate() {
             let source_state = source_state as u32;
-            self.print_xfst_state_file(file, source_state);
-            w_fputs(file, ":\t");
+            self.print_xfst_state_file(file, source_state)?;
+            write!(file, ":\t")?;
 
             if it.is_empty() {
-                w_fputs(file, "(no arcs)");
+                write!(file, "(no arcs)")?;
             } else {
                 for (i, tr_it) in it.iter().enumerate() {
                     if i != 0 {
-                        w_fputs(file, ", ");
+                        write!(file, ", ")?;
                     }
                     let data = tr_it.get_transition_data();
-                    self.print_xfst_arc_file(file, data);
+                    self.print_xfst_arc_file(file, data)?;
 
-                    w_fputs(file, " -> ");
-                    self.print_xfst_state_file(file, tr_it.get_target_state());
+                    write!(file, " -> ")?;
+                    self.print_xfst_state_file(file, tr_it.get_target_state())?;
                 }
             }
-            w_fputs(file, ".\n");
+            writeln!(file, ".")?;
         }
+        Ok(())
     }
 
     /** @brief Write the graph in AT&T format to ostream 'os'. */
@@ -2238,7 +2217,11 @@ impl HfstBasicTransducer {
     }
 
     /** @brief Write the graph in AT&T format to FILE 'file'. */
-    pub fn write_in_att_format_file(&self, file: &mut dyn Write, write_weights: bool) {
+    pub fn write_in_att_format_file(
+        &self,
+        file: &mut dyn Write,
+        write_weights: bool,
+    ) -> std::io::Result<()> {
         for (source_state, it) in self.state_vector.iter().enumerate() {
             let source_state = source_state as u32;
             for tr_it in it.iter() {
@@ -2254,36 +2237,35 @@ impl HfstBasicTransducer {
                 replace_all(&mut osymbol, "@_EPSILON_SYMBOL_@", "@0@");
                 replace_all(&mut osymbol, "\t", "@_TAB_@");
 
-                w_fputs(
+                write!(
                     file,
-                    &format!(
-                        "{}\t{}\t{}\t{}",
-                        source_state,
-                        tr_it.get_target_state(),
-                        isymbol,
-                        osymbol
-                    ),
-                );
+                    "{}\t{}\t{}\t{}",
+                    source_state,
+                    tr_it.get_target_state(),
+                    isymbol,
+                    osymbol
+                )?;
 
                 if write_weights {
-                    w_fputs(file, "\t");
-                    Self::write_weight_file(file, data.get_weight());
+                    write!(file, "\t")?;
+                    Self::write_weight_file(file, data.get_weight())?;
                 }
-                w_fputs(file, "\n");
+                writeln!(file)?;
             }
             if self.is_final_state(source_state) {
-                w_fputs(file, &format!("{}", source_state));
+                write!(file, "{}", source_state)?;
                 if write_weights {
-                    w_fputs(file, "\t");
+                    write!(file, "\t")?;
                     Self::write_weight_file(
                         file,
                         self.get_final_weight(source_state)
                             .expect("state was confirmed final via is_final_state"),
-                    );
+                    )?;
                 }
-                w_fputs(file, "\n");
+                writeln!(file)?;
             }
         }
+        Ok(())
     }
 
     /** @brief Write the graph in AT&T format to FILE 'file' using numbers
@@ -2295,44 +2277,45 @@ impl HfstBasicTransducer {
     // multi-transition final state repeats it); preserved bug-for-bug.
     // [spec:hfst:def:hfst-transition-graph.write-in-att-format-number-fn]
     // [spec:hfst:sem:hfst-transition-graph.write-in-att-format-number-fn]
-    pub fn write_in_att_format_number_file(&self, file: &mut dyn Write, write_weights: bool) {
+    pub fn write_in_att_format_number_file(
+        &self,
+        file: &mut dyn Write,
+        write_weights: bool,
+    ) -> std::io::Result<()> {
         for (source_state, it) in self.state_vector.iter().enumerate() {
             let source_state = source_state as u32;
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data().clone();
 
-                w_fputs(
+                write!(
                     file,
-                    &format!(
-                        "{}\t{}\t{}\t{}",
-                        source_state,
-                        tr_it.get_target_state(),
-                        tr_it.get_input_number(),
-                        tr_it.get_output_number()
-                    ),
-                );
+                    "{}\t{}\t{}\t{}",
+                    source_state,
+                    tr_it.get_target_state(),
+                    tr_it.get_input_number(),
+                    tr_it.get_output_number()
+                )?;
 
                 if write_weights {
-                    w_fputs(file, &format!("\t{:.6}", data.get_weight()));
+                    write!(file, "\t{:.6}", data.get_weight())?;
                 }
-                w_fputs(file, "\n");
+                writeln!(file)?;
 
                 if self.is_final_state(source_state) {
-                    w_fputs(file, &format!("{}", source_state));
+                    write!(file, "{}", source_state)?;
                     if write_weights {
-                        w_fputs(
+                        write!(
                             file,
-                            &format!(
-                                "\t{:.6}",
-                                self.get_final_weight(source_state)
-                                    .expect("state was confirmed final via is_final_state")
-                            ),
-                        );
+                            "\t{:.6}",
+                            self.get_final_weight(source_state)
+                                .expect("state was confirmed final via is_final_state")
+                        )?;
                     }
-                    w_fputs(file, "\n");
+                    writeln!(file)?;
                 }
             }
         }
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-att-line-fn]
@@ -2437,7 +2420,7 @@ impl HfstBasicTransducer {
         is: &mut dyn BufRead,
         linecount: &mut u32,
     ) -> crate::error::Result<String> {
-        let linestr = match bufread_fgets(is) {
+        let linestr = match crate::io_utils::read_line_lossy(is) {
             None => crate::bail!(EndOfStream),
             Some(l) => l,
         };
@@ -2530,7 +2513,7 @@ impl HfstBasicTransducer {
 
         let mut retval = HfstBasicTransducer::new();
         loop {
-            let line: String = match bufread_fgets(is) {
+            let line: String = match crate::io_utils::read_line_lossy(is) {
                 None => break,
                 Some(l) => l,
             };

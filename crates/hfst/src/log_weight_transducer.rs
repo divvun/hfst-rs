@@ -907,25 +907,10 @@ mod construction_io {
             t.set_start(initial_state).unwrap();
 
             loop {
-                // C 'fgets'-equivalent line read: take up to 254 bytes, stopping
-                // after a newline (which is kept); 0 bytes read at EOF ends the loop.
-                let mut buf: Vec<u8> = Vec::new();
-                let mut byte = [0u8; 1];
-                while buf.len() < 254 {
-                    match ifile.read(&mut byte) {
-                        Ok(0) | Err(_) => break,
-                        Ok(_) => {
-                            buf.push(byte[0]);
-                            if byte[0] == b'\n' {
-                                break;
-                            }
-                        }
-                    }
-                }
-                if buf.is_empty() {
-                    break;
-                }
-                let line_str = String::from_utf8_lossy(&buf);
+                let line_str = match crate::io_utils::read_line_lossy(ifile) {
+                    None => break,
+                    Some(l) => l,
+                };
                 let bytes = line_str.as_bytes();
 
                 if !bytes.is_empty() && bytes[0] == b'-' {
