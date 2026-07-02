@@ -2494,15 +2494,23 @@ mod lookup_extract_misc {
         }
     }
 
-    /* Get a random path from transducer 't'.  Faithful to the C++ it signals
-    failure by throwing a C-string; here those become `panic_any(&'static str)`
-    that `random_path` catches with `catch_unwind`. */
+    /* Failure signals of the random-path extractor (the C++ threw C-strings
+    "transducer is empty" / "cannot extract random path" for these). */
+    enum RandomPathError {
+        Empty,
+        NoPath,
+    }
+
+    /* Get a random path from transducer 't'. */
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.random-path-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.random-path-fn]
-    fn random_path_once(t: &StdVectorFst, rng: &mut Rng) -> HfstTwoLevelPath {
+    fn random_path_once(
+        t: &StdVectorFst,
+        rng: &mut Rng,
+    ) -> Result<HfstTwoLevelPath, RandomPathError> {
         /* If the transducer is empty, return. */
         if is_minimal_and_empty(t) {
-            std::panic::panic_any("transducer is empty");
+            return Err(RandomPathError::Empty);
         }
 
         let mut path = HfstTwoLevelPath {
@@ -2533,9 +2541,9 @@ mod lookup_extract_misc {
                     i -= 1;
                 }
                 if !is_epsilon_path_accepted && path.second.is_empty() {
-                    std::panic::panic_any("cannot extract random path");
+                    return Err(RandomPathError::NoPath);
                 }
-                return path;
+                return Ok(path);
             }
 
             /* Go through all transitions in a random order. */
@@ -2566,9 +2574,9 @@ mod lookup_extract_misc {
                         // randomly return the path so far,
                         path.first += *t.final_weight(t_target).unwrap().unwrap().value();
                         if !is_epsilon_path_accepted && path.second.is_empty() {
-                            std::panic::panic_any("cannot extract random path");
+                            return Err(RandomPathError::NoPath);
                         }
-                        return path;
+                        return Ok(path);
                     } // or continue.
                     last_index = path.second.len() as i32;
                 }
@@ -2596,35 +2604,20 @@ mod lookup_extract_misc {
     }
 
     /* Try to extract a random path from 't' at most 'max_times' times. */
-    fn random_path(t: &StdVectorFst, mut max_times: u32, rng: &mut Rng) -> HfstTwoLevelPath {
+    fn random_path(
+        t: &StdVectorFst,
+        mut max_times: u32,
+        rng: &mut Rng,
+    ) -> Result<HfstTwoLevelPath, RandomPathError> {
         while max_times > 0 {
             max_times -= 1;
-            let prev = std::panic::take_hook();
-            std::panic::set_hook(Box::new(|_| {}));
-            let r =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| random_path_once(t, rng)));
-            std::panic::set_hook(prev);
-            match r {
-                Ok(p) => return p,
-                Err(e) => {
-                    let msg = if let Some(s) = e.downcast_ref::<&str>() {
-                        (*s).to_string()
-                    } else if let Some(s) = e.downcast_ref::<String>() {
-                        s.clone()
-                    } else {
-                        std::panic::resume_unwind(e)
-                    };
-                    if msg == "transducer is empty" {
-                        std::panic::panic_any("transducer is empty");
-                    } else if msg == "cannot extract random path" {
-                        continue;
-                    } else {
-                        std::panic::panic_any("cannot extract random path");
-                    }
-                }
+            match random_path_once(t, rng) {
+                Ok(p) => return Ok(p),
+                Err(RandomPathError::Empty) => return Err(RandomPathError::Empty),
+                Err(RandomPathError::NoPath) => continue,
             }
         }
-        std::panic::panic_any("cannot extract random path");
+        Err(RandomPathError::NoPath)
     }
 
     // ============================================================================
@@ -2732,42 +2725,22 @@ mod lookup_extract_misc {
             while max_num > 0 {
                 /* Try to extract one path at most 5 times. */
                 max_num -= 1;
-                let prev = std::panic::take_hook();
-                std::panic::set_hook(Box::new(|_| {}));
-                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    random_path(t, 5, &mut rng)
-                }));
-                std::panic::set_hook(prev);
-
-                let mut path = match r {
+                let mut path = match random_path(t, 5, &mut rng) {
                     Ok(p) => p,
-                    Err(e) => {
-                        let msg = if let Some(s) = e.downcast_ref::<&str>() {
-                            (*s).to_string()
-                        } else if let Some(s) = e.downcast_ref::<String>() {
-                            s.clone()
-                        } else {
-                            std::panic::resume_unwind(e)
-                        };
-                        if msg == "cannot extract random path" {
-                            continue; // one trial used, keep on trying
-                        }
+                    Err(RandomPathError::NoPath) => {
+                        continue; // one trial used, keep on trying
+                    }
+                    Err(RandomPathError::Empty) => {
                         return; // not even possible to extract paths
                     }
                 };
 
                 /* If we extract the same path again, try at most 5 times to
-                extract another one. */
+                extract another one (a failed retry keeps the old path). */
                 let mut i = max_num;
                 while results.contains(&path) && i > 0 {
                     i -= 1;
-                    let prev = std::panic::take_hook();
-                    std::panic::set_hook(Box::new(|_| {}));
-                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        random_path(t, 5, &mut rng)
-                    }));
-                    std::panic::set_hook(prev);
-                    if let Ok(p) = r {
+                    if let Ok(p) = random_path(t, 5, &mut rng) {
                         path = p;
                     } // keep on trying
                 }

@@ -4320,13 +4320,20 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-state-for-cycle-fn]
     // [spec:hfst:def:hfst-transition-graph.check-regexp-state-for-cycle-fn]
     // [spec:hfst:sem:hfst-transition-graph.check-regexp-state-for-cycle-fn]
-    pub fn check_regexp_state_for_cycle(s: HfstState, states_visited: &BTreeSet<HfstState>) {
+    pub fn check_regexp_state_for_cycle(
+        s: HfstState,
+        states_visited: &BTreeSet<HfstState>,
+    ) -> crate::error::Result<()> {
         if states_visited.contains(&s) {
-            panic!("error: loop detected inside compile-replace regular expression");
+            crate::bail!(
+                Hfst,
+                "error: loop detected inside compile-replace regular expression"
+            );
         }
+        Ok(())
     }
 
-    // Returns whether tr is "^]":"^]". Throws (panics) if tr is not allowed.
+    // Returns whether tr is "^]":"^]". Errors if tr is not allowed.
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-transition-end-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.check-regexp-transition-end-fn]
     // [spec:hfst:def:hfst-transition-graph.check-regexp-transition-end-fn]
@@ -4335,7 +4342,7 @@ impl HfstBasicTransducer {
         tr: &HfstBasicTransition,
         input_side: bool,
         coder: &SymbolCoder,
-    ) -> bool {
+    ) -> crate::error::Result<bool> {
         let istr = tr.get_input_symbol(coder);
         let ostr = tr.get_output_symbol(coder);
 
@@ -4344,17 +4351,23 @@ impl HfstBasicTransducer {
         } else if (input_side && Self::is_special_symbol(&istr))
             || (!input_side && Self::is_special_symbol(&ostr))
         {
-            panic!("error: special symbol detected in compile-replace regular expression");
+            crate::bail!(
+                Hfst,
+                "error: special symbol detected in compile-replace regular expression"
+            );
         } else {
         }
 
         if (input_side && istr == "^[") || (!input_side && ostr == "^[") {
-            panic!("error: ^[ detected inside compile-replace regular expression");
+            crate::bail!(
+                Hfst,
+                "error: ^[ detected inside compile-replace regular expression"
+            );
         }
         if (input_side && istr == "^]") || (!input_side && ostr == "^]") {
-            return true;
+            return Ok(true);
         }
-        false
+        Ok(false)
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-regexp-paths-fn]
@@ -4370,9 +4383,9 @@ impl HfstBasicTransducer {
         path: &mut Vec<(String, String)>,
         full_paths: &mut HfstReplacements,
         input_side: bool,
-    ) {
+    ) -> crate::error::Result<()> {
         // no cycles allowed inside "^[" and "^]"
-        Self::check_regexp_state_for_cycle(s, states_visited);
+        Self::check_regexp_state_for_cycle(s, states_visited)?;
         states_visited.insert(s);
 
         let transitions = self
@@ -4380,9 +4393,9 @@ impl HfstBasicTransducer {
             .expect("s is a valid state reached during the walk");
         for transition in transitions.iter() {
             // closing bracket
-            if Self::check_regexp_transition_end(transition, input_side, &self.coder) {
+            if Self::check_regexp_transition_end(transition, input_side, &self.coder)? {
                 // cannot lead to a state already visited
-                Self::check_regexp_state_for_cycle(transition.get_target_state(), states_visited);
+                Self::check_regexp_state_for_cycle(transition.get_target_state(), states_visited)?;
                 path.push((
                     transition.get_input_symbol(&self.coder),
                     transition.get_output_symbol(&self.coder),
@@ -4400,11 +4413,12 @@ impl HfstBasicTransducer {
                     path,
                     full_paths,
                     input_side,
-                );
+                )?;
                 path.pop();
             }
         }
         states_visited.remove(&s);
+        Ok(())
     }
 
     pub fn find_regexp_paths_driver(
@@ -4412,7 +4426,7 @@ impl HfstBasicTransducer {
         s: HfstState,
         full_paths: &mut HfstReplacements,
         input_side: bool,
-    ) {
+    ) -> crate::error::Result<()> {
         let transitions = self
             .index(s)
             .expect("s is a valid state reached during the walk");
@@ -4430,26 +4444,27 @@ impl HfstBasicTransducer {
                     &mut path,
                     full_paths,
                     input_side,
-                );
+                )?;
             }
         }
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-replacements-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-replacements-fn]
     // [spec:hfst:def:hfst-transition-graph.hfst-replacements-map-find-replacements-fn]
     // [spec:hfst:sem:hfst-transition-graph.hfst-replacements-map-find-replacements-fn]
-    pub fn find_replacements(&self, input_side: bool) -> HfstReplacementsMap {
+    pub fn find_replacements(&self, input_side: bool) -> crate::error::Result<HfstReplacementsMap> {
         let mut replacements = HfstReplacementsMap::new();
         for (state, _it) in self.state_vector.iter().enumerate() {
             let state = state as u32;
             let mut full_paths: HfstReplacements = Vec::new();
-            self.find_regexp_paths_driver(state, &mut full_paths, input_side);
+            self.find_regexp_paths_driver(state, &mut full_paths, input_side)?;
             if full_paths.len() > 0 {
                 replacements.insert(state, full_paths);
             }
         }
-        replacements
+        Ok(replacements)
     }
 
     // Attach a copy of 'graph' between states 'state1' and 'state2' with epsilon
@@ -4864,14 +4879,17 @@ impl HfstBasicTransducer {
         transition_data: &HfstTropicalTransducerTransitionData,
         list_symbols: &BTreeMap<String, BTreeSet<String>>,
         coder: &SymbolCoder,
-    ) -> bool {
+    ) -> crate::error::Result<bool> {
         let isymbol = transition_data.get_input_symbol(coder);
         let osymbol = transition_data.get_output_symbol(coder);
 
         if isymbol != osymbol {
-            panic!("is_list_symbol: input and output symbols must be the same");
+            crate::bail!(
+                TransducersAreNotAutomata,
+                "is_list_symbol: input and output symbols must be the same"
+            );
         }
-        list_symbols.contains_key(&isymbol)
+        Ok(list_symbols.contains_key(&isymbol))
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-matches-for-merge-fn]
@@ -4890,20 +4908,20 @@ impl HfstBasicTransducer {
         agenda: &mut BTreeSet<HfstState>,
         list_symbols: &BTreeMap<String, BTreeSet<String>>,
         markers_added: &mut BTreeSet<String>,
-    ) {
+    ) -> crate::error::Result<()> {
         agenda.insert(result_state); // do not handle 'result_state' twice
         let graph_transitions = &graph.state_vector[graph_state as usize];
         let merger_transitions = &merger.state_vector[merger_state as usize];
 
         if graph_transitions.len() == 0 {
-            return; // no matches possible
+            return Ok(()); // no matches possible
         }
 
         for graph_transition in graph_transitions.iter() {
             let graph_transition_data = graph_transition.get_transition_data();
 
             // List symbols must be checked separately.
-            if Self::is_list_symbol(graph_transition_data, list_symbols, graph.coder()) {
+            if Self::is_list_symbol(graph_transition_data, list_symbols, graph.coder())? {
                 let symbol_list =
                     &list_symbols[&graph_transition_data.get_input_symbol(graph.coder())];
                 let mut list_match_found = false;
@@ -4913,7 +4931,10 @@ impl HfstBasicTransducer {
                     let osymbol = merger_transition_data.get_output_symbol(merger.coder());
 
                     if isymbol != osymbol {
-                        panic!("find_matches_for_merge: input and output symbols must be the same");
+                        crate::bail!(
+                            TransducersAreNotAutomata,
+                            "find_matches_for_merge: input and output symbols must be the same"
+                        );
                     }
 
                     if symbol_list.contains(&isymbol) {
@@ -4940,7 +4961,7 @@ impl HfstBasicTransducer {
                                 agenda,
                                 list_symbols,
                                 markers_added,
-                            );
+                            )?;
                         }
                     }
                 }
@@ -4971,9 +4992,10 @@ impl HfstBasicTransducer {
                     agenda,
                     list_symbols,
                     markers_added,
-                );
+                )?;
             }
         }
+        Ok(())
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.merge-fn]
@@ -4998,35 +5020,21 @@ impl HfstBasicTransducer {
             result.set_final_weight(0, &final_weight);
         }
 
-        // The C++ catches the const char* throws and rethrows as
-        // TransducersAreNotAutomataException.
-        let prev = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_| {}));
-        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            Self::find_matches_for_merge(
-                graph,
-                0,
-                merger,
-                0,
-                &mut result,
-                0,
-                &mut state_map,
-                &mut agenda,
-                list_symbols,
-                markers_added,
-            )
-        }));
-        std::panic::set_hook(prev);
-        if let Err(e) = r {
-            let msg = if let Some(s) = e.downcast_ref::<&str>() {
-                s.to_string()
-            } else if let Some(s) = e.downcast_ref::<String>() {
-                s.clone()
-            } else {
-                std::panic::resume_unwind(e)
-            };
-            crate::bail!(TransducersAreNotAutomata, msg);
-        }
+        // The C++ caught the const char* throws here and rethrew them as
+        // TransducersAreNotAutomataException; the helpers now carry that
+        // kind in their Error directly.
+        Self::find_matches_for_merge(
+            graph,
+            0,
+            merger,
+            0,
+            &mut result,
+            0,
+            &mut state_map,
+            &mut agenda,
+            list_symbols,
+            markers_added,
+        )?;
 
         Ok(result)
     }

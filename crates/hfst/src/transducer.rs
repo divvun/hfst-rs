@@ -17,6 +17,7 @@
 //! object.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::ControlFlow;
 use std::time::Instant;
 
 use crate::hfst_data_types::size_t_to_uint;
@@ -2065,7 +2066,6 @@ pub struct Transducer {
     output_tape: DoubleTape,
     flag_state: FdState<SymbolNumber>,
     // whether we're going to take a default transition
-    found_transition: bool,
     traversal_states: TraversalStates,
 
     max_lookups: isize,
@@ -2098,7 +2098,6 @@ impl Transducer {
             input_tape: Tape::new(),
             output_tape: DoubleTape::new(),
             flag_state: FdState::new_default(),
-            found_transition: false,
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
@@ -2129,7 +2128,6 @@ impl Transducer {
             input_tape: Tape::new(),
             output_tape: DoubleTape::new(),
             flag_state,
-            found_transition: false,
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
@@ -2165,7 +2163,6 @@ impl Transducer {
             input_tape: Tape::new(),
             output_tape: DoubleTape::new(),
             flag_state,
-            found_transition: false,
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
@@ -2204,7 +2201,6 @@ impl Transducer {
             input_tape: Tape::new(),
             output_tape: DoubleTape::new(),
             flag_state,
-            found_transition: false,
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
@@ -2242,7 +2238,6 @@ impl Transducer {
             input_tape: Tape::new(),
             output_tape: DoubleTape::new(),
             flag_state,
-            found_transition: false,
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
@@ -2297,28 +2292,16 @@ impl Transducer {
             return false;
         }
         self.traversal_states.clear();
-        // try { find_loop(0, 0); } catch (bool e) { ... return e; }
-        let prev = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_| {}));
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.find_loop(0, 0);
-        }));
-        std::panic::set_hook(prev);
-        match result {
-            Ok(()) => {}
-            Err(e) => {
-                if let Some(b) = e.downcast_ref::<bool>() {
-                    let e = *b;
-                    self.current_weight = 0.0;
-                    let fs = FdState::new(self.alph().get_fd_table());
-                    self.flag_state = fs;
-                    return e;
-                } else {
-                    std::panic::resume_unwind(e);
-                }
+        // C++: try { find_loop(0, 0); } catch (bool e) { ... return e; }
+        match self.find_loop(0, 0) {
+            ControlFlow::Continue(_) => false,
+            ControlFlow::Break(()) => {
+                self.current_weight = 0.0;
+                let fs = FdState::new(self.alph().get_fd_table());
+                self.flag_state = fs;
+                true
             }
         }
-        false
     }
 
     pub fn is_lookup_infinitely_ambiguous_strvec(&mut self, s: &StringVector) -> bool {
@@ -2799,7 +2782,8 @@ impl Transducer {
         input_pos: u32,
         output_pos: u32,
         mut i: TransitionTableIndex,
-    ) {
+    ) -> bool {
+        let mut found_transition = false;
         loop {
             let input = self.tbl().get_transition_input(i);
             let output = self.tbl().get_transition_output(i);
@@ -2811,7 +2795,7 @@ impl Transducer {
                 self.output_tape.write_pair(output_pos, input, output);
                 self.current_weight += weight;
                 self.get_analyses(input_pos, output_pos + 1, target);
-                self.found_transition = true;
+                found_transition = true;
                 self.current_weight = old_weight;
                 i += 1;
             } else if self.alph().is_flag_diacritic(input) {
@@ -2830,7 +2814,7 @@ impl Transducer {
                     self.output_tape.write_pair(output_pos, input, output);
                     self.current_weight += weight;
                     self.get_analyses(input_pos, output_pos + 1, target);
-                    self.found_transition = true;
+                    found_transition = true;
                     self.current_weight = old_weight;
                     self.traversal_states.remove(&flag_reachable);
                 }
@@ -2838,18 +2822,25 @@ impl Transducer {
                 i += 1;
             } else {
                 // it's not epsilon and it's not a flag, so nothing to do
-                return;
+                return found_transition;
             }
         }
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.try-epsilon-indices-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.try-epsilon-indices-fn]
-    fn try_epsilon_indices(&mut self, input_pos: u32, output_pos: u32, i: TransitionTableIndex) {
+    fn try_epsilon_indices(
+        &mut self,
+        input_pos: u32,
+        output_pos: u32,
+        i: TransitionTableIndex,
+    ) -> bool {
         if self.tbl().get_index_input(i) == 0 {
             let target = self.tbl().get_index_target(i) - TRANSITION_TARGET_TABLE_START;
             self.try_epsilon_transitions(input_pos, output_pos, target);
-            self.found_transition = true;
+            true
+        } else {
+            false
         }
     }
 
@@ -2861,7 +2852,8 @@ impl Transducer {
         input_pos: u32,
         output_pos: u32,
         mut i: TransitionTableIndex,
-    ) {
+    ) -> bool {
+        let mut found_transition = false;
         while self.tbl().get_transition_input(i) != NO_SYMBOL_NUMBER {
             if self.tbl().get_transition_input(i) == input {
                 let old_weight = self.current_weight;
@@ -2879,12 +2871,13 @@ impl Transducer {
                 let target = self.tbl().get_transition_target(i);
                 self.get_analyses(input_pos, output_pos + 1, target);
                 self.current_weight = old_weight;
-                self.found_transition = true;
+                found_transition = true;
             } else {
-                return;
+                return found_transition;
             }
             i += 1;
         }
+        found_transition
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.find-index-fn]
@@ -2895,19 +2888,21 @@ impl Transducer {
         input_pos: u32,
         output_pos: u32,
         i: TransitionTableIndex,
-    ) {
+    ) -> bool {
         if self.tbl().get_index_input(i + input as u32) == input {
             let target =
                 self.tbl().get_index_target(i + input as u32) - TRANSITION_TARGET_TABLE_START;
             self.find_transitions(input, input_pos, output_pos, target);
-            self.found_transition = true;
+            true
+        } else {
+            false
         }
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.get-analyses-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.get-analyses-fn]
     fn get_analyses(&mut self, input_pos: u32, output_pos: u32, mut i: TransitionTableIndex) {
-        self.found_transition = false;
+        let mut found_transition = false;
 
         if self.recursion_depth_left == 0 {
             return;
@@ -2947,7 +2942,7 @@ impl Transducer {
             }
 
             // Then we check epsilons
-            self.try_epsilon_transitions(input_pos, output_pos, i + 1);
+            found_transition |= self.try_epsilon_transitions(input_pos, output_pos, i + 1);
 
             if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
                 // No more input
@@ -2960,18 +2955,18 @@ impl Transducer {
 
             if input < self.alph().get_orig_symbol_count() {
                 // Input is in the alphabet
-                self.find_transitions(input, input_pos, output_pos, i + 1);
+                found_transition |= self.find_transitions(input, input_pos, output_pos, i + 1);
             } else {
                 if self.alph().get_identity_symbol() != NO_SYMBOL_NUMBER {
                     let id = self.alph().get_identity_symbol();
-                    self.find_transitions(id, input_pos, output_pos, i + 1);
+                    found_transition |= self.find_transitions(id, input_pos, output_pos, i + 1);
                 }
                 if self.alph().get_unknown_symbol() != NO_SYMBOL_NUMBER {
                     let unk = self.alph().get_unknown_symbol();
-                    self.find_transitions(unk, input_pos, output_pos, i + 1);
+                    found_transition |= self.find_transitions(unk, input_pos, output_pos, i + 1);
                 }
             }
-            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !self.found_transition {
+            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !found_transition {
                 let def = self.alph().get_default_symbol();
                 self.find_transitions(def, input_pos, output_pos, i + 1);
             }
@@ -2992,7 +2987,7 @@ impl Transducer {
                 }
             }
 
-            self.try_epsilon_indices(input_pos, output_pos, i + 1);
+            found_transition |= self.try_epsilon_indices(input_pos, output_pos, i + 1);
 
             if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
                 self.recursion_depth_left += 1;
@@ -3004,20 +2999,20 @@ impl Transducer {
 
             if input < self.alph().get_orig_symbol_count() {
                 // Input is in the alphabet
-                self.find_index(input, input_pos, output_pos, i + 1);
+                found_transition |= self.find_index(input, input_pos, output_pos, i + 1);
             } else {
                 if self.alph().get_identity_symbol() != NO_SYMBOL_NUMBER {
                     let id = self.alph().get_identity_symbol();
-                    self.find_index(id, input_pos, output_pos, i + 1);
+                    found_transition |= self.find_index(id, input_pos, output_pos, i + 1);
                 }
                 if self.alph().get_unknown_symbol() != NO_SYMBOL_NUMBER {
                     let unk = self.alph().get_unknown_symbol();
-                    self.find_index(unk, input_pos, output_pos, i + 1);
+                    found_transition |= self.find_index(unk, input_pos, output_pos, i + 1);
                 }
             }
             // If we have a default symbol defined and we didn't find an index,
             // check for that
-            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !self.found_transition {
+            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !found_transition {
                 let def = self.alph().get_default_symbol();
                 self.find_index(def, input_pos, output_pos, i + 1);
             }
@@ -3054,8 +3049,13 @@ impl Transducer {
     // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-epsilon-transitions-fn]
     // [spec:hfst:def:transducer.hfst-ol.transducer.find-loop-epsilon-transitions-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.find-loop-epsilon-transitions-fn]
-    fn find_loop_epsilon_transitions(&mut self, input_pos: u32, mut i: TransitionTableIndex) {
+    fn find_loop_epsilon_transitions(
+        &mut self,
+        input_pos: u32,
+        mut i: TransitionTableIndex,
+    ) -> ControlFlow<(), bool> {
         let flags = self.flag_state.get_values().clone();
+        let mut found_transition = false;
         loop {
             let target = self.tbl().get_transition_target(i);
             let epsilon_reachable = TraversalState::new(target, flags.clone());
@@ -3065,12 +3065,12 @@ impl Transducer {
                 // We try to trap non-progressing loops
                 if self.traversal_states.contains(&epsilon_reachable) {
                     // We've been here before
-                    std::panic::panic_any(true);
+                    return ControlFlow::Break(());
                 }
                 self.traversal_states.insert(epsilon_reachable.clone());
-                self.find_loop(input_pos, target);
+                self.find_loop(input_pos, target)?;
                 self.traversal_states.remove(&epsilon_reachable);
-                self.found_transition = true;
+                found_transition = true;
                 i += 1;
             } else if self.alph().is_flag_diacritic(tin) {
                 let op = self.alph().get_operation(tin).unwrap().clone();
@@ -3078,17 +3078,20 @@ impl Transducer {
                     // flag diacritic allowed
                     if self.traversal_states.contains(&epsilon_reachable) {
                         // We've been here before
-                        std::panic::panic_any(true);
+                        return ControlFlow::Break(());
                     }
                     self.traversal_states.insert(epsilon_reachable.clone());
-                    self.find_loop(input_pos, target);
+                    // C++ leak preserved: the shared field took the nested
+                    // call's exit value here (no unconditional set like the
+                    // epsilon arm), so this REPLACES the accumulator.
+                    found_transition = self.find_loop(input_pos, target)?;
                     self.traversal_states.remove(&epsilon_reachable);
                 }
                 self.flag_state.assign_values(&flags);
                 i += 1;
             } else {
                 // it's not epsilon and it's not a flag, so nothing to do
-                return;
+                return ControlFlow::Continue(found_transition);
             }
         }
     }
@@ -3097,11 +3100,17 @@ impl Transducer {
     // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-epsilon-indices-fn]
     // [spec:hfst:def:transducer.hfst-ol.transducer.find-loop-epsilon-indices-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.find-loop-epsilon-indices-fn]
-    fn find_loop_epsilon_indices(&mut self, input_pos: u32, i: TransitionTableIndex) {
+    fn find_loop_epsilon_indices(
+        &mut self,
+        input_pos: u32,
+        i: TransitionTableIndex,
+    ) -> ControlFlow<(), bool> {
         if self.tbl().get_index_input(i) == 0 {
             let target = self.tbl().get_index_target(i) - TRANSITION_TARGET_TABLE_START;
-            self.find_loop_epsilon_transitions(input_pos, target);
-            self.found_transition = true;
+            self.find_loop_epsilon_transitions(input_pos, target)?;
+            ControlFlow::Continue(true)
+        } else {
+            ControlFlow::Continue(false)
         }
     }
 
@@ -3114,31 +3123,40 @@ impl Transducer {
         input: SymbolNumber,
         input_pos: u32,
         mut i: TransitionTableIndex,
-    ) {
+    ) -> ControlFlow<(), bool> {
+        let mut found_transition = false;
         while self.tbl().get_transition_input(i) != NO_SYMBOL_NUMBER {
             if self.tbl().get_transition_input(i) == input {
                 // We're not going to find an epsilon / flag loop
                 self.traversal_states.clear();
                 let target = self.tbl().get_transition_target(i);
-                self.find_loop(input_pos, target);
-                self.found_transition = true;
+                self.find_loop(input_pos, target)?;
+                found_transition = true;
             } else {
-                return;
+                return ControlFlow::Continue(found_transition);
             }
             i += 1;
         }
+        ControlFlow::Continue(found_transition)
     }
 
     // [spec:hfst:def:find-epsilon-loops.hfst-ol.transducer.find-loop-index-fn]
     // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-index-fn]
     // [spec:hfst:def:transducer.hfst-ol.transducer.find-loop-index-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.find-loop-index-fn]
-    fn find_loop_index(&mut self, input: SymbolNumber, input_pos: u32, i: TransitionTableIndex) {
+    fn find_loop_index(
+        &mut self,
+        input: SymbolNumber,
+        input_pos: u32,
+        i: TransitionTableIndex,
+    ) -> ControlFlow<(), bool> {
         if self.tbl().get_index_input(i + input as u32) == input {
             let target =
                 self.tbl().get_index_target(i + input as u32) - TRANSITION_TARGET_TABLE_START;
-            self.find_loop_transitions(input, input_pos, target);
-            self.found_transition = true;
+            self.find_loop_transitions(input, input_pos, target)?;
+            ControlFlow::Continue(true)
+        } else {
+            ControlFlow::Continue(false)
         }
     }
 
@@ -3146,45 +3164,46 @@ impl Transducer {
     // [spec:hfst:sem:find-epsilon-loops.hfst-ol.transducer.find-loop-fn]
     // [spec:hfst:def:transducer.hfst-ol.transducer.find-loop-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.find-loop-fn]
-    fn find_loop(&mut self, input_pos: u32, mut i: TransitionTableIndex) {
-        self.found_transition = false;
+    fn find_loop(&mut self, input_pos: u32, mut i: TransitionTableIndex) -> ControlFlow<(), bool> {
+        let mut found_transition = false;
 
         if indexes_transition_table(i) {
             i -= TRANSITION_TARGET_TABLE_START;
-            self.find_loop_epsilon_transitions(input_pos, i + 1);
+            found_transition |= self.find_loop_epsilon_transitions(input_pos, i + 1)?;
 
             // input-string ended.
             if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
-                return;
+                return ControlFlow::Continue(found_transition);
             }
 
             let input = self.input_tape.at(input_pos);
             let input_pos = input_pos + 1;
 
-            self.find_loop_transitions(input, input_pos, i + 1);
-            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !self.found_transition {
+            found_transition |= self.find_loop_transitions(input, input_pos, i + 1)?;
+            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !found_transition {
                 let def = self.alph().get_default_symbol();
-                self.find_loop_transitions(def, input_pos, i + 1);
+                found_transition |= self.find_loop_transitions(def, input_pos, i + 1)?;
             }
         } else {
-            self.find_loop_epsilon_indices(input_pos, i + 1);
+            found_transition |= self.find_loop_epsilon_indices(input_pos, i + 1)?;
 
             if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
                 // input-string ended.
-                return;
+                return ControlFlow::Continue(found_transition);
             }
 
             let input = self.input_tape.at(input_pos);
             let input_pos = input_pos + 1;
 
-            self.find_loop_index(input, input_pos, i + 1);
+            found_transition |= self.find_loop_index(input, input_pos, i + 1)?;
             // If we have a default symbol defined and we didn't find an index,
             // check for that
-            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !self.found_transition {
+            if self.alph().get_default_symbol() != NO_SYMBOL_NUMBER && !found_transition {
                 let def = self.alph().get_default_symbol();
-                self.find_loop_index(def, input_pos, i + 1);
+                found_transition |= self.find_loop_index(def, input_pos, i + 1)?;
             }
         }
+        ControlFlow::Continue(found_transition)
     }
 }
 

@@ -69,4 +69,5 @@ assertions (
     {id librarify.binary-fold, kind @doing, author "brendan@necessary.nu", at 2026-07-02T12:03:34.312211Z}
     {id idiom8, kind @complete, author "brendan@necessary.nu", at 2026-07-02T12:31:09.979133Z}
     {id idiom9.mechanical, kind @complete, author "brendan@necessary.nu", at 2026-07-02T13:17:04.592704Z}
+    {id idiom9.control-flow, kind @complete, author "brendan@necessary.nu", at 2026-07-02T13:39:32.203607Z}
 )

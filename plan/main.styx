@@ -1793,6 +1793,21 @@ children (
                 id idiom9.control-flow
                 title "throw-as-goto → ControlFlow/Result/Option (4 clusters, ~13 throws / 7 catch boundaries, NON-Error payloads — distinct from idiom6's Error-payload catches). (1) symbol_vector_to_symbol_pair `throw &str`→`Option` (xfst:6334+6342, cleanest, independent); (2) find_loop `throw bool`→`ControlFlow` across the 4-fn DFS + retire the `found_transition` sentinel field (transducer:3101/3114, catch :2337, independent); (3) random_path `throw &str` trio→`Result<_, {Empty,NoPath}>` deleting 3 set_hook dances (tropical:2513-2634, catches :2612/:2744/:2773, quirk — preserve the dedup-retry \"keep old path\" loop); (4) compile-replace/merge `throw &str` (hfst_basic_transducer:4247/4269/4274/4816, catches :4905 + xfst:4551 with the early_return goto-flag) — ENTANGLED with idiom6.resultify (the catch reclassifies to TransducersAreNotAutomata / demotes to a diagnostic); do jointly."
                 deps (idiom9.mechanical)
+                log (
+                    {
+                        at 2026-07-02T13:17:49.787845Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-02T13:39:32.203607Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

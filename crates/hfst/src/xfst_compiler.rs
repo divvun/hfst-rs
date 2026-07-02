@@ -644,14 +644,10 @@ impl XfstCompiler {
             }
         }
 
-        // try { new HfstInputStream(infilename) } catch (NotTransducerStreamException)
-        let fname = filename.to_string();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            HfstInputStream::new_filename(&fname)
-        }));
-        match result {
-            Ok(Ok(instream)) => Box::into_raw(Box::new(instream)),
-            Ok(Err(_)) | Err(_) => {
+        // C++: try { new HfstInputStream(infilename) } catch (NotTransducerStreamException)
+        match HfstInputStream::new_filename(filename) {
+            Ok(instream) => Box::into_raw(Box::new(instream)),
+            Err(_) => {
                 error!(
                     "Unable to read transducers from {}",
                     to_filename(Some(filename))
@@ -4519,14 +4515,17 @@ impl XfstCompiler {
 
         let mut fsm = HfstBasicTransducer::new_from_transducer(&tmp.borrow());
         let mut early_return = false;
-        {
-            let xre_ptr: *mut XreCompiler = &mut self.xre;
-            let __prev_hook = std::panic::take_hook();
-            std::panic::set_hook(Box::new(|_| {}));
-            let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let replacement_map = fsm.find_replacements(level_is_upper);
-
-                for (start_state, replacements) in replacement_map.iter() {
+        // The C++ wrapped this block in try/catch (const char*) and demoted a
+        // malformed compile-replace regexp to a diagnostic.
+        match fsm.find_replacements(level_is_upper) {
+            Err(e) => {
+                error!(
+                    "compile_replace threw an error: '{}'",
+                    e.message.unwrap_or_default()
+                );
+            }
+            Ok(replacement_map) => {
+                'outer: for (start_state, replacements) in replacement_map.iter() {
                     for (end_state, sp) in replacements.iter() {
                         let regexp = Self::to_regexp(sp, level_is_upper, retokenize_on);
                         let literal_regexp = Self::to_literal_regexp(sp, level_not_upper);
@@ -4544,15 +4543,13 @@ impl XfstCompiler {
                             cross_product_regexp.push_str(" ]");
                         }
 
-                        let Some(mut replacement) =
-                            (unsafe { (*xre_ptr).compile(&cross_product_regexp) })
-                        else {
+                        let Some(mut replacement) = self.xre.compile(&cross_product_regexp) else {
                             error!(
                                 "Could not compile regular expression in compile-replace: {}.",
                                 cross_product_regexp
                             );
                             early_return = true;
-                            return;
+                            break 'outer;
                         };
 
                         let _ = replacement.optimize();
@@ -4560,17 +4557,6 @@ impl XfstCompiler {
                         fsm.insert_transducer(*start_state, *end_state, &repl);
                     }
                 }
-            }));
-            std::panic::set_hook(__prev_hook);
-            if let Err(__e) = __res {
-                let __msg: String = if let Some(s) = __e.downcast_ref::<&str>() {
-                    (*s).to_string()
-                } else if let Some(s) = __e.downcast_ref::<String>() {
-                    s.clone()
-                } else {
-                    String::new()
-                };
-                error!("compile_replace threw an error: '{}'", __msg);
             }
         }
 
@@ -5815,7 +5801,7 @@ impl XfstCompiler {
             for label in labels.iter() {
                 // tokenize labels into string pairs
                 let sv = Self::tokenize_string(label, ':');
-                match Self::catch_symbol_vector_to_symbol_pair(&sv) {
+                match Self::symbol_vector_to_symbol_pair(&sv) {
                     Some(sp) => {
                         symbol_pairs.insert(sp);
                     }
@@ -5834,7 +5820,7 @@ impl XfstCompiler {
 
         // tokenize target label into string pair
         let target_vector = Self::tokenize_string(target, ':');
-        match Self::catch_symbol_vector_to_symbol_pair(&target_vector) {
+        match Self::symbol_vector_to_symbol_pair(&target_vector) {
             Some(target_label) => {
                 let fsm = HfstBasicTransducer::new_from_transducer(&top.borrow());
                 let mut target_label_found = false;
@@ -6259,10 +6245,11 @@ impl XfstCompiler {
         retval
     }
 
-    // Convert StringVector \a sv into StringPair.
+    // Convert StringVector \a sv into StringPair; None when the vector has
+    // neither one nor two elements (the C++ threw a const char* here).
     // [spec:hfst:def:xfst-compiler.hfst.xfst.symbol-vector-to-symbol-pair-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.symbol-vector-to-symbol-pair-fn]
-    fn symbol_vector_to_symbol_pair(sv: &StringVector) -> StringPair {
+    fn symbol_vector_to_symbol_pair(sv: &StringVector) -> Option<StringPair> {
         let mut sp: StringPair = (String::new(), String::new());
         if sv.len() == 2 {
             if sv[0] == "?" {
@@ -6291,30 +6278,8 @@ impl XfstCompiler {
             }
             sp.1 = sp.0.clone();
         } else {
-            std::panic::panic_any("error: symbol vector cannot be converted into symbol pair");
+            return None;
         }
-        sp
-    }
-
-    // Wraps 'symbol_vector_to_symbol_pair' in the C++ try/catch: returns None
-    // when it would throw (a 'panic_any' carrying a const char* message). The
-    // panic hook is silenced so the caught exception does not print.
-    fn catch_symbol_vector_to_symbol_pair(sv: &StringVector) -> Option<StringPair> {
-        let prev = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_| {}));
-        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            Self::symbol_vector_to_symbol_pair(sv)
-        }));
-        std::panic::set_hook(prev);
-        match r {
-            Ok(v) => Some(v),
-            Err(e) => {
-                if e.downcast_ref::<&str>().is_some() {
-                    None
-                } else {
-                    std::panic::resume_unwind(e)
-                }
-            }
-        }
+        Some(sp)
     }
 }
