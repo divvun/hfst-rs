@@ -110,33 +110,93 @@ pub fn unquote(str: &str) -> crate::error::Result<String> {
     Ok(str[1..str.len() - 1].to_string())
 }
 
-// [spec:hfst:def:string-manipulation.str2int-fn]
-// [spec:hfst:sem:string-manipulation.str2int-fn]
-pub fn str2int(str: &str) -> crate::error::Result<i32> {
-    // Mirror 'std::istringstream in(str); in >> number;': skip leading
-    // whitespace, read an optional sign, then the run of decimal digits;
-    // fail (no digits) -> FaultyStringInput.
-    let bytes = str.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+// The shared leading-prefix number scanners (the C 'strtol'/'strtod' shape):
+// skip leading whitespace, parse the longest valid number prefix, ignore
+// trailing garbage, and return the parsed value plus the index of the first
+// unconsumed byte (the C 'endptr'). On no conversion: (0, start).
+
+pub fn parse_int_prefix(b: &[u8], start: usize) -> (i32, usize) {
+    let mut i = start;
+    while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r') {
         i += 1;
     }
     let mut neg = false;
-    if i < bytes.len() && (bytes[i] == b'+' || bytes[i] == b'-') {
-        neg = bytes[i] == b'-';
+    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+        neg = b[i] == b'-';
         i += 1;
     }
-    let digit_start = i;
-    let mut value: i64 = 0;
-    while i < bytes.len() && bytes[i].is_ascii_digit() {
-        value = value * 10 + (bytes[i] - b'0') as i64;
+    let digits_start = i;
+    let mut val: i64 = 0;
+    while i < b.len() && b[i].is_ascii_digit() {
+        val = val * 10 + i64::from(b[i] - b'0');
         i += 1;
     }
-    if i == digit_start {
+    if i == digits_start {
+        return (0, start);
+    }
+    let v = if neg { -val } else { val } as i32;
+    (v, i)
+}
+
+pub fn parse_float_prefix(b: &[u8], start: usize) -> (f64, usize) {
+    let mut i = start;
+    while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r') {
+        i += 1;
+    }
+    let num_start = i;
+    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+        i += 1;
+    }
+    while i < b.len() && b[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i < b.len() && b[i] == b'.' {
+        i += 1;
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+    }
+    if i < b.len() && (b[i] == b'e' || b[i] == b'E') {
+        let save = i;
+        i += 1;
+        if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+            i += 1;
+        }
+        if i < b.len() && b[i].is_ascii_digit() {
+            while i < b.len() && b[i].is_ascii_digit() {
+                i += 1;
+            }
+        } else {
+            i = save;
+        }
+    }
+    if i <= num_start {
+        return (0.0, start);
+    }
+    match std::str::from_utf8(&b[num_start..i])
+        .ok()
+        .and_then(|x| x.parse::<f64>().ok())
+    {
+        Some(v) => (v, i),
+        None => (0.0, start),
+    }
+}
+
+/// The leading-prefix float value of `s` (0.0 if none) — the C `atof` shape.
+pub fn parse_float_prefix_str(s: &str) -> f64 {
+    parse_float_prefix(s.as_bytes(), 0).0
+}
+
+// [spec:hfst:def:string-manipulation.str2int-fn]
+// [spec:hfst:sem:string-manipulation.str2int-fn]
+pub fn str2int(str: &str) -> crate::error::Result<i32> {
+    // Mirror 'std::istringstream in(str); in >> number;': a leading-prefix
+    // integer parse; fail (no digits) -> FaultyStringInput.
+    let (number, endptr) = parse_int_prefix(str.as_bytes(), 0);
+    if endptr == 0 {
         crate::bail!(FaultyStringInput, format!("{}: {}", "str2int", str));
     }
-    let number = if neg { -value } else { value };
-    Ok(number as i32)
+    Ok(number)
 }
 
 // [spec:hfst:def:string-manipulation.print-kill-symbol-fn]

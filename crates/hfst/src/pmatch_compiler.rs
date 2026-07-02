@@ -2145,18 +2145,6 @@ impl PmatchUtilityTransducers {
 
 // ---- libc-free C-string helpers for the surviving char*-based pmatch utils ----
 
-// strtod over a &str: the value of the longest leading prefix that parses as an
-// f64 (0.0 if none), mirroring C strtod's lenient leading-number parse.
-fn c_strtod_str(s: &str) -> f64 {
-    let mut best = 0.0f64;
-    for (i, _) in s.char_indices() {
-        if let Ok(v) = s[..=i].parse::<f64>() {
-            best = v;
-        }
-    }
-    best
-}
-
 // [spec:hfst:def:pmatch-utils.should-colourise-fn]
 // [spec:hfst:sem:pmatch-utils.should-colourise-fn]
 pub fn should_colourise() -> bool {
@@ -5249,9 +5237,11 @@ using nearest neighbours",
         }
 
         if ctx.variables_entry_or_default("vector-similarity-projection-factor") != "1.0" {
-            ctx.set_vector_similarity_projection_factor(c_strtod_str(
-                &ctx.variables_index("vector-similarity-projection-factor"),
-            ) as WordVecFloat);
+            ctx.set_vector_similarity_projection_factor(
+                crate::string_manipulation::parse_float_prefix_str(
+                    &ctx.variables_index("vector-similarity-projection-factor"),
+                ) as WordVecFloat,
+            );
         }
         /*
          * When there are two vectors A and B, we compute the vector A - B that
@@ -5581,7 +5571,8 @@ space-separated\n  (reading line {})",
                         // line.substr(pos + 1, nextpos - pos)
                         let sub_end = std::cmp::min(pos + 1 + (nextpos - pos), line.len());
                         let sub = &line[pos + 1..sub_end];
-                        let v = c_strtod_str(sub) as WordVecFloat;
+                        let v =
+                            crate::string_manipulation::parse_float_prefix_str(sub) as WordVecFloat;
                         components.push(v);
                         pos = nextpos;
                     }
@@ -5592,7 +5583,7 @@ space-separated\n  (reading line {})",
             // separator at the end
             if line_bytes[line_bytes.len() - 1] != separator {
                 let sub = &line[pos + 1..];
-                let v = c_strtod_str(sub) as WordVecFloat;
+                let v = crate::string_manipulation::parse_float_prefix_str(sub) as WordVecFloat;
                 components.push(v);
             }
             if ctx.word_vectors_len() != 0

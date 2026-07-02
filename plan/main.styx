@@ -1787,6 +1787,21 @@ children (
                 id idiom9.parsers
                 title "number-parser consolidation (risk: quirk + one REAL perf bug). Hand-rolled atoi/atof/str2int/c_strtol/c_strtod scanners → unified `parse()` + an endptr-aware helper. Fixes the O(n²) longest-prefix reparse in pmatch_compiler c_strtod_str:2095. Sites: string_manipulation:134 (str2int), xfst_compiler:4771 (atoi), xre:1162/1187 (c_strtol/c_strtod, endptr load-bearing), hfst_basic_transducer:45 (atoi/atof). Quirk: hand-rolled variants read a digit PREFIX and ignore trailing garbage where `parse()` rejects it — preserve prefix semantics where callers rely on it."
                 deps (idiom9.mechanical)
+                log (
+                    {
+                        at 2026-07-02T13:40:20.74127Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-02T13:47:41.040901Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

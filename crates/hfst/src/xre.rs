@@ -1164,80 +1164,10 @@ fn build_symbol_list_transducer(
 // These are 1:1 ports of the pure 'char*'-style helpers that the original
 // flex/bison lexer leaned on. The nfst parser no longer drives them, but they
 // are faithful ports kept for completeness. C 'char*' buffers become Rust
-// 'String'; C 'strtol'/'strtod' are mirrored by the byte-level 'c_strtol' /
-// 'c_strtod' below (each returns the parsed value plus the index of the first
-// unconsumed byte, i.e. the C 'endptr').
+// 'String'; C 'strtol'/'strtod' are mirrored by the shared
+// 'string_manipulation::parse_int_prefix' / 'parse_float_prefix' scanners.
 
-// Mirror of C 'strtol(b + start, &endptr, 10)'. Returns '(value, endptr_index)';
-// on no conversion returns '(0, start)' just like 'strtol'.
-fn c_strtol(b: &[u8], start: usize) -> (i32, usize) {
-    let mut i = start;
-    while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r') {
-        i += 1;
-    }
-    let mut neg = false;
-    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
-        neg = b[i] == b'-';
-        i += 1;
-    }
-    let digits_start = i;
-    let mut val: i64 = 0;
-    while i < b.len() && b[i].is_ascii_digit() {
-        val = val * 10 + i64::from(b[i] - b'0');
-        i += 1;
-    }
-    if i == digits_start {
-        return (0, start);
-    }
-    let v = if neg { -val } else { val } as i32;
-    (v, i)
-}
-
-// Mirror of C 'strtod(b + start, &endptr)'. Returns '(value, endptr_index)';
-// on no conversion returns '(0.0, start)'.
-fn c_strtod(b: &[u8], start: usize) -> (f64, usize) {
-    let mut i = start;
-    while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r') {
-        i += 1;
-    }
-    let num_start = i;
-    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
-        i += 1;
-    }
-    while i < b.len() && b[i].is_ascii_digit() {
-        i += 1;
-    }
-    if i < b.len() && b[i] == b'.' {
-        i += 1;
-        while i < b.len() && b[i].is_ascii_digit() {
-            i += 1;
-        }
-    }
-    if i < b.len() && (b[i] == b'e' || b[i] == b'E') {
-        let save = i;
-        i += 1;
-        if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
-            i += 1;
-        }
-        if i < b.len() && b[i].is_ascii_digit() {
-            while i < b.len() && b[i].is_ascii_digit() {
-                i += 1;
-            }
-        } else {
-            i = save;
-        }
-    }
-    if i <= num_start {
-        return (0.0, start);
-    }
-    match std::str::from_utf8(&b[num_start..i])
-        .ok()
-        .and_then(|x| x.parse::<f64>().ok())
-    {
-        Some(v) => (v, i),
-        None => (0.0, start),
-    }
-}
+use crate::string_manipulation::{parse_float_prefix, parse_int_prefix};
 
 // [spec:hfst:def:xre-utils.hfst.xre.get-n-to-k-fn]
 // [spec:hfst:sem:xre-utils.hfst.xre.get-n-to-k-fn]
@@ -1246,15 +1176,15 @@ fn get_n_to_k(s: &str) -> [i32; 2] {
     let b = s.as_bytes();
     let mut rv = [0i32; 2];
     if b.get(1).copied() == Some(b'{') {
-        let (v0, endptr) = c_strtol(b, 2);
+        let (v0, endptr) = parse_int_prefix(b, 2);
         rv[0] = v0;
-        let (v1, finalptr) = c_strtol(b, endptr + 1);
+        let (v1, finalptr) = parse_int_prefix(b, endptr + 1);
         rv[1] = v1;
         assert!(b.get(finalptr).copied() == Some(b'}'));
     } else {
-        let (v0, endptr) = c_strtol(b, 1);
+        let (v0, endptr) = parse_int_prefix(b, 1);
         rv[0] = v0;
-        let (v1, finalptr) = c_strtol(b, endptr + 1);
+        let (v1, finalptr) = parse_int_prefix(b, endptr + 1);
         rv[1] = v1;
         assert!(b.get(finalptr).copied().unwrap_or(0) == 0);
     }
@@ -1475,7 +1405,7 @@ fn parse_quoted(s: &str, length: &mut u32) -> String {
                 }
                 b'x' => {
                     // NB: the C source uses base 10 here (a bug); preserved.
-                    let (i, endp) = c_strtol(qb, p + 2);
+                    let (i, endp) = parse_int_prefix(qb, p + 2);
                     if 0 < i && i <= 127 {
                         rv.push(i as u8);
                     } else {
@@ -1571,7 +1501,7 @@ fn get_weight(s: &str) -> f64 {
     {
         weightstart += 1;
     }
-    let (val, endp) = c_strtod(b, weightstart);
+    let (val, endp) = parse_float_prefix(b, weightstart);
     assert!(endp != weightstart);
     rv = val;
     rv

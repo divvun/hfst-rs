@@ -4708,33 +4708,7 @@ impl XfstCompiler {
 
     // A C-style atoi used by 'inspect_net' to parse user input.
     fn atoi(s: &str) -> i32 {
-        let bytes = s.as_bytes();
-        let mut i = 0usize;
-        while i < bytes.len()
-            && (bytes[i] == b' '
-                || bytes[i] == b'\t'
-                || bytes[i] == b'\n'
-                || bytes[i] == b'\r'
-                || bytes[i] == 0x0b
-                || bytes[i] == 0x0c)
-        {
-            i += 1;
-        }
-        let mut sign: i32 = 1;
-        if i < bytes.len() && (bytes[i] == b'+' || bytes[i] == b'-') {
-            if bytes[i] == b'-' {
-                sign = -1;
-            }
-            i += 1;
-        }
-        let mut result: i32 = 0;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
-            result = result
-                .wrapping_mul(10)
-                .wrapping_add((bytes[i] - b'0') as i32);
-            i += 1;
-        }
-        sign * result
+        crate::string_manipulation::parse_int_prefix(s.as_bytes(), 0).0
     }
 
     // Returns an automaton that contains one ore more "^[" "^]" expressions.
