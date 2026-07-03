@@ -67,12 +67,22 @@ fn finish(args: &mut Vec<String>) -> i32 {
 pub fn getopt_long(args: &mut Vec<String>, longopts: &[GetOpt]) -> i32 {
     let argc = args.len();
     unsafe {
-        // skip free arguments (anything not beginning with '-')
+        // skip free arguments: anything not beginning with '-', plus the
+        // getopt specials — a lone "-" is an operand (conventionally stdin),
+        // and "--" terminates option parsing with the rest as operands.
         loop {
             if OPTIND >= argc {
                 return finish(args);
             }
-            if args[OPTIND].as_bytes().first() != Some(&b'-') {
+            if args[OPTIND] == "--" {
+                OPTIND += 1;
+                while OPTIND < argc {
+                    free_arguments().push(args[OPTIND].clone());
+                    OPTIND += 1;
+                }
+                return finish(args);
+            }
+            if args[OPTIND].as_bytes().first() != Some(&b'-') || args[OPTIND] == "-" {
                 free_arguments().push(args[OPTIND].clone());
                 OPTIND += 1;
             } else {
@@ -87,7 +97,7 @@ pub fn getopt_long(args: &mut Vec<String>, longopts: &[GetOpt]) -> i32 {
         // skip initial '-' signs
         let stripped = token.trim_start_matches('-');
 
-        // empty arg string (e.g. "-" or "--")
+        // empty arg string of dashes beyond the specials (e.g. "---")
         if stripped.is_empty() {
             OPTOPT = -2;
             return b'?' as i32;

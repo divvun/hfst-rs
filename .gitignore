@@ -326,3 +326,6 @@ hfst-eliminate-flags
 /openfst
 .port-staging/
 INSTALL
+
+# release dist dir populated by `hfst install-symlinks` (local toolchain staging)
+/dist/
