@@ -240,6 +240,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         comp.set_minimize_result(MINIMIZE_RESULT);
         comp.set_flag_is_epsilon(FLAG_IS_EPSILON);
         comp.set_xerox_composition(XEROX_COMPOSITION);
+        comp.set_encode_weights(ENCODE_WEIGHTS);
         let mut disjunction = match HfstTransducer::new_type(OUTPUT_FORMAT) {
             Ok(t) => t,
             Err(e) => {

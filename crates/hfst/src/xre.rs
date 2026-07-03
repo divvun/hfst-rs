@@ -144,6 +144,12 @@ pub struct XreCompiler {
     /// hfst-regexp2fst's '--xerox-composition' drives this; threaded into the
     /// 'compose' calls of this compiler's evaluation via [`Self::opt_cfg`].
     pub(crate) xerox_composition: bool,
+    /// Whether minimization encodes weights into labels first, so determinize
+    /// runs boolean subset construction (the former 'hfst::set_encode_weights'
+    /// process-global, default 'false'). hfst-regexp2fst's '-E' /
+    /// '--encode-weights' drives this; threaded into the 'optimize' calls of
+    /// this compiler's evaluation via [`Self::opt_cfg`].
+    pub(crate) encode_weights: bool,
     /// Former 'xre_utils.cc' file-scope global 'bool contains_only_comments':
     /// per-compile flag set by 'compile'/'compile_first' and read by
     /// 'contained_only_comments'. Moved onto the instance to remove the
@@ -343,6 +349,7 @@ impl XreCompilerNew for ImplementationType {
             minimize_result: true,
             flag_is_epsilon: false,
             xerox_composition: false,
+            encode_weights: false,
             contains_only_comments: false,
         }
     }
@@ -363,6 +370,7 @@ impl XreCompilerNew for &XreConstructorArguments {
             minimize_result: true,
             flag_is_epsilon: false,
             xerox_composition: false,
+            encode_weights: false,
             contains_only_comments: false,
         }
     }
@@ -451,6 +459,13 @@ impl XreCompiler {
         self.xerox_composition = xerox_composition;
     }
 
+    /// Set whether minimization encodes weights into labels first (was the
+    /// 'hfst::set_encode_weights' process-global; the '-E' / '--encode-weights'
+    /// option of hfst-regexp2fst toggles it).
+    pub fn set_encode_weights(&mut self, encode_weights: bool) {
+        self.encode_weights = encode_weights;
+    }
+
     /// The [`EngineConfig`](crate::hfst_transducer::EngineConfig) this compiler's
     /// 'optimize' / 'compose' calls run with: the C++ defaults except the
     /// engine-policy flags this compiler exposes ('minimization',
@@ -460,6 +475,7 @@ impl XreCompiler {
             minimization: self.minimize_result,
             flag_is_epsilon_in_composition: self.flag_is_epsilon,
             xerox_composition: self.xerox_composition,
+            encode_weights: self.encode_weights,
             ..crate::hfst_transducer::EngineConfig::default()
         }
     }
@@ -1087,6 +1103,7 @@ impl XreCompiler {
             minimize_result: self.minimize_result,
             flag_is_epsilon: self.flag_is_epsilon,
             xerox_composition: self.xerox_composition,
+            encode_weights: self.encode_weights,
             contains_only_comments: false,
         };
 
