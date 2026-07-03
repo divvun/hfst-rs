@@ -89,6 +89,14 @@ children (
                 title "compose/determinize/minimize/shortest-path/push/encode/rm-eps/equivalent + basic ops"
                 priority 6
                 deps (openfst.containers)
+                log (
+                    {
+                        at 2026-07-03T11:40:32.617752Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Weighted-determinize blowup (found 2026-07-03 via lang-sma tokeniser). tropical minimize/determinize (tropical_weight_transducer.rs ~1661/1697) encode with EncodeLabels ONLY when encode_weights=false (the default the pmatch archive minimize uses): the (ilabel,olabel) pair folds into one label so Determinize runs on a weighted ACCEPTOR, but arc weights stay tropical — so it's still WEIGHTED subset construction, which tracks residual weights and cannot merge two paths reaching the same state-set with different residuals. On the sma tokeniser's parallel eps:@PMATCH_ENTRY@ branches this diverges → ~563MB archive. This is NOT a port bug: C++ HFST with the openfst backend produces the identical size (and OpenFst 1.8.4 fstdeterminize explodes the same way). foma does NOT blow up because it determinizes/minimizes UNWEIGHTED automata (boolean subset construction merges freely) — foma is being ported separately. So this is an openfst-family algorithmic property, to be addressed here in the hfst-openfst determinize reimplementation (or by deferring these builds to the foma backend when it lands). Possible levers: EncodeWeightsAndLabels (fold weight into the label → truly unweighted determinize; helps only if weight diversity is low), or skipping the build-time weighted minimize where the OL runtime doesn't require a minimal weighted FST."
+                    }
+                )
             }
 
             {

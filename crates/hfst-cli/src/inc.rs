@@ -23,6 +23,14 @@ use crate::hfst_getopt;
 const EXIT_SUCCESS: i32 = 0;
 const EXIT_FAILURE: i32 = 1;
 
+/// A positional filename of "-" means stdin, matching the C++ `hfst_fopen`,
+/// which returned `stdin` for "-" (the `<stdin>` sentinel the tools test for).
+/// The `-1`/`-2` option cases already do this inline; the leftover free-argument
+/// operands go through here.
+fn stdin_if_dash(name: &str) -> &str {
+    if name == "-" { "<stdin>" } else { name }
+}
+
 /// Result of dispatching one getopt character through a fragment handler.
 ///
 /// In C the fragment is a run of 'case' labels inside a 'switch (c)': a matched
@@ -278,12 +286,12 @@ pub unsafe fn check_binary_params(args: &[String]) {
             // neither input given in options:
             if remaining == 2 {
                 // hfst-tool file1 file2
-                globals::set_first_filename(args[optind].clone());
-                globals::set_second_filename(args[optind + 1].clone());
+                globals::set_first_filename(stdin_if_dash(&args[optind]));
+                globals::set_second_filename(stdin_if_dash(&args[optind + 1]));
                 globals::IS_INPUT_STDIN = false;
             } else if remaining == 1 {
                 // hfst-tool file2 < file1
-                globals::set_second_filename(args[optind].clone());
+                globals::set_second_filename(stdin_if_dash(&args[optind]));
                 globals::set_first_filename("<stdin>");
                 globals::IS_INPUT_STDIN = true;
             } else if remaining > 2 {
@@ -303,7 +311,7 @@ pub unsafe fn check_binary_params(args: &[String]) {
         } else if !globals::FIRST_NAMED {
             if remaining == 1 {
                 // hfst-tool file1 -2 file2
-                globals::set_first_filename(args[optind].clone());
+                globals::set_first_filename(stdin_if_dash(&args[optind]));
                 globals::IS_INPUT_STDIN = false;
             } else if remaining == 0 {
                 // hfst-tool -2 file2 < file1
@@ -320,7 +328,7 @@ pub unsafe fn check_binary_params(args: &[String]) {
         } else if !globals::SECOND_NAMED {
             if remaining == 1 {
                 // hfst-tool file2 -1 file1
-                globals::set_second_filename(args[optind].clone());
+                globals::set_second_filename(stdin_if_dash(&args[optind]));
                 globals::IS_INPUT_STDIN = false;
             } else if remaining == 0 {
                 // hfst-tool -1 file1 < file2
