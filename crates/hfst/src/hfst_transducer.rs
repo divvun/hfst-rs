@@ -5489,10 +5489,18 @@ impl HfstTransducer {
 // ===== integration shims: HfstBasicTransducer<-facade ctors, method + free-fn aliases =====
 impl HfstBasicTransducer {
     /// 'HfstBasicTransducer(const HfstTransducer&)' — convert a facade transducer
-    /// to the interchange basic transducer.
+    /// to the interchange basic transducer. The C++ ctor goes through
+    /// 'ConversionFunctions::hfst_transducer_to_hfst_basic_transducer', NOT
+    /// 'HfstTransducer::get_basic_transducer' — the former also handles the
+    /// HFST_OL/HFST_OLW backends and propagates the transducer name.
     pub fn from_transducer(t: &HfstTransducer) -> HfstBasicTransducer {
-        t.get_basic_transducer()
-            .expect("get_basic_transducer on a valid transducer cannot fail")
+        HfstBasicTransducer::try_from_transducer(t)
+            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail")
+    }
+    /// The same conversion with the error surfaced instead of panicking, for
+    /// callers (the CLI tools) that report it and exit.
+    pub fn try_from_transducer(t: &HfstTransducer) -> crate::error::Result<HfstBasicTransducer> {
+        crate::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)
     }
     pub fn new_from_transducer(t: &HfstTransducer) -> HfstBasicTransducer {
         HfstBasicTransducer::from_transducer(t)

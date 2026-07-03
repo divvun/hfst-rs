@@ -210,7 +210,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                 trans_name = globals::input_filename();
             }
             // HfstBasicTransducer walkable(trans);
-            let walkable = match trans.get_basic_transducer() {
+            let walkable = match HfstBasicTransducer::try_from_transducer(&trans) {
                 Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));

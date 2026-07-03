@@ -800,7 +800,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             {
                 // [spec:hfst:def:hfst-flookup.basic-fn]
                 // [spec:hfst:sem:hfst-flookup.basic-fn]
-                let basic = match trans.get_basic_transducer() {
+                let basic = match HfstBasicTransducer::try_from_transducer(&trans) {
                     Ok(b) => b,
                     Err(e) => {
                         hfst_error(1, 0, &format!("{e}"));

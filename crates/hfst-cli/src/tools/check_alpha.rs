@@ -125,7 +125,7 @@ unsafe fn process_stream(
                     return 1;
                 }
             };
-            let mutt: HfstBasicTransducer = match first.get_basic_transducer() {
+            let mutt: HfstBasicTransducer = match HfstBasicTransducer::try_from_transducer(&first) {
                 Ok(m) => m,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
@@ -149,13 +149,14 @@ unsafe fn process_stream(
                     return 1;
                 }
             };
-            let secondmutt: HfstBasicTransducer = match second.get_basic_transducer() {
-                Ok(m) => m,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
+            let secondmutt: HfstBasicTransducer =
+                match HfstBasicTransducer::try_from_transducer(&second) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
             let second_transducer_alphabet: StringSet = match second.get_alphabet() {
                 Ok(a) => a,
                 Err(e) => {

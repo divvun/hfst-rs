@@ -115,13 +115,14 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             }
             // C++: HfstBasicTransducer original(trans); — the
             // HfstBasicTransducer(const HfstTransducer&) conversion constructor.
-            let original: HfstBasicTransducer = match trans.get_basic_transducer() {
-                Ok(v) => v,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
+            let original: HfstBasicTransducer =
+                match HfstBasicTransducer::try_from_transducer(&trans) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
             let replication = original.renumber_states();
             let ty = trans.get_type();
             trans = match HfstTransducer::new_from_basic(&replication, ty) {
