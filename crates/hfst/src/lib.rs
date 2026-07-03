@@ -20,6 +20,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod alphabet;
+pub mod backend;
 pub mod compose_intersect_fst;
 pub mod compose_intersect_lexicon;
 pub mod compose_intersect_rule;
