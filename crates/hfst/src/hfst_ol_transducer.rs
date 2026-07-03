@@ -33,7 +33,6 @@
 
 use std::collections::BTreeSet;
 
-use crate::hfst_extract_strings::ExtractStringsCb;
 use crate::transducer::IStream;
 
 /// 'typedef std::set<std::string> StringSet' (used by 'get_alphabet').
@@ -355,7 +354,10 @@ mod ol_construction_io {
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-output-stream.write-transducer-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-output-stream.write-transducer-fn]
-        pub fn write_transducer(&mut self, transducer: &Transducer) {
+        pub fn write_transducer<T: crate::transducer::TransducerTablesInterface>(
+            &mut self,
+            transducer: &Transducer<T>,
+        ) {
             // C++ tests 'if (!output_stream)' (failbit) and warns; the boxed writer has
             // no failbit, so the check is elided.
             transducer.write(&mut *self.output_stream);
@@ -407,19 +409,25 @@ mod ol_construction_io {
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.is-cyclic-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.is-cyclic-fn]
-        pub fn is_cyclic(t: &Transducer) -> bool {
+        pub fn is_cyclic<T: crate::transducer::TransducerTablesInterface>(
+            t: &Transducer<T>,
+        ) -> bool {
             t.get_header().probe_flag(HeaderFlag::Cyclic)
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.get-flag-diacritics-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.get-flag-diacritics-fn]
-        pub fn get_flag_diacritics(t: &Transducer) -> &FdTable<SymbolNumber> {
+        pub fn get_flag_diacritics<T: crate::transducer::TransducerTablesInterface>(
+            t: &Transducer<T>,
+        ) -> &FdTable<SymbolNumber> {
             t.get_alphabet().get_fd_table()
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.get-alphabet-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.get-alphabet-fn]
-        pub fn get_alphabet(t: &Transducer) -> StringSet {
+        pub fn get_alphabet<T: crate::transducer::TransducerTablesInterface>(
+            t: &Transducer<T>,
+        ) -> StringSet {
             let symbol_table: SymbolTable = t.get_alphabet().get_symbol_table().clone();
             symbol_table.iter().cloned().collect()
         }
@@ -447,8 +455,8 @@ mod ol_lookup_ops {
     // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.extract-paths-fn]
     // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.extract-paths-fn]
     #[allow(clippy::too_many_arguments)]
-    fn extract_paths(
-        t: &Transducer,
+    fn extract_paths<T: crate::transducer::TransducerTablesInterface>(
+        t: &Transducer<T>,
         s: TransitionTableIndex,
         mut all_visitations: BTreeMap<TransitionTableIndex, u16>,
         mut path_visitations: BTreeMap<TransitionTableIndex, u16>,
@@ -620,8 +628,8 @@ mod ol_lookup_ops {
     impl HfstOlTransducer {
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn]
-        pub fn extract_paths(
-            t: &Transducer,
+        pub fn extract_paths<T: crate::transducer::TransducerTablesInterface>(
+            t: &Transducer<T>,
             callback: &mut dyn ExtractStringsCb,
             cycles: i32,
             fd: *const FdTable<SymbolNumber>,

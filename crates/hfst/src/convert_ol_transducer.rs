@@ -238,18 +238,14 @@ impl ConversionFunctions {
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-transducer-fn]
     pub fn hfst_ol_to_hfst_transducer(
         t: &Transducer,
-    ) -> crate::error::Result<crate::hfst_transducer::HfstTransducer> {
-        use crate::hfst_data_types::ImplementationType::*;
-        let ty = if t.is_weighted() {
-            HFST_OLW_TYPE
-        } else {
-            HFST_OL_TYPE
-        };
-        let mut retval = crate::hfst_transducer::HfstTransducer::new_type(ty)?;
-        retval.implementation = crate::hfst_transducer::TransducerImplementation::HfstOl(Box::new(
+    ) -> crate::error::Result<crate::hfst_transducer::HfstTransducer<Transducer>> {
+        // The C++ picked the HFST_OL/HFST_OLW tag from 't->is_weighted()'; the
+        // tag lives in the payload header now ('Backend::stream_type') — the
+        // in-memory tables are always the weighted-shaped instantiation
+        // (interim invariant of [dec:hfst:monomorphic-backends]).
+        Ok(crate::hfst_transducer::HfstTransducer::wrap(
             Transducer::copy(t)?,
-        ));
-        Ok(retval)
+        ))
     }
 
     /* And the reverse: convert 't' to OL if needed and hand back its backend. */
@@ -257,14 +253,15 @@ impl ConversionFunctions {
     // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-ol-fn]
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-ol-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-ol-fn]
-    pub fn hfst_transducer_to_hfst_ol(
-        t: &mut crate::hfst_transducer::HfstTransducer,
-    ) -> crate::error::Result<*mut Transducer> {
-        use crate::hfst_data_types::ImplementationType::*;
-        if t.ty != HFST_OL_TYPE && t.ty != HFST_OLW_TYPE {
-            t.convert(HFST_OLW_TYPE, String::new())?;
-        }
-        Ok(t.implementation.as_hfst_ol_ptr())
+    pub fn hfst_transducer_to_hfst_ol<B: crate::backend::Backend>(
+        t: &crate::hfst_transducer::HfstTransducer<B>,
+    ) -> crate::error::Result<Transducer> {
+        // The C++ converted 't' in place to HFST_OLW_TYPE and handed back the
+        // raw backend pointer; conversions are typed now
+        // ([dec:hfst:monomorphic-backends]), so build a fresh weighted OL
+        // backend via the basic transducer and return it owned.
+        let net = t.get_basic_transducer()?;
+        ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&net, true, "", None)
     }
 
     /* Create an HfstBasicTransducer equivalent to hfst_ol::Transducer 't'. */
@@ -272,7 +269,9 @@ impl ConversionFunctions {
     // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
-    pub fn hfst_ol_to_hfst_basic_transducer(t: &Transducer) -> HfstBasicTransducer {
+    pub fn hfst_ol_to_hfst_basic_transducer<T: crate::transducer::TransducerTablesInterface>(
+        t: &Transducer<T>,
+    ) -> HfstBasicTransducer {
         let mut basic = HfstBasicTransducer::new();
         let weighted = t.get_header().probe_flag(HeaderFlag::Weighted);
         let symbols: SymbolTable = t.get_alphabet().get_symbol_table().clone();

@@ -116,38 +116,17 @@ impl ConversionFunctions {
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-basic-transducer-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-transducer-to-hfst-basic-transducer-fn]
     //
-    // Dispatch on the backend type; the SFST/FOMA/XFSM/My arms are #if'd out.
-    // The C++ sets 'retval->name = t.get_name()' on every arm.
-    pub fn hfst_transducer_to_hfst_basic_transducer(
-        t: &crate::hfst_transducer::HfstTransducer,
+    // The C++ dispatched on the backend type tag (the SFST/FOMA/XFSM/My arms
+    // were #if'd out); the dispatch is the type parameter now
+    // ([dec:hfst:monomorphic-backends]) and each former arm's body is the
+    // backend's 'Backend::to_basic'. The C++ sets 'retval->name =
+    // t.get_name()' on every arm.
+    pub fn hfst_transducer_to_hfst_basic_transducer<B: crate::backend::Backend>(
+        t: &crate::hfst_transducer::HfstTransducer<B>,
     ) -> crate::error::Result<crate::hfst_basic_transducer::HfstBasicTransducer> {
-        use crate::hfst_data_types::ImplementationType::*;
-        if t.ty == TROPICAL_OPENFST_TYPE {
-            let mut retval = ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
-                t.implementation.as_tropical(),
-                true,
-            )?;
-            retval.name = t.get_name();
-            return Ok(retval);
-        }
-        if t.ty == LOG_OPENFST_TYPE {
-            let mut retval = ConversionFunctions::log_ofst_to_hfst_basic_transducer(
-                t.implementation.as_log(),
-                true,
-            )?;
-            retval.name = t.get_name();
-            return Ok(retval);
-        }
-        if t.ty == HFST_OL_TYPE || t.ty == HFST_OLW_TYPE {
-            let mut retval = ConversionFunctions::hfst_ol_to_hfst_basic_transducer(
-                t.implementation.as_hfst_ol(),
-            );
-            retval.name = t.get_name();
-            return Ok(retval);
-        }
-        unimplemented!(
-            "hfst_transducer_to_hfst_basic_transducer: not implemented for this transducer type"
-        )
+        let mut retval = t.get_basic_transducer()?;
+        retval.name = t.get_name();
+        Ok(retval)
     }
 }
 

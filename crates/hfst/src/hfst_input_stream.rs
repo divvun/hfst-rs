@@ -54,9 +54,11 @@ use hfst_openfst::StdVectorFst;
 use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_data_types::{ImplementationType, StringPairVector};
 use crate::hfst_ol_transducer::HfstOlInputStream as HfstOlBackendInputStream;
-use crate::hfst_transducer::{HfstTransducer, TransducerImplementation};
+use crate::hfst_transducer::{AnyTransducer, HfstTransducer};
 use crate::log_weight_transducer::{LogFst, LogWeightInputStream};
-use crate::transducer::IStream;
+use crate::transducer::{
+    HeaderFlag, IStream, Transducer, TransducerHeader, UnweightedTables, WeightedTables,
+};
 use crate::tropical_weight_transducer::TropicalWeightInputStream;
 
 /// Unported backend input-stream collaborators. Each is a placeholder unit type:
@@ -384,12 +386,18 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.read-transducer-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.read-transducer-fn]
-        // Reads the next transducer from the stream and stores it in 't'. The C++
-        // calls 'implementation.X->read_transducer()'; the tropical/log backend
-        // 'read_transducer' is deferred (rustfst exposes only the whole-buffer
-        // 'load'), so for those types we read the payload directly off the owned
-        // reader and rebuild the fst here.
-        pub fn read_transducer(&mut self, t: &mut HfstTransducer) -> crate::error::Result<()> {
+        // Also absorbs the facade read-constructor 'HfstTransducer(HfstInputStream&)':
+        // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.hfst-transducer-fn]
+        // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.hfst-transducer-fn]
+        //
+        // Reads the next transducer from the stream. The C++ filled a
+        // caller-provided union-backed 'HfstTransducer'; the runtime type
+        // decision now happens exactly here, producing the one runtime sum
+        // ('AnyTransducer', [dec:hfst:monomorphic-backends]). The tropical/log
+        // backend 'read_transducer' is deferred (rustfst exposes only the
+        // whole-buffer 'load'), so for those types we read the payload directly
+        // off the owned reader and rebuild the fst here.
+        pub fn read(&mut self) -> crate::error::Result<AnyTransducer> {
             if self.ty != ImplementationType::XFSM_TYPE {
                 if self.input_stream_active {
                     // first transducer in the stream
@@ -416,7 +424,7 @@ mod input_impl {
                 }
             }
 
-            match self.ty {
+            let mut t: AnyTransducer = match self.ty {
                 ImplementationType::SFST_TYPE => {
                     // implementation.sfst->read_transducer() — no SFST backend.
                     unimplemented!("deferred: SfstInputStream::read_transducer (no SFST backend)")
@@ -424,12 +432,12 @@ mod input_impl {
                 ImplementationType::TROPICAL_OPENFST_TYPE => {
                     // Slurp the rest of the stream, parse exactly ONE FST off the
                     // front, and unget the leftover (any following transducers in a
-                    // multi-transducer HFST stream) so the next 'read_transducer'
+                    // multi-transducer HFST stream) so the next 'read'
                     // re-reads them. The C++ backend stream reads one OpenFst record
                     // and leaves the istream positioned after it; load_prefix mirrors
                     // that by reporting how many bytes the single FST consumed.
                     let bytes = self.read_remaining_bytes();
-                    let (fst, consumed) = match StdVectorFst::load_prefix(&bytes) {
+                    let (mut fst, consumed) = match StdVectorFst::load_prefix(&bytes) {
                         Ok(fc) => fc,
                         Err(_) => crate::bail!(
                             NotTransducerStream,
@@ -439,19 +447,15 @@ mod input_impl {
                     if consumed < bytes.len() {
                         self.pbr().unget_all(&bytes[consumed..]);
                     }
-                    t.implementation = TransducerImplementation::Tropical(Box::new(fst));
 
                     /* If we were reading an OpenFst transducer with no HFST header,
                     round-trip it through HfstBasicTransducer to normalise its
                     symbol tables / epsilon-unknown-identity coding. */
                     if !self.has_hfst_header {
                         let net = ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(
-                            t.implementation.as_tropical(),
-                            false,
+                            &fst, false,
                         )?;
-                        t.implementation = TransducerImplementation::Tropical(Box::new(
-                            ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(&net),
-                        ));
+                        fst = ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(&net);
                     }
 
                     // A special case: HFST version 2 transducer with an appended
@@ -462,10 +466,12 @@ mod input_impl {
                             "deferred: HFST version 2 weighted transducer (appended SFST alphabet)"
                         );
                     }
+
+                    AnyTransducer::Tropical(HfstTransducer::wrap(fst))
                 }
                 ImplementationType::LOG_OPENFST_TYPE => {
                     let bytes = self.read_remaining_bytes();
-                    let (fst, consumed) = match LogFst::load_prefix(&bytes) {
+                    let (mut fst, consumed) = match LogFst::load_prefix(&bytes) {
                         Ok(fc) => fc,
                         Err(_) => crate::bail!(
                             NotTransducerStream,
@@ -475,44 +481,52 @@ mod input_impl {
                     if consumed < bytes.len() {
                         self.pbr().unget_all(&bytes[consumed..]);
                     }
-                    t.implementation = TransducerImplementation::Log(Box::new(fst));
 
                     if !self.has_hfst_header {
-                        let net = ConversionFunctions::log_ofst_to_hfst_basic_transducer(
-                            t.implementation.as_log(),
-                            false,
-                        )?;
-                        t.implementation = TransducerImplementation::Log(Box::new(
-                            ConversionFunctions::hfst_basic_transducer_to_log_ofst(&net),
-                        ));
+                        let net =
+                            ConversionFunctions::log_ofst_to_hfst_basic_transducer(&fst, false)?;
+                        fst = ConversionFunctions::hfst_basic_transducer_to_log_ofst(&net);
                     }
 
                     if self.hfst_version_2_weighted_transducer {
                         // this should not happen
                         crate::bail!(Fatal, "not transducer stream");
                     }
+
+                    AnyTransducer::Log(HfstTransducer::wrap(fst))
                 }
                 ImplementationType::FOMA_TYPE => {
                     unimplemented!("deferred: FomaInputStream::read_transducer (no foma backend)")
                 }
                 ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    let weighted = self.ty == ImplementationType::HFST_OLW_TYPE;
-                    // Build a transient backend stream that borrows the owned
-                    // reader (positioned just after the header that probing
-                    // consumed), then read with has_header = false.
+                    // Read the OL payload directly off the owned reader
+                    // (positioned just after the HFST header that probing
+                    // consumed): peek the payload header's Weighted flag to pick
+                    // the table instantiation — the ONE place the OL weightedness
+                    // is data rather than type.
                     // IDIOM-STAGE-2: the backend stream needs a '&'a mut' reader
                     // that outlives this '&mut self' borrow (the C++ shares the
                     // 'std::istream*'); the borrow checker can't express this
                     // self-borrow, so extend the lifetime through a raw pointer.
                     let reader: &'a mut PushbackReader<'a> =
                         unsafe { &mut *std::ptr::addr_of_mut!(*self.reader) };
-                    let is = IStream::new(reader);
-                    let mut ol_in = HfstOlBackendInputStream::new_istream(is, weighted);
-                    let tr = ol_in.read_transducer(false)?;
-                    t.implementation = TransducerImplementation::HfstOl(Box::new(tr));
-                    if t.get_type() != self.ty {
-                        // weights need to be added or removed
-                        t.convert(self.ty, String::new())?;
+                    let mut is = IStream::new(reader);
+                    let header = TransducerHeader::new_istream(&mut is)?;
+                    // The C++ converted the payload when its weightedness
+                    // disagreed with the stream tag ('t.convert(self.ty)');
+                    // typed loads trust the payload header instead — the
+                    // stream-tag/payload mismatch case (a malformed file) now
+                    // surfaces as the payload's own type.
+                    if header.probe_flag(HeaderFlag::Weighted) {
+                        AnyTransducer::OlW(HfstTransducer::wrap(
+                            Transducer::<WeightedTables>::new_istream_with_header(header, &mut is)?,
+                        ))
+                    } else {
+                        AnyTransducer::OlU(HfstTransducer::wrap(
+                            Transducer::<UnweightedTables>::new_istream_with_header(
+                                header, &mut is,
+                            )?,
+                        ))
                     }
                 }
                 // case ERROR_TYPE: default:
@@ -520,7 +534,7 @@ mod input_impl {
                     debug_error("#1");
                     crate::bail!(NotTransducerStream);
                 }
-            }
+            };
 
             if self.ty != ImplementationType::XFSM_TYPE {
                 let nm = self.name.clone();
@@ -534,7 +548,7 @@ mod input_impl {
                     t.set_property(&k, &v);
                 }
             }
-            Ok(())
+            Ok(t)
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.guess-fst-type-fn]
@@ -980,7 +994,7 @@ mod input_impl {
             }
             this.ty = this.stream_fst_type()?;
 
-            if !HfstTransducer::is_lean_implementation_type_available(this.ty) {
+            if !crate::hfst_transducer::is_lean_implementation_type_available(this.ty) {
                 crate::bail!(ImplementationTypeNotAvailable(this.ty));
             }
 

@@ -490,6 +490,29 @@ mod construction_io {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-output-stream.write-transducer-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-output-stream.write-transducer-fn]
         pub fn write_transducer(&mut self, transducer: &StdVectorFst) {
+            if TropicalWeightTransducer::write_transducer_to(
+                transducer,
+                &mut self.output_stream,
+                self.hfst_format,
+            )
+            .is_err()
+            {
+                tracing::error!("TropicalWeightOutputStream: could not write transducer");
+            }
+            let _ = self.output_stream.flush();
+        }
+    }
+
+    impl TropicalWeightTransducer {
+        /// The payload-serialization body of
+        /// 'TropicalWeightOutputStream::write_transducer' over a caller-supplied
+        /// writer — the tropical arm of 'Backend::write'
+        /// ([dec:hfst:monomorphic-backends]).
+        pub fn write_transducer_to(
+            transducer: &StdVectorFst,
+            os: &mut dyn Write,
+            hfst_format: bool,
+        ) -> crate::error::Result<()> {
             if transducer.input_symbols().is_none() {
                 tracing::warn!("### Missing Input Symbol Table when writing! ###");
             }
@@ -497,15 +520,21 @@ mod construction_io {
             // output symbol tables; the C++ sets the output table = input table on
             // the caller's transducer. The skeleton hands us '&StdVectorFst', so we
             // do it on a clone (NOTE: caller's transducer is not mutated, unlike C++).
-            if !self.hfst_format {
+            if !hfst_format {
                 let mut t = transducer.clone();
-                let st = transducer.input_symbols().unwrap().as_ref().clone();
+                let st = transducer
+                    .input_symbols()
+                    .expect("input symbol table present when writing")
+                    .as_ref()
+                    .clone();
                 t.set_output_symbols(Arc::new(st));
-                let _ = t.store(&mut self.output_stream);
-            } else {
-                let _ = transducer.store(&mut self.output_stream);
+                if t.store(os).is_err() {
+                    crate::bail!(StreamCannotBeWritten, "could not write transducer payload");
+                }
+            } else if transducer.store(os).is_err() {
+                crate::bail!(StreamCannotBeWritten, "could not write transducer payload");
             }
-            let _ = self.output_stream.flush();
+            Ok(())
         }
     }
 

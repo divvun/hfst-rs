@@ -486,17 +486,41 @@ mod construction_io {
         pub fn write_transducer(&mut self, transducer: &LogVectorFst) {
             // C++ also does 'if (!output_stream) fprintf(stderr, "...failbit set (1)")';
             // a 'Box<dyn Write>' cannot report a fail state, so that check is dropped.
-            //
-            // When writing a transducer, both input and output symbol tables are
-            // included; the C++ sets the output table = input table on the caller's
-            // transducer. The skeleton hands us '&LogVectorFst', so we do it on a clone
-            // (NOTE: caller's transducer is not mutated, unlike C++). Unlike Tropical,
-            // the Log .cc has NO 'hfst_format' branch — it always re-symbols.
-            let mut t = transducer.clone();
-            let output_st = transducer.input_symbols().unwrap().as_ref().clone();
-            t.set_output_symbols(Arc::new(output_st));
-            let _ = t.store(&mut self.output_stream);
+            if LogWeightTransducer::write_transducer_to(transducer, &mut self.output_stream)
+                .is_err()
+            {
+                tracing::error!("LogWeightOutputStream: could not write transducer");
+            }
             let _ = self.output_stream.flush();
+        }
+    }
+
+    impl LogWeightTransducer {
+        /// The payload-serialization body of
+        /// 'LogWeightOutputStream::write_transducer' over a caller-supplied
+        /// writer — the log arm of 'Backend::write'
+        /// ([dec:hfst:monomorphic-backends]).
+        ///
+        /// When writing a transducer, both input and output symbol tables are
+        /// included; the C++ sets the output table = input table on the caller's
+        /// transducer. We do it on a clone (NOTE: caller's transducer is not
+        /// mutated, unlike C++). Unlike Tropical, the Log .cc has NO
+        /// 'hfst_format' branch — it always re-symbols.
+        pub fn write_transducer_to(
+            transducer: &LogVectorFst,
+            os: &mut dyn Write,
+        ) -> crate::error::Result<()> {
+            let mut t = transducer.clone();
+            let output_st = transducer
+                .input_symbols()
+                .expect("input symbol table present when writing")
+                .as_ref()
+                .clone();
+            t.set_output_symbols(Arc::new(output_st));
+            if t.store(os).is_err() {
+                crate::bail!(StreamCannotBeWritten, "could not write transducer payload");
+            }
+            Ok(())
         }
     }
 
