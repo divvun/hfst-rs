@@ -210,8 +210,12 @@ impl XfstCompiler {
         // c.xre.set_error_stream(...);
         c.lexc.set_verbosity(if c.verbose { 2 } else { 0 });
         // c.lexc.set_error_stream(...);
-        // XFST defaults Xerox-style composition ON.
+        // XFST defaults Xerox-style composition ON. In C++ this was the
+        // 'hfst::xerox_composition' file-static global shared with the XRE
+        // compiler; mirror the setting into 'c.xre' so 'read regex' composes
+        // the same way.
         c.engine_config.xerox_composition = true;
+        c.xre.set_xerox_composition(true);
         c.variables.insert("assert".to_string(), "OFF".to_string());
         c.variables.insert(
             "att-epsilon".to_string(),
@@ -1032,9 +1036,19 @@ impl XfstCompiler {
                 self.read_regex("")?;
             }
             XfstCommand::Define { name, body } => {
-                let tr = self.compile_spanned_xre(body)?;
-                self.define_transducer(name, tr);
-                self.prompt();
+                // 'define NAME' / 'define NAME ;' with no regex body is the
+                // C++ DEFINE_NAME production: it defines NAME as the network
+                // popped from the top of the stack. nfst-xfst encodes the
+                // missing body as Epsilon with an empty span, which is
+                // distinguishable from an explicit epsilon regex ('define
+                // NAME 0 ;', non-empty span).
+                if body.span.is_empty() && matches!(body.value, nfst_xre::XreExpr::Epsilon) {
+                    self.define(name);
+                } else {
+                    let tr = self.compile_spanned_xre(body)?;
+                    self.define_transducer(name, tr);
+                    self.prompt();
+                }
             }
             XfstCommand::DefineFunction { name, params, body } => {
                 let prototype = format!("{}({})", name, params.join(", "));
@@ -1764,19 +1778,26 @@ impl XfstCompiler {
             }
         }
         if name == "xerox-composition" {
+            // C++ toggled the 'hfst::xerox_composition' global shared with the
+            // XRE compiler; keep the xre compiler's copy in sync.
             if text == "ON" {
                 self.engine_config.xerox_composition = true;
+                self.xre.set_xerox_composition(true);
             }
             if text == "OFF" {
                 self.engine_config.xerox_composition = false;
+                self.xre.set_xerox_composition(false);
             }
         }
         if name == "flag-is-epsilon" {
+            // Same global-sharing situation as xerox-composition above.
             if text == "ON" {
                 self.engine_config.flag_is_epsilon_in_composition = true;
+                self.xre.set_flag_is_epsilon(true);
             }
             if text == "OFF" {
                 self.engine_config.flag_is_epsilon_in_composition = false;
+                self.xre.set_flag_is_epsilon(false);
             }
         }
         if name == "minimal" {

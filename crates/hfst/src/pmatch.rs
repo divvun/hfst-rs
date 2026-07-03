@@ -348,17 +348,43 @@ impl PmatchAlphabet {
         // We initialize the vector of which symbols have a printable
         // representation with false, then flip those that actually do to true
         alpha.printable_vector = vec![false; orig_symbol_count as usize];
+        alpha.global_flags = vec![false; orig_symbol_count as usize];
         let mut i: SymbolNumber = 1;
         while (i as usize) < alpha.base.symbol_table.len() {
             let sym = alpha.base.symbol_table[i as usize].clone();
             if Self::is_special(&sym) {
                 alpha.add_special_symbol(&sym, i, cont);
+            } else if sym == "@PMATCH_INPUT_MARK@" {
+                alpha.input_mark_symbol = i;
             } else if !alpha.is_flag_diacritic(i) {
                 alpha.printable_vector[i as usize] = true;
+            } else if Self::is_global_flag(&sym) {
+                alpha.global_flags[i as usize] = true;
+                // redefine it as a non-global flag, removing the
+                // PMATCH_GLOBAL_ part
+                let feature = crate::hfst_flag_diacritics::FdOperation::get_feature(&sym)
+                    ["PMATCH_GLOBAL_".len()..]
+                    .to_string();
+                let value = crate::hfst_flag_diacritics::FdOperation::get_value(&sym);
+                let new_diacritic = format!(
+                    "{}{}{}@",
+                    &sym[..3],
+                    feature,
+                    if value.is_empty() {
+                        String::new()
+                    } else {
+                        format!(".{}", value)
+                    }
+                );
+                alpha.base.fd_table.define_diacritic(i, &new_diacritic);
+                // finally go over all other known flag diacritics with the
+                // non-globalized feature and mark them global too
+                for it in alpha.base.fd_table.get_symbols_with_feature(&feature) {
+                    alpha.global_flags[it as usize] = true;
+                }
             }
             i += 1;
         }
-        let _ = cont;
         alpha
     }
 
@@ -601,7 +627,9 @@ impl PmatchAlphabet {
         (symbol as usize) < self.counters.len() && self.counters[symbol as usize] != NO_COUNTER
     }
     pub fn is_global_flag_sym(&self, symbol: SymbolNumber) -> bool {
-        self.global_flags[symbol as usize]
+        // 'add_symbol' does not grow 'global_flags' (C++ leaves it at
+        // orig_symbol_count too); symbols added later are never global flags.
+        (symbol as usize) < self.global_flags.len() && self.global_flags[symbol as usize]
     }
     pub fn is_printable_sym(&self, symbol: SymbolNumber) -> bool {
         (symbol as usize) < self.printable_vector.len() && self.printable_vector[symbol as usize]
@@ -882,7 +910,10 @@ impl PmatchAlphabet {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-alphabet.add-rtn-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-alphabet.add-rtn-fn]
     pub fn add_rtn(&mut self, rtn: Box<PmatchTransducer>, name: &str) {
-        let symbol = self.rtn_names[name];
+        // C++ 'rtn_names[name]' on std::map default-inserts 0 for an unknown
+        // name; mirror that so archives carrying named transducers that TOP
+        // never references still load.
+        let symbol = *self.rtn_names.entry(name.to_string()).or_insert(0);
         self.rtns[symbol as usize] = Some(rtn);
     }
 

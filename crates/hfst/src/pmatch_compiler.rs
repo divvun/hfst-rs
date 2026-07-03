@@ -5754,11 +5754,13 @@ fn build_read_file(
     let filepath = path_of(ctx, path);
     match kind {
         RK::Binary => {
-            // HfstInputStream-backed binary reading is deferred in the Rust
-            // facade; mirror the structure as far as it goes.
             let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(&filepath)?;
+            let mut read = HfstTransducer::new_from_stream(&mut instream)?;
             instream.close();
-            Ok(as_obj(pmb_tc(HfstTransducer::new_type(ctx.format)?)))
+            if read.get_type() != ctx.format {
+                read.convert(ctx.format, String::new())?;
+            }
+            Ok(as_obj(pmb_tc(read)))
         }
         RK::Text => Ok(as_obj(pmb_tc(read_text(
             filepath,
@@ -5950,8 +5952,8 @@ pub fn build_object(
         ),
         PE::Weighted { expr, weight } => {
             let obj = build_object(ctx, expr)?;
-            obj.borrow_mut()
-                .set_weight(obj.borrow().get_weight() + *weight);
+            let new_weight = obj.borrow().get_weight() + *weight;
+            obj.borrow_mut().set_weight(new_weight);
             obj
         }
 
