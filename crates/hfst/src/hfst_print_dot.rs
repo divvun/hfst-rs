@@ -31,7 +31,9 @@ const DOT_MAX_LABEL_SIZE: usize = 64;
 // C++ 'HfstBasicTransducer mutt {t};' invokes the
 // 'HfstBasicTransducer(const HfstTransducer&)' conversion constructor. The facade
 // exposes it as 'HfstTransducer::get_basic_transducer'.
-fn hfst_transducer_to_basic(t: &HfstTransducer) -> HfstBasicTransducer {
+fn hfst_transducer_to_basic<B: crate::backend::Backend>(
+    t: &HfstTransducer<B>,
+) -> HfstBasicTransducer {
     t.get_basic_transducer()
         .expect("get_basic_transducer on a valid transducer cannot fail")
 }
@@ -133,7 +135,10 @@ fn arc_label(old_label: &str, arc: &HfstBasicTransition, coder: &SymbolCoder) ->
 
 // [spec:hfst:def:hfst-print-dot.hfst.print-dot-fn]
 // [spec:hfst:sem:hfst-print-dot.hfst.print-dot-fn]
-pub fn print_dot_file(out: &mut dyn Write, t: &mut HfstTransducer) -> std::io::Result<()> {
+pub fn print_dot_file<B: crate::backend::Backend>(
+    out: &mut dyn Write,
+    t: &mut HfstTransducer<B>,
+) -> std::io::Result<()> {
     //fprintf(out, "// This graph generated with hfst-fst2txt\n");
     if t.get_name() != "" {
         writeln!(out, "digraph \"{}\" {{", t.get_name())?;
@@ -189,7 +194,7 @@ pub fn print_dot_file(out: &mut dyn Write, t: &mut HfstTransducer) -> std::io::R
     writeln!(out, "}}")
 }
 
-pub fn print_dot_os(out: &mut dyn Write, t: &mut HfstTransducer) {
+pub fn print_dot_os<B: crate::backend::Backend>(out: &mut dyn Write, t: &mut HfstTransducer<B>) {
     // C++ 'out.precision(2)' sets the stream's general-format precision to 2
     // significant figures for '<<'-printed floats (the final-state weight
     // below). That is neither '%.2f' nor Rust '{}'; per the port convention we

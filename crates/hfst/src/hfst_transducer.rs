@@ -1085,15 +1085,14 @@ impl<B: Backend> HfstTransducer<B> {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.read-lexc-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.read-lexc-fn]
-    // MONO-TODO: LexcCompiler is still runtime-typed; it becomes generic over
-    // 'B: AlgebraBackend' in the compiler leg, after which the 'ty' parameter
-    // (and this shim's turbofish requirement) disappears.
-    pub fn read_lexc(
-        filename: &str,
-        ty: ImplementationType,
-        verbose: bool,
-    ) -> crate::error::Result<HfstTransducer<B>> {
-        Ok(HfstTransducer::read_lexc_ptr(filename, ty, verbose)?
+    // The C++ 'type' parameter is the backend type parameter 'B' now
+    // ([dec:hfst:monomorphic-backends]); its availability check was pure
+    // capability gating and is a static fact of the instantiation.
+    pub fn read_lexc(filename: &str, verbose: bool) -> crate::error::Result<HfstTransducer<B>>
+    where
+        B: AlgebraBackend,
+    {
+        Ok(HfstTransducer::read_lexc_ptr(filename, verbose)?
             .expect("read_lexc: lexc compilation produced no transducer"))
     }
 
@@ -1101,21 +1100,20 @@ impl<B: Backend> HfstTransducer<B> {
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.read-lexc-ptr-fn]
     pub fn read_lexc_ptr(
         filename: &str,
-        ty: ImplementationType,
         verbose: bool,
-    ) -> crate::error::Result<Option<HfstTransducer<B>>> {
-        if !is_implementation_type_available(ty) {
-            crate::bail!(ImplementationTypeNotAvailable(ty));
-        }
-
+    ) -> crate::error::Result<Option<HfstTransducer<B>>>
+    where
+        B: AlgebraBackend,
+    {
         // The C++ 'compiler.parse(filename.c_str())' reads the file via the
         // Flex/Bison lexer; the ported LexcCompiler walks an AST built from
         // source text instead, so read the file here and feed 'compile'.
         // (The C++ 'new HfstTransducer()' placeholder that it then leaks was a
         // raw-pointer artifact and is gone with the owned return.)
-        let mut compiler = crate::lexc::LexcCompiler::new(ty);
+        let mut compiler = crate::lexc::LexcCompiler::<B>::new();
         compiler.set_verbosity(verbose as u32);
-        let source = std::fs::read_to_string(filename).unwrap();
+        let source = std::fs::read_to_string(filename)
+            .map_err(|_| crate::err!(StreamNotReadable, filename))?;
         Ok(compiler.compile(&source))
     }
 
@@ -1538,9 +1536,6 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     // -------------------------------------------------------------------------
     // ----- Flag elimination -----
     // -------------------------------------------------------------------------
-    // MONO-TODO: 'get_flag_filter'/'new_filter' below still go through the
-    // runtime-typed XreCompiler; they follow it into the generic form in the
-    // compiler leg.
 
     pub fn eliminate_flags(&mut self) -> crate::error::Result<&mut HfstTransducer<B>> {
         let basic = crate::hfst_basic_transducer::HfstBasicTransducer::new_from_transducer(self);
@@ -1813,8 +1808,6 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.extract-longest-paths-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.extract-longest-paths-fn]
-    // MONO-TODO: goes through the runtime-typed XreCompiler; typed in the
-    // compiler leg.
     pub fn extract_longest_paths(
         &self,
         results: &mut HfstTwoLevelPaths,
@@ -1839,8 +1832,10 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             // current length of accepted paths
             let match_length = match_any_n_times(path_length, &flags);
 
-            let mut xre = crate::xre::XreCompiler::new(self.get_type());
-            let mut length_tr: HfstTransducer<B> = xre.compile(match_length.as_str()).unwrap();
+            let mut xre = crate::xre::XreCompiler::<B>::new();
+            let mut length_tr: HfstTransducer<B> = xre
+                .compile(match_length.as_str())
+                .expect("match_any_n_times builds a well-formed xre");
 
             // filter out the paths of current length and extract them
             length_tr.compose(self, true)?;
@@ -2206,12 +2201,10 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     // ----- Binary operators (HfstTransducer.cc ~4173-5423) -----
     // -------------------------------------------------------------------------
 
-    // MONO-TODO: 'merge' still goes through the runtime-typed XreCompiler;
-    // typed in the compiler leg.
     pub fn merge(
         &mut self,
         another: &HfstTransducer<B>,
-        args: &crate::xre::XreConstructorArguments,
+        args: &crate::xre::XreConstructorArguments<B>,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         let mut this_basic = HfstBasicTransducer::from_transducer(self);
         // [spec:hfst:def:hfst-transducer.hfst.another-basic-fn]
@@ -2231,7 +2224,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // [ ? | #V ?:? ]* %#V:V ?:0 [ ? | #V ?:? | %#V:V ?:0 ]*
         // [spec:hfst:def:hfst-transducer.hfst.xre-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.xre-fn]
-        let mut xre = crate::xre::XreCompiler::new(args);
+        let mut xre = crate::xre::XreCompiler::new_with_args(args);
         xre.set_verbosity(false);
 
         for it in &markers_added {
@@ -2243,7 +2236,9 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
                 s = symbol
             );
 
-            let mut worsener: HfstTransducer<B> = xre.compile(&worsener_string).unwrap();
+            let mut worsener: HfstTransducer<B> = xre
+                .compile(&worsener_string)
+                .expect("the merge worsener xre is well-formed");
             worsener.optimize()?;
             // [spec:hfst:def:hfst-transducer.hfst.cp-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.cp-fn]
@@ -2804,8 +2799,10 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             lexicon_basic.reindex_into(&mut canonical);
             rule_basic.reindex_into(&mut canonical);
 
-            let mut rule = crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
-                &rule_basic,
+            let mut rule = crate::compose_intersect_rule_pair::ComposeIntersectRuleComponent::Rule(
+                crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
+                    &rule_basic,
+                ),
             );
 
             // Create a ComposeIntersectLexicon from *harmonized_lexicon.
@@ -2886,43 +2883,34 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
                 rb.reindex_into(&mut canonical);
             }
 
-            let first_rule: Box<
-                dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject,
-            > = Box::new(
+            use crate::compose_intersect_rule_pair::{
+                ComposeIntersectRuleComponent, ComposeIntersectRulePair,
+            };
+            let first_rule = ComposeIntersectRuleComponent::Rule(
                 crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
                     &first_rule_basic,
                 ),
             );
-            let second_rule: Box<
-                dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject,
-            > = Box::new(
+            let second_rule = ComposeIntersectRuleComponent::Rule(
                 crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
                     &second_rule_basic,
                 ),
             );
-            let mut rules: Box<dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject> =
-                Box::new(
-                    crate::compose_intersect_rule_pair::ComposeIntersectRulePair::new(
-                        first_rule,
-                        second_rule,
-                    ),
-                );
+            let mut rules = ComposeIntersectRuleComponent::Pair(Box::new(
+                ComposeIntersectRulePair::new(first_rule, second_rule),
+            ));
 
             for rule_basic in extra_rule_basics.iter() {
                 // rules = new ComposeIntersectRulePair(
                 //     new ComposeIntersectRule(rule_fst), rules);
-                let new_rule: Box<
-                    dyn crate::compose_intersect_rule_pair::ComposeIntersectRuleObject,
-                > = Box::new(
+                let new_rule = ComposeIntersectRuleComponent::Rule(
                     crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
                         rule_basic,
                     ),
                 );
-                rules = Box::new(
-                    crate::compose_intersect_rule_pair::ComposeIntersectRulePair::new(
-                        new_rule, rules,
-                    ),
-                );
+                rules = ComposeIntersectRuleComponent::Pair(Box::new(
+                    ComposeIntersectRulePair::new(new_rule, rules),
+                ));
             }
 
             // Create a ComposeIntersectLexicon from *harmonized_lexicon.
@@ -2930,7 +2918,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
                 crate::compose_intersect_lexicon::ComposeIntersectLexicon::new_from_transducer(
                     &lexicon_basic,
                 );
-            let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut *rules)?;
+            let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut rules)?;
 
             res.prune_alphabet(true);
             *self = HfstTransducer::from_basic(&res);
@@ -3171,7 +3159,6 @@ ol_lookup_facade!(UnweightedTables);
 
 // if (required): return ~[(?* FAIL_FLAGS) ~$SUCCEED_FLAGS SELF ?*]
 // if (! required): return ~[?* FAIL_FLAGS ~$SUCCEED_FLAGS SELF ?*]
-// MONO-TODO: XreCompiler is still runtime-typed; typed in the compiler leg.
 // [spec:hfst:def:hfst-transducer.hfst.new-filter-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.new-filter-fn]
 fn new_filter<B: AlgebraBackend>(
@@ -3180,8 +3167,7 @@ fn new_filter<B: AlgebraBackend>(
     this: &HfstTransducer<B>,
     required: bool,
 ) -> crate::error::Result<HfstTransducer<B>> {
-    let ty = fail_flags.get_type();
-    let mut comp = crate::xre::XreCompiler::new(ty);
+    let mut comp = crate::xre::XreCompiler::<B>::new();
     comp.set_expand_definitions(true);
     comp.define_transducer("Fail", fail_flags);
     comp.define_transducer("Succeed", succeed_flags);
@@ -3191,7 +3177,7 @@ fn new_filter<B: AlgebraBackend>(
     } else {
         comp.compile("~[?* Fail ~$Succeed Self ?*]")
     }
-    .unwrap();
+    .expect("the flag-filter xre is well-formed");
 
     // Should the xre compiler do this?
     result.remove_from_alphabet("Fail")?;
@@ -4230,5 +4216,79 @@ impl AnyTransducer {
         out: &mut crate::hfst_output_stream::HfstOutputStream,
     ) -> crate::error::Result<()> {
         any_delegate!(self, t => { out.operator_shl(t)?; Ok(()) })
+    }
+
+    /// Typed extraction from the stream sum — the C++ pattern
+    /// 'HfstTransducer t(instream); t.convert(format);' of the compilers'
+    /// '@bin' file loads. The matching variant moves out unchanged; any other
+    /// variant converts through the interchange transducer (a typed
+    /// 'convert', [dec:hfst:monomorphic-backends]), preserving the facade
+    /// metadata as the C++ convert did.
+    pub fn into_typed<B: FromAnyTransducer>(self) -> crate::error::Result<HfstTransducer<B>> {
+        B::from_any(self)
+    }
+}
+
+/// The per-backend arm of ['AnyTransducer::into_typed']: each backend takes
+/// its own variant by move and converts the rest via the interchange
+/// transducer.
+pub trait FromAnyTransducer: Backend {
+    fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>>;
+}
+
+/// The convert-through-basic arm of ['AnyTransducer::into_typed'].
+fn any_into_backend_via_basic<B: Backend>(
+    any: AnyTransducer,
+) -> crate::error::Result<HfstTransducer<B>> {
+    let net = any.to_basic()?;
+    let mut t: HfstTransducer<B> = HfstTransducer::wrap(B::from_basic(&net)?);
+    // The C++ convert replaced only the implementation; the facade metadata
+    // survives.
+    any_delegate!(&any, s => {
+        t.name = s.name.clone();
+        t.props = s.props.clone();
+        t.anonymous = s.anonymous;
+        t.is_trie = s.is_trie;
+    });
+    Ok(t)
+}
+
+impl FromAnyTransducer for StdVectorFst {
+    fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
+        match any {
+            AnyTransducer::Tropical(t) => Ok(t),
+            other => any_into_backend_via_basic(other),
+        }
+    }
+}
+
+impl FromAnyTransducer for LogFst {
+    fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
+        match any {
+            AnyTransducer::Log(t) => Ok(t),
+            other => any_into_backend_via_basic(other),
+        }
+    }
+}
+
+impl FromAnyTransducer for Transducer<WeightedTables> {
+    fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
+        match any {
+            AnyTransducer::OlW(t) => Ok(t),
+            other => any_into_backend_via_basic(other),
+        }
+    }
+}
+
+impl FromAnyTransducer for Transducer<UnweightedTables> {
+    fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
+        match any {
+            AnyTransducer::OlU(t) => Ok(t),
+            // Any other source would need 'from_basic' into unweighted-shaped
+            // tables, which the interim invariant of
+            // [dec:hfst:monomorphic-backends] rules out (conversions always
+            // build weighted-shaped tables); 'from_basic' reports that.
+            other => any_into_backend_via_basic(other),
+        }
     }
 }

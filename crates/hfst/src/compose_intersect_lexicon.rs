@@ -28,15 +28,16 @@
 //!   'ComposeIntersectRule *', a base pointer that may point at a plain
 //!   'ComposeIntersectRule' (the single-rule path) or a 'ComposeIntersectRulePair'
 //!   (the multi-rule path), with 'get_transitions' / 'get_final_weight' dispatched
-//!   virtually. The port models that pointer as '&mut dyn ComposeIntersectRuleObject'
-//!   (the trait defined in ['crate::compose_intersect_rule_pair']); 'known_symbol'
-//!   is the C++ *non-virtual* 'ComposeIntersectRule::known_symbol', reproduced on the
-//!   same trait so the pair's (empty-'symbols') override matches C++ bug-for-bug.
+//!   virtually. The port models that pointer as '&mut ComposeIntersectRuleComponent'
+//!   (the closed enum defined in ['crate::compose_intersect_rule_pair']);
+//!   'known_symbol' is the C++ *non-virtual* 'ComposeIntersectRule::known_symbol',
+//!   reproduced on the same enum so the pair's (empty-'symbols') arm matches C++
+//!   bug-for-bug.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::compose_intersect_fst::{ComposeIntersectFst, TransitionSet};
-use crate::compose_intersect_rule_pair::ComposeIntersectRuleObject;
+use crate::compose_intersect_rule_pair::ComposeIntersectRuleComponent;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::implementations::HfstState;
@@ -172,7 +173,7 @@ impl ComposeIntersectLexicon {
     // [spec:hfst:sem:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.compose-with-rules-fn]
     pub fn compose_with_rules(
         &mut self,
-        rules: &mut dyn ComposeIntersectRuleObject,
+        rules: &mut ComposeIntersectRuleComponent,
     ) -> crate::error::Result<HfstBasicTransducer> {
         self.clear_all_info();
         let start_pair: StatePair = (ComposeIntersectFst::START, ComposeIntersectFst::START);
@@ -200,7 +201,7 @@ impl ComposeIntersectLexicon {
     // [spec:hfst:sem:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.set-final-state-weights-fn]
     fn set_final_state_weights(
         &mut self,
-        rules: &mut dyn ComposeIntersectRuleObject,
+        rules: &mut ComposeIntersectRuleComponent,
     ) -> crate::error::Result<()> {
         for s in 0..self.pair_vector.len() {
             let pair = self.pair_vector[s];
@@ -219,7 +220,7 @@ impl ComposeIntersectLexicon {
     // HfstBasicTransducer &ComposeIntersectLexicon::compute_composition_result(...)
     fn compute_composition_result(
         &mut self,
-        rules: &mut dyn ComposeIntersectRuleObject,
+        rules: &mut ComposeIntersectRuleComponent,
     ) -> crate::error::Result<&HfstBasicTransducer> {
         while !self.agenda.is_empty() {
             let s = *self.agenda.front().unwrap();
@@ -248,7 +249,7 @@ impl ComposeIntersectLexicon {
     fn compute_state(
         &mut self,
         state: HfstState,
-        rules: &mut dyn ComposeIntersectRuleObject,
+        rules: &mut ComposeIntersectRuleComponent,
         allow_lexicon_epsilons: bool,
     ) -> crate::error::Result<()> {
         let p = self.get_pair(state)?;

@@ -39,9 +39,9 @@ fn write_state_number(out: &mut dyn Write, precision: usize, value: i32) -> std:
 
 // [spec:hfst:def:hfst-print-pc-kimmo.hfst.print-pckimmo-fn]
 // [spec:hfst:sem:hfst-print-pc-kimmo.hfst.print-pckimmo-fn]
-pub fn print_pckimmo(
+pub fn print_pckimmo<B: crate::backend::Backend>(
     out: &mut dyn Write,
-    t: &crate::hfst_transducer::HfstTransducer,
+    t: &crate::hfst_transducer::HfstTransducer<B>,
 ) -> std::io::Result<()> {
     // C++: 'HfstBasicTransducer mutt {t};' — build the interchange graph from
     // the facade. get_basic_transducer is the HfstBasicTransducer(const

@@ -9,10 +9,9 @@
 //! porting convention its annotations are carried as a comment only (see the
 //! 'main-fn' block at the end of this file).
 
+use crate::backend::{AlgebraBackend, Backend};
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
-use crate::hfst_data_types::ImplementationType;
-use crate::hfst_data_types::ImplementationType::{HFST_OLW_TYPE, TROPICAL_OPENFST_TYPE};
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_lookup_flag_diacritics::FlagDiacriticTable;
 use crate::hfst_output_stream::HfstOutputStream;
@@ -45,8 +44,8 @@ fn my_default() -> &'static str {
 
 // [spec:hfst:def:guessify-fst.remove-flag-diacritics-fn]
 // [spec:hfst:sem:guessify-fst.remove-flag-diacritics-fn]
-pub fn remove_flag_diacritics(
-    morphological_analyzer: &mut HfstTransducer,
+pub fn remove_flag_diacritics<B: AlgebraBackend>(
+    morphological_analyzer: &mut HfstTransducer<B>,
     alphabet: &StringSet,
 ) -> crate::error::Result<()> {
     let mut flag_diacritic_epsilon_pairs = HfstSymbolSubstitutions::new();
@@ -83,20 +82,22 @@ pub fn get_cathegory_symbols(alphabet: &StringSet) -> StringSet {
 
 // [spec:hfst:def:guessify-fst.get-prefix-remover-fn]
 // [spec:hfst:sem:guessify-fst.get-prefix-remover-fn]
-pub fn get_prefix_remover(alphabet: &StringSet) -> crate::error::Result<HfstTransducer> {
+pub fn get_prefix_remover<B: AlgebraBackend>(
+    alphabet: &StringSet,
+) -> crate::error::Result<HfstTransducer<B>> {
     let cathegory_symbols = get_cathegory_symbols(alphabet);
 
-    let mut cathegory_symbols_fst = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE)?;
+    let mut cathegory_symbols_fst: HfstTransducer<B> = HfstTransducer::new();
 
-    let mut identity_except_cathegory =
-        HfstTransducer::new_symbol(internal_identity, TROPICAL_OPENFST_TYPE)?;
+    let mut identity_except_cathegory: HfstTransducer<B> =
+        HfstTransducer::new_symbol(internal_identity)?;
     let mut basic_identity = HfstBasicTransducer::from_transducer(&identity_except_cathegory);
 
     // Add cathegory symbols as paths in cathegory_symbols_fst and add
     // them to the alphabet of basic_identity so that the identity
     // transitions won't cover cathegory symbols.
     for it in cathegory_symbols.iter() {
-        let cathegory_symbol_fst = HfstTransducer::new_symbol(it, TROPICAL_OPENFST_TYPE)?;
+        let cathegory_symbol_fst = HfstTransducer::new_symbol(it)?;
         cathegory_symbols_fst.disjunct(&cathegory_symbol_fst, true)?;
         basic_identity.add_symbol_to_alphabet(it);
     }
@@ -104,16 +105,14 @@ pub fn get_prefix_remover(alphabet: &StringSet) -> crate::error::Result<HfstTran
     cathegory_symbols_fst.minimize()?;
 
     // Preserve one symbol after the cathegory marker.
-    let identity = HfstTransducer::new_symbol(internal_identity, TROPICAL_OPENFST_TYPE)?;
+    let identity = HfstTransducer::new_symbol(internal_identity)?;
     cathegory_symbols_fst
         .concatenate(&identity, true)?
         .minimize()?;
-    identity_except_cathegory =
-        HfstTransducer::new_from_basic_transducer(&basic_identity, TROPICAL_OPENFST_TYPE);
+    identity_except_cathegory = HfstTransducer::new_from_basic_transducer(&basic_identity);
     identity_except_cathegory.repeat_star()?.minimize()?;
 
-    let mut remove_symbol =
-        HfstTransducer::new_symbol_pair(internal_unknown, REMOVED_SYMBOL, TROPICAL_OPENFST_TYPE)?;
+    let mut remove_symbol = HfstTransducer::new_symbol_pair(internal_unknown, REMOVED_SYMBOL)?;
     remove_symbol.repeat_star()?.minimize()?;
 
     let mut remove_suffix = HfstTransducer::new_copy(&cathegory_symbols_fst)?;
@@ -129,18 +128,20 @@ pub fn get_prefix_remover(alphabet: &StringSet) -> crate::error::Result<HfstTran
 
 // [spec:hfst:def:guessify-fst.get-invalid-form-filterer-fn]
 // [spec:hfst:sem:guessify-fst.get-invalid-form-filterer-fn]
-pub fn get_invalid_form_filterer(alphabet: &StringSet) -> crate::error::Result<HfstTransducer> {
+pub fn get_invalid_form_filterer<B: AlgebraBackend>(
+    alphabet: &StringSet,
+) -> crate::error::Result<HfstTransducer<B>> {
     let cathegory_symbols = get_cathegory_symbols(alphabet);
 
-    let mut cathegory_symbols_fst = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE)?;
+    let mut cathegory_symbols_fst: HfstTransducer<B> = HfstTransducer::new();
     for it in cathegory_symbols.iter() {
-        let cathegory_symbol_fst = HfstTransducer::new_symbol(it, TROPICAL_OPENFST_TYPE)?;
+        let cathegory_symbol_fst = HfstTransducer::new_symbol(it)?;
         cathegory_symbols_fst.disjunct(&cathegory_symbol_fst, true)?;
     }
 
     cathegory_symbols_fst.minimize()?;
 
-    let identity = HfstTransducer::new_symbol(internal_identity, TROPICAL_OPENFST_TYPE)?;
+    let identity = HfstTransducer::new_symbol(internal_identity)?;
 
     let mut identity_star = HfstTransducer::new_copy(&identity)?;
 
@@ -159,8 +160,8 @@ pub fn get_invalid_form_filterer(alphabet: &StringSet) -> crate::error::Result<H
 
 // [spec:hfst:def:guessify-fst.rewrite-removed-symbols-fn]
 // [spec:hfst:sem:guessify-fst.rewrite-removed-symbols-fn]
-pub fn rewrite_removed_symbols(
-    morphological_analyzer: &mut HfstTransducer,
+pub fn rewrite_removed_symbols<B: AlgebraBackend>(
+    morphological_analyzer: &mut HfstTransducer<B>,
     alphabet: &StringSet,
 ) -> crate::error::Result<()> {
     let mut substitution_pairs = HfstSymbolPairSubstitutions::new();
@@ -185,13 +186,13 @@ pub fn rewrite_removed_symbols(
 
 // [spec:hfst:def:guessify-fst.guessify-analyzer-fn]
 // [spec:hfst:sem:guessify-fst.guessify-analyzer-fn]
-pub fn guessify_analyzer(
-    mut morphological_analyzer: HfstTransducer,
+pub fn guessify_analyzer<B: AlgebraBackend>(
+    mut morphological_analyzer: HfstTransducer<B>,
     penalty: f32,
-) -> crate::error::Result<HfstTransducer> {
-    // Convert to tropical openfst type so that all operations can be
-    // performed.
-    morphological_analyzer.convert(TROPICAL_OPENFST_TYPE, String::new())?;
+) -> crate::error::Result<HfstTransducer<B>> {
+    // The C++ "Convert to tropical openfst type so that all operations can be
+    // performed" was pure capability gating; the AlgebraBackend bound
+    // guarantees every operation now ([dec:hfst:monomorphic-backends]).
 
     let morphological_analyzer_name = morphological_analyzer.get_name();
 
@@ -266,8 +267,7 @@ pub fn guessify_analyzer(
         s += 1;
     }
 
-    let mut guesser =
-        HfstTransducer::new_from_basic_transducer(&basic_guesser, TROPICAL_OPENFST_TYPE);
+    let mut guesser: HfstTransducer<B> = HfstTransducer::new_from_basic_transducer(&basic_guesser);
 
     let invalid_form_filterer = get_invalid_form_filterer(&alphabet)?;
 
@@ -282,26 +282,47 @@ pub fn guessify_analyzer(
 
 // [spec:hfst:def:guessify-fst.store-guesser-fn]
 // [spec:hfst:sem:guessify-fst.store-guesser-fn]
-pub fn store_guesser(
-    guesser: &mut HfstTransducer,
+pub fn store_guesser<B: AlgebraBackend>(
+    guesser: &mut HfstTransducer<B>,
     out: &mut HfstOutputStream,
     compile_generator: bool,
 ) -> crate::error::Result<()> {
-    let mut generator = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE)?;
+    let mut generator: HfstTransducer<B> = HfstTransducer::new();
     if compile_generator {
         generator = HfstTransducer::new_copy(guesser)?;
     }
 
     guesser.substitute(my_default(), internal_default, true, true)?;
-    guesser.convert(HFST_OLW_TYPE, String::new())?;
-    out.operator_shl(guesser)?;
+    // The C++ 'convert(HFST_OLW_TYPE)' mutated the facade in place, keeping
+    // its metadata (name + properties, e.g. the "reverse input" guesser
+    // marker); the typed conversion pair pins the written result to the
+    // weighted optimized-lookup backend and the metadata is carried across
+    // explicitly ([dec:hfst:monomorphic-backends]).
+    let mut guesser_olw: HfstTransducer<crate::transducer::Transducer> =
+        crate::convert_transducer_format::ConversionFunctions::hfst_ol_to_hfst_transducer(
+            &crate::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_ol(
+                guesser,
+            )?,
+        )?;
+    for (property, value) in guesser.get_properties() {
+        guesser_olw.set_property(property, value);
+    }
+    out.operator_shl(&mut guesser_olw)?;
 
     if compile_generator {
         generator.invert()?;
         generator.set_name(&format!("inverted({})", guesser.get_name()));
         generator.substitute(my_default(), internal_default, true, true)?;
-        generator.convert(HFST_OLW_TYPE, String::new())?;
-        out.operator_shl(&mut generator)?;
+        let mut generator_olw: HfstTransducer<crate::transducer::Transducer> =
+            crate::convert_transducer_format::ConversionFunctions::hfst_ol_to_hfst_transducer(
+                &crate::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_ol(
+                    &generator,
+                )?,
+            )?;
+        for (property, value) in generator.get_properties() {
+            generator_olw.set_property(property, value);
+        }
+        out.operator_shl(&mut generator_olw)?;
     }
     Ok(())
 }
@@ -321,18 +342,18 @@ pub enum GuessDirection {
 // `GuessSuffix` branch rebuilds the automaton with a fresh "guess" prefix state
 // (state 0) whose identity/alphabet self-loops carry `weight`, shifting every
 // original state by +1; the `GuessPrefix` branch appends a single guess state
-// that every state can reach by an identity arc. The result is converted to
-// `format`. (The tool's mid-algorithm "-v" traces — "Creating guesser
+// that every state can reach by an identity arc. The result stays in the
+// caller's backend type (the tool's runtime 'format' parameter is the type
+// parameter now). (The tool's mid-algorithm "-v" traces — "Creating guesser
 // prefix...", "Rebuilding suffix...", "converting and saving..." — were
 // diagnostic and are not reproduced here; the constructed transducer is
 // unchanged. The owning tool keeps the [spec:hfst:*:hfst-affix-guessify
 // .process-stream-fn] annotation on its stream-driver loop.)
-pub fn affix_guessify(
-    trans: &HfstTransducer,
+pub fn affix_guessify<B: Backend>(
+    trans: &HfstTransducer<B>,
     direction: GuessDirection,
     weight: f32,
-    format: ImplementationType,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     let alpha = trans.get_alphabet()?;
     Ok(match direction {
         GuessDirection::GuessSuffix => {
@@ -393,7 +414,7 @@ pub fn affix_guessify(
                     repl.add_transition(d, &newarc, true);
                 }
             }
-            HfstTransducer::new_from_basic(&repl, format)?
+            HfstTransducer::new_from_basic(&repl)?
         }
         GuessDirection::GuessPrefix => {
             let mut repl = HfstBasicTransducer::from_transducer(trans);
@@ -418,7 +439,7 @@ pub fn affix_guessify(
                 );
                 repl.add_transition(s, &newarc, true);
             }
-            HfstTransducer::new_from_basic(&repl, format)?
+            HfstTransducer::new_from_basic(&repl)?
         }
     })
 }

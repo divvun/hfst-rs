@@ -99,15 +99,14 @@ pub fn read_tsv_extensions<R: BufRead>(
 // disjunct) and the level-application block of its process_stream.
 // [spec:hfst:def:hfst-expand-equivalences.add-extension-fn]
 // [spec:hfst:sem:hfst-expand-equivalences.add-extension-fn]
-pub fn expand_equivalences(
-    mut trans: HfstTransducer,
+pub fn expand_equivalences<B: crate::backend::AlgebraBackend>(
+    mut trans: HfstTransducer<B>,
     pairs: &[(String, String)],
     level: FsaLevel,
-) -> crate::error::Result<HfstTransducer> {
-    let mut extensions =
-        HfstTransducer::new_symbol_pair(internal_identity, internal_identity, trans.get_type())?;
+) -> crate::error::Result<HfstTransducer<B>> {
+    let mut extensions = HfstTransducer::new_symbol_pair(internal_identity, internal_identity)?;
     for (from, to) in pairs {
-        let remap = HfstTransducer::new_symbol_pair(from, to, extensions.get_type())?;
+        let remap = HfstTransducer::new_symbol_pair(from, to)?;
         extensions.disjunct(&remap, true)?;
     }
     extensions.minimize()?.repeat_star()?.minimize()?;

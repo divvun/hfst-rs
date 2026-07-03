@@ -1230,7 +1230,7 @@ impl PmatchContainer {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
     // explicit PmatchContainer(std::vector<hfst::HfstTransducer>)
     pub fn new_from_hfst_transducers(
-        transducers: Vec<crate::hfst_transducer::HfstTransducer>,
+        transducers: Vec<crate::hfst_transducer::HfstTransducer<crate::transducer::Transducer>>,
     ) -> crate::error::Result<PmatchContainer> {
         if transducers.is_empty() {
             let mut c = PmatchContainer::new();
@@ -1242,16 +1242,11 @@ impl PmatchContainer {
             // C++: convert transducers[0] to HFST_OLW (unless already), then
             // hfst_transducer_to_hfst_ol(top) to get the optimized-lookup backend,
             // and build the container from it (exactly new_from_transducer). The
-            // backend is the (weighted) optimized-lookup transducer behind the OLW
-            // HfstTransducer, copied out of the union.
-            let mut top = transducers[0].clone();
-            if top.get_type() != crate::hfst_data_types::ImplementationType::HFST_OLW_TYPE {
-                top.convert(
-                    crate::hfst_data_types::ImplementationType::HFST_OLW_TYPE,
-                    String::new(),
-                )?;
-            }
-            let backend = crate::transducer::Transducer::copy(top.implementation.as_hfst_ol())?;
+            // pmatch runtime pins the weighted optimized-lookup instantiation
+            // ([dec:hfst:monomorphic-backends]), so the runtime convert is a
+            // static fact of the parameter type now.
+            let top = &transducers[0];
+            let backend = crate::transducer::Transducer::copy(&top.fst)?;
             let mut c = PmatchContainer::new_from_transducer(Box::new(backend))?;
             // C++ sets these from transducers[0]'s properties before building; the
             // build does not depend on them, so applying them afterwards is
@@ -1262,7 +1257,6 @@ impl PmatchContainer {
             // This is the difficult case where we have to make sure multiple
             // optimized-lookup transducers are harmonized with each other.
             use crate::convert_transducer_format::ConversionFunctions;
-            use crate::hfst_data_types::ImplementationType::HFST_OLW_TYPE;
 
             let mut c = PmatchContainer::new();
             c.set_properties();
@@ -1270,9 +1264,9 @@ impl PmatchContainer {
             c.set_properties_map(transducers[0].get_properties());
 
             // A dummy transducer with an alphabet with all the symbols
-            let mut harmonizer = crate::hfst_transducer::HfstTransducer::new_type(
-                crate::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE,
-            )?;
+            // (TROPICAL_OPENFST_TYPE in C++; the tropical backend type here).
+            let mut harmonizer: crate::hfst_transducer::HfstTransducer<hfst_openfst::StdVectorFst> =
+                crate::hfst_transducer::HfstTransducer::new();
             // First we need to collect a unified alphabet from all the
             // transducers.
             let mut symbols_seen: std::collections::BTreeSet<String> =
@@ -1284,10 +1278,7 @@ impl PmatchContainer {
                 let string_set = transducers[i].get_alphabet()?;
                 for sym in string_set.iter() {
                     if !symbols_seen.contains(sym) {
-                        let ht = crate::hfst_transducer::HfstTransducer::new_symbol(
-                            sym,
-                            harmonizer.get_type(),
-                        )?;
+                        let ht = crate::hfst_transducer::HfstTransducer::new_symbol(sym)?;
                         harmonizer.disjunct(&ht, true)?;
                         symbols_seen.insert(sym.clone());
                     }
@@ -1303,16 +1294,21 @@ impl PmatchContainer {
                     0
                 }
             };
-            // Then we convert the harmonizer...
-            harmonizer.convert(HFST_OLW_TYPE, String::new())?;
-            let harmonizer_ol = harmonizer.implementation.as_hfst_ol();
+            // Then we convert the harmonizer... (typed now: basic -> weighted
+            // OL tables, the former convert(HFST_OLW_TYPE)).
+            let harmonizer_net = harmonizer.get_basic_transducer()?;
+            let harmonizer_ol_owned = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
+                &harmonizer_net,
+                true,
+                "",
+                None,
+            )?;
+            let harmonizer_ol = &harmonizer_ol_owned;
 
-            // We take care of TOP first. Convert to OLW (mirrors C++) then to
-            // an intermediate basic transducer, then harmonize into OL.
-            let mut top = transducers[top_index].clone();
-            if top.get_type() != HFST_OLW_TYPE {
-                top.convert(HFST_OLW_TYPE, String::new())?;
-            }
+            // We take care of TOP first. Already OLW by type (the C++ convert
+            // is static); go through an intermediate basic transducer, then
+            // harmonize into OL.
+            let top = transducers[top_index].clone();
             let intermediate_tmp =
                 ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&top)?;
             let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
@@ -1348,10 +1344,7 @@ impl PmatchContainer {
                     // there's a NULL where TOP should be
                     continue;
                 }
-                let mut temp = transducers[i].clone();
-                if temp.get_type() != HFST_OLW_TYPE {
-                    temp.convert(HFST_OLW_TYPE, String::new())?;
-                }
+                let temp = transducers[i].clone();
                 let intermediate_tmp =
                     ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&temp)?;
                 let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(

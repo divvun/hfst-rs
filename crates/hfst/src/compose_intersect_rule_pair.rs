@@ -17,11 +17,11 @@
 //!      'ComposeIntersectRule *' and dispatches the **virtual** 'get_transitions'
 //!      / 'get_final_weight' (and the non-virtual-but-inherited 'get_symbols')
 //!      through that pointer, so the pointee may be a plain 'ComposeIntersectRule'
-//!      *or* another 'ComposeIntersectRulePair'. This is modelled with the
-//!      ['ComposeIntersectRuleObject'] trait, implemented for both
-//!      ['ComposeIntersectRule'] and 'ComposeIntersectRulePair'; 'fst1' / 'fst2'
-//!      are 'Box<dyn ComposeIntersectRuleObject>' (the owning 'ComposeIntersectRule *',
-//!      'delete'd in the C++ destructor — here freed automatically by 'Box' drop).
+//!      *or* another 'ComposeIntersectRulePair'. This is modelled with the closed
+//!      ['ComposeIntersectRuleComponent'] enum (a two-arm runtime sum, since the
+//!      nesting depth is runtime data); 'fst1' / 'fst2' own their components (the
+//!      owning 'ComposeIntersectRule *', 'delete'd in the C++ destructor — here
+//!      freed automatically on drop).
 //!   2. *inherited state* — the constructor assigns the inherited
 //!      'ComposeIntersectFst::symbol_set' ('ComposeIntersectRule::symbol_set =
 //!      fst1->get_symbols();'), and the inherited (non-overridden) 'get_symbols'
@@ -80,50 +80,73 @@ pub type SymbolTransitionMap = BTreeMap<usize, TransitionSet>;
 // 'typedef std::vector<SymbolTransitionMap> StateTransitionVector;'
 pub type StateTransitionVector = Vec<SymbolTransitionMap>;
 
-/// The virtual interface of a 'ComposeIntersectRule *' as exercised through the
-/// 'fst1' / 'fst2' pointers of a 'ComposeIntersectRulePair'.
+/// The closed component sum behind a 'ComposeIntersectRule *'.
 ///
-/// C++ reaches these via virtual dispatch on 'ComposeIntersectRule *' (which may
-/// point to a 'ComposeIntersectRule' or a 'ComposeIntersectRulePair'):
+/// C++ reached the components via virtual dispatch on 'ComposeIntersectRule *'
+/// (which may point to a 'ComposeIntersectRule' or a nested
+/// 'ComposeIntersectRulePair'):
 /// * 'get_transitions' / 'get_final_weight' are 'virtual' (overridden by the pair);
 /// * 'get_symbols' is inherited and not overridden, so it returns the component's
-///   own 'symbol_set'.
+///   own 'symbol_set';
+/// * 'known_symbol' is the *non-virtual* 'ComposeIntersectRule::known_symbol'
+///   that 'ComposeIntersectLexicon' calls on the same pointer — see the 'Pair'
+///   arm below for how the non-virtual dispatch is reproduced.
 ///
-/// The four methods invoked on a 'ComposeIntersectRule *' by the compose-intersect
-/// machinery are included. 'get_transitions' / 'get_final_weight' are the C++
-/// *virtual* methods (overridden by the pair); 'known_symbol' is the
-/// *non-virtual* 'ComposeIntersectRule::known_symbol' that 'ComposeIntersectLexicon'
-/// calls on the same pointer — see the per-impl notes below for how the
-/// non-virtual dispatch is reproduced.
-pub trait ComposeIntersectRuleObject {
-    fn get_transitions(
-        &mut self,
-        s: HfstState,
-        symbol: usize,
-    ) -> crate::error::Result<&TransitionSet>;
-    fn get_final_weight(&self, s: HfstState) -> crate::error::Result<f32>;
-    fn get_symbols(&self) -> &SymbolSet;
-    fn known_symbol(&self, symbol: usize) -> crate::error::Result<bool>;
+/// The implementor set is closed (exactly these two), but the nesting depth is
+/// runtime data (one pair per extra rule in 'compose_intersect'), so this is
+/// the one place in the compose-intersect machinery that keeps a runtime sum —
+/// the same shape as the facade's 'AnyTransducer'
+/// ([dec:hfst:monomorphic-backends]); the former 'dyn' trait dispatch becomes
+/// a two-arm match.
+pub enum ComposeIntersectRuleComponent {
+    Rule(ComposeIntersectRule),
+    Pair(Box<ComposeIntersectRulePair>),
 }
 
-// 'ComposeIntersectRule' used through a 'ComposeIntersectRule *' — the non-pair
-// case. Delegates to its inherent (inherited-from-'ComposeIntersectFst') methods.
-impl ComposeIntersectRuleObject for ComposeIntersectRule {
-    fn get_transitions(
+impl ComposeIntersectRuleComponent {
+    pub fn get_transitions(
         &mut self,
         s: HfstState,
         symbol: usize,
     ) -> crate::error::Result<&TransitionSet> {
-        ComposeIntersectRule::get_transitions(self, s, symbol)
+        match self {
+            ComposeIntersectRuleComponent::Rule(r) => {
+                ComposeIntersectRule::get_transitions(r, s, symbol)
+            }
+            ComposeIntersectRuleComponent::Pair(p) => {
+                ComposeIntersectRulePair::get_transitions(p, s, symbol)
+            }
+        }
     }
-    fn get_final_weight(&self, s: HfstState) -> crate::error::Result<f32> {
-        ComposeIntersectRule::get_final_weight(self, s)
+    pub fn get_final_weight(&self, s: HfstState) -> crate::error::Result<f32> {
+        match self {
+            ComposeIntersectRuleComponent::Rule(r) => ComposeIntersectRule::get_final_weight(r, s),
+            ComposeIntersectRuleComponent::Pair(p) => {
+                ComposeIntersectRulePair::get_final_weight(p, s)
+            }
+        }
     }
-    fn get_symbols(&self) -> &SymbolSet {
-        ComposeIntersectRule::get_symbols(self)
+    pub fn get_symbols(&self) -> &SymbolSet {
+        match self {
+            ComposeIntersectRuleComponent::Rule(r) => ComposeIntersectRule::get_symbols(r),
+            // 'get_symbols' is inherited and not overridden by the pair, so it
+            // returns the 'symbol_set' assigned in the pair's constructor.
+            ComposeIntersectRuleComponent::Pair(p) => &p.symbol_set,
+        }
     }
-    fn known_symbol(&self, symbol: usize) -> crate::error::Result<bool> {
-        ComposeIntersectRule::known_symbol(self, symbol)
+    pub fn known_symbol(&self, symbol: usize) -> crate::error::Result<bool> {
+        match self {
+            ComposeIntersectRuleComponent::Rule(r) => ComposeIntersectRule::known_symbol(r, symbol),
+            // 'known_symbol' is the *non-virtual* 'ComposeIntersectRule::
+            // known_symbol', so calling it through a 'ComposeIntersectRule *'
+            // that actually points at a 'ComposeIntersectRulePair' reads the
+            // pair's *inherited* 'symbols' StringSet. That member is never
+            // populated for a pair (the constructor only assigns the numeric
+            // 'symbol_set'), so 'symbols.count(...) > 0' is always false. The
+            // flattened port has no 'symbols' field on the pair, so this
+            // returns 'false' unconditionally — bug-for-bug identical.
+            ComposeIntersectRuleComponent::Pair(_) => Ok(false),
+        }
     }
 }
 
@@ -132,15 +155,15 @@ pub struct ComposeIntersectRulePair {
     // Inherited 'ComposeIntersectFst::symbol_set' — the only inherited member used
     // by 'ComposeIntersectRulePair' (assigned in the constructor, read back by the
     // inherited 'get_symbols'). See the module docs for why inheritance is flattened.
-    symbol_set: SymbolSet,
+    pub(crate) symbol_set: SymbolSet,
 
     // protected:
     state_pair_vector: StatePairVector,
     pair_state_map: PairStateMap,
     state_transition_vector: StateTransitionVector,
 
-    fst1: Box<dyn ComposeIntersectRuleObject>,
-    fst2: Box<dyn ComposeIntersectRuleObject>,
+    fst1: ComposeIntersectRuleComponent,
+    fst2: ComposeIntersectRuleComponent,
 }
 
 impl ComposeIntersectRulePair {
@@ -161,10 +184,7 @@ impl ComposeIntersectRulePair {
     //                                         ComposeIntersectRule::START));
     //   state_transition_vector.push_back(SymbolTransitionMap());
     // }
-    pub fn new(
-        fst1: Box<dyn ComposeIntersectRuleObject>,
-        fst2: Box<dyn ComposeIntersectRuleObject>,
-    ) -> Self {
+    pub fn new(fst1: ComposeIntersectRuleComponent, fst2: ComposeIntersectRuleComponent) -> Self {
         // ComposeIntersectRule::symbol_set = fst1->get_symbols();
         let symbol_set = fst1.get_symbols().clone();
 
@@ -401,32 +421,6 @@ impl ComposeIntersectRulePair {
     }
 }
 
-// 'ComposeIntersectRulePair' used through a 'ComposeIntersectRule *' — the nested
-// case ('new ComposeIntersectRulePair(rule, pair)'). 'get_transitions' /
-// 'get_final_weight' are the overrides; 'get_symbols' is inherited and returns the
-// 'symbol_set' assigned in the constructor.
-impl ComposeIntersectRuleObject for ComposeIntersectRulePair {
-    fn get_transitions(
-        &mut self,
-        s: HfstState,
-        symbol: usize,
-    ) -> crate::error::Result<&TransitionSet> {
-        ComposeIntersectRulePair::get_transitions(self, s, symbol)
-    }
-    fn get_final_weight(&self, s: HfstState) -> crate::error::Result<f32> {
-        ComposeIntersectRulePair::get_final_weight(self, s)
-    }
-    fn get_symbols(&self) -> &SymbolSet {
-        &self.symbol_set
-    }
-    fn known_symbol(&self, _symbol: usize) -> crate::error::Result<bool> {
-        // 'known_symbol' is the *non-virtual* 'ComposeIntersectRule::known_symbol',
-        // so calling it through a 'ComposeIntersectRule *' that actually points at a
-        // 'ComposeIntersectRulePair' reads the pair's *inherited* 'symbols' StringSet.
-        // That member is never populated for a pair (the constructor only assigns the
-        // numeric 'symbol_set'), so 'symbols.count(...) > 0' is always false. The
-        // flattened port has no 'symbols' field on the pair, so this returns 'false'
-        // unconditionally — bug-for-bug identical.
-        Ok(false)
-    }
-}
+// (The former 'ComposeIntersectRuleObject' impls for 'ComposeIntersectRule' and
+// 'ComposeIntersectRulePair' are the two match arms of
+// ['ComposeIntersectRuleComponent'] above.)

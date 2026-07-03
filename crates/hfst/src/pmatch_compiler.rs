@@ -6,25 +6,29 @@
 //! and is NOT part of this module.
 //!
 //! Faithfulness over idiom: C++ identifiers are kept verbatim (Rust casing),
-//! bugs are preserved, and 'unsafe'/raw pointers mirror the C++ 'PmatchObject*'
-//! hierarchy and 'hfst::pmatch' namespace globals. The ONE sanctioned
-//! structural deviation is that the bison tree construction is replaced by a
-//! walk over the 'nfst-pmatch' parse-only AST (see ['build_object'],
-//! ['build_statement'], ['PmatchCompiler']).
+//! bugs are preserved, and shared 'Rc<RefCell<..>>' handles mirror the C++
+//! 'PmatchObject*' hierarchy and 'hfst::pmatch' namespace globals. The ONE
+//! sanctioned structural deviation is that the bison tree construction is
+//! replaced by a walk over the 'nfst-pmatch' parse-only AST (see
+//! ['build_object'], ['build_statement'], ['PmatchCompiler']). The C++
+//! runtime 'format' plumbing is the backend type parameter 'B' now
+//! ([dec:hfst:monomorphic-backends]).
 
 #![allow(dead_code)]
 #![allow(unused_variables)]
 #![allow(unused_mut)]
 #![allow(clippy::too_many_arguments)]
 
+use crate::backend::AlgebraBackend;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_data_types::StringPairSet;
-use crate::hfst_data_types::{ImplementationType, StringPair, StringVector};
+use crate::hfst_data_types::{StringPair, StringVector};
 use crate::hfst_symbol_defs::StringSet;
 use crate::hfst_symbol_defs::{
     internal_default, internal_epsilon, internal_identity, internal_unknown,
 };
 use crate::hfst_tokenizer::HfstTokenizer;
+use crate::hfst_transducer::FromAnyTransducer;
 use crate::hfst_transducer::HfstTransducer;
 use crate::hfst_transducer::{HfstTransducerPair, HfstTransducerPairVector};
 use crate::hfst_xerox_rules::{ReplaceArrow, ReplaceType};
@@ -49,11 +53,11 @@ use tracing::{debug, error, warn};
 /// map, its expression-tree parents, and `CALL_STACK` frames), so the safe
 /// representation is reference-counted shared ownership with interior
 /// mutability. Replaces the C++ `PmatchObject*` raw pointer.
-pub type ObjRef = Rc<RefCell<dyn PmatchObject>>;
+pub type ObjRef<B> = Rc<RefCell<dyn PmatchObject<B>>>;
 
 /// Shared-ownership handle to a `PmatchObjectPairBase` (the markup/object-pair
 /// hierarchy). Replaces the C++ `PmatchObject*`-pair raw pointer.
-pub type PairRef = Rc<RefCell<dyn PmatchObjectPairBase>>;
+pub type PairRef<B> = Rc<RefCell<dyn PmatchObjectPairBase<B>>>;
 
 // ---------------------------------------------------------------------------
 // Primitive typedefs
@@ -69,10 +73,10 @@ pub const CLOCKS_PER_SEC: clock_t = 1_000_000;
 pub type WordVecFloat = f32;
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.transducer-pointer-pair]
-pub type TransducerPointerPair = (HfstTransducer, HfstTransducer);
+pub type TransducerPointerPair<B> = (HfstTransducer<B>, HfstTransducer<B>);
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.mapping-pair-vector]
-pub type MappingPairVector = Vec<PairRef>;
+pub type MappingPairVector<B> = Vec<PairRef<B>>;
 
 /// Mirror of C 'clock()' — processor time in ['CLOCKS_PER_SEC'] ticks. The
 /// skeleton uses wall-clock microseconds, which is only consulted in verbose
@@ -291,7 +295,7 @@ pub struct WordVector {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.pmatch-object-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.pmatch-object-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.pmatch-object-fn]
-pub trait PmatchObject {
+pub trait PmatchObject<B: AlgebraBackend + 'static> {
     // --- base field accessors (required) -----------------------------------
     fn get_name(&self) -> &str {
         ""
@@ -309,15 +313,15 @@ pub trait PmatchObject {
         0
     }
     fn set_my_timer(&mut self, my_timer: clock_t) {}
-    fn get_cache(&self) -> Option<&HfstTransducer> {
+    fn get_cache(&self) -> Option<&HfstTransducer<B>> {
         None
     }
-    fn set_cache(&mut self, cache: HfstTransducer) {}
+    fn set_cache(&mut self, cache: HfstTransducer<B>) {}
 
     // --- shared (non-virtual in C++) timing/cache helpers ------------------
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.start-timing-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.start-timing-fn]
-    fn start_timing(&mut self, ctx: &mut PmatchEvalContext) {
+    fn start_timing(&mut self, ctx: &mut PmatchEvalContext<B>) {
         if ctx.verbose && self.get_name() != "" {
             self.set_my_timer(clock());
             ctx.named_object_evaluation_stack_depth = ctx.named_object_evaluation_stack_depth + (1);
@@ -327,7 +331,7 @@ pub trait PmatchObject {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.report-time-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.report-time-fn]
-    fn report_time(&self, ctx: &mut PmatchEvalContext, extra_info: String) {
+    fn report_time(&self, ctx: &mut PmatchEvalContext<B>, extra_info: String) {
         if ctx.verbose && self.get_name() != "" {
             let duration = (clock() - self.get_my_timer()) as f64 / CLOCKS_PER_SEC as f64;
             write_compilation_stack_indentation_to_err(ctx);
@@ -342,7 +346,7 @@ pub trait PmatchObject {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.report-cache-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.report-cache-fn]
-    fn report_cache(&self, ctx: &mut PmatchEvalContext, extra_info: String) {
+    fn report_cache(&self, ctx: &mut PmatchEvalContext<B>, extra_info: String) {
         if ctx.verbose && self.get_name() != "TOP" {
             ctx.named_object_evaluation_stack_depth = ctx.named_object_evaluation_stack_depth + (1);
             write_compilation_stack_indentation_to_err(ctx);
@@ -352,7 +356,7 @@ pub trait PmatchObject {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.should-use-cache-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.should-use-cache-fn]
-    fn should_use_cache(&self, ctx: &mut PmatchEvalContext) -> bool {
+    fn should_use_cache(&self, ctx: &mut PmatchEvalContext<B>) -> bool {
         self.get_name() != "" && ctx.call_stack_len() == 0
     }
 
@@ -364,7 +368,8 @@ pub trait PmatchObject {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.collect-strings-into-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.collect-strings-into-fn]
-    fn collect_strings_into(&mut self, ctx: &mut PmatchEvalContext, strings: &mut StringVector) {}
+    fn collect_strings_into(&mut self, ctx: &mut PmatchEvalContext<B>, strings: &mut StringVector) {
+    }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.collect-initial-symbols-into-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.collect-initial-symbols-into-fn]
     fn collect_initial_symbols_into(
@@ -385,7 +390,7 @@ pub trait PmatchObject {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-real-initial-symbols-from-right-fn]
     fn get_real_initial_symbols_from_right(
         &mut self,
-        ctx: &mut PmatchEvalContext,
+        ctx: &mut PmatchEvalContext<B>,
     ) -> crate::error::Result<StringSet> {
         Ok(StringSet::new())
     }
@@ -416,7 +421,7 @@ pub trait PmatchObject {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-initial-symbols-from-unary-root-fn]
     fn get_initial_symbols_from_unary_root(
         &mut self,
-        ctx: &mut PmatchEvalContext,
+        ctx: &mut PmatchEvalContext<B>,
     ) -> crate::error::Result<StringSet> {
         Ok(StringSet::new())
     }
@@ -426,7 +431,7 @@ pub trait PmatchObject {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-initial-rc-initial-symbols-fn]
     fn get_initial_RC_initial_symbols(
         &mut self,
-        ctx: &mut PmatchEvalContext,
+        ctx: &mut PmatchEvalContext<B>,
     ) -> crate::error::Result<StringSet> {
         Ok(StringSet::new())
     }
@@ -436,7 +441,7 @@ pub trait PmatchObject {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-initial-nrc-initial-symbols-fn]
     fn get_initial_NRC_initial_symbols(
         &mut self,
-        ctx: &mut PmatchEvalContext,
+        ctx: &mut PmatchEvalContext<B>,
     ) -> crate::error::Result<StringSet> {
         Ok(StringSet::new())
     }
@@ -445,31 +450,34 @@ pub trait PmatchObject {
     fn expand_Ins_arcs(&mut self, ss: &mut StringSet) {}
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-fn]
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer>;
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>>;
     /// The C++ overload 'evaluate(std::vector<PmatchObject*> args)' (base
     /// default).
     fn evaluate_args(
         &mut self,
-        ctx: &mut PmatchEvalContext,
-        args: Vec<ObjRef>,
-    ) -> crate::error::Result<HfstTransducer> {
+        ctx: &mut PmatchEvalContext<B>,
+        args: Vec<ObjRef<B>>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         self.evaluate(ctx)
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-as-arg-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.evaluate-as-arg-fn]
-    fn evaluate_as_arg(&mut self, ctx: &mut PmatchEvalContext) -> ObjRef {
+    fn evaluate_as_arg(&mut self, ctx: &mut PmatchEvalContext<B>) -> ObjRef<B> {
         panic!("evaluate_as_arg called on a PmatchObject that does not support it")
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.as-string-fn]
-    fn as_string(&mut self, ctx: &mut PmatchEvalContext) -> String {
+    fn as_string(&mut self, ctx: &mut PmatchEvalContext<B>) -> String {
         String::new()
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.as-string-pair-fn]
-    fn as_string_pair(&mut self, ctx: &mut PmatchEvalContext) -> StringPair {
+    fn as_string_pair(&mut self, ctx: &mut PmatchEvalContext<B>) -> StringPair {
         (String::new(), String::new())
     }
 }
@@ -503,10 +511,10 @@ macro_rules! pmatch_object_base_accessors {
         fn set_my_timer(&mut self, my_timer: clock_t) {
             self.my_timer = my_timer;
         }
-        fn get_cache(&self) -> Option<&HfstTransducer> {
+        fn get_cache(&self) -> Option<&HfstTransducer<B>> {
             self.cache.as_ref()
         }
-        fn set_cache(&mut self, cache: HfstTransducer) {
+        fn set_cache(&mut self, cache: HfstTransducer<B>) {
             self.cache = Some(cache);
         }
     };
@@ -517,99 +525,99 @@ macro_rules! pmatch_object_base_accessors {
 // ---------------------------------------------------------------------------
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol]
-pub struct PmatchSymbol {
+pub struct PmatchSymbol<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     // This handles argumentless function calls and definition invocations,
     // which are the same thing under the hood.
     pub sym: String,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string]
-pub struct PmatchString {
+pub struct PmatchString<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     pub string: String,
     pub multichar: bool,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-question-mark]
-pub struct PmatchQuestionMark {
+pub struct PmatchQuestionMark<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-numeric-operation]
-pub struct PmatchNumericOperation {
+pub struct PmatchNumericOperation<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     pub op: PmatchNumericOp,
-    pub root: ObjRef,
+    pub root: ObjRef<B>,
     pub values: Vec<i32>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation]
-pub struct PmatchUnaryOperation {
+pub struct PmatchUnaryOperation<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     pub op: PmatchUnaryOp,
-    pub root: ObjRef,
+    pub root: ObjRef<B>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation]
-pub struct PmatchBinaryOperation {
+pub struct PmatchBinaryOperation<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     pub op: PmatchBinaryOp,
-    pub left: ObjRef,
-    pub right: ObjRef,
+    pub left: ObjRef<B>,
+    pub right: ObjRef<B>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-ternary-operation]
-pub struct PmatchTernaryOperation {
+pub struct PmatchTernaryOperation<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     pub op: PmatchTernaryOp,
-    pub left: ObjRef,
-    pub middle: ObjRef,
-    pub right: ObjRef,
+    pub left: ObjRef<B>,
+    pub middle: ObjRef<B>,
+    pub right: ObjRef<B>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-transducer-container]
-pub struct PmatchTransducerContainer {
+pub struct PmatchTransducerContainer<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
-    pub t: HfstTransducer,
+    pub cache: Option<HfstTransducer<B>>,
+    pub t: HfstTransducer<B>,
 }
 
-impl PmatchTransducerContainer {
+impl<B: AlgebraBackend + 'static> PmatchTransducerContainer<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-transducer-container.pmatch-transducer-container-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-transducer-container.pmatch-transducer-container-fn]
-    pub fn new(t: HfstTransducer) -> Rc<RefCell<PmatchTransducerContainer>> {
+    pub fn new(t: HfstTransducer<B>) -> Rc<RefCell<PmatchTransducerContainer<B>>> {
         Rc::new(RefCell::new(PmatchTransducerContainer {
             name: String::new(),
             weight: 0.0,
@@ -622,63 +630,63 @@ impl PmatchTransducerContainer {
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-function]
-pub struct PmatchFunction {
+pub struct PmatchFunction<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     pub args: Vec<String>,
-    pub root: ObjRef,
+    pub root: ObjRef<B>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-funcall]
-pub struct PmatchFuncall {
+pub struct PmatchFuncall<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
-    pub args: Vec<ObjRef>,
-    pub fun: ObjRef,
+    pub cache: Option<HfstTransducer<B>>,
+    pub args: Vec<ObjRef<B>>,
+    pub fun: ObjRef<B>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-builtin-function]
-pub struct PmatchBuiltinFunction {
+pub struct PmatchBuiltinFunction<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
-    pub args: Vec<ObjRef>,
+    pub cache: Option<HfstTransducer<B>>,
+    pub args: Vec<ObjRef<B>>,
     pub ty: PmatchBuiltin,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc]
-pub struct PmatchEpsilonArc {
+pub struct PmatchEpsilonArc<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-empty]
-pub struct PmatchEmpty {
+pub struct PmatchEmpty<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-acceptor]
-pub struct PmatchAcceptor {
+pub struct PmatchAcceptor<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     pub set: PmatchPredefined,
 }
 
@@ -688,32 +696,32 @@ pub struct PmatchAcceptor {
 // dispatch between 'PmatchObjectPair' and 'PmatchMarkupContainer'.
 // ---------------------------------------------------------------------------
 
-pub trait PmatchObjectPairBase {
-    fn get_left(&self) -> ObjRef;
-    fn set_left(&mut self, l: ObjRef) {}
-    fn get_right(&self) -> ObjRef;
-    fn set_right(&mut self, r: ObjRef) {}
+pub trait PmatchObjectPairBase<B: AlgebraBackend + 'static> {
+    fn get_left(&self) -> ObjRef<B>;
+    fn set_left(&mut self, l: ObjRef<B>) {}
+    fn get_right(&self) -> ObjRef<B>;
+    fn set_right(&mut self, r: ObjRef<B>) {}
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object-pair.evaluate-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object-pair.evaluate-pair-fn]
     fn evaluate_pair(
         &mut self,
-        ctx: &mut PmatchEvalContext,
-    ) -> crate::error::Result<TransducerPointerPair> {
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<TransducerPointerPair<B>> {
         panic!("evaluate_pair called on a PmatchObject that is not a pair")
     }
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object-pair]
-pub struct PmatchObjectPair {
-    pub left: ObjRef,
-    pub right: ObjRef,
+pub struct PmatchObjectPair<B: AlgebraBackend + 'static> {
+    pub left: ObjRef<B>,
+    pub right: ObjRef<B>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-markup-container]
-pub struct PmatchMarkupContainer {
-    pub left: ObjRef,
-    pub right: ObjRef,
-    pub left_of_arrow: ObjRef,
+pub struct PmatchMarkupContainer<B: AlgebraBackend + 'static> {
+    pub left: ObjRef<B>,
+    pub right: ObjRef<B>,
+    pub left_of_arrow: ObjRef<B>,
 }
 
 // ---------------------------------------------------------------------------
@@ -721,60 +729,60 @@ pub struct PmatchMarkupContainer {
 // ---------------------------------------------------------------------------
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-restriction-container]
-pub struct PmatchRestrictionContainer {
+pub struct PmatchRestrictionContainer<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
-    pub left: ObjRef,
-    pub contexts: MappingPairVector,
+    pub cache: Option<HfstTransducer<B>>,
+    pub left: ObjRef<B>,
+    pub contexts: MappingPairVector<B>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container]
-pub struct PmatchMappingPairsContainer {
+pub struct PmatchMappingPairsContainer<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     pub arrow: ReplaceArrow,
-    pub mapping_pairs: MappingPairVector,
+    pub mapping_pairs: MappingPairVector<B>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-contexts-container]
-pub struct PmatchContextsContainer {
+pub struct PmatchContextsContainer<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     pub ty: ReplaceType,
-    pub context_pairs: MappingPairVector,
+    pub context_pairs: MappingPairVector<B>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container]
-pub struct PmatchReplaceRuleContainer {
+pub struct PmatchReplaceRuleContainer<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     pub arrow: ReplaceArrow,
     pub ty: ReplaceType,
-    pub mapping: MappingPairVector,
-    pub context: MappingPairVector,
+    pub mapping: MappingPairVector<B>,
+    pub context: MappingPairVector<B>,
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container]
-pub struct PmatchParallelRulesContainer {
+pub struct PmatchParallelRulesContainer<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
     pub my_timer: clock_t,
-    pub cache: Option<HfstTransducer>,
+    pub cache: Option<HfstTransducer<B>>,
     pub arrow: ReplaceArrow,
-    pub rules: Vec<Rc<RefCell<PmatchReplaceRuleContainer>>>,
+    pub rules: Vec<Rc<RefCell<PmatchReplaceRuleContainer<B>>>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -783,10 +791,10 @@ pub struct PmatchParallelRulesContainer {
 // line_defined=0 (no lexer line counter in this port), my_timer=0, cache=NULL)
 // ---------------------------------------------------------------------------
 
-impl PmatchSymbol {
+impl<B: AlgebraBackend + 'static> PmatchSymbol<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.pmatch-symbol-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.pmatch-symbol-fn]
-    pub fn new(str: String) -> Rc<RefCell<PmatchSymbol>> {
+    pub fn new(str: String) -> Rc<RefCell<PmatchSymbol<B>>> {
         Rc::new(RefCell::new(PmatchSymbol {
             name: String::new(),
             weight: 0.0,
@@ -798,10 +806,10 @@ impl PmatchSymbol {
     }
 }
 
-impl PmatchString {
+impl<B: AlgebraBackend + 'static> PmatchString<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.pmatch-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.pmatch-string-fn]
-    pub fn new(str: String, is_multichar: bool) -> Rc<RefCell<PmatchString>> {
+    pub fn new(str: String, is_multichar: bool) -> Rc<RefCell<PmatchString<B>>> {
         Rc::new(RefCell::new(PmatchString {
             name: String::new(),
             weight: 0.0,
@@ -814,10 +822,10 @@ impl PmatchString {
     }
 }
 
-impl PmatchNumericOperation {
+impl<B: AlgebraBackend + 'static> PmatchNumericOperation<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-numeric-operation.pmatch-numeric-operation-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-numeric-operation.pmatch-numeric-operation-fn]
-    pub fn new(op: PmatchNumericOp, root: ObjRef) -> Rc<RefCell<PmatchNumericOperation>> {
+    pub fn new(op: PmatchNumericOp, root: ObjRef<B>) -> Rc<RefCell<PmatchNumericOperation<B>>> {
         Rc::new(RefCell::new(PmatchNumericOperation {
             name: String::new(),
             weight: 0.0,
@@ -831,10 +839,10 @@ impl PmatchNumericOperation {
     }
 }
 
-impl PmatchUnaryOperation {
+impl<B: AlgebraBackend + 'static> PmatchUnaryOperation<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.pmatch-unary-operation-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.pmatch-unary-operation-fn]
-    pub fn new(op: PmatchUnaryOp, root: ObjRef) -> Rc<RefCell<PmatchUnaryOperation>> {
+    pub fn new(op: PmatchUnaryOp, root: ObjRef<B>) -> Rc<RefCell<PmatchUnaryOperation<B>>> {
         Rc::new(RefCell::new(PmatchUnaryOperation {
             name: String::new(),
             weight: 0.0,
@@ -847,14 +855,14 @@ impl PmatchUnaryOperation {
     }
 }
 
-impl PmatchBinaryOperation {
+impl<B: AlgebraBackend + 'static> PmatchBinaryOperation<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.pmatch-binary-operation-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.pmatch-binary-operation-fn]
     pub fn new(
         op: PmatchBinaryOp,
-        left: ObjRef,
-        right: ObjRef,
-    ) -> Rc<RefCell<PmatchBinaryOperation>> {
+        left: ObjRef<B>,
+        right: ObjRef<B>,
+    ) -> Rc<RefCell<PmatchBinaryOperation<B>>> {
         Rc::new(RefCell::new(PmatchBinaryOperation {
             name: String::new(),
             weight: 0.0,
@@ -868,15 +876,15 @@ impl PmatchBinaryOperation {
     }
 }
 
-impl PmatchTernaryOperation {
+impl<B: AlgebraBackend + 'static> PmatchTernaryOperation<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-ternary-operation.pmatch-ternary-operation-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-ternary-operation.pmatch-ternary-operation-fn]
     pub fn new(
         op: PmatchTernaryOp,
-        left: ObjRef,
-        middle: ObjRef,
-        right: ObjRef,
-    ) -> Rc<RefCell<PmatchTernaryOperation>> {
+        left: ObjRef<B>,
+        middle: ObjRef<B>,
+        right: ObjRef<B>,
+    ) -> Rc<RefCell<PmatchTernaryOperation<B>>> {
         Rc::new(RefCell::new(PmatchTernaryOperation {
             name: String::new(),
             weight: 0.0,
@@ -891,10 +899,13 @@ impl PmatchTernaryOperation {
     }
 }
 
-impl PmatchFunction {
+impl<B: AlgebraBackend + 'static> PmatchFunction<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-function.pmatch-function-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-function.pmatch-function-fn]
-    pub fn new(argument_vector: Vec<String>, function_root: ObjRef) -> Rc<RefCell<PmatchFunction>> {
+    pub fn new(
+        argument_vector: Vec<String>,
+        function_root: ObjRef<B>,
+    ) -> Rc<RefCell<PmatchFunction<B>>> {
         Rc::new(RefCell::new(PmatchFunction {
             name: String::new(),
             weight: 0.0,
@@ -907,10 +918,13 @@ impl PmatchFunction {
     }
 }
 
-impl PmatchFuncall {
+impl<B: AlgebraBackend + 'static> PmatchFuncall<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-funcall.pmatch-funcall-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-funcall.pmatch-funcall-fn]
-    pub fn new(argument_vector: Vec<ObjRef>, function: ObjRef) -> Rc<RefCell<PmatchFuncall>> {
+    pub fn new(
+        argument_vector: Vec<ObjRef<B>>,
+        function: ObjRef<B>,
+    ) -> Rc<RefCell<PmatchFuncall<B>>> {
         Rc::new(RefCell::new(PmatchFuncall {
             name: String::new(),
             weight: 0.0,
@@ -923,13 +937,13 @@ impl PmatchFuncall {
     }
 }
 
-impl PmatchBuiltinFunction {
+impl<B: AlgebraBackend + 'static> PmatchBuiltinFunction<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-builtin-function.pmatch-builtin-function-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-builtin-function.pmatch-builtin-function-fn]
     pub fn new(
         ty: PmatchBuiltin,
-        argument_vector: Vec<ObjRef>,
-    ) -> Rc<RefCell<PmatchBuiltinFunction>> {
+        argument_vector: Vec<ObjRef<B>>,
+    ) -> Rc<RefCell<PmatchBuiltinFunction<B>>> {
         Rc::new(RefCell::new(PmatchBuiltinFunction {
             name: String::new(),
             weight: 0.0,
@@ -942,10 +956,10 @@ impl PmatchBuiltinFunction {
     }
 }
 
-impl PmatchAcceptor {
+impl<B: AlgebraBackend + 'static> PmatchAcceptor<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-acceptor.pmatch-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-acceptor.pmatch-acceptor-fn]
-    pub fn new(s: PmatchPredefined) -> Rc<RefCell<PmatchAcceptor>> {
+    pub fn new(s: PmatchPredefined) -> Rc<RefCell<PmatchAcceptor<B>>> {
         Rc::new(RefCell::new(PmatchAcceptor {
             name: String::new(),
             weight: 0.0,
@@ -957,18 +971,22 @@ impl PmatchAcceptor {
     }
 }
 
-impl PmatchObjectPair {
+impl<B: AlgebraBackend + 'static> PmatchObjectPair<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object-pair.pmatch-object-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object-pair.pmatch-object-pair-fn]
-    pub fn new(l: ObjRef, r: ObjRef) -> Rc<RefCell<PmatchObjectPair>> {
+    pub fn new(l: ObjRef<B>, r: ObjRef<B>) -> Rc<RefCell<PmatchObjectPair<B>>> {
         Rc::new(RefCell::new(PmatchObjectPair { left: l, right: r }))
     }
 }
 
-impl PmatchMarkupContainer {
+impl<B: AlgebraBackend + 'static> PmatchMarkupContainer<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-markup-container.pmatch-markup-container-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-markup-container.pmatch-markup-container-fn]
-    pub fn new(loa: ObjRef, lom: ObjRef, rom: ObjRef) -> Rc<RefCell<PmatchMarkupContainer>> {
+    pub fn new(
+        loa: ObjRef<B>,
+        lom: ObjRef<B>,
+        rom: ObjRef<B>,
+    ) -> Rc<RefCell<PmatchMarkupContainer<B>>> {
         Rc::new(RefCell::new(PmatchMarkupContainer {
             left: lom,
             right: rom,
@@ -977,10 +995,13 @@ impl PmatchMarkupContainer {
     }
 }
 
-impl PmatchRestrictionContainer {
+impl<B: AlgebraBackend + 'static> PmatchRestrictionContainer<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-restriction-container.pmatch-restriction-container-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-restriction-container.pmatch-restriction-container-fn]
-    pub fn new(l: ObjRef, c: MappingPairVector) -> Rc<RefCell<PmatchRestrictionContainer>> {
+    pub fn new(
+        l: ObjRef<B>,
+        c: MappingPairVector<B>,
+    ) -> Rc<RefCell<PmatchRestrictionContainer<B>>> {
         Rc::new(RefCell::new(PmatchRestrictionContainer {
             name: String::new(),
             weight: 0.0,
@@ -993,14 +1014,14 @@ impl PmatchRestrictionContainer {
     }
 }
 
-impl PmatchMappingPairsContainer {
+impl<B: AlgebraBackend + 'static> PmatchMappingPairsContainer<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.pmatch-mapping-pairs-container-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.pmatch-mapping-pairs-container-fn]
     pub fn new(
         a: ReplaceArrow,
-        left: ObjRef,
-        right: ObjRef,
-    ) -> Rc<RefCell<PmatchMappingPairsContainer>> {
+        left: ObjRef<B>,
+        right: ObjRef<B>,
+    ) -> Rc<RefCell<PmatchMappingPairsContainer<B>>> {
         let mut obj = PmatchMappingPairsContainer {
             name: String::new(),
             weight: 0.0,
@@ -1010,28 +1031,28 @@ impl PmatchMappingPairsContainer {
             arrow: a,
             mapping_pairs: MappingPairVector::new(),
         };
-        let pair: PairRef = PmatchObjectPair::new(left, right);
+        let pair: PairRef<B> = PmatchObjectPair::new(left, right);
         obj.mapping_pairs.push(pair);
         Rc::new(RefCell::new(obj))
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.push-back-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.push-back-fn]
-    pub fn push_back(&mut self, one_pair: &PmatchMappingPairsContainer) {
+    pub fn push_back(&mut self, one_pair: &PmatchMappingPairsContainer<B>) {
         for it in one_pair.mapping_pairs.iter() {
-            let pair: PairRef =
+            let pair: PairRef<B> =
                 PmatchObjectPair::new(it.borrow().get_left(), it.borrow().get_right());
             self.mapping_pairs.push(pair);
         }
     }
 }
 
-impl PmatchContextsContainer {
+impl<B: AlgebraBackend + 'static> PmatchContextsContainer<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-contexts-container.pmatch-contexts-container-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-contexts-container.pmatch-contexts-container-fn]
     pub fn new(
         t: ReplaceType,
-        context: &PmatchContextsContainer,
-    ) -> Rc<RefCell<PmatchContextsContainer>> {
+        context: &PmatchContextsContainer<B>,
+    ) -> Rc<RefCell<PmatchContextsContainer<B>>> {
         Rc::new(RefCell::new(PmatchContextsContainer {
             name: String::new(),
             weight: 0.0,
@@ -1044,24 +1065,24 @@ impl PmatchContextsContainer {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-contexts-container.push-back-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-contexts-container.push-back-fn]
-    pub fn push_back(&mut self, one_context: &PmatchContextsContainer) {
+    pub fn push_back(&mut self, one_context: &PmatchContextsContainer<B>) {
         for it in one_context.context_pairs.iter() {
-            let pair: PairRef =
+            let pair: PairRef<B> =
                 PmatchObjectPair::new(it.borrow().get_left(), it.borrow().get_right());
             self.context_pairs.push(pair);
         }
     }
 }
 
-impl PmatchReplaceRuleContainer {
+impl<B: AlgebraBackend + 'static> PmatchReplaceRuleContainer<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.pmatch-replace-rule-container-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.pmatch-replace-rule-container-fn]
     pub fn new(
         a: ReplaceArrow,
         t: ReplaceType,
-        m: MappingPairVector,
-        c: MappingPairVector,
-    ) -> Rc<RefCell<PmatchReplaceRuleContainer>> {
+        m: MappingPairVector<B>,
+        c: MappingPairVector<B>,
+    ) -> Rc<RefCell<PmatchReplaceRuleContainer<B>>> {
         Rc::new(RefCell::new(PmatchReplaceRuleContainer {
             name: String::new(),
             weight: 0.0,
@@ -1081,18 +1102,18 @@ impl PmatchReplaceRuleContainer {
 // ---------------------------------------------------------------------------
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers]
-pub struct PmatchUtilityTransducers {
+pub struct PmatchUtilityTransducers<B: AlgebraBackend> {
     // Character class acceptors
-    pub latin1_acceptor: HfstTransducer,
-    pub latin1_alpha_acceptor: HfstTransducer,
-    pub latin1_lowercase_acceptor: HfstTransducer,
-    pub latin1_uppercase_acceptor: HfstTransducer,
-    pub combining_accent_acceptor: HfstTransducer,
-    pub latin1_numeral_acceptor: HfstTransducer,
-    pub latin1_punct_acceptor: HfstTransducer,
-    pub latin1_whitespace_acceptor: HfstTransducer,
-    pub capify: HfstTransducer,
-    pub lowerfy: HfstTransducer,
+    pub latin1_acceptor: HfstTransducer<B>,
+    pub latin1_alpha_acceptor: HfstTransducer<B>,
+    pub latin1_lowercase_acceptor: HfstTransducer<B>,
+    pub latin1_uppercase_acceptor: HfstTransducer<B>,
+    pub combining_accent_acceptor: HfstTransducer<B>,
+    pub latin1_numeral_acceptor: HfstTransducer<B>,
+    pub latin1_punct_acceptor: HfstTransducer<B>,
+    pub latin1_whitespace_acceptor: HfstTransducer<B>,
+    pub capify: HfstTransducer<B>,
+    pub lowerfy: HfstTransducer<B>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1103,11 +1124,10 @@ pub struct PmatchUtilityTransducers {
 // previous 'thread_local!' globals, eliminating process/thread-global mutable
 // state.
 // ---------------------------------------------------------------------------
-pub struct PmatchEvalContext {
+pub struct PmatchEvalContext<B: AlgebraBackend + 'static> {
     // --- scalar / pointer state ---
     data: String,
     len: usize,
-    format: ImplementationType,
     verbose: bool,
     flatten: bool,
     include_cosine_distances: bool,
@@ -1116,14 +1136,14 @@ pub struct PmatchEvalContext {
     named_object_evaluation_stack_depth: i32,
     need_delimiters: bool,
     vector_similarity_projection_factor: WordVecFloat,
-    utils: Option<PmatchUtilityTransducers>,
+    utils: Option<PmatchUtilityTransducers<B>>,
     pmatchnerrs: i32,
     // --- collection state ---
-    definitions_table: BTreeMap<String, ObjRef>,
+    definitions_table: BTreeMap<String, ObjRef<B>>,
     variables: BTreeMap<String, String>,
-    call_stack: Vec<BTreeMap<String, ObjRef>>,
+    call_stack: Vec<BTreeMap<String, ObjRef<B>>>,
     eval_stack: Vec<String>,
-    def_insed_expressions: BTreeMap<String, ObjRef>,
+    def_insed_expressions: BTreeMap<String, ObjRef<B>>,
     inserted_names: BTreeSet<String>,
     uncomposed: BTreeSet<String>,
     unsatisfied_insertions: BTreeSet<String>,
@@ -1131,7 +1151,7 @@ pub struct PmatchEvalContext {
     function_names: BTreeSet<String>,
     capture_names: BTreeSet<String>,
     word_vectors: Vec<WordVector>,
-    named_transducers: BTreeMap<String, HfstTransducer>,
+    named_transducers: BTreeMap<String, HfstTransducer<B>>,
     includedir: String,
     lst_line_map: BTreeMap<String, i32>,
     lst_overlap_warned: BTreeSet<String>,
@@ -1160,18 +1180,17 @@ macro_rules! pmatch_ctx_string_set {
     };
 }
 
-impl Default for PmatchEvalContext {
+impl<B: AlgebraBackend + 'static> Default for PmatchEvalContext<B> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl PmatchEvalContext {
+impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
     pub fn new() -> Self {
         PmatchEvalContext {
             data: String::new(),
             len: 0,
-            format: ImplementationType::TROPICAL_OPENFST_TYPE,
             verbose: false,
             flatten: false,
             include_cosine_distances: false,
@@ -1248,13 +1267,13 @@ impl PmatchEvalContext {
     }
 
     // --- DEFINITIONS (BTreeMap<String, ObjRef>) ---
-    fn definitions_get(&self, k: &str) -> Option<ObjRef> {
+    fn definitions_get(&self, k: &str) -> Option<ObjRef<B>> {
         self.definitions_table.get(k).cloned()
     }
     fn definitions_contains(&self, k: &str) -> bool {
         self.definitions_table.contains_key(k)
     }
-    fn definitions_insert(&mut self, k: String, v: ObjRef) {
+    fn definitions_insert(&mut self, k: String, v: ObjRef<B>) {
         self.definitions_table.insert(k, v);
     }
     fn definitions_clear(&mut self) {
@@ -1269,7 +1288,7 @@ impl PmatchEvalContext {
     fn definitions_keys(&self) -> Vec<String> {
         self.definitions_table.keys().cloned().collect()
     }
-    fn definitions_snapshot(&self) -> Vec<(String, ObjRef)> {
+    fn definitions_snapshot(&self) -> Vec<(String, ObjRef<B>)> {
         self.definitions_table
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -1277,13 +1296,13 @@ impl PmatchEvalContext {
     }
 
     // --- DEF_INSED_EXPRESSIONS (BTreeMap<String, ObjRef>) ---
-    fn def_insed_expressions_get(&self, k: &str) -> Option<ObjRef> {
+    fn def_insed_expressions_get(&self, k: &str) -> Option<ObjRef<B>> {
         self.def_insed_expressions.get(k).cloned()
     }
     fn def_insed_expressions_contains(&self, k: &str) -> bool {
         self.def_insed_expressions.contains_key(k)
     }
-    fn def_insed_expressions_insert(&mut self, k: String, v: ObjRef) {
+    fn def_insed_expressions_insert(&mut self, k: String, v: ObjRef<B>) {
         self.def_insed_expressions.insert(k, v);
     }
     fn def_insed_expressions_clear(&mut self) {
@@ -1323,13 +1342,13 @@ impl PmatchEvalContext {
     fn call_stack_len(&self) -> usize {
         self.call_stack.len()
     }
-    fn call_stack_last_get(&self, k: &str) -> Option<ObjRef> {
+    fn call_stack_last_get(&self, k: &str) -> Option<ObjRef<B>> {
         self.call_stack.last().and_then(|f| f.get(k).cloned())
     }
-    fn call_stack_last_clone(&self) -> BTreeMap<String, ObjRef> {
+    fn call_stack_last_clone(&self) -> BTreeMap<String, ObjRef<B>> {
         self.call_stack.last().unwrap().clone()
     }
-    fn call_stack_push(&mut self, frame: BTreeMap<String, ObjRef>) {
+    fn call_stack_push(&mut self, frame: BTreeMap<String, ObjRef<B>>) {
         self.call_stack.push(frame);
     }
     fn call_stack_pop(&mut self) {
@@ -1461,7 +1480,7 @@ impl PmatchEvalContext {
     // cannot double-borrow.
     fn with_utils<R>(
         &mut self,
-        f: impl FnOnce(&mut PmatchUtilityTransducers) -> crate::error::Result<R>,
+        f: impl FnOnce(&mut PmatchUtilityTransducers<B>) -> crate::error::Result<R>,
     ) -> crate::error::Result<R> {
         if self.utils.is_none() {
             self.utils = Some(PmatchUtilityTransducers::new()?);
@@ -1479,7 +1498,7 @@ impl PmatchEvalContext {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-minimization-guard-fn]
     fn make_minimization_guard(
         &mut self,
-    ) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+    ) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
         let mut guard = String::new();
         if self.minimization_guard_count == 0 {
             guard.push_str(internal_epsilon);
@@ -1523,14 +1542,13 @@ pub fn add_to_pmatch_symbols(symbols: StringSet) {
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.acceptor-from-cstr-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.acceptor-from-cstr-fn]
-pub fn acceptor_from_cstr(
+pub fn acceptor_from_cstr<B: AlgebraBackend>(
     strings: &[&str],
-    ty: ImplementationType,
-) -> crate::error::Result<HfstTransducer> {
-    let mut retval: HfstTransducer = HfstTransducer::new_type(ty)?;
+) -> crate::error::Result<HfstTransducer<B>> {
+    let mut retval: HfstTransducer<B> = HfstTransducer::new();
     let mut i = 0;
     while i < array_len(strings) {
-        let tmp = HfstTransducer::new_symbol(strings[i], ty)?;
+        let tmp = HfstTransducer::new_symbol(strings[i])?;
         retval.disjunct(&tmp, true)?;
         i += 1;
     }
@@ -1547,56 +1565,40 @@ pub fn array_len(strings: &[&str]) -> usize {
 /// Facade mirroring the C++ 'hfst::pmatch::compile': construct the
 /// 'PmatchObject' definitions + TOP from a pmatch source string and return the
 /// evaluated transducers ('map<string, HfstTransducer*>' in C++).
-pub struct PmatchCompiler {
-    pub ty: ImplementationType,
+pub struct PmatchCompiler<B: AlgebraBackend + 'static> {
     pub verbose: bool,
     pub flatten: bool,
     pub include_cosine_distances: bool,
     pub includedir: String,
-    pub definitions: BTreeMap<String, HfstTransducer>,
+    pub definitions: BTreeMap<String, HfstTransducer<B>>,
     // Per-compile working state (formerly the 'hfst::pmatch' namespace globals).
     // Persists across 'compile' so 'define' can read the definition table after
     // a compile, mirroring the old thread-local persistence.
-    eval_ctx: PmatchEvalContext,
+    eval_ctx: PmatchEvalContext<B>,
 }
 
 // ===== body: utility-transducers =====
-impl PmatchUtilityTransducers {
+impl<B: AlgebraBackend> PmatchUtilityTransducers<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.pmatch-utility-transducers-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.pmatch-utility-transducers-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.pmatch-utility-transducers-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.pmatch-utility-transducers-fn]
-    pub fn new() -> crate::error::Result<PmatchUtilityTransducers> {
+    pub fn new() -> crate::error::Result<PmatchUtilityTransducers<B>> {
         let mut retval = PmatchUtilityTransducers {
-            latin1_acceptor: PmatchUtilityTransducers::make_latin1_acceptor(
-                ImplementationType::TROPICAL_OPENFST_TYPE,
-            )?,
-            latin1_alpha_acceptor: PmatchUtilityTransducers::make_latin1_alpha_acceptor(
-                ImplementationType::TROPICAL_OPENFST_TYPE,
-            )?,
-            latin1_lowercase_acceptor: PmatchUtilityTransducers::make_latin1_lowercase_acceptor(
-                ImplementationType::TROPICAL_OPENFST_TYPE,
-            )?,
-            latin1_uppercase_acceptor: PmatchUtilityTransducers::make_latin1_uppercase_acceptor(
-                ImplementationType::TROPICAL_OPENFST_TYPE,
-            )?,
-            combining_accent_acceptor: PmatchUtilityTransducers::make_combining_accent_acceptor(
-                ImplementationType::TROPICAL_OPENFST_TYPE,
-            )?,
-            latin1_numeral_acceptor: PmatchUtilityTransducers::make_latin1_numeral_acceptor(
-                ImplementationType::TROPICAL_OPENFST_TYPE,
-            )?,
-            latin1_punct_acceptor: PmatchUtilityTransducers::make_latin1_punct_acceptor(
-                ImplementationType::TROPICAL_OPENFST_TYPE,
-            )?,
+            latin1_acceptor: PmatchUtilityTransducers::make_latin1_acceptor()?,
+            latin1_alpha_acceptor: PmatchUtilityTransducers::make_latin1_alpha_acceptor()?,
+            latin1_lowercase_acceptor: PmatchUtilityTransducers::make_latin1_lowercase_acceptor()?,
+            latin1_uppercase_acceptor: PmatchUtilityTransducers::make_latin1_uppercase_acceptor()?,
+            combining_accent_acceptor: PmatchUtilityTransducers::make_combining_accent_acceptor()?,
+            latin1_numeral_acceptor: PmatchUtilityTransducers::make_latin1_numeral_acceptor()?,
+            latin1_punct_acceptor: PmatchUtilityTransducers::make_latin1_punct_acceptor()?,
             latin1_whitespace_acceptor: PmatchUtilityTransducers::make_latin1_whitespace_acceptor(
-                ImplementationType::TROPICAL_OPENFST_TYPE,
             )?,
-            capify: HfstTransducer::new_type(ImplementationType::TROPICAL_OPENFST_TYPE)?,
-            lowerfy: HfstTransducer::new_type(ImplementationType::TROPICAL_OPENFST_TYPE)?,
+            capify: HfstTransducer::new(),
+            lowerfy: HfstTransducer::new(),
         };
-        retval.lowerfy = retval.make_lowerfy(ImplementationType::TROPICAL_OPENFST_TYPE)?;
-        retval.capify = retval.make_capify(ImplementationType::TROPICAL_OPENFST_TYPE)?;
+        retval.lowerfy = retval.make_lowerfy()?;
+        retval.capify = retval.make_capify()?;
         Ok(retval)
     }
 
@@ -1604,21 +1606,13 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-acceptor-fn]
-    pub fn make_latin1_acceptor(ty: ImplementationType) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = PmatchUtilityTransducers::make_latin1_alpha_acceptor(
-            ImplementationType::TROPICAL_OPENFST_TYPE,
-        )?;
-        let mut tmp: HfstTransducer = PmatchUtilityTransducers::make_latin1_numeral_acceptor(
-            ImplementationType::TROPICAL_OPENFST_TYPE,
-        )?;
+    pub fn make_latin1_acceptor() -> crate::error::Result<HfstTransducer<B>> {
+        let mut retval: HfstTransducer<B> = PmatchUtilityTransducers::make_latin1_alpha_acceptor()?;
+        let mut tmp: HfstTransducer<B> = PmatchUtilityTransducers::make_latin1_numeral_acceptor()?;
         retval.disjunct(&tmp, true)?;
-        tmp = PmatchUtilityTransducers::make_latin1_punct_acceptor(
-            ImplementationType::TROPICAL_OPENFST_TYPE,
-        )?;
+        tmp = PmatchUtilityTransducers::make_latin1_punct_acceptor()?;
         retval.disjunct(&tmp, true)?;
-        tmp = PmatchUtilityTransducers::make_latin1_whitespace_acceptor(
-            ImplementationType::TROPICAL_OPENFST_TYPE,
-        )?;
+        tmp = PmatchUtilityTransducers::make_latin1_whitespace_acceptor()?;
         retval.disjunct(&tmp, true)?;
         retval.minimize()?;
         Ok(retval)
@@ -1628,15 +1622,10 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-alpha-acceptor-fn]
-    pub fn make_latin1_alpha_acceptor(
-        ty: ImplementationType,
-    ) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = PmatchUtilityTransducers::make_latin1_lowercase_acceptor(
-            ImplementationType::TROPICAL_OPENFST_TYPE,
-        )?;
-        let tmp: HfstTransducer = PmatchUtilityTransducers::make_latin1_uppercase_acceptor(
-            ImplementationType::TROPICAL_OPENFST_TYPE,
-        )?;
+    pub fn make_latin1_alpha_acceptor() -> crate::error::Result<HfstTransducer<B>> {
+        let mut retval: HfstTransducer<B> =
+            PmatchUtilityTransducers::make_latin1_lowercase_acceptor()?;
+        let tmp: HfstTransducer<B> = PmatchUtilityTransducers::make_latin1_uppercase_acceptor()?;
         retval.disjunct(&tmp, true)?;
         retval.minimize()?;
         Ok(retval)
@@ -1646,13 +1635,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-lowercase-acceptor-fn]
-    pub fn make_latin1_lowercase_acceptor(
-        ty: ImplementationType,
-    ) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = acceptor_from_cstr(latin1_lower, ty)?;
-        let tmp: HfstTransducer = PmatchUtilityTransducers::make_combining_accent_acceptor(
-            ImplementationType::TROPICAL_OPENFST_TYPE,
-        )?;
+    pub fn make_latin1_lowercase_acceptor() -> crate::error::Result<HfstTransducer<B>> {
+        let mut retval: HfstTransducer<B> = acceptor_from_cstr(latin1_lower)?;
+        let tmp: HfstTransducer<B> = PmatchUtilityTransducers::make_combining_accent_acceptor()?;
         retval.disjunct(&tmp, true)?;
         retval.minimize()?;
         Ok(retval)
@@ -1662,13 +1647,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-uppercase-acceptor-fn]
-    pub fn make_latin1_uppercase_acceptor(
-        ty: ImplementationType,
-    ) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = acceptor_from_cstr(latin1_upper, ty)?;
-        let tmp: HfstTransducer = PmatchUtilityTransducers::make_combining_accent_acceptor(
-            ImplementationType::TROPICAL_OPENFST_TYPE,
-        )?;
+    pub fn make_latin1_uppercase_acceptor() -> crate::error::Result<HfstTransducer<B>> {
+        let mut retval: HfstTransducer<B> = acceptor_from_cstr(latin1_upper)?;
+        let tmp: HfstTransducer<B> = PmatchUtilityTransducers::make_combining_accent_acceptor()?;
         retval.disjunct(&tmp, true)?;
         retval.minimize()?;
         Ok(retval)
@@ -1678,23 +1659,19 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-combining-accent-acceptor-fn]
-    pub fn make_combining_accent_acceptor(
-        ty: ImplementationType,
-    ) -> crate::error::Result<HfstTransducer> {
-        acceptor_from_cstr(combining_accents, ty)
+    pub fn make_combining_accent_acceptor() -> crate::error::Result<HfstTransducer<B>> {
+        acceptor_from_cstr(combining_accents)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-numeral-acceptor-fn]
-    pub fn make_latin1_numeral_acceptor(
-        ty: ImplementationType,
-    ) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = HfstTransducer::new_type(ty)?;
+    pub fn make_latin1_numeral_acceptor() -> crate::error::Result<HfstTransducer<B>> {
+        let mut retval: HfstTransducer<B> = HfstTransducer::new();
         let num: String = "0123456789".to_string();
         for it in num.chars() {
-            retval.disjunct(&HfstTransducer::new_symbol(&it.to_string(), ty)?, true)?;
+            retval.disjunct(&HfstTransducer::new_symbol(&it.to_string())?, true)?;
         }
         // retval->minimize(); ?
         Ok(retval)
@@ -1704,38 +1681,34 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-punct-acceptor-fn]
-    pub fn make_latin1_punct_acceptor(
-        ty: ImplementationType,
-    ) -> crate::error::Result<HfstTransducer> {
-        acceptor_from_cstr(latin1_punct, ty)
+    pub fn make_latin1_punct_acceptor() -> crate::error::Result<HfstTransducer<B>> {
+        acceptor_from_cstr(latin1_punct)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-latin1-whitespace-acceptor-fn]
-    pub fn make_latin1_whitespace_acceptor(
-        ty: ImplementationType,
-    ) -> crate::error::Result<HfstTransducer> {
-        acceptor_from_cstr(latin1_whitespace, ty)
+    pub fn make_latin1_whitespace_acceptor() -> crate::error::Result<HfstTransducer<B>> {
+        acceptor_from_cstr(latin1_whitespace)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-utility-transducers.make-capify-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-capify-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-capify-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-capify-fn]
-    pub fn make_capify(&mut self, ty: ImplementationType) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = HfstTransducer::new_type(ty)?;
+    pub fn make_capify(&mut self) -> crate::error::Result<HfstTransducer<B>> {
+        let mut retval: HfstTransducer<B> = HfstTransducer::new();
         let tok: HfstTokenizer = HfstTokenizer::new();
         let mut i: usize = 0;
         while i < array_len(latin1_upper) {
             retval.disjunct(
-                &HfstTransducer::new_tokenized_pair(latin1_lower[i], latin1_upper[i], &tok, ty)?,
+                &HfstTransducer::new_tokenized_pair(latin1_lower[i], latin1_upper[i], &tok)?,
                 true,
             )?;
             i += 1;
         }
-        let mut accents: HfstTransducer =
+        let mut accents: HfstTransducer<B> =
             HfstTransducer::new_copy(&self.combining_accent_acceptor)?;
         accents.optionalize()?;
         retval.concatenate(&accents, true)?;
@@ -1747,18 +1720,18 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-utility-transducers.make-lowerfy-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-lowerfy-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.make-lowerfy-fn]
-    pub fn make_lowerfy(&mut self, ty: ImplementationType) -> crate::error::Result<HfstTransducer> {
-        let mut retval: HfstTransducer = HfstTransducer::new_type(ty)?;
+    pub fn make_lowerfy(&mut self) -> crate::error::Result<HfstTransducer<B>> {
+        let mut retval: HfstTransducer<B> = HfstTransducer::new();
         let tok: HfstTokenizer = HfstTokenizer::new();
         let mut i: usize = 0;
         while i < array_len(latin1_upper) {
             retval.disjunct(
-                &HfstTransducer::new_tokenized_pair(latin1_upper[i], latin1_lower[i], &tok, ty)?,
+                &HfstTransducer::new_tokenized_pair(latin1_upper[i], latin1_lower[i], &tok)?,
                 true,
             )?;
             i += 1;
         }
-        let mut accents: HfstTransducer =
+        let mut accents: HfstTransducer<B> =
             HfstTransducer::new_copy(&self.combining_accent_acceptor)?;
         accents.optionalize()?;
         retval.concatenate(&accents, true)?;
@@ -1772,9 +1745,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.get-lowercase-acceptor-from-transducer-fn]
     pub fn get_lowercase_acceptor_from_transducer(
         &mut self,
-        t: &HfstTransducer,
-    ) -> crate::error::Result<HfstTransducer> {
-        let mut lowercase: HfstTransducer = HfstTransducer::new_type(t.get_type())?;
+        t: &HfstTransducer<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
+        let mut lowercase: HfstTransducer<B> = HfstTransducer::new();
         let ss: StringSet = t.get_alphabet()?;
         for it in ss.iter() {
             let us: Vec<char> = it.chars().collect();
@@ -1782,7 +1755,7 @@ impl PmatchUtilityTransducers {
                 if icu::properties::CodePointSetData::new::<icu::properties::props::Lowercase>()
                     .contains(us[0])
                 {
-                    lowercase.disjunct(&HfstTransducer::new_symbol(it, t.get_type())?, true)?;
+                    lowercase.disjunct(&HfstTransducer::new_symbol(it)?, true)?;
                 }
             }
         }
@@ -1795,9 +1768,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.get-uppercase-acceptor-from-transducer-fn]
     pub fn get_uppercase_acceptor_from_transducer(
         &mut self,
-        t: &HfstTransducer,
-    ) -> crate::error::Result<HfstTransducer> {
-        let mut uppercase: HfstTransducer = HfstTransducer::new_type(t.get_type())?;
+        t: &HfstTransducer<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
+        let mut uppercase: HfstTransducer<B> = HfstTransducer::new();
         let ss: StringSet = t.get_alphabet()?;
         for it in ss.iter() {
             let us: Vec<char> = it.chars().collect();
@@ -1805,7 +1778,7 @@ impl PmatchUtilityTransducers {
                 if icu::properties::CodePointSetData::new::<icu::properties::props::Uppercase>()
                     .contains(us[0])
                 {
-                    uppercase.disjunct(&HfstTransducer::new_symbol(it, t.get_type())?, true)?;
+                    uppercase.disjunct(&HfstTransducer::new_symbol(it)?, true)?;
                 }
             }
         }
@@ -1818,9 +1791,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.lowercaser-from-transducer-fn]
     pub fn lowercaser_from_transducer(
         &mut self,
-        t: &HfstTransducer,
-    ) -> crate::error::Result<HfstTransducer> {
-        let mut lowercase: HfstTransducer = HfstTransducer::new_type(t.get_type())?;
+        t: &HfstTransducer<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
+        let mut lowercase: HfstTransducer<B> = HfstTransducer::new();
         let ss: StringSet = t.get_alphabet()?;
         let mut uppercases_seen: StringSet = StringSet::new();
         for it in ss.iter() {
@@ -1840,10 +1813,7 @@ impl PmatchUtilityTransducers {
                     let lower: String = icu::casemap::CaseMapper::new()
                         .lowercase_to_string(it, &icu::locale::LanguageIdentifier::UNKNOWN)
                         .into_owned();
-                    lowercase.disjunct(
-                        &HfstTransducer::new_symbol_pair(&upper, &lower, t.get_type())?,
-                        true,
-                    )?;
+                    lowercase.disjunct(&HfstTransducer::new_symbol_pair(&upper, &lower)?, true)?;
                 }
             }
         }
@@ -1856,9 +1826,9 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.uppercaser-from-transducer-fn]
     pub fn uppercaser_from_transducer(
         &mut self,
-        t: &HfstTransducer,
-    ) -> crate::error::Result<HfstTransducer> {
-        let mut uppercase: HfstTransducer = HfstTransducer::new_type(t.get_type())?;
+        t: &HfstTransducer<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
+        let mut uppercase: HfstTransducer<B> = HfstTransducer::new();
         let ss: StringSet = t.get_alphabet()?;
         let mut uppercases_seen: StringSet = StringSet::new();
         for it in ss.iter() {
@@ -1878,10 +1848,7 @@ impl PmatchUtilityTransducers {
                     let lower: String = icu::casemap::CaseMapper::new()
                         .lowercase_to_string(it, &icu::locale::LanguageIdentifier::UNKNOWN)
                         .into_owned();
-                    uppercase.disjunct(
-                        &HfstTransducer::new_symbol_pair(&lower, &upper, t.get_type())?,
-                        true,
-                    )?;
+                    uppercase.disjunct(&HfstTransducer::new_symbol_pair(&lower, &upper)?, true)?;
                 }
             }
         }
@@ -1894,10 +1861,10 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.cap-fn]
     pub fn cap(
         &mut self,
-        t: &HfstTransducer,
+        t: &HfstTransducer<B>,
         side: Side,
         optional: bool,
-    ) -> crate::error::Result<HfstTransducer> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         // This is to match flags in t with ?'s in "anything": these composes run
         // with Xerox-style composition enabled.
         let cfg = crate::hfst_transducer::EngineConfig {
@@ -1905,12 +1872,13 @@ impl PmatchUtilityTransducers {
             ..Default::default()
         };
 
-        let mut retval: HfstTransducer;
-        let mut cap: HfstTransducer = self.uppercaser_from_transducer(t)?;
-        let mut decap: HfstTransducer = HfstTransducer::new_copy(&cap)?;
+        let mut retval: HfstTransducer<B>;
+        let mut cap: HfstTransducer<B> = self.uppercaser_from_transducer(t)?;
+        let mut decap: HfstTransducer<B> = HfstTransducer::new_copy(&cap)?;
         decap.invert()?;
-        let mut anything: HfstTransducer = HfstTransducer::identity_pair(t.get_type());
-        let mut anything_but_whitespace_star: HfstTransducer = HfstTransducer::new_copy(&anything)?;
+        let mut anything: HfstTransducer<B> = HfstTransducer::identity_pair();
+        let mut anything_but_whitespace_star: HfstTransducer<B> =
+            HfstTransducer::new_copy(&anything)?;
         anything_but_whitespace_star.subtract(&self.latin1_whitespace_acceptor, true)?;
         anything_but_whitespace_star.repeat_star()?;
         if optional == false {
@@ -1926,10 +1894,10 @@ impl PmatchUtilityTransducers {
             cap.disjunct(&anything, true)?;
             // Cap is the first letter to either capitalize or accept if it's not a
             // lowercase letter
-            let mut continuation: HfstTransducer =
+            let mut continuation: HfstTransducer<B> =
                 HfstTransducer::new_copy(&anything_but_whitespace_star)?;
             // continuation is the rest of the first word
-            let mut more_caps: HfstTransducer =
+            let mut more_caps: HfstTransducer<B> =
                 HfstTransducer::new_copy(&self.latin1_whitespace_acceptor)?;
             // more_caps is more words to capitalize
             more_caps.concatenate(&cap, true)?;
@@ -1940,9 +1908,9 @@ impl PmatchUtilityTransducers {
             retval.compose_with_config(&cap, true, &cfg)?;
         } else if side == Side::Upper {
             decap.disjunct(&anything, true)?;
-            let mut continuation: HfstTransducer =
+            let mut continuation: HfstTransducer<B> =
                 HfstTransducer::new_copy(&anything_but_whitespace_star)?;
-            let mut more_decaps: HfstTransducer =
+            let mut more_decaps: HfstTransducer<B> =
                 HfstTransducer::new_copy(&self.latin1_whitespace_acceptor)?;
             more_decaps.concatenate(&decap, true)?;
             more_decaps.optionalize()?;
@@ -1954,9 +1922,9 @@ impl PmatchUtilityTransducers {
         } else {
             // both
             decap.disjunct(&anything, true)?;
-            let mut continuation: HfstTransducer =
+            let mut continuation: HfstTransducer<B> =
                 HfstTransducer::new_copy(&anything_but_whitespace_star)?;
-            let mut more_decaps: HfstTransducer =
+            let mut more_decaps: HfstTransducer<B> =
                 HfstTransducer::new_copy(&self.latin1_whitespace_acceptor)?;
             more_decaps.concatenate(&decap, true)?;
             more_decaps.optionalize()?;
@@ -1965,9 +1933,9 @@ impl PmatchUtilityTransducers {
             retval = HfstTransducer::new_copy(&decap)?;
             retval.concatenate(&continuation, true)?;
             retval.compose_with_config(t, true, &cfg)?;
-            let mut continuation2: HfstTransducer =
+            let mut continuation2: HfstTransducer<B> =
                 HfstTransducer::new_copy(&anything_but_whitespace_star)?;
-            let mut more_caps: HfstTransducer =
+            let mut more_caps: HfstTransducer<B> =
                 HfstTransducer::new_copy(&self.latin1_whitespace_acceptor)?;
             cap.disjunct(&anything, true)?;
             more_caps.concatenate(&cap, true)?;
@@ -1988,10 +1956,10 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.tolower-fn]
     pub fn tolower(
         &mut self,
-        t: &HfstTransducer,
+        t: &HfstTransducer<B>,
         side: Side,
         optional: bool,
-    ) -> crate::error::Result<HfstTransducer> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         // This is to match flags in t with ?'s in "anything": these composes run
         // with Xerox-style composition enabled.
         let cfg = crate::hfst_transducer::EngineConfig {
@@ -1999,14 +1967,14 @@ impl PmatchUtilityTransducers {
             ..Default::default()
         };
 
-        let mut anything: HfstTransducer =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, t.get_type())?;
+        let mut anything: HfstTransducer<B> =
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
         if optional == false {
             anything.subtract(&self.get_uppercase_acceptor_from_transducer(t)?, true)?;
         }
-        let mut retval: HfstTransducer;
+        let mut retval: HfstTransducer<B>;
         if side == Side::Lower {
-            let mut lowercase: HfstTransducer = self.lowercaser_from_transducer(t)?;
+            let mut lowercase: HfstTransducer<B> = self.lowercaser_from_transducer(t)?;
             lowercase.disjunct(&anything, true)?;
             lowercase.repeat_star()?;
             retval = HfstTransducer::new_copy(t)?;
@@ -2022,7 +1990,7 @@ impl PmatchUtilityTransducers {
             retval.disjunct(&anything, true)?;
             retval.repeat_star()?;
             retval.compose_with_config(t, true, &cfg)?;
-            let mut lowercase: HfstTransducer = self.lowercaser_from_transducer(t)?;
+            let mut lowercase: HfstTransducer<B> = self.lowercaser_from_transducer(t)?;
             lowercase.disjunct(&anything, true)?;
             lowercase.repeat_star()?;
             retval.compose_with_config(&lowercase, true, &cfg)?;
@@ -2037,10 +2005,10 @@ impl PmatchUtilityTransducers {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-utility-transducers.toupper-fn]
     pub fn toupper(
         &mut self,
-        t: &HfstTransducer,
+        t: &HfstTransducer<B>,
         side: Side,
         optional: bool,
-    ) -> crate::error::Result<HfstTransducer> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         // This is to match flags in t with ?'s in "anything": these composes run
         // with Xerox-style composition enabled.
         let cfg = crate::hfst_transducer::EngineConfig {
@@ -2048,14 +2016,14 @@ impl PmatchUtilityTransducers {
             ..Default::default()
         };
 
-        let mut anything: HfstTransducer =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, t.get_type())?;
+        let mut anything: HfstTransducer<B> =
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
         if optional == false {
             anything.subtract(&self.get_lowercase_acceptor_from_transducer(t)?, true)?;
         }
-        let mut retval: HfstTransducer;
+        let mut retval: HfstTransducer<B>;
         if side == Side::Lower {
-            let mut uppercase: HfstTransducer = self.uppercaser_from_transducer(t)?;
+            let mut uppercase: HfstTransducer<B> = self.uppercaser_from_transducer(t)?;
             uppercase.disjunct(&anything, true)?;
             uppercase.repeat_star()?;
             retval = HfstTransducer::new_copy(t)?;
@@ -2071,7 +2039,7 @@ impl PmatchUtilityTransducers {
             retval.disjunct(&anything, true)?;
             retval.repeat_star()?;
             retval.compose_with_config(t, true, &cfg)?;
-            let mut uppercase: HfstTransducer = self.uppercaser_from_transducer(t)?;
+            let mut uppercase: HfstTransducer<B> = self.uppercaser_from_transducer(t)?;
             uppercase.disjunct(&anything, true)?;
             uppercase.repeat_star()?;
             retval.compose_with_config(&uppercase, true, &cfg)?;
@@ -2101,12 +2069,18 @@ pub fn warn(warning: String) {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.symbol-in-global-context-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.symbol-in-global-context-fn]
-pub fn symbol_in_global_context(ctx: &mut PmatchEvalContext, sym: &mut String) -> bool {
+pub fn symbol_in_global_context<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    sym: &mut String,
+) -> bool {
     ctx.definitions_contains(sym)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.symbol-in-local-context-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.symbol-in-local-context-fn]
-pub fn symbol_in_local_context(ctx: &mut PmatchEvalContext, sym: &mut String) -> bool {
+pub fn symbol_in_local_context<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    sym: &mut String,
+) -> bool {
     if ctx.call_stack_len() == 0 {
         return false;
     }
@@ -2118,7 +2092,10 @@ pub fn symbol_in_local_context(ctx: &mut PmatchEvalContext, sym: &mut String) ->
 // Returns the shared AST node bound to 'sym' in the global definitions. The
 // callers always guard with 'symbol_in_global_context', so the C++ NULL branch
 // is unreachable.
-pub fn symbol_from_global_context(ctx: &mut PmatchEvalContext, sym: &mut String) -> Option<ObjRef> {
+pub fn symbol_from_global_context<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    sym: &mut String,
+) -> Option<ObjRef<B>> {
     if symbol_in_global_context(ctx, sym) {
         ctx.definitions_get(sym)
     } else {
@@ -2127,7 +2104,10 @@ pub fn symbol_from_global_context(ctx: &mut PmatchEvalContext, sym: &mut String)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.symbol-from-local-context-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.symbol-from-local-context-fn]
-pub fn symbol_from_local_context(ctx: &mut PmatchEvalContext, sym: &mut String) -> Option<ObjRef> {
+pub fn symbol_from_local_context<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    sym: &mut String,
+) -> Option<ObjRef<B>> {
     if symbol_in_local_context(ctx, sym) {
         ctx.call_stack_last_get(sym)
     } else {
@@ -2160,41 +2140,42 @@ pub fn get_Ins_transition(s: &str) -> String {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.add-pmatch-delimiters-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.add-pmatch-delimiters-fn]
-pub fn add_pmatch_delimiters(regex: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
-    let mut delimited_regex =
-        HfstTransducer::new_symbol_pair(internal_epsilon, ENTRY_SYMBOL, regex.get_type())?;
+pub fn add_pmatch_delimiters<B: AlgebraBackend>(
+    regex: &HfstTransducer<B>,
+) -> crate::error::Result<HfstTransducer<B>> {
+    let mut delimited_regex = HfstTransducer::new_symbol_pair(internal_epsilon, ENTRY_SYMBOL)?;
     delimited_regex.concatenate(regex, true)?;
-    let exit = HfstTransducer::new_symbol_pair(internal_epsilon, EXIT_SYMBOL, regex.get_type())?;
+    let exit = HfstTransducer::new_symbol_pair(internal_epsilon, EXIT_SYMBOL)?;
     delimited_regex.concatenate(&exit, true)?;
     Ok(delimited_regex)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-end-tag-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-end-tag-fn]
-pub fn make_end_tag(
-    ctx: &mut PmatchEvalContext,
+pub fn make_end_tag<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     tag: String,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, format!("@PMATCH_ENDTAG_{}@", tag))
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-capture-tag-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-capture-tag-fn]
-pub fn make_capture_tag(
-    ctx: &mut PmatchEvalContext,
+pub fn make_capture_tag<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     tag: String,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, format!("@PMATCH_CAPTURE_{}@", tag))
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-captured-tag-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-captured-tag-fn]
-pub fn make_captured_tag(
-    ctx: &mut PmatchEvalContext,
+pub fn make_captured_tag<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     tag: String,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, format!("@PMATCH_CAPTURED_{}@", tag))
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-with-tag-entry-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-with-tag-entry-fn]
-pub fn make_with_tag_entry(key: String, value: String) -> ObjRef {
+pub fn make_with_tag_entry<B: AlgebraBackend + 'static>(key: String, value: String) -> ObjRef<B> {
     let obj = PmatchString {
         name: String::new(),
         weight: 0.0,
@@ -2208,7 +2189,7 @@ pub fn make_with_tag_entry(key: String, value: String) -> ObjRef {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-with-tag-exit-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-with-tag-exit-fn]
-pub fn make_with_tag_exit(key: String) -> ObjRef {
+pub fn make_with_tag_exit<B: AlgebraBackend + 'static>(key: String) -> ObjRef<B> {
     let obj = PmatchString {
         name: String::new(),
         weight: 0.0,
@@ -2222,15 +2203,17 @@ pub fn make_with_tag_exit(key: String) -> ObjRef {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-counter-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-counter-fn]
-pub fn make_counter(
-    ctx: &mut PmatchEvalContext,
+pub fn make_counter<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     name: String,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, format!("@PMATCH_COUNTER_{}@", name))
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.get-non-special-alphabet-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-non-special-alphabet-fn]
-pub fn get_non_special_alphabet(t: &HfstTransducer) -> crate::error::Result<StringSet> {
+pub fn get_non_special_alphabet<B: AlgebraBackend>(
+    t: &HfstTransducer<B>,
+) -> crate::error::Result<StringSet> {
     let mut retval: StringSet = StringSet::new();
     let alphabet = t.get_alphabet()?;
     for it in alphabet.iter() {
@@ -2242,10 +2225,9 @@ pub fn get_non_special_alphabet(t: &HfstTransducer) -> crate::error::Result<Stri
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-list-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-list-fn]
-pub fn make_list(
-    t: &HfstTransducer,
-    f: ImplementationType,
-) -> crate::error::Result<HfstTransducer> {
+pub fn make_list<B: AlgebraBackend>(
+    t: &HfstTransducer<B>,
+) -> crate::error::Result<HfstTransducer<B>> {
     let mut transition = String::from("@L.");
     let alphabet = get_non_special_alphabet(t)?;
     for it in alphabet.iter() {
@@ -2253,14 +2235,13 @@ pub fn make_list(
         transition.push_str("_");
     }
     transition.push_str("@");
-    HfstTransducer::new_symbol(&transition, f)
+    HfstTransducer::new_symbol(&transition)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-exc-list-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-exc-list-fn]
-pub fn make_exc_list(
-    t: &HfstTransducer,
-    f: ImplementationType,
-) -> crate::error::Result<HfstTransducer> {
+pub fn make_exc_list<B: AlgebraBackend>(
+    t: &HfstTransducer<B>,
+) -> crate::error::Result<HfstTransducer<B>> {
     let mut transition = String::from("@X.");
     let alphabet = get_non_special_alphabet(t)?;
     for it in alphabet.iter() {
@@ -2268,28 +2249,28 @@ pub fn make_exc_list(
         transition.push_str("_");
     }
     transition.push_str("@");
-    HfstTransducer::new_symbol(&transition, f)
+    HfstTransducer::new_symbol(&transition)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-sigma-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-sigma-fn]
-pub fn make_sigma(
-    ctx: &mut PmatchEvalContext,
-    t: &HfstTransducer,
-) -> crate::error::Result<HfstTransducer> {
-    let mut retval = HfstTransducer::new_type(ctx.format)?;
+pub fn make_sigma<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    t: &HfstTransducer<B>,
+) -> crate::error::Result<HfstTransducer<B>> {
+    let mut retval = HfstTransducer::new();
     let alphabet = get_non_special_alphabet(t)?;
     for it in alphabet.iter() {
-        retval.disjunct(&HfstTransducer::new_symbol(it, ctx.format)?, true)?;
+        retval.disjunct(&HfstTransducer::new_symbol(it)?, true)?;
     }
     Ok(retval)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.epsilon-to-symbol-container-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.epsilon-to-symbol-container-fn]
-pub fn epsilon_to_symbol_container(
-    ctx: &mut PmatchEvalContext,
+pub fn epsilon_to_symbol_container<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     s: String,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
-    let tmp = HfstTransducer::new_symbol_pair(internal_epsilon, &s, ctx.format)?;
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
+    let tmp = HfstTransducer::new_symbol_pair(internal_epsilon, &s)?;
     let container = PmatchTransducerContainer {
         name: String::new(),
         weight: 0.0,
@@ -2302,65 +2283,65 @@ pub fn epsilon_to_symbol_container(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-rc-entry-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-rc-entry-fn]
-pub fn make_rc_entry(
-    ctx: &mut PmatchEvalContext,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+pub fn make_rc_entry<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, RC_ENTRY_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-lc-entry-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-lc-entry-fn]
-pub fn make_lc_entry(
-    ctx: &mut PmatchEvalContext,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+pub fn make_lc_entry<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, LC_ENTRY_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-nrc-entry-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-nrc-entry-fn]
-pub fn make_nrc_entry(
-    ctx: &mut PmatchEvalContext,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+pub fn make_nrc_entry<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, NRC_ENTRY_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-nlc-entry-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-nlc-entry-fn]
-pub fn make_nlc_entry(
-    ctx: &mut PmatchEvalContext,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+pub fn make_nlc_entry<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, NLC_ENTRY_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-rc-exit-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-rc-exit-fn]
-pub fn make_rc_exit(
-    ctx: &mut PmatchEvalContext,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+pub fn make_rc_exit<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, RC_EXIT_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-lc-exit-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-lc-exit-fn]
-pub fn make_lc_exit(
-    ctx: &mut PmatchEvalContext,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+pub fn make_lc_exit<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, LC_EXIT_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-nrc-exit-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-nrc-exit-fn]
-pub fn make_nrc_exit(
-    ctx: &mut PmatchEvalContext,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+pub fn make_nrc_exit<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, NRC_EXIT_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-nlc-exit-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-nlc-exit-fn]
-pub fn make_nlc_exit(
-    ctx: &mut PmatchEvalContext,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+pub fn make_nlc_exit<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, NLC_EXIT_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-passthrough-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.make-passthrough-fn]
-pub fn make_passthrough(
-    ctx: &mut PmatchEvalContext,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+pub fn make_passthrough<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     epsilon_to_symbol_container(ctx, PASSTHROUGH_SYMBOL.to_string())
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.get-delimited-fn]
@@ -2396,10 +2377,10 @@ pub fn codepoint_to_utf8(codepoint: u32) -> String {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.parse-range-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.parse-range-fn]
-pub fn parse_range(
-    ctx: &mut PmatchEvalContext,
+pub fn parse_range<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     s: &str,
-) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer>>> {
+) -> crate::error::Result<Rc<RefCell<PmatchTransducerContainer<B>>>> {
     // Reads one codepoint at the cursor: a '\uXXXX' / '\UXXXXXXXX' hex escape, or
     // the next UTF-8 character. Advances the byte cursor past what it consumed.
     fn read_codepoint(bytes: &[u8], quoted: &str, i: &mut usize) -> u32 {
@@ -2421,7 +2402,7 @@ pub fn parse_range(
     let quoted = get_delimited(s, '"');
     let bytes = quoted.as_bytes();
     let mut i = 0usize;
-    let mut retval = HfstTransducer::new_type(ctx.format)?;
+    let mut retval = HfstTransducer::new();
     while i < bytes.len() {
         let mut codepoint1 = read_codepoint(bytes, &quoted, &mut i);
         if i >= bytes.len() || bytes[i] != b'-' {
@@ -2440,7 +2421,7 @@ pub fn parse_range(
         }
         while codepoint1 <= codepoint2 {
             retval.disjunct(
-                &HfstTransducer::new_symbol(&codepoint_to_utf8(codepoint1), ctx.format)?,
+                &HfstTransducer::new_symbol(&codepoint_to_utf8(codepoint1))?,
                 true,
             )?;
             codepoint1 += 1;
@@ -2458,7 +2439,7 @@ pub fn parse_range(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.get-size-info-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-size-info-fn]
-pub fn get_size_info(net: &HfstTransducer) -> String {
+pub fn get_size_info<B: AlgebraBackend>(net: &HfstTransducer<B>) -> String {
     let tmp = HfstBasicTransducer::from_transducer(net);
     let mut states: usize = 0;
     let mut arcs: usize = 0;
@@ -2476,10 +2457,13 @@ pub fn get_size_info(net: &HfstTransducer) -> String {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-unary-operation.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-unary-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.evaluate-fn]
-impl PmatchObject for PmatchUnaryOperation {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchUnaryOperation<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
@@ -2497,9 +2481,9 @@ impl PmatchObject for PmatchUnaryOperation {
                 whole_string += it;
             }
             let mut retval = if whole_string.len() > 0 {
-                HfstTransducer::new_symbol(&whole_string, ctx.format)?
+                HfstTransducer::new_symbol(&whole_string)?
             } else {
-                HfstTransducer::new_type(ctx.format)?
+                HfstTransducer::new()
             };
             retval.set_final_weights(self.weight as f32, true)?;
             if self.cache.is_none() && self.should_use_cache(ctx) == true {
@@ -2523,9 +2507,9 @@ impl PmatchObject for PmatchUnaryOperation {
             }
             let tok = crate::hfst_tokenizer::HfstTokenizer::new();
             let mut retval = if whole_string.len() > 0 {
-                HfstTransducer::new_tokenized(&whole_string, &tok, ctx.format)?
+                HfstTransducer::new_tokenized(&whole_string, &tok)?
             } else {
-                HfstTransducer::new_type(ctx.format)?
+                HfstTransducer::new()
             };
             retval.set_final_weights(self.weight as f32, true)?;
             if self.cache.is_none() && self.should_use_cache(ctx) == true {
@@ -2539,7 +2523,7 @@ impl PmatchObject for PmatchUnaryOperation {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
-        let mut retval: HfstTransducer = self.root.borrow_mut().evaluate(ctx)?;
+        let mut retval: HfstTransducer<B> = self.root.borrow_mut().evaluate(ctx)?;
         if self.op == PmatchUnaryOp::AddDelimiters {
             retval = add_pmatch_delimiters(&retval)?;
         } else if self.op == PmatchUnaryOp::Optionalize {
@@ -2559,30 +2543,28 @@ impl PmatchObject for PmatchUnaryOperation {
         } else if self.op == PmatchUnaryOp::Complement {
             // Defined here only for automata, so can project to input
             let mut complement =
-                HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, ctx.format)?;
+                HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
             complement.repeat_star()?;
             complement.subtract(&retval, true)?;
             retval = complement;
         } else if self.op == PmatchUnaryOp::Containment {
-            let mut any =
-                HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, ctx.format)?;
+            let mut any = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
             any.repeat_star()?;
             let mut left = HfstTransducer::new_copy(&any)?;
             left.concatenate(&retval, true)?;
             left.concatenate(&any, true)?;
             retval = left;
         } else if self.op == PmatchUnaryOp::ContainmentOnce {
-            let mut xre_comp = crate::xre::XreCompiler::new(ctx.format);
+            let mut xre_comp = crate::xre::XreCompiler::new();
             retval = xre_comp.contains_once(&retval)?;
         } else if self.op == PmatchUnaryOp::ContainmentOptional {
-            let mut xre_comp = crate::xre::XreCompiler::new(ctx.format);
+            let mut xre_comp = crate::xre::XreCompiler::new();
             retval = xre_comp.contains_once_optional(&retval)?;
         } else if self.op == PmatchUnaryOp::TermComplement {
-            let mut any =
-                HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, ctx.format)?;
+            let mut any = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
             let alphabet: StringSet = get_non_special_alphabet(&retval)?;
             for it in alphabet.iter() {
-                let symbol = HfstTransducer::new_symbol(it, ctx.format)?;
+                let symbol = HfstTransducer::new_symbol(it)?;
                 any.subtract(&symbol, true)?;
             }
             retval = any;
@@ -2658,24 +2640,22 @@ impl PmatchObject for PmatchUnaryOperation {
         } else if self.op == PmatchUnaryOp::MakeSigma {
             retval = make_sigma(ctx, &retval)?;
         } else if self.op == PmatchUnaryOp::MakeList {
-            let tmp = make_list(&retval, ctx.format)?;
+            let tmp = make_list(&retval)?;
             register_lst_line_numbers_from_transducer(ctx, &tmp, self.line_defined)?;
             retval = tmp;
         } else if self.op == PmatchUnaryOp::MakeExcList {
-            retval = make_exc_list(&retval, ctx.format)?;
+            retval = make_exc_list(&retval)?;
         } else if self.op == PmatchUnaryOp::LC {
             if !transducer_has_context_symbol(&retval)? {
                 retval.reverse()?;
                 let mut tmp = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     LC_ENTRY_SYMBOL,
-                    ctx.format,
                 )?;
                 tmp.concatenate(&retval, true)?;
                 let lc_exit = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     LC_EXIT_SYMBOL,
-                    ctx.format,
                 )?;
                 tmp.concatenate(&lc_exit, true)?;
                 retval = tmp;
@@ -2691,16 +2671,14 @@ impl PmatchObject for PmatchUnaryOperation {
                 retval.reverse()?;
                 let tmp = ctx.make_minimization_guard()?;
                 let mut head = tmp.borrow_mut().evaluate(ctx)?;
-                let passthrough = HfstTransducer::new_symbol(PASSTHROUGH_SYMBOL, ctx.format)?;
+                let passthrough = HfstTransducer::new_symbol(PASSTHROUGH_SYMBOL)?;
                 let mut nlc_entry = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     NLC_ENTRY_SYMBOL,
-                    ctx.format,
                 )?;
                 let nlc_exit = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     NLC_EXIT_SYMBOL,
-                    ctx.format,
                 )?;
                 nlc_entry.concatenate(&retval, true)?;
                 nlc_entry.concatenate(&nlc_exit, true)?;
@@ -2719,13 +2697,11 @@ impl PmatchObject for PmatchUnaryOperation {
                 let mut tmp = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     RC_ENTRY_SYMBOL,
-                    ctx.format,
                 )?;
                 tmp.concatenate(&retval, true)?;
                 let rc_exit = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     RC_EXIT_SYMBOL,
-                    ctx.format,
                 )?;
                 tmp.concatenate(&rc_exit, true)?;
                 retval = tmp;
@@ -2740,16 +2716,14 @@ impl PmatchObject for PmatchUnaryOperation {
             if !transducer_has_context_symbol(&retval)? {
                 let tmp = ctx.make_minimization_guard()?;
                 let mut head = tmp.borrow_mut().evaluate(ctx)?;
-                let passthrough = HfstTransducer::new_symbol(PASSTHROUGH_SYMBOL, ctx.format)?;
+                let passthrough = HfstTransducer::new_symbol(PASSTHROUGH_SYMBOL)?;
                 let mut nrc_entry = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     NRC_ENTRY_SYMBOL,
-                    ctx.format,
                 )?;
                 let nrc_exit = HfstTransducer::new_symbol_pair(
                     crate::hfst_symbol_defs::internal_epsilon,
                     NRC_EXIT_SYMBOL,
-                    ctx.format,
                 )?;
                 nrc_entry.concatenate(&retval, true)?;
                 nrc_entry.concatenate(&nrc_exit, true)?;
@@ -2791,7 +2765,7 @@ impl PmatchObject for PmatchUnaryOperation {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
     fn get_initial_symbols_from_unary_root(
         &mut self,
-        ctx: &mut PmatchEvalContext,
+        ctx: &mut PmatchEvalContext<B>,
     ) -> crate::error::Result<StringSet> {
         PmatchObject_get_real_initial_symbols(ctx, &mut *self.root.borrow_mut())
     }
@@ -2818,10 +2792,10 @@ impl PmatchObject for PmatchUnaryOperation {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-rc-initial-symbols-fn]
     fn get_initial_RC_initial_symbols(
         &mut self,
-        ctx: &mut PmatchEvalContext,
+        ctx: &mut PmatchEvalContext<B>,
     ) -> crate::error::Result<StringSet> {
         if self.op == PmatchUnaryOp::RC {
-            let tmp: HfstTransducer = self.root.borrow_mut().evaluate(ctx)?;
+            let tmp: HfstTransducer<B> = self.root.borrow_mut().evaluate(ctx)?;
             return Ok(tmp.get_initial_input_symbols());
         }
         if self.op == PmatchUnaryOp::AddDelimiters {
@@ -2835,10 +2809,10 @@ impl PmatchObject for PmatchUnaryOperation {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
     fn get_initial_NRC_initial_symbols(
         &mut self,
-        ctx: &mut PmatchEvalContext,
+        ctx: &mut PmatchEvalContext<B>,
     ) -> crate::error::Result<StringSet> {
         if self.op == PmatchUnaryOp::NRC {
-            let tmp: HfstTransducer = self.root.borrow_mut().evaluate(ctx)?;
+            let tmp: HfstTransducer<B> = self.root.borrow_mut().evaluate(ctx)?;
             return Ok(tmp.get_initial_input_symbols());
         }
         if self.op == PmatchUnaryOp::AddDelimiters {
@@ -2853,10 +2827,13 @@ impl PmatchObject for PmatchUnaryOperation {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-numeric-operation.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-numeric-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-numeric-operation.evaluate-fn]
-impl PmatchObject for PmatchNumericOperation {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchNumericOperation<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
@@ -2865,7 +2842,7 @@ impl PmatchObject for PmatchNumericOperation {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
-        let mut tmp: HfstTransducer = self.root.borrow_mut().evaluate(ctx)?;
+        let mut tmp: HfstTransducer<B> = self.root.borrow_mut().evaluate(ctx)?;
         if self.op == PmatchNumericOp::RepeatN {
             tmp.repeat_n(self.values[0] as u32)?;
         } else if self.op == PmatchNumericOp::RepeatNPlus {
@@ -2896,10 +2873,10 @@ impl PmatchObject for PmatchNumericOperation {
 // symbol (so line numbers stay unambiguous).
 // [spec:hfst:def:pmatch-utils.hfst.fix-list-overlap-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.fix-list-overlap-fn]
-pub fn fix_list_overlap(
-    ctx: &mut PmatchEvalContext,
-    lhs: &mut HfstTransducer,
-    rhs: &mut HfstTransducer,
+pub fn fix_list_overlap<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    lhs: &mut HfstTransducer<B>,
+    rhs: &mut HfstTransducer<B>,
     list_set: &StringSet,
     literal_set: &StringSet,
     lst_line_map: &BTreeMap<String, i32>,
@@ -3008,10 +2985,13 @@ pub fn fix_list_overlap(
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.evaluate-fn]
-impl PmatchObject for PmatchBinaryOperation {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBinaryOperation<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
@@ -3037,7 +3017,7 @@ impl PmatchObject for PmatchBinaryOperation {
                     .borrow_mut()
                     .collect_strings_into(ctx, &mut strings);
                 let tok = crate::hfst_tokenizer::HfstTokenizer::new();
-                let mut retval = HfstTransducer::new_type(ctx.format)?;
+                let mut retval = HfstTransducer::new();
                 for it in strings.iter() {
                     let spv = tok.tokenize(it, false); // XXX
                     retval.disjunct_spv(&spv)?;
@@ -3061,8 +3041,8 @@ impl PmatchObject for PmatchBinaryOperation {
             ctx.eval_stack_push(self.name.clone());
         }
         // General cases
-        let mut lhs: HfstTransducer = self.left.borrow_mut().evaluate(ctx)?;
-        let mut rhs: HfstTransducer = self.right.borrow_mut().evaluate(ctx)?;
+        let mut lhs: HfstTransducer<B> = self.left.borrow_mut().evaluate(ctx)?;
+        let mut rhs: HfstTransducer<B> = self.right.borrow_mut().evaluate(ctx)?;
         match self.op {
             PmatchBinaryOp::Concatenate => {
                 lhs.concatenate(&rhs, true)?;
@@ -3136,29 +3116,27 @@ impl PmatchObject for PmatchBinaryOperation {
                 lhs.insert_freely(&rhs, false)?;
             }
             PmatchBinaryOp::IgnoreInternally => {
-                let right_part: HfstTransducer = HfstTransducer::new_copy(&lhs)?;
-                let mut middle_part: HfstTransducer = HfstTransducer::new_copy(&lhs)?;
+                let right_part: HfstTransducer<B> = HfstTransducer::new_copy(&lhs)?;
+                let mut middle_part: HfstTransducer<B> = HfstTransducer::new_copy(&lhs)?;
                 middle_part.disjunct(&rhs, true)?;
                 middle_part.repeat_star()?;
                 lhs.concatenate(&middle_part, true)?;
                 lhs.concatenate(&right_part, true)?;
             }
             PmatchBinaryOp::Merge => {
-                let fmt = ctx.format;
                 // hfst::xre::merge_first_to_second(lhs, rhs)
                 let args = crate::xre::XreConstructorArguments::new(
                     BTreeMap::new(),
                     BTreeMap::new(),
                     BTreeMap::new(),
                     BTreeMap::new(),
-                    fmt,
                 );
                 lhs.optimize()?;
                 let __res = rhs.merge(&lhs, &args).map(|_| ());
                 match __res {
                     Ok(()) => {
                         // NB: mirrors the C++ aliasing (lhs now becomes rhs).
-                        lhs = std::mem::replace(&mut rhs, HfstTransducer::new_type(ctx.format)?);
+                        lhs = std::mem::replace(&mut rhs, HfstTransducer::new());
                     }
                     Err(e) => {
                         if matches!(e.kind, crate::error::ErrorKind::TransducersAreNotAutomata) {
@@ -3200,7 +3178,7 @@ impl PmatchObject for PmatchBinaryOperation {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
     fn get_real_initial_symbols_from_right(
         &mut self,
-        ctx: &mut PmatchEvalContext,
+        ctx: &mut PmatchEvalContext<B>,
     ) -> crate::error::Result<StringSet> {
         PmatchObject_get_real_initial_symbols(ctx, &mut *self.right.borrow_mut())
     }
@@ -3217,7 +3195,7 @@ impl PmatchObject for PmatchBinaryOperation {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-initial-rc-initial-symbols-fn]
     fn get_initial_RC_initial_symbols(
         &mut self,
-        ctx: &mut PmatchEvalContext,
+        ctx: &mut PmatchEvalContext<B>,
     ) -> crate::error::Result<StringSet> {
         let mut retval: StringSet = StringSet::new();
         if self.op == PmatchBinaryOp::Concatenate {
@@ -3245,7 +3223,7 @@ impl PmatchObject for PmatchBinaryOperation {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.get-initial-nrc-initial-symbols-fn]
     fn get_initial_NRC_initial_symbols(
         &mut self,
-        ctx: &mut PmatchEvalContext,
+        ctx: &mut PmatchEvalContext<B>,
     ) -> crate::error::Result<StringSet> {
         let mut retval: StringSet = StringSet::new();
         if self.op == PmatchBinaryOp::Concatenate {
@@ -3274,7 +3252,7 @@ impl PmatchObject for PmatchBinaryOperation {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.collect-strings-into-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.collect-strings-into-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.collect-strings-into-fn]
-    fn collect_strings_into(&mut self, ctx: &mut PmatchEvalContext, strings: &mut StringVector) {
+    fn collect_strings_into(&mut self, ctx: &mut PmatchEvalContext<B>, strings: &mut StringVector) {
         self.left.borrow_mut().collect_strings_into(ctx, strings);
         self.right.borrow_mut().collect_strings_into(ctx, strings);
     }
@@ -3282,7 +3260,7 @@ impl PmatchObject for PmatchBinaryOperation {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.as-string-pair-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-binary-operation.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.as-string-pair-fn]
-    fn as_string_pair(&mut self, ctx: &mut PmatchEvalContext) -> StringPair {
+    fn as_string_pair(&mut self, ctx: &mut PmatchEvalContext<B>) -> StringPair {
         if self.op == PmatchBinaryOp::CrossProduct {
             let left_string: String = self.left.borrow_mut().as_string(ctx);
             let right_string: String = self.right.borrow_mut().as_string(ctx);
@@ -3311,10 +3289,13 @@ impl PmatchObject for PmatchBinaryOperation {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-ternary-operation.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-ternary-operation.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-ternary-operation.evaluate-fn]
-impl PmatchObject for PmatchTernaryOperation {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchTernaryOperation<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
@@ -3323,19 +3304,19 @@ impl PmatchObject for PmatchTernaryOperation {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
-        let mut retval: HfstTransducer = self.left.borrow_mut().evaluate(ctx)?;
+        let mut retval: HfstTransducer<B> = self.left.borrow_mut().evaluate(ctx)?;
         if self.op == PmatchTernaryOp::Substitute {
             let middle_pair: StringPair = self.middle.borrow_mut().as_string_pair(ctx);
             let right_pair: StringPair = self.right.borrow_mut().as_string_pair(ctx);
             if right_pair.0 != "" || right_pair.1 != "" {
                 retval.substitute_pair_with_pair(&middle_pair, &right_pair)?;
             } else {
-                let mut tmp: HfstTransducer = self.right.borrow_mut().evaluate(ctx)?;
+                let mut tmp: HfstTransducer<B> = self.right.borrow_mut().evaluate(ctx)?;
                 retval.substitute_pair_with_transducer(&middle_pair, &mut tmp, true)?;
             }
         } else if self.op == PmatchTernaryOp::Uncompose {
-            let _unc_left: HfstTransducer = self.middle.borrow_mut().evaluate(ctx)?;
-            let _unc_right: HfstTransducer = self.right.borrow_mut().evaluate(ctx)?;
+            let _unc_left: HfstTransducer<B> = self.middle.borrow_mut().evaluate(ctx)?;
+            let _unc_right: HfstTransducer<B> = self.right.borrow_mut().evaluate(ctx)?;
         }
         retval.set_final_weights(self.weight as f32, true)?;
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
@@ -3358,7 +3339,9 @@ impl PmatchObject for PmatchTernaryOperation {
 // [spec:hfst:sem:pmatch-utils.hfst.transducer-has-context-symbol-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.transducer-has-context-symbol-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.transducer-has-context-symbol-fn]
-pub fn transducer_has_context_symbol(t: &HfstTransducer) -> crate::error::Result<bool> {
+pub fn transducer_has_context_symbol<B: AlgebraBackend>(
+    t: &HfstTransducer<B>,
+) -> crate::error::Result<bool> {
     let ss: StringSet = t.get_alphabet()?;
     Ok(ss.contains(LC_ENTRY_SYMBOL)
         || ss.contains(NLC_ENTRY_SYMBOL)
@@ -3369,9 +3352,9 @@ pub fn transducer_has_context_symbol(t: &HfstTransducer) -> crate::error::Result
 // [spec:hfst:sem:pmatch-utils.hfst.warn-on-nonsubtractable-symbols-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.warn-on-nonsubtractable-symbols-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.warn-on-nonsubtractable-symbols-fn]
-pub fn warn_on_nonsubtractable_symbols(
-    ctx: &mut PmatchEvalContext,
-    t: &HfstTransducer,
+pub fn warn_on_nonsubtractable_symbols<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    t: &HfstTransducer<B>,
 ) -> crate::error::Result<()> {
     let alphabet: StringSet = t.get_alphabet()?;
     for it in alphabet.iter() {
@@ -3390,16 +3373,19 @@ pub fn warn_on_nonsubtractable_symbols(
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-parallel-rules-container.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.evaluate-fn]
-impl PmatchObject for PmatchParallelRulesContainer {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchParallelRulesContainer<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
         self.start_timing(ctx);
-        let mut retval: HfstTransducer = match self.arrow {
+        let mut retval: HfstTransducer<B> = match self.arrow {
             ReplaceArrow::E_REPLACE_RIGHT => replace_rule_vector(&self.make_mappings(ctx)?, false)?,
             ReplaceArrow::E_OPTIONAL_REPLACE_RIGHT => {
                 replace_rule_vector(&self.make_mappings(ctx)?, true)?
@@ -3424,7 +3410,7 @@ impl PmatchObject for PmatchParallelRulesContainer {
             }
             ReplaceArrow::E_REPLACE_RIGHT_MARKUP => {
                 ctx.pmatcherror("Unrecognized arrow type");
-                return HfstTransducer::new_type(ctx.format);
+                return Ok(HfstTransducer::new());
             }
         };
         retval.set_final_weights(self.weight as f32, true)?;
@@ -3440,15 +3426,15 @@ impl PmatchObject for PmatchParallelRulesContainer {
         Ok(retval)
     }
 }
-impl PmatchParallelRulesContainer {
+impl<B: AlgebraBackend + 'static> PmatchParallelRulesContainer<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-parallel-rules-container.make-mappings-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-parallel-rules-container.make-mappings-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.make-mappings-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-parallel-rules-container.make-mappings-fn]
     pub fn make_mappings(
         &mut self,
-        ctx: &mut PmatchEvalContext,
-    ) -> crate::error::Result<Vec<Rule>> {
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<Vec<Rule<B>>> {
         self.rules
             .iter()
             .map(|it| it.borrow_mut().make_mapping(ctx))
@@ -3459,16 +3445,19 @@ impl PmatchParallelRulesContainer {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-replace-rule-container.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.evaluate-fn]
-impl PmatchObject for PmatchReplaceRuleContainer {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchReplaceRuleContainer<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
         self.start_timing(ctx);
-        let mut retval: HfstTransducer = match self.arrow {
+        let mut retval: HfstTransducer<B> = match self.arrow {
             ReplaceArrow::E_REPLACE_RIGHT => replace_rule(&self.make_mapping(ctx)?, false)?,
             ReplaceArrow::E_OPTIONAL_REPLACE_RIGHT => replace_rule(&self.make_mapping(ctx)?, true)?,
             ReplaceArrow::E_REPLACE_LEFT => replace_left_rule(&self.make_mapping(ctx)?, false)?,
@@ -3489,7 +3478,7 @@ impl PmatchObject for PmatchReplaceRuleContainer {
             }
             ReplaceArrow::E_REPLACE_RIGHT_MARKUP => {
                 ctx.pmatcherror("Unrecognized arrow");
-                return HfstTransducer::new_type(ctx.format);
+                return Ok(HfstTransducer::new());
             }
         };
         retval.set_final_weights(self.weight as f32, true)?;
@@ -3505,16 +3494,19 @@ impl PmatchObject for PmatchReplaceRuleContainer {
         Ok(retval)
     }
 }
-impl PmatchReplaceRuleContainer {
+impl<B: AlgebraBackend + 'static> PmatchReplaceRuleContainer<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-replace-rule-container.make-mapping-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-replace-rule-container.make-mapping-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.make-mapping-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-replace-rule-container.make-mapping-fn]
-    pub fn make_mapping(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<Rule> {
-        let mut pair_vector: HfstTransducerPairVector = Vec::new();
+    pub fn make_mapping(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<Rule<B>> {
+        let mut pair_vector: HfstTransducerPairVector<B> = Vec::new();
         for it in self.mapping.iter() {
-            let pp: TransducerPointerPair = it.borrow_mut().evaluate_pair(ctx)?;
-            let p: HfstTransducerPair = (
+            let pp: TransducerPointerPair<B> = it.borrow_mut().evaluate_pair(ctx)?;
+            let p: HfstTransducerPair<B> = (
                 HfstTransducer::new_copy(&pp.0)?,
                 HfstTransducer::new_copy(&pp.1)?,
             );
@@ -3523,10 +3515,10 @@ impl PmatchReplaceRuleContainer {
         if self.context.len() == 0 {
             return Rule::new_mapping(&pair_vector);
         }
-        let mut context_vector: HfstTransducerPairVector = Vec::new();
+        let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
         for it in self.context.iter() {
-            let pp: TransducerPointerPair = it.borrow_mut().evaluate_pair(ctx)?;
-            let p: HfstTransducerPair = (
+            let pp: TransducerPointerPair<B> = it.borrow_mut().evaluate_pair(ctx)?;
+            let p: HfstTransducerPair<B> = (
                 HfstTransducer::new_copy(&pp.0)?,
                 HfstTransducer::new_copy(&pp.1)?,
             );
@@ -3539,26 +3531,29 @@ impl PmatchReplaceRuleContainer {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-restriction-container.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-restriction-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-restriction-container.evaluate-fn]
-impl PmatchObject for PmatchRestrictionContainer {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchRestrictionContainer<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
         self.start_timing(ctx);
-        let mut pair_vector: HfstTransducerPairVector = Vec::new();
+        let mut pair_vector: HfstTransducerPairVector<B> = Vec::new();
         for it in self.contexts.iter() {
-            let pp: TransducerPointerPair = it.borrow_mut().evaluate_pair(ctx)?;
-            let p: HfstTransducerPair = (
+            let pp: TransducerPointerPair<B> = it.borrow_mut().evaluate_pair(ctx)?;
+            let p: HfstTransducerPair<B> = (
                 HfstTransducer::new_copy(&pp.0)?,
                 HfstTransducer::new_copy(&pp.1)?,
             );
             pair_vector.push(p);
         }
-        let l: HfstTransducer = self.left.borrow_mut().evaluate(ctx)?;
-        let mut retval: HfstTransducer = restriction(&l, &pair_vector)?;
+        let l: HfstTransducer<B> = self.left.borrow_mut().evaluate(ctx)?;
+        let mut retval: HfstTransducer<B> = restriction(&l, &pair_vector)?;
         retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, String::new());
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
@@ -3572,17 +3567,17 @@ impl PmatchObject for PmatchRestrictionContainer {
         Ok(retval)
     }
 }
-impl PmatchObjectPairBase for PmatchObjectPair {
-    fn get_left(&self) -> ObjRef {
+impl<B: AlgebraBackend + 'static> PmatchObjectPairBase<B> for PmatchObjectPair<B> {
+    fn get_left(&self) -> ObjRef<B> {
         self.left.clone()
     }
-    fn set_left(&mut self, l: ObjRef) {
+    fn set_left(&mut self, l: ObjRef<B>) {
         self.left = l;
     }
-    fn get_right(&self) -> ObjRef {
+    fn get_right(&self) -> ObjRef<B> {
         self.right.clone()
     }
-    fn set_right(&mut self, r: ObjRef) {
+    fn set_right(&mut self, r: ObjRef<B>) {
         self.right = r;
     }
 
@@ -3590,24 +3585,24 @@ impl PmatchObjectPairBase for PmatchObjectPair {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object-pair.evaluate-pair-fn]
     fn evaluate_pair(
         &mut self,
-        ctx: &mut PmatchEvalContext,
-    ) -> crate::error::Result<TransducerPointerPair> {
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<TransducerPointerPair<B>> {
         let first = self.left.borrow_mut().evaluate(ctx)?;
         let second = self.right.borrow_mut().evaluate(ctx)?;
         Ok((first, second))
     }
 }
-impl PmatchObjectPairBase for PmatchMarkupContainer {
-    fn get_left(&self) -> ObjRef {
+impl<B: AlgebraBackend + 'static> PmatchObjectPairBase<B> for PmatchMarkupContainer<B> {
+    fn get_left(&self) -> ObjRef<B> {
         self.left.clone()
     }
-    fn set_left(&mut self, l: ObjRef) {
+    fn set_left(&mut self, l: ObjRef<B>) {
         self.left = l;
     }
-    fn get_right(&self) -> ObjRef {
+    fn get_right(&self) -> ObjRef<B> {
         self.right.clone()
     }
-    fn set_right(&mut self, r: ObjRef) {
+    fn set_right(&mut self, r: ObjRef<B>) {
         self.right = r;
     }
 
@@ -3617,20 +3612,18 @@ impl PmatchObjectPairBase for PmatchMarkupContainer {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-markup-container.evaluate-pair-fn]
     fn evaluate_pair(
         &mut self,
-        ctx: &mut PmatchEvalContext,
-    ) -> crate::error::Result<TransducerPointerPair> {
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<TransducerPointerPair<B>> {
         let loa = self.left_of_arrow.borrow_mut().evaluate(ctx)?;
         let lom = self.left.borrow_mut().evaluate(ctx)?;
         let rom = self.right.borrow_mut().evaluate(ctx)?;
-        let tmpMappingPair: HfstTransducerPair = (
-            HfstTransducer::new_copy(&loa)?,
-            HfstTransducer::new_type(ctx.format)?,
-        );
-        let marks: HfstTransducerPair = (
+        let tmpMappingPair: HfstTransducerPair<B> =
+            (HfstTransducer::new_copy(&loa)?, HfstTransducer::new());
+        let marks: HfstTransducerPair<B> = (
             HfstTransducer::new_copy(&lom)?,
             HfstTransducer::new_copy(&rom)?,
         );
-        let MappingPair: HfstTransducerPair =
+        let MappingPair: HfstTransducerPair<B> =
             create_mapping_for_mark_up_replace(&tmpMappingPair, &marks)?;
         Ok((
             HfstTransducer::new_copy(&MappingPair.0)?,
@@ -3642,10 +3635,13 @@ impl PmatchObjectPairBase for PmatchMarkupContainer {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-mapping-pairs-container.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-mapping-pairs-container.evaluate-fn]
-impl PmatchObject for PmatchMappingPairsContainer {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchMappingPairsContainer<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         ctx.pmatcherror("Should never happen\n");
         unreachable!()
     }
@@ -3654,10 +3650,13 @@ impl PmatchObject for PmatchMappingPairsContainer {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-contexts-container.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-contexts-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-contexts-container.evaluate-fn]
-impl PmatchObject for PmatchContextsContainer {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchContextsContainer<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         ctx.pmatcherror("Should never happen\n");
         unreachable!()
     }
@@ -3670,11 +3669,11 @@ impl PmatchObject for PmatchContextsContainer {
 // (the base default for the trait 'evaluate_args'); this is the shared
 // weight/cache handling. ('pmatchlineno' does not exist in the AST-walk port,
 // so the diagnostic uses 'line_defined'.)
-pub fn PmatchObject_evaluate_args(
-    ctx: &mut PmatchEvalContext,
-    this: &mut dyn PmatchObject,
-    args: Vec<ObjRef>,
-) -> crate::error::Result<HfstTransducer> {
+pub fn PmatchObject_evaluate_args<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    this: &mut dyn PmatchObject<B>,
+    args: Vec<ObjRef<B>>,
+) -> crate::error::Result<HfstTransducer<B>> {
     if args.len() == 0 {
         if this.should_use_cache(ctx) {
             if this.get_cache().is_none() {
@@ -3702,9 +3701,9 @@ pub fn PmatchObject_evaluate_args(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.expand-ins-arcs-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.expand-ins-arcs-fn]
-pub fn PmatchObject_expand_Ins_arcs(
-    ctx: &mut PmatchEvalContext,
-    this: &mut dyn PmatchObject,
+pub fn PmatchObject_expand_Ins_arcs<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    this: &mut dyn PmatchObject<B>,
     ss: &mut StringSet,
 ) -> crate::error::Result<()> {
     {
@@ -3764,9 +3763,9 @@ pub fn PmatchObject_expand_Ins_arcs(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.get-real-initial-symbols-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.get-real-initial-symbols-fn]
-pub fn PmatchObject_get_real_initial_symbols(
-    ctx: &mut PmatchEvalContext,
-    this: &mut dyn PmatchObject,
+pub fn PmatchObject_get_real_initial_symbols<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    this: &mut dyn PmatchObject<B>,
 ) -> crate::error::Result<StringSet> {
     if this.is_left_concatenation_with_context() {
         return this.get_real_initial_symbols_from_right(ctx);
@@ -3774,15 +3773,15 @@ pub fn PmatchObject_get_real_initial_symbols(
     if this.is_delimiter() {
         return this.get_initial_symbols_from_unary_root(ctx);
     }
-    let tmp: HfstTransducer = this.evaluate(ctx)?;
+    let tmp: HfstTransducer<B> = this.evaluate(ctx)?;
     let retval: StringSet = tmp.get_initial_input_symbols();
     Ok(retval)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.collect-initial-symbols-into-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.collect-initial-symbols-into-fn]
-pub fn PmatchObject_collect_initial_symbols_into(
-    ctx: &mut PmatchEvalContext,
-    this: &mut dyn PmatchObject,
+pub fn PmatchObject_collect_initial_symbols_into<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    this: &mut dyn PmatchObject<B>,
     allowed_initial_symbols: &mut StringSet,
     disallowed_initial_symbols: &mut StringSet,
 ) -> crate::error::Result<()> {
@@ -3856,15 +3855,18 @@ pub fn PmatchObject_collect_initial_symbols_into(
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-symbol.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.evaluate-fn]
-impl PmatchObject for PmatchSymbol {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
         self.start_timing(ctx);
-        let mut retval: HfstTransducer;
+        let mut retval: HfstTransducer<B>;
         if symbol_in_local_context(ctx, &mut self.sym) {
             retval = symbol_from_local_context(ctx, &mut self.sym)
                 .unwrap()
@@ -3891,7 +3893,7 @@ impl PmatchObject for PmatchSymbol {
                     self.sym, self.line_defined
                 );
             }
-            retval = HfstTransducer::new_symbol(&self.sym, ctx.format)?;
+            retval = HfstTransducer::new_symbol(&self.sym)?;
         }
         retval.set_final_weights(self.weight as f32, true)?;
         retval.minimize()?;
@@ -3906,7 +3908,7 @@ impl PmatchObject for PmatchSymbol {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-symbol.evaluate-as-arg-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.evaluate-as-arg-fn]
-    fn evaluate_as_arg(&mut self, ctx: &mut PmatchEvalContext) -> ObjRef {
+    fn evaluate_as_arg(&mut self, ctx: &mut PmatchEvalContext<B>) -> ObjRef<B> {
         if symbol_in_local_context(ctx, &mut self.sym) {
             return symbol_from_local_context(ctx, &mut self.sym)
                 .unwrap()
@@ -3948,7 +3950,7 @@ impl PmatchObject for PmatchSymbol {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-symbol.collect-strings-into-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.collect-strings-into-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.collect-strings-into-fn]
-    fn collect_strings_into(&mut self, ctx: &mut PmatchEvalContext, strings: &mut StringVector) {
+    fn collect_strings_into(&mut self, ctx: &mut PmatchEvalContext<B>, strings: &mut StringVector) {
         if symbol_in_local_context(ctx, &mut self.sym) {
             symbol_from_local_context(ctx, &mut self.sym)
                 .unwrap()
@@ -3966,7 +3968,7 @@ impl PmatchObject for PmatchSymbol {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.as-string-fn]
-    fn as_string(&mut self, ctx: &mut PmatchEvalContext) -> String {
+    fn as_string(&mut self, ctx: &mut PmatchEvalContext<B>) -> String {
         self.sym.clone()
     }
 }
@@ -3974,20 +3976,23 @@ impl PmatchObject for PmatchSymbol {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.evaluate-fn]
-impl PmatchObject for PmatchString {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchString<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if self.cache.is_some() {
             self.report_cache(ctx, String::new());
             return HfstTransducer::new_copy(self.cache.as_ref().unwrap());
         }
         self.start_timing(ctx);
-        let mut tmp: HfstTransducer = if self.multichar {
+        let mut tmp: HfstTransducer<B> = if self.multichar {
             let tok = HfstTokenizer::new();
-            HfstTransducer::new_tokenized(&self.string, &tok, ctx.format)?
+            HfstTransducer::new_tokenized(&self.string, &tok)?
         } else {
-            HfstTransducer::new_symbol(&self.string, ctx.format)?
+            HfstTransducer::new_symbol(&self.string)?
         };
         tmp.set_final_weights(self.weight as f32, true)?;
         if self.cache.is_none() && self.should_use_cache(ctx) == true {
@@ -4007,14 +4012,14 @@ impl PmatchObject for PmatchString {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.collect-strings-into-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.collect-strings-into-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.collect-strings-into-fn]
-    fn collect_strings_into(&mut self, ctx: &mut PmatchEvalContext, strings: &mut StringVector) {
+    fn collect_strings_into(&mut self, ctx: &mut PmatchEvalContext<B>, strings: &mut StringVector) {
         strings.push(self.string.clone());
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.evaluate-as-arg-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.evaluate-as-arg-fn]
-    fn evaluate_as_arg(&mut self, ctx: &mut PmatchEvalContext) -> ObjRef {
+    fn evaluate_as_arg(&mut self, ctx: &mut PmatchEvalContext<B>) -> ObjRef<B> {
         Rc::new(RefCell::new(PmatchString {
             name: self.name.clone(),
             weight: self.weight,
@@ -4027,12 +4032,12 @@ impl PmatchObject for PmatchString {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.as-string-fn]
-    fn as_string(&mut self, ctx: &mut PmatchEvalContext) -> String {
+    fn as_string(&mut self, ctx: &mut PmatchEvalContext<B>) -> String {
         self.string.clone()
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.as-string-pair-fn]
-    fn as_string_pair(&mut self, ctx: &mut PmatchEvalContext) -> StringPair {
+    fn as_string_pair(&mut self, ctx: &mut PmatchEvalContext<B>) -> StringPair {
         (self.string.clone(), self.string.clone())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.is-unweighted-disjunction-of-strings-fn]
@@ -4045,12 +4050,15 @@ impl PmatchObject for PmatchString {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-question-mark.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-question-mark.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-question-mark.evaluate-fn]
-impl PmatchObject for PmatchQuestionMark {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchQuestionMark<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         self.start_timing(ctx);
-        let mut retval: HfstTransducer = HfstTransducer::new_symbol(internal_identity, ctx.format)?;
+        let mut retval: HfstTransducer<B> = HfstTransducer::new_symbol(internal_identity)?;
         retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, String::new());
         Ok(retval)
@@ -4058,12 +4066,12 @@ impl PmatchObject for PmatchQuestionMark {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-fn]
-    fn as_string(&mut self, ctx: &mut PmatchEvalContext) -> String {
+    fn as_string(&mut self, ctx: &mut PmatchEvalContext<B>) -> String {
         internal_unknown.to_string()
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-pair-fn]
-    fn as_string_pair(&mut self, ctx: &mut PmatchEvalContext) -> StringPair {
+    fn as_string_pair(&mut self, ctx: &mut PmatchEvalContext<B>) -> StringPair {
         (internal_identity.to_string(), internal_identity.to_string())
     }
 }
@@ -4071,19 +4079,22 @@ impl PmatchObject for PmatchQuestionMark {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-acceptor.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-acceptor.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-acceptor.evaluate-fn]
-impl PmatchObject for PmatchAcceptor {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchAcceptor<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         self.start_timing(ctx);
-        let mut retval: HfstTransducer = match self.set {
+        let mut retval: HfstTransducer<B> = match self.set {
             PmatchPredefined::Alpha => {
                 if ctx
                     .variables_entry_or_default("unicode-character-classes")
                     .as_str()
                     == "on"
                 {
-                    HfstTransducer::new_symbol("@UNICODE_ALPHA@", ctx.format)?
+                    HfstTransducer::new_symbol("@UNICODE_ALPHA@")?
                 } else {
                     ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_alpha_acceptor))?
                 }
@@ -4094,7 +4105,7 @@ impl PmatchObject for PmatchAcceptor {
                     .as_str()
                     == "on"
                 {
-                    HfstTransducer::new_symbol("@UNICODE_UPPERALPHA@", ctx.format)?
+                    HfstTransducer::new_symbol("@UNICODE_UPPERALPHA@")?
                 } else {
                     ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_uppercase_acceptor))?
                 }
@@ -4105,7 +4116,7 @@ impl PmatchObject for PmatchAcceptor {
                     .as_str()
                     == "on"
                 {
-                    HfstTransducer::new_symbol("@UNICODE_LOWERALPHA@", ctx.format)?
+                    HfstTransducer::new_symbol("@UNICODE_LOWERALPHA@")?
                 } else {
                     ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_lowercase_acceptor))?
                 }
@@ -4122,7 +4133,7 @@ impl PmatchObject for PmatchAcceptor {
                     .as_str()
                     == "on"
                 {
-                    HfstTransducer::new_symbol("@UNICODE_WHITESPACE@", ctx.format)?
+                    HfstTransducer::new_symbol("@UNICODE_WHITESPACE@")?
                 } else {
                     ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_whitespace_acceptor))?
                 }
@@ -4135,37 +4146,43 @@ impl PmatchObject for PmatchAcceptor {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-empty.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-empty.evaluate-fn]
-impl PmatchObject for PmatchEmpty {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchEmpty<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
-        HfstTransducer::new_type(ctx.format)
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
+        Ok(HfstTransducer::new())
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc.evaluate-fn]
-impl PmatchObject for PmatchEpsilonArc {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchEpsilonArc<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
-        HfstTransducer::new_symbol(internal_epsilon, ctx.format)
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
+        HfstTransducer::new_symbol(internal_epsilon)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc.as-string-fn]
-    fn as_string(&mut self, ctx: &mut PmatchEvalContext) -> String {
+    fn as_string(&mut self, ctx: &mut PmatchEvalContext<B>) -> String {
         internal_epsilon.to_string()
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-transducer-container.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-transducer-container.evaluate-fn]
-impl PmatchObject for PmatchTransducerContainer {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchTransducerContainer<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
-        if self.t.get_type() != ctx.format {
-            self.t.convert(ctx.format, String::new())?;
-        }
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         let mut retval = HfstTransducer::new_copy(&self.t)?;
         retval.set_final_weights(self.weight as f32, true)?;
         if self.name != "" {
@@ -4178,14 +4195,14 @@ impl PmatchObject for PmatchTransducerContainer {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-function.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-function.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-function.evaluate-fn]
-impl PmatchObject for PmatchFunction {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchFunction<B> {
     pmatch_object_base_accessors!();
 
     fn evaluate_args(
         &mut self,
-        ctx: &mut PmatchEvalContext,
-        funargs: Vec<ObjRef>,
-    ) -> crate::error::Result<HfstTransducer> {
+        ctx: &mut PmatchEvalContext<B>,
+        funargs: Vec<ObjRef<B>>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if ctx.verbose {
             self.my_timer = clock();
             ctx.named_object_evaluation_stack_depth = ctx.named_object_evaluation_stack_depth + (1);
@@ -4201,7 +4218,7 @@ impl PmatchObject for PmatchFunction {
             );
             panic!("{}", errstring);
         }
-        let mut local_env: BTreeMap<String, ObjRef> = BTreeMap::new();
+        let mut local_env: BTreeMap<String, ObjRef<B>> = BTreeMap::new();
         if ctx.call_stack_len() != 0 {
             local_env = ctx.call_stack_last_clone();
         }
@@ -4212,7 +4229,7 @@ impl PmatchObject for PmatchFunction {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
-        let mut retval: HfstTransducer = self.root.borrow_mut().evaluate(ctx)?;
+        let mut retval: HfstTransducer<B> = self.root.borrow_mut().evaluate(ctx)?;
         if self.name != "" {
             ctx.eval_stack_pop();
         }
@@ -4227,8 +4244,11 @@ impl PmatchObject for PmatchFunction {
         Ok(retval)
     }
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
-        let funargs: Vec<ObjRef> = Vec::new();
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
+        let funargs: Vec<ObjRef<B>> = Vec::new();
         self.evaluate_args(ctx, funargs)
     }
 }
@@ -4236,14 +4256,17 @@ impl PmatchObject for PmatchFunction {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-funcall.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-funcall.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-funcall.evaluate-fn]
-impl PmatchObject for PmatchFuncall {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchFuncall<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
-        let evaluated_args: Vec<ObjRef> = self
+        let evaluated_args: Vec<ObjRef<B>> = self
             .args
             .iter()
             .map(|it| it.borrow_mut().evaluate_as_arg(ctx))
@@ -4262,15 +4285,18 @@ impl PmatchObject for PmatchFuncall {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch-builtin-function.evaluate-fn]
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-builtin-function.evaluate-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-builtin-function.evaluate-fn]
-impl PmatchObject for PmatchBuiltinFunction {
+impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBuiltinFunction<B> {
     pmatch_object_base_accessors!();
 
-    fn evaluate(&mut self, ctx: &mut PmatchEvalContext) -> crate::error::Result<HfstTransducer> {
+    fn evaluate(
+        &mut self,
+        ctx: &mut PmatchEvalContext<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if self.name != "" {
             ctx.eval_stack_push(self.name.clone());
         }
         self.start_timing(ctx);
-        let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format)?;
+        let mut retval: HfstTransducer<B> = HfstTransducer::new();
         if self.ty == PmatchBuiltin::Interpolate {
             if self.args.len() < 3 {
                 let errstring = format!(
@@ -4282,9 +4308,9 @@ impl PmatchObject for PmatchBuiltinFunction {
             // arguments are in reverse order after parsing
             let n = self.args.len();
             retval = self.args[n - 2].borrow_mut().evaluate(ctx)?;
-            let interpolator: HfstTransducer = self.args[n - 1].borrow_mut().evaluate(ctx)?;
+            let interpolator: HfstTransducer<B> = self.args[n - 1].borrow_mut().evaluate(ctx)?;
             for i in (0..(n - 2)).rev() {
-                let tmp: HfstTransducer = self.args[i].borrow_mut().evaluate(ctx)?;
+                let tmp: HfstTransducer<B> = self.args[i].borrow_mut().evaluate(ctx)?;
                 retval.concatenate(&interpolator, true)?;
                 retval.concatenate(&tmp, true)?;
             }
@@ -4339,8 +4365,8 @@ pub fn get_top_n(
 // Get the n best candidates in the transformed space using an insertion sort
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.get-top-n-transformed-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-top-n-transformed-fn]
-pub fn get_top_n_transformed(
-    ctx: &mut PmatchEvalContext,
+pub fn get_top_n_transformed<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     n: usize,
     vecs: &Vec<WordVector>,
     plane_vec: Vec<WordVecFloat>,
@@ -4474,13 +4500,13 @@ pub fn cosine_distance_vec(left: Vec<WordVecFloat>, right: Vec<WordVecFloat>) ->
 // the general case
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-like-arc-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-like-arc-fn]
-pub fn compile_like_arc(
-    ctx: &mut PmatchEvalContext,
+pub fn compile_like_arc<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     word1: String,
     word2: String,
     nwords: u32,
     is_negative: bool,
-) -> crate::error::Result<ObjRef> {
+) -> crate::error::Result<ObjRef<B>> {
     {
         let mut this_word1: WordVector = WordVector::default();
         let mut this_word2: WordVector = WordVector::default();
@@ -4556,7 +4582,7 @@ using nearest neighbours",
                 &mut this_word,
             );
             let tok: HfstTokenizer = HfstTokenizer::new();
-            let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format)?;
+            let mut retval: HfstTransducer<B> = HfstTransducer::new();
             if ctx.verbose {
                 debug!("Inserting into Like({}):", this_word.word);
             }
@@ -4565,8 +4591,8 @@ using nearest neighbours",
                 if ctx.verbose {
                     debug!("  {}", top_n[i].0.word);
                 }
-                let mut tmp: HfstTransducer =
-                    HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format)?;
+                let mut tmp: HfstTransducer<B> =
+                    HfstTransducer::new_tokenized(&top_n[i].0.word, &tok)?;
                 if ctx.include_cosine_distances {
                     tmp.set_final_weights(top_n[i].1, false)?;
                 }
@@ -4650,14 +4676,13 @@ using nearest neighbours",
             is_negative,
         );
         let tok: HfstTokenizer = HfstTokenizer::new();
-        let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format)?;
+        let mut retval: HfstTransducer<B> = HfstTransducer::new();
         let mut i: usize = 0;
         while i < top_n.len() && i <= nwords as usize {
             if ctx.verbose {
                 debug!("  {}", top_n[i].0.word);
             }
-            let mut tmp: HfstTransducer =
-                HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format)?;
+            let mut tmp: HfstTransducer<B> = HfstTransducer::new_tokenized(&top_n[i].0.word, &tok)?;
             if ctx.include_cosine_distances {
                 tmp.set_final_weights(top_n[i].1, false)?;
             }
@@ -4690,11 +4715,11 @@ using nearest neighbours",
 // Single-word Like()
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-like-arc-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-like-arc-fn]
-pub fn compile_like_arc_word(
-    ctx: &mut PmatchEvalContext,
+pub fn compile_like_arc_word<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     word: String,
     nwords: u32,
-) -> crate::error::Result<ObjRef> {
+) -> crate::error::Result<ObjRef<B>> {
     {
         let mut this_word: WordVector = WordVector::default();
         for it in ctx.word_vectors_snapshot().iter() {
@@ -4725,7 +4750,7 @@ pub fn compile_like_arc_word(
         );
 
         let tok: HfstTokenizer = HfstTokenizer::new();
-        let mut retval: HfstTransducer = HfstTransducer::new_type(ctx.format)?;
+        let mut retval: HfstTransducer<B> = HfstTransducer::new();
         if ctx.verbose {
             debug!("Inserting into Like({}):", word);
         }
@@ -4733,8 +4758,7 @@ pub fn compile_like_arc_word(
             if ctx.verbose {
                 debug!("  {}", top_n[i].0.word);
             }
-            let mut tmp: HfstTransducer =
-                HfstTransducer::new_tokenized(&top_n[i].0.word, &tok, ctx.format)?;
+            let mut tmp: HfstTransducer<B> = HfstTransducer::new_tokenized(&top_n[i].0.word, &tok)?;
             if ctx.include_cosine_distances {
                 tmp.set_final_weights(top_n[i].1, false)?;
             }
@@ -4753,7 +4777,7 @@ pub fn compile_like_arc_word(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-vec-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-vec-fn]
-pub fn read_vec(ctx: &mut PmatchEvalContext, filename: String) {
+pub fn read_vec<B: AlgebraBackend + 'static>(ctx: &mut PmatchEvalContext<B>, filename: String) {
     use std::io::Read;
     let mut binary_format = false;
     if filename.len() >= 4 && filename.rfind(".bin") == Some(filename.len() - 4) {
@@ -4972,9 +4996,9 @@ pub fn pmatchwarning(msg: &str) {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.register-lst-line-numbers-from-transducer-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.register-lst-line-numbers-from-transducer-fn]
-pub fn register_lst_line_numbers_from_transducer(
-    ctx: &mut PmatchEvalContext,
-    t: &HfstTransducer,
+pub fn register_lst_line_numbers_from_transducer<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    t: &HfstTransducer<B>,
     line: i32,
 ) -> crate::error::Result<()> {
     if line <= 0 {
@@ -4993,7 +5017,10 @@ pub fn register_lst_line_numbers_from_transducer(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.expand-includes-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.expand-includes-fn]
-pub fn expand_includes(ctx: &mut PmatchEvalContext, script: &str) -> String {
+pub fn expand_includes<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    script: &str,
+) -> String {
     if !script.contains("@include\"") {
         return script.to_string();
     }
@@ -5056,15 +5083,14 @@ pub fn expand_includes(ctx: &mut PmatchEvalContext, script: &str) -> String {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-fn]
-pub fn compile(
+pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
     pmatch: &str,
-    defs: &HashMap<String, HfstTransducer>,
-    format: ImplementationType,
+    defs: &HashMap<String, HfstTransducer<B>>,
     be_verbose: bool,
     do_flatten: bool,
     do_include_cosine_distances: bool,
     includedir: String,
-) -> crate::error::Result<HashMap<String, HfstTransducer>> {
+) -> crate::error::Result<HashMap<String, HfstTransducer<B>>> {
     // lock here?
     let mut ctx_owned = PmatchEvalContext::new();
     let ctx = &mut ctx_owned;
@@ -5085,7 +5111,6 @@ pub fn compile(
             )?)),
         );
     }
-    ctx.format = format;
     if ctx.verbose {
         ctx.timer = clock();
         debug!("");
@@ -5109,7 +5134,7 @@ pub fn compile(
     }
     // === END SEAM =========================================================
 
-    let mut retval: HashMap<String, HfstTransducer> = HashMap::new();
+    let mut retval: HashMap<String, HfstTransducer<B>> = HashMap::new();
     for it in ctx.unsatisfied_insertions_snapshot().into_iter() {
         if !ctx.definitions_contains(it.as_str()) {
             error!("Inserted transducer {} was never defined!", it);
@@ -5142,7 +5167,7 @@ pub fn compile(
         || ctx.def_insed_expressions_len() > 0
         || ctx.uncomposed_len() > 0
     {
-        let mut dummy = HfstTransducer::new_type(ctx.format)?;
+        let mut dummy = HfstTransducer::new();
         // We keep TOP and any inserted transducers
         let defs_keys: Vec<String> = ctx.definitions_keys();
         for first in defs_keys.iter() {
@@ -5159,7 +5184,7 @@ pub fn compile(
                         second.borrow().get_name().to_string()
                     );
                 }
-                let mut tmp: HfstTransducer = if ctx.def_insed_expressions_contains(first) {
+                let mut tmp: HfstTransducer<B> = if ctx.def_insed_expressions_contains(first) {
                     ctx.def_insed_expressions_get(first)
                         .unwrap()
                         .borrow_mut()
@@ -5206,7 +5231,7 @@ pub fn compile(
     } else {
         if ctx.definitions_len() == 0 {
             warn!("pmatch compilation had an empty result");
-            retval.insert("TOP".to_string(), HfstTransducer::new_type(ctx.format)?);
+            retval.insert("TOP".to_string(), HfstTransducer::new());
         } else if !ctx.definitions_contains("TOP") {
             let first_key = ctx.definitions_keys().into_iter().next().unwrap();
             warn!(
@@ -5307,9 +5332,9 @@ pub fn compile(
         let whitespace_acc =
             ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_whitespace_acceptor))?;
         let punct_acc = ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_punct_acceptor))?;
-        let mut not_whitespace = HfstTransducer::new_symbol(internal_identity, ctx.format)?;
+        let mut not_whitespace = HfstTransducer::new_symbol(internal_identity)?;
         not_whitespace.subtract(&whitespace_acc, true)?;
-        let mut anything = HfstTransducer::new_symbol(internal_identity, ctx.format)?;
+        let mut anything = HfstTransducer::new_symbol(internal_identity)?;
         anything.repeat_star()?;
         let mut begins_and_ends_with_non_whitespace = HfstTransducer::new_copy(&not_whitespace)?;
         begins_and_ends_with_non_whitespace.concatenate(&anything, true)?;
@@ -5318,26 +5343,24 @@ pub fn compile(
             .compose(retval.get("TOP").expect("TOP defined above"), true)?;
         let mut is_single_non_whitespace = HfstTransducer::new_copy(&not_whitespace)?;
         is_single_non_whitespace.compose(retval.get("TOP").expect("TOP defined above"), true)?;
-        let empty = HfstTransducer::new_type(ctx.format)?;
+        let empty = HfstTransducer::new();
         if begins_and_ends_with_non_whitespace.compare(&empty, true)? == false
             || is_single_non_whitespace.compare(&empty, true)? == false
         {
             let mut whitespace_punct_context = HfstTransducer::new_copy(&whitespace_acc)?;
             whitespace_punct_context.disjunct(&punct_acc, true)?;
-            whitespace_punct_context
-                .disjunct(&HfstTransducer::new_symbol("@BOUNDARY@", ctx.format)?, true)?;
-            let mut top_with_boundaries: HfstTransducer =
-                HfstTransducer::new_symbol_pair(internal_epsilon, LC_ENTRY_SYMBOL, ctx.format)?;
+            whitespace_punct_context.disjunct(&HfstTransducer::new_symbol("@BOUNDARY@")?, true)?;
+            let mut top_with_boundaries: HfstTransducer<B> =
+                HfstTransducer::new_symbol_pair(internal_epsilon, LC_ENTRY_SYMBOL)?;
             top_with_boundaries.concatenate(&whitespace_punct_context, true)?;
             top_with_boundaries.concatenate(
-                &HfstTransducer::new_symbol_pair(internal_epsilon, LC_EXIT_SYMBOL, ctx.format)?,
+                &HfstTransducer::new_symbol_pair(internal_epsilon, LC_EXIT_SYMBOL)?,
                 true,
             )?;
-            let mut rc =
-                HfstTransducer::new_symbol_pair(internal_epsilon, RC_ENTRY_SYMBOL, ctx.format)?;
+            let mut rc = HfstTransducer::new_symbol_pair(internal_epsilon, RC_ENTRY_SYMBOL)?;
             rc.concatenate(&whitespace_punct_context, true)?;
             rc.concatenate(
-                &HfstTransducer::new_symbol_pair(internal_epsilon, RC_EXIT_SYMBOL, ctx.format)?,
+                &HfstTransducer::new_symbol_pair(internal_epsilon, RC_EXIT_SYMBOL)?,
                 true,
             )?;
             top_with_boundaries.concatenate(retval.get("TOP").expect("TOP defined above"), true)?;
@@ -5368,7 +5391,9 @@ pub fn compile(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.write-compilation-stack-indentation-to-err-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.write-compilation-stack-indentation-to-err-fn]
-pub fn write_compilation_stack_indentation_to_err(ctx: &mut PmatchEvalContext) {
+pub fn write_compilation_stack_indentation_to_err<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+) {
     // Visually indicate nested definitions
     let mut indentation = String::new();
     let mut i = 1;
@@ -5385,13 +5410,12 @@ pub fn write_compilation_stack_indentation_to_err(ctx: &mut PmatchEvalContext) {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-text-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-text-fn]
-pub fn read_text(
+pub fn read_text<B: AlgebraBackend>(
     filename: String,
-    ty: ImplementationType,
     spaced_text: bool,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     let tok = HfstTokenizer::new();
-    let mut retval: HfstTransducer = HfstTransducer::new_type(ty)?;
+    let mut retval: HfstTransducer<B> = HfstTransducer::new();
     match fs::read_to_string(&filename) {
         Err(_) => {
             error!("Pmatch: could not open text file {} for reading", filename);
@@ -5416,15 +5440,17 @@ pub fn read_text(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-spaced-text-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-spaced-text-fn]
-pub fn read_spaced_text(
+pub fn read_spaced_text<B: AlgebraBackend>(
     filename: String,
-    ty: ImplementationType,
-) -> crate::error::Result<HfstTransducer> {
-    read_text(filename, ty, true)
+) -> crate::error::Result<HfstTransducer<B>> {
+    read_text(filename, true)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.path-from-filename-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.path-from-filename-fn]
-pub fn path_from_filename(ctx: &mut PmatchEvalContext, filename: &str) -> String {
+pub fn path_from_filename<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    filename: &str,
+) -> String {
     let mut retval = filename.to_string();
     if ctx.includedir.len() > 0 && retval.len() > 0 {
         // includedir won't be > 0 under Windows until this mechanism is ported
@@ -5565,10 +5591,12 @@ fn map_caseop(op: nfst_pmatch::CaseOp, side: Option<nfst_pmatch::CaseSide>) -> P
 // cache=NULL).
 // ===========================================================================
 
-fn as_obj<T: PmatchObject + 'static>(p: Rc<RefCell<T>>) -> ObjRef {
+fn as_obj<B: AlgebraBackend + 'static, T: PmatchObject<B> + 'static>(
+    p: Rc<RefCell<T>>,
+) -> ObjRef<B> {
     p
 }
-fn pmb_symbol(sym: String) -> ObjRef {
+fn pmb_symbol<B: AlgebraBackend + 'static>(sym: String) -> ObjRef<B> {
     Rc::new(RefCell::new(PmatchSymbol {
         name: String::new(),
         weight: 0.0,
@@ -5578,7 +5606,7 @@ fn pmb_symbol(sym: String) -> ObjRef {
         sym,
     }))
 }
-fn pmb_string(string: String, multichar: bool) -> ObjRef {
+fn pmb_string<B: AlgebraBackend + 'static>(string: String, multichar: bool) -> ObjRef<B> {
     Rc::new(RefCell::new(PmatchString {
         name: String::new(),
         weight: 0.0,
@@ -5589,7 +5617,7 @@ fn pmb_string(string: String, multichar: bool) -> ObjRef {
         multichar,
     }))
 }
-fn pmb_question_mark() -> ObjRef {
+fn pmb_question_mark<B: AlgebraBackend + 'static>() -> ObjRef<B> {
     Rc::new(RefCell::new(PmatchQuestionMark {
         name: String::new(),
         weight: 0.0,
@@ -5598,7 +5626,7 @@ fn pmb_question_mark() -> ObjRef {
         cache: None,
     }))
 }
-fn pmb_empty() -> ObjRef {
+fn pmb_empty<B: AlgebraBackend + 'static>() -> ObjRef<B> {
     Rc::new(RefCell::new(PmatchEmpty {
         name: String::new(),
         weight: 0.0,
@@ -5607,7 +5635,7 @@ fn pmb_empty() -> ObjRef {
         cache: None,
     }))
 }
-fn pmb_epsilon_arc() -> ObjRef {
+fn pmb_epsilon_arc<B: AlgebraBackend + 'static>() -> ObjRef<B> {
     Rc::new(RefCell::new(PmatchEpsilonArc {
         name: String::new(),
         weight: 0.0,
@@ -5616,7 +5644,7 @@ fn pmb_epsilon_arc() -> ObjRef {
         cache: None,
     }))
 }
-fn pmb_acceptor(set: PmatchPredefined) -> ObjRef {
+fn pmb_acceptor<B: AlgebraBackend + 'static>(set: PmatchPredefined) -> ObjRef<B> {
     Rc::new(RefCell::new(PmatchAcceptor {
         name: String::new(),
         weight: 0.0,
@@ -5626,7 +5654,7 @@ fn pmb_acceptor(set: PmatchPredefined) -> ObjRef {
         set,
     }))
 }
-fn pmb_unary(op: PmatchUnaryOp, root: ObjRef) -> ObjRef {
+fn pmb_unary<B: AlgebraBackend + 'static>(op: PmatchUnaryOp, root: ObjRef<B>) -> ObjRef<B> {
     Rc::new(RefCell::new(PmatchUnaryOperation {
         name: String::new(),
         weight: 0.0,
@@ -5637,7 +5665,11 @@ fn pmb_unary(op: PmatchUnaryOp, root: ObjRef) -> ObjRef {
         root,
     }))
 }
-fn pmb_binary(op: PmatchBinaryOp, left: ObjRef, right: ObjRef) -> ObjRef {
+fn pmb_binary<B: AlgebraBackend + 'static>(
+    op: PmatchBinaryOp,
+    left: ObjRef<B>,
+    right: ObjRef<B>,
+) -> ObjRef<B> {
     Rc::new(RefCell::new(PmatchBinaryOperation {
         name: String::new(),
         weight: 0.0,
@@ -5649,7 +5681,12 @@ fn pmb_binary(op: PmatchBinaryOp, left: ObjRef, right: ObjRef) -> ObjRef {
         right,
     }))
 }
-fn pmb_ternary(op: PmatchTernaryOp, left: ObjRef, middle: ObjRef, right: ObjRef) -> ObjRef {
+fn pmb_ternary<B: AlgebraBackend + 'static>(
+    op: PmatchTernaryOp,
+    left: ObjRef<B>,
+    middle: ObjRef<B>,
+    right: ObjRef<B>,
+) -> ObjRef<B> {
     Rc::new(RefCell::new(PmatchTernaryOperation {
         name: String::new(),
         weight: 0.0,
@@ -5662,7 +5699,11 @@ fn pmb_ternary(op: PmatchTernaryOp, left: ObjRef, middle: ObjRef, right: ObjRef)
         right,
     }))
 }
-fn pmb_numeric(op: PmatchNumericOp, root: ObjRef, values: Vec<i32>) -> ObjRef {
+fn pmb_numeric<B: AlgebraBackend + 'static>(
+    op: PmatchNumericOp,
+    root: ObjRef<B>,
+    values: Vec<i32>,
+) -> ObjRef<B> {
     Rc::new(RefCell::new(PmatchNumericOperation {
         name: String::new(),
         weight: 0.0,
@@ -5674,17 +5715,23 @@ fn pmb_numeric(op: PmatchNumericOp, root: ObjRef, values: Vec<i32>) -> ObjRef {
         values,
     }))
 }
-fn pmb_object_pair(left: ObjRef, right: ObjRef) -> PairRef {
+fn pmb_object_pair<B: AlgebraBackend + 'static>(left: ObjRef<B>, right: ObjRef<B>) -> PairRef<B> {
     Rc::new(RefCell::new(PmatchObjectPair { left, right }))
 }
-fn pmb_markup_container(left_of_arrow: ObjRef, left: ObjRef, right: ObjRef) -> PairRef {
+fn pmb_markup_container<B: AlgebraBackend + 'static>(
+    left_of_arrow: ObjRef<B>,
+    left: ObjRef<B>,
+    right: ObjRef<B>,
+) -> PairRef<B> {
     Rc::new(RefCell::new(PmatchMarkupContainer {
         left,
         right,
         left_of_arrow,
     }))
 }
-fn pmb_tc(t: HfstTransducer) -> Rc<RefCell<PmatchTransducerContainer>> {
+fn pmb_tc<B: AlgebraBackend + 'static>(
+    t: HfstTransducer<B>,
+) -> Rc<RefCell<PmatchTransducerContainer<B>>> {
     Rc::new(RefCell::new(PmatchTransducerContainer {
         name: String::new(),
         weight: 0.0,
@@ -5701,15 +5748,15 @@ fn pmb_tc(t: HfstTransducer) -> Rc<RefCell<PmatchTransducerContainer>> {
 fn ins_transition(name: &str) -> String {
     get_Ins_transition(name)
 }
-fn path_of(ctx: &mut PmatchEvalContext, path: &str) -> String {
+fn path_of<B: AlgebraBackend + 'static>(ctx: &mut PmatchEvalContext<B>, path: &str) -> String {
     path_from_filename(ctx, path)
 }
 // STRINGLIKE: QUOTED_LITERAL -> PmatchString, CURLY_LITERAL -> PmatchString
 // (multichar), SYMBOL -> PmatchSymbol (no used_definitions / empty-check).
-fn build_stringlike(
-    ctx: &mut PmatchEvalContext,
+fn build_stringlike<B: AlgebraBackend + FromAnyTransducer + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     e: &nfst_pmatch::SpannedExpr,
-) -> crate::error::Result<ObjRef> {
+) -> crate::error::Result<ObjRef<B>> {
     use nfst_pmatch::PmatchExpr as PE;
     Ok(match &e.value {
         PE::QuotedLiteral(s) => pmb_string(s.clone(), false),
@@ -5719,10 +5766,10 @@ fn build_stringlike(
     })
 }
 // CONCATENATED_STRING_LIST: right-folded Concatenate of STRINGLIKEs.
-fn build_concatenated_string_list(
-    ctx: &mut PmatchEvalContext,
+fn build_concatenated_string_list<B: AlgebraBackend + FromAnyTransducer + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     items: &[nfst_pmatch::SpannedExpr],
-) -> crate::error::Result<ObjRef> {
+) -> crate::error::Result<ObjRef<B>> {
     let mut iter = items.iter().rev();
     let last = iter.next().expect("non-empty string list");
     let mut acc = build_stringlike(ctx, last)?;
@@ -5733,10 +5780,10 @@ fn build_concatenated_string_list(
 }
 // MappingSide -> object: Expr -> build, Dotted([..]) -> PmatchEpsilonArc,
 // Dotted([. E .]) -> build.
-fn side_to_obj(
-    ctx: &mut PmatchEvalContext,
+fn side_to_obj<B: AlgebraBackend + FromAnyTransducer + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     side: &nfst_pmatch::MappingSide,
-) -> crate::error::Result<ObjRef> {
+) -> crate::error::Result<ObjRef<B>> {
     use nfst_pmatch::MappingSide as MS;
     Ok(match side {
         MS::Expr(e) => build_object(ctx, e)?,
@@ -5745,36 +5792,26 @@ fn side_to_obj(
     })
 }
 // READ_FROM productions: eagerly load the named file into a container.
-fn build_read_file(
-    ctx: &mut PmatchEvalContext,
+fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     kind: nfst_pmatch::ReadKind,
     path: &str,
-) -> crate::error::Result<ObjRef> {
+) -> crate::error::Result<ObjRef<B>> {
     use nfst_pmatch::ReadKind as RK;
     let filepath = path_of(ctx, path);
     match kind {
         RK::Binary => {
             let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(&filepath)?;
-            let mut read = HfstTransducer::new_from_stream(&mut instream)?;
+            let read = instream.read()?.into_typed::<B>()?;
             instream.close();
-            if read.get_type() != ctx.format {
-                read.convert(ctx.format, String::new())?;
-            }
             Ok(as_obj(pmb_tc(read)))
         }
-        RK::Text => Ok(as_obj(pmb_tc(read_text(
-            filepath,
-            ImplementationType::TROPICAL_OPENFST_TYPE,
-            false,
-        )?))),
-        RK::Spaced => Ok(as_obj(pmb_tc(read_spaced_text(
-            filepath,
-            ImplementationType::TROPICAL_OPENFST_TYPE,
-        )?))),
+        RK::Text => Ok(as_obj(pmb_tc(read_text(filepath, false)?))),
+        RK::Spaced => Ok(as_obj(pmb_tc(read_spaced_text(filepath)?))),
         RK::Prolog => match std::fs::File::open(&filepath) {
             Err(_) => {
                 error!("File cannot be opened.");
-                Ok(as_obj(pmb_tc(HfstTransducer::new_type(ctx.format)?)))
+                Ok(as_obj(pmb_tc(HfstTransducer::new())))
             }
             Ok(f) => {
                 let mut reader = std::io::BufReader::new(f);
@@ -5784,7 +5821,7 @@ fn build_read_file(
                         &mut reader,
                         &mut linecount,
                     )?;
-                let mut t = Box::new(HfstTransducer::new_from_basic_transducer(&tmp, ctx.format));
+                let mut t = Box::new(HfstTransducer::new_from_basic_transducer(&tmp));
                 t.minimize()?;
                 Ok(as_obj(pmb_tc(*t)))
             }
@@ -5799,21 +5836,21 @@ fn build_read_file(
             if regex.is_empty() {
                 error!("Failed to read regex from {}.", filepath);
             }
-            let mut xre_compiler = crate::xre::XreCompiler::new(ctx.format);
+            let mut xre_compiler = crate::xre::XreCompiler::new();
             let compiled = match xre_compiler.compile(&regex) {
                 Some(t) => t,
-                None => HfstTransducer::new_type(ctx.format)?,
+                None => HfstTransducer::new(),
             };
             Ok(as_obj(pmb_tc(compiled)))
         }
     }
 }
 /// Build a 'PmatchObject*' AST node from an 'nfst-pmatch' expression node.
-pub fn build_object(
-    ctx: &mut PmatchEvalContext,
+pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     e: &nfst_pmatch::SpannedExpr,
-) -> crate::error::Result<ObjRef> {
-    use nfst_pmatch::BinaryOp as B;
+) -> crate::error::Result<ObjRef<B>> {
+    use nfst_pmatch::BinaryOp as NBinOp;
     use nfst_pmatch::PmatchExpr as PE;
     Ok(match &e.value {
         // ---- atoms ---------------------------------------------------------
@@ -5840,98 +5877,98 @@ pub fn build_object(
 
         // ---- operators -----------------------------------------------------
         PE::Binary(op, l, r) => match op {
-            B::Concatenate => pmb_binary(
+            NBinOp::Concatenate => pmb_binary(
                 PmatchBinaryOp::Concatenate,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::Compose => pmb_binary(
+            NBinOp::Compose => pmb_binary(
                 PmatchBinaryOp::Compose,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::LenientCompose => pmb_binary(
+            NBinOp::LenientCompose => pmb_binary(
                 PmatchBinaryOp::LenientCompose,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::CrossProduct => pmb_binary(
+            NBinOp::CrossProduct => pmb_binary(
                 PmatchBinaryOp::CrossProduct,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::MergeRight => pmb_binary(
+            NBinOp::MergeRight => pmb_binary(
                 PmatchBinaryOp::Merge,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::MergeLeft => {
+            NBinOp::MergeLeft => {
                 // .<m. swaps the operands: Merge($3, $1).
                 let lo = build_object(ctx, l)?;
                 let ro = build_object(ctx, r)?;
                 pmb_binary(PmatchBinaryOp::Merge, ro, lo)
             }
-            B::Before => pmb_binary(
+            NBinOp::Before => pmb_binary(
                 PmatchBinaryOp::Before,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::After => pmb_binary(
+            NBinOp::After => pmb_binary(
                 PmatchBinaryOp::After,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::Shuffle => pmb_binary(
+            NBinOp::Shuffle => pmb_binary(
                 PmatchBinaryOp::Shuffle,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::Union => pmb_binary(
+            NBinOp::Union => pmb_binary(
                 PmatchBinaryOp::Disjunct,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::Intersect => pmb_binary(
+            NBinOp::Intersect => pmb_binary(
                 PmatchBinaryOp::Intersect,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::Subtract => pmb_binary(
+            NBinOp::Subtract => pmb_binary(
                 PmatchBinaryOp::Subtract,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::UpperSubtract => pmb_binary(
+            NBinOp::UpperSubtract => pmb_binary(
                 PmatchBinaryOp::UpperSubtract,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::LowerSubtract => pmb_binary(
+            NBinOp::LowerSubtract => pmb_binary(
                 PmatchBinaryOp::LowerSubtract,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::UpperPriorityUnion => pmb_binary(
+            NBinOp::UpperPriorityUnion => pmb_binary(
                 PmatchBinaryOp::UpperPriorityUnion,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::LowerPriorityUnion => pmb_binary(
+            NBinOp::LowerPriorityUnion => pmb_binary(
                 PmatchBinaryOp::LowerPriorityUnion,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::Ignoring => pmb_binary(
+            NBinOp::Ignoring => pmb_binary(
                 PmatchBinaryOp::InsertFreely,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::IgnoreInternally => pmb_binary(
+            NBinOp::IgnoreInternally => pmb_binary(
                 PmatchBinaryOp::IgnoreInternally,
                 build_object(ctx, l)?,
                 build_object(ctx, r)?,
             ),
-            B::LeftQuotient => {
+            NBinOp::LeftQuotient => {
                 warn!("Left quotient not implemented");
                 pmb_empty()
             }
@@ -5982,13 +6019,13 @@ pub fn build_object(
         // ---- replacement / restriction -------------------------------------
         PE::Replace { arrow, rules } => {
             let mapped_arrow = map_arrow(*arrow);
-            let mut rule_ptrs: Vec<Rc<RefCell<PmatchReplaceRuleContainer>>> = Vec::new();
+            let mut rule_ptrs: Vec<Rc<RefCell<PmatchReplaceRuleContainer<B>>>> = Vec::new();
             for rule in rules.iter() {
                 // MAPPINGPAIR_VECTOR -> mapping pairs
-                let mut mapping: MappingPairVector = Vec::new();
+                let mut mapping: MappingPairVector<B> = Vec::new();
                 for mp in rule.mappings.iter() {
                     use nfst_pmatch::MappingKind as MK;
-                    let pair: PairRef = match &mp.kind {
+                    let pair: PairRef<B> = match &mp.kind {
                         MK::Plain { lower } => {
                             pmb_object_pair(side_to_obj(ctx, &mp.upper)?, side_to_obj(ctx, lower)?)
                         }
@@ -6008,9 +6045,9 @@ pub fn build_object(
                     mapping.push(pair);
                 }
                 // CONTEXTS_WITH_MARK -> context pairs + type
-                let (rtype, context): (ReplaceType, MappingPairVector) = match &rule.contexts {
+                let (rtype, context): (ReplaceType, MappingPairVector<B>) = match &rule.contexts {
                     Some(ctxs) => {
-                        let mut context: MappingPairVector = Vec::new();
+                        let mut context: MappingPairVector<B> = Vec::new();
                         for c in ctxs.items.iter() {
                             let l = match &c.left {
                                 Some(e) => build_object(ctx, e)?,
@@ -6050,9 +6087,9 @@ pub fn build_object(
         }
         PE::Restriction { body, contexts } => {
             let left = build_object(ctx, body)?;
-            let mut ctxs: MappingPairVector = Vec::new();
+            let mut ctxs: MappingPairVector<B> = Vec::new();
             for rc in contexts.iter() {
-                let l: ObjRef = match &rc.left {
+                let l: ObjRef<B> = match &rc.left {
                     Some(e) => build_object(ctx, e)?,
                     None => {
                         if rc.right.is_some() {
@@ -6062,7 +6099,7 @@ pub fn build_object(
                         }
                     }
                 };
-                let r: ObjRef = match &rc.right {
+                let r: ObjRef<B> = match &rc.right {
                     Some(e) => build_object(ctx, e)?,
                     None => {
                         if rc.left.is_some() {
@@ -6185,7 +6222,7 @@ pub fn build_object(
         PE::Sigma(inner) => pmb_unary(PmatchUnaryOp::MakeSigma, build_object(ctx, inner)?),
         PE::Interpolate(items) => {
             // FUNCALL_ARGLIST is in reverse source order; replicate.
-            let argvec: Vec<ObjRef> = items
+            let argvec: Vec<ObjRef<B>> = items
                 .iter()
                 .rev()
                 .map(|it| build_object(ctx, it))
@@ -6241,7 +6278,7 @@ pub fn build_object(
             retval
         }
         PE::OrContext(items) => {
-            let mut result: Option<ObjRef> = None;
+            let mut result: Option<ObjRef<B>> = None;
             for it in items.iter() {
                 let obj = build_object(ctx, it)?;
                 result = match result {
@@ -6256,7 +6293,7 @@ pub fn build_object(
             result.unwrap_or_else(|| pmb_empty())
         }
         PE::AndContext(items) => {
-            let mut result: Option<ObjRef> = None;
+            let mut result: Option<ObjRef<B>> = None;
             for it in items.iter() {
                 let obj = build_object(ctx, it)?;
                 result = match result {
@@ -6277,7 +6314,7 @@ pub fn build_object(
             } else {
                 let mut sym_lookup = sym.clone();
                 let fun = symbol_from_global_context(ctx, &mut sym_lookup).unwrap();
-                let argvec: Vec<ObjRef> = args
+                let argvec: Vec<ObjRef<B>> = args
                     .iter()
                     .rev()
                     .map(|a| build_object(ctx, a))
@@ -6300,11 +6337,7 @@ pub fn build_object(
         PE::ReadFile { kind, path } => build_read_file(ctx, *kind, path)?,
         PE::ReadLexc(path) => {
             let filepath = path_of(ctx, path);
-            as_obj(pmb_tc(HfstTransducer::read_lexc(
-                &filepath,
-                ctx.format,
-                ctx.verbose,
-            )?))
+            as_obj(pmb_tc(HfstTransducer::read_lexc(&filepath, ctx.verbose)?))
         }
         PE::ReadVec(path) => {
             let filepath = path_of(ctx, path);
@@ -6317,10 +6350,10 @@ pub fn build_object(
 // AddDelimiters if need_delimiters; reset need_delimiters. } The trailing
 // weight is folded into a 'Weighted' node by nfst, so only the delimiter wrap
 // remains here.
-fn build_expression1(
-    ctx: &mut PmatchEvalContext,
+fn build_expression1<B: AlgebraBackend + FromAnyTransducer + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     body: &nfst_pmatch::SpannedExpr,
-) -> crate::error::Result<ObjRef> {
+) -> crate::error::Result<ObjRef<B>> {
     let obj = build_object(ctx, body)?;
     let result = if ctx.need_delimiters {
         pmb_unary(PmatchUnaryOp::AddDelimiters, obj)
@@ -6331,7 +6364,7 @@ fn build_expression1(
     Ok(result)
 }
 // PMATCH DEFINITION verbose timer report.
-fn report_defined(ctx: &mut PmatchEvalContext, name: &str) {
+fn report_defined<B: AlgebraBackend + 'static>(ctx: &mut PmatchEvalContext<B>, name: &str) {
     if ctx.verbose {
         let duration = (clock() - ctx.timer) as f64 / CLOCKS_PER_SEC as f64;
         ctx.timer = clock();
@@ -6339,7 +6372,11 @@ fn report_defined(ctx: &mut PmatchEvalContext, name: &str) {
     }
 }
 // PMATCH DEFINITION { shadow check + insert }.
-fn insert_definition(ctx: &mut PmatchEvalContext, name: String, obj: ObjRef) {
+fn insert_definition<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    name: String,
+    obj: ObjRef<B>,
+) {
     if ctx.definitions_contains(&name) {
         warn(format!(
             "definition of {} on line {} shadows earlier definition\n",
@@ -6351,8 +6388,8 @@ fn insert_definition(ctx: &mut PmatchEvalContext, name: String, obj: ObjRef) {
 /// Apply one top-level 'nfst-pmatch' statement (definition / def-ins /
 /// regex-top / set-variable / list-definition / read-vec), populating the
 /// 'hfst::pmatch' globals.
-pub fn build_statement(
-    ctx: &mut PmatchEvalContext,
+pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
     s: &nfst_pmatch::Spanned<nfst_pmatch::PmatchStatement>,
 ) -> crate::error::Result<()> {
     use nfst_pmatch::PmatchStatement as PS;
@@ -6423,17 +6460,17 @@ pub fn build_statement(
 // [spec:hfst:def:pmatch-compiler.hfst.pmatch.pmatch-compiler.pmatch-compiler-fn]
 // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.pmatch-compiler-fn]
 //
-// The C++ default constructor fixes the format to TROPICAL_OPENFST_TYPE.
-impl Default for PmatchCompiler {
+// The C++ default constructor fixed the format to TROPICAL_OPENFST_TYPE; the
+// format is the type parameter 'B' now ([dec:hfst:monomorphic-backends]).
+impl<B: AlgebraBackend + FromAnyTransducer + 'static> Default for PmatchCompiler<B> {
     fn default() -> Self {
-        PmatchCompiler::new(ImplementationType::TROPICAL_OPENFST_TYPE)
+        PmatchCompiler::new()
     }
 }
 
-impl PmatchCompiler {
-    pub fn new(ty: ImplementationType) -> Self {
+impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
+    pub fn new() -> Self {
         PmatchCompiler {
-            ty,
             verbose: false,
             flatten: false,
             include_cosine_distances: false,
@@ -6481,7 +6518,10 @@ impl PmatchCompiler {
     // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.compile-fn]
     // Mirrors 'hfst::pmatch::compile', with the bison 'pmatchparse()' step
     // replaced by a walk over the 'nfst-pmatch' AST (the sanctioned deviation).
-    pub fn compile(&mut self, src: &str) -> crate::error::Result<HashMap<String, HfstTransducer>> {
+    pub fn compile(
+        &mut self,
+        src: &str,
+    ) -> crate::error::Result<HashMap<String, HfstTransducer<B>>> {
         {
             let ctx = &mut self.eval_ctx;
             ctx.init_globals();
@@ -6491,7 +6531,6 @@ impl PmatchCompiler {
             ctx.include_cosine_distances = self.include_cosine_distances;
             ctx.includedir = self.includedir.clone();
             ctx.vector_similarity_projection_factor = 1.0;
-            ctx.format = self.ty;
             if ctx.verbose {
                 ctx.timer = clock();
                 debug!("");
@@ -6516,7 +6555,7 @@ impl PmatchCompiler {
                 }
             }
 
-            let mut retval: HashMap<String, HfstTransducer> = HashMap::new();
+            let mut retval: HashMap<String, HfstTransducer<B>> = HashMap::new();
 
             for it in ctx.unsatisfied_insertions_snapshot().into_iter() {
                 if !ctx.definitions_contains(it.as_str()) {
@@ -6544,7 +6583,7 @@ impl PmatchCompiler {
                 || !ctx.def_insed_expressions_is_empty()
                 || !ctx.uncomposed_is_empty()
             {
-                let mut dummy = HfstTransducer::new_type(ctx.format)?;
+                let mut dummy = HfstTransducer::new();
                 let keys: Vec<String> = ctx.definitions_keys();
                 for key in &keys {
                     if key == "TOP"
@@ -6552,12 +6591,12 @@ impl PmatchCompiler {
                         || ctx.def_insed_expressions_contains(key)
                         || ctx.uncomposed_contains(key)
                     {
-                        let obj_ptr: ObjRef = if ctx.def_insed_expressions_contains(key) {
+                        let obj_ptr: ObjRef<B> = if ctx.def_insed_expressions_contains(key) {
                             ctx.def_insed_expressions_get(key).unwrap()
                         } else {
                             ctx.definitions_get(key).unwrap()
                         };
-                        let mut tmp: HfstTransducer = obj_ptr.borrow_mut().evaluate(ctx)?;
+                        let mut tmp: HfstTransducer<B> = obj_ptr.borrow_mut().evaluate(ctx)?;
                         tmp.minimize()?;
                         dummy.harmonize(&mut tmp, false)?;
                         if ctx.uncomposed_contains(key) {
@@ -6585,7 +6624,7 @@ impl PmatchCompiler {
                 }
             } else if ctx.definitions_is_empty() {
                 warn!("pmatch compilation had an empty result");
-                retval.insert("TOP".to_string(), HfstTransducer::new_type(ctx.format)?);
+                retval.insert("TOP".to_string(), HfstTransducer::new());
             } else if !ctx.definitions_contains("TOP") {
                 let (first_key, first_obj) = {
                     let snap = ctx.definitions_snapshot();
@@ -6597,13 +6636,13 @@ impl PmatchCompiler {
                     "Pmatch compilation: regex or TOP was undefined, using {} as root",
                     first_key
                 );
-                let mut tmp: HfstTransducer = first_obj.borrow_mut().evaluate(ctx)?;
+                let mut tmp: HfstTransducer<B> = first_obj.borrow_mut().evaluate(ctx)?;
                 tmp.minimize()?;
                 tmp.set_name("TOP");
                 retval.insert("TOP".to_string(), tmp);
             } else {
                 let top_obj = ctx.definitions_get("TOP").unwrap();
-                let mut tmp: HfstTransducer = top_obj.borrow_mut().evaluate(ctx)?;
+                let mut tmp: HfstTransducer<B> = top_obj.borrow_mut().evaluate(ctx)?;
                 tmp.minimize()?;
                 tmp.set_name("TOP");
                 retval.insert("TOP".to_string(), tmp);
@@ -6683,15 +6722,11 @@ impl PmatchCompiler {
                     ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_whitespace_acceptor))?;
                 let punct_acc =
                     ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_punct_acceptor))?;
-                let mut not_whitespace = HfstTransducer::new_symbol(
-                    crate::hfst_symbol_defs::internal_identity,
-                    ctx.format,
-                )?;
+                let mut not_whitespace =
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
                 not_whitespace.subtract(&whitespace_acc, true)?;
-                let mut anything = HfstTransducer::new_symbol(
-                    crate::hfst_symbol_defs::internal_identity,
-                    ctx.format,
-                )?;
+                let mut anything =
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
                 anything.repeat_star()?;
                 let mut begins_and_ends_with_non_whitespace =
                     HfstTransducer::new_from_transducer(&not_whitespace);
@@ -6703,7 +6738,7 @@ impl PmatchCompiler {
                     HfstTransducer::new_from_transducer(&not_whitespace);
                 is_single_non_whitespace
                     .compose(retval.get("TOP").expect("TOP defined above"), true)?;
-                let empty = HfstTransducer::new_type(ctx.format)?;
+                let empty = HfstTransducer::new();
                 if !begins_and_ends_with_non_whitespace.compare(&empty, true)?
                     || !is_single_non_whitespace.compare(&empty, true)?
                 {
@@ -6711,32 +6746,28 @@ impl PmatchCompiler {
                         HfstTransducer::new_from_transducer(&whitespace_acc);
                     whitespace_punct_context.disjunct(&punct_acc, true)?;
                     whitespace_punct_context
-                        .disjunct(&HfstTransducer::new_symbol("@BOUNDARY@", ctx.format)?, true)?;
+                        .disjunct(&HfstTransducer::new_symbol("@BOUNDARY@")?, true)?;
                     let mut top_with_boundaries = HfstTransducer::new_symbol_pair(
                         crate::hfst_symbol_defs::internal_epsilon,
                         LC_ENTRY_SYMBOL,
-                        ctx.format,
                     )?;
                     top_with_boundaries.concatenate(&whitespace_punct_context, true)?;
                     top_with_boundaries.concatenate(
                         &HfstTransducer::new_symbol_pair(
                             crate::hfst_symbol_defs::internal_epsilon,
                             LC_EXIT_SYMBOL,
-                            ctx.format,
                         )?,
                         true,
                     )?;
                     let mut rc = HfstTransducer::new_symbol_pair(
                         crate::hfst_symbol_defs::internal_epsilon,
                         RC_ENTRY_SYMBOL,
-                        ctx.format,
                     )?;
                     rc.concatenate(&whitespace_punct_context, true)?;
                     rc.concatenate(
                         &HfstTransducer::new_symbol_pair(
                             crate::hfst_symbol_defs::internal_epsilon,
                             RC_EXIT_SYMBOL,
-                            ctx.format,
                         )?,
                         true,
                     )?;
@@ -6782,15 +6813,14 @@ impl PmatchCompiler {
 // ---------------------------------------------------------------------------
 
 /// Build the shared harmonizer for a compiled ruleset: a transducer holding
-/// the union of every definition's alphabet, converted to HFST_OLW so its
-/// optimized-lookup backend can harmonize each archive member. Returns None
-/// when the definitions carry no symbols at all (an empty ruleset).
-pub fn build_archive_harmonizer(
-    definitions: &HashMap<String, HfstTransducer>,
-    format: ImplementationType,
-) -> crate::error::Result<Option<HfstTransducer>> {
+/// the union of every definition's alphabet; ['write_archive'] turns it into
+/// the optimized-lookup backend that harmonizes each archive member. Returns
+/// None when the definitions carry no symbols at all (an empty ruleset).
+pub fn build_archive_harmonizer<B: AlgebraBackend>(
+    definitions: &HashMap<String, HfstTransducer<B>>,
+) -> crate::error::Result<Option<HfstTransducer<B>>> {
     // A dummy transducer with an alphabet with all the symbols
-    let mut harmonizer = HfstTransducer::new_type(format)?;
+    let mut harmonizer = HfstTransducer::new();
     // First we need to collect a unified alphabet from all the transducers.
     let mut symbols_seen: StringSet = BTreeSet::new();
     // Iterate in key order to mirror std::map's ordered iteration.
@@ -6811,8 +6841,6 @@ pub fn build_archive_harmonizer(
         return Ok(None);
     }
 
-    // Then we convert it...
-    harmonizer.convert(ImplementationType::HFST_OLW_TYPE, String::new())?;
     Ok(Some(harmonizer))
 }
 
@@ -6822,9 +6850,8 @@ pub fn build_archive_harmonizer(
 /// false — writing nothing — when the ruleset is empty (no symbols or no TOP
 /// definition); the caller reports that in its own voice. Verbose progress
 /// (with timings) goes to 'msg'.
-pub fn write_archive(
-    definitions: &mut HashMap<String, HfstTransducer>,
-    format: ImplementationType,
+pub fn write_archive<B: AlgebraBackend>(
+    definitions: &mut HashMap<String, HfstTransducer<B>>,
     outstream: &mut crate::hfst_output_stream::HfstOutputStream,
     verbose: bool,
     msg: &mut dyn std::io::Write,
@@ -6837,19 +6864,16 @@ pub fn write_archive(
         let _ = write!(msg, "Building hfst-ol alphabet... ");
     }
 
-    let mut harmonizer = match build_archive_harmonizer(definitions, format)? {
+    let harmonizer = match build_archive_harmonizer(definitions)? {
         Some(h) => h,
         None => return Ok(false),
     };
     // Use these for naughty intermediate steps to make sure
     // everything has the same alphabet
-    // C passes 'HfstTransducer* harmonizer' to the conversion functions,
-    // which read its hfst_ol backend; the Rust signature takes that backend
-    // directly, so unwrap it here (harmonizer is now HFST_OLW_TYPE).
-    let harmonizer_ol = ConversionFunctions::hfst_transducer_to_hfst_ol(&mut harmonizer)?;
-    // The backend pointer aliases 'harmonizer', which stays alive (and is not
-    // otherwise touched) for the rest of this function.
-    let harmonizer_ol = unsafe { &*harmonizer_ol };
+    // C passed 'HfstTransducer* harmonizer' to the conversion functions,
+    // which read its hfst_ol backend; the Rust conversion builds and returns
+    // that weighted-OL backend as an owned value, so borrow it below.
+    let harmonizer_ol = ConversionFunctions::hfst_transducer_to_hfst_ol(&harmonizer)?;
 
     if verbose {
         let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
@@ -6867,9 +6891,9 @@ pub fn write_archive(
         ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&definitions["TOP"])?;
     let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
         &intermediate_tmp,
-        true,                // weighted
-        "",                  // no special options
-        Some(harmonizer_ol), // harmonize with this
+        true,                 // weighted
+        "",                   // no special options
+        Some(&harmonizer_ol), // harmonize with this
     )?;
     let mut output_tmp = ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp)?;
     output_tmp.set_name("TOP");
@@ -6897,16 +6921,16 @@ pub fn write_archive(
         let harmonized_tmp = if !key.contains("UNCOMPOSE") {
             ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                 &intermediate_tmp,
-                true,                // weighted
-                "empty_alphabet",    // empty alphabet in RTNs, they'll use the main one
-                Some(harmonizer_ol), // harmonize with this
+                true,                 // weighted
+                "empty_alphabet",     // empty alphabet in RTNs, they'll use the main one
+                Some(&harmonizer_ol), // harmonize with this
             )
         } else {
             ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                 &intermediate_tmp,
-                true,                // weighted
-                "",                  // alphabet in UNCs,
-                Some(harmonizer_ol), // harmonize with this
+                true,                 // weighted
+                "",                   // alphabet in UNCs,
+                Some(&harmonizer_ol), // harmonize with this
             )
         };
         let harmonized_tmp = harmonized_tmp?;

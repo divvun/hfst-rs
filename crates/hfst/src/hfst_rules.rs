@@ -19,7 +19,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::hfst_data_types::ImplementationType;
+use crate::backend::AlgebraBackend;
 use crate::hfst_data_types::StringPair;
 use crate::hfst_data_types::StringPairSet;
 // HfstTransducer, plus the HfstTransducer-dependent aliases
@@ -60,14 +60,12 @@ use crate::hfst_symbol_defs::internal_epsilon;
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-fn]
-pub fn replace(
-    t: &HfstTransducer,
+pub fn replace<B: AlgebraBackend>(
+    t: &HfstTransducer<B>,
     repl_type: ReplaceType,
     optional: bool,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
-    let ty = t.get_type();
-
+) -> crate::error::Result<HfstTransducer<B>> {
     let mut t_proj = (*t).clone();
     if repl_type == ReplaceType::REPL_UP {
         t_proj.input_project()?;
@@ -79,7 +77,7 @@ pub fn replace(
         crate::bail!(Fatal, "impossible replace type");
     }
 
-    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
 
     // tc = ( .* t_proj .* )
     let mut tc = pi_star.clone();
@@ -107,23 +105,21 @@ pub fn replace(
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-transducer-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-transducer-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-transducer-fn]
-pub fn replace_transducer(
-    t: &mut HfstTransducer,
+pub fn replace_transducer<B: AlgebraBackend>(
+    t: &mut HfstTransducer<B>,
     lm: String,
     rm: String,
     repl_type: ReplaceType,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     t.optimize()?;
-
-    let ty = t.get_type();
 
     // tm = ( L (L >> (R >> t)) R )
     let mut tc = t.clone();
     tc.insert_freely_pair(&(rm.clone(), rm.clone()), true)?;
     tc.insert_freely_pair(&(lm.clone(), lm.clone()), true)?;
-    let mut tm = HfstTransducer::from_symbol(&lm, ty)?;
-    let rmtr = HfstTransducer::from_symbol(&rm, ty)?;
+    let mut tm = HfstTransducer::from_symbol(&lm)?;
+    let rmtr = HfstTransducer::from_symbol(&rm)?;
     tm.concatenate(&tc, true)?;
     tm.concatenate(&rmtr, true)?;
 
@@ -139,12 +135,12 @@ pub fn replace_transducer(
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-context-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-context-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-context-fn]
-pub fn replace_context(
-    t: &HfstTransducer,
+pub fn replace_context<B: AlgebraBackend>(
+    t: &HfstTransducer<B>,
     m1: String,
     m2: String,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     // ct = .* ( m1 >> ( m2 >> t ))  ||  !(.* m1)
 
     // m1 >> ( m2 >> t )
@@ -152,7 +148,7 @@ pub fn replace_context(
     t_copy.insert_freely_pair(&(m1.clone(), m1.clone()), true)?;
     t_copy.insert_freely_pair(&(m2.clone(), m2.clone()), true)?;
 
-    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, t.get_type(), true)?;
+    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
 
     // arg1 = .* ( m1 >> ( m2 >> t ))
     let mut arg1 = pi_star.clone();
@@ -160,7 +156,7 @@ pub fn replace_context(
     arg1.concatenate(&t_copy, true)?;
 
     // arg2 = !(.* m1)
-    let m1_tr = HfstTransducer::from_symbol(&m1, t.get_type())?;
+    let m1_tr = HfstTransducer::from_symbol(&m1)?;
     let mut tmp = pi_star.clone();
     tmp.concatenate(&m1_tr, true)?;
     let mut arg2 = pi_star.clone();
@@ -170,7 +166,7 @@ pub fn replace_context(
     let ct = arg1.compose(&arg2, true)?.clone();
 
     // mt = m2* m1 .*
-    let mut mt = HfstTransducer::from_symbol(&m2, t.get_type())?;
+    let mut mt = HfstTransducer::from_symbol(&m2)?;
     mt.repeat_star()?;
     mt.concatenate(&m1_tr, true)?;
     mt.concatenate(&pi_star, true)?;
@@ -204,18 +200,14 @@ pub fn replace_context(
 // [spec:hfst:sem:hfst-rules.hfst.rules.two-level-if-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-fn]
-pub fn two_level_if(
-    context: &HfstTransducerPair,
+pub fn two_level_if<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
     mappings: &StringPairSet,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
-    if context.0.get_type() != context.1.get_type() {
-        crate::bail!(TransducerTypeMismatch, "rules::two_level_if");
-    }
-    let ty = context.0.get_type();
-
-    assert!(context.1.get_type() != ImplementationType::ERROR_TYPE);
-    assert!(context.1.get_type() != ImplementationType::ERROR_TYPE);
+) -> crate::error::Result<HfstTransducer<B>> {
+    // The C++ compared the pair's runtime type tags (TransducerTypeMismatch)
+    // and asserted neither was ERROR_TYPE; both are static facts for
+    // HfstTransducer<B>.
 
     // calculate [ a:. ]
     let mut input_to_any: StringPairSet = StringPairSet::new();
@@ -228,25 +220,25 @@ pub fn two_level_if(
     }
 
     // center == [ a:. ]
-    let mut center = HfstTransducer::from_string_pair_set(&input_to_any, ty, false)?;
+    let mut center = HfstTransducer::from_string_pair_set(&input_to_any, false)?;
 
     // calculate [ .* - a:b ]
-    let mut neg_mappings = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+    let mut neg_mappings = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
     //neg_mappings.repeat_star();
 
-    let mappings_tr = HfstTransducer::from_string_pair_set(&*mappings, ty, false)?;
+    let mappings_tr = HfstTransducer::from_string_pair_set(&*mappings, false)?;
     neg_mappings.subtract(&mappings_tr, true)?;
 
     // center == [ a:. & !a:b ]
     center.intersect(&neg_mappings, true)?;
 
     // left context == [ .* l ]
-    let mut left_context = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+    let mut left_context = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
     left_context.concatenate(&context.0, true)?;
 
     // right_context == [ r .* ]
     let mut right_context = context.1.clone();
-    let universal = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+    let universal = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
     right_context.concatenate(&universal, true)?;
 
     let inside = left_context
@@ -264,33 +256,29 @@ pub fn two_level_if(
 // [spec:hfst:sem:hfst-rules.hfst.rules.two-level-only-if-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-two-level-only-if-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-two-level-only-if-fn]
-pub fn two_level_only_if(
-    context: &HfstTransducerPair,
+pub fn two_level_only_if<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
     mappings: &StringPairSet,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
-    if context.0.get_type() != context.1.get_type() {
-        crate::bail!(TransducerTypeMismatch, "rules::two_level_only_if");
-    }
-    let ty = context.0.get_type();
-
-    assert!(context.1.get_type() != ImplementationType::ERROR_TYPE);
-    assert!(context.1.get_type() != ImplementationType::ERROR_TYPE);
+) -> crate::error::Result<HfstTransducer<B>> {
+    // The C++ compared the pair's runtime type tags (TransducerTypeMismatch)
+    // and asserted neither was ERROR_TYPE; both are static facts for
+    // HfstTransducer<B>.
 
     // center = a:b
-    let center = HfstTransducer::from_string_pair_set(&*mappings, ty, false)?;
+    let center = HfstTransducer::from_string_pair_set(&*mappings, false)?;
 
     // left_neg = !(.* l)
-    let mut left = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+    let mut left = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
     left.concatenate(&context.0, true)?;
-    let mut left_neg = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+    let mut left_neg = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
     left_neg.subtract(&left, true)?;
 
     // right_neg = !(r .*)
-    let universal = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+    let universal = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
     let mut right = context.1.clone();
     right.concatenate(&universal, true)?;
-    let mut right_neg = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+    let mut right_neg = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
     right_neg.subtract(&right, true)?;
 
     // left_neg + center + universal  |  universal + center + right_neg
@@ -302,7 +290,7 @@ pub fn two_level_only_if(
     rule_right.concatenate(&right_neg, true)?;
     rule.disjunct(&rule_right, true)?;
 
-    let mut rule_neg = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+    let mut rule_neg = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
     rule_neg.subtract(&rule, true)?;
 
     return Ok(rule_neg);
@@ -312,11 +300,11 @@ pub fn two_level_only_if(
 // [spec:hfst:sem:hfst-rules.hfst.rules.two-level-if-and-only-if-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-and-only-if-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-two-level-if-and-only-if-fn]
-pub fn two_level_if_and_only_if(
-    context: &HfstTransducerPair,
+pub fn two_level_if_and_only_if<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
     mappings: &StringPairSet,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     let mut if_rule = two_level_if(context, mappings, alphabet)?;
     let only_if_rule = two_level_only_if(context, mappings, alphabet)?;
     return Ok(if_rule.intersect(&only_if_rule, true)?.clone());
@@ -326,18 +314,15 @@ pub fn two_level_if_and_only_if(
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-in-context-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-in-context-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-in-context-fn]
-pub fn replace_in_context(
-    context: &HfstTransducerPair,
+pub fn replace_in_context<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
     repl_type: ReplaceType,
-    t: &mut HfstTransducer,
+    t: &mut HfstTransducer<B>,
     optional: bool,
     alphabet: &mut StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
-    // test that all transducers have the same type
-    if context.0.get_type() != context.1.get_type() || context.0.get_type() != t.get_type() {
-        crate::bail!(TransducerTypeMismatch, "rules::replace_in_context");
-    }
-    let ty = t.get_type();
+) -> crate::error::Result<HfstTransducer<B>> {
+    // The C++ tested that all three transducers carried the same runtime type
+    // tag (TransducerTypeMismatch); that is a static fact for HfstTransducer<B>.
 
     // test that both context transducers are automata
     // this could be done more efficiently...
@@ -360,23 +345,23 @@ pub fn replace_in_context(
     let mut pi1 = alphabet.clone();
     pi1.insert((internal_epsilon.to_string(), leftm.clone()));
     pi1.insert((internal_epsilon.to_string(), rightm.clone()));
-    let ibt = HfstTransducer::from_string_pair_set(&pi1, ty, true)?;
+    let ibt = HfstTransducer::from_string_pair_set(&pi1, true)?;
 
     // Create the remove boundary transducer (.|<L>:<>|<R>:<>)*
     let mut pi2 = alphabet.clone();
     pi2.insert((leftm.clone(), internal_epsilon.to_string()));
     pi2.insert((rightm.clone(), internal_epsilon.to_string()));
-    let rbt = HfstTransducer::from_string_pair_set(&pi2, ty, true)?;
+    let rbt = HfstTransducer::from_string_pair_set(&pi2, true)?;
 
     // Add the markers to the alphabet
     alphabet.insert((leftm.clone(), leftm.clone()));
     alphabet.insert((rightm.clone(), rightm.clone()));
 
-    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
 
     // Create the constrain boundary transducer !(.*<L><R>.*)
-    let leftm_to_leftm = HfstTransducer::from_isymbol_osymbol(&leftm, &leftm, ty)?;
-    let rightm_to_rightm = HfstTransducer::from_isymbol_osymbol(&rightm, &rightm, ty)?;
+    let leftm_to_leftm = HfstTransducer::from_isymbol_osymbol(&leftm, &leftm)?;
+    let rightm_to_rightm = HfstTransducer::from_isymbol_osymbol(&rightm, &rightm)?;
     let mut tmp = pi_star.clone();
     tmp.concatenate(&leftm_to_leftm, true)?;
     tmp.concatenate(&rightm_to_rightm, true)?;
@@ -402,7 +387,7 @@ pub fn replace_in_context(
     rct.optimize()?;
 
     // unconditional replace transducer
-    let mut rt = HfstTransducer::from_type(ty)?;
+    let mut rt = HfstTransducer::new();
     if repl_type == ReplaceType::REPL_UP
         || repl_type == ReplaceType::REPL_RIGHT
         || repl_type == ReplaceType::REPL_LEFT
@@ -467,7 +452,7 @@ pub fn replace_in_context(
     alphabet.remove(&(rightm.clone(), rightm.clone()));
 
     if optional {
-        let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+        let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
         result.disjunct(&pi_star, true)?;
     }
 
@@ -479,12 +464,12 @@ pub fn replace_in_context(
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-up-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-up-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-up-fn]
-pub fn replace_up(
-    context: &HfstTransducerPair,
-    mapping: &mut HfstTransducer,
+pub fn replace_up<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
+    mapping: &mut HfstTransducer<B>,
     optional: bool,
     alphabet: &mut StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return replace_in_context(context, ReplaceType::REPL_UP, mapping, optional, alphabet);
 }
 
@@ -492,12 +477,12 @@ pub fn replace_up(
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-down-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-down-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-down-fn]
-pub fn replace_down(
-    context: &HfstTransducerPair,
-    mapping: &mut HfstTransducer,
+pub fn replace_down<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
+    mapping: &mut HfstTransducer<B>,
     optional: bool,
     alphabet: &mut StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return replace_in_context(context, ReplaceType::REPL_DOWN, mapping, optional, alphabet);
 }
 
@@ -505,12 +490,12 @@ pub fn replace_down(
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-down-karttunen-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-down-karttunen-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-down-karttunen-fn]
-pub fn replace_down_karttunen(
-    context: &HfstTransducerPair,
-    mapping: &mut HfstTransducer,
+pub fn replace_down_karttunen<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
+    mapping: &mut HfstTransducer<B>,
     optional: bool,
     alphabet: &mut StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return replace_in_context(
         context,
         ReplaceType::REPL_DOWN_KARTTUNEN,
@@ -524,12 +509,12 @@ pub fn replace_down_karttunen(
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-right-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-right-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-right-fn]
-pub fn replace_right(
-    context: &HfstTransducerPair,
-    mapping: &mut HfstTransducer,
+pub fn replace_right<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
+    mapping: &mut HfstTransducer<B>,
     optional: bool,
     alphabet: &mut StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return replace_in_context(
         context,
         ReplaceType::REPL_RIGHT,
@@ -543,28 +528,28 @@ pub fn replace_right(
 // [spec:hfst:sem:hfst-rules.hfst.rules.replace-left-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-replace-left-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-left-fn]
-pub fn replace_left(
-    context: &HfstTransducerPair,
-    mapping: &mut HfstTransducer,
+pub fn replace_left<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
+    mapping: &mut HfstTransducer<B>,
     optional: bool,
     alphabet: &mut StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return replace_in_context(context, ReplaceType::REPL_LEFT, mapping, optional, alphabet);
 }
 
-pub fn replace_up_mapping(
-    mapping: &HfstTransducer,
+pub fn replace_up_mapping<B: AlgebraBackend>(
+    mapping: &HfstTransducer<B>,
     optional: bool,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return replace(mapping, ReplaceType::REPL_UP, optional, alphabet);
 }
 
-pub fn replace_down_mapping(
-    mapping: &HfstTransducer,
+pub fn replace_down_mapping<B: AlgebraBackend>(
+    mapping: &HfstTransducer<B>,
     optional: bool,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return replace(mapping, ReplaceType::REPL_DOWN, optional, alphabet);
 }
 
@@ -573,11 +558,11 @@ pub fn replace_down_mapping(
 // [spec:hfst:sem:hfst-rules.hfst.rules.left-replace-up-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-up-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-up-fn]
-pub fn left_replace_up_mapping(
-    mapping: &HfstTransducer,
+pub fn left_replace_up_mapping<B: AlgebraBackend>(
+    mapping: &HfstTransducer<B>,
     optional: bool,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     if optional {
         return Ok(replace_up_mapping(mapping, true, alphabet)?
             .invert()?
@@ -590,12 +575,12 @@ pub fn left_replace_up_mapping(
 }
 
 // Left arrow replace up
-pub fn left_replace_up(
-    context: &HfstTransducerPair,
-    mapping: &mut HfstTransducer,
+pub fn left_replace_up<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
+    mapping: &mut HfstTransducer<B>,
     optional: bool,
     alphabet: &mut StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     if optional {
         return Ok(replace_up(context, mapping, true, alphabet)?
             .invert()?
@@ -612,12 +597,12 @@ pub fn left_replace_up(
 // [spec:hfst:sem:hfst-rules.hfst.rules.left-replace-down-karttunen-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-karttunen-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-karttunen-fn]
-pub fn left_replace_down_karttunen(
-    context: &HfstTransducerPair,
-    mapping: &mut HfstTransducer,
+pub fn left_replace_down_karttunen<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
+    mapping: &mut HfstTransducer<B>,
     optional: bool,
     alphabet: &mut StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     if optional {
         return Ok(replace_down_karttunen(context, mapping, true, alphabet)?
             .invert()?
@@ -634,12 +619,12 @@ pub fn left_replace_down_karttunen(
 // [spec:hfst:sem:hfst-rules.hfst.rules.left-replace-down-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-down-fn]
-pub fn left_replace_down(
-    context: &HfstTransducerPair,
-    mapping: &mut HfstTransducer,
+pub fn left_replace_down<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
+    mapping: &mut HfstTransducer<B>,
     optional: bool,
     alphabet: &mut StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     if optional {
         return Ok(replace_down(context, mapping, true, alphabet)?
             .invert()?
@@ -656,12 +641,12 @@ pub fn left_replace_down(
 // [spec:hfst:sem:hfst-rules.hfst.rules.left-replace-left-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-left-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-left-fn]
-pub fn left_replace_left(
-    context: &HfstTransducerPair,
-    mapping: &mut HfstTransducer,
+pub fn left_replace_left<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
+    mapping: &mut HfstTransducer<B>,
     optional: bool,
     alphabet: &mut StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     if optional {
         return Ok(replace_left(context, mapping, true, alphabet)?
             .invert()?
@@ -678,12 +663,12 @@ pub fn left_replace_left(
 // [spec:hfst:sem:hfst-rules.hfst.rules.left-replace-right-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-left-replace-right-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-left-replace-right-fn]
-pub fn left_replace_right(
-    context: &HfstTransducerPair,
-    mapping: &mut HfstTransducer,
+pub fn left_replace_right<B: AlgebraBackend>(
+    context: &HfstTransducerPair<B>,
+    mapping: &mut HfstTransducer<B>,
     optional: bool,
     alphabet: &mut StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     if optional {
         return Ok(replace_right(context, mapping, true, alphabet)?
             .invert()?
@@ -699,47 +684,34 @@ pub fn left_replace_right(
 // [spec:hfst:sem:hfst-rules.hfst.rules.restriction-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-restriction-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-restriction-fn]
-pub fn restriction(
-    contexts: &HfstTransducerPairVector,
-    mapping: &mut HfstTransducer,
+pub fn restriction<B: AlgebraBackend>(
+    contexts: &HfstTransducerPairVector<B>,
+    mapping: &mut HfstTransducer<B>,
     alphabet: &StringPairSet,
     twol_type: TwolType,
     direction: i32,
-) -> crate::error::Result<HfstTransducer> {
-    // Make sure that contexts contains at least one transducer pair and that
-    // all transducers in the set have the same type.
-    let mut ty = ImplementationType::ERROR_TYPE;
-    let mut type_defined = false;
-    for it in contexts.iter() {
-        if !type_defined {
-            ty = it.0.get_type();
-            type_defined = true;
-        } else {
-            if ty != it.0.get_type() {
-                crate::bail!(TransducerTypeMismatch, "rules::restriction");
-            }
-        }
-        if ty != it.1.get_type() {
-            crate::bail!(TransducerTypeMismatch, "rules::restriction");
-        }
-    }
-    if !type_defined {
+) -> crate::error::Result<HfstTransducer<B>> {
+    // Make sure that contexts contains at least one transducer pair. (The C++
+    // also scanned the pairs' runtime type tags for a common
+    // ImplementationType and bailed with TransducerTypeMismatch on
+    // disagreement; the common type is now the static parameter B.)
+    if contexts.is_empty() {
         crate::bail!(EmptySetOfContexts, "rules::restriction");
     }
 
     let marker: String = "@_MARKER_@".to_string();
-    let mt = HfstTransducer::from_symbol(&marker, ty)?;
-    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+    let mt = HfstTransducer::from_symbol(&marker)?;
+    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
 
     // center transducer
-    let mut l1 = HfstTransducer::from_symbol(internal_epsilon, ty)?;
+    let mut l1 = HfstTransducer::from_symbol(internal_epsilon)?;
     l1.concatenate(&pi_star, true)?;
     l1.concatenate(&mt, true)?;
     l1.concatenate(&*mapping, true)?;
     l1.concatenate(&mt, true)?;
     l1.concatenate(&pi_star, true)?;
 
-    let mut tmp = HfstTransducer::from_type(ty)?;
+    let mut tmp = HfstTransducer::new();
     if direction == 0 {
         tmp = pi_star.clone();
     } else if direction == 1 {
@@ -751,9 +723,9 @@ pub fn restriction(
 
     // context transducer
     // pi_star + left[i] + mt + tmp + mt + + right[i] + pi_star
-    let mut l2 = HfstTransducer::from_type(ty)?;
+    let mut l2 = HfstTransducer::new();
     for it in contexts.iter() {
-        let mut ct = HfstTransducer::from_symbol(internal_epsilon, ty)?;
+        let mut ct = HfstTransducer::from_symbol(internal_epsilon)?;
         ct.concatenate(&pi_star, true)?;
         ct.concatenate(&it.0, true)?;
         ct.concatenate(&mt, true)?;
@@ -764,11 +736,11 @@ pub fn restriction(
         l2.disjunct(&ct, true)?;
     }
 
-    let result = HfstTransducer::from_type(ty)?;
+    let result: HfstTransducer<B> = HfstTransducer::new();
 
     if twol_type == TwolType::twol_right {
         // TheAlphabet - ( l1 - l2 ).substitute(marker,epsilon, true, true)
-        let mut retval = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+        let mut retval = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
         let mut tmp1 = l1.clone();
         tmp1.subtract(&l2, true)?;
         tmp1.substitute(&marker, internal_epsilon, true, true)?;
@@ -776,7 +748,7 @@ pub fn restriction(
         return Ok(retval);
     } else if twol_type == TwolType::twol_left {
         // TheAlphabet - ( l2 - l1 ).substitute(marker,epsilon, true, true)
-        let mut retval = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+        let mut retval = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
         let mut tmp1 = l2.clone();
         tmp1.subtract(&l1, true)?;
         tmp1.substitute(&marker, internal_epsilon, true, true)?;
@@ -786,13 +758,13 @@ pub fn restriction(
         // TheAlphabet - ( l1 - l2 ).substitute(marker,epsilon, true, true)
         // TheAlphabet - ( l2 - l1 ).substitute(marker,epsilon, true, true)
         // intersect
-        let mut retval1 = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+        let mut retval1 = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
         let mut tmp1 = l1.clone();
         tmp1.subtract(&l2, true)?;
         tmp1.substitute(&marker, internal_epsilon, true, true)?;
         retval1.subtract(&tmp1, true)?;
 
-        let mut retval2 = HfstTransducer::from_string_pair_set(&*alphabet, ty, true)?;
+        let mut retval2 = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
         let mut tmp2 = l2.clone();
         tmp2.subtract(&l1, true)?;
         tmp2.substitute(&marker, internal_epsilon, true, true)?;
@@ -801,15 +773,15 @@ pub fn restriction(
         return Ok(retval1.intersect(&retval2, true)?.clone());
     } else {
         assert!(false);
-        return HfstTransducer::from_type(ty); // make compiler happy
+        return Ok(HfstTransducer::new()); // make compiler happy
     }
 }
 
-pub fn restriction_default(
-    contexts: &HfstTransducerPairVector,
-    mapping: &mut HfstTransducer,
+pub fn restriction_default<B: AlgebraBackend>(
+    contexts: &HfstTransducerPairVector<B>,
+    mapping: &mut HfstTransducer<B>,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_right, 0);
 }
 
@@ -817,11 +789,11 @@ pub fn restriction_default(
 // [spec:hfst:sem:hfst-rules.hfst.rules.coercion-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-coercion-fn]
-pub fn coercion(
-    contexts: &HfstTransducerPairVector,
-    mapping: &mut HfstTransducer,
+pub fn coercion<B: AlgebraBackend>(
+    contexts: &HfstTransducerPairVector<B>,
+    mapping: &mut HfstTransducer<B>,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_left, 0);
 }
 
@@ -829,11 +801,11 @@ pub fn coercion(
 // [spec:hfst:sem:hfst-rules.hfst.rules.restriction-and-coercion-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-restriction-and-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-restriction-and-coercion-fn]
-pub fn restriction_and_coercion(
-    contexts: &HfstTransducerPairVector,
-    mapping: &mut HfstTransducer,
+pub fn restriction_and_coercion<B: AlgebraBackend>(
+    contexts: &HfstTransducerPairVector<B>,
+    mapping: &mut HfstTransducer<B>,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_both, 0);
 }
 
@@ -841,11 +813,11 @@ pub fn restriction_and_coercion(
 // [spec:hfst:sem:hfst-rules.hfst.rules.surface-restriction-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-fn]
-pub fn surface_restriction(
-    contexts: &HfstTransducerPairVector,
-    mapping: &mut HfstTransducer,
+pub fn surface_restriction<B: AlgebraBackend>(
+    contexts: &HfstTransducerPairVector<B>,
+    mapping: &mut HfstTransducer<B>,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_right, 1);
 }
 
@@ -853,11 +825,11 @@ pub fn surface_restriction(
 // [spec:hfst:sem:hfst-rules.hfst.rules.surface-coercion-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-surface-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-surface-coercion-fn]
-pub fn surface_coercion(
-    contexts: &HfstTransducerPairVector,
-    mapping: &mut HfstTransducer,
+pub fn surface_coercion<B: AlgebraBackend>(
+    contexts: &HfstTransducerPairVector<B>,
+    mapping: &mut HfstTransducer<B>,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_left, 1);
 }
 
@@ -865,11 +837,11 @@ pub fn surface_coercion(
 // [spec:hfst:sem:hfst-rules.hfst.rules.surface-restriction-and-coercion-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-and-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-surface-restriction-and-coercion-fn]
-pub fn surface_restriction_and_coercion(
-    contexts: &HfstTransducerPairVector,
-    mapping: &mut HfstTransducer,
+pub fn surface_restriction_and_coercion<B: AlgebraBackend>(
+    contexts: &HfstTransducerPairVector<B>,
+    mapping: &mut HfstTransducer<B>,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_both, 1);
 }
 
@@ -877,11 +849,11 @@ pub fn surface_restriction_and_coercion(
 // [spec:hfst:sem:hfst-rules.hfst.rules.deep-restriction-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-fn]
-pub fn deep_restriction(
-    contexts: &HfstTransducerPairVector,
-    mapping: &mut HfstTransducer,
+pub fn deep_restriction<B: AlgebraBackend>(
+    contexts: &HfstTransducerPairVector<B>,
+    mapping: &mut HfstTransducer<B>,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_right, -1);
 }
 
@@ -889,11 +861,11 @@ pub fn deep_restriction(
 // [spec:hfst:sem:hfst-rules.hfst.rules.deep-coercion-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-deep-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-deep-coercion-fn]
-pub fn deep_coercion(
-    contexts: &HfstTransducerPairVector,
-    mapping: &mut HfstTransducer,
+pub fn deep_coercion<B: AlgebraBackend>(
+    contexts: &HfstTransducerPairVector<B>,
+    mapping: &mut HfstTransducer<B>,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_left, -1);
 }
 
@@ -901,11 +873,11 @@ pub fn deep_coercion(
 // [spec:hfst:sem:hfst-rules.hfst.rules.deep-restriction-and-coercion-fn]
 // [spec:hfst:def:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-and-coercion-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-deep-restriction-and-coercion-fn]
-pub fn deep_restriction_and_coercion(
-    contexts: &HfstTransducerPairVector,
-    mapping: &mut HfstTransducer,
+pub fn deep_restriction_and_coercion<B: AlgebraBackend>(
+    contexts: &HfstTransducerPairVector<B>,
+    mapping: &mut HfstTransducer<B>,
     alphabet: &StringPairSet,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     return restriction(contexts, mapping, alphabet, TwolType::twol_both, -1);
 }
 // (unwrapped mod rules_b {)

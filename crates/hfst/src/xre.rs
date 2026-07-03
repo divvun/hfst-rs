@@ -41,60 +41,61 @@ use nfst_xre::{
     parse_all,
 };
 
+use crate::backend::AlgebraBackend;
 use crate::hfst_data_types::ImplementationType;
 use crate::hfst_transducer::HfstTransducer;
 
 /// Arguments bundle mirroring 'hfst::xre::XreConstructorArguments'
-/// ('XreCompiler.h'). Carries the four definition maps plus the target
-/// implementation format used to seed a fresh ['XreCompiler']. Owned
-/// 'HfstTransducer' values replace the C++ 'HfstTransducer*' map values
-/// (the C++ destructor 'delete'd them; ownership lives in the map here).
+/// ('XreCompiler.h'). Carries the four definition maps used to seed a fresh
+/// ['XreCompiler']; the C++ 'format' member is the type parameter 'B' now
+/// ([dec:hfst:monomorphic-backends]). Owned 'HfstTransducer' values replace
+/// the C++ 'HfstTransducer*' map values (the C++ destructor 'delete'd them;
+/// ownership lives in the map here).
 ///
 /// 'std::map' -> 'BTreeMap', 'std::set' -> 'BTreeSet' per port conventions.
 // [spec:hfst:def:xre-compiler.hfst.xre.xre-constructor-arguments]
-#[derive(Clone)]
-pub struct XreConstructorArguments {
+pub struct XreConstructorArguments<B: AlgebraBackend> {
     /// 'std::map<std::string, hfst::HfstTransducer*> definitions'.
-    pub definitions: BTreeMap<String, HfstTransducer>,
+    pub definitions: BTreeMap<String, HfstTransducer<B>>,
     /// 'std::map<std::string, std::string> function_definitions'.
     pub function_definitions: BTreeMap<String, String>,
     /// 'std::map<std::string, unsigned int> function_arguments'.
     pub function_arguments: BTreeMap<String, u32>,
     /// 'std::map<std::string, std::set<std::string>> list_definitions'.
     pub list_definitions: BTreeMap<String, BTreeSet<String>>,
-    /// 'hfst::ImplementationType format'.
-    pub format: ImplementationType,
 }
 
-impl XreConstructorArguments {
-    /// Port of the 'XreConstructorArguments(...)' field-copy constructor.
+// Manual impl: a derived Clone would demand 'B: Clone', but
+// 'HfstTransducer<B>' is Clone for every 'B: Backend' already.
+impl<B: AlgebraBackend> Clone for XreConstructorArguments<B> {
+    fn clone(&self) -> Self {
+        XreConstructorArguments {
+            definitions: self.definitions.clone(),
+            function_definitions: self.function_definitions.clone(),
+            function_arguments: self.function_arguments.clone(),
+            list_definitions: self.list_definitions.clone(),
+        }
+    }
+}
+
+impl<B: AlgebraBackend> XreConstructorArguments<B> {
+    /// Port of the 'XreConstructorArguments(...)' field-copy constructor
+    /// (the 'format' parameter is the type parameter 'B' now).
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-constructor-arguments.xre-constructor-arguments-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-constructor-arguments.xre-constructor-arguments-fn]
     pub fn new(
-        definitions: BTreeMap<String, HfstTransducer>,
+        definitions: BTreeMap<String, HfstTransducer<B>>,
         function_definitions: BTreeMap<String, String>,
         function_arguments: BTreeMap<String, u32>,
         list_definitions: BTreeMap<String, BTreeSet<String>>,
-        format: ImplementationType,
     ) -> Self {
         XreConstructorArguments {
             definitions,
             function_definitions,
             function_arguments,
             list_definitions,
-            format,
         }
     }
-}
-
-/// Lets 'XreCompiler::new(..)' accept either an ['ImplementationType'] or a
-/// '&XreConstructorArguments', reproducing the two C++ constructor overloads
-/// ('XreCompiler(ImplementationType)' and
-/// 'XreCompiler(const XreConstructorArguments&)') behind a single entry point,
-/// matching the existing facade call sites in 'hfst_transducer.rs'.
-pub trait XreCompilerNew {
-    /// Build the compiler from 'self' (a format, or an args bundle).
-    fn into_xre_compiler(self) -> XreCompiler;
 }
 
 /// A compiler holding the information needed to compile XREs.
@@ -102,22 +103,21 @@ pub trait XreCompilerNew {
 /// Port of 'hfst::xre::XreCompiler' plus the 'xre_utils.cc' file-scope globals
 /// it relied on. Field names match the C++ members 1:1
 /// ('definitions', 'function_definitions', 'function_arguments',
-/// 'list_definitions', 'format', 'verbose'), with the former globals
+/// 'list_definitions', 'verbose'; the C++ 'format' member is the type
+/// parameter 'B' — [dec:hfst:monomorphic-backends]), with the former globals
 /// 'expand_definitions', 'harmonize', 'harmonize_flags' added as instance
 /// state so compilation is re-entrant.
 // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler]
-pub struct XreCompiler {
+pub struct XreCompiler<B: AlgebraBackend> {
     /// 'std::map<std::string, hfst::HfstTransducer*> definitions'.
     /// Owned transducers (C++ stored raw pointers freed by '~XreCompiler').
-    pub(crate) definitions: BTreeMap<String, HfstTransducer>,
+    pub(crate) definitions: BTreeMap<String, HfstTransducer<B>>,
     /// 'std::map<std::string, std::string> function_definitions'.
     pub(crate) function_definitions: BTreeMap<String, String>,
     /// 'std::map<std::string, unsigned int> function_arguments'.
     pub(crate) function_arguments: BTreeMap<String, u32>,
     /// 'std::map<std::string, std::set<std::string>> list_definitions'.
     pub(crate) list_definitions: BTreeMap<String, BTreeSet<String>>,
-    /// 'hfst::ImplementationType format' — target type for built transducers.
-    pub(crate) format: ImplementationType,
     /// 'bool verbose' — verbose warnings toggle.
     pub(crate) verbose: bool,
     /// 'xre_utils.cc' global 'bool expand_definitions' (default 'false'):
@@ -164,8 +164,8 @@ pub struct XreCompiler {
 // 'XreCompiler::new(type)', 'XreCompiler::new(&args)', 'compile(&str)',
 // 'set_verbosity(bool)' keep type-checking):
 //
-//   fn new<A: XreCompilerNew>(arg: A) -> XreCompiler          // both overloads
-//   fn default_compiler() -> XreCompiler                       // XreCompiler()
+//   fn new() -> XreCompiler<B>                                  // XreCompiler(ImplementationType)
+//   fn new_with_args(&XreConstructorArguments<B>) -> XreCompiler<B> // XreCompiler(const XreConstructorArguments&)
 //   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.define-fn]
 //   fn define(&mut self, name: &str, xre: &str) -> bool
 //   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.define-list-fn]
@@ -294,7 +294,7 @@ pub struct XreCompiler {
 // XRE compiler — core evaluator + public API (ported from XreCompiler.cc, the
 // xre_parse.yy semantic actions, and the xre_utils.cc compile() driver,
 // RESTRUCTURED to walk the nfst-xre AST). This body owns: constructors
-// (XreCompilerNew impls), the full public API, compile/compile_first, and the
+// (new/new_with_args), the full public API, compile/compile_first, and the
 // recursive 'eval'. It delegates the Replace/Restriction/Substitute/ReadFile
 // arms and the transducer-building helpers (xfst_label_to_transducer, contains*,
 // expand_definition_sym, merge_first_to_second, ...) to the sibling body — see
@@ -330,18 +330,36 @@ fn xre_pair_side_kind(e: &SpannedXre) -> Option<XrePairSide> {
 // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.xre-compiler-fn]
 // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.xre-compiler-fn]
 //
-// Reproduces the two C++ ctor overloads behind the skeleton's polymorphic
-// 'XreCompiler::new'. ASSUMPTION: the skeleton trait is
-// 'pub trait XreCompilerNew { fn into_xre_compiler(self) -> XreCompiler; }'. If the skeleton
-// named the trait method differently, rename 'build' below to match.
-impl XreCompilerNew for ImplementationType {
-    fn into_xre_compiler(self) -> XreCompiler {
+// The two C++ ctor overloads differed only in whether the definition maps
+// were seeded and which 'format' was targeted; the format is the type
+// parameter 'B' now, so they become two plain constructors.
+impl<B: AlgebraBackend> XreCompiler<B> {
+    /// 'XreCompiler(ImplementationType)' — the target format is 'B'.
+    pub fn new() -> XreCompiler<B> {
         XreCompiler {
             definitions: BTreeMap::new(),
             function_definitions: BTreeMap::new(),
             function_arguments: BTreeMap::new(),
             list_definitions: BTreeMap::new(),
-            format: self,
+            verbose: false,
+            expand_definitions: false,
+            harmonize: true,
+            harmonize_flags: false,
+            minimize_result: true,
+            flag_is_epsilon: false,
+            xerox_composition: false,
+            encode_weights: false,
+            contains_only_comments: false,
+        }
+    }
+
+    /// 'XreCompiler(const XreConstructorArguments&)'.
+    pub fn new_with_args(args: &XreConstructorArguments<B>) -> XreCompiler<B> {
+        XreCompiler {
+            definitions: args.definitions.clone(),
+            function_definitions: args.function_definitions.clone(),
+            function_arguments: args.function_arguments.clone(),
+            list_definitions: args.list_definitions.clone(),
             verbose: false,
             expand_definitions: false,
             harmonize: true,
@@ -355,29 +373,14 @@ impl XreCompilerNew for ImplementationType {
     }
 }
 
-impl XreCompilerNew for &XreConstructorArguments {
-    fn into_xre_compiler(self) -> XreCompiler {
-        XreCompiler {
-            definitions: self.definitions.clone(),
-            function_definitions: self.function_definitions.clone(),
-            function_arguments: self.function_arguments.clone(),
-            list_definitions: self.list_definitions.clone(),
-            format: self.format,
-            verbose: false,
-            expand_definitions: false,
-            harmonize: true,
-            harmonize_flags: false,
-            minimize_result: true,
-            flag_is_epsilon: false,
-            xerox_composition: false,
-            encode_weights: false,
-            contains_only_comments: false,
-        }
+impl<B: AlgebraBackend> Default for XreCompiler<B> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 // ============================ public API ===================================
-impl XreCompiler {
+impl<B: AlgebraBackend> XreCompiler<B> {
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.set-verbosity-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.set-verbosity-fn]
     pub fn set_verbosity(&mut self, verbose: bool) {
@@ -532,7 +535,7 @@ impl XreCompiler {
     }
 
     // C++ overload 'define(name, const HfstTransducer& transducer)'.
-    pub fn define_transducer(&mut self, name: &str, transducer: &HfstTransducer) {
+    pub fn define_transducer(&mut self, name: &str, transducer: &HfstTransducer<B>) {
         self.undefine(name);
         self.definitions
             .insert(name.to_string(), transducer.clone());
@@ -575,7 +578,7 @@ impl XreCompiler {
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.compile-fn]
     // Returns the compiled transducer, or None on parse failure / comments-only
     // (the C++ 'HfstTransducer*' null contract expressed as an Option).
-    pub fn compile(&mut self, expression: &str) -> Option<HfstTransducer> {
+    pub fn compile(&mut self, expression: &str) -> Option<HfstTransducer<B>> {
         self.compile_impl(expression)
     }
 
@@ -594,7 +597,7 @@ impl XreCompiler {
         &mut self,
         expression: &str,
         chars_read: &mut u32,
-    ) -> Option<HfstTransducer> {
+    ) -> Option<HfstTransducer<B>> {
         self.contains_only_comments = false;
         // Whitespace/comment-only input: the C++ lexer consumed it to EOF and
         // set contains_only_comments; nfst's parse_all errors on it instead.
@@ -637,7 +640,7 @@ impl XreCompiler {
     // Internal compile driver: parse → eval root → optimize. None on parse error
     // or comments-only (the latter also flips the contains_only_comments flag,
     // matching the 'XRE: (empty) { contains_only_comments = true; }' action).
-    fn compile_impl(&mut self, src: &str) -> Option<HfstTransducer> {
+    fn compile_impl(&mut self, src: &str) -> Option<HfstTransducer<B>> {
         self.contains_only_comments = false;
         if is_only_whitespace_or_comments(src) {
             self.contains_only_comments = true;
@@ -671,11 +674,10 @@ fn is_only_whitespace_or_comments(src: &str) -> bool {
 }
 
 // ====================== core recursive evaluator ===========================
-impl XreCompiler {
+impl<B: AlgebraBackend> XreCompiler<B> {
     // [spec:hfst:def:xre-utils.hfst.xre.compile-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.compile-fn]
-    pub(crate) fn eval(&mut self, e: &SpannedXre) -> crate::error::Result<HfstTransducer> {
-        let fmt = self.format;
+    pub(crate) fn eval(&mut self, e: &SpannedXre) -> crate::error::Result<HfstTransducer<B>> {
         Ok(match &e.value {
             // ---- atoms (LABEL: HALFARC) ----
             XreExpr::Symbol(s) => self.label_from_halfarc(s)?,
@@ -705,7 +707,7 @@ impl XreCompiler {
                 // epsilon (it only carries replace semantics in mapping
                 // position, which is handled by MappingSide::Dotted).
                 Some(inner) => self.eval(inner)?,
-                None => HfstTransducer::new_symbol(internal_epsilon, fmt)?,
+                None => HfstTransducer::new_symbol(internal_epsilon)?,
             },
 
             // ---- weighted ('E::w') ----
@@ -769,9 +771,9 @@ impl XreCompiler {
 
     // LABEL: HALFARC. '?' (internal_unknown) becomes a single identity arc;
     // anything else is definition-expanded (gated on expand_definitions).
-    fn label_from_halfarc(&self, sym: &str) -> crate::error::Result<HfstTransducer> {
+    fn label_from_halfarc(&self, sym: &str) -> crate::error::Result<HfstTransducer<B>> {
         if sym == internal_unknown {
-            HfstTransducer::new_symbol(internal_identity, self.format)
+            HfstTransducer::new_symbol(internal_identity)
         } else {
             self.expand_definition_sym(sym)
         }
@@ -784,7 +786,7 @@ impl XreCompiler {
         &mut self,
         upper: &SpannedXre,
         lower: &SpannedXre,
-    ) -> crate::error::Result<HfstTransducer> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         Ok(
             match (xre_pair_side_kind(upper), xre_pair_side_kind(lower)) {
                 (Some(XrePairSide::Half(a)), Some(XrePairSide::Half(b))) => {
@@ -849,7 +851,7 @@ impl XreCompiler {
         &mut self,
         op: UnaryOp,
         inner: &SpannedXre,
-    ) -> crate::error::Result<HfstTransducer> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         Ok(match op {
             UnaryOp::Star => {
                 let mut t = self.eval(inner)?;
@@ -887,7 +889,7 @@ impl XreCompiler {
                 if !a.is_automaton()? {
                     crate::bail!(Hfst, "Complement operator ~ is defined only for automata");
                 }
-                let mut complement = HfstTransducer::identity_pair(self.format);
+                let mut complement = HfstTransducer::identity_pair();
                 complement.repeat_star()?;
                 complement.optimize_with_config(&self.opt_cfg())?;
                 complement.subtract(&a, true)?;
@@ -897,7 +899,7 @@ impl XreCompiler {
             UnaryOp::TermComplement => {
                 // \A : [?] - A
                 let a = self.eval(inner)?;
-                let mut any = HfstTransducer::new_symbol(internal_identity, self.format)?;
+                let mut any = HfstTransducer::new_symbol(internal_identity)?;
                 any.subtract(&a, true)?;
                 any
             }
@@ -928,7 +930,7 @@ impl XreCompiler {
         op: BinaryOp,
         l: &SpannedXre,
         r: &SpannedXre,
-    ) -> crate::error::Result<HfstTransducer> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         Ok(match op {
             BinaryOp::Compose => {
                 let mut left = self.eval(l)?;
@@ -1056,13 +1058,13 @@ impl XreCompiler {
         &mut self,
         name: &str,
         args: &[SpannedXre],
-    ) -> crate::error::Result<HfstTransducer> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         let fname = format!("{}(", name);
 
-        let arg_trs: Vec<HfstTransducer> = args
-            .iter()
-            .map(|a| self.eval(a))
-            .collect::<crate::error::Result<Vec<HfstTransducer>>>()?;
+        let arg_trs: Vec<HfstTransducer<B>> =
+            args.iter()
+                .map(|a| self.eval(a))
+                .collect::<crate::error::Result<Vec<HfstTransducer<B>>>>()?;
         let n_args = arg_trs.len();
 
         // is_valid_function_call: defined + correct arity.
@@ -1095,7 +1097,6 @@ impl XreCompiler {
             function_definitions: self.function_definitions.clone(),
             function_arguments: self.function_arguments.clone(),
             list_definitions: self.list_definitions.clone(),
-            format: self.format,
             verbose: self.verbose,
             expand_definitions: self.expand_definitions,
             harmonize: self.harmonize,
@@ -1165,7 +1166,7 @@ fn zero_weights(_f: f32) -> f32 {
 
 // [spec:hfst:def:xre-utils.hfst.xre.has-non-identity-pairs-fn]
 // [spec:hfst:sem:xre-utils.hfst.xre.has-non-identity-pairs-fn]
-fn has_non_identity_pairs(t: &HfstTransducer) -> bool {
+fn has_non_identity_pairs<B: crate::backend::Backend>(t: &HfstTransducer<B>) -> bool {
     let basic = crate::hfst_basic_transducer::HfstBasicTransducer::from_transducer(t);
     let sps = basic.get_transition_pairs();
     for it in sps.iter() {
@@ -1179,25 +1180,24 @@ fn has_non_identity_pairs(t: &HfstTransducer) -> bool {
 // Builds the '$3' transducer of the substitute symbol-list grammar
 // (xre_parse.yy SYMBOL_LIST). An empty list yields the empty transducer
 // (the 'SUB3: RIGHT_BRACKET' alternative).
-fn build_symbol_list_transducer(
+fn build_symbol_list_transducer<B: AlgebraBackend>(
     symbols: &Vec<String>,
-    format: ImplementationType,
     cfg: &crate::hfst_transducer::EngineConfig,
-) -> crate::error::Result<HfstTransducer> {
+) -> crate::error::Result<HfstTransducer<B>> {
     if symbols.is_empty() {
-        return HfstTransducer::new_type(format);
+        return Ok(HfstTransducer::new());
     }
     let first = &symbols[0];
     let mut retval = if first.as_str() == crate::hfst_symbol_defs::internal_unknown {
-        HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, format)?
+        HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?
     } else {
-        HfstTransducer::new_symbol_pair(first, first, format)?
+        HfstTransducer::new_symbol_pair(first, first)?
     };
     for s in symbols.iter().skip(1) {
         let tmp = if s.as_str() == crate::hfst_symbol_defs::internal_unknown {
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, format)?
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?
         } else {
-            HfstTransducer::new_symbol_pair(s, s, format)?
+            HfstTransducer::new_symbol_pair(s, s)?
         };
         retval.disjunct(&tmp, false)?;
         retval.optimize_with_config(cfg)?;
@@ -1519,7 +1519,9 @@ fn escape_enclosing_angle_brackets(s: &str) -> String {
 // [spec:hfst:def:xre-utils.hfst.xre.unescape-enclosing-angle-brackets-fn]
 // [spec:hfst:sem:xre-utils.hfst.xre.unescape-enclosing-angle-brackets-fn]
 // xre_utils.cc:591. Reverses the "@_<...>_@" wrapping for every alphabet symbol.
-fn unescape_enclosing_angle_brackets(t: &mut HfstTransducer) -> crate::error::Result<()> {
+fn unescape_enclosing_angle_brackets<B: AlgebraBackend>(
+    t: &mut HfstTransducer<B>,
+) -> crate::error::Result<()> {
     let mut substitutions: crate::hfst_symbol_defs::HfstSymbolSubstitutions =
         crate::hfst_symbol_defs::HfstSymbolSubstitutions::new();
     let alpha = t.get_alphabet()?;
@@ -1565,13 +1567,13 @@ fn should_colourise() -> bool {
     }
 }
 
-impl XreCompiler {
+impl<B: AlgebraBackend> XreCompiler<B> {
     // ----------------------------------------------------------------
     // Definitions
     // ----------------------------------------------------------------
 
     // xre_utils.cc:837 'HfstTransducer* expand_definition(const char* symbol)'
-    fn expand_definition_sym(&self, symbol: &str) -> crate::error::Result<HfstTransducer> {
+    fn expand_definition_sym(&self, symbol: &str) -> crate::error::Result<HfstTransducer<B>> {
         if self.expand_definitions {
             for (k, v) in self.definitions.iter() {
                 if k.as_str() == symbol {
@@ -1579,7 +1581,7 @@ impl XreCompiler {
                 }
             }
         }
-        HfstTransducer::new_symbol_pair(symbol, symbol, self.format)
+        HfstTransducer::new_symbol_pair(symbol, symbol)
     }
 
     // [spec:hfst:def:xre-utils.hfst.xre.expand-definition-fn]
@@ -1587,7 +1589,7 @@ impl XreCompiler {
     // xre_utils.cc:857 'HfstTransducer* expand_definition(HfstTransducer*, const char*)'
     fn expand_definition_tr(
         &self,
-        tr: &mut HfstTransducer,
+        tr: &mut HfstTransducer<B>,
         symbol: &str,
     ) -> crate::error::Result<()> {
         if self.expand_definitions {
@@ -1621,8 +1623,7 @@ impl XreCompiler {
         &self,
         input: &str,
         output: &str,
-    ) -> crate::error::Result<HfstTransducer> {
-        let fmt = self.format;
+    ) -> crate::error::Result<HfstTransducer<B>> {
         let input_is_definition = self.definitions.contains_key(input);
         let output_is_definition = self.definitions.contains_key(output);
         let input_is_unknown = input == crate::hfst_symbol_defs::internal_unknown;
@@ -1633,11 +1634,10 @@ impl XreCompiler {
             let mut retval;
             let tmp;
             if input_is_unknown {
-                retval =
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt)?;
+                retval = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
                 tmp = self.expand_definition_sym(output)?;
             } else if output_is_unknown {
-                tmp = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt)?;
+                tmp = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
                 retval = self.expand_definition_sym(input)?;
             } else {
                 retval = self.expand_definition_sym(input)?;
@@ -1652,35 +1652,27 @@ impl XreCompiler {
             let mut retval = HfstTransducer::new_symbol_pair(
                 crate::hfst_symbol_defs::internal_unknown,
                 crate::hfst_symbol_defs::internal_unknown,
-                fmt,
             )?;
             let id = HfstTransducer::new_symbol_pair(
                 crate::hfst_symbol_defs::internal_identity,
                 crate::hfst_symbol_defs::internal_identity,
-                fmt,
             )?;
             retval.disjunct(&id, true)?.minimize()?;
             retval
         } else if input_is_unknown {
-            let mut retval = HfstTransducer::new_symbol_pair(
-                crate::hfst_symbol_defs::internal_unknown,
-                output,
-                fmt,
-            )?;
-            let output_tr = HfstTransducer::new_symbol_pair(output, output, fmt)?;
+            let mut retval =
+                HfstTransducer::new_symbol_pair(crate::hfst_symbol_defs::internal_unknown, output)?;
+            let output_tr = HfstTransducer::new_symbol_pair(output, output)?;
             retval.disjunct(&output_tr, true)?.minimize()?;
             retval
         } else if output_is_unknown {
-            let mut retval = HfstTransducer::new_symbol_pair(
-                input,
-                crate::hfst_symbol_defs::internal_unknown,
-                fmt,
-            )?;
-            let input_tr = HfstTransducer::new_symbol_pair(input, input, fmt)?;
+            let mut retval =
+                HfstTransducer::new_symbol_pair(input, crate::hfst_symbol_defs::internal_unknown)?;
+            let input_tr = HfstTransducer::new_symbol_pair(input, input)?;
             retval.disjunct(&input_tr, true)?.minimize()?;
             retval
         } else {
-            HfstTransducer::new_symbol_pair(input, output, fmt)?
+            HfstTransducer::new_symbol_pair(input, output)?
         })
     }
 
@@ -1691,8 +1683,7 @@ impl XreCompiler {
         &self,
         input: &str,
         output: &str,
-    ) -> crate::error::Result<HfstTransducer> {
-        let fmt = self.format;
+    ) -> crate::error::Result<HfstTransducer<B>> {
         let mut retval;
 
         if input == crate::hfst_symbol_defs::internal_unknown {
@@ -1702,18 +1693,14 @@ impl XreCompiler {
             retval = HfstTransducer::new_symbol_pair(
                 crate::hfst_symbol_defs::internal_unknown,
                 &first_token,
-                fmt,
             )?;
             for it in sv.iter() {
-                let tmp = HfstTransducer::new_symbol_pair(it, &first_token, fmt)?;
+                let tmp = HfstTransducer::new_symbol_pair(it, &first_token)?;
                 retval.disjunct(&tmp, false)?;
             }
             for it in sv.iter().skip(1) {
-                let tmp = HfstTransducer::new_symbol_pair(
-                    crate::hfst_symbol_defs::internal_epsilon,
-                    it,
-                    fmt,
-                )?;
+                let tmp =
+                    HfstTransducer::new_symbol_pair(crate::hfst_symbol_defs::internal_epsilon, it)?;
                 retval.concatenate(&tmp, false)?;
             }
         } else if output == crate::hfst_symbol_defs::internal_unknown {
@@ -1723,24 +1710,20 @@ impl XreCompiler {
             retval = HfstTransducer::new_symbol_pair(
                 &first_token,
                 crate::hfst_symbol_defs::internal_unknown,
-                fmt,
             )?;
             for it in sv.iter() {
-                let tmp = HfstTransducer::new_symbol_pair(&first_token, it, fmt)?;
+                let tmp = HfstTransducer::new_symbol_pair(&first_token, it)?;
                 retval.disjunct(&tmp, false)?;
             }
             for it in sv.iter().skip(1) {
-                let tmp = HfstTransducer::new_symbol_pair(
-                    it,
-                    crate::hfst_symbol_defs::internal_epsilon,
-                    fmt,
-                )?;
+                let tmp =
+                    HfstTransducer::new_symbol_pair(it, crate::hfst_symbol_defs::internal_epsilon)?;
                 retval.concatenate(&tmp, false)?;
             }
         } else {
             let mut tok = crate::hfst_tokenizer::HfstTokenizer::new();
             tok.add_multichar_symbol(crate::hfst_symbol_defs::internal_epsilon);
-            retval = HfstTransducer::new_tokenized_pair(input, output, &tok, fmt)?;
+            retval = HfstTransducer::new_tokenized_pair(input, output, &tok)?;
         }
 
         retval.minimize()?; // it should be safe to minimize
@@ -1754,9 +1737,8 @@ impl XreCompiler {
     // [spec:hfst:def:xre-utils.hfst.xre.contains-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.contains-fn]
     // xre_utils.cc:1082 — [?*] t [?*]
-    fn contains(&self, t: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
-        let mut any =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, self.format)?;
+    fn contains(&self, t: &HfstTransducer<B>) -> crate::error::Result<HfstTransducer<B>> {
+        let mut any = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
         any.repeat_star()?.minimize()?;
         let mut retval = any.clone();
         retval.concatenate(t, true)?.concatenate(&any, true)?;
@@ -1769,22 +1751,20 @@ impl XreCompiler {
     // xre_utils.cc:1097 — [ 0::weight -> 0 || _ [t] ] - [?* - $[t]]
     fn contains_with_weight(
         &self,
-        t: &HfstTransducer,
+        t: &HfstTransducer<B>,
         weight: f32,
-    ) -> crate::error::Result<HfstTransducer> {
-        let fmt = self.format;
-
+    ) -> crate::error::Result<HfstTransducer<B>> {
         let mut weighted_epsilon =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?;
+            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?;
         weighted_epsilon.set_final_weights(weight, false)?;
-        let epsilon = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?;
+        let epsilon = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?;
 
         // mapping: 0::weight -> 0
-        let mut mapping_pair_vector: Vec<(HfstTransducer, HfstTransducer)> = Vec::new();
+        let mut mapping_pair_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> = Vec::new();
         mapping_pair_vector.push((weighted_epsilon, epsilon.clone()));
 
         // context: 0 _ [t]
-        let mut context_pair_vector: Vec<(HfstTransducer, HfstTransducer)> = Vec::new();
+        let mut context_pair_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> = Vec::new();
         context_pair_vector.push((epsilon, t.clone()));
 
         let rule = crate::hfst_xerox_rules::Rule::new_mapping_context_repl_type(
@@ -1795,8 +1775,7 @@ impl XreCompiler {
         let mut weighted_rule = crate::hfst_xerox_rules::replace_rule(&rule, false)?;
 
         // noT = ?* - $[t]
-        let mut no_t =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, t.get_type())?;
+        let mut no_t = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
         no_t.repeat_star()?.minimize()?;
         let one_or_more_t = self.contains(t)?;
         no_t.subtract(&one_or_more_t, true)?;
@@ -1811,17 +1790,13 @@ impl XreCompiler {
     // [spec:hfst:def:xre-utils.hfst.xre.contains-once-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.contains-once-fn]
     // xre_utils.cc:1142
-    pub fn contains_once(&self, c: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
-        let fmt = self.format;
-
+    pub fn contains_once(&self, c: &HfstTransducer<B>) -> crate::error::Result<HfstTransducer<B>> {
         // any_star = [?*]
-        let mut any_star =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt)?;
+        let mut any_star = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
         any_star.repeat_star()?.minimize()?;
 
         // any_plus = [?+]
-        let mut any_plus =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt)?;
+        let mut any_plus = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
         any_plus.repeat_plus()?.minimize()?;
 
         // t1 = [?+ c ?*]
@@ -1866,14 +1841,11 @@ impl XreCompiler {
     // xre_utils.cc:1194
     pub fn contains_once_optional(
         &self,
-        t: &HfstTransducer,
-    ) -> crate::error::Result<HfstTransducer> {
-        let fmt = self.format;
-
+        t: &HfstTransducer<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         // neg_t = ~$[t]
         let cont_t = self.contains(t)?;
-        let mut neg_t =
-            HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity, fmt)?;
+        let mut neg_t = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
         neg_t.repeat_star()?;
         neg_t.optimize_with_config(&self.opt_cfg())?;
         neg_t.subtract(&cont_t, true)?;
@@ -1887,7 +1859,10 @@ impl XreCompiler {
 
     // Driver dispatch for the '$ E' (CONTAINMENT REGEXP8) production
     // (xre_parse.yy:896). Exposed so the unary '$' arm can call it.
-    fn eval_containment(&mut self, t: &HfstTransducer) -> crate::error::Result<HfstTransducer> {
+    fn eval_containment(
+        &mut self,
+        t: &HfstTransducer<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         if has_non_identity_pairs(t) {
             if self.verbose {
                 // NB: faithfully reproduces the C++ missing-space concatenation.
@@ -1905,7 +1880,7 @@ impl XreCompiler {
         &mut self,
         expr: &SpannedXre,
         weight: f64,
-    ) -> crate::error::Result<HfstTransducer> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         let t = self.eval(expr)?;
         if has_non_identity_pairs(&t) {
             std::panic::panic_any("Containment with weight only works with automata".to_string());
@@ -1922,9 +1897,9 @@ impl XreCompiler {
     // xre_utils.cc:1214. 'tr1' is optimized then merged into 'tr2' (returned).
     fn merge_first_to_second(
         &self,
-        tr1: &mut HfstTransducer,
-        mut tr2: HfstTransducer,
-    ) -> crate::error::Result<HfstTransducer> {
+        tr1: &mut HfstTransducer<B>,
+        mut tr2: HfstTransducer<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         // Merge operation creates an XreCompiler that needs this information
         // below; otherwise it would overwrite all of it.
         let args = XreConstructorArguments {
@@ -1932,7 +1907,6 @@ impl XreCompiler {
             function_definitions: self.function_definitions.clone(),
             function_arguments: self.function_arguments.clone(),
             list_definitions: self.list_definitions.clone(),
-            format: self.format,
         };
         tr1.optimize_with_config(&self.opt_cfg())?;
         tr2.merge(tr1, &args)?;
@@ -1946,7 +1920,7 @@ impl XreCompiler {
 
     // [spec:hfst:def:xre-utils.hfst.xre.is-valid-function-call-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.is-valid-function-call-fn]
-    fn is_valid_function_call(&self, name: &str, args: &Vec<HfstTransducer>) -> bool {
+    fn is_valid_function_call(&self, name: &str, args: &Vec<HfstTransducer<B>>) -> bool {
         let name2xre = self.function_definitions.get(name);
         let name2args = self.function_arguments.get(name);
 
@@ -1977,7 +1951,7 @@ impl XreCompiler {
 
     // [spec:hfst:def:xre-utils.hfst.xre.define-function-args-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.define-function-args-fn]
-    fn define_function_args(&mut self, name: &str, args: &Vec<HfstTransducer>) -> bool {
+    fn define_function_args(&mut self, name: &str, args: &Vec<HfstTransducer<B>>) -> bool {
         if !self.is_valid_function_call(name, args) {
             return false;
         }
@@ -2045,14 +2019,14 @@ impl XreCompiler {
     // [spec:hfst:sem:xre-utils.hfst.xre.warn-about-special-symbols-in-replace-fn]
     fn warn_about_special_symbols_in_replace(
         &self,
-        t: &HfstTransducer,
+        t: &HfstTransducer<B>,
     ) -> crate::error::Result<()> {
         if !self.verbose {
             return Ok(());
         }
         let alphabet = t.get_alphabet()?;
         for it in alphabet.iter() {
-            if HfstTransducer::is_special_symbol(it)
+            if crate::hfst_transducer::is_special_symbol(it)
                 && it.as_str() != crate::hfst_symbol_defs::internal_epsilon
                 && it.as_str() != crate::hfst_symbol_defs::internal_unknown
                 && it.as_str() != crate::hfst_symbol_defs::internal_identity
@@ -2078,8 +2052,8 @@ impl XreCompiler {
         &mut self,
         arrow: ReplaceArrow,
         rules: &Vec<ReplaceRule>,
-    ) -> crate::error::Result<HfstTransducer> {
-        let mut rule_vector: Vec<crate::hfst_xerox_rules::Rule> = Vec::new();
+    ) -> crate::error::Result<HfstTransducer<B>> {
+        let mut rule_vector: Vec<crate::hfst_xerox_rules::Rule<B>> = Vec::new();
         for rule in rules.iter() {
             let r = self.build_replace_rule(rule)?;
             rule_vector.push(r);
@@ -2121,8 +2095,8 @@ impl XreCompiler {
     fn build_replace_rule(
         &mut self,
         rule: &ReplaceRule,
-    ) -> crate::error::Result<crate::hfst_xerox_rules::Rule> {
-        let mut mapping_pair_vector: Vec<(HfstTransducer, HfstTransducer)> = Vec::new();
+    ) -> crate::error::Result<crate::hfst_xerox_rules::Rule<B>> {
+        let mut mapping_pair_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> = Vec::new();
         for mp in rule.mappings.iter() {
             let pair = self.build_mapping_pair(mp)?;
             mapping_pair_vector.push(pair);
@@ -2138,7 +2112,7 @@ impl XreCompiler {
                     ContextMark::UpperLower => crate::hfst_xerox_rules::ReplaceType::REPL_LEFT,
                     ContextMark::LowerLower => crate::hfst_xerox_rules::ReplaceType::REPL_DOWN,
                 };
-                let mut context_vector: Vec<(HfstTransducer, HfstTransducer)> = Vec::new();
+                let mut context_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> = Vec::new();
                 for cx in ctxs.items.iter() {
                     let pair = self.build_replace_context(cx)?;
                     context_vector.push(pair);
@@ -2156,8 +2130,7 @@ impl XreCompiler {
     fn build_mapping_pair(
         &mut self,
         mp: &MappingPair,
-    ) -> crate::error::Result<(HfstTransducer, HfstTransducer)> {
-        let fmt = self.format;
+    ) -> crate::error::Result<(HfstTransducer<B>, HfstTransducer<B>)> {
         let upper = self.eval_mapping_side(&mp.upper)?;
 
         Ok(match &mp.kind {
@@ -2176,18 +2149,14 @@ impl XreCompiler {
                 // marks = (pre|0, post|0); tmpMappingPair = (upper, <empty>)
                 let left_mark = match pre {
                     Some(s) => self.eval_mapping_side(s)?,
-                    None => {
-                        HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?
-                    }
+                    None => HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?,
                 };
                 let right_mark = match post {
                     Some(s) => self.eval_mapping_side(s)?,
-                    None => {
-                        HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?
-                    }
+                    None => HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?,
                 };
                 let marks = (left_mark, right_mark);
-                let tmp_mapping_pair = (upper, HfstTransducer::new_type(fmt)?);
+                let tmp_mapping_pair = (upper, HfstTransducer::new());
                 crate::hfst_xerox_rules::create_mapping_for_mark_up_replace(
                     &tmp_mapping_pair,
                     &marks,
@@ -2197,11 +2166,11 @@ impl XreCompiler {
     }
 
     // A mapping side: bare expr, '[. E .]', or '[..]' (-> epsilon).
-    fn eval_mapping_side(&mut self, side: &MappingSide) -> crate::error::Result<HfstTransducer> {
+    fn eval_mapping_side(&mut self, side: &MappingSide) -> crate::error::Result<HfstTransducer<B>> {
         Ok(match side {
             MappingSide::Expr(e) => self.eval(&**e)?,
             MappingSide::Dotted(None) => {
-                HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, self.format)?
+                HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?
             }
             MappingSide::Dotted(Some(e)) => self.eval(&**e)?,
         })
@@ -2212,9 +2181,8 @@ impl XreCompiler {
     fn build_replace_context(
         &mut self,
         c: &ReplaceContext,
-    ) -> crate::error::Result<(HfstTransducer, HfstTransducer)> {
-        let fmt = self.format;
-        let weighted = is_weighted(fmt);
+    ) -> crate::error::Result<(HfstTransducer<B>, HfstTransducer<B>)> {
+        let weighted = is_weighted(B::TYPE);
 
         Ok(match (&c.left, &c.right) {
             (Some(l), Some(r)) => {
@@ -2250,7 +2218,7 @@ impl XreCompiler {
                     .prune_alphabet(false)?;
                 (
                     t1,
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?,
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?,
                 )
             }
             (None, Some(r)) => {
@@ -2264,13 +2232,13 @@ impl XreCompiler {
                 t1.optimize_with_config(&self.opt_cfg())?
                     .prune_alphabet(false)?;
                 (
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?,
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?,
                     t1,
                 )
             }
             (None, None) => {
                 let epsilon =
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?;
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?;
                 (epsilon.clone(), epsilon)
             }
         })
@@ -2285,9 +2253,9 @@ impl XreCompiler {
         &mut self,
         body: &SpannedXre,
         contexts: &Vec<RestrContext>,
-    ) -> crate::error::Result<HfstTransducer> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         let center = self.eval(body)?;
-        let mut context_vector: Vec<(HfstTransducer, HfstTransducer)> = Vec::new();
+        let mut context_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> = Vec::new();
         for c in contexts.iter() {
             let pair = self.build_restr_context(c)?;
             context_vector.push(pair);
@@ -2303,28 +2271,24 @@ impl XreCompiler {
     fn build_restr_context(
         &mut self,
         c: &RestrContext,
-    ) -> crate::error::Result<(HfstTransducer, HfstTransducer)> {
-        let fmt = self.format;
+    ) -> crate::error::Result<(HfstTransducer<B>, HfstTransducer<B>)> {
         Ok(match (&c.left, &c.right) {
             (Some(l), Some(r)) => (self.eval(&**l)?, self.eval(&**r)?),
             (Some(l), None) => {
                 let t1 = self.eval(&**l)?;
                 (
                     t1,
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?,
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?,
                 )
             }
             (None, Some(r)) => {
                 let t1 = self.eval(&**r)?;
                 (
-                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon, fmt)?,
+                    HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?,
                     t1,
                 )
             }
-            (None, None) => (
-                HfstTransducer::new_type(fmt)?,
-                HfstTransducer::new_type(fmt)?,
-            ),
+            (None, None) => (HfstTransducer::new(), HfstTransducer::new()),
         })
     }
 
@@ -2337,8 +2301,7 @@ impl XreCompiler {
         &mut self,
         haystack: &SpannedXre,
         what: &SubstituteWhat,
-    ) -> crate::error::Result<HfstTransducer> {
-        let fmt = self.format;
+    ) -> crate::error::Result<HfstTransducer<B>> {
         let mut hay = self.eval(haystack)?;
 
         Ok(match what {
@@ -2369,12 +2332,13 @@ impl XreCompiler {
 
                 // alpha is reassigned to the replacement's alphabet (used both
                 // for the diacritic loop and the final remove-from-alphabet).
-                let mut repl_tr = build_symbol_list_transducer(replacement, fmt, &self.opt_cfg())?;
+                let mut repl_tr: HfstTransducer<B> =
+                    build_symbol_list_transducer(replacement, &self.opt_cfg())?;
                 let alpha3 = repl_tr.get_alphabet()?;
                 let tmp = (needle.clone(), needle.clone());
                 let mut tmp_tr = hay.clone();
 
-                let empty = HfstTransducer::new_type(fmt)?;
+                let empty = HfstTransducer::new();
                 let mut empty_replace_transducer = false;
                 if empty.compare(&repl_tr, true)? {
                     empty_replace_transducer = true;
@@ -2398,10 +2362,11 @@ impl XreCompiler {
                 if !empty_replace_transducer {
                     // [[a:b].i .o. b -> x|y].i (handles b appearing on the left side)
                     let mapping_pair = (
-                        HfstTransducer::new_symbol_pair(needle, needle, fmt)?,
+                        HfstTransducer::new_symbol_pair(needle, needle)?,
                         repl_tr.clone(),
                     );
-                    let mut mapping_pair_vector: Vec<(HfstTransducer, HfstTransducer)> = Vec::new();
+                    let mut mapping_pair_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> =
+                        Vec::new();
                     mapping_pair_vector.push(mapping_pair);
                     let rule = crate::hfst_xerox_rules::Rule::new_mapping(&mapping_pair_vector)?;
                     let mut replace_tr = crate::hfst_xerox_rules::replace_rule(&rule, false)?;
@@ -2432,28 +2397,32 @@ impl XreCompiler {
     }
 }
 
-// ===== integration shims: XreCompiler::new (both overloads via XreCompilerNew) + deferred eval_read_file =====
-impl XreCompiler {
-    /// 'XreCompiler(ImplementationType)' / 'XreCompiler(const XreConstructorArguments&)'
-    /// — both C++ constructor overloads behind one entry point.
-    pub fn new<A: XreCompilerNew>(arg: A) -> Self {
-        arg.into_xre_compiler()
-    }
-
+// ===== integration shims: deferred eval_read_file =====
+impl<B: AlgebraBackend> XreCompiler<B> {
     /// '@bin'/'@txt'/'@stxt'/'@pl'/'@re' file-load evaluation. Ports the
     /// xre_parse.yy READ_BIN/READ_TEXT/READ_SPACED/READ_PROLOG/READ_RE actions.
     fn eval_read_file(
         &mut self,
         kind: ReadKind,
         path: &str,
-    ) -> crate::error::Result<HfstTransducer> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         use crate::hfst_basic_transducer::HfstBasicTransducer;
         match kind {
             // READ_BIN: HfstInputStream instream(path); new HfstTransducer(instream);
+            // t.convert(format). The stream reader returns the runtime sum
+            // ('AnyTransducer'); 'B' here carries only 'AlgebraBackend' (the
+            // facade seeds compilers without 'FromAnyTransducer'), so extract
+            // the typed value through the interchange transducer — exactly
+            // 'into_typed's general (convert) arm — keeping the facade
+            // metadata like the C++ convert did.
             ReadKind::Binary => {
                 let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(path)?;
-                let retval = HfstTransducer::new_from_stream(&mut instream)?;
+                let any = instream.read()?;
                 instream.close();
+                let net = any.to_basic()?;
+                let mut retval: HfstTransducer<B> = HfstTransducer::new_from_basic(&net)?;
+                retval.name = any.get_name();
+                retval.props = any.get_properties().clone();
                 Ok(retval)
             }
             // READ_TEXT / READ_SPACED: tokenize each line and disjunct it into a
@@ -2474,7 +2443,7 @@ impl XreCompiler {
                     };
                     tmp.disjunct_path(&spv, 0.0);
                 }
-                let mut retval = HfstTransducer::new_from_basic(&tmp, self.format)?;
+                let mut retval = HfstTransducer::new_from_basic(&tmp)?;
                 retval.optimize_with_config(&self.opt_cfg())?;
                 Ok(retval)
             }
@@ -2488,7 +2457,7 @@ impl XreCompiler {
                 let mut linecount: u32 = 0;
                 let tmp =
                     HfstBasicTransducer::read_in_prolog_format_file(&mut reader, &mut linecount)?;
-                let mut retval = HfstTransducer::new_from_basic(&tmp, self.format)?;
+                let mut retval = HfstTransducer::new_from_basic(&tmp)?;
                 retval.optimize_with_config(&self.opt_cfg())?;
                 Ok(retval)
             }

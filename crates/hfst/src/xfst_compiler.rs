@@ -28,6 +28,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
+use crate::backend::{AlgebraBackend, Backend};
 use crate::hfst_basic_transducer::{HfstBasicTransducer, HfstBasicTransitions};
 use crate::hfst_data_types::{HfstOneLevelPaths, HfstTwoLevelPaths, ImplementationType};
 use crate::hfst_data_types::{StringPair, StringPairSet, StringVector};
@@ -35,7 +36,7 @@ use crate::hfst_input_stream::HfstInputStream;
 use crate::hfst_output_stream::HfstOutputStream;
 use crate::hfst_symbol_defs::StringSet;
 use crate::hfst_symbol_defs::internal_identity;
-use crate::hfst_transducer::HfstTransducer;
+use crate::hfst_transducer::{FromAnyTransducer, HfstTransducer};
 use crate::hfst_tropical_transducer_transition_data::SymbolCoder;
 use crate::lexc::LexcCompiler;
 use crate::xre::XreCompiler;
@@ -113,12 +114,12 @@ pub type StringMap = BTreeMap<String, String>;
 // records the stack top in 'names' while it stays on the stack, and
 // 'print_name' matches by pointer identity). 'Rc<RefCell<..>>' is the safe
 // expression of that shared ownership; pointer identity becomes 'Rc::ptr_eq'.
-pub type NetRef = Rc<RefCell<HfstTransducer>>;
+pub type NetRef<B> = Rc<RefCell<HfstTransducer<B>>>;
 
 // @brief Xfst compiler contains all the methods and variables a session of
 // XFST script parser needs.
 // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler]
-pub struct XfstCompiler {
+pub struct XfstCompiler<B: AlgebraBackend> {
     /* Whether readline library is used when reading user input. */
     pub use_readline: bool,
     /* Whether the lexc parser must be reset before reading lexc (set true after
@@ -129,29 +130,28 @@ pub struct XfstCompiler {
     /* Windows-specific: whether output, error messages and warnings are printed to the console. */
     pub output_to_console: bool,
     /* The regular expression compiler. */
-    pub xre: XreCompiler,
+    pub xre: XreCompiler<B>,
     /* The lexc compiler. */
-    pub lexc: LexcCompiler,
+    pub lexc: LexcCompiler<B>,
     pub original_definitions: BTreeMap<String, String>,
-    pub definitions: BTreeMap<String, NetRef>,
+    pub definitions: BTreeMap<String, NetRef<B>>,
     pub original_function_definitions: BTreeMap<String, String>,
     pub function_definitions: BTreeMap<String, String>,
     pub function_arguments: BTreeMap<String, u32>,
     // std::stack mirror: top = last element; pop = pop_back, push = push_back.
-    pub stack: Vec<NetRef>,
-    pub names: BTreeMap<String, NetRef>,
+    pub stack: Vec<NetRef<B>>,
+    pub names: BTreeMap<String, NetRef<B>>,
     pub aliases: BTreeMap<String, String>,
     pub variables: BTreeMap<String, String>,
     pub properties: BTreeMap<String, String>,
     pub lists: BTreeMap<String, BTreeSet<String>>,
-    pub format: ImplementationType,
     pub verbose: bool,
     pub verbose_prompt: bool,
     /* The latest regex that has been compiled when 'compile_regex' has been
     called. The xfst lexer often needs to parse regexps in order to determine
     where they end before giving them to the actual parser. By storing the result
     in this variable, there is no need to parse a regexp again on the parse level. */
-    pub latest_regex_compiled: Option<NetRef>,
+    pub latest_regex_compiled: Option<NetRef<B>>,
     // Whether the script has encountered the quit command ('quit', 'exit', etc.).
     // Needed in interactive mode, where user input is read line by line.
     pub quit_requested: bool,
@@ -167,23 +167,24 @@ pub struct XfstCompiler {
     pub engine_config: crate::hfst_transducer::EngineConfig,
 }
 
-impl XfstCompiler {
+impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-compiler-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-compiler-fn]
     // @brief Construct compiler for unknown format transducers.
     pub fn new() -> Self {
-        Self::new_with_impl(ImplementationType::TROPICAL_OPENFST_TYPE)
+        Self::new_with_impl()
     }
 
-    // @brief Create compiler for @a impl format transducers
-    pub fn new_with_impl(format: ImplementationType) -> Self {
+    // @brief Create compiler for transducers of the backend type 'B'
+    // (the 'impl' format argument is the type parameter now).
+    pub fn new_with_impl() -> Self {
         let mut c = XfstCompiler {
             use_readline: false,
             has_lexc_been_read: false,
             read_interactive_text_from_stdin: false,
             output_to_console: false,
-            xre: XreCompiler::new(format),
-            lexc: LexcCompiler::new(format),
+            xre: XreCompiler::new(),
+            lexc: LexcCompiler::new(),
             original_definitions: BTreeMap::new(),
             definitions: BTreeMap::new(),
             original_function_definitions: BTreeMap::new(),
@@ -195,7 +196,6 @@ impl XfstCompiler {
             variables: BTreeMap::new(),
             properties: BTreeMap::new(),
             lists: BTreeMap::new(),
-            format: format,
             verbose: false,
             verbose_prompt: false,
             latest_regex_compiled: None,
@@ -581,16 +581,18 @@ impl XfstCompiler {
     // about loss of information during conversion, if needed.
     fn convert_to_common_format(
         &mut self,
-        t: &NetRef,
+        t: crate::hfst_transducer::AnyTransducer,
         filename: Option<&str>,
-    ) -> crate::error::Result<()> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         // CHECK_FILENAME equivalent: if (!check_filename(filename)) return;
         if !self.check_filename(filename.unwrap_or("")) {
-            return Ok(());
+            return t.into_typed::<B>();
         }
 
-        let t_type = t.borrow().get_type();
-        if t_type != self.format {
+        // The lossiness warnings consult the stream sum's runtime tag BEFORE
+        // the typed extraction below converts it away.
+        let t_type = t.get_type();
+        if t_type != B::TYPE {
             if t_type == ImplementationType::HFST_OL_TYPE
                 || t_type == ImplementationType::HFST_OLW_TYPE
             {
@@ -599,14 +601,11 @@ impl XfstCompiler {
                         "transducer is in optimized lookup format, 'apply up' is the only operation it supports"
                     );
                 }
-                return Ok(());
-            }
-
-            if self.verbose {
+            } else if self.verbose {
                 let mut line = format!(
                     "converting transducer type from {} to {}",
                     crate::hfst_data_types::implementation_type_to_format(t_type),
-                    crate::hfst_data_types::implementation_type_to_format(self.format)
+                    crate::hfst_data_types::implementation_type_to_format(B::TYPE)
                 );
                 if filename.is_some() {
                     line.push_str(&format!(
@@ -614,14 +613,16 @@ impl XfstCompiler {
                         to_filename(filename)
                     ));
                 }
-                if !HfstTransducer::is_safe_conversion(t_type, self.format) {
+                if !crate::hfst_transducer::is_safe_conversion(t_type, B::TYPE) {
                     line.push_str(" (loss of information is possible)");
                 }
                 warn!("{}", line);
             }
-            t.borrow_mut().convert(self.format, String::new())?;
         }
-        Ok(())
+        // The typed extraction ([dec:hfst:monomorphic-backends]): the matching
+        // variant moves out unchanged, any other converts through the basic
+        // transducer (this replaces the former in-place 'convert').
+        t.into_typed::<B>()
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.open-hfst-input-stream-fn]
@@ -683,7 +684,7 @@ impl XfstCompiler {
 
         // Read transducers from stream
         while instream.is_good() {
-            let t = match HfstTransducer::new_from_stream(&mut instream) {
+            let t = match instream.read() {
                 Ok(t) => t,
                 Err(e) => {
                     error!("{e}");
@@ -693,16 +694,19 @@ impl XfstCompiler {
                     break;
                 }
             };
-            let t: NetRef = Rc::new(RefCell::new(t));
 
             // Convert transducer format, if needed
-            if let Err(e) = self.convert_to_common_format(&t, Some(infilename)) {
-                error!("{e}");
-                if self.variables["quit-on-fail"] == "ON" {
-                    self.fail_flag = true;
+            let t = match self.convert_to_common_format(t, Some(infilename)) {
+                Ok(t) => t,
+                Err(e) => {
+                    error!("{e}");
+                    if self.variables["quit-on-fail"] == "ON" {
+                        self.fail_flag = true;
+                    }
+                    break;
                 }
-                break;
-            }
+            };
+            let t: NetRef<B> = Rc::new(RefCell::new(t));
 
             // Add transducer as definition..
             if definitions {
@@ -731,7 +735,7 @@ impl XfstCompiler {
 
     // @brief Add a transducer definition with name given by 't.get_name()'
     // and value \a t.
-    fn add_loaded_definition(&mut self, t: NetRef) -> &mut Self {
+    fn add_loaded_definition(&mut self, t: NetRef<B>) -> &mut Self {
         let def_name = t.borrow().get_name();
         if def_name.is_empty() {
             warn!("loaded transducer definition has no name, skipping it");
@@ -855,7 +859,7 @@ impl XfstCompiler {
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.top-fn]
     // @brief The topmost transducer in the stack.
     // If empty, print a warning message and return NULL.
-    fn top(&mut self) -> Option<NetRef> {
+    fn top(&mut self) -> Option<NetRef<B>> {
         if self.stack.is_empty() {
             // EMPTY_STACK
             warn!("Empty stack.");
@@ -949,7 +953,7 @@ impl XfstCompiler {
             let top = self.stack.last().unwrap().clone();
             {
                 let t = top.borrow();
-                if t.get_type() != self.format {
+                if t.get_type() != B::TYPE {
                     return self;
                 }
                 println!(
@@ -1463,7 +1467,10 @@ impl XfstCompiler {
     // The XreCompiler::compile string entry point parses then walks the tree;
     // here the tree is already parsed, so we walk it directly and optimize,
     // returning a shared handle just like xre.compile.
-    fn compile_spanned_xre(&mut self, xre: &nfst_xre::SpannedXre) -> crate::error::Result<NetRef> {
+    fn compile_spanned_xre(
+        &mut self,
+        xre: &nfst_xre::SpannedXre,
+    ) -> crate::error::Result<NetRef<B>> {
         let mut t = self.xre.eval(xre)?;
         t.optimize()?;
         Ok(Rc::new(RefCell::new(t)))
@@ -1695,7 +1702,7 @@ impl XfstCompiler {
 // Unix behaviour directly: output() writes to stdout via print!, diagnostics
 // go through the tracing macros, and the print* methods write their 'stream'
 // content to the oss writer passed in (the C++ '*oss' target).
-impl XfstCompiler {
+impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Print @a text to stdout
     pub fn echo(&mut self, text: &str) -> &mut Self {
         print!("{}\n", text);
@@ -1941,7 +1948,7 @@ impl XfstCompiler {
     pub fn print_labels_tr(
         &mut self,
         oss: &mut dyn std::io::Write,
-        tr: &HfstTransducer,
+        tr: &HfstTransducer<B>,
     ) -> &mut Self {
         let mut label_set: BTreeSet<(String, String)> = BTreeSet::new();
         let fsm = HfstBasicTransducer::new_from_transducer(tr);
@@ -2089,7 +2096,7 @@ impl XfstCompiler {
 
     pub fn shortest_string(
         &mut self,
-        transducer: &HfstTransducer,
+        transducer: &HfstTransducer<B>,
         paths: &mut HfstTwoLevelPaths,
     ) -> crate::error::Result<&mut Self> {
         transducer.extract_shortest_paths(paths)?;
@@ -2183,7 +2190,7 @@ impl XfstCompiler {
 
         // [spec:hfst:def:xfst-compiler.hfst.xfst.tmp-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.tmp-fn]
-        let mut tmp = HfstTransducer::new_type(self.format)?;
+        let mut tmp: HfstTransducer<B> = HfstTransducer::new();
         if name.is_empty() {
             let Some(temp) = self.top() else {
                 return Ok(self);
@@ -2230,7 +2237,7 @@ impl XfstCompiler {
     ) -> crate::error::Result<&mut Self> {
         let mut paths = HfstTwoLevelPaths::new();
 
-        let mut tmp = HfstTransducer::new_type(self.format)?;
+        let mut tmp: HfstTransducer<B> = HfstTransducer::new();
         if name.is_empty() {
             let Some(temp) = self.top() else {
                 return Ok(self);
@@ -2275,7 +2282,7 @@ impl XfstCompiler {
         number: u32,
         oss: &mut dyn std::io::Write,
     ) -> crate::error::Result<&mut Self> {
-        let tmp: NetRef;
+        let tmp: NetRef<B>;
         if name.is_empty() {
             let Some(t) = self.top() else {
                 return Ok(self);
@@ -2311,7 +2318,7 @@ impl XfstCompiler {
             return self;
         };
 
-        let entries: Vec<(String, NetRef)> = self
+        let entries: Vec<(String, NetRef<B>)> = self
             .names
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -2540,7 +2547,7 @@ impl XfstCompiler {
     }
 
     // @brief Get current stack of compiler
-    pub fn get_stack(&self) -> &Vec<NetRef> {
+    pub fn get_stack(&self) -> &Vec<NetRef<B>> {
         return &self.stack;
     }
 
@@ -2964,7 +2971,7 @@ impl XfstCompiler {
     ) -> crate::error::Result<&mut Self> {
         // [spec:hfst:def:xfst-compiler.hfst.xfst.temp-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.temp-fn]
-        let mut temp = HfstTransducer::new_type(self.format)?;
+        let mut temp: HfstTransducer<B> = HfstTransducer::new();
         if name.is_empty() {
             let Some(tmp) = self.top() else {
                 return Ok(self);
@@ -3110,7 +3117,7 @@ fn is_special_symbol(s: &str) -> bool {
 // [spec:hfst:def:xfst-compiler.hfst.xfst.is-unknown-or-identity-used-in-transducer-fn]
 // [spec:hfst:sem:xfst-compiler.hfst.xfst.is-unknown-or-identity-used-in-transducer-fn]
 // Returns (unknown used, identity used).
-fn is_unknown_or_identity_used_in_transducer(t: &HfstTransducer) -> (bool, bool) {
+fn is_unknown_or_identity_used_in_transducer<B: Backend>(t: &HfstTransducer<B>) -> (bool, bool) {
     let mut unknown = false;
     let mut identity = false;
 
@@ -3335,7 +3342,7 @@ fn variable_explanations_get(key: &str) -> String {
     String::new()
 }
 
-impl Default for XfstCompiler {
+impl<B: AlgebraBackend + FromAnyTransducer> Default for XfstCompiler<B> {
     fn default() -> Self {
         Self::new()
     }
@@ -3500,7 +3507,7 @@ fn string_found(str: &str, text: &str) -> bool {
     return false;
 }
 
-impl XfstCompiler {
+impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Define alias for command sequence
     pub fn define_alias(&mut self, name: &str, commands: &str) -> &mut Self {
         self.aliases.insert(name.to_string(), commands.to_string());
@@ -3618,7 +3625,7 @@ impl XfstCompiler {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.define-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.define-fn]
     // @brief Define transducer
-    pub fn define_transducer(&mut self, name: &str, transducer: NetRef) {
+    pub fn define_transducer(&mut self, name: &str, transducer: NetRef<B>) {
         let was_defined = self.xre.is_definition(name);
         self.xre.define_transducer(name, &transducer.borrow());
         if self.variables["name-nets"] == "ON" {
@@ -3778,7 +3785,7 @@ impl XfstCompiler {
 
     // @brief Push last definition on stack
     pub fn push_latest(&mut self) -> crate::error::Result<&mut Self> {
-        let defs: Vec<NetRef> = self.definitions.values().cloned().collect();
+        let defs: Vec<NetRef<B>> = self.definitions.values().cloned().collect();
         for def in defs {
             let t = Rc::new(RefCell::new(HfstTransducer::new_copy(&def.borrow())?));
             self.stack.push(t);
@@ -3898,7 +3905,7 @@ impl XfstCompiler {
         arguments: &[String],
         xre: &str,
         function_name: &str,
-        xre_compiler: &mut XreCompiler,
+        xre_compiler: &mut XreCompiler<B>,
         user_friendly_argument_names: bool,
     ) -> String {
         let mut retval: String = xre.to_string();
@@ -4243,11 +4250,7 @@ impl XfstCompiler {
         };
         let mut fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
         fsm.complete()?;
-        let topmost_type = topmost.borrow().get_type();
-        let result = Rc::new(RefCell::new(HfstTransducer::from_basic_transducer(
-            &fsm,
-            topmost_type,
-        )));
+        let result: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::from_basic_transducer(&fsm)));
         self.stack.pop();
         result.borrow_mut().optimize()?;
         self.stack.push(result);
@@ -4278,8 +4281,7 @@ impl XfstCompiler {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        let topmost_type = topmost.borrow().get_type();
-        let result = Rc::new(RefCell::new(HfstTransducer::new_type(topmost_type)?));
+        let result: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::new()));
         let mut label_set: BTreeSet<(String, String)> = BTreeSet::new();
         let fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
         for it in fsm.iter() {
@@ -4290,9 +4292,8 @@ impl XfstCompiler {
                 ));
             }
         }
-        let result_type = result.borrow().get_type();
         for it in label_set.iter() {
-            let label_tr = HfstTransducer::new_symbol_pair(&it.0, &it.1, result_type)?;
+            let label_tr = HfstTransducer::new_symbol_pair(&it.0, &it.1)?;
             result.borrow_mut().disjunct(&label_tr, true)?;
         }
         result.borrow_mut().minimize()?;
@@ -4382,10 +4383,8 @@ impl XfstCompiler {
         alpha.remove("@_IDENTITY_SYMBOL_@");
         alpha.remove("@_EPSILON_SYMBOL_@");
         let alpha = crate::hfst_symbol_defs::symbols::to_string_pair_set(&alpha);
-        let sigma = Rc::new(RefCell::new(HfstTransducer::new_string_pair_set(
-            &alpha,
-            self.format,
-            false,
+        let sigma: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::new_string_pair_set(
+            &alpha, false,
         )?));
         sigma.borrow_mut().optimize()?;
         self.stack.push(sigma);
@@ -4600,10 +4599,7 @@ impl XfstCompiler {
             return Ok(self);
         }
 
-        let result = Rc::new(RefCell::new(HfstTransducer::from_basic_transducer(
-            &fsm,
-            self.format,
-        )));
+        let result: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::from_basic_transducer(&fsm)));
 
         // filter out regexps
         let mut cr = Self::contains_regexp_markers_on_one_side(&mut self.xre, level_is_upper);
@@ -4676,7 +4672,15 @@ impl XfstCompiler {
                 result_op.borrow_mut().minimize()?;
             }
             UnaryOperation::PRUNE_NET_ => {
-                result_op.borrow_mut().prune()?;
+                // 'prune' is a tropical-only facade operation; the C++
+                // converted other types to TROPICAL_OPENFST_TYPE first. The
+                // conversion is typed now ([dec:hfst:monomorphic-backends]):
+                // round-trip through the interchange transducer.
+                let mut tr = result_op.borrow_mut();
+                let mut tropical: HfstTransducer<hfst_openfst::StdVectorFst> =
+                    HfstTransducer::new_from_basic(&tr.get_basic_transducer()?)?;
+                tropical.prune()?;
+                *tr = HfstTransducer::new_from_basic(&tropical.get_basic_transducer()?)?;
             }
         }
 
@@ -4749,7 +4753,7 @@ impl XfstCompiler {
     // Returns an automaton that contains one ore more "^[" "^]" expressions.
     // [spec:hfst:def:xfst-compiler.hfst.xfst.contains-regexps-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.contains-regexps-fn]
-    fn contains_regexps(xre: &mut XreCompiler) -> HfstTransducer {
+    fn contains_regexps(xre: &mut XreCompiler<B>) -> HfstTransducer<B> {
         let not_bracket_star = xre.compile("[? - \"^[\" - \"^]\"]* ;").unwrap(); // XRE
         xre.define_transducer("TempNotBracketStar", &not_bracket_star); // XRE
         // all paths that contain one or more well-formed ^[ ^] expressions
@@ -4766,9 +4770,9 @@ impl XfstCompiler {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.contains-regexp-markers-on-one-side-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.contains-regexp-markers-on-one-side-fn]
     fn contains_regexp_markers_on_one_side(
-        xre: &mut XreCompiler,
+        xre: &mut XreCompiler<B>,
         input_side: bool,
-    ) -> HfstTransducer {
+    ) -> HfstTransducer<B> {
         if input_side {
             xre.compile("[?:?|0:?|?:0]* [\"^[\":? | \"^]\":? | \"^[\":0 | \"^]\":0] [?:?|0:?|?:0]*")
         } else {
@@ -4782,8 +4786,8 @@ impl XfstCompiler {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.is-well-formed-for-compile-replace-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.is-well-formed-for-compile-replace-fn]
     fn is_well_formed_for_compile_replace(
-        t: &HfstTransducer,
-        xre: &mut XreCompiler,
+        t: &HfstTransducer<B>,
+        xre: &mut XreCompiler<B>,
     ) -> crate::error::Result<bool> {
         let well_formed = Self::contains_regexps(xre);
         // subtract those paths from copy of t
@@ -4794,7 +4798,7 @@ impl XfstCompiler {
 
         // test if the result is empty
         tc.intersect(&brackets, true)?;
-        let empty = HfstTransducer::new_type(tc.get_type())?;
+        let empty: HfstTransducer<B> = HfstTransducer::new();
         let value = empty.compare(&tc, false)?;
         Ok(value)
     }
@@ -4912,17 +4916,15 @@ impl XfstCompiler {
             to_format = ImplementationType::HFST_OL_TYPE;
         }
 
-        if self.verbose {
-            debug!(
-                "converting transducer type from {} to {}, this might take a while...",
-                crate::hfst_data_types::implementation_type_to_format(t_type),
-                crate::hfst_data_types::implementation_type_to_format(to_format)
-            );
-        }
-
-        for net in self.stack.iter().rev() {
-            net.borrow_mut().convert(to_format, String::new())?;
-        }
+        // The stack is monomorphically typed as 'B'
+        // ([dec:hfst:monomorphic-backends]); the former in-place
+        // 'convert(to_format)' of every stack entry cannot change the backend
+        // type parameter, so the optimized-lookup conversion is unsupported.
+        warn!(
+            "cannot convert transducer type from {} to {}: the stack is monomorphically typed, ignoring 'lookup-optimize'",
+            crate::hfst_data_types::implementation_type_to_format(t_type),
+            crate::hfst_data_types::implementation_type_to_format(to_format)
+        );
 
         self.prompt();
         Ok(self)
@@ -4946,21 +4948,22 @@ impl XfstCompiler {
             return Ok(self);
         }
 
+        // Unreachable under a monomorphically typed stack
+        // ([dec:hfst:monomorphic-backends]): 'B: AlgebraBackend' excludes the
+        // OL backends, so the early return above is always taken. The warning
+        // logic is kept 1:1; the former in-place 'convert' loop cannot exist
+        // (the backend is the type parameter).
         if self.verbose {
             debug!(
                 "converting transducer type from {} to {}, this might take a while...",
                 crate::hfst_data_types::implementation_type_to_format(t_type),
-                crate::hfst_data_types::implementation_type_to_format(self.format)
+                crate::hfst_data_types::implementation_type_to_format(B::TYPE)
             );
-            if !HfstTransducer::is_safe_conversion(t_type, self.format) {
+            if !crate::hfst_transducer::is_safe_conversion(t_type, B::TYPE) {
                 warn!(
                     "converting from weighted to unweighted format, loss of information is possible"
                 );
             }
-        }
-
-        for net in self.stack.iter().rev() {
-            net.borrow_mut().convert(self.format, String::new())?;
         }
 
         self.prompt();
@@ -5009,7 +5012,7 @@ impl XfstCompiler {
         let mut ol_cutoff: usize = parse_size(&self.variables["lookup-cycle-cutoff"]);
 
         // Owned inverted copy for apply-up; None means operate on the shared top.
-        let mut owned_t: Option<HfstTransducer> = None;
+        let mut owned_t: Option<HfstTransducer<B>> = None;
         // Basic transducer used for ordinary (non-OL) lookups.
         let mut fsm: Option<HfstBasicTransducer> = None;
 
@@ -5040,6 +5043,10 @@ impl XfstCompiler {
             None => top.borrow().get_type(),
         };
 
+        // The OL fast-lookup arm is unreachable under a monomorphically typed
+        // stack ([dec:hfst:monomorphic-backends]): 'B: AlgebraBackend'
+        // excludes the OL backends, so 'work_type' is never OL/OLW and lookup
+        // always goes through the basic transducer.
         if work_type != ImplementationType::HFST_OL_TYPE
             && work_type != ImplementationType::HFST_OLW_TYPE
         {
@@ -5047,25 +5054,6 @@ impl XfstCompiler {
                 Some(c) => HfstBasicTransducer::new_from_transducer(c),
                 None => HfstBasicTransducer::new_from_transducer(&top.borrow()),
             });
-        } else {
-            // this gets ignored by ol transducer's
-            // is_lookup_infinitely_ambiguous
-            let foo: Vec<String> = Vec::new();
-            let inf = match &owned_t {
-                Some(c) => c.is_lookup_infinitely_ambiguous_string_vector(&foo),
-                None => top
-                    .borrow()
-                    .is_lookup_infinitely_ambiguous_string_vector(&foo),
-            };
-            if inf {
-                ol_cutoff = parse_size(&self.variables["lookup-cycle-cutoff"]);
-                if self.verbose {
-                    warn!(
-                        "transducer is infinitely ambiguous, limiting number of cycles to {}",
-                        ol_cutoff
-                    );
-                }
-            }
         }
 
         // prompt is printed only when reading from the user (always stdin here)
@@ -5093,19 +5081,10 @@ impl XfstCompiler {
                     if line == APPLY_END_STRING {
                         break;
                     }
-                    // perform lookup/lookdown
+                    // perform lookup/lookdown (the OL 'self.lookup' arm is
+                    // unreachable: 'fsm' is always built above)
                     if let Some(fsm_ref) = fsm.as_ref() {
                         self.lookup_basic(&line, fsm_ref);
-                    } else {
-                        match &owned_t {
-                            Some(c) => {
-                                self.lookup(&line, c, ol_cutoff)?;
-                            }
-                            None => {
-                                let tref = top.borrow();
-                                self.lookup(&line, &tref, ol_cutoff)?;
-                            }
-                        }
                     }
                 }
             }
@@ -5118,27 +5097,9 @@ impl XfstCompiler {
         Ok(self)
     }
 
-    fn lookup(
-        &mut self,
-        line: &str,
-        t: &HfstTransducer,
-        cutoff: usize,
-    ) -> crate::error::Result<&mut Self> {
-        let token = trim_whitespace(line);
-
-        let paths = if self.variables["obey-flags"] == "ON" {
-            t.lookup_fd_string(&token, cutoff as isize, 0.0)?
-        } else {
-            t.lookup_string(&token, cutoff as isize, 0.0)?
-        };
-
-        let mut out = std::io::stdout();
-        let printed = self.print_paths_one(&paths, &mut out, -1);
-        if !printed {
-            println!("???");
-        }
-        Ok(self)
-    }
+    // (The former OL-only 'fn lookup' is gone: its 'lookup_fd_string' /
+    // 'lookup_string' surface exists only on the OL instantiations, which
+    // 'B: AlgebraBackend' excludes; every apply path uses 'lookup_basic'.)
 
     fn lookup_basic(&mut self, line: &str, t: &HfstBasicTransducer) -> &mut Self {
         let token = trim_whitespace(line);
@@ -5236,31 +5197,13 @@ impl XfstCompiler {
             return Ok(self);
         }
         let t = self.stack.last().unwrap().clone();
-        let t_type = t.borrow().get_type();
-        if t_type != ImplementationType::HFST_OL_TYPE && t_type != ImplementationType::HFST_OLW_TYPE
-        {
-            // hfst_fprintf(warnstream_, "lookup might be slow, consider
-            // 'convert net'\n");
-            let fsm = HfstBasicTransducer::new_from_transducer(&t.borrow());
-            return Ok(self.lookup_basic(line, &fsm));
-        }
-
-        let mut ol_cutoff: usize = parse_size(&self.variables["lookup-cycle-cutoff"]); // -1; fix this
-        // this gets ignored by ol transducer's is_lookup_infinitely_ambiguous
-        let foo: Vec<String> = Vec::new();
-        if t.borrow()
-            .is_lookup_infinitely_ambiguous_string_vector(&foo)
-        {
-            ol_cutoff = parse_size(&self.variables["lookup-cycle-cutoff"]);
-            if self.verbose {
-                warn!(
-                    "transducer is infinitely ambiguous, limiting number of cycles to {}",
-                    ol_cutoff
-                );
-            }
-        }
-
-        self.lookup(line, &t.borrow(), ol_cutoff)
+        // The OL fast-lookup tail is unreachable under a monomorphically
+        // typed stack ([dec:hfst:monomorphic-backends]): 'B: AlgebraBackend'
+        // excludes the OL backends, so this non-OL branch is always taken.
+        // hfst_fprintf(warnstream_, "lookup might be slow, consider
+        // 'convert net'\n");
+        let fsm = HfstBasicTransducer::new_from_transducer(&t.borrow());
+        Ok(self.lookup_basic(line, &fsm))
     }
 
     fn apply_med_line(&mut self, line: &str) -> &mut Self {
@@ -5395,9 +5338,9 @@ impl XfstCompiler {
         }
 
         let mut outstream = if !outfilename.is_empty() {
-            HfstOutputStream::new_filename(outfilename, self.format, true)?
+            HfstOutputStream::new_filename(outfilename, B::TYPE, true)?
         } else {
-            HfstOutputStream::new(self.format, true)?
+            HfstOutputStream::new(B::TYPE, true)?
         };
         let def_ptr = self.definitions[name].clone();
         let mut tmp = HfstTransducer::new_copy(&def_ptr.borrow())?;
@@ -5420,9 +5363,9 @@ impl XfstCompiler {
         }
 
         let mut outstream = if !outfilename.is_empty() {
-            HfstOutputStream::new_filename(outfilename, self.format, true)?
+            HfstOutputStream::new_filename(outfilename, B::TYPE, true)?
         } else {
-            HfstOutputStream::new(self.format, true)?
+            HfstOutputStream::new(B::TYPE, true)?
         };
         for (name, def) in self.definitions.iter() {
             let mut tmp = HfstTransducer::new_copy(&def.borrow())?;
@@ -5601,16 +5544,14 @@ impl XfstCompiler {
 
         let att_eps = self.variables["att-epsilon"].clone();
         let att_eps_default = att_eps == "@0@ | @_EPSILON_SYMBOL_@";
-        let fmt = self.format;
         let result = if att_eps_default {
-            HfstTransducer::read_in_att_format_file(
+            HfstTransducer::<B>::read_in_att_format_file(
                 &mut reader,
-                fmt,
                 crate::hfst_symbol_defs::internal_epsilon,
                 false,
             )
         } else {
-            HfstTransducer::read_in_att_format_file(&mut reader, fmt, &att_eps, false)
+            HfstTransducer::<B>::read_in_att_format_file(&mut reader, &att_eps, false)
         };
         match result {
             Ok(r) => {
@@ -5669,7 +5610,7 @@ impl XfstCompiler {
             }
         };
 
-        let tmp = Rc::new(RefCell::new(HfstTransducer::new_type(self.format)?));
+        let tmp: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::new()));
         let mcs: Vec<String> = Vec::new(); // no multichar symbols
         // [spec:hfst:def:xfst-compiler.hfst.xfst.tok-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.tok-fn]
@@ -5690,7 +5631,7 @@ impl XfstCompiler {
             let spv = tok.tokenize_pair_string(&line, spaces)?;
             // [spec:hfst:def:xfst-compiler.hfst.xfst.line-tr-fn]
             // [spec:hfst:sem:xfst-compiler.hfst.xfst.line-tr-fn]
-            let line_tr = HfstTransducer::new_string_pair_vector(&spv, self.format)?;
+            let line_tr = HfstTransducer::new_string_pair_vector(&spv)?;
             tmp.borrow_mut().disjunct(&line_tr, true)?;
         }
 
@@ -6023,7 +5964,7 @@ impl XfstCompiler {
 
         let mut tmp = HfstTransducer::new_from_transducer(&temp.borrow());
         tmp.input_project()?;
-        let id = HfstTransducer::new_symbol(internal_identity, tmp.get_type())?;
+        let id = HfstTransducer::new_symbol(internal_identity)?;
         let mut value = false;
 
         if level == Level::UPPER_LEVEL {
@@ -6100,7 +6041,7 @@ impl XfstCompiler {
             return Ok(self);
         };
 
-        let empty = HfstTransducer::new_type(tmp.borrow().get_type())?;
+        let empty: HfstTransducer<B> = HfstTransducer::new();
         let mut value = empty.compare(&tmp.borrow(), false)?;
         if invert_test_result {
             value = !value;
@@ -6132,14 +6073,14 @@ impl XfstCompiler {
         }
         // [spec:hfst:def:xfst-compiler.hfst.xfst.copied-stack-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.copied-stack-fn]
-        let mut copied_stack: Vec<NetRef> = self.stack.clone();
+        let mut copied_stack: Vec<NetRef<B>> = self.stack.clone();
 
         let topmost = copied_stack
             .pop()
             .expect("stack has at least 2 networks (checked above)");
         let mut topmost_transducer = HfstTransducer::new_from_transducer(&topmost.borrow());
 
-        let empty = HfstTransducer::new_type(topmost_transducer.get_type())?;
+        let empty: HfstTransducer<B> = HfstTransducer::new();
 
         while let Some(next) = copied_stack.pop() {
             let next_transducer = HfstTransducer::new_from_transducer(&next.borrow());

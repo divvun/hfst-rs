@@ -6,10 +6,11 @@
 
 use std::collections::BTreeSet;
 
-use crate::hfst_data_types::ImplementationType::{HFST_OLW_TYPE, TROPICAL_OPENFST_TYPE};
+use crate::backend::Backend;
 use crate::hfst_symbol_defs::{StringSet, StringVector};
 use crate::hfst_tokenizer::HfstTokenizer;
 use crate::hfst_transducer::HfstTransducer;
+use crate::transducer::Transducer;
 
 // '#define MODEL_FORM_PREFIX ""'.
 const MODEL_FORM_PREFIX: &str = "";
@@ -51,7 +52,7 @@ impl InvalidModelLine {
 // guesser is exactly a transducer carrying that property. The C++ checked
 // get_properties().count("reverse input") != 1; this was inline in hfst-guess's
 // main and is lifted here.
-pub fn is_guesser(t: &HfstTransducer) -> bool {
+pub fn is_guesser<B: Backend>(t: &HfstTransducer<B>) -> bool {
     t.get_properties().get("reverse input").is_some()
 }
 
@@ -60,14 +61,19 @@ pub fn is_guesser(t: &HfstTransducer) -> bool {
 // it (a generator maps the guesser's analyses back to surface forms), and
 // convert to the optimised-lookup weighted type. Lifted verbatim from
 // hfst-guess's main.
-pub fn compile_generator_from_guesser(
-    guesser: &HfstTransducer,
-) -> crate::error::Result<HfstTransducer> {
-    let mut generator = HfstTransducer::new_copy(guesser)?;
-    generator.convert(TROPICAL_OPENFST_TYPE, String::new())?;
+pub fn compile_generator_from_guesser<B: Backend>(
+    guesser: &HfstTransducer<B>,
+) -> crate::error::Result<HfstTransducer<Transducer>> {
+    // The C++ convert(TROPICAL) / invert / convert(HFST_OLW) round-trip is a
+    // typed conversion pair now ([dec:hfst:monomorphic-backends]).
+    let mut generator: HfstTransducer<hfst_openfst::StdVectorFst> =
+        HfstTransducer::new_from_basic(&guesser.get_basic_transducer()?)?;
     generator.invert()?;
-    generator.convert(HFST_OLW_TYPE, String::new())?;
-    Ok(generator)
+    crate::convert_transducer_format::ConversionFunctions::hfst_ol_to_hfst_transducer(
+        &crate::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_ol(
+            &generator,
+        )?,
+    )
 }
 
 // 'guessify_fst.cc': 'bool is_cathegory_symbol(const std::string &symbol)'.
@@ -77,15 +83,13 @@ fn is_cathegory_symbol(symbol: &str) -> bool {
 
 // [spec:hfst:def:generate-model-forms.get-alphabet-string-tokenizer-fn]
 // [spec:hfst:sem:generate-model-forms.get-alphabet-string-tokenizer-fn]
-pub fn get_alphabet_string_tokenizer(
-    fst: &mut HfstTransducer,
+pub fn get_alphabet_string_tokenizer<B: Backend>(
+    fst: &mut HfstTransducer<B>,
 ) -> crate::error::Result<HfstTokenizer> {
-    // FIXME: temporary until optimized lookup transducers implement
-    // get_alphabet.
-    let mut temp = HfstTransducer::new_copy(fst)?;
-    temp.convert(TROPICAL_OPENFST_TYPE, String::new())?;
-
-    let alphabet: StringSet = temp.get_alphabet()?;
+    // The C++ FIXME round-trip through TROPICAL existed only because the OL
+    // backends lacked get_alphabet; 'Backend::get_alphabet' covers every
+    // backend now, so the copy/convert is gone (pure capability gating).
+    let alphabet: StringSet = fst.get_alphabet()?;
 
     let mut tokenizer = HfstTokenizer::new();
 
@@ -141,7 +145,7 @@ fn contains_analysis_symbols(word_form: &StringVector) -> bool {
 // [spec:hfst:sem:generate-model-forms.generate-word-forms-fn]
 fn generate_word_forms(
     analysis: &StringVector,
-    form_generator: &mut HfstTransducer,
+    form_generator: &mut HfstTransducer<Transducer>,
     max_generated_forms: usize,
     generate_threshold: f32,
 ) -> crate::error::Result<StringVector> {
@@ -205,7 +209,7 @@ fn generate_word_forms(
 fn get_model_forms(
     reversed_analysis: &StringVector,
     model_forms: &StringVectorVector,
-    form_generator: &mut HfstTransducer,
+    form_generator: &mut HfstTransducer<Transducer>,
     max_generated_forms: usize,
     generate_threshold: f32,
 ) -> crate::error::Result<StringVectorVector> {
@@ -297,7 +301,7 @@ pub fn read_model_forms(
 // [spec:hfst:sem:generate-model-forms.get-guesses-fn]
 pub fn get_guesses(
     word_form: &str,
-    guesser: &mut HfstTransducer,
+    guesser: &mut HfstTransducer<Transducer>,
     number_of_guesses: usize,
     tokenizer: &mut HfstTokenizer,
 ) -> crate::error::Result<StringVectorVector> {
@@ -326,7 +330,7 @@ pub fn get_guesses(
 pub fn get_paradigms(
     word_form: &str,
     guesses: &StringVectorVector,
-    generator: &mut HfstTransducer,
+    generator: &mut HfstTransducer<Transducer>,
     model_forms: &StringVectorVector,
     number_of_generated_forms: usize,
     generate_threshold: f32,

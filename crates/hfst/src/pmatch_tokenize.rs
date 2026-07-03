@@ -10,9 +10,10 @@
 use std::collections::BTreeSet;
 use std::io::{BufRead, Write};
 
+use crate::backend::AlgebraBackend;
 use crate::convert_transducer_format::ConversionFunctions;
 use crate::error::Result;
-use crate::hfst_data_types::{ImplementationType, StringVector};
+use crate::hfst_data_types::StringVector;
 use crate::hfst_transducer::HfstTransducer;
 use crate::pmatch::{Location, LocationVector, LocationVectorVector, PmatchContainer};
 use crate::pmatch_compiler;
@@ -1338,44 +1339,38 @@ impl Default for TokenizeInputSettings {
 
 // [spec:hfst:def:hfst-tokenize.make-naive-tokenizer-fn]
 // [spec:hfst:sem:hfst-tokenize.make-naive-tokenizer-fn]
-pub fn make_naive_tokenizer(
-    dictionary: &mut HfstTransducer,
-    format: ImplementationType,
+pub fn make_naive_tokenizer<B: AlgebraBackend>(
+    dictionary: &mut HfstTransducer<B>,
 ) -> Result<PmatchContainer> {
-    let mut word_boundary =
-        pmatch_compiler::PmatchUtilityTransducers::make_latin1_whitespace_acceptor(format)?;
-    let punctuation =
-        pmatch_compiler::PmatchUtilityTransducers::make_latin1_punct_acceptor(format)?;
+    let mut word_boundary: HfstTransducer<B> =
+        pmatch_compiler::PmatchUtilityTransducers::make_latin1_whitespace_acceptor()?;
+    let punctuation = pmatch_compiler::PmatchUtilityTransducers::make_latin1_punct_acceptor()?;
     word_boundary.disjunct(&punctuation, true)?;
-    let mut others = pmatch_compiler::make_exc_list(&word_boundary, format)?;
+    let mut others = pmatch_compiler::make_exc_list(&word_boundary)?;
     others.repeat_plus()?;
     // make the default token less likely than any dictionary token
     others.set_final_weights(f32::MAX, false)?;
-    let mut word_boundary_list = pmatch_compiler::make_list(&word_boundary, format)?;
+    let mut word_boundary_list = pmatch_compiler::make_list(&word_boundary)?;
     // @BOUNDARY@ is pmatch's special input boundary marker
-    let boundary = HfstTransducer::new_symbol("@BOUNDARY@", format)?;
+    let boundary = HfstTransducer::new_symbol("@BOUNDARY@")?;
     word_boundary_list.disjunct(&boundary, true)?;
     let mut left_context = HfstTransducer::new_symbol_pair(
         crate::hfst_symbol_defs::internal_epsilon,
         pmatch_compiler::LC_ENTRY_SYMBOL,
-        format,
     )?;
     let mut right_context = HfstTransducer::new_symbol_pair(
         crate::hfst_symbol_defs::internal_epsilon,
         pmatch_compiler::RC_ENTRY_SYMBOL,
-        format,
     )?;
     left_context.concatenate(&word_boundary_list, true)?;
     right_context.concatenate(&word_boundary_list, true)?;
     let left_context_exit = HfstTransducer::new_symbol_pair(
         crate::hfst_symbol_defs::internal_epsilon,
         pmatch_compiler::LC_EXIT_SYMBOL,
-        format,
     )?;
     let right_context_exit = HfstTransducer::new_symbol_pair(
         crate::hfst_symbol_defs::internal_epsilon,
         pmatch_compiler::RC_EXIT_SYMBOL,
-        format,
     )?;
     left_context.concatenate(&left_context_exit, true)?;
     right_context.concatenate(&right_context_exit, true)?;
@@ -1385,7 +1380,7 @@ pub fn make_naive_tokenizer(
         dictionary.set_name(&dict_name);
     }
     let dict_ins_arc =
-        HfstTransducer::new_symbol(&pmatch_compiler::get_Ins_transition(&dict_name), format)?;
+        HfstTransducer::new_symbol(&pmatch_compiler::get_Ins_transition(&dict_name))?;
     // We now make the center of the tokenizer
     others.disjunct(&dict_ins_arc, true)?;
     // And combine it with the context conditions
@@ -1395,8 +1390,6 @@ pub fn make_naive_tokenizer(
     let mut tokenizer = pmatch_compiler::add_pmatch_delimiters(&left_context)?;
     tokenizer.set_name("TOP");
     tokenizer.minimize()?;
-    // Convert the dictionary to olw if it wasn't already
-    dictionary.convert(ImplementationType::HFST_OLW_TYPE, String::new())?;
     // Get the alphabets
     let dict_syms = dictionary.get_alphabet()?;
     let tokenizer_syms = tokenizer.get_alphabet()?;
@@ -1411,21 +1404,18 @@ pub fn make_naive_tokenizer(
     // The C++ 'hfst_basic_transducer_to_hfst_ol' takes the HfstTransducer
     // dictionary directly as its harmonizer and converts it internally; the
     // Rust port shifts that to the caller, so we first obtain the dictionary's
-    // optimized-lookup backend ('hfst_transducer_to_hfst_ol' converts the
-    // dictionary in place to HFST_OLW and returns its ol::Transducer) and pass
-    // that as the harmonizer. This is also the same backend used for add_rtn
-    // below.
+    // optimized-lookup backend ('hfst_transducer_to_hfst_ol' builds an owned
+    // weighted ol::Transducer from the dictionary) and pass that as the
+    // harmonizer. The same owned backend is used for add_rtn below.
     let dict_backend = ConversionFunctions::hfst_transducer_to_hfst_ol(dictionary)?;
-    // The backend pointer aliases 'dictionary', which stays alive (and is not
-    // otherwise touched) for the rest of this function.
     let tokenizer_ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
         &tokenizer_basic,
-        true,                            // weighted
-        "",                              // no special options
-        Some(unsafe { &*dict_backend }), // harmonize with the dictionary
+        true,                // weighted
+        "",                  // no special options
+        Some(&dict_backend), // harmonize with the dictionary
     )?;
     let mut retval = PmatchContainer::new_from_transducer(Box::new(tokenizer_ol))?;
-    retval.add_rtn(unsafe { &*dict_backend }, &dict_name)?;
+    retval.add_rtn(&dict_backend, &dict_name)?;
     Ok(retval)
 }
 

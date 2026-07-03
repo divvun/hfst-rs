@@ -35,6 +35,7 @@ use nfst_lexc::{
 };
 use nfst_xre::{SpannedXre, pretty_print};
 
+use crate::backend::AlgebraBackend;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_data_types::{ImplementationType, StringPair, StringPairVector, StringVector};
 use crate::hfst_symbol_defs::{HfstSymbolSubstitutions, StringSet};
@@ -44,14 +45,13 @@ use crate::xre::XreCompiler;
 use tracing::{debug, error, info, warn};
 
 // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler]
-pub struct LexcCompiler {
-    pub(crate) format: ImplementationType,
+pub struct LexcCompiler<B: AlgebraBackend> {
     pub(crate) tokenizer: HfstTokenizer,
-    pub(crate) xre: XreCompiler,
+    pub(crate) xre: XreCompiler<B>,
     pub(crate) initialLexiconName_: String,
     pub(crate) currentLexiconName_: String,
     pub(crate) stringsTrie_: HfstBasicTransducer,
-    pub(crate) regexps: BTreeMap<String, HfstTransducer>, // owning HfstTransducer* -> owned
+    pub(crate) regexps: BTreeMap<String, HfstTransducer<B>>, // owning HfstTransducer* -> owned
     pub(crate) lexiconNames_: BTreeSet<String>,
     pub(crate) noFlags_: BTreeSet<String>,
     pub(crate) continuations: BTreeSet<String>,
@@ -310,16 +310,15 @@ fn weight_from_gloss(gloss: Option<&str>) -> f64 {
 // and the AST-walk driver (ported from LexcCompiler.cc).
 // ==========================================================================
 
-impl LexcCompiler {
+impl<B: AlgebraBackend> LexcCompiler<B> {
     /// Common body of the 'LexcCompiler(impl)' and
     /// 'LexcCompiler(impl, withFlags, alignStrings)' constructors: seeds the
     /// tokenizer with the epsilon/zero multichars + the '#' joiner, registers
     /// '#' as a lexicon name, and configures 'xre'.
-    fn seeded(format: ImplementationType) -> LexcCompiler {
+    fn seeded() -> LexcCompiler<B> {
         let mut compiler = LexcCompiler {
-            format: format,
             tokenizer: HfstTokenizer::new(),
-            xre: XreCompiler::new(format),
+            xre: XreCompiler::new(),
             initialLexiconName_: "Root".to_string(),
             currentLexiconName_: String::new(),
             stringsTrie_: HfstBasicTransducer::new(),
@@ -368,19 +367,15 @@ impl LexcCompiler {
     }
 
     /// Port of 'LexcCompiler(ImplementationType impl)' (unannotated in the .cc).
-    pub fn new(format: ImplementationType) -> LexcCompiler {
-        LexcCompiler::seeded(format)
+    pub fn new() -> LexcCompiler<B> {
+        LexcCompiler::seeded()
     }
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.lexc-compiler-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.lexc-compiler-fn]
     /// Port of 'LexcCompiler(impl, withFlags, alignStrings)'.
-    pub fn new_with_flags(
-        format: ImplementationType,
-        with_flags: bool,
-        align_strings: bool,
-    ) -> LexcCompiler {
-        let mut compiler = LexcCompiler::seeded(format);
+    pub fn new_with_flags(with_flags: bool, align_strings: bool) -> LexcCompiler<B> {
+        let mut compiler = LexcCompiler::seeded();
         compiler.align_strings = align_strings;
         compiler.with_flags = with_flags;
         compiler
@@ -1093,12 +1088,9 @@ impl LexcCompiler {
         regex_key = reg_expresion_encode(&regex_key);
         self.tokenizer.add_multichar_symbol(&regex_key);
 
-        let format = self.format;
         let entry = match self.regexps.entry(regex_key.clone()) {
             std::collections::btree_map::Entry::Occupied(e) => e.into_mut(),
-            std::collections::btree_map::Entry::Vacant(e) => {
-                e.insert(HfstTransducer::new_type(format)?)
-            }
+            std::collections::btree_map::Entry::Vacant(e) => e.insert(HfstTransducer::new()),
         };
         entry.disjunct(&new_paths, true)?.optimize()?;
 
@@ -1246,7 +1238,7 @@ impl LexcCompiler {
     /// tools called 'parse(...)' followed by 'compileLexical()'; it is exactly
     /// that pairing for the single-source case. Returns None on parse error
     /// (the C++ 'compileLexical' null contract expressed as an Option).
-    pub fn compile(&mut self, lexc_source: &str) -> Option<HfstTransducer> {
+    pub fn compile(&mut self, lexc_source: &str) -> Option<HfstTransducer<B>> {
         self.parse(lexc_source).ok();
         self.compile_lexical().ok().flatten()
     }
@@ -1306,7 +1298,7 @@ impl LexcCompiler {
 }
 
 // ===== body 1 (flattened, module scope) =====
-impl LexcCompiler {
+impl<B: AlgebraBackend> LexcCompiler<B> {
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.compile-lexical-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.compile-lexical-fn]
     //
@@ -1319,7 +1311,7 @@ impl LexcCompiler {
     // 'COLOUR_*' '#define's are inlined as literal ANSI escapes to avoid a
     // duplicate module-scope definition with the lexc-utils body (which owns
     // 'should_colourise').
-    pub fn compile_lexical(&mut self) -> crate::error::Result<Option<HfstTransducer>> {
+    pub fn compile_lexical(&mut self) -> crate::error::Result<Option<HfstTransducer<B>>> {
         if self.parseErrors_ {
             error!("compilation aborted due to previous errors");
             return Ok(None);
@@ -1331,7 +1323,7 @@ impl LexcCompiler {
             return Ok(None);
         }
 
-        let mut lexicons = HfstTransducer::new_from_basic(&self.stringsTrie_, self.format)?;
+        let mut lexicons: HfstTransducer<B> = HfstTransducer::new_from_basic(&self.stringsTrie_)?;
 
         lexicons.optimize()?;
 
@@ -1355,9 +1347,9 @@ impl LexcCompiler {
 
         if !self.with_flags {
             let start_joiner = joiner_encode(&self.initialLexiconName_);
-            let start = HfstTransducer::new_tokenized(&start_joiner, &self.tokenizer, self.format)?;
+            let start = HfstTransducer::new_tokenized(&start_joiner, &self.tokenizer)?;
             let end_string = joiner_encode("#");
-            let end = HfstTransducer::new_tokenized(&end_string, &self.tokenizer, self.format)?;
+            let end = HfstTransducer::new_tokenized(&end_string, &self.tokenizer)?;
             // lexicons = start.concatenate(lexicons).concatenate(end).optimize();
             let mut bracketed = start;
             bracketed
@@ -1389,8 +1381,9 @@ impl LexcCompiler {
             let root_p = flag_joiner_encode(&self.initialLexiconName_, false);
             let root_r = flag_joiner_encode(&self.initialLexiconName_, true);
 
-            let start_p = HfstTransducer::new_tokenized(&root_p, &self.tokenizer, self.format)?;
-            let _start_r = HfstTransducer::new_tokenized(&root_r, &self.tokenizer, self.format)?;
+            let start_p = HfstTransducer::new_tokenized(&root_p, &self.tokenizer)?;
+            let _start_r: HfstTransducer<B> =
+                HfstTransducer::new_tokenized(&root_r, &self.tokenizer)?;
 
             let end_string_p = flag_joiner_encode("#", false);
             let end_string_r = flag_joiner_encode("#", true);
@@ -1398,9 +1391,9 @@ impl LexcCompiler {
             self.tokenizer.add_multichar_symbol(&end_string_p);
             self.tokenizer.add_multichar_symbol(&end_string_r);
 
-            let _end_p =
-                HfstTransducer::new_tokenized(&end_string_p, &self.tokenizer, self.format)?;
-            let end_r = HfstTransducer::new_tokenized(&end_string_r, &self.tokenizer, self.format)?;
+            let _end_p: HfstTransducer<B> =
+                HfstTransducer::new_tokenized(&end_string_p, &self.tokenizer)?;
+            let end_r = HfstTransducer::new_tokenized(&end_string_r, &self.tokenizer)?;
 
             // lexicons = startP.concatenate(lexicons).concatenate(endR).optimize();
             let mut bracketed = start_p;
@@ -1450,7 +1443,7 @@ impl LexcCompiler {
             joiners_trie.disjunct_path(&new_vector, 0.0f32);
         }
 
-        let mut joiners_all = HfstTransducer::new_from_basic(&joiners_trie, self.format)?;
+        let mut joiners_all: HfstTransducer<B> = HfstTransducer::new_from_basic(&joiners_trie)?;
 
         joiners_all.repeat_star()?;
         joiners_all.optimize()?;
@@ -1522,7 +1515,7 @@ impl LexcCompiler {
 
         lexicons_basic.prune_alphabet(true);
 
-        let mut rv = HfstTransducer::new_from_basic(&lexicons_basic, self.format)?;
+        let mut rv: HfstTransducer<B> = HfstTransducer::new_from_basic(&lexicons_basic)?;
 
         // Preserve only first flag of consecutive P and R lexname flag series,
         // e.g. change P.LEXNAME.1 R.LEXNAME.1 P.LEXNAME.2 R.LEXNAME.2 into
@@ -1557,9 +1550,11 @@ impl LexcCompiler {
             flag_remover_regexp.push_str(&context_regexp);
             flag_remover_regexp.push_str(" _ ");
 
-            let mut xre_comp = XreCompiler::new(self.format);
+            let mut xre_comp: XreCompiler<B> = XreCompiler::new();
 
-            let mut flag_filter = xre_comp.compile(&flag_remover_regexp).unwrap();
+            let mut flag_filter = xre_comp
+                .compile(&flag_remover_regexp)
+                .expect("flag-remover regexp is generated internally and always compiles");
             flag_filter.optimize()?;
             let mut inverted_flag_filter = flag_filter.clone();
             inverted_flag_filter.invert()?.optimize()?;

@@ -26,17 +26,31 @@ use crate::twolc::{
 };
 
 // [spec:hfst:def:alphabet.alphabet]
-#[derive(Default)]
-pub struct Alphabet {
+pub struct Alphabet<B: crate::backend::AlgebraBackend> {
     pub(crate) alphabet_set: BTreeSet<SymbolPair>,
     pub(crate) input_symbols: BTreeSet<String>,
     pub(crate) output_symbols: BTreeSet<String>,
     pub(crate) diacritics: BTreeSet<String>,
-    pub(crate) alphabet: BTreeMap<SymbolPair, OtherSymbolTransducer>,
+    pub(crate) alphabet: BTreeMap<SymbolPair, OtherSymbolTransducer<B>>,
     pub(crate) sets: BTreeMap<String, SymbolRange>,
 }
 
-impl Alphabet {
+// Manual impl: a derive would demand 'B: Default', which the backends need not
+// provide.
+impl<B: crate::backend::AlgebraBackend> Default for Alphabet<B> {
+    fn default() -> Self {
+        Alphabet {
+            alphabet_set: BTreeSet::new(),
+            input_symbols: BTreeSet::new(),
+            output_symbols: BTreeSet::new(),
+            diacritics: BTreeSet::new(),
+            alphabet: BTreeMap::new(),
+            sets: BTreeMap::new(),
+        }
+    }
+}
+
+impl<B: crate::backend::AlgebraBackend> Alphabet<B> {
     // ----- protected -----
 
     // 'const OtherSymbolTransducer &Alphabet::compute(const SymbolPair &pair)'.
@@ -45,7 +59,7 @@ impl Alphabet {
         &mut self,
         cfg: &OstConfig,
         pair: &SymbolPair,
-    ) -> crate::error::Result<&OtherSymbolTransducer> {
+    ) -> crate::error::Result<&OtherSymbolTransducer<B>> {
         if !self.sets.contains_key(&pair.0) {
             self.define_singleton_set(&pair.0);
         }
@@ -205,7 +219,7 @@ impl Alphabet {
     // [spec:hfst:def:alphabet.alphabet.alphabet-done-fn]
     // [spec:hfst:sem:alphabet.alphabet.alphabet-done-fn]
     pub fn alphabet_done(&self, cfg: &mut OstConfig) {
-        OtherSymbolTransducer::set_symbol_pairs(cfg, &self.alphabet_set);
+        OtherSymbolTransducer::<B>::set_symbol_pairs(cfg, &self.alphabet_set);
     }
 
     // [spec:hfst:def:alphabet.alphabet.define-diacritics-fn]
@@ -247,7 +261,7 @@ impl Alphabet {
         &mut self,
         cfg: &OstConfig,
         pair: &SymbolPair,
-    ) -> crate::error::Result<&OtherSymbolTransducer> {
+    ) -> crate::error::Result<&OtherSymbolTransducer<B>> {
         if self.alphabet.contains_key(pair) {
             return Ok(&self.alphabet[pair]);
         }
