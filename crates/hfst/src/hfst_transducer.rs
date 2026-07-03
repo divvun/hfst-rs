@@ -1949,9 +1949,14 @@ impl HfstTransducer {
             {
                 let self_copy = HfstTransducer::new_from(self);
                 let filter_deref = HfstTransducer::new_from(&filter);
-                filter_copy
-                    .compose(&self_copy, true)?
-                    .compose(&filter_deref, true)?;
+                // Compose the symbol-level flag-constraint filter with flags
+                // encoded as ordinary symbols (see eliminate_flag for why).
+                let cfg = EngineConfig {
+                    xerox_composition: true,
+                    ..EngineConfig::default()
+                };
+                filter_copy.compose_with_config(&self_copy, true, &cfg)?;
+                filter_copy.compose_with_config(&filter_deref, true, &cfg)?;
             }
             flag_purge(&mut filter_copy, "")?;
             *self = filter_copy;
@@ -1994,9 +1999,19 @@ impl HfstTransducer {
             {
                 let self_copy = HfstTransducer::new_from(self);
                 let filter_deref = HfstTransducer::new_from(&filter);
-                filter_copy
-                    .compose(&self_copy, true)?
-                    .compose(&filter_deref, true)?;
+                // The filter is a symbol-level constraint (built over escaped
+                // flags so the flag features are ordinary symbols); apply it
+                // with flag diacritics encoded as ordinary symbols in the
+                // composition. Otherwise flag harmonization drops any path that
+                // carries a flag of some OTHER feature, since the filter's
+                // '?' (identity) will not match a foreign flag once that flag
+                // is added to the filter's alphabet without an explicit arc.
+                let cfg = EngineConfig {
+                    xerox_composition: true,
+                    ..EngineConfig::default()
+                };
+                filter_copy.compose_with_config(&self_copy, true, &cfg)?;
+                filter_copy.compose_with_config(&filter_deref, true, &cfg)?;
             }
             flag_purge(&mut filter_copy, flag)?;
             *self = filter_copy;
