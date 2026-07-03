@@ -495,14 +495,12 @@ impl HfstTransducer {
             LOG_OPENFST_TYPE => TransducerImplementation::Log(Box::new(LogWeightTransducer::copy(
                 another.implementation.as_log(),
             ))),
-            HFST_OL_TYPE => TransducerImplementation::HfstOl(Box::new(Transducer::copy(
-                another.implementation.as_hfst_ol(),
-                false,
-            )?)),
-            HFST_OLW_TYPE => TransducerImplementation::HfstOl(Box::new(Transducer::copy(
-                another.implementation.as_hfst_ol(),
-                true,
-            )?)),
+            // Both OL flavours carry the weighted-shaped tables in memory
+            // (interim, [dec:hfst:monomorphic-backends] step 1); the header
+            // flag distinguishes them, so the copy is flavour-preserving.
+            HFST_OL_TYPE | HFST_OLW_TYPE => TransducerImplementation::HfstOl(Box::new(
+                Transducer::copy(another.implementation.as_hfst_ol())?,
+            )),
             ERROR_TYPE => crate::bail!(TransducerHasWrongType),
             _ => unimplemented!("new_copy: not implemented for this transducer type"),
         };
@@ -727,16 +725,10 @@ impl HfstTransducer {
                     LogWeightTransducer::copy(another_1.implementation.as_log()),
                 ));
             }
-            HFST_OL_TYPE => {
+            // Flavour-preserving copy; see new_copy above.
+            HFST_OL_TYPE | HFST_OLW_TYPE => {
                 self.implementation = TransducerImplementation::HfstOl(Box::new(Transducer::copy(
                     another_1.implementation.as_hfst_ol(),
-                    false,
-                )?));
-            }
-            HFST_OLW_TYPE => {
-                self.implementation = TransducerImplementation::HfstOl(Box::new(Transducer::copy(
-                    another_1.implementation.as_hfst_ol(),
-                    true,
                 )?));
             }
             // default: (void)1;  (implementation left unchanged)

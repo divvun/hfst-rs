@@ -412,7 +412,7 @@ impl<'a> Speller<'a> {
         let mut i_s: STransition = self.lexicon.take_epsilons_and_flags(next);
 
         while i_s.symbol != NO_SYMBOL_NUMBER {
-            if self.lexicon.get_transition(next).get_input_symbol() == 0 {
+            if self.lexicon.get_transition_input(next) == 0 {
                 let nn = self
                     .queue
                     .front()
@@ -421,7 +421,7 @@ impl<'a> Speller<'a> {
                 self.queue.push_back(nn);
             } else {
                 let mut front = self.queue.front().unwrap().clone();
-                let sym = self.lexicon.get_transition(next).get_input_symbol();
+                let sym = self.lexicon.get_transition_input(next);
                 if front.flag_state.apply_operation_symbol(sym) {
                     let nn = front.update_lexicon(i_s.symbol, i_s.index, i_s.weight);
                     self.queue.push_back(nn);

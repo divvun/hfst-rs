@@ -389,7 +389,20 @@ mod ol_construction_io {
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.create-empty-transducer-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.create-empty-transducer-fn]
         pub fn create_empty_transducer(weighted: bool) -> Transducer {
-            Transducer::new_weighted(weighted)
+            // Interim during [dec:hfst:monomorphic-backends] step 1: the
+            // in-memory table shape is always the weighted pair (as the C++
+            // conversions produce); only the header flag records the logical
+            // weightedness. The facade's AnyTransducer (step 3) makes the
+            // unweighted instantiation reachable from disk loads.
+            if weighted {
+                Transducer::new_empty()
+            } else {
+                Transducer::new_from_tables(
+                    &crate::transducer::TransducerHeader::new_weighted(false),
+                    &crate::transducer::TransducerAlphabet::new(),
+                    crate::transducer::TransducerTablesInterface::new_empty(),
+                )
+            }
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.is-cyclic-fn]
@@ -459,18 +472,18 @@ mod ol_lookup_ops {
             let mut is_final = false;
             let mut final_weight = 0.0f32;
             if indexes_transition_index_table(s) {
-                if t.get_index(s).is_final() {
+                if t.get_index_finality(s) {
                     is_final = true;
                     final_weight = if t.get_header().probe_flag(HeaderFlag::Weighted) {
-                        t.get_index(s).final_weight()
+                        t.get_index_final_weight(s)
                     } else {
                         0.0f32
                     };
                 }
-            } else if t.get_transition(s).is_final() {
+            } else if t.get_transition_finality(s) {
                 is_final = true;
                 final_weight = if t.get_header().probe_flag(HeaderFlag::Weighted) {
-                    t.get_transition(s).get_weight()
+                    t.get_transition_weight(s)
                 } else {
                     0.0f32
                 };
@@ -492,12 +505,12 @@ mod ol_lookup_ops {
         let transitions = t.get_transitions_from_state(s);
         let mut sorted_transitions: Vec<TransitionTableIndex> = Vec::new();
         for it in transitions.iter() {
-            let target = t.get_transition(*it).get_target();
+            let target = t.get_transition_target(*it);
             let mut i: usize = 0;
             while i < sorted_transitions.len() {
                 let av_t = *all_visitations.get(&target).unwrap_or(&0);
                 let av_i = *all_visitations
-                    .get(&t.get_transition(sorted_transitions[i]).get_target())
+                    .get(&t.get_transition_target(sorted_transitions[i]))
                     .unwrap_or(&0);
                 if av_t < av_i {
                     break;
@@ -510,9 +523,9 @@ mod ol_lookup_ops {
         let mut res = true;
         let mut i: usize = 0;
         while i < sorted_transitions.len() && res {
-            let input = t.get_transition(sorted_transitions[i]).get_input_symbol();
-            let output = t.get_transition(sorted_transitions[i]).get_output_symbol();
-            let target = t.get_transition(sorted_transitions[i]).get_target();
+            let input = t.get_transition_input(sorted_transitions[i]);
+            let output = t.get_transition_output(sorted_transitions[i]);
+            let target = t.get_transition_target(sorted_transitions[i]);
 
             let mut added_fd_state = false;
 
@@ -578,7 +591,7 @@ mod ol_lookup_ops {
                 /*lbuffer,lp, ubuffer,up,*/
                 weight_sum
                     + if t.get_header().probe_flag(HeaderFlag::Weighted) {
-                        t.get_transition(sorted_transitions[i]).get_weight()
+                        t.get_transition_weight(sorted_transitions[i])
                     } else {
                         0.0f32
                     },

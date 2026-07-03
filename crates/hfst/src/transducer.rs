@@ -934,6 +934,9 @@ pub trait IndexEntry {
 /// (returns 'Self', so it can't ride on the dyn-safe ['IndexEntry']).
 pub trait IndexCtor {
     fn create_final() -> Self;
+    /// Whether this index type belongs to the weighted table pair — the
+    /// static counterpart of the header's 'Weighted' flag.
+    const WEIGHTED: bool;
 }
 
 /// The (object-safe) virtual surface of 'Transition' (base); 'TransitionW'
@@ -1088,6 +1091,7 @@ impl IndexCtor for TransitionIndex {
     fn create_final() -> Self {
         TransitionIndex::create_final()
     }
+    const WEIGHTED: bool = false;
 }
 
 // [spec:hfst:def:transducer.hfst-ol.transition-w-index]
@@ -1192,6 +1196,7 @@ impl IndexCtor for TransitionWIndex {
     fn create_final() -> Self {
         TransitionWIndex::create_final()
     }
+    const WEIGHTED: bool = true;
 }
 
 // [spec:hfst:def:transducer.hfst-ol.transition]
@@ -1526,16 +1531,29 @@ impl<T: TransitionEntry> TransducerTable<T> {
     }
 }
 
+// The C++ 'TransducerTablesInterface' virtual base becomes a generic bound:
+// it had exactly two implementations (the weighted and unweighted table
+// pairs), and its accessors sit in the innermost lookup loop where C++
+// devirtualizes but a Rust 'dyn' cannot. ['Transducer'] is generic over this
+// trait, so the whole traversal machinery monomorphizes per table pair; the
+// weighted/unweighted runtime choice is made once, where the stream header is
+// read (the facade's HFST_OL_TYPE vs HFST_OLW_TYPE distinction), never per
+// table access.
 // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface]
+// [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.transducer-tables-interface-fn]
+// [spec:hfst:sem:transducer.hfst-ol.transducer-tables-interface.transducer-tables-interface-fn]
 pub trait TransducerTablesInterface {
-    // 'virtual ~TransducerTablesInterface() {}' — the empty virtual destructor
-    // exists only so deleting through a base 'Box<dyn TransducerTablesInterface>'
-    // runs the concrete type's destructor. Rust does this automatically via the
-    // trait object's vtable drop glue, so there is nothing to write.
-    // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.transducer-tables-interface-fn]
-    // [spec:hfst:sem:transducer.hfst-ol.transducer-tables-interface.transducer-tables-interface-fn]
-    fn get_index(&self, i: TransitionTableIndex) -> &dyn IndexEntry;
-    fn get_transition(&self, i: TransitionTableIndex) -> &dyn TransitionEntry;
+    /// Whether this is the weighted table pair — the static counterpart of
+    /// the header's 'Weighted' flag; checked against it at load time.
+    const WEIGHTED: bool;
+    /// Construct the one-final-index empty table pair ('TransducerTables()').
+    fn new_empty() -> Self;
+    /// Read both tables from a stream ('TransducerTables(istream&, ...)').
+    fn new_istream(
+        is: &mut IStream,
+        index_table_size: TransitionTableIndex,
+        transition_table_size: TransitionTableIndex,
+    ) -> Self;
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.get-weight-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables-interface.get-weight-fn]
     fn get_weight(&self, i: TransitionTableIndex) -> Weight;
@@ -1551,6 +1569,8 @@ pub trait TransducerTablesInterface {
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.get-transition-finality-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables-interface.get-transition-finality-fn]
     fn get_transition_finality(&self, i: TransitionTableIndex) -> bool;
+    /// 'get_transition(i)->matches(s)' without the virtual hop.
+    fn transition_matches(&self, i: TransitionTableIndex, s: SymbolNumber) -> bool;
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.get-index-input-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables-interface.get-index-input-fn]
     fn get_index_input(&self, i: TransitionTableIndex) -> SymbolNumber;
@@ -1560,17 +1580,33 @@ pub trait TransducerTablesInterface {
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.get-index-finality-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables-interface.get-index-finality-fn]
     fn get_index_finality(&self, i: TransitionTableIndex) -> bool;
+    /// 'get_index(i)->matches(s)' without the virtual hop.
+    fn index_matches(&self, i: TransitionTableIndex, s: SymbolNumber) -> bool;
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.get-final-weight-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables-interface.get-final-weight-fn]
     fn get_final_weight(&self, i: TransitionTableIndex) -> Weight;
-
+    /// 'get_index(i)->write(os, weighted)' — the serialization path.
+    fn write_index(&self, i: TransitionTableIndex, os: &mut dyn std::io::Write, weighted: bool);
+    /// 'get_transition(i)->write(os, weighted)' — the serialization path.
+    fn write_transition(
+        &self,
+        i: TransitionTableIndex,
+        os: &mut dyn std::io::Write,
+        weighted: bool,
+    );
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.display-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables-interface.display-fn]
-    fn display(&self) {}
+    fn display(&self);
 }
 
+/// The unweighted table pair (HFST_OL_TYPE).
+pub type UnweightedTables = TransducerTables<TransitionIndex, Transition>;
+/// The weighted table pair (HFST_OLW_TYPE).
+pub type WeightedTables = TransducerTables<TransitionWIndex, TransitionW>;
+
 // [spec:hfst:def:transducer.hfst-ol.transducer-tables]
-pub struct TransducerTables<T1: IndexEntry, T2: TransitionEntry> {
+#[derive(Clone)]
+pub struct TransducerTables<T1: IndexEntry + Clone, T2: TransitionEntry + Clone> {
     index_table: TransducerTable<T1>,
     transition_table: TransducerTable<T2>,
 }
@@ -1620,56 +1656,89 @@ impl<T1: IndexEntry + TableEntry + Clone + IndexCtor, T2: TransitionEntry + Tabl
 impl<T1: IndexEntry + TableEntry + Clone + IndexCtor, T2: TransitionEntry + TableEntry + Clone>
     TransducerTablesInterface for TransducerTables<T1, T2>
 {
-    fn get_index(&self, i: TransitionTableIndex) -> &dyn IndexEntry {
-        self.index_table.at(i)
+    const WEIGHTED: bool = T1::WEIGHTED;
+    fn new_empty() -> Self {
+        Self::new()
     }
-    fn get_transition(&self, i: TransitionTableIndex) -> &dyn TransitionEntry {
-        self.transition_table.at(i)
+    fn new_istream(
+        is: &mut IStream,
+        index_table_size: TransitionTableIndex,
+        transition_table_size: TransitionTableIndex,
+    ) -> Self {
+        TransducerTables::new_istream(is, index_table_size, transition_table_size)
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-weight-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-weight-fn]
+    #[inline]
     fn get_weight(&self, i: TransitionTableIndex) -> Weight {
         self.transition_table.at(i).get_weight()
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-transition-input-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-transition-input-fn]
+    #[inline]
     fn get_transition_input(&self, i: TransitionTableIndex) -> SymbolNumber {
         self.transition_table.at(i).get_input_symbol()
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-transition-output-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-transition-output-fn]
+    #[inline]
     fn get_transition_output(&self, i: TransitionTableIndex) -> SymbolNumber {
         self.transition_table.at(i).get_output_symbol()
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-transition-target-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-transition-target-fn]
+    #[inline]
     fn get_transition_target(&self, i: TransitionTableIndex) -> TransitionTableIndex {
         self.transition_table.at(i).get_target()
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-transition-finality-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-transition-finality-fn]
+    #[inline]
     fn get_transition_finality(&self, i: TransitionTableIndex) -> bool {
         self.transition_table.at(i).is_final()
     }
+    #[inline]
+    fn transition_matches(&self, i: TransitionTableIndex, s: SymbolNumber) -> bool {
+        self.transition_table.at(i).matches(s)
+    }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-index-input-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-index-input-fn]
+    #[inline]
     fn get_index_input(&self, i: TransitionTableIndex) -> SymbolNumber {
         self.index_table.at(i).get_input_symbol()
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-index-target-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-index-target-fn]
+    #[inline]
     fn get_index_target(&self, i: TransitionTableIndex) -> TransitionTableIndex {
         self.index_table.at(i).get_target()
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-index-finality-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-index-finality-fn]
+    #[inline]
     fn get_index_finality(&self, i: TransitionTableIndex) -> bool {
         self.index_table.at(i).is_final()
     }
+    #[inline]
+    fn index_matches(&self, i: TransitionTableIndex, s: SymbolNumber) -> bool {
+        self.index_table.at(i).matches(s)
+    }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-final-weight-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-final-weight-fn]
+    #[inline]
     fn get_final_weight(&self, i: TransitionTableIndex) -> Weight {
         self.index_table.at(i).final_weight()
+    }
+    fn write_index(&self, i: TransitionTableIndex, os: &mut dyn std::io::Write, weighted: bool) {
+        self.index_table.at(i).write(os, weighted)
+    }
+    fn write_transition(
+        &self,
+        i: TransitionTableIndex,
+        os: &mut dyn std::io::Write,
+        weighted: bool,
+    ) {
+        self.transition_table.at(i).write(os, weighted)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.display-fn]
@@ -2048,11 +2117,15 @@ impl crate::ospell::TreeNode {
 }
 
 /** \brief A compiled transducer format, suitable for fast lookup operations. */
+// Generic over the table pair (['UnweightedTables'] for HFST_OL_TYPE,
+// ['WeightedTables'] for HFST_OLW_TYPE) so the traversal machinery is fully
+// monomorphized; the runtime choice between the two instantiations lives at
+// the facade's stream-type dispatch, not here.
 // [spec:hfst:def:transducer.hfst-ol.transducer]
-pub struct Transducer {
+pub struct Transducer<T: TransducerTablesInterface = WeightedTables> {
     header: Option<Box<TransducerHeader>>,
     alphabet: Option<Box<TransducerAlphabet>>,
-    tables: Option<Box<dyn TransducerTablesInterface>>,
+    tables: Option<T>,
 
     // for lookup
     current_weight: Weight,
@@ -2077,7 +2150,7 @@ pub struct Transducer {
 }
 
 #[allow(dead_code)]
-impl Transducer {
+impl<T: TransducerTablesInterface> Transducer<T> {
     // ---- small accessors mirroring the C++ member dereferences ----
     fn hdr(&self) -> &TransducerHeader {
         self.header.as_deref().unwrap()
@@ -2085,8 +2158,9 @@ impl Transducer {
     fn alph(&self) -> &TransducerAlphabet {
         self.alphabet.as_deref().unwrap()
     }
-    fn tbl(&self) -> &dyn TransducerTablesInterface {
-        self.tables.as_deref().unwrap()
+    #[inline]
+    fn tbl(&self) -> &T {
+        self.tables.as_ref().unwrap()
     }
 
     pub fn new() -> Self {
@@ -2109,7 +2183,23 @@ impl Transducer {
     }
 
     pub fn new_istream(is: &mut IStream) -> crate::error::Result<Self> {
-        let header = Box::new(TransducerHeader::new_istream(is)?);
+        let header = TransducerHeader::new_istream(is)?;
+        Self::new_istream_with_header(header, is)
+    }
+
+    /// The tail of 'new_istream' once the header has been read — the caller
+    /// (['AnyOlTransducer::new_istream']) peeks the Weighted flag to pick the
+    /// instantiation, then hands the header over.
+    pub fn new_istream_with_header(
+        header: TransducerHeader,
+        is: &mut IStream,
+    ) -> crate::error::Result<Self> {
+        let header = Box::new(header);
+        // The weightedness is now static; a stream of the other flavour is the
+        // caller dispatching wrongly (C++ discovered this inside load_tables).
+        if header.probe_flag(HeaderFlag::Weighted) != T::WEIGHTED {
+            crate::bail!(TransducerHasWrongType);
+        }
         let alphabet = Box::new(TransducerAlphabet::new_istream(
             is,
             header.symbol_count(),
@@ -2142,19 +2232,16 @@ impl Transducer {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.transducer-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.transducer-fn]
-    pub fn new_weighted(weighted: bool) -> Self {
-        let header = Box::new(TransducerHeader::new_weighted(weighted));
+    // (the C++ 'Transducer(bool weighted)' — weightedness is now the type)
+    pub fn new_empty() -> Self {
+        let header = Box::new(TransducerHeader::new_weighted(T::WEIGHTED));
         let alphabet = Box::new(TransducerAlphabet::new());
         let encoder = Box::new(Encoder::new(
             alphabet.get_symbol_table(),
             header.input_symbol_count(),
         ));
         let flag_state = FdState::new(alphabet.get_fd_table());
-        let tables: Box<dyn TransducerTablesInterface> = if weighted {
-            Box::new(TransducerTables::<TransitionWIndex, TransitionW>::new())
-        } else {
-            Box::new(TransducerTables::<TransitionIndex, Transition>::new())
-        };
+        let tables = T::new_empty();
         Transducer {
             header: Some(header),
             alphabet: Some(alphabet),
@@ -2175,56 +2262,13 @@ impl Transducer {
 
     // The C++ builds 'encoder'/'flag_state' from the *parameter* alphabet (dot,
     // not arrow), so they reference the caller's alphabet; replicated here.
-    pub fn new_from_tables_unweighted(
+    pub fn new_from_tables(
         header: &TransducerHeader,
         alphabet: &TransducerAlphabet,
-        index_table: TransducerTable<TransitionIndex>,
-        transition_table: TransducerTable<Transition>,
+        tables: T,
     ) -> Self {
         let header_box = Box::new(header.clone());
         let alphabet_box = Box::new(alphabet.clone());
-        let tables: Box<dyn TransducerTablesInterface> =
-            Box::new(TransducerTables::<TransitionIndex, Transition>::new_tables(
-                index_table,
-                transition_table,
-            ));
-        let encoder = Box::new(Encoder::new(
-            alphabet.get_symbol_table(),
-            header.input_symbol_count(),
-        ));
-        let flag_state = FdState::new(alphabet.get_fd_table());
-        Transducer {
-            header: Some(header_box),
-            alphabet: Some(alphabet_box),
-            tables: Some(tables),
-            current_weight: 0.0,
-            lookup_paths: std::ptr::null_mut(),
-            encoder: Some(encoder),
-            input_tape: Tape::new(),
-            output_tape: DoubleTape::new(),
-            flag_state,
-            traversal_states: TraversalStates::new(),
-            max_lookups: -1,
-            recursion_depth_left: MAX_RECURSION_DEPTH,
-            max_time: 0.0,
-            start_clock: None,
-        }
-    }
-
-    pub fn new_from_tables_weighted(
-        header: &TransducerHeader,
-        alphabet: &TransducerAlphabet,
-        index_table: TransducerTable<TransitionWIndex>,
-        transition_table: TransducerTable<TransitionW>,
-    ) -> Self {
-        let header_box = Box::new(header.clone());
-        let alphabet_box = Box::new(alphabet.clone());
-        let tables: Box<dyn TransducerTablesInterface> = Box::new(TransducerTables::<
-            TransitionWIndex,
-            TransitionW,
-        >::new_tables(
-            index_table, transition_table
-        ));
         let encoder = Box::new(Encoder::new(
             alphabet.get_symbol_table(),
             header.input_symbol_count(),
@@ -2264,11 +2308,51 @@ impl Transducer {
         self.alph().get_symbol_table()
     }
 
-    pub fn get_index(&self, i: TransitionTableIndex) -> &dyn IndexEntry {
-        self.tbl().get_index(i)
+    // The C++ 'get_index'/'get_transition' returned base-class pointers; with
+    // the tables monomorphized, expose the scalar reads directly instead.
+    #[inline]
+    pub fn get_index_input(&self, i: TransitionTableIndex) -> SymbolNumber {
+        self.tbl().get_index_input(i)
     }
-    pub fn get_transition(&self, i: TransitionTableIndex) -> &dyn TransitionEntry {
-        self.tbl().get_transition(i)
+    #[inline]
+    pub fn get_index_target(&self, i: TransitionTableIndex) -> TransitionTableIndex {
+        self.tbl().get_index_target(i)
+    }
+    #[inline]
+    pub fn index_matches(&self, i: TransitionTableIndex, s: SymbolNumber) -> bool {
+        self.tbl().index_matches(i, s)
+    }
+    #[inline]
+    pub fn get_transition_input(&self, i: TransitionTableIndex) -> SymbolNumber {
+        self.tbl().get_transition_input(i)
+    }
+    #[inline]
+    pub fn get_transition_output(&self, i: TransitionTableIndex) -> SymbolNumber {
+        self.tbl().get_transition_output(i)
+    }
+    #[inline]
+    pub fn get_transition_target(&self, i: TransitionTableIndex) -> TransitionTableIndex {
+        self.tbl().get_transition_target(i)
+    }
+    #[inline]
+    pub fn get_transition_weight(&self, i: TransitionTableIndex) -> Weight {
+        self.tbl().get_weight(i)
+    }
+    #[inline]
+    pub fn transition_matches(&self, i: TransitionTableIndex, s: SymbolNumber) -> bool {
+        self.tbl().transition_matches(i, s)
+    }
+    #[inline]
+    pub fn get_index_finality(&self, i: TransitionTableIndex) -> bool {
+        self.tbl().get_index_finality(i)
+    }
+    #[inline]
+    pub fn get_transition_finality(&self, i: TransitionTableIndex) -> bool {
+        self.tbl().get_transition_finality(i)
+    }
+    #[inline]
+    pub fn get_index_final_weight(&self, i: TransitionTableIndex) -> Weight {
+        self.tbl().get_final_weight(i)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.final-index-fn]
@@ -2355,10 +2439,9 @@ impl Transducer {
         let mut another = TransducerTable::new();
         for i in 0..self.hdr().index_table_size() {
             // tables->get_index(i) returns a base TransitionIndex; copy its data
-            let idx = self.tbl().get_index(i);
             another.append(TransitionIndex::new_values(
-                idx.get_input_symbol(),
-                idx.get_target(),
+                self.tbl().get_index_input(i),
+                self.tbl().get_index_target(i),
             ));
         }
         Ok(another)
@@ -2371,11 +2454,10 @@ impl Transducer {
         }
         let mut another = TransducerTable::new();
         for i in 0..self.hdr().target_table_size() {
-            let tr = self.tbl().get_transition(i);
             another.append(Transition::new_values(
-                tr.get_input_symbol(),
-                tr.get_output_symbol(),
-                tr.get_target(),
+                self.tbl().get_transition_input(i),
+                self.tbl().get_transition_output(i),
+                self.tbl().get_transition_target(i),
             ));
         }
         Ok(another)
@@ -2384,18 +2466,12 @@ impl Transducer {
     // [spec:hfst:def:transducer.hfst-ol.transducer.load-tables-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.load-tables-fn]
     pub fn load_tables(&mut self, is: &mut IStream) -> crate::error::Result<()> {
-        let weighted = self.hdr().probe_flag(HeaderFlag::Weighted);
+        if self.hdr().probe_flag(HeaderFlag::Weighted) != T::WEIGHTED {
+            crate::bail!(TransducerHasWrongType);
+        }
         let its = self.hdr().index_table_size();
         let tts = self.hdr().target_table_size();
-        if weighted {
-            self.tables = Some(Box::new(
-                TransducerTables::<TransitionWIndex, TransitionW>::new_istream(is, its, tts),
-            ));
-        } else {
-            self.tables = Some(Box::new(
-                TransducerTables::<TransitionIndex, Transition>::new_istream(is, its, tts),
-            ));
-        }
+        self.tables = Some(T::new_istream(is, its, tts));
         if !is.good() {
             crate::bail!(TransducerHasWrongType);
         }
@@ -2409,35 +2485,36 @@ impl Transducer {
         self.alph().write(os);
         let weighted = self.hdr().probe_flag(HeaderFlag::Weighted);
         for i in 0..self.hdr().index_table_size() {
-            self.tbl()
-                .get_index(u32::try_from(i as usize).expect("value out of u32 range"))
-                .write(os, weighted);
+            self.tbl().write_index(
+                u32::try_from(i as usize).expect("value out of u32 range"),
+                os,
+                weighted,
+            );
         }
         for i in 0..self.hdr().target_table_size() {
-            self.tbl()
-                .get_transition(u32::try_from(i as usize).expect("value out of u32 range"))
-                .write(os, weighted);
+            self.tbl().write_transition(
+                u32::try_from(i as usize).expect("value out of u32 range"),
+                os,
+                weighted,
+            );
         }
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.copy-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-fn]
-    pub fn copy(t: &Transducer, weighted: bool) -> crate::error::Result<Transducer> {
-        if weighted {
-            Ok(Transducer::new_from_tables_weighted(
-                t.get_header(),
-                t.get_alphabet(),
-                t.copy_windex_table()?,
-                t.copy_transitionw_table()?,
-            ))
-        } else {
-            Ok(Transducer::new_from_tables_unweighted(
-                t.get_header(),
-                t.get_alphabet(),
-                t.copy_index_table()?,
-                t.copy_transition_table()?,
-            ))
-        }
+    // (the C++ 'copy(t, weighted)' — the target weightedness is now the type,
+    // and the entrywise copy_*_table rebuild is a table clone. The
+    // cross-weightedness combinations threw TransducerHasWrongType in C++ via
+    // the copy_*_table guards; they are unrepresentable now.)
+    pub fn copy(t: &Transducer<T>) -> crate::error::Result<Transducer<T>>
+    where
+        T: Clone,
+    {
+        Ok(Transducer::new_from_tables(
+            t.get_header(),
+            t.get_alphabet(),
+            t.tbl().clone(),
+        ))
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.display-fn]
@@ -2464,13 +2541,13 @@ impl Transducer {
                 // There may be flags at index 0 even if there aren't any
                 // epsilons, so those have to be checked for
                 if self.alph().is_like_epsilon(symbol) {
-                    let mut transition_i = self.get_index(state_index + 1).get_target();
-                    if !self.get_index(state_index + 1).matches(0) {
+                    let mut transition_i = self.get_index_target(state_index + 1);
+                    if !self.index_matches(state_index + 1, 0) {
                         continue;
                     }
                     loop {
-                        let input = self.get_transition(transition_i).get_input_symbol();
-                        if self.get_transition(transition_i).matches(symbol) {
+                        let input = self.get_transition_input(transition_i);
+                        if self.transition_matches(transition_i, symbol) {
                             transitions.insert(transition_i);
                         // There could still be epsilons here, or other flags
                         } else if input != 0 && !self.alph().is_like_epsilon(input) {
@@ -2488,19 +2565,14 @@ impl Transducer {
                     if state_index + 1 + symbol as u32 >= self.hdr().index_table_size() {
                         continue;
                     }
-                    let test_input = self
-                        .get_index(state_index + 1 + symbol as u32)
-                        .get_input_symbol();
-                    let test_target = self.get_index(state_index + 1 + symbol as u32).get_target();
-                    if self
-                        .get_index(state_index + 1 + symbol as u32)
-                        .matches(symbol)
-                    {
+                    let test_input = self.get_index_input(state_index + 1 + symbol as u32);
+                    let test_target = self.get_index_target(state_index + 1 + symbol as u32);
+                    if self.index_matches(state_index + 1 + symbol as u32, symbol) {
                         // there are one or more transitions with this input
                         // symbol, starting at test_transition_index.get_target()
                         let mut transition_i = test_target;
                         loop {
-                            if self.get_transition(transition_i).matches(test_input) {
+                            if self.transition_matches(transition_i, test_input) {
                                 transitions.insert(transition_i);
                             } else {
                                 break;
@@ -2512,8 +2584,8 @@ impl Transducer {
             }
         } else {
             // indexes transition table
-            let in_sym = self.get_transition(state_index).get_input_symbol();
-            let out_sym = self.get_transition(state_index).get_output_symbol();
+            let in_sym = self.get_transition_input(state_index);
+            let out_sym = self.get_transition_output(state_index);
             if in_sym != NO_SYMBOL_NUMBER || out_sym != NO_SYMBOL_NUMBER {
                 // Oops
                 panic!("get_transitions_from_state: malformed transition boundary");
@@ -2521,7 +2593,7 @@ impl Transducer {
 
             let mut transition_i = state_index + 1;
             loop {
-                if self.get_transition(transition_i).get_input_symbol() != NO_SYMBOL_NUMBER {
+                if self.get_transition_input(transition_i) != NO_SYMBOL_NUMBER {
                     transitions.insert(transition_i);
                 } else {
                     break;
@@ -2538,7 +2610,7 @@ impl Transducer {
         if i >= TRANSITION_TARGET_TABLE_START {
             i - TRANSITION_TARGET_TABLE_START + 1
         } else {
-            self.get_index(i + 1 + symbol as u32).get_target() - TRANSITION_TARGET_TABLE_START
+            self.get_index_target(i + 1 + symbol as u32) - TRANSITION_TARGET_TABLE_START
         }
     }
 
@@ -2550,11 +2622,9 @@ impl Transducer {
     // [spec:hfst:sem:transducer.hfst-ol.transducer.has-transitions-fn]
     pub fn has_transitions(&self, i: TransitionTableIndex, symbol: SymbolNumber) -> bool {
         if i >= TRANSITION_TARGET_TABLE_START {
-            self.get_transition(i - TRANSITION_TARGET_TABLE_START)
-                .get_input_symbol()
-                == symbol
+            self.get_transition_input(i - TRANSITION_TARGET_TABLE_START) == symbol
         } else {
-            self.get_index(i + symbol as u32).get_input_symbol() == symbol
+            self.get_index_input(i + symbol as u32) == symbol
         }
     }
 
@@ -2562,53 +2632,49 @@ impl Transducer {
     // [spec:hfst:sem:transducer.hfst-ol.transducer.has-epsilons-or-flags-fn]
     pub fn has_epsilons_or_flags(&self, i: TransitionTableIndex) -> bool {
         if i >= TRANSITION_TARGET_TABLE_START {
-            let input = self
-                .get_transition(i - TRANSITION_TARGET_TABLE_START)
-                .get_input_symbol();
+            let input = self.get_transition_input(i - TRANSITION_TARGET_TABLE_START);
             input == 0 || self.is_flag(input)
         } else {
-            self.get_index(i).get_input_symbol() == 0
+            self.get_index_input(i) == 0
         }
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.take-epsilons-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.take-epsilons-fn]
     pub fn take_epsilons(&self, i: TransitionTableIndex) -> STransition {
-        if self.get_transition(i).get_input_symbol() != 0 {
+        if self.get_transition_input(i) != 0 {
             return STransition::new(0, NO_SYMBOL_NUMBER);
         }
         STransition::new_weighted(
-            self.get_transition(i).get_target(),
-            self.get_transition(i).get_output_symbol(),
-            self.get_transition(i).get_weight(),
+            self.get_transition_target(i),
+            self.get_transition_output(i),
+            self.get_transition_weight(i),
         )
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.take-epsilons-and-flags-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.take-epsilons-and-flags-fn]
     pub fn take_epsilons_and_flags(&self, i: TransitionTableIndex) -> STransition {
-        if self.get_transition(i).get_input_symbol() != 0
-            && !self.is_flag(self.get_transition(i).get_input_symbol())
-        {
+        if self.get_transition_input(i) != 0 && !self.is_flag(self.get_transition_input(i)) {
             return STransition::new(0, NO_SYMBOL_NUMBER);
         }
         STransition::new_weighted(
-            self.get_transition(i).get_target(),
-            self.get_transition(i).get_output_symbol(),
-            self.get_transition(i).get_weight(),
+            self.get_transition_target(i),
+            self.get_transition_output(i),
+            self.get_transition_weight(i),
         )
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.take-non-epsilons-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.take-non-epsilons-fn]
     pub fn take_non_epsilons(&self, i: TransitionTableIndex, symbol: SymbolNumber) -> STransition {
-        if self.get_transition(i).get_input_symbol() != symbol {
+        if self.get_transition_input(i) != symbol {
             return STransition::new(0, NO_SYMBOL_NUMBER);
         }
         STransition::new_weighted(
-            self.get_transition(i).get_target(),
-            self.get_transition(i).get_output_symbol(),
-            self.get_transition(i).get_weight(),
+            self.get_transition_target(i),
+            self.get_transition_output(i),
+            self.get_transition_weight(i),
         )
     }
 
@@ -2616,10 +2682,9 @@ impl Transducer {
     // [spec:hfst:sem:transducer.hfst-ol.transducer.final-weight-fn]
     pub fn final_weight(&self, i: TransitionTableIndex) -> Weight {
         if i >= TRANSITION_TARGET_TABLE_START {
-            self.get_transition(i - TRANSITION_TARGET_TABLE_START)
-                .get_weight()
+            self.get_transition_weight(i - TRANSITION_TARGET_TABLE_START)
         } else {
-            self.get_index(i).final_weight()
+            self.get_index_final_weight(i)
         }
     }
 
@@ -3221,7 +3286,7 @@ impl Transducer {
     }
 }
 
-impl Default for Transducer {
+impl<T: TransducerTablesInterface> Default for Transducer<T> {
     fn default() -> Self {
         Self::new()
     }

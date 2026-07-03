@@ -2009,4 +2009,38 @@ children (
             }
         )
     }
+
+    {
+        id mono
+        title "Monomorphize the world: HfstTransducer&lt;B: Backend&gt; + capability traits, one pass [dec:hfst:monomorphic-backends]"
+        children (
+            {
+                id mono.ol-core
+                title "ol::Transducer&lt;T: TransducerTablesInterface&gt; generic core + satellites (convert_ol, hfst_ol_transducer, ospell generic, pmatch pinned weighted)"
+            }
+
+            {
+                id mono.backend-traits
+                title "backend.rs: Backend / AlgebraBackend / LookupBackend traits; impls for StdVectorFst, LogFst, ol::Transducer&lt;W|U&gt; (bodies from the apply closures)"
+            }
+
+            {
+                id mono.facade
+                title "Facade rewrite: HfstTransducer&lt;B&gt;, delete ty+TransducerImplementation, typed conversions, AnyTransducer at HfstInput/OutputStream"
+                deps (mono.ol-core mono.backend-traits)
+            }
+
+            {
+                id mono.compilers
+                title "Compilers generic over B: AlgebraBackend — xre, lexc, twolc, xfst, pmatch_compiler, rules, xerox_rules, compose_intersect (kills dyn RuleT/ComposeIntersectRuleObject)"
+                deps (mono.facade)
+            }
+
+            {
+                id mono.cli
+                title "hfst-cli: per-tool boundary dispatch (--format / stream type), 59 tools; tests re-pinned; oracle = 153 tests + lang-sma byte-compare"
+                deps (mono.compilers)
+            }
+        )
+    }
 )

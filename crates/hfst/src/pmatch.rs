@@ -1251,8 +1251,7 @@ impl PmatchContainer {
                     String::new(),
                 )?;
             }
-            let backend =
-                crate::transducer::Transducer::copy(top.implementation.as_hfst_ol(), true)?;
+            let backend = crate::transducer::Transducer::copy(top.implementation.as_hfst_ol())?;
             let mut c = PmatchContainer::new_from_transducer(Box::new(backend))?;
             // C++ sets these from transducers[0]'s properties before building; the
             // build does not depend on them, so applying them afterwards is

@@ -33,8 +33,8 @@ use crate::convert::HfstOlToBasicStateMap;
 /* An auxiliary function. */
 // [spec:hfst:def:convert-ol-transducer.hfst.implementations.hfst-ol-to-hfst-basic-add-state-fn]
 // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.hfst-ol-to-hfst-basic-add-state-fn]
-pub fn hfst_ol_to_hfst_basic_add_state(
-    t: &Transducer,
+pub fn hfst_ol_to_hfst_basic_add_state<T: crate::transducer::TransducerTablesInterface>(
+    t: &Transducer<T>,
     basic: &mut HfstBasicTransducer,
     state_map: &mut HfstOlToBasicStateMap,
     weighted: bool,
@@ -45,13 +45,11 @@ pub fn hfst_ol_to_hfst_basic_add_state(
     state_map.insert(index, new_state);
 
     if indexes_transition_index_table(index) {
-        let transition_index = t.get_index(index);
-
-        if transition_index.is_final() {
+        if t.get_index_finality(index) {
             basic.add_state(new_state);
-            // dynamic_cast to TransitionWIndex is the trait's virtual final_weight()
+            // dynamic_cast to TransitionWIndex is the entry's final_weight()
             let w = if weighted {
-                transition_index.final_weight()
+                t.get_index_final_weight(index)
             } else {
                 0.0f32
             };
@@ -59,12 +57,10 @@ pub fn hfst_ol_to_hfst_basic_add_state(
         }
     } else {
         // indexes transition table
-        let transition = t.get_transition(index);
-
-        if transition.is_final() {
+        if t.get_transition_finality(index) {
             basic.add_state(new_state);
             let w = if weighted {
-                transition.get_weight()
+                t.get_transition_weight(index)
             } else {
                 0.0f32
             };
@@ -251,7 +247,7 @@ impl ConversionFunctions {
         };
         let mut retval = crate::hfst_transducer::HfstTransducer::new_type(ty)?;
         retval.implementation = crate::hfst_transducer::TransducerImplementation::HfstOl(Box::new(
-            Transducer::copy(t, t.is_weighted())?,
+            Transducer::copy(t)?,
         ));
         Ok(retval)
     }
@@ -295,12 +291,11 @@ impl ConversionFunctions {
 
             let transitions = t.get_transitions_from_state(current_index);
             for it in transitions.iter() {
-                let transition = t.get_transition(*it);
-                let target = transition.get_target();
-                let in_sym = transition.get_input_symbol();
-                let out_sym = transition.get_output_symbol();
+                let target = t.get_transition_target(*it);
+                let in_sym = t.get_transition_input(*it);
+                let out_sym = t.get_transition_output(*it);
                 let weight = if weighted {
-                    transition.get_weight()
+                    t.get_transition_weight(*it)
                 } else {
                     0.0
                 };
@@ -477,11 +472,10 @@ impl ConversionFunctions {
             wtransition_table.size(),
             weighted,
         );
-        Ok(Transducer::new_from_tables_weighted(
+        Ok(Transducer::new_from_tables(
             &header,
             &alphabet,
-            windex_table,
-            wtransition_table,
+            crate::transducer::TransducerTables::new_tables(windex_table, wtransition_table),
         ))
     }
 }
