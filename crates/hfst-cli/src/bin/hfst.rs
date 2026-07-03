@@ -19,6 +19,11 @@
 use clap::{Arg, ArgAction, Command};
 use hfst_cli::tools::TOOLS;
 
+// The FST algorithms are allocation-heavy; mimalloc beats the system
+// allocator substantially on this workload (house convention for binaries).
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 /// One-line about strings for the clap subcommand listing, taken from each
 /// tool's usage summary line (the sentence after "Usage:" in its
 /// print_usage), keyed by the original binary name.

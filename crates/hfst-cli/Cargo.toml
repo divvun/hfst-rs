@@ -13,5 +13,6 @@ repository.workspace = true
 [dependencies]
 clap = "4.6.1"
 hfst = { workspace = true }
+mimalloc = { version = "0.1", default-features = false }
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
