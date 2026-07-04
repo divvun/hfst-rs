@@ -80,4 +80,9 @@ assertions (
     {id tool-runs, kind @complete, author "brendan@necessary.nu", at 2026-07-02T21:14:29.187513Z}
     {id multiplex, kind @complete, author "brendan@necessary.nu", at 2026-07-02T21:14:32.53336Z}
     {id giella-tools, kind @complete, author "brendan@necessary.nu", at 2026-07-02T22:28:58.543152Z}
+    {id mono.ol-core, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:34.760025Z}
+    {id mono.backend-traits, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:38.136038Z}
+    {id mono.facade, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:40.449906Z}
+    {id mono.compilers, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:42.188804Z}
+    {id mono.cli, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:43.662793Z}
 )

@@ -2017,6 +2017,14 @@ children (
             {
                 id mono.ol-core
                 title "ol::Transducer&lt;T: TransducerTablesInterface&gt; generic core + satellites (convert_ol, hfst_ol_transducer, ospell generic, pmatch pinned weighted)"
+                log (
+                    {
+                        at 2026-07-04T17:45:34.760025Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -2029,6 +2037,13 @@ children (
                         kind @note
                         text "Trait-surface derivation rule: the facade's existing per-op closure PAIRS (tropical_ofst_funct/log_ofst_funct handed to apply/apply_bool/apply_n/apply_string_string/apply_binary/apply_another) ARE the adaptation layer between the uneven wrapper signatures — move each closure body verbatim into the backend impl; the trait method signature = the closure-pair signature (superset args; impls ignore what their backend doesn't use, e.g. log ignores encode_weights). Do NOT derive the trait from the TropicalWeightTransducer/LogWeightTransducer wrapper diff (~100 shared fns, signatures vary). Inventory measured 2026-07-03: apply-based ops (17 sites): remove_epsilons, determinize(ew), minimize(ew), repeat_star, repeat_plus, repeat_n(n), repeat_le_n(n), optionalize, invert, reverse, extract_input_language, extract_output_language, concatenate, disjunct, intersect, subtract (+apply_another passthrough at 5523). Direct-dispatch fns (53, from awk over match self.ty): operator_assign, get_basic_transducer, convert_to_basic_transducer, convert_to_hfst_transducer, convert, insert_to_alphabet_string(+set), remove_symbols_from_alphabet, get_initial_input_symbols, get_first_input_symbols, get_alphabet, harmonize_copy, harmonize, print_alphabet, lookup_pairs/lookup_fd_string_vector/lookup_fd_string, is_lookup_infinitely_ambiguous_string(_vector), is_infinitely_ambiguous, compare, is_automaton, is_cyclic, number_of_states/arcs, extract_path_transducers, extract_paths_cb, extract_paths_fd_cb, extract_random_paths, n_best, harmonize_flag_diacritics, insert_freely, substitute_string, substitute_pair_with_transducer, set_final_weights, push_labels, push_weights, transform_weights, has_weights, compose_with_config, lenient_composition, cross_product, shuffle, priority_union, disjunct_spv, write_in_prolog_format(+xfsm stub), create_tokenizer. Classification: Backend (common) = alphabet ops, counts, compare?, write/att, prolog; AlgebraBackend = the 16 apply ops + compose/harmonize/substitute/extract/n_best/push/transform/cross_product/shuffle/priority_union/lenient/insert_freely/set_final_weights/create_tokenizer; LookupBackend = lookup_* + is(_lookup)_infinitely_ambiguous. convert/get_basic_transducer become TYPED conversions per the decision doc. Interim invariants in force since 9b9af7d9: facade single HfstOl arm = Transducer<WeightedTables> (default type param); unweighted OL disk loads bail; optimized_lookup_matches_golden expected red until mono.facade."
                     }
+
+                    {
+                        at 2026-07-04T17:45:38.136038Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -2036,18 +2051,51 @@ children (
                 id mono.facade
                 title "Facade rewrite: HfstTransducer&lt;B&gt;, delete ty+TransducerImplementation, typed conversions, AnyTransducer at HfstInput/OutputStream"
                 deps (mono.ol-core mono.backend-traits)
+                log (
+                    {
+                        at 2026-07-04T17:45:40.449906Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
                 id mono.compilers
                 title "Compilers generic over B: AlgebraBackend — xre, lexc, twolc, xfst, pmatch_compiler, rules, xerox_rules, compose_intersect (kills dyn RuleT/ComposeIntersectRuleObject)"
                 deps (mono.facade)
+                log (
+                    {
+                        at 2026-07-04T17:45:42.188804Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
                 id mono.cli
                 title "hfst-cli: per-tool boundary dispatch (--format / stream type), 59 tools; tests re-pinned; oracle = 153 tests + lang-sma byte-compare"
                 deps (mono.compilers)
+                log (
+                    {
+                        at 2026-07-04T17:45:43.662793Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
+            }
+        )
+        log (
+            {
+                at 2026-07-04T17:45:57.696869Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Oracle verification (2026-07-04, post-b510971b): cargo build --workspace --all-targets = 0 errors; nextest 153 passed / 14 skipped (incl. optimized_lookup_matches_golden, red mid-pass); lang-sma speller rebuild on the mono dist: acceptor.default.hfst 13,620,112 B and errmodel.default.hfst 91,453,378 B — byte-count identical to pre-mono; sma.zhfst 23,131,678 B; divvunspell suggest lea/maana CORRECT, leaa INCORRECT with lea top; the 538MB tokeniser-disamb .pmhfst is BYTE-IDENTICAL to the pre-mono archive (cmp). TIMING NOT YET VALID: all mono-toolchain timings ran under heavy contention from a concurrent rustc session (src/fst 639s real vs 302s pre-mono, pmatch2fst 391s real/201s user vs 143/137 — real>>user gap + E-core scheduling under load); re-benchmark on a quiet machine before drawing perf conclusions."
+                after_done true
             }
         )
     }
