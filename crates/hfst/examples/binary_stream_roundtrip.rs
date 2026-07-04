@@ -1,13 +1,17 @@
 // Round-trip a constructed HfstTransducer through the real binary HFST
-// writer (HfstOutputStream) and the newly-implemented binary reader
-// (HfstInputStream + HfstTransducer::new_from_stream).
+// writer (HfstOutputStream) and the binary reader (HfstInputStream::read,
+// which yields the stream-boundary sum AnyTransducer).
 
+use hfst::backend::AlgebraBackend;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::hfst_transducer::{FromAnyTransducer, HfstTransducer};
+use hfst::log_weight_transducer::LogFst;
+use hfst_openfst::StdVectorFst;
 
-fn roundtrip(ty: ImplementationType, label: &str) -> hfst::error::Result<()> {
+fn roundtrip<B: AlgebraBackend + FromAnyTransducer>(label: &str) -> hfst::error::Result<()> {
+    let ty = B::TYPE;
     let path = std::env::temp_dir().join(format!("hfst_bin_roundtrip{label}.hfst"));
     let path = path
         .to_str()
@@ -15,7 +19,7 @@ fn roundtrip(ty: ImplementationType, label: &str) -> hfst::error::Result<()> {
         .to_string();
 
     // Build [a:b] of the requested type and write it to a binary HFST file.
-    let mut t = HfstTransducer::new_symbol_pair("a", "b", ty)?;
+    let mut t = HfstTransducer::<B>::new_symbol_pair("a", "b")?;
     t.set_name("ab");
     {
         let mut out = HfstOutputStream::new_filename(&path, ty, true)?;
@@ -32,8 +36,9 @@ fn roundtrip(ty: ImplementationType, label: &str) -> hfst::error::Result<()> {
     );
     assert!(!input.is_eof(), "{label}: not at eof before the first read");
 
-    let t2 = HfstTransducer::new_from_stream(&mut input)?;
-    assert_eq!(t2.get_type(), ty, "{label}: read type");
+    let any = input.read()?;
+    assert_eq!(any.get_type(), ty, "{label}: read type");
+    let t2: HfstTransducer<B> = any.into_typed()?;
     assert_eq!(t2.get_name(), "ab", "{label}: name survived");
 
     // After one transducer the single-transducer stream is exhausted.
@@ -51,8 +56,10 @@ fn roundtrip(ty: ImplementationType, label: &str) -> hfst::error::Result<()> {
 }
 
 // Full binary round-trip through the real HFST-OL output stream: build an
-// acceptor, convert it to optimized-lookup form, write it with the now-wired
-// HfstOlOutputStream behind HfstOutputStream, then read it back.
+// acceptor, convert it to optimized-lookup form (weighted-shaped tables either
+// way; 'weighted' picks the header flag / stream type, as the old
+// convert(HFST_OL[W]_TYPE) did), write it with the HfstOlOutputStream behind
+// HfstOutputStream, then read it back.
 fn roundtrip_hfst_ol(weighted: bool, label: &str) -> hfst::error::Result<()> {
     let ty = if weighted {
         ImplementationType::HFST_OLW_TYPE
@@ -60,8 +67,8 @@ fn roundtrip_hfst_ol(weighted: bool, label: &str) -> hfst::error::Result<()> {
         ImplementationType::HFST_OL_TYPE
     };
 
-    let mut t = HfstTransducer::new_symbol("a", ImplementationType::TROPICAL_OPENFST_TYPE)?;
-    t.convert(ty, String::new())?;
+    let tropical = HfstTransducer::<StdVectorFst>::new_symbol("a")?;
+    let mut t = tropical.to_ol(weighted)?;
     t.set_name("ol_ab");
 
     let path = std::env::temp_dir().join(format!("hfst_bin_roundtrip{label}.hfst"));
@@ -81,7 +88,7 @@ fn roundtrip_hfst_ol(weighted: bool, label: &str) -> hfst::error::Result<()> {
         input.is_hfst_header_included(),
         "{label}: OL header written"
     );
-    let t2 = HfstTransducer::new_from_stream(&mut input)?;
+    let t2 = input.read()?;
     assert_eq!(t2.get_type(), ty, "{label}: read OL type");
     assert!(input.is_eof(), "{label}: at eof after the only transducer");
     input.close();
@@ -101,29 +108,27 @@ fn read_att_facade() -> hfst::error::Result<()> {
     // [a:b] with a single final state.
     std::fs::write(&path, "0\t1\ta\tb\n1\n").unwrap();
 
-    let t = HfstTransducer::read_in_att_format_filename(
+    let t = HfstTransducer::<StdVectorFst>::read_in_att_format_filename(
         &path,
-        ImplementationType::TROPICAL_OPENFST_TYPE,
         "@_EPSILON_SYMBOL_@",
         false,
     )
     .expect("written [a:b] AT&T file reads back as a valid transducer");
     assert_eq!(t.get_type(), ImplementationType::TROPICAL_OPENFST_TYPE);
 
-    let expected =
-        HfstTransducer::new_symbol_pair("a", "b", ImplementationType::TROPICAL_OPENFST_TYPE)?;
+    let expected = HfstTransducer::<StdVectorFst>::new_symbol_pair("a", "b")?;
     assert!(t.compare(&expected, false)?, "att facade: [a:b] read back");
 
     // C++ returns a heap 'HfstTransducer&' the caller deletes; mirror with Box.
-    drop(unsafe { Box::from_raw(t as *mut HfstTransducer) });
+    drop(unsafe { Box::from_raw(t as *mut HfstTransducer<StdVectorFst>) });
     let _ = std::fs::remove_file(&path);
     println!("att facade read OK");
     Ok(())
 }
 
 fn main() -> hfst::error::Result<()> {
-    roundtrip(ImplementationType::TROPICAL_OPENFST_TYPE, "tropical")?;
-    roundtrip(ImplementationType::LOG_OPENFST_TYPE, "log")?;
+    roundtrip::<StdVectorFst>("tropical")?;
+    roundtrip::<LogFst>("log")?;
     roundtrip_hfst_ol(false, "hfst_ol")?;
     roundtrip_hfst_ol(true, "hfst_olw")?;
     read_att_facade()?;

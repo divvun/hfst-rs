@@ -31,10 +31,13 @@
 // Shared helper from test/libhfst/auxiliary_functions.cc: verbose_print is
 // inlined as a plain message printer (get_bin is unused by this suite).
 
+use hfst::backend::AlgebraBackend;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
-use hfst::hfst_data_types::ImplementationType::{self, LOG_OPENFST_TYPE, TROPICAL_OPENFST_TYPE};
+use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_transducer::HfstTransducer;
+use hfst::log_weight_transducer::LogFst;
+use hfst_openfst::StdVectorFst;
 
 // The tropical/log transition-data symbol coding lives in process-global
 // statics behind Mutexes. cargo runs every #[test] as a parallel thread in ONE
@@ -162,12 +165,12 @@ fn build_disj() -> HfstBasicTransducer {
 }
 
 // --- Block 1a: expanding unknowns (the disjunct/minimize oracle).
-fn run_expanding_unknowns(ty: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("expanding unknowns", ty);
+fn run_expanding_unknowns<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
+    verbose_print("expanding unknowns", B::TYPE);
 
-    let mut tr1 = HfstTransducer::new_from_basic(&build_tr1(), ty)?;
-    let tr2 = HfstTransducer::new_from_basic(&build_tr2(), ty)?;
-    let disj = HfstTransducer::new_from_basic(&build_disj(), ty)?;
+    let mut tr1 = HfstTransducer::<B>::new_from_basic(&build_tr1())?;
+    let tr2 = HfstTransducer::<B>::new_from_basic(&build_tr2())?;
+    let disj = HfstTransducer::<B>::new_from_basic(&build_disj())?;
 
     // Tr1.disjunct(Tr2).minimize(); C++ disjunct/compare default harmonize=true.
     tr1.disjunct(&tr2, true)?.minimize()?;
@@ -184,14 +187,15 @@ fn run_expanding_unknowns(ty: ImplementationType) -> Result<(), hfst::error::Err
 // NotValidAttFormatException. The C++ uses the (FILE*, type, epsilon, linecount)
 // constructor; read_in_att_format_filename is the facade equivalent that opens
 // the file itself.
-fn run_not_valid_att_format(ty: ImplementationType) {
-    verbose_print("testing NotValidAttFormatException", ty);
+fn run_not_valid_att_format<B: AlgebraBackend>() {
+    verbose_print("testing NotValidAttFormatException", B::TYPE);
 
-    let path = std::env::temp_dir().join(format!("test_examples_{ty:?}.att"));
+    let path = std::env::temp_dir().join(format!("test_examples_{:?}.att", B::TYPE));
     std::fs::write(&path, "0 1 a b 0.4\n1 c d\n").unwrap();
     let path_str = path.to_str().unwrap().to_string();
 
-    let r = HfstTransducer::read_in_att_format_filename(&path_str, ty, "@_EPSILON_SYMBOL_@", false);
+    let r =
+        HfstTransducer::<B>::read_in_att_format_filename(&path_str, "@_EPSILON_SYMBOL_@", false);
     assert!(
         matches!(&r, Err(e) if matches!(e.kind, hfst::error::ErrorKind::NotValidAttFormat)),
         "expected NotValidAttFormatException"
@@ -207,14 +211,14 @@ fn run_not_valid_att_format(ty: ImplementationType) {
 #[test]
 fn expanding_unknowns_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    run_expanding_unknowns(TROPICAL_OPENFST_TYPE)?;
+    run_expanding_unknowns::<StdVectorFst>()?;
     Ok(())
 }
 
 #[test]
 fn not_valid_att_format_tropical() {
     let _g = serialized();
-    run_not_valid_att_format(TROPICAL_OPENFST_TYPE);
+    run_not_valid_att_format::<StdVectorFst>();
 }
 
 // =====================================================================
@@ -224,12 +228,12 @@ fn not_valid_att_format_tropical() {
 #[test]
 fn expanding_unknowns_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    run_expanding_unknowns(LOG_OPENFST_TYPE)?;
+    run_expanding_unknowns::<LogFst>()?;
     Ok(())
 }
 
 #[test]
 fn not_valid_att_format_log() {
     let _g = serialized();
-    run_not_valid_att_format(LOG_OPENFST_TYPE);
+    run_not_valid_att_format::<LogFst>();
 }

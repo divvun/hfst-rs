@@ -7,10 +7,12 @@
 //
 // The C++ main loops over the implementation types {SFST, TROPICAL, FOMA} (with
 // LOG commented out). Per the Wave-2 port scope, only the in-scope OpenFST
-// backends are exercised here: TROPICAL_OPENFST_TYPE and LOG_OPENFST_TYPE. The
-// out-of-scope SFST_TYPE / FOMA_TYPE / XFSM_TYPE iterations are intentionally
-// skipped. LOG was commented out in the original C++ array but is in scope for
-// the Rust port, so it is run here too.
+// backends are exercised here: with the monomorphic backends the loop body
+// becomes helpers generic over the backend type, instantiated once per
+// formerly-exercised type: TROPICAL_OPENFST_TYPE -> StdVectorFst and
+// LOG_OPENFST_TYPE -> LogFst. The out-of-scope SFST_TYPE / FOMA_TYPE /
+// XFSM_TYPE iterations are intentionally skipped. LOG was commented out in the
+// original C++ array but is in scope for the Rust port, so it is run here too.
 //
 // Each logical group from the C++ loop body becomes its own helper, run once
 // per in-scope type:
@@ -29,10 +31,12 @@
 // compile, so a read failure (missing file) mirrors the C++ "could not open the
 // file" path, where compileLexical returns 0.
 
-use hfst::hfst_data_types::ImplementationType::{self, LOG_OPENFST_TYPE, TROPICAL_OPENFST_TYPE};
+use hfst::backend::AlgebraBackend;
 use hfst::hfst_tokenizer::HfstTokenizer;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst::lexc::LexcCompiler;
+use hfst::log_weight_transducer::LogFst;
+use hfst_openfst::StdVectorFst;
 
 // The tropical/log transition-data symbol coding lives in process-global
 // statics behind Mutexes; cargo runs every #[test] as a parallel thread in ONE
@@ -53,13 +57,13 @@ fn fixture_path(name: &str) -> String {
 
 // C++: cat | dog | mouse, each built with a default tokenizer (no multichar
 // symbols) and disjuncted into an initially empty transducer.
-fn build_animals(ty: ImplementationType) -> Result<HfstTransducer, hfst::error::Error> {
+fn build_animals<B: AlgebraBackend>() -> Result<HfstTransducer<B>, hfst::error::Error> {
     let tok = HfstTokenizer::new();
-    let cat = HfstTransducer::new_tokenized("cat", &tok, ty)?;
-    let dog = HfstTransducer::new_tokenized("dog", &tok, ty)?;
-    let mouse = HfstTransducer::new_tokenized("mouse", &tok, ty)?;
+    let cat = HfstTransducer::<B>::new_tokenized("cat", &tok)?;
+    let dog = HfstTransducer::<B>::new_tokenized("dog", &tok)?;
+    let mouse = HfstTransducer::<B>::new_tokenized("mouse", &tok)?;
 
-    let mut animals = HfstTransducer::new_type(ty)?;
+    let mut animals = HfstTransducer::<B>::new();
     animals.disjunct(&cat, true)?;
     animals.disjunct(&dog, true)?;
     animals.disjunct(&mouse, true)?;
@@ -69,8 +73,8 @@ fn build_animals(ty: ImplementationType) -> Result<HfstTransducer, hfst::error::
 // Mirrors C++ "LexcCompiler compiler(type); compiler.parse(filename);
 // HfstTransducer * parsed = compiler.compileLexical();". Returns None when the
 // C++ would have produced a null pointer (parse error or unopenable file).
-fn parse_and_compile(filename: &str, ty: ImplementationType) -> Option<HfstTransducer> {
-    let mut compiler = LexcCompiler::new(ty);
+fn parse_and_compile<B: AlgebraBackend>(filename: &str) -> Option<HfstTransducer<B>> {
+    let mut compiler = LexcCompiler::<B>::new();
     let source = match std::fs::read_to_string(filename) {
         Ok(s) => s,
         // C++ parse() could not open the file -> parseErrors set ->
@@ -81,15 +85,15 @@ fn parse_and_compile(filename: &str, ty: ImplementationType) -> Option<HfstTrans
 }
 
 // (1) A file in valid lexc format: parse + compileLexical, then compare.
-fn valid_file_parse(ty: ImplementationType) -> Result<(), hfst::error::Error> {
-    let parsed = parse_and_compile(&fixture_path("test_lexc.lexc"), ty);
+fn valid_file_parse<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
+    let parsed = parse_and_compile::<B>(&fixture_path("test_lexc.lexc"));
     assert!(
         parsed.is_some(),
         "compileLexical() returned 0 for a valid file"
     );
     let parsed = parsed.expect("valid lexc file must compile to a transducer");
 
-    let animals = build_animals(ty)?;
+    let animals = build_animals::<B>()?;
     assert!(animals.compare_default(&parsed)?);
     Ok(())
 }
@@ -97,16 +101,16 @@ fn valid_file_parse(ty: ImplementationType) -> Result<(), hfst::error::Error> {
 // (1) The same valid file via HfstTransducer::read_lexc. C++ catches
 // FunctionNotImplementedException and asserts false; for TROPICAL/LOG read_lexc
 // does not throw it.
-fn valid_file_read_lexc(ty: ImplementationType) -> Result<(), hfst::error::Error> {
-    let animals = build_animals(ty)?;
-    let rlexc = HfstTransducer::read_lexc(&fixture_path("test_lexc.lexc"), ty, false)?;
+fn valid_file_read_lexc<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
+    let animals = build_animals::<B>()?;
+    let rlexc = HfstTransducer::<B>::read_lexc(&fixture_path("test_lexc.lexc"), false)?;
     assert!(animals.compare_default(&rlexc)?);
     Ok(())
 }
 
 // (2) A file that does not follow lexc format: compileLexical returns 0.
-fn invalid_file_parse(ty: ImplementationType) {
-    let parsed = parse_and_compile(&fixture_path("test_lexc_fail.lexc"), ty);
+fn invalid_file_parse<B: AlgebraBackend>() {
+    let parsed = parse_and_compile::<B>(&fixture_path("test_lexc_fail.lexc"));
     assert!(
         parsed.is_none(),
         "compileLexical() should return 0 for a malformed file"
@@ -114,8 +118,8 @@ fn invalid_file_parse(ty: ImplementationType) {
 }
 
 // (3) A file that does not exist: compileLexical returns 0.
-fn missing_file_parse(ty: ImplementationType) {
-    let parsed = parse_and_compile(&fixture_path("nonexistent.lexc"), ty);
+fn missing_file_parse<B: AlgebraBackend>() {
+    let parsed = parse_and_compile::<B>(&fixture_path("nonexistent.lexc"));
     assert!(
         parsed.is_none(),
         "compileLexical() should return 0 for a missing file"
@@ -123,37 +127,37 @@ fn missing_file_parse(ty: ImplementationType) {
 }
 
 // =====================================================================
-// TROPICAL_OPENFST_TYPE
+// TROPICAL_OPENFST_TYPE (StdVectorFst)
 // =====================================================================
 
 #[test]
 fn valid_file_parse_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    valid_file_parse(TROPICAL_OPENFST_TYPE)?;
+    valid_file_parse::<StdVectorFst>()?;
     Ok(())
 }
 
 #[test]
 fn valid_file_read_lexc_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    valid_file_read_lexc(TROPICAL_OPENFST_TYPE)?;
+    valid_file_read_lexc::<StdVectorFst>()?;
     Ok(())
 }
 
 #[test]
 fn invalid_file_parse_tropical() {
     let _g = serialized();
-    invalid_file_parse(TROPICAL_OPENFST_TYPE);
+    invalid_file_parse::<StdVectorFst>();
 }
 
 #[test]
 fn missing_file_parse_tropical() {
     let _g = serialized();
-    missing_file_parse(TROPICAL_OPENFST_TYPE);
+    missing_file_parse::<StdVectorFst>();
 }
 
 // =====================================================================
-// LOG_OPENFST_TYPE (commented out in the C++ array; in scope for the port)
+// LOG_OPENFST_TYPE (LogFst; commented out in the C++ array; in scope for the port)
 // =====================================================================
 
 // PORT DISCREPANCY: building cat | dog | mouse for LOG goes through disjunct,
@@ -168,7 +172,7 @@ fn missing_file_parse_tropical() {
 #[ignore = "PORT DISCREPANCY: LOG disjunct/harmonize converts log->basic (log_ofst_to_hfst_basic_transducer) which emits an empty-symbol transition, throwing EmptyStringException; LOG was commented out in the C++ array"]
 fn valid_file_parse_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    valid_file_parse(LOG_OPENFST_TYPE)?;
+    valid_file_parse::<LogFst>()?;
     Ok(())
 }
 
@@ -180,18 +184,18 @@ fn valid_file_parse_log() -> Result<(), hfst::error::Error> {
 #[ignore = "PORT DISCREPANCY: LOG log->basic conversion (log_ofst_to_hfst_basic_transducer) emits an empty-symbol transition, throwing EmptyStringException; LOG was commented out in the C++ array"]
 fn valid_file_read_lexc_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    valid_file_read_lexc(LOG_OPENFST_TYPE)?;
+    valid_file_read_lexc::<LogFst>()?;
     Ok(())
 }
 
 #[test]
 fn invalid_file_parse_log() {
     let _g = serialized();
-    invalid_file_parse(LOG_OPENFST_TYPE);
+    invalid_file_parse::<LogFst>();
 }
 
 #[test]
 fn missing_file_parse_log() {
     let _g = serialized();
-    missing_file_parse(LOG_OPENFST_TYPE);
+    missing_file_parse::<LogFst>();
 }

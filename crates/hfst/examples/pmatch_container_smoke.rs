@@ -1,21 +1,23 @@
 // Exercises PmatchContainer::new_from_hfst_transducers (single-transducer case):
 // compile a pmatch grammar to its TOP transducer, build a runtime container from
 // it in memory, and run a match.
-use hfst::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
 use hfst::pmatch::PmatchContainer;
 use hfst::pmatch_compiler::PmatchCompiler;
+use hfst_openfst::StdVectorFst;
 
 const SRC: &str = "Define TOP [{cat} | {dog}] EndTag(animal) ;\n";
 
 fn main() -> hfst::error::Result<()> {
     // Compile to the TOP transducer.
-    let mut compiler = PmatchCompiler::new(TROPICAL_OPENFST_TYPE);
+    let mut compiler = PmatchCompiler::<StdVectorFst>::new();
     let defs = compiler.compile(SRC)?;
     let top = defs.get("TOP").expect("no TOP in pmatch result");
-    let top_owned = top.clone();
+    // The pmatch runtime pins the weighted optimized-lookup instantiation;
+    // the typed conversion replaces the old implicit convert(HFST_OLW_TYPE).
+    let top_ol = top.to_ol(true)?;
 
     // Build a runtime container straight from the in-memory transducer.
-    let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_owned])?;
+    let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_ol])?;
 
     // Match: the runtime tags recognised input. We assert it runs and that the
     // recognised word survives in the output.

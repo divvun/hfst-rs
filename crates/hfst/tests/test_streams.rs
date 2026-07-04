@@ -5,10 +5,13 @@
 //
 // The C++ main loops over the implementation types {SFST, TROPICAL, FOMA}
 // (with LOG commented out). Per the Wave-2 port scope, only the in-scope
-// OpenFST backends are exercised: TROPICAL_OPENFST_TYPE and LOG_OPENFST_TYPE.
-// The out-of-scope SFST_TYPE / FOMA_TYPE / XFSM_TYPE iterations are
-// intentionally skipped. Following the sibling port test_constructors.rs, the
-// commented-out LOG iteration is also run here (it widens oracle coverage).
+// OpenFST backends are exercised: with the monomorphic backends the loop body
+// becomes helpers generic over the backend type, instantiated once per
+// formerly-exercised type: TROPICAL_OPENFST_TYPE -> StdVectorFst and
+// LOG_OPENFST_TYPE -> LogFst. The out-of-scope SFST_TYPE / FOMA_TYPE /
+// XFSM_TYPE iterations are intentionally skipped. Following the sibling port
+// test_constructors.rs, the commented-out LOG iteration is also run here (it
+// widens oracle coverage).
 //
 // The C++ loop body has three logical sections, each becomes its own helper run
 // once per in-scope type:
@@ -18,10 +21,13 @@
 //
 // C++ compare(another) defaults to harmonize=true, mirrored by compare_default.
 
-use hfst::hfst_data_types::ImplementationType::{self, LOG_OPENFST_TYPE, TROPICAL_OPENFST_TYPE};
+use hfst::backend::AlgebraBackend;
+use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::hfst_transducer::{FromAnyTransducer, HfstTransducer};
+use hfst::log_weight_transducer::LogFst;
+use hfst_openfst::StdVectorFst;
 
 // The tropical/log transition-data symbol coding lives in process-global statics
 // guarded by their own Mutexes; concurrent get_number / reverse-harmonization
@@ -77,10 +83,10 @@ fn temp_path(stem: &str) -> String {
 // like the C++) it is only checked if a read actually throws. The loop continues
 // while the BufReader still has bytes buffered/available (the BufRead analogue of
 // 'not feof'); either way this mirrors the C++ behaviour.
-fn construction_from_att_format(ty: ImplementationType) {
+fn construction_from_att_format<B: AlgebraBackend>() {
     use std::io::BufRead;
 
-    verbose_print("Construction from AT&T format", ty);
+    verbose_print("Construction from AT&T format", B::TYPE);
 
     let bytes = std::fs::read(fixture_path("test_transducers.att")).unwrap();
     let mut reader = std::io::BufReader::new(std::io::Cursor::new(bytes));
@@ -90,10 +96,10 @@ fn construction_from_att_format(ty: ImplementationType) {
     // until the first Err, then assert the same count the catch path checked.
     let result: std::result::Result<(), hfst::error::Error> = (|| {
         while !reader.fill_buf().map(|b| b.is_empty()).unwrap_or(true) {
-            let t = HfstTransducer::read_in_att_format_file(&mut reader, ty, "<eps>", false)?;
+            let t = HfstTransducer::<B>::read_in_att_format_file(&mut reader, "<eps>", false)?;
             // Reclaim the Box::leak-ed heap transducer and drop it (the C++ stack
             // object t is destroyed at the end of each loop iteration).
-            drop(unsafe { Box::from_raw(t as *mut HfstTransducer) });
+            drop(unsafe { Box::from_raw(t as *mut HfstTransducer<B>) });
             transducers_read.set(transducers_read.get() + 1);
         }
         Ok(())
@@ -111,22 +117,20 @@ fn construction_from_att_format(ty: ImplementationType) {
 // minimizes it, writes it to transducer2.att with weights, then asserts the two
 // files are byte-identical (system("diff ...") == 0). Here the golden is an
 // in-memory string and the produced file is read back and compared to it.
-fn writing_att_format(ty: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Writing in AT&T format", ty);
+fn writing_att_format<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
+    verbose_print("Writing in AT&T format", B::TYPE);
 
     const GOLDEN: &str = "0\t1\tbaz\t@0@\t0.000000\n\
                           1\t2\tfoo\tbar\t0.000000\n\
                           2\t0.000000\n";
 
-    let t1 = HfstTransducer::new_symbol_pair("foo", "bar", ty)?;
-    let mut t2 = HfstTransducer::new_symbol_pair("baz", "@_EPSILON_SYMBOL_@", ty)?;
+    let t1 = HfstTransducer::<B>::new_symbol_pair("foo", "bar")?;
+    let mut t2 = HfstTransducer::<B>::new_symbol_pair("baz", "@_EPSILON_SYMBOL_@")?;
     t2.concatenate(&t1, true)?;
     t2.minimize()?;
 
-    let out_path = temp_path(&format!("hfst_test_streams_att{ty:?}.att"));
-    unsafe {
-        t2.write_in_att_format_filename(&out_path, true)?;
-    }
+    let out_path = temp_path(&format!("hfst_test_streams_att{:?}.att", B::TYPE));
+    t2.write_in_att_format_filename(&out_path, true)?;
     let produced = std::fs::read_to_string(&out_path).unwrap();
     let _ = std::fs::remove_file(&out_path);
 
@@ -139,17 +143,17 @@ fn writing_att_format(ty: ImplementationType) -> Result<(), hfst::error::Error> 
 // C++ writes tr1..tr4 to testfile.hfst via HfstOutputStream, reads them back via
 // HfstInputStream while (not in.is_eof()), asserts exactly 4 were read and that
 // each read transducer compares equal to the original.
-fn stream_round_trip(ty: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Writing to HfstOutputStream", ty);
+fn stream_round_trip<B: AlgebraBackend + FromAnyTransducer>() -> Result<(), hfst::error::Error> {
+    verbose_print("Writing to HfstOutputStream", B::TYPE);
 
-    let mut tr1 = HfstTransducer::new_symbol("foo", ty)?;
-    let mut tr2 = HfstTransducer::new_symbol_pair("bar", "foo", ty)?;
-    let mut tr3 = HfstTransducer::new_symbol("a", ty)?;
-    let mut tr4 = HfstTransducer::new_symbol_pair("b", "c", ty)?;
+    let mut tr1 = HfstTransducer::<B>::new_symbol("foo")?;
+    let mut tr2 = HfstTransducer::<B>::new_symbol_pair("bar", "foo")?;
+    let mut tr3 = HfstTransducer::<B>::new_symbol("a")?;
+    let mut tr4 = HfstTransducer::<B>::new_symbol_pair("b", "c")?;
 
-    let path = temp_path(&format!("hfst_test_streams{ty:?}.hfst"));
+    let path = temp_path(&format!("hfst_test_streams{:?}.hfst", B::TYPE));
     {
-        let mut out = HfstOutputStream::new_filename(&path, ty, true)?;
+        let mut out = HfstOutputStream::new_filename(&path, B::TYPE, true)?;
         out.operator_shl(&mut tr1)?;
         out.operator_shl(&mut tr2)?;
         out.operator_shl(&mut tr3)?;
@@ -157,13 +161,15 @@ fn stream_round_trip(ty: ImplementationType) -> Result<(), hfst::error::Error> {
         out.close();
     }
 
-    verbose_print("Construction from HfstInputStream", ty);
+    verbose_print("Construction from HfstInputStream", B::TYPE);
 
     let mut instream = HfstInputStream::new_filename(&path)?;
-    let mut transducers: Vec<HfstTransducer> = Vec::new();
+    let mut transducers: Vec<HfstTransducer<B>> = Vec::new();
     let mut transducers_read = 0u32;
     while !instream.is_eof() {
-        let tr = HfstTransducer::new_from_stream(&mut instream)?;
+        // The stream boundary yields the runtime sum; the writer above wrote
+        // B::TYPE, so the typed extraction takes the matching variant by move.
+        let tr: HfstTransducer<B> = instream.read()?.into_typed()?;
         transducers.push(tr);
         transducers_read += 1;
     }
@@ -180,50 +186,38 @@ fn stream_round_trip(ty: ImplementationType) -> Result<(), hfst::error::Error> {
 }
 
 // =====================================================================
-// TROPICAL_OPENFST_TYPE
+// TROPICAL_OPENFST_TYPE (StdVectorFst)
 // =====================================================================
 
 #[test]
 fn construction_from_att_format_tropical() {
     let _g = serialized();
-    if !HfstTransducer::is_implementation_type_available(TROPICAL_OPENFST_TYPE) {
-        return;
-    }
-    construction_from_att_format(TROPICAL_OPENFST_TYPE);
+    construction_from_att_format::<StdVectorFst>();
 }
 
 #[test]
 fn writing_att_format_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    if !HfstTransducer::is_implementation_type_available(TROPICAL_OPENFST_TYPE) {
-        return Ok(());
-    }
-    writing_att_format(TROPICAL_OPENFST_TYPE)?;
+    writing_att_format::<StdVectorFst>()?;
     Ok(())
 }
 
 #[test]
 fn stream_round_trip_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    if !HfstTransducer::is_implementation_type_available(TROPICAL_OPENFST_TYPE) {
-        return Ok(());
-    }
-    stream_round_trip(TROPICAL_OPENFST_TYPE)?;
+    stream_round_trip::<StdVectorFst>()?;
     Ok(())
 }
 
 // =====================================================================
-// LOG_OPENFST_TYPE  (commented out in the C++ type list; run here, mirroring
-// the sibling test_constructors.rs, to widen oracle coverage)
+// LOG_OPENFST_TYPE (LogFst)  (commented out in the C++ type list; run here,
+// mirroring the sibling test_constructors.rs, to widen oracle coverage)
 // =====================================================================
 
 #[test]
 fn construction_from_att_format_log() {
     let _g = serialized();
-    if !HfstTransducer::is_implementation_type_available(LOG_OPENFST_TYPE) {
-        return;
-    }
-    construction_from_att_format(LOG_OPENFST_TYPE);
+    construction_from_att_format::<LogFst>();
 }
 
 // PORT DISCREPANCY (LOG-only; tropical passes the identical code path): for
@@ -235,20 +229,14 @@ fn construction_from_att_format_log() {
 #[ignore = "PORT DISCREPANCY: LOG concatenate+minimize+write_in_att produces baz:baz instead of foo:bar on the second transition (LOG conversion bug; tropical OK; C++ LOG commented out)"]
 fn writing_att_format_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    if !HfstTransducer::is_implementation_type_available(LOG_OPENFST_TYPE) {
-        return Ok(());
-    }
-    writing_att_format(LOG_OPENFST_TYPE)?;
+    writing_att_format::<LogFst>()?;
     Ok(())
 }
 
 #[test]
 fn stream_round_trip_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    if !HfstTransducer::is_implementation_type_available(LOG_OPENFST_TYPE) {
-        return Ok(());
-    }
-    stream_round_trip(LOG_OPENFST_TYPE)?;
+    stream_round_trip::<LogFst>()?;
     Ok(())
 }
 
@@ -260,27 +248,28 @@ fn stream_round_trip_log() -> Result<(), hfst::error::Error> {
 // table serialized a row count (len, incl. the empty slot) larger than the rows
 // emitted, so the reader over-read past the table, misread the FST body, and
 // threw NotTransducerStreamException. Fixed in rustfst's bin_symt serializer.
-fn sparse_symtable_round_trip(ty: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Sparse symbol-table round trip", ty);
+fn sparse_symtable_round_trip<B: AlgebraBackend + FromAnyTransducer>()
+-> Result<(), hfst::error::Error> {
+    verbose_print("Sparse symbol-table round trip", B::TYPE);
 
     // Build {a, x}, then kill "x"; its symbol number is left as a hole.
-    let mut t = HfstTransducer::new_symbol_pair("a", "a", ty)?;
-    let tx = HfstTransducer::new_symbol_pair("x", "x", ty)?;
+    let mut t = HfstTransducer::<B>::new_symbol_pair("a", "a")?;
+    let tx = HfstTransducer::<B>::new_symbol_pair("x", "x")?;
     t.disjunct(&tx, true)?;
     let mut killed = t.kill_paths("x");
 
-    let path = temp_path(&format!("hfst_sparse_symt{ty:?}.hfst"));
+    let path = temp_path(&format!("hfst_sparse_symt{:?}.hfst", B::TYPE));
     {
-        let mut out = HfstOutputStream::new_filename(&path, ty, true)?;
+        let mut out = HfstOutputStream::new_filename(&path, B::TYPE, true)?;
         out.operator_shl(&mut killed)?;
         out.close();
     }
 
     let mut instream = HfstInputStream::new_filename(&path)?;
     let mut count = 0u32;
-    let mut read_back = None;
+    let mut read_back: Option<HfstTransducer<B>> = None;
     while !instream.is_eof() {
-        read_back = Some(HfstTransducer::new_from_stream(&mut instream)?);
+        read_back = Some(instream.read()?.into_typed()?);
         count += 1;
     }
     instream.close();
@@ -310,20 +299,14 @@ fn sparse_symtable_round_trip(ty: ImplementationType) -> Result<(), hfst::error:
 #[test]
 fn sparse_symtable_round_trip_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    if !HfstTransducer::is_implementation_type_available(TROPICAL_OPENFST_TYPE) {
-        return Ok(());
-    }
-    sparse_symtable_round_trip(TROPICAL_OPENFST_TYPE)?;
+    sparse_symtable_round_trip::<StdVectorFst>()?;
     Ok(())
 }
 
 #[test]
 fn sparse_symtable_round_trip_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    if !HfstTransducer::is_implementation_type_available(LOG_OPENFST_TYPE) {
-        return Ok(());
-    }
-    sparse_symtable_round_trip(LOG_OPENFST_TYPE)?;
+    sparse_symtable_round_trip::<LogFst>()?;
     Ok(())
 }
 

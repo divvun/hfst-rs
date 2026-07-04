@@ -7,8 +7,8 @@
 use std::io::Cursor;
 
 use hfst::expand_equivalences::{FsaLevel, expand_equivalences, read_tsv_extensions};
-use hfst::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
 use hfst::hfst_transducer::HfstTransducer;
+use hfst_openfst::StdVectorFst;
 
 // The tropical transition-data symbol coding lives in process-global statics
 // guarded by mutexes; cargo runs #[test]s as parallel threads in one process, so
@@ -74,8 +74,8 @@ fn read_tsv_extensions_comment_needs_no_tab() {
 fn expand_equivalences_applies_extensions_at_each_level() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     let pairs = [("a".to_string(), "b".to_string())];
-    let empty = HfstTransducer::new_type(TROPICAL_OPENFST_TYPE)?;
-    let a_acc = HfstTransducer::new_symbol("a", TROPICAL_OPENFST_TYPE)?;
+    let empty = HfstTransducer::<StdVectorFst>::new();
+    let a_acc = HfstTransducer::<StdVectorFst>::new_symbol("a")?;
 
     // Second level composes the input with (identity | a:b)*, so the "a" acceptor
     // gains an a:b path and is no longer the bare acceptor.

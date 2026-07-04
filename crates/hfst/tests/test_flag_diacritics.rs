@@ -29,14 +29,13 @@
 
 use std::collections::BTreeSet;
 
+use hfst::backend::AlgebraBackend;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
-use hfst::hfst_data_types::{
-    HfstTwoLevelPaths,
-    ImplementationType::{self, LOG_OPENFST_TYPE, TROPICAL_OPENFST_TYPE},
-    StringPair,
-};
+use hfst::hfst_data_types::{HfstTwoLevelPaths, ImplementationType, StringPair};
 use hfst::hfst_transducer::HfstTransducer;
+use hfst::log_weight_transducer::LogFst;
+use hfst_openfst::StdVectorFst;
 
 // The tropical/log transition-data symbol coding lives in process-global
 // statics (NUMBER2SYMBOL_MAP / SYMBOL2NUMBER_MAP / MAX_NUMBER, each behind its
@@ -106,21 +105,21 @@ fn build_t() -> HfstBasicTransducer {
 // compare equal after minimization (the identity symbol expands to cover a/b).
 // The intermediate ab_flag transducer is dead code in the C++ (never asserted
 // on) but is ported faithfully because concatenate(id) reads id.
-fn identities_with_flags(ty: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Identitites with flags", ty);
+fn identities_with_flags<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
+    verbose_print("Identitites with flags", B::TYPE);
 
-    let mut id = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", ty)?;
+    let mut id = HfstTransducer::<B>::new_symbol("@_IDENTITY_SYMBOL_@")?;
     id.repeat_star()?;
-    let mut ab_flag = HfstTransducer::new_symbol_pair("a", "b", ty)?;
-    let flag = HfstTransducer::new_symbol("@U.F.A@", ty)?;
+    let mut ab_flag = HfstTransducer::<B>::new_symbol_pair("a", "b")?;
+    let flag = HfstTransducer::<B>::new_symbol("@U.F.A@")?;
     ab_flag.disjunct(&flag, true)?;
 
     ab_flag.concatenate(&id, true)?;
     id.minimize()?;
 
-    let a_tr = HfstTransducer::new_symbol("a", ty)?;
-    let b_tr = HfstTransducer::new_symbol("b", ty)?;
-    let mut abid = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", ty)?;
+    let a_tr = HfstTransducer::<B>::new_symbol("a")?;
+    let b_tr = HfstTransducer::<B>::new_symbol("b")?;
+    let mut abid = HfstTransducer::<B>::new_symbol("@_IDENTITY_SYMBOL_@")?;
     abid.disjunct(&a_tr, true)?;
     abid.disjunct(&b_tr, true)?;
     abid.repeat_star()?;
@@ -135,11 +134,11 @@ fn identities_with_flags(ty: ImplementationType) -> Result<(), hfst::error::Erro
 // Converts the basic transducer t to an HfstTransducer of the given type,
 // extracts paths with flags filtered, and asserts exactly the two unifying
 // strings "ac" and "bd" survive.
-fn unification_flags(ty: ImplementationType) -> Result<(), hfst::error::Error> {
-    verbose_print("Unification flags", ty);
+fn unification_flags<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
+    verbose_print("Unification flags", B::TYPE);
 
     let t = build_t();
-    let tr = HfstTransducer::new_from_basic(&t, ty)?;
+    let tr = HfstTransducer::<B>::new_from_basic(&t)?;
     let mut results: HfstTwoLevelPaths = BTreeSet::new();
 
     // C++ extract_paths_fd(results) defaults: max_num=-1, cycles=-1, filter_fd=true.
@@ -170,14 +169,14 @@ fn unification_flags(ty: ImplementationType) -> Result<(), hfst::error::Error> {
 #[test]
 fn identities_with_flags_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    identities_with_flags(TROPICAL_OPENFST_TYPE)?;
+    identities_with_flags::<StdVectorFst>()?;
     Ok(())
 }
 
 #[test]
 fn unification_flags_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    unification_flags(TROPICAL_OPENFST_TYPE)?;
+    unification_flags::<StdVectorFst>()?;
     Ok(())
 }
 
@@ -200,6 +199,6 @@ fn unification_flags_tropical() -> Result<(), hfst::error::Error> {
 #[ignore = "PORT DISCREPANCY: LOG basic->log conversion hardcodes source_state=0 (faithfully ported C++ bug), so all transitions originate at state 0 and only the direct 0->s6 flag transitions remain; extract_paths_fd no longer yields ac/bd and the contains(ac) assertion fails; never exercised by C++ (LOG commented out of types array)"]
 fn unification_flags_log() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    unification_flags(LOG_OPENFST_TYPE)?;
+    unification_flags::<LogFst>()?;
     Ok(())
 }

@@ -6,8 +6,9 @@ use hfst::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst::xre::XreCompiler;
+use hfst_openfst::StdVectorFst;
 
-fn compile(c: &mut XreCompiler, src: &str) -> HfstTransducer {
+fn compile(c: &mut XreCompiler<StdVectorFst>, src: &str) -> HfstTransducer<StdVectorFst> {
     c.compile(src)
         .unwrap_or_else(|| panic!("compile returned null for {src:?}"))
 }
@@ -21,7 +22,7 @@ fn tmp(name: &str) -> String {
 }
 
 fn main() -> hfst::error::Result<()> {
-    let mut c = XreCompiler::new(TROPICAL_OPENFST_TYPE);
+    let mut c = XreCompiler::<StdVectorFst>::new();
 
     // @txt: one word per line, each tokenized char by char -> {cat} | {dog}.
     let txt = tmp("xre_readfile.txt");
@@ -36,7 +37,7 @@ fn main() -> hfst::error::Result<()> {
     // @bin: write a binary a:b transducer, then read it back through @bin.
     let bin = tmp("xre_readfile.hfst");
     {
-        let mut t = HfstTransducer::new_symbol_pair("a", "b", TROPICAL_OPENFST_TYPE)?;
+        let mut t = HfstTransducer::<StdVectorFst>::new_symbol_pair("a", "b")?;
         let mut out = HfstOutputStream::new_filename(&bin, TROPICAL_OPENFST_TYPE, true)?;
         out.redirect(&mut t)?;
         out.close();

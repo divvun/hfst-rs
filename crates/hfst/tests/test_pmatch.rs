@@ -6,13 +6,15 @@
 // conversion (idiom1.pmatch) is validated rather than blind. The grammar
 // constructs (predefined acceptors, repetition, references, EndTag) mirror
 // scripts/windows_tests/test.pmatch.
-use hfst::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
+use hfst::hfst_transducer::HfstTransducer;
 use hfst::pmatch::PmatchContainer;
 use hfst::pmatch_compiler::PmatchCompiler;
+use hfst::transducer::{Transducer, WeightedTables};
+use hfst_openfst::StdVectorFst;
 
 // States of the named definition produced by compiling `src`.
 fn def_states(src: &str, name: &str) -> Result<u32, hfst::error::Error> {
-    let mut c = PmatchCompiler::new(TROPICAL_OPENFST_TYPE);
+    let mut c = PmatchCompiler::<StdVectorFst>::new();
     let defs = c.compile(src)?;
     let d = defs
         .get(name)
@@ -26,10 +28,13 @@ fn top_states(src: &str) -> Result<u32, hfst::error::Error> {
 
 // Compile `src` to TOP, build a runtime container, and return the match output.
 fn compile_and_match(src: &str, input: &str) -> Result<String, hfst::error::Error> {
-    let mut compiler = PmatchCompiler::new(TROPICAL_OPENFST_TYPE);
+    let mut compiler = PmatchCompiler::<StdVectorFst>::new();
     let defs = compiler.compile(src)?;
     let top = defs.get("TOP").expect("no TOP in pmatch result");
-    let top_owned = top.clone();
+    // The pmatch runtime pins the weighted optimized-lookup backend; convert the
+    // compiled tropical TOP through the basic transducer (the typed replacement
+    // for the old runtime convert()).
+    let top_owned = HfstTransducer::<Transducer<WeightedTables>>::new_from_basic(&top.to_basic()?)?;
     let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_owned])?;
     Ok(container.do_match(input, 0.0, 0.0))
 }

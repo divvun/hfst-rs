@@ -1,8 +1,8 @@
 // Exercises the TWOLC two-level rule compiler: parse a small grammar via
 // nfst-twolc and assemble the rule into a transducer (the rule hierarchy +
 // conflict resolution over the facade).
-use hfst::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
 use hfst::twolc::TwolcCompiler;
+use hfst_openfst::StdVectorFst;
 
 const SRC: &str = "\
 Alphabet
@@ -15,7 +15,7 @@ a:b => c _ ;
 ";
 
 fn main() {
-    let mut c = TwolcCompiler::new(TROPICAL_OPENFST_TYPE);
+    let mut c = TwolcCompiler::<StdVectorFst>::new();
     let t = c.compile(SRC).expect("twolc compile returned null");
 
     let states = t.number_of_states();

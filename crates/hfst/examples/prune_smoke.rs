@@ -2,8 +2,9 @@
 // runs fst::Prune(fst, One), now ported into the rustfst fork: with threshold
 // One the only surviving paths are those whose weight equals the shortest path.
 
-use hfst::hfst_data_types::{HfstTwoLevelPaths, ImplementationType};
+use hfst::hfst_data_types::HfstTwoLevelPaths;
 use hfst::hfst_transducer::HfstTransducer;
+use hfst_openfst::StdVectorFst;
 use std::collections::BTreeSet;
 
 fn main() -> hfst::error::Result<()> {
@@ -13,9 +14,8 @@ fn main() -> hfst::error::Result<()> {
     let path = path.to_str().unwrap().to_string();
     std::fs::write(&path, att).unwrap();
 
-    let t = HfstTransducer::read_in_att_format_filename(
+    let t = HfstTransducer::<StdVectorFst>::read_in_att_format_filename(
         &path,
-        ImplementationType::TROPICAL_OPENFST_TYPE,
         "@_EPSILON_SYMBOL_@",
         false,
     )
@@ -57,7 +57,7 @@ fn main() -> hfst::error::Result<()> {
         best.first
     );
 
-    drop(unsafe { Box::from_raw(t as *mut HfstTransducer) });
+    drop(unsafe { Box::from_raw(t as *mut HfstTransducer<StdVectorFst>) });
     let _ = std::fs::remove_file(&path);
     println!("prune OK (b pruned, a kept with weight 1.0)");
     Ok(())

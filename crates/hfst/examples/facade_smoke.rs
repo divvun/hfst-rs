@@ -4,10 +4,11 @@
 // explicit-label support added to the fork.
 use hfst::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
 use hfst::hfst_transducer::HfstTransducer;
+use hfst_openfst::StdVectorFst;
 
 fn main() -> hfst::error::Result<()> {
-    // construct a:b via the facade (dispatches to TropicalWeightTransducer)
-    let mut ab = HfstTransducer::new_symbol_pair("a", "b", TROPICAL_OPENFST_TYPE)?;
+    // construct a:b via the facade (monomorphized over the tropical backend)
+    let mut ab = HfstTransducer::<StdVectorFst>::new_symbol_pair("a", "b")?;
     assert_eq!(ab.get_type(), TROPICAL_OPENFST_TYPE);
     assert!(ab.number_of_states() >= 1);
 
@@ -17,7 +18,7 @@ fn main() -> hfst::error::Result<()> {
     assert!(states >= 1);
 
     // Clone (the C++ copy constructor) + a binary op through apply_another
-    let other = HfstTransducer::new_symbol_pair("b", "c", TROPICAL_OPENFST_TYPE)?;
+    let other = HfstTransducer::<StdVectorFst>::new_symbol_pair("b", "c")?;
     let mut comp = ab.clone();
     comp.compose(&other, true)?;
 

@@ -2,8 +2,8 @@
 // nfst-xfst and run it through the ported XfstCompiler command methods (regex
 // compilation via the embedded XreCompiler, then a stack op), checking the
 // resulting transducer stack.
-use hfst::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
 use hfst::xfst_compiler::XfstCompiler;
+use hfst_openfst::StdVectorFst;
 
 const SRC: &str = "\
 regex a:b ;
@@ -12,7 +12,7 @@ union net
 ";
 
 fn main() {
-    let mut c = XfstCompiler::new_with_impl(TROPICAL_OPENFST_TYPE);
+    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
     c.parse(SRC);
 
     let stack = c.get_stack();

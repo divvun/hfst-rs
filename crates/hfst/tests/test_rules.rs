@@ -6,10 +6,12 @@
 //
 // The C++ main loops over the implementation types {SFST, TROPICAL, FOMA}.
 // Per the Wave-2 port scope only the in-scope OpenFST backends are exercised:
-// TROPICAL_OPENFST_TYPE and LOG_OPENFST_TYPE (the latter following the sibling
-// ported suites' convention of also running LOG). The out-of-scope SFST_TYPE /
-// FOMA_TYPE / XFSM_TYPE iterations are intentionally skipped --
-// is_implementation_type_available returns false for them in this build.
+// with the monomorphic backends the loop body becomes helpers generic over the
+// backend type, instantiated once per formerly-exercised type:
+// TROPICAL_OPENFST_TYPE -> StdVectorFst and LOG_OPENFST_TYPE -> LogFst (the
+// latter following the sibling ported suites' convention of also running LOG).
+// The out-of-scope SFST_TYPE / FOMA_TYPE / XFSM_TYPE iterations are
+// intentionally skipped -- those backends are not compiled in this build.
 //
 // Blocks of the C++ main mapped to tests below:
 //   1. two_level_if / only_if / if_and_only_if construction. In C++ this block
@@ -30,11 +32,14 @@
 // Shared helper from test/libhfst/auxiliary_functions.cc: verbose_print is
 // inlined as a plain message printer (get_bin is unused by this suite).
 
-use hfst::hfst_data_types::ImplementationType::{self, LOG_OPENFST_TYPE, TROPICAL_OPENFST_TYPE};
+use hfst::backend::AlgebraBackend;
+use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_data_types::{StringPair, StringPairSet};
 use hfst::hfst_rules;
 use hfst::hfst_tokenizer::HfstTokenizer;
 use hfst::hfst_transducer::{HfstTransducer, HfstTransducerPair};
+use hfst::log_weight_transducer::LogFst;
+use hfst_openfst::StdVectorFst;
 
 // The tropical/log transition-data symbol coding lives in process-global
 // statics behind Mutexes. cargo runs every #[test] as a parallel thread in ONE
@@ -61,18 +66,18 @@ fn sp(a: &str, b: &str) -> StringPair {
 // ---------------------------------------------------------------------------
 // Block 1: two_level_if / two_level_only_if / two_level_if_and_only_if.
 // ---------------------------------------------------------------------------
-fn run_two_level_rules(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+fn run_two_level_rules<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let _guard = serialized();
 
     verbose_print(
         "HfstTransducer two_level_if(HfstTransducerPair &context, StringPairSet &mappings, \
          StringPairSet &alphabet, ImplementationType type",
-        ty,
+        B::TYPE,
     );
 
-    let leftc = HfstTransducer::new_symbol("c", ty)?;
-    let rightc = HfstTransducer::new_symbol("c", ty)?;
-    let mut context: HfstTransducerPair = (leftc, rightc);
+    let leftc = HfstTransducer::<B>::new_symbol("c")?;
+    let rightc = HfstTransducer::<B>::new_symbol("c")?;
+    let mut context: HfstTransducerPair<B> = (leftc, rightc);
 
     let mut mappings: StringPairSet = StringPairSet::new();
     mappings.insert(sp("a", "b"));
@@ -99,28 +104,28 @@ fn run_two_level_rules(ty: ImplementationType) -> Result<(), hfst::error::Error>
 
 #[test]
 fn two_level_rules_tropical() -> Result<(), hfst::error::Error> {
-    run_two_level_rules(TROPICAL_OPENFST_TYPE)?;
+    run_two_level_rules::<StdVectorFst>()?;
     Ok(())
 }
 
 #[test]
 fn two_level_rules_log() -> Result<(), hfst::error::Error> {
-    run_two_level_rules(LOG_OPENFST_TYPE)?;
+    run_two_level_rules::<LogFst>()?;
     Ok(())
 }
 
 // ---------------------------------------------------------------------------
 // Block 2: replace_down_karttunen.
 // ---------------------------------------------------------------------------
-fn run_replace_down_karttunen(ty: ImplementationType) -> Result<(), hfst::error::Error> {
+fn run_replace_down_karttunen<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let _guard = serialized();
 
     let mut tok = HfstTokenizer::new();
     tok.add_multichar_symbol("@_EPSILON_SYMBOL_@");
-    let mut mapping = HfstTransducer::new_tokenized_pair("ab", "x", &tok, ty)?;
-    let left_context = HfstTransducer::new_tokenized_pair("ab", "ab", &tok, ty)?;
-    let right_context = HfstTransducer::new_symbol("a", ty)?;
-    let mut context: HfstTransducerPair = (left_context, right_context);
+    let mut mapping = HfstTransducer::<B>::new_tokenized_pair("ab", "x", &tok)?;
+    let left_context = HfstTransducer::<B>::new_tokenized_pair("ab", "ab", &tok)?;
+    let right_context = HfstTransducer::<B>::new_symbol("a")?;
+    let mut context: HfstTransducerPair<B> = (left_context, right_context);
     let mut alphabet: StringPairSet = StringPairSet::new();
     alphabet.insert(sp("a", "a"));
     alphabet.insert(sp("b", "b"));
@@ -130,13 +135,13 @@ fn run_replace_down_karttunen(ty: ImplementationType) -> Result<(), hfst::error:
     let replace_down_transducer =
         hfst_rules::replace_down_karttunen(&mut context, &mut mapping, optional, &mut alphabet)?;
 
-    let mut test_abababa = HfstTransducer::new_tokenized("abababa", &tok, ty)?;
+    let mut test_abababa = HfstTransducer::<B>::new_tokenized("abababa", &tok)?;
     test_abababa.compose(&replace_down_transducer, true)?;
     let abxaba =
-        HfstTransducer::new_tokenized_pair("abababa", "abx@_EPSILON_SYMBOL_@aba", &tok, ty)?;
+        HfstTransducer::<B>::new_tokenized_pair("abababa", "abx@_EPSILON_SYMBOL_@aba", &tok)?;
     let ababxa =
-        HfstTransducer::new_tokenized_pair("abababa", "ababx@_EPSILON_SYMBOL_@a", &tok, ty)?;
-    let mut expected_result = HfstTransducer::new_type(ty)?;
+        HfstTransducer::<B>::new_tokenized_pair("abababa", "ababx@_EPSILON_SYMBOL_@a", &tok)?;
+    let mut expected_result = HfstTransducer::<B>::new();
     expected_result.disjunct(&abxaba, true)?;
     expected_result.disjunct(&ababxa, true)?;
     assert!(expected_result.compare(&test_abababa, true)?);
@@ -145,13 +150,13 @@ fn run_replace_down_karttunen(ty: ImplementationType) -> Result<(), hfst::error:
 
 #[test]
 fn replace_down_karttunen_tropical() -> Result<(), hfst::error::Error> {
-    run_replace_down_karttunen(TROPICAL_OPENFST_TYPE)?;
+    run_replace_down_karttunen::<StdVectorFst>()?;
     Ok(())
 }
 
 #[test]
 #[ignore = "PORT DISCREPANCY: replace_down_karttunen for LOG_OPENFST throws EmptyStringException -- the faithfully-ported LOG log->basic conversion (source_state hardcoded to 0) emits an empty-symbol transition; LOG was commented out of the C++ types array so this path is never exercised upstream"]
 fn replace_down_karttunen_log() -> Result<(), hfst::error::Error> {
-    run_replace_down_karttunen(LOG_OPENFST_TYPE)?;
+    run_replace_down_karttunen::<LogFst>()?;
     Ok(())
 }

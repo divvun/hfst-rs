@@ -3,14 +3,15 @@
 use hfst::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst::xre::XreCompiler;
+use hfst_openfst::StdVectorFst;
 
-fn compile(c: &mut XreCompiler, src: &str) -> HfstTransducer {
+fn compile(c: &mut XreCompiler<StdVectorFst>, src: &str) -> HfstTransducer<StdVectorFst> {
     c.compile(src)
         .unwrap_or_else(|| panic!("compile returned null for {src:?}"))
 }
 
 fn main() {
-    let mut c = XreCompiler::new(TROPICAL_OPENFST_TYPE);
+    let mut c = XreCompiler::<StdVectorFst>::new();
 
     // a single symbol pair
     let ab = compile(&mut c, "a:b");
