@@ -18,7 +18,7 @@ use crate::hfst_program_options::{
 use crate::inc::{CaseResult, handle_common_case, handle_unary_case};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::hfst_transducer::is_implementation_type_available;
 use std::io::Write;
 
 static mut LIST_FORMATS: bool = false;
@@ -143,28 +143,17 @@ unsafe fn parse_options(args: &mut Vec<String>) -> ImplementationType {
         }
 
         if let Some(fmt) = format_to_test() {
-            if (fmt == "sfst"
-                && HfstTransducer::is_implementation_type_available(ImplementationType::SFST_TYPE))
+            if (fmt == "sfst" && is_implementation_type_available(ImplementationType::SFST_TYPE))
                 || (fmt == "openfst-tropical"
-                    && HfstTransducer::is_implementation_type_available(
-                        ImplementationType::TROPICAL_OPENFST_TYPE,
-                    ))
+                    && is_implementation_type_available(ImplementationType::TROPICAL_OPENFST_TYPE))
                 || (fmt == "openfst-log"
-                    && HfstTransducer::is_implementation_type_available(
-                        ImplementationType::LOG_OPENFST_TYPE,
-                    ))
+                    && is_implementation_type_available(ImplementationType::LOG_OPENFST_TYPE))
                 || (fmt == "foma"
-                    && HfstTransducer::is_implementation_type_available(
-                        ImplementationType::FOMA_TYPE,
-                    ))
+                    && is_implementation_type_available(ImplementationType::FOMA_TYPE))
                 || (fmt == "optimized-lookup-unweighted"
-                    && HfstTransducer::is_implementation_type_available(
-                        ImplementationType::HFST_OL_TYPE,
-                    ))
+                    && is_implementation_type_available(ImplementationType::HFST_OL_TYPE))
                 || (fmt == "optimized-lookup-weighted"
-                    && HfstTransducer::is_implementation_type_available(
-                        ImplementationType::HFST_OLW_TYPE,
-                    ))
+                    && is_implementation_type_available(ImplementationType::HFST_OLW_TYPE))
             {
                 std::process::exit(0);
             }
@@ -174,33 +163,29 @@ unsafe fn parse_options(args: &mut Vec<String>) -> ImplementationType {
         if LIST_FORMATS {
             fput_stdout(" Backend                         Names recognized\n\n");
 
-            if HfstTransducer::is_implementation_type_available(ImplementationType::SFST_TYPE) {
+            if is_implementation_type_available(ImplementationType::SFST_TYPE) {
                 fput_stdout(" SFST                            sfst\n");
             }
 
-            if HfstTransducer::is_implementation_type_available(
-                ImplementationType::TROPICAL_OPENFST_TYPE,
-            ) {
+            if is_implementation_type_available(ImplementationType::TROPICAL_OPENFST_TYPE) {
                 fput_stdout(
                     " OpenFst (tropical weights)      openfst-tropical, openfst, ofst, ofst-tropical\n",
                 );
             }
 
-            if HfstTransducer::is_implementation_type_available(
-                ImplementationType::LOG_OPENFST_TYPE,
-            ) {
+            if is_implementation_type_available(ImplementationType::LOG_OPENFST_TYPE) {
                 fput_stdout(" OpenFst (logarithmic weights)   openfst-log, ofst-log\n");
             }
 
-            if HfstTransducer::is_implementation_type_available(ImplementationType::FOMA_TYPE) {
+            if is_implementation_type_available(ImplementationType::FOMA_TYPE) {
                 fput_stdout(" foma                            foma\n");
             }
 
-            if HfstTransducer::is_implementation_type_available(ImplementationType::HFST_OL_TYPE) {
+            if is_implementation_type_available(ImplementationType::HFST_OL_TYPE) {
                 fput_stdout(" Optimized lookup (weighted)     optimized-lookup-unweighted, olu\n");
             }
 
-            if HfstTransducer::is_implementation_type_available(ImplementationType::HFST_OLW_TYPE) {
+            if is_implementation_type_available(ImplementationType::HFST_OLW_TYPE) {
                 fput_stdout(
                     " Optimized lookup (unweighted)   optimized-lookup-weighted, olw, optimized-lookup, ol\n",
                 );

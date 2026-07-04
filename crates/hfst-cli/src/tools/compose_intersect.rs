@@ -168,9 +168,9 @@ fn is_special_symbol(symbol: &str) -> bool {
 
 // [spec:hfst:def:hfst-compose-intersect.check-all-symbols-fn]
 // [spec:hfst:sem:hfst-compose-intersect.check-all-symbols-fn]
-fn check_all_symbols(
-    lexicon: &HfstTransducer,
-    rule: &HfstTransducer,
+fn check_all_symbols<B: hfst::backend::AlgebraBackend>(
+    lexicon: &HfstTransducer<B>,
+    rule: &HfstTransducer<B>,
 ) -> hfst::error::Result<String> {
     let rule_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule)?;
 
@@ -197,9 +197,9 @@ fn check_all_symbols(
 
 // [spec:hfst:def:hfst-compose-intersect.check-multi-char-symbols-fn]
 // [spec:hfst:sem:hfst-compose-intersect.check-multi-char-symbols-fn]
-fn check_multi_char_symbols(
-    lexicon: &HfstTransducer,
-    rule: &HfstTransducer,
+fn check_multi_char_symbols<B: hfst::backend::AlgebraBackend>(
+    lexicon: &HfstTransducer<B>,
+    rule: &HfstTransducer<B>,
 ) -> hfst::error::Result<String> {
     let lexicon_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon)?;
     let rule_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule)?;
@@ -229,9 +229,9 @@ fn check_multi_char_symbols(
 
 // [spec:hfst:def:hfst-compose-intersect.harmonize-rules-fn]
 // [spec:hfst:sem:hfst-compose-intersect.harmonize-rules-fn]
-fn harmonize_rules(
-    lexicon: &mut HfstTransducer,
-    rules: &mut [HfstTransducer],
+fn harmonize_rules<B: hfst::backend::AlgebraBackend>(
+    lexicon: &mut HfstTransducer<B>,
+    rules: &mut [HfstTransducer<B>],
 ) -> hfst::error::Result<()> {
     for it in rules.iter_mut() {
         it.harmonize(lexicon, false)?;
@@ -265,21 +265,46 @@ unsafe fn compose_streams(
             return 1;
         }
 
-        let mut rules: HfstTransducerVector = Vec::new();
+        // The resolved output type is matched ONCE into the backend type
+        // parameter ([dec:hfst:monomorphic-backends]); every read converts to
+        // it, exactly as the C++ convert(output_type) calls did.
+        match output_type {
+            hfst::hfst_data_types::ImplementationType::LOG_OPENFST_TYPE => {
+                compose_streams_typed::<hfst::log_weight_transducer::LogFst>(
+                    firststream,
+                    secondstream,
+                    &mut outstream,
+                )
+            }
+            _ => compose_streams_typed::<hfst_openfst::StdVectorFst>(
+                firststream,
+                secondstream,
+                &mut outstream,
+            ),
+        }
+    }
+}
+
+unsafe fn compose_streams_typed<
+    B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer,
+>(
+    firststream: &mut HfstInputStream,
+    secondstream: &mut HfstInputStream,
+    outstream: &mut hfst::hfst_output_stream::HfstOutputStream,
+) -> i32 {
+    unsafe {
+        let mut rules: HfstTransducerVector<B> = Vec::new();
         let mut rule_n: usize = 1;
 
         while secondstream.is_good() {
-            let mut rule = match HfstTransducer::new_from_stream(secondstream) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            if let Err(e) = rule.convert(output_type, String::new()) {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
+            let mut rule: HfstTransducer<B> =
+                match secondstream.read().and_then(|any| any.into_typed()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
             let rulename = rule.get_name();
             if rulename.len() > 0 {
                 verbose_print(&format!("Reading and minimizing rule {}...\n", rulename));
@@ -300,17 +325,14 @@ unsafe fn compose_streams(
 
         while firststream.is_good() {
             verbose_print("Reading lexicon...");
-            let mut lexicon = match HfstTransducer::new_from_stream(firststream) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            if let Err(e) = lexicon.convert(output_type, String::new()) {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
+            let mut lexicon: HfstTransducer<B> =
+                match firststream.read().and_then(|any| any.into_typed()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
             let lexiconname = hfst_get_name(&lexicon, &globals::first_filename());
             verbose_print(&format!(" {} read\n", lexiconname));
 

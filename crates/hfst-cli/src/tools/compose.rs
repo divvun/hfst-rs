@@ -5,13 +5,11 @@
 //! shared scaffolding lives in crate::binary_ops.
 
 use crate::binary_ops::{
-    BinaryOpSpec, LoopStyle, PairContext, RetryPolicy, print_do_not_convert_error,
-    run_binary_streams_tool,
+    BinaryOpSpec, BinaryToolOp, LoopStyle, PairContext, RetryPolicy, run_binary_streams_tool,
 };
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, convert_transducers, error, extend_options_from_env, hfst_set_program_name,
-    warning,
+    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, warning,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -22,6 +20,7 @@ use crate::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
+use hfst::backend::AlgebraBackend;
 use hfst::hfst_transducer::{EngineConfig, HfstTransducer};
 use std::io::Write;
 
@@ -198,54 +197,60 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
         if retval != EXIT_CONTINUE {
             return retval;
         }
-        let harmonize = HARMONIZE;
-        let harmonize_flags = HARMONIZE_FLAGS;
-        let cfg = EngineConfig {
-            flag_is_epsilon_in_composition: FLAG_IS_EPSILON,
-            xerox_composition: XEROX_COMPOSITION,
-            ..EngineConfig::default()
+        let mut op = ComposeOp {
+            harmonize: HARMONIZE,
+            harmonize_flags: HARMONIZE_FLAGS,
+            cfg: EngineConfig {
+                flag_is_epsilon_in_composition: FLAG_IS_EPSILON,
+                xerox_composition: XEROX_COMPOSITION,
+                ..EngineConfig::default()
+            },
         };
-        let mut pre_apply = |first: &mut HfstTransducer,
-                             second: &mut HfstTransducer,
-                             ctx: &PairContext|
-         -> Result<(), i32> {
-            let has_flags = first.has_flag_diacritics() || second.has_flag_diacritics();
-            if has_flags {
-                if !harmonize_flags {
-                    if !globals::SILENT {
-                        warning(
-                            0,
-                            0,
-                            "At least one of the arguments contains flag diacritics. Use -F to harmonize them.",
-                        );
-                    }
-                } else if let Err(e) = first.harmonize_flag_diacritics(second, true) {
-                    if matches!(e.kind, hfst::error::ErrorKind::TransducerTypeMismatch) {
-                        if globals::ALLOW_TRANSDUCER_CONVERSION {
-                            if let Err(e) = convert_transducers(first, second) {
-                                error(1, 0, &format!("{e}"));
-                                return Err(1);
-                            }
-                            if let Err(e2) = first.harmonize_flag_diacritics(second, true) {
-                                error(1, 0, &format!("{e2}"));
-                                return Err(1);
-                            }
-                        } else {
-                            print_do_not_convert_error(&SPEC, ctx);
-                            return Err(1);
-                        }
-                    } else {
-                        error(1, 0, &format!("{e}"));
-                        return Err(1);
-                    }
+        run_binary_streams_tool(&SPEC, &mut op)
+    }
+}
+
+struct ComposeOp {
+    harmonize: bool,
+    harmonize_flags: bool,
+    cfg: EngineConfig,
+}
+
+impl BinaryToolOp for ComposeOp {
+    // The harmonize-flags gate. (The C's catch-TransducerTypeMismatch,
+    // convert-and-retry arm is gone: operands share a backend by construction
+    // at this point — the driver converted at the stream boundary.)
+    fn pre_apply<B: AlgebraBackend>(
+        &mut self,
+        first: &mut HfstTransducer<B>,
+        second: &mut HfstTransducer<B>,
+        _ctx: &PairContext,
+    ) -> Result<(), i32> {
+        let has_flags = first.has_flag_diacritics() || second.has_flag_diacritics();
+        if has_flags {
+            if !self.harmonize_flags {
+                if !unsafe { globals::SILENT } {
+                    warning(
+                        0,
+                        0,
+                        "At least one of the arguments contains flag diacritics. Use -F to harmonize them.",
+                    );
                 }
+            } else if let Err(e) = first.harmonize_flag_diacritics(second, true) {
+                error(1, 0, &format!("{e}"));
+                return Err(1);
             }
-            Ok(())
-        };
-        run_binary_streams_tool(&SPEC, Some(&mut pre_apply), &mut |first, second| {
-            first
-                .compose_with_config(second, harmonize, &cfg)
-                .map(|_| ())
-        })
+        }
+        Ok(())
+    }
+
+    fn apply<B: AlgebraBackend>(
+        &mut self,
+        first: &mut HfstTransducer<B>,
+        second: &HfstTransducer<B>,
+    ) -> hfst::error::Result<()> {
+        first
+            .compose_with_config(second, self.harmonize, &self.cfg)
+            .map(|_| ())
     }
 }

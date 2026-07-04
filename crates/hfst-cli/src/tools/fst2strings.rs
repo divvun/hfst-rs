@@ -453,7 +453,7 @@ unsafe fn process_stream(
             }
             first_transducer = false;
 
-            let mut t = match HfstTransducer::new_from_stream(instream) {
+            let any = match instream.read() {
                 Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
@@ -476,6 +476,36 @@ unsafe fn process_stream(
                 verbose_print(&format!("input_prefix: '{}'\n", INPUT_PREFIX));
             }
 
+            // the one runtime dispatch per stream read
+            // ([dec:hfst:monomorphic-backends]): the algebra-only pruning
+            // options (--beam, --nbest, --random without flag evaluation)
+            // become the C++ catch-FunctionNotImplemented error messages on
+            // the optimized-lookup variants.
+            let code = match any {
+                hfst::hfst_transducer::AnyTransducer::Tropical(t) => {
+                    process_one_algebra(t, outstream)
+                }
+                hfst::hfst_transducer::AnyTransducer::Log(t) => process_one_algebra(t, outstream),
+                hfst::hfst_transducer::AnyTransducer::OlW(t) => process_one_ol(t, outstream),
+                hfst::hfst_transducer::AnyTransducer::OlU(t) => process_one_ol(t, outstream),
+            };
+            if code != 0 {
+                return code;
+            }
+        }
+
+        instream.close();
+        0
+    }
+}
+
+// The full per-transducer body for the algebra backends.
+unsafe fn process_one_algebra<B: hfst::backend::AlgebraBackend>(
+    mut t: HfstTransducer<B>,
+    outstream: &mut dyn std::io::Write,
+) -> i32 {
+    unsafe {
+        {
             if BEAM >= 0.0 {
                 verbose_print("Finding the weight of the best path...\n");
                 // (the C wraps this in try/catch on FunctionNotImplementedException
@@ -579,8 +609,112 @@ unsafe fn process_stream(
                 verbose_print(&format!("Printed {} random string(s)\n", cb.count));
             }
         }
+        0
+    }
+}
 
-        instream.close();
+// The per-transducer body for the optimized-lookup backends: path extraction
+// works; the algebra-only pruning options produce the C++ error texts (the
+// former catch-FunctionNotImplemented arms of hfst-fst2strings.cc).
+unsafe fn process_one_ol<B: hfst::backend::LookupBackend>(
+    t: HfstTransducer<B>,
+    outstream: &mut dyn std::io::Write,
+) -> i32 {
+    unsafe {
+        if BEAM >= 0.0 {
+            verbose_print("Finding the weight of the best path...\n");
+            crate::hfst_commandline::hfst_error(
+                1,
+                0,
+                "option --beam not implemented for optimized lookup format",
+            );
+            return 1;
+        }
+
+        if NBEST_STRINGS > 0 {
+            verbose_print(&format!(
+                "Pruning transducer to {} best path(s)...\n",
+                NBEST_STRINGS
+            ));
+            crate::hfst_commandline::hfst_error(
+                1,
+                0,
+                "option --nbest not implemented for optimized lookup format",
+            );
+            return 1;
+        } else if MAX_RANDOM_STRINGS <= 0
+            && MAX_STRINGS <= 0
+            && MAX_INPUT_LENGTH == 0
+            && MAX_OUTPUT_LENGTH == 0
+            && CYCLES < 0
+        {
+            let is_cyclic = match t.is_cyclic() {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            if is_cyclic {
+                error(
+                    1,
+                    0,
+                    "Transducer is cyclic. Use one or more of these options: -n, -N, -r, -l, -L, -c",
+                );
+                return 1;
+            }
+        }
+
+        if MAX_STRINGS > 0 {
+            verbose_print(&format!("Finding at most {} path(s)...\n", MAX_STRINGS));
+        } else if MAX_RANDOM_STRINGS > 0 {
+            verbose_print(&format!(
+                "Finding at most {} random path(s)...\n",
+                MAX_RANDOM_STRINGS
+            ));
+        } else {
+            verbose_print("Finding strings...\n");
+        }
+
+        /* not random strings */
+        if MAX_RANDOM_STRINGS <= 0 {
+            let mut cb = Callback::new(MAX_STRINGS, &mut *outstream);
+            let extract_res = if EVAL_FD {
+                t.extract_paths_fd_cb(&mut cb, CYCLES, FILTER_FD)
+            } else {
+                t.extract_paths_cb(&mut cb, CYCLES)
+            };
+            if let Err(e) = extract_res {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+            verbose_print(&format!("Printed {} string(s)\n", cb.count));
+        }
+        /* random strings */
+        else {
+            if !EVAL_FD {
+                // C++: HfstTransducer::extract_random_paths threw
+                // FunctionNotImplemented for the OL backends.
+                crate::hfst_commandline::hfst_error(
+                    1,
+                    0,
+                    "option --random not implemented for optimized lookup format",
+                );
+                return 1;
+            }
+            let mut results: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
+            if let Err(e) = t.extract_random_paths_fd(&mut results, MAX_RANDOM_STRINGS, FILTER_FD) {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+
+            let mut cb = Callback::new(MAX_RANDOM_STRINGS, &mut *outstream);
+            for it in results.iter() {
+                let mut path: HfstTwoLevelPath = it.clone();
+                cb.operator_call(&mut path, true /*final*/);
+            }
+            verbose_print(&format!("Printed {} random string(s)\n", cb.count));
+        }
         0
     }
 }

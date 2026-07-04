@@ -240,7 +240,10 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 //
 // Parse file 'filename' using compiler 'comp'.
 // Filename "<stdin>" uses stdin for reading.
-fn parse_file(filename: &str, comp: &mut XfstCompiler) -> i32 {
+fn parse_file<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer>(
+    filename: &str,
+    comp: &mut XfstCompiler<B>,
+) -> i32 {
     // hfst_file_to_mem(filename): the whole file (or stdin) as one string.
     let line = if filename == "<stdin>" {
         let mut s = String::new();
@@ -351,8 +354,22 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
             return EXIT_FAILURE;
         }
 
-        // Create XfstCompiler
-        let mut comp = XfstCompiler::new_with_impl(OUTPUT_FORMAT);
+        // Create XfstCompiler: the parsed --format is matched ONCE into the
+        // compiler's backend type parameter ([dec:hfst:monomorphic-backends]).
+        match OUTPUT_FORMAT {
+            ImplementationType::LOG_OPENFST_TYPE => {
+                run_compiler::<hfst::log_weight_transducer::LogFst>()
+            }
+            _ => run_compiler::<hfst_openfst::StdVectorFst>(),
+        }
+    }
+}
+
+unsafe fn run_compiler<
+    B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer,
+>() -> i32 {
+    unsafe {
+        let mut comp = XfstCompiler::<B>::new_with_impl();
         // HAVE_READLINE is not defined in this port.
         comp.set_readline(false);
         comp.set_verbosity(!globals::SILENT);

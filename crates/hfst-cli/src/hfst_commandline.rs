@@ -15,10 +15,11 @@
 //! Globals live once in 'crate::globals'; in C they were '#include'd per tool.
 
 use crate::globals::{self, ColourTristate};
+use hfst::backend::Backend;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::hfst_transducer::{AnyTransducer, HfstTransducer, is_safe_conversion};
 use std::io::{IsTerminal, Write};
 
 // ---------------------------------------------------------------------------
@@ -199,7 +200,10 @@ pub fn get_compatible_fst_format() -> i32 {
 
 // [spec:hfst:def:hfst-commandline.debug-save-transducer-fn]
 // [spec:hfst:sem:hfst-commandline.debug-save-transducer-fn]
-pub fn debug_save_transducer(t: &HfstTransducer, name: &str) -> hfst::error::Result<()> {
+pub fn debug_save_transducer<B: Backend>(
+    t: &HfstTransducer<B>,
+    name: &str,
+) -> hfst::error::Result<()> {
     if unsafe { globals::DEBUG } {
         // C built "DEBUG %s" with sprintf; that always succeeds here.
         let mut t = t.clone();
@@ -246,26 +250,66 @@ pub fn conversion_type(type1: ImplementationType, type2: ImplementationType) -> 
     if type1 == type2 {
         return 0;
     }
-    if HfstTransducer::is_safe_conversion(type2, type1) {
+    if is_safe_conversion(type2, type1) {
         1
-    } else if HfstTransducer::is_safe_conversion(type1, type2) {
+    } else if is_safe_conversion(type1, type2) {
         2
     } else {
         -1
     }
 }
 
+/// The typed replacement for the C++ 'HfstTransducer::convert(type)' at the
+/// CLI stream boundary ([dec:hfst:monomorphic-backends]): re-type a stream
+/// sum to 'ty' through the interchange transducer. OL targets build
+/// weighted-shaped tables whatever the requested weightedness — exactly as
+/// the C++ convert did — with the header flag carrying the OL/OLW tag.
+pub fn convert_any(t: AnyTransducer, ty: ImplementationType) -> hfst::error::Result<AnyTransducer> {
+    convert_any_with_options(t, ty, "")
+}
+
+/// ['convert_any'] with the C++ convert's options string ("quick" relaxes the
+/// optimized-lookup table packing; only fst2fst's -Q sets it).
+pub fn convert_any_with_options(
+    t: AnyTransducer,
+    ty: ImplementationType,
+    options: &str,
+) -> hfst::error::Result<AnyTransducer> {
+    if t.get_type() == ty {
+        return Ok(t);
+    }
+    Ok(match ty {
+        ImplementationType::TROPICAL_OPENFST_TYPE => AnyTransducer::Tropical(t.into_typed()?),
+        ImplementationType::LOG_OPENFST_TYPE => AnyTransducer::Log(t.into_typed()?),
+        ImplementationType::HFST_OLW_TYPE | ImplementationType::HFST_OL_TYPE => {
+            let weighted = ty == ImplementationType::HFST_OLW_TYPE;
+            match t {
+                AnyTransducer::Tropical(x) => AnyTransducer::OlW(x.to_ol(weighted, options)?),
+                AnyTransducer::Log(x) => AnyTransducer::OlW(x.to_ol(weighted, options)?),
+                // OL -> OL retag (only the header weightedness differs):
+                // through the algebra, as the C++ went through basic.
+                other => {
+                    let x: HfstTransducer<hfst_openfst::StdVectorFst> = other.into_typed()?;
+                    AnyTransducer::OlW(x.to_ol(weighted, options)?)
+                }
+            }
+        }
+        other => hfst::bail!(ImplementationTypeNotAvailable(other)),
+    })
+}
+
 // [spec:hfst:def:hfst-commandline.convert-transducers-fn]
 // [spec:hfst:sem:hfst-commandline.convert-transducers-fn]
 pub fn convert_transducers(
-    first: &mut HfstTransducer,
-    second: &mut HfstTransducer,
-) -> hfst::error::Result<()> {
+    first: AnyTransducer,
+    second: AnyTransducer,
+) -> hfst::error::Result<(AnyTransducer, AnyTransducer)> {
     let type1 = first.get_type();
     let type2 = second.get_type();
     let ct = conversion_type(type1, type2);
 
     if ct == 0 {
+        Ok((first, second))
     } else if ct == 1 {
         hfst_warning(
             0,
@@ -275,7 +319,8 @@ pub fn convert_transducers(
                 hfst_strformat(type1)
             ),
         );
-        second.convert(type1, String::new())?;
+        let second = convert_any(second, type1)?;
+        Ok((first, second))
     } else if ct == 2 {
         hfst_warning(
             0,
@@ -285,7 +330,8 @@ pub fn convert_transducers(
                 hfst_strformat(type2)
             ),
         );
-        first.convert(type2, String::new())?;
+        let first = convert_any(first, type2)?;
+        Ok((first, second))
     } else if ct == -1 {
         hfst_warning(
             0,
@@ -295,13 +341,36 @@ pub fn convert_transducers(
                 hfst_strformat(type1)
             ),
         );
-        second.convert(type1, String::new())?;
+        let second = convert_any(second, type1)?;
+        Ok((first, second))
     } else {
         // This should not happen.
         hfst::HFST_THROW_MESSAGE!(
             Fatal,
             "convert_transducers: conversion_type returned an invalid integer"
         );
+    }
+}
+
+/// Write an algebra-backend result into 'outstream', converting to
+/// optimized-lookup first when the stream was opened with an OL '--format'
+/// (the C++ facade converted inside 'operator<<' type plumbing; the typed
+/// conversion of [dec:hfst:monomorphic-backends] happens here instead).
+pub fn redirect_converting<B: hfst::backend::AlgebraBackend>(
+    outstream: &mut HfstOutputStream,
+    t: &mut HfstTransducer<B>,
+) -> hfst::error::Result<()> {
+    match outstream.get_type() {
+        ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
+            let mut ol = t.to_ol(
+                outstream.get_type() == ImplementationType::HFST_OLW_TYPE,
+                "",
+            )?;
+            outstream.redirect(&mut ol)?;
+        }
+        _ => {
+            outstream.redirect(t)?;
+        }
     }
     Ok(())
 }

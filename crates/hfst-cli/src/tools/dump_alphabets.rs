@@ -18,7 +18,6 @@ use crate::inc::{
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::StringSet;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // add tools-specific variables here
@@ -192,39 +191,59 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             } else {
                 verbose_print(&format!("Alphadumping... {}\n", transducer_n));
             }
-            let trans = match HfstTransducer::new_from_stream(instream) {
+            let any = match instream.read() {
                 Ok(t) => t,
                 Err(e) => {
                     eprintln!("hfst-dump-alphabets: {e}");
                     return 1;
                 }
             };
-            let mutt = HfstBasicTransducer::new_from_transducer(&trans);
-            // unsigned int initial_state = 0; // mutt.get_initial_state();
-            let transducer_alphabet = match trans.get_alphabet() {
-                Ok(a) => a,
-                Err(e) => {
-                    eprintln!("hfst-dump-alphabets: {e}");
-                    return 1;
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            crate::for_any!(any, trans => {
+                let mutt = HfstBasicTransducer::new_from_transducer(&trans);
+                // unsigned int initial_state = 0; // mutt.get_initial_state();
+                let transducer_alphabet = match trans.get_alphabet() {
+                    Ok(a) => a,
+                    Err(e) => {
+                        eprintln!("hfst-dump-alphabets: {e}");
+                        return 1;
+                    }
+                };
+                let transducer_knows_alphabet = true;
+                let found_alphabet: StringSet = mutt.symbols_used();
+                if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
+                    emit(
+                        "## automatically generated VISL CG 3 file from HFST automaton's alphabet data:\n",
+                    );
+                    emit("## (some statistics here TODO)\n");
+                    emit("STRICT-TAGS +=\n");
+                } else if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3List {
+                    emit(
+                        "## automatically generated VISL CG 3 file from HFST automaton's alphabet data:\n",
+                    );
+                    emit("## (some statistics here TODO)\n");
                 }
-            };
-            let transducer_knows_alphabet = true;
-            let found_alphabet: StringSet = mutt.symbols_used();
-            if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
-                emit(
-                    "## automatically generated VISL CG 3 file from HFST automaton's alphabet data:\n",
-                );
-                emit("## (some statistics here TODO)\n");
-                emit("STRICT-TAGS +=\n");
-            } else if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3List {
-                emit(
-                    "## automatically generated VISL CG 3 file from HFST automaton's alphabet data:\n",
-                );
-                emit("## (some statistics here TODO)\n");
-            }
-            if PRINT_META {
-                if transducer_knows_alphabet {
-                    for s in transducer_alphabet.iter() {
+                if PRINT_META {
+                    if transducer_knows_alphabet {
+                        for s in transducer_alphabet.iter() {
+                            if ONLY_MULTICHARS && !is_multichar(s) {
+                                continue;
+                            }
+                            if OUTPUT_FORMAT == AlphaDumpFormat::Tsv {
+                                emit(&format!("{}\n", s));
+                            } else if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
+                                emit(&format!("\t{}\n", s));
+                            } else if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3List {
+                                emit(&format!("LIST {} = {} ;\n", s, s));
+                            }
+                        }
+                    } else {
+                        eprintln!("Error: cannot dump non-existent header alphabet");
+                        std::process::exit(1);
+                    }
+                }
+                if PRINT_SEEN {
+                    for s in found_alphabet.iter() {
                         if ONLY_MULTICHARS && !is_multichar(s) {
                             continue;
                         }
@@ -236,25 +255,8 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                             emit(&format!("LIST {} = {} ;\n", s, s));
                         }
                     }
-                } else {
-                    eprintln!("Error: cannot dump non-existent header alphabet");
-                    std::process::exit(1);
                 }
-            }
-            if PRINT_SEEN {
-                for s in found_alphabet.iter() {
-                    if ONLY_MULTICHARS && !is_multichar(s) {
-                        continue;
-                    }
-                    if OUTPUT_FORMAT == AlphaDumpFormat::Tsv {
-                        emit(&format!("{}\n", s));
-                    } else if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
-                        emit(&format!("\t{}\n", s));
-                    } else if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3List {
-                        emit(&format!("LIST {} = {} ;\n", s, s));
-                    }
-                }
-            }
+            });
         } // for each automaton
         if OUTPUT_FORMAT == AlphaDumpFormat::Vislcg3Tags {
             emit("\t;\n");

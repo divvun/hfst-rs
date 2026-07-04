@@ -18,7 +18,7 @@ use crate::inc::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::hfst_transducer::AnyTransducer;
 use std::collections::VecDeque;
 use std::io::Write;
 
@@ -107,13 +107,13 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 // [spec:hfst:sem:hfst-tail.process-stream-fn]
 unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOutputStream) -> i32 {
     unsafe {
-        let mut last_n: VecDeque<HfstTransducer> = VecDeque::new();
+        let mut last_n: VecDeque<AnyTransducer> = VecDeque::new();
         let mut transducer_n: i64 = 0;
         if TAIL_COUNT > 0 {
             verbose_print(&format!("Counting last {} transducers...\n", TAIL_COUNT));
             while instream.is_good() {
                 transducer_n += 1;
-                let trans = match HfstTransducer::new_from_stream(instream) {
+                let trans = match instream.read() {
                     Ok(t) => t,
                     Err(e) => {
                         crate::hfst_commandline::error(1, 0, &format!("{e}"));
@@ -140,7 +140,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 let mut front = last_n
                     .pop_front()
                     .expect("last_n is non-empty per the enclosing while condition");
-                if let Err(e) = outstream.redirect(&mut front) {
+                if let Err(e) = front.write(outstream) {
                     crate::hfst_commandline::error(1, 0, &format!("{e}"));
                     return 1;
                 }
@@ -149,7 +149,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             verbose_print(&format!("Skipping {} transducers...\n", -TAIL_COUNT));
             while instream.is_good() {
                 transducer_n += 1;
-                let mut trans = match HfstTransducer::new_from_stream(instream) {
+                let mut trans = match instream.read() {
                     Ok(t) => t,
                     Err(e) => {
                         crate::hfst_commandline::error(1, 0, &format!("{e}"));
@@ -162,7 +162,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                         globals::input_filename(),
                         transducer_n
                     ));
-                    if let Err(e) = outstream.redirect(&mut trans) {
+                    if let Err(e) = trans.write(outstream) {
                         crate::hfst_commandline::error(1, 0, &format!("{e}"));
                         return 1;
                     }

@@ -20,7 +20,6 @@ use crate::inc::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // add tools-specific variables here
@@ -113,34 +112,46 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
+            let any = match instream.read() {
                 Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            let inputname = hfst_get_name(&trans, &globals::input_filename());
-            if transducer_n == 1 {
-                verbose_print(&format!("Pruning {}...\n", inputname));
-            } else {
-                verbose_print(&format!("Pruning {}... {}\n", inputname, transducer_n));
-            }
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            crate::for_algebra!(any, trans => {
+                let mut trans = trans;
+                let inputname = hfst_get_name(&trans, &globals::input_filename());
+                if transducer_n == 1 {
+                    verbose_print(&format!("Pruning {}...\n", inputname));
+                } else {
+                    verbose_print(&format!("Pruning {}... {}\n", inputname, transducer_n));
+                }
 
-            if let Err(e) = trans.prune_alphabet(FORCE_PRUNING) {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-            // C: hfst_set_name(trans, trans, "prune-alphabet"); the dest and src
-            // are the same object, which Rust cannot alias mut+const, so the read
-            // side is taken from a copy (name is unchanged by the copy).
-            let src = trans.clone();
-            hfst_set_name_unary(&mut trans, &src, "prune-alphabet");
+                if let Err(e) = trans.prune_alphabet(FORCE_PRUNING) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+                // C: hfst_set_name(trans, trans, "prune-alphabet"); the dest and src
+                // are the same object, which Rust cannot alias mut+const, so the read
+                // side is taken from a copy (name is unchanged by the copy).
+                let src = trans.clone();
+                hfst_set_name_unary(&mut trans, &src, "prune-alphabet");
 
-            if let Err(e) = outstream.redirect(&mut trans) {
-                error(1, 0, &format!("{e}"));
+                if let Err(e) = outstream.redirect(&mut trans) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            }, else => {
+                // Unreachable: the optimized-lookup stream rejection already
+                // returned before the loop; keep its text for safety.
+                let _ = write!(
+                    std::io::stderr(),
+                    "Error: hfst-prune-alphabet cannot process transducers that are in optimized lookup format.\n"
+                );
                 return 1;
-            }
+            });
         }
         instream.close();
         outstream.close();

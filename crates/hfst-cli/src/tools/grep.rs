@@ -85,9 +85,14 @@ static mut BEFORE_CONTEXT: u64 = 0;
 static mut AFTER_CONTEXT: u64 = 0;
 #[allow(dead_code)]
 static mut MATCHES: u64 = 0;
-static mut MATCHER: *mut HfstTransducer = std::ptr::null_mut();
+// The matcher pipeline is pinned to the tropical backend
+// ([dec:hfst:monomorphic-backends]): grep's output is the matched lines, so
+// the -f format (kept for option compatibility) never changes what is
+// printed.
+static mut MATCHER: *mut HfstTransducer<hfst_openfst::StdVectorFst> = std::ptr::null_mut();
 #[allow(dead_code)]
-static mut OPTIMISED_MATCHER: *mut HfstTransducer = std::ptr::null_mut();
+static mut OPTIMISED_MATCHER: *mut HfstTransducer<hfst::transducer::Transducer> =
+    std::ptr::null_mut();
 
 static mut FORMAT: ImplementationType = ImplementationType::UNSPECIFIED_TYPE;
 
@@ -448,24 +453,18 @@ unsafe fn string_to_utf8(p: &str) -> Vec<String> {
 unsafe fn read_matcher_stream(instream: &mut HfstInputStream) -> i32 {
     unsafe {
         let mut transducer_n: usize = 0;
-        MATCHER = Box::into_raw(Box::new(
-            match HfstTransducer::new_type(instream.get_type()) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            },
-        ));
+        MATCHER = Box::into_raw(Box::new(HfstTransducer::new()));
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
+            // one dispatch per read: everything joins the tropical matcher
+            let mut trans: HfstTransducer<hfst_openfst::StdVectorFst> =
+                match instream.read().and_then(|any| any.into_typed()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
             let mut inputname = trans.get_name();
             if inputname.is_empty() {
                 inputname = INPUTFILENAME.clone();
@@ -502,15 +501,12 @@ unsafe fn read_matcher_stream(instream: &mut HfstInputStream) -> i32 {
 
 unsafe fn read_matcher(expression: &str) {
     unsafe {
-        MATCHER = Box::into_raw(Box::new(match HfstTransducer::new_type(FORMAT) {
-            Ok(t) => t,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return;
-            }
-        }));
+        // (FORMAT is parsed for option compatibility; the matcher runs on
+        // the tropical backend regardless — matching is weight-independent.)
+        let _ = FORMAT;
+        MATCHER = Box::into_raw(Box::new(HfstTransducer::new()));
         if DIALECT_XEROX {
-            let mut comp = XreCompiler::new(FORMAT);
+            let mut comp = XreCompiler::<hfst_openfst::StdVectorFst>::new();
             verbose_print(&format!(
                 "parsing {} as Xerox style regular expression...\n",
                 expression
@@ -530,8 +526,7 @@ unsafe fn read_matcher(expression: &str) {
                 expression
             ));
             let t = HfstTokenizer::new();
-            let trans = match HfstTransducer::new_tokenized_pair(expression, expression, &t, FORMAT)
-            {
+            let trans = match HfstTransducer::new_tokenized_pair(expression, expression, &t) {
                 Ok(t) => t,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
@@ -564,22 +559,20 @@ unsafe fn extend_matcher_with_options() {
     unsafe {
         if globals::COLOUR == ColourTristate::COLOUR_ALWAYS {
             verbose_print("Adding color codes to match boundaries...\n");
-            let color_start =
-                match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "[31m", FORMAT) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        error(1, 0, &format!("{e}"));
-                        return;
-                    }
-                };
-            let color_end =
-                match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "[00m", FORMAT) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        error(1, 0, &format!("{e}"));
-                        return;
-                    }
-                };
+            let color_start = match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "[31m") {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            };
+            let color_end = match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "[00m") {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            };
             let mut coloured = color_start;
             if let Err(e) = coloured.concatenate(&*MATCHER, true) {
                 error(1, 0, &format!("{e}"));
@@ -593,22 +586,20 @@ unsafe fn extend_matcher_with_options() {
         } else {
             // bracket matches for now
             verbose_print("Adding brackets to match boundaries...\n");
-            let color_start =
-                match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "{{{", FORMAT) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        error(1, 0, &format!("{e}"));
-                        return;
-                    }
-                };
-            let color_end =
-                match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "}}}", FORMAT) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        error(1, 0, &format!("{e}"));
-                        return;
-                    }
-                };
+            let color_start = match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "{{{") {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            };
+            let color_end = match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "}}}") {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return;
+                }
+            };
             let mut coloured = color_start;
             if let Err(e) = coloured.concatenate(&*MATCHER, true) {
                 error(1, 0, &format!("{e}"));
@@ -622,14 +613,14 @@ unsafe fn extend_matcher_with_options() {
         }
         if MATCH_WORD {
             verbose_print("Delimiting matcher to word boundaries (currently space)...\n");
-            let non_word_char_left = match HfstTransducer::new_symbol(" ", FORMAT) {
+            let non_word_char_left = match HfstTransducer::new_symbol(" ") {
                 Ok(t) => t,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return;
                 }
             };
-            let non_word_char_right = match HfstTransducer::new_symbol(" ", FORMAT) {
+            let non_word_char_right = match HfstTransducer::new_symbol(" ") {
                 Ok(t) => t,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
@@ -649,14 +640,14 @@ unsafe fn extend_matcher_with_options() {
         }
         if !MATCH_FULL_LINE {
             verbose_print("Extending matcher for repetitions and rest...\n");
-            let mut left_any = match HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", FORMAT) {
+            let mut left_any = match HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@") {
                 Ok(t) => t,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return;
                 }
             };
-            let mut right_any = match HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@", FORMAT) {
+            let mut right_any = match HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@") {
                 Ok(t) => t,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
@@ -726,7 +717,10 @@ unsafe fn print_match_line(path: &HfstOneLevelPath, out: &mut dyn Write) {
 
 // [spec:hfst:def:hfst-grep.print-match-transducer-fn]
 // [spec:hfst:sem:hfst-grep.print-match-transducer-fn]
-unsafe fn print_match_transducer(path: &HfstTransducer, out: &mut dyn Write) {
+unsafe fn print_match_transducer(
+    path: &HfstTransducer<hfst_openfst::StdVectorFst>,
+    out: &mut dyn Write,
+) {
     unsafe {
         let mut p: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
         if let Err(e) = path.extract_paths(&mut p, 1, -1) {
@@ -789,15 +783,14 @@ unsafe fn match_lines(infile: &mut dyn BufRead, infilename: &str, out: &mut dyn 
                 continue;
             }
             let line_str = line;
-            let mut line_trans = match HfstTransducer::new_tokenized_pair(
-                &line_str, &line_str, &tokeniser, FORMAT,
-            ) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return false;
-                }
-            };
+            let mut line_trans: HfstTransducer<hfst_openfst::StdVectorFst> =
+                match HfstTransducer::new_tokenized_pair(&line_str, &line_str, &tokeniser) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return false;
+                    }
+                };
             verbose_print("composing...\n");
             let mut results_t = match HfstTransducer::new_copy(&line_trans) {
                 Ok(t) => t,
@@ -814,13 +807,7 @@ unsafe fn match_lines(infile: &mut dyn BufRead, infilename: &str, out: &mut dyn 
                 error(1, 0, &format!("{e}"));
                 return false;
             }
-            let empty = match HfstTransducer::new_type(FORMAT) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return false;
-                }
-            };
+            let empty: HfstTransducer<hfst_openfst::StdVectorFst> = HfstTransducer::new();
             let is_empty = match results_t.compare_default(&empty) {
                 Ok(b) => b,
                 Err(e) => {
@@ -859,15 +846,15 @@ unsafe fn match_lines(infile: &mut dyn BufRead, infilename: &str, out: &mut dyn 
 unsafe fn optimise_matcher() {
     unsafe {
         verbose_print("Optimising...\n");
-        OPTIMISED_MATCHER = Box::into_raw(Box::new(
-            match HfstTransducer::convert_static(&*MATCHER, ImplementationType::HFST_OL_TYPE) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return;
-                }
-            },
-        ));
+        // C: HfstTransducer(*matcher).convert(HFST_OL_TYPE) — the typed
+        // algebra->OL conversion now.
+        OPTIMISED_MATCHER = Box::into_raw(Box::new(match (*MATCHER).to_ol(false, "") {
+            Ok(t) => t,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return;
+            }
+        }));
     }
 }
 

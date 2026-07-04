@@ -19,7 +19,7 @@ use crate::inc::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::hfst_transducer::AnyTransducer;
 use std::collections::VecDeque;
 use std::io::Write;
 
@@ -110,7 +110,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         if HEAD_COUNT > 0 {
             while instream.is_good() && (transducer_n < HEAD_COUNT as usize) {
                 transducer_n += 1;
-                let mut trans = match HfstTransducer::new_from_stream(instream) {
+                let mut trans = match instream.read() {
                     Ok(t) => t,
                     Err(e) => {
                         crate::hfst_commandline::error(1, 0, &format!("{e}"));
@@ -122,17 +122,17 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                     inputname = globals::input_filename();
                 }
                 verbose_print(&format!("Forwarding {}...{}\n", inputname, transducer_n));
-                if let Err(e) = outstream.redirect(&mut trans) {
+                if let Err(e) = trans.write(outstream) {
                     crate::hfst_commandline::error(1, 0, &format!("{e}"));
                     return 1;
                 }
             }
         } else if HEAD_COUNT < 0 {
-            let mut first_but_n: VecDeque<HfstTransducer> = VecDeque::new();
+            let mut first_but_n: VecDeque<AnyTransducer> = VecDeque::new();
             verbose_print(&format!("Counting all but last {}\n", HEAD_COUNT));
             while instream.is_good() {
                 transducer_n += 1;
-                let trans = match HfstTransducer::new_from_stream(instream) {
+                let trans = match instream.read() {
                     Ok(t) => t,
                     Err(e) => {
                         crate::hfst_commandline::error(1, 0, &format!("{e}"));
@@ -158,17 +158,20 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 }
             }
             while !first_but_n.is_empty() {
-                let mut trans = first_but_n.front().unwrap().clone();
+                // C: copied the front and popped it afterwards; taking it by
+                // value is the same write in one move.
+                let mut trans = first_but_n
+                    .pop_front()
+                    .expect("first_but_n is non-empty per the enclosing while condition");
                 let mut inputname = trans.get_name();
                 if inputname.is_empty() {
                     inputname = globals::input_filename();
                 }
                 verbose_print(&format!("Forwarding {}...{}\n", inputname, transducer_n));
-                if let Err(e) = outstream.redirect(&mut trans) {
+                if let Err(e) = trans.write(outstream) {
                     crate::hfst_commandline::error(1, 0, &format!("{e}"));
                     return 1;
                 }
-                first_but_n.pop_front();
             }
         }
         if let Err(e) = outstream.flush() {

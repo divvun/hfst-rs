@@ -18,10 +18,8 @@ use crate::inc::{
     handle_unary_case,
 };
 use hfst::guessify_fst::{GuessDirection, affix_guessify};
-use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // add tools-specific variables here
@@ -30,7 +28,6 @@ use std::io::Write;
 // stream-driver loop.
 static mut DIRECTION: GuessDirection = GuessDirection::GuessSuffix;
 static mut WEIGHT: f32 = 1.0f32;
-static mut FORMAT: ImplementationType = ImplementationType::TROPICAL_OPENFST_TYPE;
 
 // [spec:hfst:def:hfst-affix-guessify.print-usage-fn]
 // [spec:hfst:sem:hfst-affix-guessify.print-usage-fn]
@@ -139,35 +136,47 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let trans = match HfstTransducer::new_from_stream(instream) {
-                Ok(t) => t,
+            let any = match instream.read() {
+                Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            // C: inputname = trans->get_name(); if empty, use inputfilename.
-            let inputname = if !trans.get_name().is_empty() {
-                trans.get_name()
-            } else {
-                globals::input_filename()
-            };
-            if transducer_n < 2 {
-                verbose_print(&format!("Guessifying {}...\n", inputname));
-            } else {
-                verbose_print(&format!("Guessifying {}... {}\n", inputname, transducer_n));
-            }
-            let mut t = match affix_guessify(&trans, DIRECTION, WEIGHT, FORMAT) {
-                Ok(t) => t,
-                Err(e) => {
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            crate::for_algebra!(any, trans => {
+                let trans = trans;
+                // C: inputname = trans->get_name(); if empty, use inputfilename.
+                let inputname = if !trans.get_name().is_empty() {
+                    trans.get_name()
+                } else {
+                    globals::input_filename()
+                };
+                if transducer_n < 2 {
+                    verbose_print(&format!("Guessifying {}...\n", inputname));
+                } else {
+                    verbose_print(&format!("Guessifying {}... {}\n", inputname, transducer_n));
+                }
+                let mut t = match affix_guessify(&trans, DIRECTION, WEIGHT) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
+                if let Err(e) = outstream.redirect(&mut t) {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
-            };
-            if let Err(e) = outstream.redirect(&mut t) {
-                error(1, 0, &format!("{e}"));
+            }, else => {
+                // Unreachable: the optimized-lookup stream rejection already
+                // returned before the loop; keep its text for safety.
+                let _ = write!(
+                    std::io::stderr(),
+                    "Error: hfst-affix-guessify cannot process transducers that are in optimized lookup format.\n"
+                );
                 return 1;
-            }
+            });
         } // good instream
         0
     }

@@ -5,7 +5,9 @@
 //! secondfile) and writes their disjunction; the shared scaffolding lives in
 //! crate::binary_ops.
 
-use crate::binary_ops::{BinaryOpSpec, LoopStyle, RetryPolicy, run_binary_streams_tool};
+use crate::binary_ops::{
+    BinaryOpSpec, BinaryToolOp, LoopStyle, RetryPolicy, run_binary_streams_tool,
+};
 use crate::globals;
 use crate::hfst_commandline::{EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name};
 use crate::hfst_getopt as getopt;
@@ -17,6 +19,8 @@ use crate::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
+use hfst::backend::AlgebraBackend;
+use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 static mut HARMONIZE_FLAGS: bool = false;
@@ -131,10 +135,24 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
         if retval != EXIT_CONTINUE {
             return retval;
         }
-        let harmonize = HARMONIZE;
         let _ = HARMONIZE_FLAGS;
-        run_binary_streams_tool(&SPEC, None, &mut |first, second| {
-            first.disjunct(second, harmonize).map(|_| ())
-        })
+        let mut op = DisjunctOp {
+            harmonize: HARMONIZE,
+        };
+        run_binary_streams_tool(&SPEC, &mut op)
+    }
+}
+
+struct DisjunctOp {
+    harmonize: bool,
+}
+
+impl BinaryToolOp for DisjunctOp {
+    fn apply<B: AlgebraBackend>(
+        &mut self,
+        first: &mut HfstTransducer<B>,
+        second: &HfstTransducer<B>,
+    ) -> hfst::error::Result<()> {
+        first.disjunct(second, self.harmonize).map(|_| ())
     }
 }

@@ -19,7 +19,6 @@ use crate::inc::{
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::collections::BTreeMap;
 use std::io::Write;
 
@@ -198,63 +197,66 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
         while instream.is_good() {
             transducer_n += 1;
             let _ = transducer_n;
-            let trans = match HfstTransducer::new_from_stream(instream) {
+            let any = match instream.read() {
                 Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            let mut trans_name = trans.get_name();
-            if trans_name.is_empty() {
-                trans_name = globals::input_filename();
-            }
-            // HfstBasicTransducer walkable(trans);
-            let walkable = match HfstBasicTransducer::try_from_transducer(&trans) {
-                Ok(v) => v,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            crate::for_any!(any, trans => {
+                let mut trans_name = trans.get_name();
+                if trans_name.is_empty() {
+                    trans_name = globals::input_filename();
                 }
-            };
-            if CAVE_MODE {
-                let _ = write!(
-                    msg,
-                    "WELCOME TO ADVENTURE!! WOULD YOU LIKE INSTRUCTIONS?\n\n"
-                );
-                let yesno = hfst_readline("").unwrap_or_default();
-                if yesno == "YES" || yesno == "yes" {
+                // HfstBasicTransducer walkable(trans);
+                let walkable = match HfstBasicTransducer::try_from_transducer(&trans) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
+                if CAVE_MODE {
                     let _ = write!(
                         msg,
-                        "SOMEWHERE NEARBY IS COLOSSAL CAVE \
-                         WHERE OTHERS HAVE FOUND\n\
-                         FORTUNES IN TREASURES AND GOLD, \
-                         THOUGH IT IS RUMORED\n\
-                         THAT SOME WHO ENTER ARE NEVER SEEN AGAIN. \
-                         MAGIC IS SAID\n\
-                         TO WORK IN THE CAVE.  I WILL BE YOUR EYES AND HANDS. \
-                         DIRECT\n\
-                         ME WITH COMMANDS OF 1 ARC LABEL.\n\
-                         (ERRORS, COMPLAINTS, SUGGESTIONS TO HFST-BUGS)\n\
-                         (IF STUCK TYPE HELP FOR SOME HINTS)\n\n",
+                        "WELCOME TO ADVENTURE!! WOULD YOU LIKE INSTRUCTIONS?\n\n"
                     );
+                    let yesno = hfst_readline("").unwrap_or_default();
+                    if yesno == "YES" || yesno == "yes" {
+                        let _ = write!(
+                            msg,
+                            "SOMEWHERE NEARBY IS COLOSSAL CAVE \
+                             WHERE OTHERS HAVE FOUND\n\
+                             FORTUNES IN TREASURES AND GOLD, \
+                             THOUGH IT IS RUMORED\n\
+                             THAT SOME WHO ENTER ARE NEVER SEEN AGAIN. \
+                             MAGIC IS SAID\n\
+                             TO WORK IN THE CAVE.  I WILL BE YOUR EYES AND HANDS. \
+                             DIRECT\n\
+                             ME WITH COMMANDS OF 1 ARC LABEL.\n\
+                             (ERRORS, COMPLAINTS, SUGGESTIONS TO HFST-BUGS)\n\
+                             (IF STUCK TYPE HELP FOR SOME HINTS)\n\n",
+                        );
+                    }
+                    let _ = write!(
+                        msg,
+                        "YOU ARE STANDING AT THE END OF A ROAD BEFORE A \
+                         SMALL FINITE\n\
+                         STATE AUTOMATON . AROUND YOU IS A FOREST. A SMALL\n\
+                         STREAM OF ARCS FLOWS OUT OF THE AUTOMATON AND \
+                         DOWN A GULLY:\n\n",
+                    );
+                } else {
+                    let _ = write!(msg, "Traversing automaton {}\n\n", trans_name);
                 }
-                let _ = write!(
-                    msg,
-                    "YOU ARE STANDING AT THE END OF A ROAD BEFORE A \
-                     SMALL FINITE\n\
-                     STATE AUTOMATON . AROUND YOU IS A FOREST. A SMALL\n\
-                     STREAM OF ARCS FLOWS OUT OF THE AUTOMATON AND \
-                     DOWN A GULLY:\n\n",
-                );
-            } else {
-                let _ = write!(msg, "Traversing automaton {}\n\n", trans_name);
-            }
-            if walkable.state_vector.is_empty() {
-                let _ = write!(msg, "Nowhere to go\n");
-                return 0;
-            }
-            return main_loop(&walkable);
+                if walkable.state_vector.is_empty() {
+                    let _ = write!(msg, "Nowhere to go\n");
+                    return 0;
+                }
+                return main_loop(&walkable);
+            });
         }
         instream.close();
         0

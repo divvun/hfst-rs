@@ -19,7 +19,6 @@ use hfst::hfst_basic_transducer::{HfstBasicTransducer, SummaryStats};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::StringSet;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // add tools-specific variables here
@@ -149,299 +148,314 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             } else {
                 verbose_print(&format!("Summarizing... {}\n", transducer_n));
             }
-            let trans = match HfstTransducer::new_from_stream(instream) {
+            let any = match instream.read() {
                 Ok(t) => t,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            let mutt = HfstBasicTransducer::new_from_transducer(&trans);
-            let initial_state: u32 = 0; // mutt.get_initial_state();
-            let transducer_alphabet: StringSet = match trans.get_alphabet() {
-                Ok(a) => a,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            // The tropical-only first-input-symbols query of the verbose
+            // branch, answered at the boundary (the runtime type gate the C++
+            // used is a compile-time absence for the other backends).
+            let first_input_symbols = if globals::VERBOSE {
+                match &any {
+                    hfst::hfst_transducer::AnyTransducer::Tropical(t) => {
+                        match t.get_first_input_symbols() {
+                            Ok(ss) => Some(ss),
+                            Err(e) => {
+                                error(1, 0, &format!("{e}"));
+                                return 1;
+                            }
+                        }
+                    }
+                    _ => None,
                 }
+            } else {
+                None
             };
-            let transducer_knows_alphabet = true;
-            //let expanded = true;
-            #[allow(unused_assignments)]
-            let mut is_mutable = true;
-            //let input_label_sorted = false;
-            //let output_label_sorted = false;
-            #[allow(unused_assignments)]
-            let mut weighted = true;
-            //let topologically_sorted = false;
-            //let accessible = true;
-            //let coaccessible = true;
-            //let is_string = true;
-            //let minimised = false;
-            // assign data from knowledge about source type
-            match trans.get_type() {
-                ImplementationType::SFST_TYPE => {
-                    is_mutable = true;
-                    weighted = false;
+            crate::for_any!(any, trans => {
+                let mutt = HfstBasicTransducer::new_from_transducer(&trans);
+                let initial_state: u32 = 0; // mutt.get_initial_state();
+                let transducer_alphabet: StringSet = match trans.get_alphabet() {
+                    Ok(a) => a,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
+                let transducer_knows_alphabet = true;
+                //let expanded = true;
+                #[allow(unused_assignments)]
+                let mut is_mutable = true;
+                //let input_label_sorted = false;
+                //let output_label_sorted = false;
+                #[allow(unused_assignments)]
+                let mut weighted = true;
+                //let topologically_sorted = false;
+                //let accessible = true;
+                //let coaccessible = true;
+                //let is_string = true;
+                //let minimised = false;
+                // assign data from knowledge about source type
+                match trans.get_type() {
+                    ImplementationType::SFST_TYPE => {
+                        is_mutable = true;
+                        weighted = false;
+                    }
+                    ImplementationType::TROPICAL_OPENFST_TYPE => {
+                        is_mutable = true;
+                        weighted = true;
+                    }
+                    ImplementationType::LOG_OPENFST_TYPE => {
+                        is_mutable = true;
+                        weighted = true;
+                    }
+                    ImplementationType::FOMA_TYPE => {
+                        is_mutable = true;
+                        weighted = false;
+                    }
+                    ImplementationType::HFST_OL_TYPE => {
+                        is_mutable = false;
+                        weighted = false;
+                    }
+                    ImplementationType::HFST_OLW_TYPE => {
+                        is_mutable = false;
+                        weighted = true;
+                    }
+                    _ => {
+                        is_mutable = false;
+                    }
                 }
-                ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    is_mutable = true;
-                    weighted = true;
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    is_mutable = true;
-                    weighted = true;
-                }
-                ImplementationType::FOMA_TYPE => {
-                    is_mutable = true;
-                    weighted = false;
-                }
-                ImplementationType::HFST_OL_TYPE => {
-                    is_mutable = false;
-                    weighted = false;
-                }
-                ImplementationType::HFST_OLW_TYPE => {
-                    is_mutable = false;
-                    weighted = true;
-                }
-                _ => {
-                    is_mutable = false;
-                }
-            }
 
-            let SummaryStats {
-                states,
-                final_states,
-                arcs,
-                io_epsilons,
-                input_epsilons,
-                output_epsilons,
-                densest_arcs,
-                sparsest_arcs,
-                uniq_input_arcs,
-                uniq_output_arcs,
-                most_ambiguous_input,
-                most_ambiguous_output,
-                found_alphabet,
-                symbol_pairs,
-                acceptor,
-                input_deterministic,
-                output_deterministic,
-                cyclic,
-                cyclic_at_initial_state,
-            } = mutt.summarize();
-            // traverse
+                let SummaryStats {
+                    states,
+                    final_states,
+                    arcs,
+                    io_epsilons,
+                    input_epsilons,
+                    output_epsilons,
+                    densest_arcs,
+                    sparsest_arcs,
+                    uniq_input_arcs,
+                    uniq_output_arcs,
+                    most_ambiguous_input,
+                    most_ambiguous_output,
+                    found_alphabet,
+                    symbol_pairs,
+                    acceptor,
+                    input_deterministic,
+                    output_deterministic,
+                    cyclic,
+                    cyclic_at_initial_state,
+                } = mutt.summarize();
+                // traverse
 
-            // count physical size
+                // count physical size
 
-            // average calculations
-            let average_arcs_per_state = (arcs as f64) / (states as f32) as f64;
-            let average_input_epsilons = (input_epsilons as f64) / (states as f64);
-            let average_input_ambiguity = (arcs as f64) / (uniq_input_arcs as f64);
-            let average_output_ambiguity = (arcs as f64) / (uniq_output_arcs as f64);
-            let expected_arcs_per_symbol =
-                (average_arcs_per_state) / (found_alphabet.len() as f32) as f64;
+                // average calculations
+                let average_arcs_per_state = (arcs as f64) / (states as f32) as f64;
+                let average_input_epsilons = (input_epsilons as f64) / (states as f64);
+                let average_input_ambiguity = (arcs as f64) / (uniq_input_arcs as f64);
+                let average_output_ambiguity = (arcs as f64) / (uniq_output_arcs as f64);
+                let expected_arcs_per_symbol =
+                    (average_arcs_per_state) / (found_alphabet.len() as f32) as f64;
 
-            if transducer_n > 1 {
-                let _ = write!(out, "-- \nTransducer #{}:\n", transducer_n);
-            }
-            let _ = write!(out, "name: \"{}\"\n", trans.get_name());
-            // next is printed as in OpenFST's fstinfo
-            // do not modify for compatibility
-            match trans.get_type() {
-                ImplementationType::SFST_TYPE => {
-                    let _ = write!(out, "fst type: SFST\narc type: SFST\n");
+                if transducer_n > 1 {
+                    let _ = write!(out, "-- \nTransducer #{}:\n", transducer_n);
                 }
-                ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    let _ = write!(out, "fst type: OpenFST\narc type: tropical\n");
+                let _ = write!(out, "name: \"{}\"\n", trans.get_name());
+                // next is printed as in OpenFST's fstinfo
+                // do not modify for compatibility
+                match trans.get_type() {
+                    ImplementationType::SFST_TYPE => {
+                        let _ = write!(out, "fst type: SFST\narc type: SFST\n");
+                    }
+                    ImplementationType::TROPICAL_OPENFST_TYPE => {
+                        let _ = write!(out, "fst type: OpenFST\narc type: tropical\n");
+                    }
+                    ImplementationType::LOG_OPENFST_TYPE => {
+                        let _ = write!(out, "fst type: OpenFST\narc type: log\n");
+                    }
+                    ImplementationType::FOMA_TYPE => {
+                        let _ = write!(out, "fst type: foma\narc type: foma\n");
+                    }
+                    ImplementationType::HFST_OL_TYPE => {
+                        let _ = write!(
+                            out,
+                            "fst type: HFST optimized lookup\narc type: unweighted\n"
+                        );
+                    }
+                    ImplementationType::HFST_OLW_TYPE => {
+                        let _ = write!(out, "fst type: HFST optimized lookup\narc type: weighted\n");
+                    }
+                    _ => {
+                        let _ = write!(out, "fst type: ???\narc type: ???\n");
+                    }
                 }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    let _ = write!(out, "fst type: OpenFST\narc type: log\n");
-                }
-                ImplementationType::FOMA_TYPE => {
-                    let _ = write!(out, "fst type: foma\narc type: foma\n");
-                }
-                ImplementationType::HFST_OL_TYPE => {
-                    let _ = write!(
-                        out,
-                        "fst type: HFST optimized lookup\narc type: unweighted\n"
-                    );
-                }
-                ImplementationType::HFST_OLW_TYPE => {
-                    let _ = write!(out, "fst type: HFST optimized lookup\narc type: weighted\n");
-                }
-                _ => {
-                    let _ = write!(out, "fst type: ???\narc type: ???\n");
-                }
-            }
-            let _ = write!(
-                out,
-                "input symbol table: yes\n\
-                 output symbol table: yes\n\
-                 # of states: {}\n\
-                 # of arcs: {}\n\
-                 initial state: {}\n\
-                 # of final states: {}\n\
-                 # of input/output epsilons: {}\n\
-                 # of input epsilons: {}\n\
-                 # of output epsilons: {}\n\
-                 # of ... accessible states: ???\n\
-                 # of ... coaccessible states: ???\n\
-                 # of ... connected states: ???\n\
-                 # of ... strongly conn components: ???\n",
-                states,
-                arcs,
-                initial_state as i64,
-                final_states,
-                io_epsilons,
-                input_epsilons,
-                output_epsilons
-            );
-            // other names from properties...
-            let _ = write!(
-                out,
-                "expanded: ???\n\
-                 mutable: {}\n\
-                 acceptor: {}\n\
-                 input deterministic: {}\n\
-                 output deterministic: {}\n\
-                 input label sorted: ???\n\
-                 output label sorted: ???\n\
-                 weighted: {}\n\
-                 cyclic: {}\n\
-                 cyclic at initial state: {}\n\
-                 topologically sorted: ???\n\
-                 accessible: ???\n\
-                 coaccessible: ???\n\
-                 string: ???\n\
-                 minimised: ???\n",
-                if is_mutable { "yes" } else { "no" },
-                if acceptor { "yes" } else { "no" },
-                if input_deterministic { "yes" } else { "no" },
-                if output_deterministic { "yes" } else { "no" },
-                if weighted { "yes" } else { "no" },
-                if cyclic { "yes" } else { "no" },
-                if cyclic_at_initial_state { "yes" } else { "no" }
-            );
-            if globals::VERBOSE {
-                // our extensions for nice statistics maybe
                 let _ = write!(
                     out,
-                    "number of arcs in sparsest state: {}\n\
-                     number of arcs in densest state: {}\n\
-                     average arcs per state: {:.6}\n\
-                     average input epsilons per state: {:.6}\n\
-                     most ambiguous input: {} {}\n\
-                     most ambiguous output: {} {}\n\
-                     average input ambiguity: {:.6}\n\
-                     average output ambiguity: {:.6}\n\
-                     expected arcs per symbol: {:.6}\n\
-                     infinitely ambiguous: {}\n",
-                    sparsest_arcs,
-                    densest_arcs,
-                    average_arcs_per_state,
-                    average_input_epsilons,
-                    most_ambiguous_input.0,
-                    most_ambiguous_input.1,
-                    most_ambiguous_output.0,
-                    most_ambiguous_output.1,
-                    average_input_ambiguity,
-                    average_output_ambiguity,
-                    expected_arcs_per_symbol,
-                    if mutt.is_infinitely_ambiguous() {
-                        "yes"
-                    } else {
-                        "no"
-                    }
+                    "input symbol table: yes\n\
+                     output symbol table: yes\n\
+                     # of states: {}\n\
+                     # of arcs: {}\n\
+                     initial state: {}\n\
+                     # of final states: {}\n\
+                     # of input/output epsilons: {}\n\
+                     # of input epsilons: {}\n\
+                     # of output epsilons: {}\n\
+                     # of ... accessible states: ???\n\
+                     # of ... coaccessible states: ???\n\
+                     # of ... connected states: ???\n\
+                     # of ... strongly conn components: ???\n",
+                    states,
+                    arcs,
+                    initial_state as i64,
+                    final_states,
+                    io_epsilons,
+                    input_epsilons,
+                    output_epsilons
                 );
-                // alphabets
-                let _ = write!(out, "sigma set:\n");
-                if transducer_knows_alphabet {
-                    let mut first = true;
-                    for s in transducer_alphabet.iter() {
-                        if !first {
-                            let _ = write!(out, ", ");
-                        }
-                        let _ = write!(out, "{}", s);
-                        first = false;
-                    }
-                    let _ = write!(out, "\n");
-                } else {
-                    let _ = write!(out, "<Unknown in used transducer format>\n");
-                }
-                let _ = write!(out, "arc symbols actually seen in transducer:\n");
-                let mut first = true;
-                for s in found_alphabet.iter() {
-                    if !first {
-                        let _ = write!(out, ", ");
-                    }
-                    let _ = write!(out, "{}", s);
-                    first = false;
-                }
-                let _ = write!(out, "\n");
-                let _ = write!(out, "sigma symbols missing from transducer:\n");
-                if transducer_knows_alphabet {
-                    let transducer_minus_set: StringSet = transducer_alphabet
-                        .difference(&found_alphabet)
-                        .cloned()
-                        .collect();
-
-                    first = true;
-                    for s in transducer_minus_set.iter() {
-                        if !first {
-                            let _ = write!(out, ", ");
-                        }
-                        let _ = write!(out, "{}", s);
-                        first = false;
-                    }
-                    let _ = write!(out, "\n");
-                } else {
-                    let _ = write!(out, "<Unknown in used transducer format>\n");
-                }
-                // ADDED
-                if trans.get_type() == ImplementationType::TROPICAL_OPENFST_TYPE {
-                    let ss = match trans.get_first_input_symbols() {
-                        Ok(s) => s,
-                        Err(e) => {
-                            error(1, 0, &format!("{e}"));
-                            return 1;
-                        }
-                    };
-                    let _ = write!(out, "first input symbols:\n");
-                    first = true;
-                    for s in ss.iter() {
-                        if !first {
-                            let _ = write!(out, ", ");
-                        }
-                        let _ = write!(out, "{}", s);
-                        first = false;
-                    }
-                    let _ = write!(out, "\n");
-                }
-            } // if verbose
-
-            // ADDED
-            if PRINT_SYMBOL_PAIR_STATISTICS {
-                if SYMBOL_PAIR_THRESHOLD > -1 {
+                // other names from properties...
+                let _ = write!(
+                    out,
+                    "expanded: ???\n\
+                     mutable: {}\n\
+                     acceptor: {}\n\
+                     input deterministic: {}\n\
+                     output deterministic: {}\n\
+                     input label sorted: ???\n\
+                     output label sorted: ???\n\
+                     weighted: {}\n\
+                     cyclic: {}\n\
+                     cyclic at initial state: {}\n\
+                     topologically sorted: ???\n\
+                     accessible: ???\n\
+                     coaccessible: ???\n\
+                     string: ???\n\
+                     minimised: ???\n",
+                    if is_mutable { "yes" } else { "no" },
+                    if acceptor { "yes" } else { "no" },
+                    if input_deterministic { "yes" } else { "no" },
+                    if output_deterministic { "yes" } else { "no" },
+                    if weighted { "yes" } else { "no" },
+                    if cyclic { "yes" } else { "no" },
+                    if cyclic_at_initial_state { "yes" } else { "no" }
+                );
+                if globals::VERBOSE {
+                    // our extensions for nice statistics maybe
                     let _ = write!(
                         out,
-                        "symbol pairs that occur at most {} times:\n",
-                        SYMBOL_PAIR_THRESHOLD as u32
+                        "number of arcs in sparsest state: {}\n\
+                         number of arcs in densest state: {}\n\
+                         average arcs per state: {:.6}\n\
+                         average input epsilons per state: {:.6}\n\
+                         most ambiguous input: {} {}\n\
+                         most ambiguous output: {} {}\n\
+                         average input ambiguity: {:.6}\n\
+                         average output ambiguity: {:.6}\n\
+                         expected arcs per symbol: {:.6}\n\
+                         infinitely ambiguous: {}\n",
+                        sparsest_arcs,
+                        densest_arcs,
+                        average_arcs_per_state,
+                        average_input_epsilons,
+                        most_ambiguous_input.0,
+                        most_ambiguous_input.1,
+                        most_ambiguous_output.0,
+                        most_ambiguous_output.1,
+                        average_input_ambiguity,
+                        average_output_ambiguity,
+                        expected_arcs_per_symbol,
+                        if mutt.is_infinitely_ambiguous() {
+                            "yes"
+                        } else {
+                            "no"
+                        }
                     );
-                } else {
-                    let _ = write!(out, "symbol pairs:\n");
-                }
-                for (key, value) in symbol_pairs.iter() {
-                    // C: 'it->second <= symbol_pair_threshold' compares unsigned
-                    // against int, promoting the int to unsigned; a -1 threshold
-                    // wraps to UINT_MAX so every pair passes. Mirror with the same
-                    // unsigned comparison.
-                    if *value <= (SYMBOL_PAIR_THRESHOLD as u32) {
-                        let _ = write!(out, "{}:{}\t{}\n", key.0, key.1, value);
+                    // alphabets
+                    let _ = write!(out, "sigma set:\n");
+                    if transducer_knows_alphabet {
+                        let mut first = true;
+                        for s in transducer_alphabet.iter() {
+                            if !first {
+                                let _ = write!(out, ", ");
+                            }
+                            let _ = write!(out, "{}", s);
+                            first = false;
+                        }
+                        let _ = write!(out, "\n");
+                    } else {
+                        let _ = write!(out, "<Unknown in used transducer format>\n");
                     }
+                    let _ = write!(out, "arc symbols actually seen in transducer:\n");
+                    let mut first = true;
+                    for s in found_alphabet.iter() {
+                        if !first {
+                            let _ = write!(out, ", ");
+                        }
+                        let _ = write!(out, "{}", s);
+                        first = false;
+                    }
+                    let _ = write!(out, "\n");
+                    let _ = write!(out, "sigma symbols missing from transducer:\n");
+                    if transducer_knows_alphabet {
+                        let transducer_minus_set: StringSet = transducer_alphabet
+                            .difference(&found_alphabet)
+                            .cloned()
+                            .collect();
+
+                        first = true;
+                        for s in transducer_minus_set.iter() {
+                            if !first {
+                                let _ = write!(out, ", ");
+                            }
+                            let _ = write!(out, "{}", s);
+                            first = false;
+                        }
+                        let _ = write!(out, "\n");
+                    } else {
+                        let _ = write!(out, "<Unknown in used transducer format>\n");
+                    }
+                    // ADDED
+                    if let Some(ss) = &first_input_symbols {
+                        let _ = write!(out, "first input symbols:\n");
+                        first = true;
+                        for s in ss.iter() {
+                            if !first {
+                                let _ = write!(out, ", ");
+                            }
+                            let _ = write!(out, "{}", s);
+                            first = false;
+                        }
+                        let _ = write!(out, "\n");
+                    }
+                } // if verbose
+
+                // ADDED
+                if PRINT_SYMBOL_PAIR_STATISTICS {
+                    if SYMBOL_PAIR_THRESHOLD > -1 {
+                        let _ = write!(
+                            out,
+                            "symbol pairs that occur at most {} times:\n",
+                            SYMBOL_PAIR_THRESHOLD as u32
+                        );
+                    } else {
+                        let _ = write!(out, "symbol pairs:\n");
+                    }
+                    for (key, value) in symbol_pairs.iter() {
+                        // C: 'it->second <= symbol_pair_threshold' compares unsigned
+                        // against int, promoting the int to unsigned; a -1 threshold
+                        // wraps to UINT_MAX so every pair passes. Mirror with the same
+                        // unsigned comparison.
+                        if *value <= (SYMBOL_PAIR_THRESHOLD as u32) {
+                            let _ = write!(out, "{}:{}\t{}\n", key.0, key.1, value);
+                        }
+                    }
+                    let _ = write!(out, "\n");
                 }
-                let _ = write!(out, "\n");
-            }
+            });
         }
 
         let _ = write!(out, "\nRead {} transducers in total.\n", transducer_n);

@@ -5,7 +5,7 @@
 //! the shared scaffolding lives in crate::binary_ops.
 
 use crate::binary_ops::{
-    BinaryOpSpec, LoopStyle, PairContext, RetryPolicy, run_binary_streams_tool,
+    BinaryOpSpec, BinaryToolOp, LoopStyle, PairContext, RetryPolicy, run_binary_streams_tool,
 };
 use crate::globals;
 use crate::hfst_commandline::{
@@ -20,6 +20,7 @@ use crate::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
+use hfst::backend::AlgebraBackend;
 use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
@@ -143,34 +144,52 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
         if retval != EXIT_CONTINUE {
             return retval;
         }
-        let harmonize = HARMONIZE;
-        let harmonize_flags = HARMONIZE_FLAGS;
-        let mut pre_apply = |first: &mut HfstTransducer,
-                             second: &mut HfstTransducer,
-                             _ctx: &PairContext|
-         -> Result<(), i32> {
-            if first.has_flag_diacritics() || second.has_flag_diacritics() {
-                if !harmonize_flags {
-                    if !globals::SILENT {
-                        warning(
-                            0,
-                            0,
-                            "At least one of the argumentes contains flag diacritics. Use -F to harmonize them.",
-                        );
-                    }
-                } else {
-                    // C: 'first->harmonize_flag_diacritics(*second)' — relies
-                    // on the default 'insert_renamed_flags=true'.
-                    if let Err(e) = first.harmonize_flag_diacritics(second, true) {
-                        error(1, 0, &format!("{e}"));
-                        return Err(1);
-                    }
+        let mut op = ConjunctOp {
+            harmonize: HARMONIZE,
+            harmonize_flags: HARMONIZE_FLAGS,
+        };
+        run_binary_streams_tool(&SPEC, &mut op)
+    }
+}
+
+struct ConjunctOp {
+    harmonize: bool,
+    harmonize_flags: bool,
+}
+
+impl BinaryToolOp for ConjunctOp {
+    fn pre_apply<B: AlgebraBackend>(
+        &mut self,
+        first: &mut HfstTransducer<B>,
+        second: &mut HfstTransducer<B>,
+        _ctx: &PairContext,
+    ) -> Result<(), i32> {
+        if first.has_flag_diacritics() || second.has_flag_diacritics() {
+            if !self.harmonize_flags {
+                if !unsafe { globals::SILENT } {
+                    warning(
+                        0,
+                        0,
+                        "At least one of the argumentes contains flag diacritics. Use -F to harmonize them.",
+                    );
+                }
+            } else {
+                // C: 'first->harmonize_flag_diacritics(*second)' — relies
+                // on the default 'insert_renamed_flags=true'.
+                if let Err(e) = first.harmonize_flag_diacritics(second, true) {
+                    error(1, 0, &format!("{e}"));
+                    return Err(1);
                 }
             }
-            Ok(())
-        };
-        run_binary_streams_tool(&SPEC, Some(&mut pre_apply), &mut |first, second| {
-            first.intersect(second, harmonize).map(|_| ())
-        })
+        }
+        Ok(())
+    }
+
+    fn apply<B: AlgebraBackend>(
+        &mut self,
+        first: &mut HfstTransducer<B>,
+        second: &HfstTransducer<B>,
+    ) -> hfst::error::Result<()> {
+        first.intersect(second, self.harmonize).map(|_| ())
     }
 }

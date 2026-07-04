@@ -162,7 +162,19 @@ unsafe fn process_stream(instream: &mut HfstInputStream, out: &mut HfstOutputStr
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let analyzer = match HfstTransducer::new_from_stream(instream) {
+            let _ = transducer_n; // C++ counts but never reads it
+            let any = match instream.read() {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            // The C++ guessify_fst converted every input to tropical openfst
+            // "so that all operations can be performed"; that conversion is
+            // now this one typed extraction at the stream boundary
+            // ([dec:hfst:monomorphic-backends]).
+            let analyzer: HfstTransducer<hfst_openfst::StdVectorFst> = match any.into_typed() {
                 Ok(t) => t,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));

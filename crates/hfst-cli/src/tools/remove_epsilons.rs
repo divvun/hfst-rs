@@ -19,7 +19,6 @@ use crate::inc::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // [spec:hfst:def:hfst-remove-epsilons.print-usage-fn]
@@ -80,20 +79,22 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 // [spec:hfst:def:hfst-remove-epsilons.process-stream-fn]
 // [spec:hfst:sem:hfst-remove-epsilons.process-stream-fn]
 unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOutputStream) -> i32 {
-    unsafe {
-        // instream.open();
-        // outstream.open();
+    // instream.open();
+    // outstream.open();
 
-        let mut transducer_n: usize = 0;
-        while instream.is_good() {
-            transducer_n += 1;
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
+    let mut transducer_n: usize = 0;
+    while instream.is_good() {
+        transducer_n += 1;
+        let any = match instream.read() {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
+        // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+        crate::for_algebra!(any, trans => {
+            let mut trans = trans;
             // hfst_get_name already falls back to the input filename when the
             // transducer carries no name (the C strlen<=0 strdup branch).
             let inputname = hfst_get_name(&trans, &globals::input_filename());
@@ -119,11 +120,19 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 error(1, 0, &format!("{e}"));
                 return 1;
             }
-        }
-        instream.close();
-        outstream.close();
-        0
+        }, else => {
+            // Unreachable: the optimized-lookup stream rejection already
+            // returned before the loop; keep its text for safety.
+            let _ = write!(
+                std::io::stderr(),
+                "Error: hfst-remove-epsilons cannot process transducers that are in optimized lookup format.\n"
+            );
+            return 1;
+        });
     }
+    instream.close();
+    outstream.close();
+    0
 }
 
 // [spec:hfst:def:hfst-remove-epsilons.main-fn]

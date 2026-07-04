@@ -17,7 +17,6 @@ use crate::inc::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // add tools-specific variables here
@@ -145,30 +144,34 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 ));
             }
 
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
+            let any = match instream.read() {
                 Ok(v) => v,
                 Err(e) => {
                     eprintln!("hfst-name: {e}");
                     return 1;
                 }
             };
-            if !PRINT_NAME {
-                let name = (*std::ptr::addr_of!(TRANSDUCER_NAME)).clone();
-                if TRUNCATE_LENGTH > 0 {
-                    // C: hfst_strndup copies at most TRUNCATE_LENGTH bytes.
-                    let n = (TRUNCATE_LENGTH as usize).min(name.len());
-                    let truncated = String::from_utf8_lossy(&name.as_bytes()[..n]).into_owned();
-                    trans.set_name(&truncated);
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            crate::for_any!(any, trans => {
+                let mut trans = trans;
+                if !PRINT_NAME {
+                    let name = (*std::ptr::addr_of!(TRANSDUCER_NAME)).clone();
+                    if TRUNCATE_LENGTH > 0 {
+                        // C: hfst_strndup copies at most TRUNCATE_LENGTH bytes.
+                        let n = (TRUNCATE_LENGTH as usize).min(name.len());
+                        let truncated = String::from_utf8_lossy(&name.as_bytes()[..n]).into_owned();
+                        trans.set_name(&truncated);
+                    } else {
+                        trans.set_name(&name);
+                    }
+                    if let Err(e) = outstream.redirect(&mut trans) {
+                        eprintln!("hfst-name: {e}");
+                        return 1;
+                    }
                 } else {
-                    trans.set_name(&name);
+                    eprint!("\"{}\"\n", trans.get_name());
                 }
-                if let Err(e) = outstream.redirect(&mut trans) {
-                    eprintln!("hfst-name: {e}");
-                    return 1;
-                }
-            } else {
-                eprint!("\"{}\"\n", trans.get_name());
-            }
+            });
         }
         instream.close();
         outstream.close();

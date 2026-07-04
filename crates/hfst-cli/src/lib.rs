@@ -14,6 +14,73 @@
 //! single 'hfst' multiplexer binary (src/bin/hfst.rs) dispatches to them by
 //! invoked basename or subcommand.
 
+// -----------------------------------------------------------------------------
+// The one-per-stream-read dispatch of [dec:hfst:monomorphic-backends] step 5:
+// each tool reads an 'AnyTransducer' from 'HfstInputStream' and matches ONCE
+// per transducer into a generic body.
+// -----------------------------------------------------------------------------
+
+/// Dispatch an expression over all four 'AnyTransducer' variants (each arm
+/// monomorphizes separately).
+macro_rules! for_any {
+    ($any:expr, $t:ident => $body:expr) => {
+        match $any {
+            hfst::hfst_transducer::AnyTransducer::Tropical($t) => $body,
+            hfst::hfst_transducer::AnyTransducer::Log($t) => $body,
+            hfst::hfst_transducer::AnyTransducer::OlW($t) => $body,
+            hfst::hfst_transducer::AnyTransducer::OlU($t) => $body,
+        }
+    };
+}
+pub(crate) use for_any;
+
+/// Dispatch an expression over the two algebra variants; the OL variants run
+/// the 'else' arm (the tools' C++-era optimized-lookup rejection).
+macro_rules! for_algebra {
+    ($any:expr, $t:ident => $body:expr, else => $ol:expr) => {
+        match $any {
+            hfst::hfst_transducer::AnyTransducer::Tropical($t) => $body,
+            hfst::hfst_transducer::AnyTransducer::Log($t) => $body,
+            _ => $ol,
+        }
+    };
+}
+pub(crate) use for_algebra;
+
+/// Re-wrap a typed facade transducer into the matching 'AnyTransducer'
+/// variant (the write-back side of a dispatch that must keep the value).
+pub(crate) trait IntoAny {
+    fn into_any(self) -> hfst::hfst_transducer::AnyTransducer;
+}
+impl IntoAny for hfst::hfst_transducer::HfstTransducer<hfst_openfst::StdVectorFst> {
+    fn into_any(self) -> hfst::hfst_transducer::AnyTransducer {
+        hfst::hfst_transducer::AnyTransducer::Tropical(self)
+    }
+}
+impl IntoAny for hfst::hfst_transducer::HfstTransducer<hfst::log_weight_transducer::LogFst> {
+    fn into_any(self) -> hfst::hfst_transducer::AnyTransducer {
+        hfst::hfst_transducer::AnyTransducer::Log(self)
+    }
+}
+impl IntoAny
+    for hfst::hfst_transducer::HfstTransducer<
+        hfst::transducer::Transducer<hfst::transducer::WeightedTables>,
+    >
+{
+    fn into_any(self) -> hfst::hfst_transducer::AnyTransducer {
+        hfst::hfst_transducer::AnyTransducer::OlW(self)
+    }
+}
+impl IntoAny
+    for hfst::hfst_transducer::HfstTransducer<
+        hfst::transducer::Transducer<hfst::transducer::UnweightedTables>,
+    >
+{
+    fn into_any(self) -> hfst::hfst_transducer::AnyTransducer {
+        hfst::hfst_transducer::AnyTransducer::OlU(self)
+    }
+}
+
 pub mod globals;
 pub mod hfst_commandline;
 pub mod hfst_getopt;

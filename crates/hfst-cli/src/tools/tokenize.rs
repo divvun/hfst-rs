@@ -236,7 +236,9 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 // [spec:hfst:sem:hfst-tokenize.first-transducer-is-called-top-fn]
 // (Defined in the C++ source but never called there; kept for fidelity.)
 #[allow(dead_code)]
-fn first_transducer_is_called_top(dictionary: &HfstTransducer) -> bool {
+fn first_transducer_is_called_top<B: hfst::backend::Backend>(
+    dictionary: &HfstTransducer<B>,
+) -> bool {
     dictionary.get_name() == "TOP"
 }
 
@@ -320,14 +322,19 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
                     return 1;
                 }
             };
-            let mut dictionary = match HfstTransducer::new_from_stream(&mut is) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("hfst-tokenize: {e}");
-                    return 1;
-                }
-            };
-            let mut container = match make_naive_tokenizer(&mut dictionary, DEFAULT_FORMAT) {
+            // C++ built the naive tokenizer's helper transducers in
+            // default_format (tropical); the dictionary converts to the same
+            // backend at this boundary ([dec:hfst:monomorphic-backends]).
+            let _ = DEFAULT_FORMAT;
+            let mut dictionary: HfstTransducer<hfst_openfst::StdVectorFst> =
+                match is.read().and_then(|any| any.into_typed()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("hfst-tokenize: {e}");
+                        return 1;
+                    }
+                };
+            let mut container = match make_naive_tokenizer(&mut dictionary) {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!("hfst-tokenize: {e}");

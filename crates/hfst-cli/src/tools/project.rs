@@ -19,7 +19,6 @@ use crate::inc::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // add tools-specific variables here
@@ -139,56 +138,68 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
-                Ok(t) => t,
+            let any = match instream.read() {
+                Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            let inputname = hfst_get_name(&trans, &globals::input_filename());
-            if transducer_n == 1 {
-                if PROJECT_INPUT {
-                    verbose_print(&format!("Projecting first {}...\n", inputname));
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            crate::for_algebra!(any, trans => {
+                let mut trans = trans;
+                let inputname = hfst_get_name(&trans, &globals::input_filename());
+                if transducer_n == 1 {
+                    if PROJECT_INPUT {
+                        verbose_print(&format!("Projecting first {}...\n", inputname));
+                    } else {
+                        verbose_print(&format!("Projecting second {}...\n", inputname));
+                    }
+                } else if PROJECT_INPUT {
+                    verbose_print(&format!(
+                        "Projecting first {}... {}\n",
+                        inputname, transducer_n
+                    ));
                 } else {
-                    verbose_print(&format!("Projecting second {}...\n", inputname));
+                    verbose_print(&format!(
+                        "Projecting second {}... {}\n",
+                        inputname, transducer_n
+                    ));
                 }
-            } else if PROJECT_INPUT {
-                verbose_print(&format!(
-                    "Projecting first {}... {}\n",
-                    inputname, transducer_n
-                ));
-            } else {
-                verbose_print(&format!(
-                    "Projecting second {}... {}\n",
-                    inputname, transducer_n
-                ));
-            }
 
-            if PROJECT_INPUT {
-                if let Err(e) = trans.input_project() {
+                if PROJECT_INPUT {
+                    if let Err(e) = trans.input_project() {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                    // C: hfst_set_name(trans, trans, ...); the dest and src are the
+                    // same object, which Rust cannot alias mut+const, so the read
+                    // side is taken from a copy (name/formula unchanged by copy).
+                    let src = trans.clone();
+                    hfst_set_name_unary(&mut trans, &src, "project-1st");
+                    hfst_set_formula_unary(&mut trans, &src, "\u{00b9}");
+                } else {
+                    if let Err(e) = trans.output_project() {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                    let src = trans.clone();
+                    hfst_set_name_unary(&mut trans, &src, "project-2nd");
+                    hfst_set_formula_unary(&mut trans, &src, "\u{00b2}");
+                }
+                if let Err(e) = outstream.redirect(&mut trans) {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
-                // C: hfst_set_name(trans, trans, ...); the dest and src are the
-                // same object, which Rust cannot alias mut+const, so the read
-                // side is taken from a copy (name/formula unchanged by copy).
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "project-1st");
-                hfst_set_formula_unary(&mut trans, &src, "\u{00b9}");
-            } else {
-                if let Err(e) = trans.output_project() {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "project-2nd");
-                hfst_set_formula_unary(&mut trans, &src, "\u{00b2}");
-            }
-            if let Err(e) = outstream.redirect(&mut trans) {
-                error(1, 0, &format!("{e}"));
+            }, else => {
+                // Unreachable: the optimized-lookup stream rejection already
+                // returned before the loop; keep its text for safety.
+                let _ = write!(
+                    std::io::stderr(),
+                    "Error: hfst-project cannot process transducers that are in optimized lookup format.\n"
+                );
                 return 1;
-            }
+            });
         }
         instream.close();
         outstream.close();

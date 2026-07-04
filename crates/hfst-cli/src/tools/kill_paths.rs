@@ -128,7 +128,7 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 
 // [spec:hfst:def:hfst-kill-paths.original-fn]
 // [spec:hfst:sem:hfst-kill-paths.original-fn]
-unsafe fn do_killing(trans: &mut HfstTransducer) {
+unsafe fn do_killing<B: hfst::backend::AlgebraBackend>(trans: &mut HfstTransducer<B>) {
     unsafe {
         let symbol = SYMBOL.clone().unwrap_or_default();
         *trans = trans.kill_paths(&symbol);
@@ -142,78 +142,90 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
-                Ok(t) => t,
+            let any = match instream.read() {
+                Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            let inputname = hfst_get_name(&trans, &globals::input_filename());
-            if transducer_n == 1 {
-                verbose_print(&format!("Path killing {}...\n", inputname));
-            } else {
-                verbose_print(&format!("Path killing {}...{}\n", inputname, transducer_n));
-            }
-            if TSV_FILE.is_none() {
-                do_killing(&mut trans);
-                // C: hfst_set_name(trans, trans, "pathkill"); dest and src are the
-                // same object, which Rust cannot alias mut+const, so the read side
-                // is taken from a copy (name/formula are unchanged by the copy).
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "pathkill");
-                hfst_set_formula_unary(&mut trans, &src, "PK");
-            } else {
-                // C: rewind(tsv_file) — seek the std file back to the start.
-                let tsv_file = TSV_FILE.as_mut().unwrap();
-                let _ = tsv_file.seek(SeekFrom::Start(0));
-                SYMBOL = None;
-                let mut _linen: usize = 0;
-                verbose_print(&format!(
-                    "Reading reweights from {}\n",
-                    TSV_FILE_NAME.clone().unwrap_or_default()
-                ));
-                let mut reader = BufReader::new(tsv_file);
-                let mut line = String::new();
-                loop {
-                    line.clear();
-                    // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
-                    if reader.read_line(&mut line).unwrap_or(0) == 0 {
-                        break;
-                    }
-                    _linen += 1;
-                    let bytes = line.as_bytes();
-                    if bytes.first() == Some(&b'\n') {
-                        continue;
-                    }
-                    if bytes.first() == Some(&b'#') {
-                        continue;
-                    }
-                    // const char *endptr = line; advance to '\0' or '\n'
-                    let mut endptr = 0usize;
-                    while endptr < bytes.len() && bytes[endptr] != b'\n' {
-                        endptr += 1;
-                    }
-                    let sym = String::from_utf8_lossy(&bytes[..endptr]).into_owned();
-                    SYMBOL = Some(sym.clone());
-                    verbose_print(&format!("Killing patsh with symbol {}\n", sym));
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            crate::for_algebra!(any, trans => {
+                let mut trans = trans;
+                let inputname = hfst_get_name(&trans, &globals::input_filename());
+                if transducer_n == 1 {
+                    verbose_print(&format!("Path killing {}...\n", inputname));
+                } else {
+                    verbose_print(&format!("Path killing {}...{}\n", inputname, transducer_n));
+                }
+                if TSV_FILE.is_none() {
                     do_killing(&mut trans);
-                } // getline
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "pathkill");
-                hfst_set_formula_unary(&mut trans, &src, "PK");
-            } // if tsv_file
-            let reduced = match trans.remove_epsilons() {
-                Ok(t) => t,
-                Err(e) => {
+                    // C: hfst_set_name(trans, trans, "pathkill"); dest and src are the
+                    // same object, which Rust cannot alias mut+const, so the read side
+                    // is taken from a copy (name/formula are unchanged by the copy).
+                    let src = trans.clone();
+                    hfst_set_name_unary(&mut trans, &src, "pathkill");
+                    hfst_set_formula_unary(&mut trans, &src, "PK");
+                } else {
+                    // C: rewind(tsv_file) — seek the std file back to the start.
+                    let tsv_file = TSV_FILE.as_mut().unwrap();
+                    let _ = tsv_file.seek(SeekFrom::Start(0));
+                    SYMBOL = None;
+                    let mut _linen: usize = 0;
+                    verbose_print(&format!(
+                        "Reading reweights from {}\n",
+                        TSV_FILE_NAME.clone().unwrap_or_default()
+                    ));
+                    let mut reader = BufReader::new(tsv_file);
+                    let mut line = String::new();
+                    loop {
+                        line.clear();
+                        // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
+                        if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                            break;
+                        }
+                        _linen += 1;
+                        let bytes = line.as_bytes();
+                        if bytes.first() == Some(&b'\n') {
+                            continue;
+                        }
+                        if bytes.first() == Some(&b'#') {
+                            continue;
+                        }
+                        // const char *endptr = line; advance to '\0' or '\n'
+                        let mut endptr = 0usize;
+                        while endptr < bytes.len() && bytes[endptr] != b'\n' {
+                            endptr += 1;
+                        }
+                        let sym = String::from_utf8_lossy(&bytes[..endptr]).into_owned();
+                        SYMBOL = Some(sym.clone());
+                        verbose_print(&format!("Killing patsh with symbol {}\n", sym));
+                        do_killing(&mut trans);
+                    } // getline
+                    let src = trans.clone();
+                    hfst_set_name_unary(&mut trans, &src, "pathkill");
+                    hfst_set_formula_unary(&mut trans, &src, "PK");
+                } // if tsv_file
+                let reduced = match trans.remove_epsilons() {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
+                if let Err(e) = outstream.redirect(reduced) {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
-            };
-            if let Err(e) = outstream.redirect(reduced) {
-                error(1, 0, &format!("{e}"));
+            }, else => {
+                // Unreachable: the optimized-lookup stream rejection already
+                // returned before the loop; keep its text for safety.
+                let _ = write!(
+                    std::io::stderr(),
+                    "Error: hfst-kill-paths cannot process transducers that are in optimized lookup format.\n"
+                );
                 return 1;
-            }
+            });
         } // foreach transducer
         instream.close();
         outstream.close();

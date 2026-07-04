@@ -9,12 +9,15 @@
 //! hfst-compose-intersect (rules-then-lexicons loop) keep their own loops and
 //! reuse only the stream-opening/type-resolution helpers.
 
+use hfst::backend::AlgebraBackend;
 use hfst::error::ErrorKind;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
+use std::io::Write;
 
+use crate::IntoAny;
 use crate::globals;
 use crate::hfst_commandline::{
     conversion_type, convert_transducers, error, hfst_strformat, is_input_stream_in_ol_format,
@@ -88,14 +91,28 @@ pub struct PairContext<'a> {
     pub second_type: ImplementationType,
 }
 
-/// The binary operation itself: dest op= src.
-pub type ApplyFn<'a> =
-    dyn FnMut(&mut HfstTransducer, &HfstTransducer) -> hfst::error::Result<()> + 'a;
+/// The tool's operation, generic over the algebra backend: the driver
+/// dispatches ONCE per stream-read pair ([dec:hfst:monomorphic-backends]) and
+/// runs 'pre_apply' (the flag-diacritics gates; an Err(code) aborts the
+/// streams function with that exit code) then 'apply' (dest op= src) inside
+/// the monomorphic body.
+pub trait BinaryToolOp {
+    fn pre_apply<B: AlgebraBackend>(
+        &mut self,
+        first: &mut HfstTransducer<B>,
+        second: &mut HfstTransducer<B>,
+        ctx: &PairContext,
+    ) -> Result<(), i32> {
+        let _ = (first, second, ctx);
+        Ok(())
+    }
 
-/// Tool-specific per-pair preprocessing (the flag-diacritics gates); an
-/// Err(code) aborts the streams function with that exit code.
-pub type PreApplyFn<'a> =
-    dyn FnMut(&mut HfstTransducer, &mut HfstTransducer, &PairContext) -> Result<(), i32> + 'a;
+    fn apply<B: AlgebraBackend>(
+        &mut self,
+        first: &mut HfstTransducer<B>,
+        second: &HfstTransducer<B>,
+    ) -> hfst::error::Result<()>;
+}
 
 /// Opens the two input streams (named file vs stdin), reporting failures the
 /// way every binary tool does.
@@ -228,11 +245,7 @@ pub fn print_do_not_convert_error(spec: &BinaryOpSpec, ctx: &PairContext) {
 /// Everything a binary tool's real_main does after parse_options: the
 /// reading/writing verbose line, opening both input streams, the OL-format
 /// rejection, and the shared <op>_streams loop.
-pub unsafe fn run_binary_streams_tool(
-    spec: &BinaryOpSpec,
-    pre_apply: Option<&mut PreApplyFn>,
-    apply: &mut ApplyFn,
-) -> i32 {
+pub unsafe fn run_binary_streams_tool(spec: &BinaryOpSpec, op: &mut impl BinaryToolOp) -> i32 {
     unsafe {
         // close buffers, we use streams
         verbose_print(&format!(
@@ -252,8 +265,60 @@ pub unsafe fn run_binary_streams_tool(
             return 1;
         }
 
-        binary_op_streams(spec, &mut firststream, &mut secondstream, pre_apply, apply)
+        binary_op_streams(spec, &mut firststream, &mut secondstream, op)
     }
+}
+
+/// The monomorphic per-pair body: pre-apply hook, the operation with its
+/// error policy, tool metadata, and the stream write. Returns both operands
+/// (the loop may reuse either, per its LoopStyle) or the exit code.
+#[allow(clippy::type_complexity)]
+unsafe fn process_pair<B: AlgebraBackend>(
+    spec: &BinaryOpSpec,
+    op: &mut impl BinaryToolOp,
+    mut first: HfstTransducer<B>,
+    mut second: HfstTransducer<B>,
+    ctx: &PairContext,
+    outstream: &mut HfstOutputStream,
+) -> Result<(HfstTransducer<B>, HfstTransducer<B>), i32> {
+    if let Err(code) = op.pre_apply(&mut first, &mut second, ctx) {
+        return Err(code);
+    }
+
+    // The C caught the op's TransducerTypeMismatch here and converted-and-
+    // retried; same-backend operands are now a compile-time property (the
+    // driver converted at the boundary), so only the ops' real failures
+    // remain.
+    if let Err(e) = op.apply(&mut first, &second) {
+        if spec.retry == RetryPolicy::ShuffleAutomata
+            && matches!(e.kind, ErrorKind::TransducersAreNotAutomata)
+        {
+            error(
+                1,
+                0,
+                &format!(
+                    "Could not {} {} and {} [{}]\nat least one of the input arguments is not an automaton",
+                    spec.could_not_verb, ctx.firstname, ctx.secondname, ctx.transducer_n_first
+                ),
+            );
+        } else {
+            error(1, 0, &format!("{e}"));
+        }
+        return Err(1);
+    }
+
+    // C: hfst_set_name(*first, *first, *second, op); the dest and
+    // first src are the same object, which Rust cannot alias
+    // mut+const, so the read side is taken from a copy (name/formula
+    // are unchanged by the copy).
+    let first_src = first.clone();
+    hfst_set_name_binary(&mut first, &first_src, &second, spec.name_op);
+    hfst_set_formula_binary(&mut first, &first_src, &second, spec.formula);
+    if let Err(e) = outstream.redirect(&mut first) {
+        error(1, 0, &format!("{e}"));
+        return Err(1);
+    }
+    Ok((first, second))
 }
 
 /// The shared <op>_streams body: type resolution, output stream creation, the
@@ -263,8 +328,7 @@ unsafe fn binary_op_streams(
     spec: &BinaryOpSpec,
     firststream: &mut HfstInputStream,
     secondstream: &mut HfstInputStream,
-    mut pre_apply: Option<&mut PreApplyFn>,
-    apply: &mut ApplyFn,
+    op: &mut impl BinaryToolOp,
 ) -> i32 {
     unsafe {
         // there must be at least one transducer in both input streams
@@ -279,8 +343,8 @@ unsafe fn binary_op_streams(
             Err(code) => return code,
         };
 
-        let mut first: Option<HfstTransducer> = None;
-        let mut second: Option<HfstTransducer> = None;
+        let mut first: Option<AnyTransducer> = None;
+        let mut second: Option<AnyTransducer> = None;
         let mut transducer_n_first: usize = 0; // transducers read from first stream
         let mut transducer_n_second: usize = 0; // transducers read from second stream
         while continue_reading {
@@ -289,7 +353,7 @@ unsafe fn binary_op_streams(
                 LoopStyle::Compose => firststream.is_good(),
             };
             if read_first {
-                first = Some(match HfstTransducer::new_from_stream(firststream) {
+                first = Some(match firststream.read() {
                     Ok(v) => v,
                     Err(e) => {
                         error(1, 0, &format!("{e}"));
@@ -299,7 +363,7 @@ unsafe fn binary_op_streams(
                 transducer_n_first += 1;
             }
             if secondstream.is_good() {
-                second = Some(match HfstTransducer::new_from_stream(secondstream) {
+                second = Some(match secondstream.read() {
                     Ok(v) => v,
                     Err(e) => {
                         error(1, 0, &format!("{e}"));
@@ -345,95 +409,64 @@ unsafe fn binary_op_streams(
                 second_type: secondstream.get_type(),
             };
 
-            if let Some(hook) = pre_apply.as_mut() {
-                if let Err(code) = hook(
-                    first
-                        .as_mut()
-                        .expect("first transducer present (just read)"),
-                    second
-                        .as_mut()
-                        .expect("second transducer present (just read)"),
-                    &ctx,
-                ) {
-                    return code;
+            // The C applied the op and caught TransducerTypeMismatch, then
+            // converted and retried (per the tool's RetryPolicy) or emitted
+            // the --do-not-convert error. Same-backend operands are now the
+            // compile-time property of the generic body, so the type check
+            // moves to this boundary: mismatched operands convert (with the
+            // exact convert_transducers warning texts) before the ONE
+            // dispatch below. (For mixed-type inputs whose pre-apply hook
+            // also prints, the conversion warning now precedes the hook's
+            // messages instead of following them.)
+            let any_first = first.take().expect("first transducer present (just read)");
+            let any_second = second
+                .take()
+                .expect("second transducer present (just read)");
+            let (any_first, any_second) = if any_first.get_type() != any_second.get_type() {
+                if globals::ALLOW_TRANSDUCER_CONVERSION {
+                    match convert_transducers(any_first, any_second) {
+                        Ok(pair) => pair,
+                        Err(e) => {
+                            error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
+                    }
+                } else {
+                    print_do_not_convert_error(spec, &ctx);
+                    return 1;
                 }
-            }
+            } else {
+                (any_first, any_second)
+            };
 
-            let attempt = apply(
-                first
-                    .as_mut()
-                    .expect("first transducer present (just read)"),
-                second
-                    .as_ref()
-                    .expect("second transducer present (just read)"),
-            );
-            if let Err(e) = attempt {
-                let retry = match spec.retry {
-                    RetryPolicy::AnyError => true,
-                    RetryPolicy::TypeMismatchOnly => {
-                        if matches!(e.kind, ErrorKind::TransducerTypeMismatch) {
-                            true
-                        } else {
-                            error(1, 0, &format!("{e}"));
-                            return 1;
-                        }
-                    }
-                    RetryPolicy::ShuffleAutomata => {
-                        if matches!(e.kind, ErrorKind::TransducersAreNotAutomata) {
-                            error(
-                                1,
-                                0,
-                                &format!(
-                                    "Could not {} {} and {} [{}]\nat least one of the input arguments is not an automaton",
-                                    spec.could_not_verb, firstname, secondname, transducer_n_first
-                                ),
-                            );
-                            false
-                        } else if matches!(e.kind, ErrorKind::TransducerTypeMismatch) {
-                            true
-                        } else {
-                            error(1, 0, &format!("{e}"));
-                            return 1;
-                        }
-                    }
-                };
-                if retry {
-                    if globals::ALLOW_TRANSDUCER_CONVERSION {
-                        if let Err(e) = convert_transducers(
-                            first.as_mut().expect("first transducer present"),
-                            second.as_mut().expect("second transducer present"),
-                        ) {
-                            error(1, 0, &format!("{e}"));
-                            return 1;
-                        }
-                        if let Err(e) = apply(
-                            first.as_mut().expect("first transducer present"),
-                            second.as_ref().expect("second transducer present"),
-                        ) {
-                            error(1, 0, &format!("{e}"));
-                            return 1;
-                        }
-                    } else {
-                        print_do_not_convert_error(spec, &ctx);
-                        return 1;
-                    }
+            // the one runtime dispatch per pair ([dec:hfst:monomorphic-backends])
+            let processed = match (any_first, any_second) {
+                (AnyTransducer::Tropical(f), AnyTransducer::Tropical(s)) => {
+                    process_pair(spec, op, f, s, &ctx, &mut outstream)
+                        .map(|(f, s)| (f.into_any(), s.into_any()))
                 }
-            }
-
-            // C: hfst_set_name(*first, *first, *second, op); the dest and
-            // first src are the same object, which Rust cannot alias
-            // mut+const, so the read side is taken from a copy (name/formula
-            // are unchanged by the copy).
-            let first_src = first.as_ref().expect("first transducer present").clone();
-            {
-                let second_ref = second.as_ref().expect("second transducer present");
-                let first_t = first.as_mut().expect("first transducer present");
-                hfst_set_name_binary(first_t, &first_src, second_ref, spec.name_op);
-                hfst_set_formula_binary(first_t, &first_src, second_ref, spec.formula);
-            }
-            if let Err(e) = outstream.redirect(first.as_mut().expect("first transducer present")) {
-                error(1, 0, &format!("{e}"));
-                return 1;
+                (AnyTransducer::Log(f), AnyTransducer::Log(s)) => {
+                    process_pair(spec, op, f, s, &ctx, &mut outstream)
+                        .map(|(f, s)| (f.into_any(), s.into_any()))
+                }
+                _ => {
+                    // Unreachable: OL streams were rejected before the loop
+                    // and the mismatch arm above unified the algebra types;
+                    // keep the OL rejection text for safety.
+                    let _ = write!(
+                        std::io::stderr(),
+                        "Error: {} cannot process transducers that are in optimized lookup format.\n",
+                        spec.tool_name
+                    );
+                    return 1;
+                }
+            };
+            match processed {
+                Ok((f, s)) => {
+                    first = Some(f);
+                    second = Some(s);
+                }
+                Err(code) => return code,
             }
 
             match spec.loop_style {

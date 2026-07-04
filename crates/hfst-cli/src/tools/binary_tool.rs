@@ -121,27 +121,36 @@ unsafe fn binaryoperate_streams(
                     transducer_n
                 ));
             }
-            let mut first = match HfstTransducer::new_from_stream(firststream) {
+            let first = match firststream.read() {
                 Ok(t) => t,
                 Err(e) => {
                     eprintln!("hfst-binary-tool: {e}");
                     return 1;
                 }
             };
-            let second = match HfstTransducer::new_from_stream(secondstream) {
+            let second = match secondstream.read() {
                 Ok(t) => t,
                 Err(e) => {
                     eprintln!("hfst-binary-tool: {e}");
                     return 1;
                 }
             };
-            if let Err(e) = first.concatenate(&second, true) {
-                eprintln!("hfst-binary-tool: {e}");
-                return 1;
-            }
-            if let Err(e) = outstream.redirect(&mut first) {
-                eprintln!("hfst-binary-tool: {e}");
-                return 1;
+            // one dispatch per pair ([dec:hfst:monomorphic-backends]); the
+            // C++ concatenate threw TransducerTypeMismatch for mixed operands
+            // at runtime, which is now the boundary's mismatch arm.
+            use hfst::hfst_transducer::AnyTransducer;
+            let code = match (first, second) {
+                (AnyTransducer::Tropical(f), AnyTransducer::Tropical(s)) => {
+                    concatenate_pair(f, s, outstream)
+                }
+                (AnyTransducer::Log(f), AnyTransducer::Log(s)) => concatenate_pair(f, s, outstream),
+                _ => {
+                    eprintln!("hfst-binary-tool: {}", hfst::err!(TransducerTypeMismatch));
+                    return 1;
+                }
+            };
+            if code != 0 {
+                return code;
             }
             both_inputs = firststream.is_good() && secondstream.is_good();
         }
@@ -172,6 +181,23 @@ unsafe fn binaryoperate_streams(
         outstream.close();
         0
     }
+}
+
+// The monomorphic pair body of the skeleton tool.
+unsafe fn concatenate_pair<B: hfst::backend::AlgebraBackend>(
+    mut first: HfstTransducer<B>,
+    second: HfstTransducer<B>,
+    outstream: &mut HfstOutputStream,
+) -> i32 {
+    if let Err(e) = first.concatenate(&second, true) {
+        eprintln!("hfst-binary-tool: {e}");
+        return 1;
+    }
+    if let Err(e) = outstream.redirect(&mut first) {
+        eprintln!("hfst-binary-tool: {e}");
+        return 1;
+    }
+    0
 }
 
 // [spec:hfst:def:hfst-binary-tool.main-fn]

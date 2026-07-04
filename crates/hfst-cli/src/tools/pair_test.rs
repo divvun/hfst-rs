@@ -16,8 +16,8 @@ use crate::inc::{
 };
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
+use hfst::hfst_data_types::StringPairVector;
 use hfst::hfst_data_types::implementations::HfstState;
-use hfst::hfst_data_types::{ImplementationType, StringPairVector};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_strings2_fst_tokenizer::HfstStrings2FstTokenizer;
 use hfst::hfst_symbol_defs::{internal_epsilon, is_epsilon};
@@ -315,7 +315,9 @@ fn test_rule(
 
 // [spec:hfst:def:hfst-pair-test.get-transducer-fn]
 // [spec:hfst:sem:hfst-pair-test.get-transducer-fn]
-fn get_transducer(tokenized_pair_string: &StringPairVector) -> HfstTransducer {
+fn get_transducer(
+    tokenized_pair_string: &StringPairVector,
+) -> HfstTransducer<hfst_openfst::StdVectorFst> {
     let mut t = HfstBasicTransducer::new();
     let mut s: HfstState = 0;
     for it in tokenized_pair_string.iter() {
@@ -331,7 +333,7 @@ fn get_transducer(tokenized_pair_string: &StringPairVector) -> HfstTransducer {
         s = target;
     }
     t.set_final_weight(s, &0.0);
-    match HfstTransducer::new_from_basic(&t, ImplementationType::TROPICAL_OPENFST_TYPE) {
+    match HfstTransducer::new_from_basic(&t) {
         Ok(v) => v,
         Err(e) => {
             error(1, 0, &format!("{e}"));
@@ -422,7 +424,7 @@ unsafe fn print_failure_info(
 ) {
     unsafe {
         let mut str_transducer = get_transducer(tokenized_pair_string);
-        let tt = match HfstTransducer::new_from_basic(t, ImplementationType::TROPICAL_OPENFST_TYPE)
+        let tt: HfstTransducer<hfst_openfst::StdVectorFst> = match HfstTransducer::new_from_basic(t)
         {
             Ok(v) => v,
             Err(e) => {
@@ -613,14 +615,16 @@ unsafe fn process_stream(
                     transducer_n
                 ));
             }
-            let trans = match HfstTransducer::new_from_stream(inputstream) {
+            let trans = match inputstream.read() {
                 Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            let basic = HfstBasicTransducer::new_from_transducer(&trans);
+            // one dispatch per read: the rules only feed the basic-transducer
+            // grammar ([dec:hfst:monomorphic-backends]).
+            let basic = crate::for_any!(&trans, t => HfstBasicTransducer::new_from_transducer(t));
             grammar.push(basic);
             rule_names.push(demangle(trans.get_name()));
         }

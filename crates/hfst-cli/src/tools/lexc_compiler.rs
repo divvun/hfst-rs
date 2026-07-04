@@ -8,7 +8,7 @@
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_from_env, hfst_parse_format_name, hfst_set_program_name,
-    hfst_warning, verbose_print,
+    hfst_warning, redirect_converting, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
@@ -326,7 +326,10 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 
 // [spec:hfst:def:hfst-lexc-compiler.lexc-streams-fn]
 // [spec:hfst:sem:hfst-lexc-compiler.lexc-streams-fn]
-unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream) -> i32 {
+unsafe fn lexc_streams<B: hfst::backend::AlgebraBackend>(
+    lexc: &mut LexcCompiler<B>,
+    outstream: &mut HfstOutputStream,
+) -> i32 {
     unsafe {
         let lexcfilenames = &*std::ptr::addr_of!(LEXCFILENAMES);
         for i in 0..(LEXCCOUNT as usize) {
@@ -385,7 +388,7 @@ unsafe fn lexc_streams(lexc: &mut LexcCompiler, outstream: &mut HfstOutputStream
         hfst_set_name(&mut res, &lexcfilenames[0], "lexc");
         hfst_set_formula(&mut res, &lexcfilenames[0], "L");
         verbose_print("\nWriting... ");
-        if let Err(e) = outstream.redirect(&mut res) {
+        if let Err(e) = redirect_converting(outstream, &mut res) {
             error(1, 0, &format!("{e}"));
             return 1;
         }
@@ -434,7 +437,21 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
                 return 1;
             }
         };
-        let mut lexc = LexcCompiler::new_with_flags(FORMAT, WITH_FLAGS, ALIGN_STRINGS);
+        // The parsed --format is matched ONCE into the compiler's backend
+        // type ([dec:hfst:monomorphic-backends]); optimized-lookup formats
+        // compile at tropical and convert at the write.
+        match FORMAT {
+            ImplementationType::LOG_OPENFST_TYPE => {
+                run_typed::<hfst::log_weight_transducer::LogFst>(&mut outstream)
+            }
+            _ => run_typed::<hfst_openfst::StdVectorFst>(&mut outstream),
+        }
+    }
+}
+
+unsafe fn run_typed<B: hfst::backend::AlgebraBackend>(outstream: &mut HfstOutputStream) -> i32 {
+    unsafe {
+        let mut lexc = LexcCompiler::<B>::new_with_flags(WITH_FLAGS, ALIGN_STRINGS);
         lexc.set_minimize_flags(MINIMIZE_FLAGS);
         lexc.set_rename_flags(RENAME_FLAGS);
         lexc.set_flag_is_epsilon(FLAG_IS_EPSILON);
@@ -484,7 +501,7 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
             eput("Warningn: Disabling unicode character tokenisation\n");
             lexc.set_split_characters(true);
         }
-        let retval = lexc_streams(&mut lexc, &mut outstream);
+        let retval = lexc_streams(&mut lexc, outstream);
         // The C++ also frees the filename buffers here; the Rust owners drop
         // automatically.
         retval

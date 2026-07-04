@@ -19,7 +19,6 @@ use crate::inc::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // [spec:hfst:def:hfst-reverse.print-usage-fn]
@@ -80,17 +79,19 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 // [spec:hfst:def:hfst-reverse.process-stream-fn]
 // [spec:hfst:sem:hfst-reverse.process-stream-fn]
 unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOutputStream) -> i32 {
-    unsafe {
-        let mut transducer_n: usize = 0;
-        while instream.is_good() {
-            transducer_n += 1;
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
+    let mut transducer_n: usize = 0;
+    while instream.is_good() {
+        transducer_n += 1;
+        let any = match instream.read() {
+            Ok(v) => v,
+            Err(e) => {
+                error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
+        // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+        crate::for_algebra!(any, trans => {
+            let mut trans = trans;
             let inputname = hfst_get_name(&trans, &globals::input_filename());
             if transducer_n == 1 {
                 verbose_print(&format!("Reversing {}...\n", inputname));
@@ -112,11 +113,19 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 error(1, 0, &format!("{e}"));
                 return 1;
             }
-        }
-        instream.close();
-        outstream.close();
-        0
+        }, else => {
+            // Unreachable: the optimized-lookup stream rejection already
+            // returned before the loop; keep its text for safety.
+            let _ = write!(
+                std::io::stderr(),
+                "Error: hfst-reverse cannot process transducers that are in optimized lookup format.\n"
+            );
+            return 1;
+        });
     }
+    instream.close();
+    outstream.close();
+    0
 }
 
 // [spec:hfst:def:hfst-reverse.main-fn]

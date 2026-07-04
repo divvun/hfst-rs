@@ -31,7 +31,6 @@ static mut INCLUDE_COSINE_DISTANCES: bool = false;
 
 // C: the compilation format, chosen at compile time from the available
 // back-ends. The Rust crate links the tropical OpenFST back-end.
-const COMPILATION_FORMAT: ImplementationType = ImplementationType::TROPICAL_OPENFST_TYPE;
 
 // [spec:hfst:def:hfst-pmatch2fst.print-usage-fn]
 // [spec:hfst:sem:hfst-pmatch2fst.print-usage-fn]
@@ -148,13 +147,17 @@ unsafe fn get_current_dir_name() -> String {
 // [spec:hfst:sem:hfst-pmatch2fst.process-stream-fn]
 unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read) -> i32 {
     unsafe {
-        let mut comp = PmatchCompiler::new(COMPILATION_FORMAT);
+        // pmatch is pinned to the tropical backend (the C++ compilation_format);
+        // the former format argument is the type parameter now.
+        let mut comp = PmatchCompiler::<hfst_openfst::StdVectorFst>::new();
         comp.set_verbose(globals::VERBOSE);
         comp.set_flatten(FLATTEN);
         comp.set_include_cosine_distances(INCLUDE_COSINE_DISTANCES);
         let mut file_bytes: Vec<u8> = Vec::new();
-        let mut definitions: std::collections::HashMap<String, HfstTransducer> =
-            std::collections::HashMap::new();
+        let mut definitions: std::collections::HashMap<
+            String,
+            HfstTransducer<hfst_openfst::StdVectorFst>,
+        > = std::collections::HashMap::new();
 
         let mut includedir = String::new();
         let inputfilename_str = globals::input_filename();
@@ -203,7 +206,6 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn Read)
         // stderr as before.
         match hfst::pmatch_compiler::write_archive(
             &mut definitions,
-            COMPILATION_FORMAT,
             outstream,
             globals::VERBOSE,
             &mut std::io::stderr(),

@@ -18,7 +18,6 @@ use crate::inc::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::collections::BTreeMap;
 use std::io::Write;
 
@@ -181,63 +180,67 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
                 ));
             }
 
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
+            let any = match instream.read() {
                 Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            if !PRINT_ALL_PROPERTIES && print_property().is_none() {
-                for (key, val) in properties().iter() {
-                    if key == "type" {
-                        warning(
-                            0,
-                            0,
-                            "Changing `type' metadata will not change type of transducer in file;\n\
-                             having wrong type may cause breakage, use with caution",
-                        );
-                    } else if key == "version" {
-                        warning(
-                            0,
-                            0,
-                            "Changing `version' changes parsing semantics for header;\n\
-                             use with caution",
-                        );
-                    } else if key == "character-encoding" && !(val == "utf-8" || val == "UTF-8") {
-                        error(
-                            1,
-                            0,
-                            "Cannot set `character-encoding' to unsupported value;\n\
-                             consider recoding sources of automaton",
-                        );
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            crate::for_any!(any, trans => {
+                let mut trans = trans;
+                if !PRINT_ALL_PROPERTIES && print_property().is_none() {
+                    for (key, val) in properties().iter() {
+                        if key == "type" {
+                            warning(
+                                0,
+                                0,
+                                "Changing `type' metadata will not change type of transducer in file;\n\
+                                 having wrong type may cause breakage, use with caution",
+                            );
+                        } else if key == "version" {
+                            warning(
+                                0,
+                                0,
+                                "Changing `version' changes parsing semantics for header;\n\
+                                 use with caution",
+                            );
+                        } else if key == "character-encoding" && !(val == "utf-8" || val == "UTF-8") {
+                            error(
+                                1,
+                                0,
+                                "Cannot set `character-encoding' to unsupported value;\n\
+                                 consider recoding sources of automaton",
+                            );
+                        }
+                        if TRUNCATE_LENGTH > 0 {
+                            // C: hfst_strndup(value.c_str(), truncate_length) — copy
+                            // up to truncate_length bytes (NUL-terminating early).
+                            let bytes = val.as_bytes();
+                            let n = (TRUNCATE_LENGTH as usize).min(bytes.len());
+                            let truncated = String::from_utf8_lossy(&bytes[..n]).into_owned();
+                            trans.set_property(key, &truncated);
+                        } else {
+                            trans.set_property(key, val);
+                        }
                     }
-                    if TRUNCATE_LENGTH > 0 {
-                        // C: hfst_strndup(value.c_str(), truncate_length) — copy
-                        // up to truncate_length bytes (NUL-terminating early).
-                        let bytes = val.as_bytes();
-                        let n = (TRUNCATE_LENGTH as usize).min(bytes.len());
-                        let truncated = String::from_utf8_lossy(&bytes[..n]).into_owned();
-                        trans.set_property(key, &truncated);
-                    } else {
-                        trans.set_property(key, val);
-                    }
-                }
-                if let Err(e) = outstream.redirect(&mut trans) {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            } else {
-                let props = trans.get_properties();
-                if PRINT_ALL_PROPERTIES {
-                    for (key, val) in props.iter() {
-                        let _ = write!(out, "{}: {}\n", key, val);
+                    if let Err(e) = outstream.redirect(&mut trans) {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
                     }
                 } else {
-                    let pp = print_property().unwrap_or_default();
-                    let _ = write!(out, "{}\n", props.get(&pp).unwrap());
+                    let props = trans.get_properties();
+                    if PRINT_ALL_PROPERTIES {
+                        for (key, val) in props.iter() {
+                            let _ = write!(out, "{}: {}\n", key, val);
+                        }
+                    } else {
+                        let pp = print_property().unwrap_or_default();
+                        let _ = write!(out, "{}\n", props.get(&pp).unwrap());
+                    }
                 }
-            }
+            });
         }
         instream.close();
         outstream.close();

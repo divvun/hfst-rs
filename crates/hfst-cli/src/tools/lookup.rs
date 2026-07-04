@@ -104,6 +104,41 @@ static mut SHOW_PROGRESS_BAR: bool = false;
 // statistic counting
 static mut STATS: LookupStats = LookupStats::new();
 
+// The two optimized-lookup table shapes the stream can produce; the fast
+// lookup path runs on either ([dec:hfst:monomorphic-backends]).
+enum OlTransducer {
+    W(HfstTransducer<hfst::transducer::Transducer<hfst::transducer::WeightedTables>>),
+    U(HfstTransducer<hfst::transducer::Transducer<hfst::transducer::UnweightedTables>>),
+}
+
+impl OlTransducer {
+    fn lookup_fd_string_vector(
+        &self,
+        s: &StringVector,
+        limit: isize,
+        time_cutoff: f64,
+    ) -> hfst::error::Result<HfstOneLevelPaths> {
+        match self {
+            OlTransducer::W(t) => t.lookup_fd_string_vector(s, limit, time_cutoff),
+            OlTransducer::U(t) => t.lookup_fd_string_vector(s, limit, time_cutoff),
+        }
+    }
+
+    fn lookup_pairs(&self, s: &str, limit: isize, time_cutoff: f64) -> HfstTwoLevelPaths {
+        match self {
+            OlTransducer::W(t) => t.lookup_pairs(s, limit, time_cutoff),
+            OlTransducer::U(t) => t.lookup_pairs(s, limit, time_cutoff),
+        }
+    }
+
+    fn is_lookup_infinitely_ambiguous_string_vector(&self, s: &StringVector) -> bool {
+        match self {
+            OlTransducer::W(t) => t.is_lookup_infinitely_ambiguous_string_vector(s),
+            OlTransducer::U(t) => t.is_lookup_infinitely_ambiguous_string_vector(s),
+        }
+    }
+}
+
 // which transducer in the cascade we are handling
 static mut TRANSDUCER_NUMBER: u32 = 0;
 
@@ -471,7 +506,7 @@ unsafe fn get_lookup_string(s: &StringVector) -> String {
 #[allow(clippy::too_many_arguments)]
 unsafe fn lookup_fd_and_print(
     tr: Option<&HfstBasicTransducer>,
-    transducer: Option<&HfstTransducer>,
+    transducer: Option<&OlTransducer>,
     results: &mut HfstOneLevelPaths,
     s: &HfstOneLevelPath,
     limit: Option<isize>,
@@ -583,7 +618,7 @@ unsafe fn lookup_fd_and_print(
 #[allow(clippy::too_many_arguments)]
 unsafe fn lookup_simple_ol(
     s: &HfstOneLevelPath,
-    t: &HfstTransducer,
+    t: &OlTransducer,
     infinity: &mut bool,
     print_pairs_at_this_point: bool,
     print_fail: bool,
@@ -745,7 +780,7 @@ unsafe fn lookup_simple_basic(
 // engine driving this tool's optimized-lookup single-transducer lookup.
 unsafe fn lookup_cascading_ol(
     s: &HfstOneLevelPath,
-    cascade: &[HfstTransducer],
+    cascade: &[OlTransducer],
     infinity: &mut bool,
     out: &mut dyn Write,
 ) -> HfstOneLevelPaths {
@@ -850,7 +885,7 @@ unsafe fn lookup_cascading_basic(
 
 unsafe fn perform_lookups_ol(
     origin: &HfstOneLevelPath,
-    cascade: &[HfstTransducer],
+    cascade: &[OlTransducer],
     unknown: bool,
     infinite: &mut bool,
     out: &mut dyn Write,
@@ -910,7 +945,9 @@ unsafe fn perform_lookups_basic(
 
 unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn Write) -> i32 {
     unsafe {
-        let mut cascade: Vec<HfstTransducer> = Vec::new();
+        let mut cascade: Vec<OlTransducer> = Vec::new();
+        // the type of the first transducer read (C: cascade[0].get_type()).
+        let mut first_type = ImplementationType::UNSPECIFIED_TYPE;
         let mut cascade_mut: Vec<HfstBasicTransducer> = Vec::new();
         // set to false if non-ol transducer is pushed into the cascade
         let mut only_optimized_lookup = true;
@@ -922,7 +959,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             transducer_n += 1;
             // [spec:hfst:def:hfst-lookup.trans-fn]
             // [spec:hfst:sem:hfst-lookup.trans-fn]
-            let trans = match HfstTransducer::new_from_stream(inputstream) {
+            let trans = match inputstream.read() {
                 Ok(v) => v,
                 Err(e) => {
                     hfst_error(1, 0, &format!("{e}"));
@@ -930,6 +967,9 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
                 }
             };
             let ty = trans.get_type();
+            if transducer_n == 1 {
+                first_type = ty;
+            }
             let mut symbols_seen: StringSet = StringSet::new();
 
             if ty != ImplementationType::HFST_OL_TYPE && ty != ImplementationType::HFST_OLW_TYPE {
@@ -954,13 +994,15 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             {
                 // [spec:hfst:def:hfst-lookup.basic-fn]
                 // [spec:hfst:sem:hfst-lookup.basic-fn]
-                let basic = match HfstBasicTransducer::try_from_transducer(&trans) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        hfst_error(1, 0, &format!("{e}"));
-                        return 1;
+                let basic = crate::for_any!(&trans, t => {
+                    match HfstBasicTransducer::try_from_transducer(t) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            hfst_error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
                     }
-                };
+                });
                 for it in basic.iter() {
                     for tr_it in it.iter() {
                         let mcs = tr_it.get_input_symbol(basic.coder());
@@ -983,7 +1025,14 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
                 }
             }
 
-            cascade.push(trans);
+            // one dispatch per read ([dec:hfst:monomorphic-backends]): the
+            // OL variants carry the fast lookup path; the algebra variants
+            // were already converted to the basic cascade above.
+            match trans {
+                hfst::hfst_transducer::AnyTransducer::OlW(t) => cascade.push(OlTransducer::W(t)),
+                hfst::hfst_transducer::AnyTransducer::OlU(t) => cascade.push(OlTransducer::U(t)),
+                _ => {}
+            }
             id_or_unk_seen = false;
         }
 
@@ -1020,7 +1069,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
                 &format!(
                     "It is not possible to perform fast lookups with {} format automata.\n\
                      Using HFST basic transducer format and performing slow lookups",
-                    hfst_strformat(cascade[0].get_type())
+                    hfst_strformat(first_type)
                 ),
             );
         }

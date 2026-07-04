@@ -174,13 +174,35 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
             // C: catches TransducerTypeMismatchException -> error "input
             // transducers do not have the same type"; the Rust ctor currently
             // panics rather than throwing, so the catch arm is not reproduced.
-            let mut t = match HfstTransducer::new_from_stream(instream) {
+            let any = match instream.read() {
                 Ok(t) => t,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            let code =
+                crate::for_any!(any, t => process_one(t, outf, transducer_n, instream.get_type()));
+            if code != 0 {
+                return code;
+            }
+        }
+        instream.close();
+        0
+    }
+}
+
+// The per-transducer body, generic over the backend (text output only needs
+// the common Backend surface).
+unsafe fn process_one<B: hfst::backend::Backend>(
+    mut t: HfstTransducer<B>,
+    outf: &mut dyn std::io::Write,
+    transducer_n: usize,
+    stream_type: ImplementationType,
+) -> i32 {
+    unsafe {
+        {
             let mut inputname = t.get_name();
             if inputname.is_empty() {
                 inputname = globals::input_filename();
@@ -188,7 +210,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
             if transducer_n == 1 {
                 verbose_print(&format!("Converting {}...\n", inputname));
             } else {
-                if instream.get_type() == ImplementationType::XFSM_TYPE {
+                if stream_type == ImplementationType::XFSM_TYPE {
                     error(
                         1,
                         0,
@@ -248,9 +270,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
                     // writing in prolog format". The Rust impl panics; the catch
                     // arm is not reproduced here.
                     if ty == ImplementationType::XFSM_TYPE {
-                        // no name or weights printed
-                        t.write_xfsm_transducer_in_prolog_format(&globals::output_filename());
-                        Ok(())
+                        // XFSM streams cannot be read in this build (the
+                        // backend is compiled out); the C++ arm called
+                        // write_xfsm_transducer_in_prolog_format here.
+                        unreachable!("XFSM_TYPE cannot be read from an HFST stream in this build")
                     } else {
                         let namestr = t.get_name();
                         let alt_namestr = format!("NO_NAME_{}", transducer_n);
@@ -290,7 +313,6 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outf: &mut dyn std::io:
             }
             // C: delete t; (Rust drops at end of loop iteration).
         }
-        instream.close();
         0
     }
 }

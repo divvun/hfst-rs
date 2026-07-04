@@ -8,7 +8,7 @@ use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, error_at_line, extend_options_from_env, hfst_error, hfst_error_at_line,
     hfst_parse_format_name, hfst_set_program_name, hfst_strtoweight, hfst_warning_at_line,
-    verbose_print,
+    redirect_converting, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -286,6 +286,23 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 // [spec:hfst:sem:hfst-strings2fst.process-stream-fn]
 unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> i32 {
     unsafe {
+        // The parsed --format is matched ONCE into the backend type
+        // ([dec:hfst:monomorphic-backends]); optimized-lookup formats build
+        // at tropical and convert at each write.
+        match OUTPUT_FORMAT {
+            ImplementationType::LOG_OPENFST_TYPE => {
+                process_stream_typed::<hfst::log_weight_transducer::LogFst>(outstream, input)
+            }
+            _ => process_stream_typed::<hfst_openfst::StdVectorFst>(outstream, input),
+        }
+    }
+}
+
+unsafe fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
+    outstream: &mut HfstOutputStream,
+    input: &mut dyn BufRead,
+) -> i32 {
+    unsafe {
         let mut transducer_n: usize = 0;
         let mut disjunction = HfstBasicTransducer::new();
         let mut line_n: usize = 0;
@@ -314,6 +331,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 break;
             }
             transducer_n += 1;
+            let _ = transducer_n; // C++ counts but never reads it
             line_n += 1;
             verbose_print(&format!("Parsing line {}...\n", line_n));
 
@@ -430,7 +448,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 }
 
                 tr.disjunct_path(&spv, path_weight);
-                let mut res = match HfstTransducer::new_from_basic(&tr, OUTPUT_FORMAT) {
+                let mut res: HfstTransducer<B> = match HfstTransducer::new_from_basic(&tr) {
                     Ok(v) => v,
                     Err(e) => {
                         error(1, 0, &format!("{e}"));
@@ -438,7 +456,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     }
                 };
                 hfst_set_name(&mut res, "", "string");
-                if let Err(e) = outstream.redirect(&mut res) {
+                if let Err(e) = redirect_converting(outstream, &mut res) {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
@@ -450,7 +468,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         }
         // C: free(line); -> owned String, drops at scope end.
         if DISJUNCT_STRINGS {
-            let mut res = match HfstTransducer::new_from_basic(&disjunction, OUTPUT_FORMAT) {
+            let mut res: HfstTransducer<B> = match HfstTransducer::new_from_basic(&disjunction) {
                 Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
@@ -480,7 +498,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
             }
 
             hfst_set_name(&mut res, "?", "strings");
-            if let Err(e) = outstream.redirect(&mut res) {
+            if let Err(e) = redirect_converting(outstream, &mut res) {
                 error(1, 0, &format!("{e}"));
                 return 1;
             }

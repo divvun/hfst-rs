@@ -19,7 +19,7 @@ use crate::inc::{
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::StringSet;
-use hfst::hfst_transducer::HfstTransducer;
+
 use std::io::Write;
 
 // [spec:hfst:def:hfst-check-alpha.print-usage-fn]
@@ -118,52 +118,59 @@ unsafe fn process_stream(
                 verbose_print(&format!("Checking alphas... {}\n", transducer_n));
             }
             // read first alphas
-            let first = match HfstTransducer::new_from_stream(firststream) {
+            let first = match firststream.read() {
                 Ok(t) => t,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            let mutt: HfstBasicTransducer = match HfstBasicTransducer::try_from_transducer(&first) {
-                Ok(m) => m,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            let first_transducer_alphabet: StringSet = match first.get_alphabet() {
-                Ok(a) => a,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            let transducer_knows_alphabet = true;
-            let first_found_alphabet: StringSet = mutt.symbols_used();
-            // read second alphas
-            let second = match HfstTransducer::new_from_stream(secondstream) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            let secondmutt: HfstBasicTransducer =
-                match HfstBasicTransducer::try_from_transducer(&second) {
+            // one dispatch per read ([dec:hfst:monomorphic-backends]); the
+            // alphabet queries are backend-independent values.
+            let (mutt, first_transducer_alphabet): (HfstBasicTransducer, StringSet) = crate::for_any!(&first, t => {
+                let mutt = match HfstBasicTransducer::try_from_transducer(t) {
                     Ok(m) => m,
                     Err(e) => {
                         error(1, 0, &format!("{e}"));
                         return 1;
                     }
                 };
-            let second_transducer_alphabet: StringSet = match second.get_alphabet() {
-                Ok(a) => a,
+                let alpha = match t.get_alphabet() {
+                    Ok(a) => a,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
+                (mutt, alpha)
+            });
+            let transducer_knows_alphabet = true;
+            let first_found_alphabet: StringSet = mutt.symbols_used();
+            // read second alphas
+            let second = match secondstream.read() {
+                Ok(t) => t,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
+            let (secondmutt, second_transducer_alphabet): (HfstBasicTransducer, StringSet) = crate::for_any!(&second, t => {
+                let mutt = match HfstBasicTransducer::try_from_transducer(t) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
+                let alpha = match t.get_alphabet() {
+                    Ok(a) => a,
+                    Err(e) => {
+                        error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
+                (mutt, alpha)
+            });
             let second_found_alphabet: StringSet = secondmutt.symbols_used();
             // match
             let _ = write!(out, "Actual alphabet differences:\n");

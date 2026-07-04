@@ -7,9 +7,9 @@
 
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, conversion_type, error, extend_options_from_env, hfst_error, hfst_error_at_line,
-    hfst_set_program_name, hfst_strformat, hfst_warning, is_input_stream_in_ol_format,
-    verbose_print,
+    EXIT_CONTINUE, conversion_type, convert_any, error, extend_options_from_env, hfst_error,
+    hfst_error_at_line, hfst_set_program_name, hfst_strformat, hfst_warning,
+    is_input_stream_in_ol_format, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -42,10 +42,16 @@ static mut FROM_FILE: Option<BufReader<std::fs::File>> = None;
 static mut TO_LABEL: Option<String> = None;
 static mut TO_PAIR: Option<StringPair> = None;
 static mut TO_TRANSDUCER_FILENAME: Option<String> = None;
-static mut TO_TRANSDUCER: Option<HfstTransducer> = None;
 static mut COMPOSE: bool = false;
-static mut SUBSTITUTION_TRANS: Option<HfstTransducer> = None;
 static mut DELAYED: bool = false;
+
+// The C statics 'to_transducer' and 'substitution_trans' carry the loop's
+// backend type parameter now ([dec:hfst:monomorphic-backends]), so they live
+// in this state struct threaded through the typed body instead of in statics.
+struct SubstState<B: hfst::backend::AlgebraBackend> {
+    to_transducer: Option<HfstTransducer<B>>,
+    substitution_trans: Option<HfstTransducer<B>>,
+}
 static mut LABEL_SUBSTITUTION_MAP: Option<HfstSymbolSubstitutions> = None;
 static mut PAIR_SUBSTITUTION_MAP: Option<HfstSymbolPairSubstitutions> = None;
 static mut IN_ORDER: bool = false;
@@ -249,9 +255,9 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 
 // Resolves the display name of the replacement transducer: its stored name, or
 // the '-T' filename when unnamed.
-unsafe fn to_transducer_name() -> String {
+unsafe fn to_transducer_name<B: hfst::backend::AlgebraBackend>(state: &SubstState<B>) -> String {
     unsafe {
-        let n = (*(&raw const TO_TRANSDUCER)).as_ref().unwrap().get_name();
+        let n = state.to_transducer.as_ref().unwrap().get_name();
         if n.is_empty() {
             (*(&raw const TO_TRANSDUCER_FILENAME)).clone().unwrap()
         } else {
@@ -261,16 +267,17 @@ unsafe fn to_transducer_name() -> String {
 }
 
 // The 'HfstTransducer&' overload of 'do_substitute'.
-unsafe fn do_substitute(
-    trans: &mut HfstTransducer,
+unsafe fn do_substitute<B: hfst::backend::AlgebraBackend>(
+    trans: &mut HfstTransducer<B>,
     transducer_n: usize,
+    state: &mut SubstState<B>,
 ) -> hfst::error::Result<()> {
     unsafe {
         let from_pair = (*(&raw const FROM_PAIR)).clone();
         let to_pair = (*(&raw const TO_PAIR)).clone();
         let from_label = (*(&raw const FROM_LABEL)).clone();
         let to_label = (*(&raw const TO_LABEL)).clone();
-        let has_to_transducer = (*(&raw const TO_TRANSDUCER)).is_some();
+        let has_to_transducer = state.to_transducer.is_some();
         if let (Some(fp), Some(tp)) = (&from_pair, &to_pair) {
             verbose_print(&format!(
                 "Substituting pair {}:{} with pair {}:{}...\n",
@@ -290,10 +297,11 @@ unsafe fn do_substitute(
                         fl, tl, transducer_n
                     ));
                 }
-                let substitution = HfstTransducer::new_symbol_pair(fl, tl, trans.get_type())?;
-                (*(&raw mut SUBSTITUTION_TRANS))
+                let substitution: HfstTransducer<B> = HfstTransducer::new_symbol_pair(fl, tl)?;
+                state
+                    .substitution_trans
                     .as_mut()
-                    .expect("SUBSTITUTION_TRANS initialized per transducer above")
+                    .expect("substitution_trans initialized per transducer above")
                     .disjunct(&substitution, true)?;
                 DELAYED = true;
             } else {
@@ -308,7 +316,7 @@ unsafe fn do_substitute(
                 trans.substitute(fl, tl, true, true)?;
             }
         } else if let (Some(fp), true) = (&from_pair, has_to_transducer) {
-            let to_name = to_transducer_name();
+            let to_name = to_transducer_name(state);
             if transducer_n < 2 {
                 verbose_print(&format!(
                     "Substituting pair {}:{} with transducer {}...\n",
@@ -320,12 +328,13 @@ unsafe fn do_substitute(
                     fp.0, fp.1, to_name, transducer_n
                 ));
             }
-            let to_t = (*(&raw mut TO_TRANSDUCER))
+            let to_t = state
+                .to_transducer
                 .as_mut()
-                .expect("TO_TRANSDUCER present when has_to_transducer is true");
+                .expect("to_transducer present when has_to_transducer is true");
             trans.substitute_symbol_pair_with_transducer(fp, to_t, true)?;
         } else if let (Some(fl), true) = (&from_label, has_to_transducer) {
-            let to_name = to_transducer_name();
+            let to_name = to_transducer_name(state);
             if transducer_n < 2 {
                 verbose_print(&format!(
                     "Substituting id. label {} with transducer {}...\n",
@@ -338,9 +347,10 @@ unsafe fn do_substitute(
                 ));
             }
             let from_arc: StringPair = (fl.clone(), fl.clone());
-            let to_t = (*(&raw mut TO_TRANSDUCER))
+            let to_t = state
+                .to_transducer
                 .as_mut()
-                .expect("TO_TRANSDUCER present when has_to_transducer is true");
+                .expect("to_transducer present when has_to_transducer is true");
             trans.substitute_symbol_pair_with_transducer(&from_arc, to_t, true)?;
         }
         Ok(())
@@ -349,27 +359,25 @@ unsafe fn do_substitute(
 
 // [spec:hfst:def:hfst-substitute.perform-delayed-fn]
 // [spec:hfst:sem:hfst-substitute.perform-delayed-fn]
-unsafe fn perform_delayed(trans: &mut HfstTransducer) -> hfst::error::Result<()> {
-    unsafe {
-        verbose_print("Finalising substitution transducer...\n");
-        trans.substitute_by_composition(
-            (*(&raw const SUBSTITUTION_TRANS))
-                .as_ref()
-                .expect("SUBSTITUTION_TRANS initialized per transducer above"),
-        )?;
-        Ok(())
-    }
+unsafe fn perform_delayed<B: hfst::backend::AlgebraBackend>(
+    trans: &mut HfstTransducer<B>,
+    state: &SubstState<B>,
+) -> hfst::error::Result<()> {
+    verbose_print("Finalising substitution transducer...\n");
+    trans.substitute_by_composition(
+        state
+            .substitution_trans
+            .as_ref()
+            .expect("substitution_trans initialized per transducer above"),
+    )?;
+    Ok(())
 }
 
 // [spec:hfst:def:hfst-substitute.process-stream-fn]
 // [spec:hfst:sem:hfst-substitute.process-stream-fn]
 unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
     unsafe {
-        let mut symbol_pair_map_in_use = false;
-        let mut symbol_map_in_use = false;
-
-        let mut transducer_n: usize = 0;
-
+        let mut to_any: Option<hfst::hfst_transducer::AnyTransducer> = None;
         let mut output_type = ImplementationType::UNSPECIFIED_TYPE;
 
         if (*(&raw const TO_TRANSDUCER_FILENAME)).is_some() {
@@ -383,15 +391,15 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                     return 1;
                 }
             };
-            TO_TRANSDUCER = Some(match HfstTransducer::new_from_stream(&mut tostream) {
+            let mut to_transducer = match tostream.read() {
                 Ok(t) => t,
                 Err(e) => {
                     hfst_error(1, 0, &format!("{e}"));
                     return 1;
                 }
-            });
+            };
             tostream.close();
-            let to_transducer_type = (*(&raw const TO_TRANSDUCER)).as_ref().unwrap().get_type();
+            let to_transducer_type = to_transducer.get_type();
             let instream_type = instream.get_type();
             if to_transducer_type != instream_type {
                 if ALLOW_TRANSDUCER_CONVERSION {
@@ -419,14 +427,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                         ));
                     }
                     hfst_warning(0, 0, &warnstr);
-                    if let Err(e) = (*(&raw mut TO_TRANSDUCER))
-                        .as_mut()
-                        .expect("TO_TRANSDUCER populated above")
-                        .convert(output_type, String::new())
-                    {
-                        hfst_error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
+                    to_transducer = match convert_any(to_transducer, output_type) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            hfst_error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
+                    };
                 } else {
                     hfst_error(
                         1,
@@ -445,6 +452,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             } else {
                 output_type = instream.get_type();
             }
+            to_any = Some(to_transducer);
         } else {
             output_type = instream.get_type();
         }
@@ -462,15 +470,56 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             }
         };
 
-        while instream.is_good() {
-            transducer_n += 1;
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
-                Ok(t) => t,
+        // The resolved output type is matched ONCE into the loop's backend
+        // type parameter ([dec:hfst:monomorphic-backends]); OL streams were
+        // rejected before this point.
+        match output_type {
+            ImplementationType::LOG_OPENFST_TYPE => process_loop::<
+                hfst::log_weight_transducer::LogFst,
+            >(instream, &mut outstream, to_any),
+            _ => process_loop::<hfst_openfst::StdVectorFst>(instream, &mut outstream, to_any),
+        }
+    }
+}
+
+unsafe fn process_loop<
+    B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer,
+>(
+    instream: &mut HfstInputStream,
+    outstream: &mut HfstOutputStream,
+    to_any: Option<hfst::hfst_transducer::AnyTransducer>,
+) -> i32 {
+    unsafe {
+        let mut symbol_pair_map_in_use = false;
+        let mut symbol_map_in_use = false;
+
+        let mut transducer_n: usize = 0;
+
+        let to_transducer: Option<HfstTransducer<B>> = match to_any {
+            Some(a) => match a.into_typed() {
+                Ok(t) => Some(t),
                 Err(e) => {
                     hfst_error(1, 0, &format!("{e}"));
                     return 1;
                 }
-            };
+            },
+            None => None,
+        };
+        let mut state = SubstState {
+            to_transducer,
+            substitution_trans: None,
+        };
+
+        while instream.is_good() {
+            transducer_n += 1;
+            let mut trans: HfstTransducer<B> =
+                match instream.read().and_then(|any| any.into_typed()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        hfst_error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
             let inputname = {
                 let n = trans.get_name();
                 if n.is_empty() {
@@ -488,13 +537,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                 ));
             }
             // initialize delayed substitutor automaton
-            SUBSTITUTION_TRANS = Some(match HfstTransducer::new_type(trans.get_type()) {
-                Ok(t) => t,
-                Err(e) => {
-                    hfst_error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            });
+            state.substitution_trans = Some(HfstTransducer::new());
             if (*(&raw const FROM_FILE)).is_some() {
                 let from_file_name = (*(&raw const FROM_FILE_NAME)).clone().unwrap();
                 let mut line_n: u32 = 0;
@@ -571,7 +614,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                                 );
                             symbol_pair_map_in_use = true;
                         } else {
-                            if let Err(e) = do_substitute(&mut trans, transducer_n) {
+                            if let Err(e) = do_substitute(&mut trans, transducer_n, &mut state) {
                                 hfst_error(1, 0, &format!("{e}"));
                                 return 1;
                             }
@@ -584,13 +627,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
                                 .insert(fl.clone(), tl.clone());
                             symbol_map_in_use = true;
                         } else {
-                            if let Err(e) = do_substitute(&mut trans, transducer_n) {
+                            if let Err(e) = do_substitute(&mut trans, transducer_n, &mut state) {
                                 hfst_error(1, 0, &format!("{e}"));
                                 return 1;
                             }
                         }
                     } else {
-                        if let Err(e) = do_substitute(&mut trans, transducer_n) {
+                        if let Err(e) = do_substitute(&mut trans, transducer_n, &mut state) {
                             hfst_error(1, 0, &format!("{e}"));
                             return 1;
                         }
@@ -625,13 +668,13 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             }
             // if not from file
             else {
-                if let Err(e) = do_substitute(&mut trans, transducer_n) {
+                if let Err(e) = do_substitute(&mut trans, transducer_n, &mut state) {
                     hfst_error(1, 0, &format!("{e}"));
                     return 1;
                 }
             }
             if DELAYED {
-                if let Err(e) = perform_delayed(&mut trans) {
+                if let Err(e) = perform_delayed(&mut trans, &state) {
                     hfst_error(1, 0, &format!("{e}"));
                     return 1;
                 }
@@ -675,7 +718,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             }
         }
         // delete to_transducer
-        TO_TRANSDUCER = None;
+        state.to_transducer = None;
         instream.close();
         outstream.close();
         0

@@ -304,13 +304,18 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
         // (the C wraps the HfstTransducer ctor in try/catch reporting "Error
         // when reading guesser from file <inputfilename>"; the Rust ctor panics
         // rather than throwing, so that catch arm is not reproduced here.)
-        let mut guesser = match HfstTransducer::new_from_stream(&mut instream) {
-            Ok(t) => t,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
+        // The lookup engine of get_guesses/get_paradigms is pinned to the
+        // weighted optimized-lookup backend; any other input converts here at
+        // the stream boundary ([dec:hfst:monomorphic-backends]), as the C++
+        // guesser lookup path did through its own conversions.
+        let mut guesser: HfstTransducer<hfst::transducer::Transducer> =
+            match instream.read().and_then(|any| any.into_typed()) {
+                Ok(t) => t,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
 
         if !is_guesser(&guesser) {
             error(
@@ -324,7 +329,7 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
             return 1;
         }
 
-        let mut generator: Option<HfstTransducer> = None;
+        let mut generator: Option<HfstTransducer<hfst::transducer::Transducer>> = None;
 
         if GENERATE_MODEL_FORMS {
             if !instream.is_good() {
@@ -341,7 +346,7 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
                     }
                 });
             } else {
-                generator = Some(match HfstTransducer::new_from_stream(&mut instream) {
+                generator = Some(match instream.read().and_then(|any| any.into_typed()) {
                     Ok(g) => g,
                     Err(e) => {
                         error(1, 0, &format!("{e}"));

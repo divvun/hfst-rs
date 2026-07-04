@@ -4,7 +4,9 @@
 //! it reads two input streams (firstfile + secondfile) and writes their
 //! shuffle; the shared scaffolding lives in crate::binary_ops.
 
-use crate::binary_ops::{BinaryOpSpec, LoopStyle, RetryPolicy, run_binary_streams_tool};
+use crate::binary_ops::{
+    BinaryOpSpec, BinaryToolOp, LoopStyle, RetryPolicy, run_binary_streams_tool,
+};
 use crate::globals;
 use crate::hfst_commandline::{EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name};
 use crate::hfst_getopt as getopt;
@@ -16,6 +18,8 @@ use crate::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
+use hfst::backend::AlgebraBackend;
+use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // [spec:hfst:def:hfst-shuffle.print-usage-fn]
@@ -114,8 +118,18 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
         if retval != EXIT_CONTINUE {
             return retval;
         }
-        run_binary_streams_tool(&SPEC, None, &mut |first, second| {
-            first.shuffle(second, true).map(|_| ())
-        })
+        run_binary_streams_tool(&SPEC, &mut ShuffleOp)
+    }
+}
+
+struct ShuffleOp;
+
+impl BinaryToolOp for ShuffleOp {
+    fn apply<B: AlgebraBackend>(
+        &mut self,
+        first: &mut HfstTransducer<B>,
+        second: &HfstTransducer<B>,
+    ) -> hfst::error::Result<()> {
+        first.shuffle(second, true).map(|_| ())
     }
 }

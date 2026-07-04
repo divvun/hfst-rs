@@ -14,7 +14,6 @@ use crate::inc::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // add tools-specific variables here
@@ -131,33 +130,35 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 // [spec:hfst:def:hfst-split.process-stream-fn]
 // [spec:hfst:sem:hfst-split.process-stream-fn]
 unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
-    unsafe {
-        let mut transducer_n: usize = 0;
-        while instream.is_good() {
-            transducer_n += 1;
-            let outfilename = format!("{}{}{}", prefix(), transducer_n, extension());
-            globals::set_output_filename(outfilename.clone());
-            verbose_print(&format!(
-                "Writing {} of {} to {}...\n",
-                transducer_n,
-                globals::input_filename(),
-                outfilename
-            ));
-            let mut outstream =
-                match HfstOutputStream::new_filename(&outfilename, instream.get_type(), true) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        crate::hfst_commandline::error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                };
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
-                Ok(t) => t,
+    let mut transducer_n: usize = 0;
+    while instream.is_good() {
+        transducer_n += 1;
+        let outfilename = format!("{}{}{}", prefix(), transducer_n, extension());
+        globals::set_output_filename(outfilename.clone());
+        verbose_print(&format!(
+            "Writing {} of {} to {}...\n",
+            transducer_n,
+            globals::input_filename(),
+            outfilename
+        ));
+        let mut outstream =
+            match HfstOutputStream::new_filename(&outfilename, instream.get_type(), true) {
+                Ok(s) => s,
                 Err(e) => {
                     crate::hfst_commandline::error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
+        let any = match instream.read() {
+            Ok(t) => t,
+            Err(e) => {
+                crate::hfst_commandline::error(1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
+        // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+        crate::for_any!(any, trans => {
+            let mut trans = trans;
             if let Err(e) = outstream.redirect(&mut trans) {
                 crate::hfst_commandline::error(1, 0, &format!("{e}"));
                 return 1;
@@ -168,10 +169,10 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
             }
             outstream.close();
             globals::set_output_filename("");
-        }
-        instream.close();
-        0
+        });
     }
+    instream.close();
+    0
 }
 
 // [spec:hfst:def:hfst-split.main-fn]

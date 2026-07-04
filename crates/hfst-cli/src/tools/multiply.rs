@@ -20,7 +20,6 @@ use crate::inc::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // add tools-specific variables here
@@ -106,28 +105,40 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
-                Ok(t) => t,
+            let any = match instream.read() {
+                Ok(v) => v,
                 Err(e) => {
                     eprintln!("hfst-multiply: {e}");
                     return 1;
                 }
             };
-            let mut inputname = trans.get_name();
-            if inputname.is_empty() {
-                inputname = globals::input_filename();
-            }
-
-            verbose_print(&format!(
-                "Duplicate {} times {}...{}\n",
-                inputname, DUPE_COUNT, transducer_n
-            ));
-            for _ in 0..DUPE_COUNT {
-                if let Err(e) = outstream.redirect(&mut trans) {
-                    eprintln!("hfst-multiply: {e}");
-                    return 1;
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            crate::for_algebra!(any, trans => {
+                let mut trans = trans;
+                let mut inputname = trans.get_name();
+                if inputname.is_empty() {
+                    inputname = globals::input_filename();
                 }
-            }
+
+                verbose_print(&format!(
+                    "Duplicate {} times {}...{}\n",
+                    inputname, DUPE_COUNT, transducer_n
+                ));
+                for _ in 0..DUPE_COUNT {
+                    if let Err(e) = outstream.redirect(&mut trans) {
+                        eprintln!("hfst-multiply: {e}");
+                        return 1;
+                    }
+                }
+            }, else => {
+                // Unreachable: the optimized-lookup stream rejection already
+                // returned before the loop; keep its text for safety.
+                let _ = write!(
+                    std::io::stderr(),
+                    "Error: hfst-multiply cannot process transducers that are in optimized lookup format.\n"
+                );
+                return 1;
+            });
         }
         instream.close();
         outstream.close();

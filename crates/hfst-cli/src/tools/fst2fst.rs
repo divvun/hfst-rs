@@ -7,8 +7,8 @@
 
 use crate::globals;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_from_env, hfst_parse_format_name, hfst_set_program_name,
-    hfst_strformat, verbose_print, warning,
+    EXIT_CONTINUE, convert_any_with_options, error, extend_options_from_env,
+    hfst_parse_format_name, hfst_set_program_name, hfst_strformat, verbose_print, warning,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -23,7 +23,6 @@ use crate::inc::{
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // tool-specific variables
@@ -248,7 +247,7 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut orig = match HfstTransducer::new_from_stream(instream) {
+            let orig = match instream.read() {
                 Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
@@ -262,22 +261,35 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
             } else {
                 verbose_print(&format!("Converting {}...{}\n", inputname, transducer_n));
             }
+            // The typed cross-format conversion at the stream boundary
+            // ([dec:hfst:monomorphic-backends]): to_basic/from_basic between
+            // the algebra backends, to_ol(weighted, options) for OL output.
             // C wraps the conversion in try/catch on HfstException; the Rust
             // conversion currently panics rather than throwing, so the catch arm
             // is not reproduced here.
-            if let Err(e) = orig.convert(OUTPUT_TYPE, OPTIONS.clone()) {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
+            let converted = match convert_any_with_options(orig, OUTPUT_TYPE, &OPTIONS) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             // C: hfst_set_name(orig, orig, "convert"); the dest and src are the
             // same object, which Rust cannot alias mut+const, so the read side is
             // taken from a copy (name/formula are unchanged by the copy).
-            let src = orig.clone();
-            hfst_set_name_unary(&mut orig, &src, "convert");
-            hfst_set_formula_unary(&mut orig, &src, "Id");
-            if let Err(e) = outstream.redirect(&mut orig) {
-                error(1, 0, &format!("{e}"));
-                return 1;
+            let code = crate::for_any!(converted, orig => {
+                let mut orig = orig;
+                let src = orig.clone();
+                hfst_set_name_unary(&mut orig, &src, "convert");
+                hfst_set_formula_unary(&mut orig, &src, "Id");
+                if let Err(e) = outstream.redirect(&mut orig) {
+                    error(1, 0, &format!("{e}"));
+                    return 1;
+                }
+                0
+            });
+            if code != 0 {
+                return code;
             }
         }
         if let Err(e) = outstream.flush() {

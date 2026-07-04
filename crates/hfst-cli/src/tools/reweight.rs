@@ -313,12 +313,14 @@ unsafe fn reweight(w: f32, i: Option<&str>, o: Option<&str>) -> f32 {
     }
 }
 
-unsafe fn do_reweight(trans: &mut HfstTransducer) -> hfst::error::Result<()> {
+unsafe fn do_reweight<B: hfst::backend::AlgebraBackend>(
+    trans: &mut HfstTransducer<B>,
+) -> hfst::error::Result<()> {
     // [spec:hfst:def:hfst-reweight.original-fn]
     // [spec:hfst:sem:hfst-reweight.original-fn]
     let original = HfstBasicTransducer::from_hfst_transducer(trans);
     let replication = original.transform_weights(|w, i, o| unsafe { reweight(w, i, o) });
-    *trans = HfstTransducer::new_from_basic(&replication, trans.get_type())?;
+    *trans = HfstTransducer::new_from_basic(&replication)?;
     Ok(())
 }
 
@@ -329,121 +331,133 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         let mut transducer_n: usize = 0;
         while instream.is_good() {
             transducer_n += 1;
-            let mut trans = match HfstTransducer::new_from_stream(instream) {
-                Ok(t) => t,
+            let any = match instream.read() {
+                Ok(v) => v,
                 Err(e) => {
-                    hfst_error(1, 0, &format!("{e}"));
+                    error(1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            if trans.get_type() == ImplementationType::FOMA_TYPE {
-                hfst_warning(
-                    0,
-                    0,
-                    "Weighting is not supported in this automaton type;\
-weights will be discarded",
-                );
-            }
-            let inputname = hfst_get_name(&trans, &globals::input_filename());
-            if transducer_n == 1 {
-                verbose_print(&format!("Reweighting {}...\n", inputname));
-            } else {
-                verbose_print(&format!("Reweighting {}...{}\n", inputname, transducer_n));
-            }
-            if TSV_FILE.is_none() {
-                if let Err(e) = do_reweight(&mut trans) {
-                    hfst_error(1, 0, &format!("{e}"));
-                    return 1;
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            crate::for_algebra!(any, trans => {
+                let mut trans = trans;
+                if trans.get_type() == ImplementationType::FOMA_TYPE {
+                    hfst_warning(
+                        0,
+                        0,
+                        "Weighting is not supported in this automaton type;\
+            weights will be discarded",
+                    );
                 }
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "reweight");
-                hfst_set_formula_unary(&mut trans, &src, "W");
-            } else {
-                // C: rewind(tsv_file) — seek the std file back to the start.
-                let tsv_file = TSV_FILE.as_mut().unwrap();
-                let _ = tsv_file.seek(SeekFrom::Start(0));
-                SYMBOL = None;
-                ADDITION = 0.0;
-                MULTIPLIER = 1.0;
-                let mut linen: usize = 0;
-                verbose_print(&format!(
-                    "Reading reweights from {}\n",
-                    TSV_FILE_NAME.clone().unwrap_or_default()
-                ));
-                let mut reader = BufReader::new(tsv_file);
-                let mut line = String::new();
-                loop {
-                    line.clear();
-                    // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
-                    if reader.read_line(&mut line).unwrap_or(0) == 0 {
-                        break;
-                    }
-                    linen += 1;
-                    let line_str = line.as_bytes();
-                    if line_str.first() == Some(&b'\n') {
-                        continue;
-                    }
-                    if line_str.first() == Some(&b'#') {
-                        continue;
-                    }
-                    let tab_pos = line_str.iter().position(|&b| b == b'\t');
-                    let tab = match tab_pos {
-                        None => {
-                            hfst_error_at_line(
-                                1,
-                                0,
-                                &TSV_FILE_NAME.clone().unwrap_or_default(),
-                                linen as u32,
-                                "at least one tab required per line",
-                            );
-                            continue;
-                        }
-                        Some(p) => p,
-                    };
-                    // endstr advances from tab+1 to first '\0' or '\n'
-                    let mut endstr = tab + 1;
-                    while endstr < line_str.len() && line_str[endstr] != b'\n' {
-                        endstr += 1;
-                    }
-                    // SYMBOL = strndup(line, tab); kept as the substring before the tab.
-                    let sym = String::from_utf8_lossy(&line_str[..tab]).into_owned();
-                    SYMBOL = Some(sym);
-                    let weightspec =
-                        String::from_utf8_lossy(&line_str[tab + 1..endstr]).into_owned();
-                    if weightspec.as_bytes().first() == Some(&b'+') {
-                        ADDITION = hfst_strtoweight(&weightspec[1..]);
-                    } else {
-                        MULTIPLIER = hfst_strtoweight(&weightspec);
-                    }
-                    verbose_print(&format!(
-                        "Modifying weights {} < w < {} as {} * {}(w) + {} for symbol {}\n",
-                        LOWER_BOUND,
-                        UPPER_BOUND,
-                        MULTIPLIER,
-                        FUNCNAME.clone().unwrap_or_default(),
-                        ADDITION,
-                        SYMBOL.clone().unwrap_or_default()
-                    ));
+                let inputname = hfst_get_name(&trans, &globals::input_filename());
+                if transducer_n == 1 {
+                    verbose_print(&format!("Reweighting {}...\n", inputname));
+                } else {
+                    verbose_print(&format!("Reweighting {}...{}\n", inputname, transducer_n));
+                }
+                if TSV_FILE.is_none() {
                     if let Err(e) = do_reweight(&mut trans) {
                         hfst_error(1, 0, &format!("{e}"));
                         return 1;
                     }
-                } // getline
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "reweight");
-                hfst_set_formula_unary(&mut trans, &src, "W");
-            } // if tsv_file
-            let reduced = match trans.remove_epsilons() {
-                Ok(t) => t,
-                Err(e) => {
+                    let src = trans.clone();
+                    hfst_set_name_unary(&mut trans, &src, "reweight");
+                    hfst_set_formula_unary(&mut trans, &src, "W");
+                } else {
+                    // C: rewind(tsv_file) — seek the std file back to the start.
+                    let tsv_file = TSV_FILE.as_mut().unwrap();
+                    let _ = tsv_file.seek(SeekFrom::Start(0));
+                    SYMBOL = None;
+                    ADDITION = 0.0;
+                    MULTIPLIER = 1.0;
+                    let mut linen: usize = 0;
+                    verbose_print(&format!(
+                        "Reading reweights from {}\n",
+                        TSV_FILE_NAME.clone().unwrap_or_default()
+                    ));
+                    let mut reader = BufReader::new(tsv_file);
+                    let mut line = String::new();
+                    loop {
+                        line.clear();
+                        // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
+                        if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                            break;
+                        }
+                        linen += 1;
+                        let line_str = line.as_bytes();
+                        if line_str.first() == Some(&b'\n') {
+                            continue;
+                        }
+                        if line_str.first() == Some(&b'#') {
+                            continue;
+                        }
+                        let tab_pos = line_str.iter().position(|&b| b == b'\t');
+                        let tab = match tab_pos {
+                            None => {
+                                hfst_error_at_line(
+                                    1,
+                                    0,
+                                    &TSV_FILE_NAME.clone().unwrap_or_default(),
+                                    linen as u32,
+                                    "at least one tab required per line",
+                                );
+                                continue;
+                            }
+                            Some(p) => p,
+                        };
+                        // endstr advances from tab+1 to first '\0' or '\n'
+                        let mut endstr = tab + 1;
+                        while endstr < line_str.len() && line_str[endstr] != b'\n' {
+                            endstr += 1;
+                        }
+                        // SYMBOL = strndup(line, tab); kept as the substring before the tab.
+                        let sym = String::from_utf8_lossy(&line_str[..tab]).into_owned();
+                        SYMBOL = Some(sym);
+                        let weightspec =
+                            String::from_utf8_lossy(&line_str[tab + 1..endstr]).into_owned();
+                        if weightspec.as_bytes().first() == Some(&b'+') {
+                            ADDITION = hfst_strtoweight(&weightspec[1..]);
+                        } else {
+                            MULTIPLIER = hfst_strtoweight(&weightspec);
+                        }
+                        verbose_print(&format!(
+                            "Modifying weights {} < w < {} as {} * {}(w) + {} for symbol {}\n",
+                            LOWER_BOUND,
+                            UPPER_BOUND,
+                            MULTIPLIER,
+                            FUNCNAME.clone().unwrap_or_default(),
+                            ADDITION,
+                            SYMBOL.clone().unwrap_or_default()
+                        ));
+                        if let Err(e) = do_reweight(&mut trans) {
+                            hfst_error(1, 0, &format!("{e}"));
+                            return 1;
+                        }
+                    } // getline
+                    let src = trans.clone();
+                    hfst_set_name_unary(&mut trans, &src, "reweight");
+                    hfst_set_formula_unary(&mut trans, &src, "W");
+                } // if tsv_file
+                let reduced = match trans.remove_epsilons() {
+                    Ok(t) => t,
+                    Err(e) => {
+                        hfst_error(1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
+                if let Err(e) = outstream.redirect(reduced) {
                     hfst_error(1, 0, &format!("{e}"));
                     return 1;
                 }
-            };
-            if let Err(e) = outstream.redirect(reduced) {
-                hfst_error(1, 0, &format!("{e}"));
+            }, else => {
+                // Unreachable: the optimized-lookup stream rejection already
+                // returned before the loop; keep its text for safety.
+                let _ = write!(
+                    std::io::stderr(),
+                    "Error: hfst-reweight cannot process transducers that are in optimized lookup format.\n"
+                );
                 return 1;
-            }
+            });
         } // foreach transducer
         instream.close();
         outstream.close();

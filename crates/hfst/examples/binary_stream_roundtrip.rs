@@ -68,7 +68,7 @@ fn roundtrip_hfst_ol(weighted: bool, label: &str) -> hfst::error::Result<()> {
     };
 
     let tropical = HfstTransducer::<StdVectorFst>::new_symbol("a")?;
-    let mut t = tropical.to_ol(weighted)?;
+    let mut t = tropical.to_ol(weighted, "")?;
     t.set_name("ol_ab");
 
     let path = std::env::temp_dir().join(format!("hfst_bin_roundtrip{label}.hfst"));

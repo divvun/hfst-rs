@@ -6,7 +6,7 @@
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, error, extend_options_from_env, hfst_error_at_line, hfst_parse_format_name,
-    hfst_set_program_name, verbose_print,
+    hfst_set_program_name, redirect_converting, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -230,9 +230,26 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 // [spec:hfst:sem:hfst-regexp2fst.process-stream-fn]
 unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> i32 {
     unsafe {
+        // The parsed --format is matched ONCE into the compiler's backend
+        // type parameter ([dec:hfst:monomorphic-backends]); optimized-lookup
+        // formats compile at tropical and convert at each write.
+        match OUTPUT_FORMAT {
+            ImplementationType::LOG_OPENFST_TYPE => {
+                process_stream_typed::<hfst::log_weight_transducer::LogFst>(outstream, input)
+            }
+            _ => process_stream_typed::<hfst_openfst::StdVectorFst>(outstream, input),
+        }
+    }
+}
+
+unsafe fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
+    outstream: &mut HfstOutputStream,
+    input: &mut dyn BufRead,
+) -> i32 {
+    unsafe {
         let mut transducer_n: usize = 0;
         let mut line_count: u32 = 0;
-        let mut comp = XreCompiler::new(OUTPUT_FORMAT);
+        let mut comp = XreCompiler::<B>::new();
         comp.set_verbosity(globals::VERBOSE);
         comp.set_error_stream(());
         comp.set_harmonization(HARMONIZE);
@@ -241,13 +258,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         comp.set_flag_is_epsilon(FLAG_IS_EPSILON);
         comp.set_xerox_composition(XEROX_COMPOSITION);
         comp.set_encode_weights(ENCODE_WEIGHTS);
-        let mut disjunction = match HfstTransducer::new_type(OUTPUT_FORMAT) {
-            Ok(t) => t,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
+        let mut disjunction: HfstTransducer<B> = HfstTransducer::new();
 
         let mut first_line: Option<String> = None;
 
@@ -305,7 +316,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                         }
                     } else {
                         hfst_set_name(&mut compiled, "?", "xre");
-                        if let Err(e) = outstream.redirect(&mut compiled) {
+                        if let Err(e) = redirect_converting(outstream, &mut compiled) {
                             error(1, 0, &format!("{e}"));
                             return 1;
                         }
@@ -346,6 +357,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     continue;
                 }
                 transducer_n += 1;
+                let _ = transducer_n; // C++ counts but never reads it
                 verbose_print(&format!("Compiling expression {}\n", line_count));
                 let compiled = comp.compile(&exp);
                 // (the C wraps compile in try/catch on HfstException calling
@@ -372,7 +384,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     }
                 } else {
                     hfst_set_name(&mut compiled, "?", "xre");
-                    if let Err(e) = outstream.redirect(&mut compiled) {
+                    if let Err(e) = redirect_converting(outstream, &mut compiled) {
                         error(1, 0, &format!("{e}"));
                         return 1;
                     }
@@ -384,7 +396,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
         if DISJUNCT_EXPRESSIONS {
             // Both branches of the C++ if/else set the same name.
             hfst_set_name(&mut disjunction, "?", "xre");
-            if let Err(e) = outstream.redirect(&mut disjunction) {
+            if let Err(e) = redirect_converting(outstream, &mut disjunction) {
                 error(1, 0, &format!("{e}"));
                 return 1;
             }

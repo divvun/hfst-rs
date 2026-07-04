@@ -377,6 +377,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "hfst",
+ "hfst-openfst",
  "mimalloc",
  "tracing",
  "tracing-subscriber",

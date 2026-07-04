@@ -19,7 +19,7 @@ use crate::inc::{
     handle_error_case,
 };
 use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
 use std::io::Write;
 
 // Tool-specific option state (C: 'static bool harmonize=true; static bool
@@ -132,10 +132,10 @@ unsafe fn compare_streams(
         let mut transducer_n_second: usize = 0; // transducers read from second input
         let mut mismatches: usize = 0;
 
-        let mut second: Option<HfstTransducer> = None;
+        let mut second: Option<AnyTransducer> = None;
 
         while continue_reading {
-            let mut first = match HfstTransducer::new_from_stream(firststream) {
+            let mut first = match firststream.read() {
                 Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
@@ -144,7 +144,7 @@ unsafe fn compare_streams(
             };
             transducer_n_first += 1;
             if secondstream.is_good() {
-                second = Some(match HfstTransducer::new_from_stream(secondstream) {
+                second = Some(match secondstream.read() {
                     Ok(v) => v,
                     Err(e) => {
                         error(1, 0, &format!("{e}"));
@@ -174,21 +174,19 @@ unsafe fn compare_streams(
                     firstname, secondname, transducer_n_first
                 ));
             }
-            // C: try { ... } catch (TransducerTypeMismatchException). The Rust
-            // 'compare' panics with TransducerTypeMismatchException on a type
-            // mismatch, so the try is reproduced with catch_unwind.
-            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-                || -> hfst::error::Result<bool> {
-                    if ELIMINATE_FLAGS {
-                        verbose_print("Eliminating flags...\n");
-                        first.eliminate_flags()?;
-                        second_ref.eliminate_flags()?;
-                    }
-                    first.compare(second_ref, HARMONIZE)
-                },
-            ));
+            // C: try { ... } catch (TransducerTypeMismatchException). Same-
+            // backend operands are a compile-time property of the generic
+            // body now, so the mismatch is this boundary's fall-through arm
+            // ([dec:hfst:monomorphic-backends]).
+            let outcome = match (&mut first, second_ref) {
+                (AnyTransducer::Tropical(f), AnyTransducer::Tropical(s)) => {
+                    Some(compare_pair(f, s))
+                }
+                (AnyTransducer::Log(f), AnyTransducer::Log(s)) => Some(compare_pair(f, s)),
+                _ => None,
+            };
             match outcome {
-                Ok(Ok(equal)) => {
+                Some(Ok(equal)) => {
                     if equal {
                         if transducer_n_first == 1 {
                             if !globals::SILENT {
@@ -216,11 +214,11 @@ unsafe fn compare_streams(
                         mismatches += 1;
                     }
                 }
-                Ok(Err(e)) => {
+                Some(Err(e)) => {
                     error(1, 0, &format!("{e}"));
                     return 1;
                 }
-                Err(_) => {
+                None => {
                     // cannot recover yet, but beautify error messages
                     error(
                         2,
@@ -282,6 +280,21 @@ unsafe fn compare_streams(
             ));
             1
         }
+    }
+}
+
+// The monomorphic per-pair comparison body (flag elimination + compare).
+unsafe fn compare_pair<B: hfst::backend::AlgebraBackend>(
+    first: &mut HfstTransducer<B>,
+    second: &mut HfstTransducer<B>,
+) -> hfst::error::Result<bool> {
+    unsafe {
+        if ELIMINATE_FLAGS {
+            verbose_print("Eliminating flags...\n");
+            first.eliminate_flags()?;
+            second.eliminate_flags()?;
+        }
+        first.compare(second, HARMONIZE)
     }
 }
 

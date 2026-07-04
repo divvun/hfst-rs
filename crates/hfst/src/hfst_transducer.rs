@@ -1182,15 +1182,17 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     /// (the C++ 'convert(HFST_OLW_TYPE)' / 'convert(HFST_OL_TYPE)' pair).
     /// Both build weighted-shaped tables in memory, exactly as the C++ did
     /// even for HFST_OL_TYPE output; 'weighted' only sets the header flag,
-    /// i.e. the stream type the result serializes under. The facade metadata
-    /// survives, as it did through the C++ convert.
+    /// i.e. the stream type the result serializes under. 'options' is the
+    /// C++ convert's options string ("quick" skips the hard table packing).
+    /// The facade metadata survives, as it did through the C++ convert.
     pub fn to_ol(
         &self,
         weighted: bool,
+        options: &str,
     ) -> crate::error::Result<HfstTransducer<Transducer<WeightedTables>>> {
         let net = self.get_basic_transducer()?;
         let ol = crate::convert_transducer_format::ConversionFunctions::
-            hfst_basic_transducer_to_hfst_ol(&net, weighted, "", None)?;
+            hfst_basic_transducer_to_hfst_ol(&net, weighted, options, None)?;
         let mut t = HfstTransducer::wrap(ol);
         t.name = self.name.clone();
         t.props = self.props.clone();

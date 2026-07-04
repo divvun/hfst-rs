@@ -20,7 +20,6 @@ use hfst::expand_equivalences::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
 // Tool-specific static-mut option state, mirroring the C++ file-scope statics.
@@ -236,67 +235,79 @@ unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOut
         while instream.is_good() {
             transducer_n += 1;
             let _ = transducer_n; // C++ counts but never reads it
-            let trans = match HfstTransducer::new_from_stream(instream) {
+            let any = match instream.read() {
                 Ok(v) => v,
                 Err(e) => {
                     error(1, 0, &format!("{e}"));
                     return;
                 }
             };
+            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+            crate::for_algebra!(any, trans => {
+                let trans = trans;
 
-            // Collect the (from, to) extension pairs from whichever source the
-            // options selected. The TSV parser and the extension/compose loop now
-            // live in hfst::expand_equivalences; the per-extension "extending X by
-            // Y" and "Applying extensions on N level" -v traces were diagnostic and
-            // are not reproduced.
-            let mut pairs: Vec<(String, String)> = Vec::new();
-            if let Some(from) = only_from_label() {
-                let to = only_to_label().unwrap_or_default();
-                verbose_print(&format!(
-                    "using single commandline extension {} with {}\n",
-                    from, to
-                ));
-                pairs.push((from, to));
-            } else if let Some(tsv_name) = tsv_file_name() {
-                verbose_print(&format!("reading extensions from {}...\n", tsv_name));
-                let file = match std::fs::File::open(&tsv_name) {
-                    Ok(f) => f,
+                // Collect the (from, to) extension pairs from whichever source the
+                // options selected. The TSV parser and the extension/compose loop now
+                // live in hfst::expand_equivalences; the per-extension "extending X by
+                // Y" and "Applying extensions on N level" -v traces were diagnostic and
+                // are not reproduced.
+                let mut pairs: Vec<(String, String)> = Vec::new();
+                if let Some(from) = only_from_label() {
+                    let to = only_to_label().unwrap_or_default();
+                    verbose_print(&format!(
+                        "using single commandline extension {} with {}\n",
+                        from, to
+                    ));
+                    pairs.push((from, to));
+                } else if let Some(tsv_name) = tsv_file_name() {
+                    verbose_print(&format!("reading extensions from {}...\n", tsv_name));
+                    let file = match std::fs::File::open(&tsv_name) {
+                        Ok(f) => f,
+                        Err(e) => {
+                            error(1, 0, &format!("cannot open {}: {}", tsv_name, e));
+                            return;
+                        }
+                    };
+                    match read_tsv_extensions(std::io::BufReader::new(file)) {
+                        Ok(p) => pairs = p,
+                        Err(TsvExtensionError { line, message }) => {
+                            error_at_line(1, 0, &tsv_name, line, &message);
+                            return;
+                        }
+                    }
+                } else if ACX_FILE_OPENED {
+                    verbose_print(&format!(
+                        "Reading ACX from {}...\n",
+                        acx_file_name().unwrap_or_default()
+                    ));
+                    // The libxml ACX-parsing body is gated behind #if HAVE_LIBXML_TREE_H
+                    // in the C++ source; without libxml it compiles to nothing, which
+                    // is the path reproduced here (no extensions added).
+                } else {
+                    error(1, 0, "DANGER TERROR HORROR !!!!!!");
+                    return;
+                }
+
+                let mut trans = match expand_equivalences(trans, &pairs, LEVEL) {
+                    Ok(v) => v,
                     Err(e) => {
-                        error(1, 0, &format!("cannot open {}: {}", tsv_name, e));
+                        error(1, 0, &format!("{e}"));
                         return;
                     }
                 };
-                match read_tsv_extensions(std::io::BufReader::new(file)) {
-                    Ok(p) => pairs = p,
-                    Err(TsvExtensionError { line, message }) => {
-                        error_at_line(1, 0, &tsv_name, line, &message);
-                        return;
-                    }
-                }
-            } else if ACX_FILE_OPENED {
-                verbose_print(&format!(
-                    "Reading ACX from {}...\n",
-                    acx_file_name().unwrap_or_default()
-                ));
-                // The libxml ACX-parsing body is gated behind #if HAVE_LIBXML_TREE_H
-                // in the C++ source; without libxml it compiles to nothing, which
-                // is the path reproduced here (no extensions added).
-            } else {
-                error(1, 0, "DANGER TERROR HORROR !!!!!!");
-                return;
-            }
-
-            let mut trans = match expand_equivalences(trans, &pairs, LEVEL) {
-                Ok(v) => v,
-                Err(e) => {
+                if let Err(e) = outstream.redirect(&mut trans) {
                     error(1, 0, &format!("{e}"));
                     return;
                 }
-            };
-            if let Err(e) = outstream.redirect(&mut trans) {
-                error(1, 0, &format!("{e}"));
+            }, else => {
+                // Unreachable: the optimized-lookup stream rejection already
+                // returned before the loop; keep its text for safety.
+                let _ = write!(
+                    std::io::stderr(),
+                    "Error: hfst-expand-equivalences cannot process transducers that are in optimized lookup format.\n"
+                );
                 return;
-            }
+            });
         } // for each automaton
     }
 }

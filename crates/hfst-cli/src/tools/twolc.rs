@@ -426,15 +426,29 @@ fn real_main(mut args: Vec<String>) -> i32 {
 
     // The three htwolcpre parse passes + TwolCGrammar build + compile_and_store
     // collapse into the library's TwolcCompiler (nfst-twolc parse + AST walk +
-    // per-rule stream store).
-    let mut compiler = TwolcCompiler::new_with_options(
-        command_line.format,
-        command_line.be_quiet,
-        command_line.be_verbose,
-        command_line.resolve_left_conflicts,
-        command_line.resolve_right_conflicts,
-    );
-    match compiler.compile_and_store(&input, &mut out) {
+    // per-rule stream store). The --format value is matched ONCE here into
+    // the compiler's backend type parameter ([dec:hfst:monomorphic-backends]);
+    // SFST/FOMA never reach this point (the output stream constructor above
+    // rejects them).
+    let compiled = match command_line.format {
+        ImplementationType::LOG_OPENFST_TYPE => {
+            TwolcCompiler::<hfst::log_weight_transducer::LogFst>::new_with_options(
+                command_line.be_quiet,
+                command_line.be_verbose,
+                command_line.resolve_left_conflicts,
+                command_line.resolve_right_conflicts,
+            )
+            .compile_and_store(&input, &mut out)
+        }
+        _ => TwolcCompiler::<hfst_openfst::StdVectorFst>::new_with_options(
+            command_line.be_quiet,
+            command_line.be_verbose,
+            command_line.resolve_left_conflicts,
+            command_line.resolve_right_conflicts,
+        )
+        .compile_and_store(&input, &mut out),
+    };
+    match compiled {
         Some(()) => {}
         None => {
             // A pass failing made the C++ driver exit(1).

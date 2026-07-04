@@ -7,7 +7,7 @@
 use crate::globals;
 use crate::hfst_commandline::{
     EXIT_CONTINUE, extend_options_from_env, hfst_error, hfst_parse_format_name,
-    hfst_set_program_name, hfst_warning, verbose_print,
+    hfst_set_program_name, hfst_warning, redirect_converting, verbose_print,
 };
 use crate::hfst_getopt as getopt;
 use crate::hfst_program_options::{
@@ -228,6 +228,24 @@ unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
 // [spec:hfst:sem:hfst-txt2fst.process-stream-fn]
 unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> i32 {
     unsafe {
+        // The parsed --format is matched ONCE into the backend type
+        // ([dec:hfst:monomorphic-backends]); optimized-lookup formats build
+        // through the basic transducer at tropical and convert at each write,
+        // as the C++ HfstTransducer(net, HFST_OL*_TYPE) constructor did.
+        match OUTPUT_FORMAT {
+            ImplementationType::LOG_OPENFST_TYPE => {
+                process_stream_typed::<hfst::log_weight_transducer::LogFst>(outstream, input)
+            }
+            _ => process_stream_typed::<hfst_openfst::StdVectorFst>(outstream, input),
+        }
+    }
+}
+
+unsafe fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
+    outstream: &mut HfstOutputStream,
+    input: &mut dyn BufRead,
+) -> i32 {
+    unsafe {
         let mut transducer_n: usize = 0;
         let mut linecount: u32 = 0;
 
@@ -246,19 +264,10 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
             }
             if READ_PROLOG_FORMAT {
                 if OUTPUT_FORMAT == ImplementationType::XFSM_TYPE {
-                    // C: catches HfstException around prolog_file_to_xfsm_transducer;
-                    // the Rust foundation panics rather than throwing, so the catch
-                    // arm is not reproduced here.
-                    let mut t = HfstTransducer::prolog_file_to_xfsm_transducer(&inputfilename);
-                    if let Err(e) = outstream.redirect(&mut t) {
-                        hfst_error(1, 0, &format!("{}", e));
-                        return 1;
-                    }
-                    if let Err(e) = outstream.flush() {
-                        hfst_error(1, 0, &format!("{}", e));
-                        return 1;
-                    }
-                    break;
+                    // XFSM output cannot get here in this build: the output
+                    // stream constructor rejected XFSM_TYPE before the loop.
+                    // (The C++ arm called prolog_file_to_xfsm_transducer.)
+                    unreachable!("XFSM_TYPE output stream cannot be created in this build")
                 }
 
                 // C: catches NotValidPrologFormatException; the Rust readers
@@ -289,7 +298,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     }
                 }
 
-                let mut t = match HfstTransducer::new_from_basic(&fsm, OUTPUT_FORMAT) {
+                let mut t: HfstTransducer<B> = match HfstTransducer::new_from_basic(&fsm) {
                     Ok(v) => v,
                     Err(e) => {
                         hfst_error(1, 0, &format!("{}", e));
@@ -298,12 +307,12 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 };
                 hfst_set_name(&mut t, &inputfilename, "text");
                 hfst_set_formula(&mut t, &inputfilename, "T");
-                if let Err(e) = outstream.redirect(&mut t) {
+                if let Err(e) = redirect_converting(outstream, &mut t) {
                     hfst_error(1, 0, &format!("{}", e));
                     return 1;
                 }
             } else if DISJUNCT_MULTIPLE_TRANSDUCERS {
-                let mut transducers: Vec<HfstTransducer> = Vec::new();
+                let mut transducers: Vec<HfstTransducer<B>> = Vec::new();
                 // C: catches NotValidAttFormatException and prints an error; the
                 // Rust readers panic_any rather than throw, so the catch arm is
                 // not reproduced here.
@@ -322,7 +331,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                             return 1;
                         }
                     };
-                    let t = match HfstTransducer::new_from_basic(&net, OUTPUT_FORMAT) {
+                    let t: HfstTransducer<B> = match HfstTransducer::new_from_basic(&net) {
                         Ok(v) => v,
                         Err(e) => {
                             hfst_error(1, 0, &format!("{}", e));
@@ -331,13 +340,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                     };
                     transducers.push(t);
                 }
-                let mut joined = match HfstTransducer::new_type(OUTPUT_FORMAT) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        hfst_error(1, 0, &format!("{}", e));
-                        return 1;
-                    }
-                };
+                let mut joined: HfstTransducer<B> = HfstTransducer::new();
                 for it in transducers.iter() {
                     if let Err(e) = joined.disjunct(it, true) {
                         hfst_error(1, 0, &format!("{}", e));
@@ -346,7 +349,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                 }
                 // joined.remove_epsilons(); // remove epsilons from the unioned
                 // transducers
-                if let Err(e) = outstream.redirect(&mut joined) {
+                if let Err(e) = redirect_converting(outstream, &mut joined) {
                     hfst_error(1, 0, &format!("{}", e));
                     return 1;
                 }
@@ -366,7 +369,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                         return 1;
                     }
                 };
-                let mut t = match HfstTransducer::new_from_basic(&net, OUTPUT_FORMAT) {
+                let mut t: HfstTransducer<B> = match HfstTransducer::new_from_basic(&net) {
                     Ok(v) => v,
                     Err(e) => {
                         hfst_error(1, 0, &format!("{}", e));
@@ -392,7 +395,7 @@ unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRe
                         verbose_print("No epsilon cycles with a negative weight detected...\n");
                     }
                 }
-                if let Err(e) = outstream.redirect(&mut t) {
+                if let Err(e) = redirect_converting(outstream, &mut t) {
                     hfst_error(1, 0, &format!("{}", e));
                     return 1;
                 }

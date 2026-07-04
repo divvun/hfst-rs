@@ -119,8 +119,37 @@ fn variant_has_fd(v: Variant) -> bool {
 // The Transducer wraps the hfst library transducer plus the per-variant output
 // sinks; analysis is delegated to the library's optimized-lookup engine.
 // ---------------------------------------------------------------------------
+/// The two optimized-lookup table shapes the stream can produce; the lookup
+/// call is the only surface this tool needs ([dec:hfst:monomorphic-backends]).
+enum OlInner {
+    W(
+        hfst::hfst_transducer::HfstTransducer<
+            hfst::transducer::Transducer<hfst::transducer::WeightedTables>,
+        >,
+    ),
+    U(
+        hfst::hfst_transducer::HfstTransducer<
+            hfst::transducer::Transducer<hfst::transducer::UnweightedTables>,
+        >,
+    ),
+}
+
+impl OlInner {
+    fn lookup_fd_string(
+        &self,
+        s: &str,
+        limit: isize,
+        time_cutoff: f64,
+    ) -> hfst::error::Result<hfst::hfst_data_types::HfstOneLevelPaths> {
+        match self {
+            OlInner::W(t) => t.lookup_fd_string(s, limit, time_cutoff),
+            OlInner::U(t) => t.lookup_fd_string(s, limit, time_cutoff),
+        }
+    }
+}
+
 struct Transducer {
-    inner: hfst::hfst_transducer::HfstTransducer,
+    inner: OlInner,
     variant: Variant,
     display_vector: DisplayVector,     // Plain
     display_set: DisplaySet,           // Uniq / FdUniq
@@ -409,14 +438,28 @@ fn setup(path: &str) -> i32 {
             return 1;
         }
     };
-    let t = match hfst::hfst_transducer::HfstTransducer::new_from_stream(&mut instream) {
+    let any = match instream.read() {
         Ok(v) => v,
         Err(e) => {
             print_err(&format!("{e}\n"));
             return 1;
         }
     };
-    let weighted = t.get_type() == hfst::hfst_data_types::ImplementationType::HFST_OLW_TYPE;
+    let weighted = any.get_type() == hfst::hfst_data_types::ImplementationType::HFST_OLW_TYPE;
+    // the one dispatch per stream read ([dec:hfst:monomorphic-backends]):
+    // the two OL table shapes move in as-is; anything else converts to the
+    // weighted OL tables the lookup engine runs on.
+    let t = match any {
+        hfst::hfst_transducer::AnyTransducer::OlW(t) => OlInner::W(t),
+        hfst::hfst_transducer::AnyTransducer::OlU(t) => OlInner::U(t),
+        other => match other.into_typed() {
+            Ok(t) => OlInner::W(t),
+            Err(e) => {
+                print_err(&format!("{e}\n"));
+                return 1;
+            }
+        },
+    };
     let unique = unsafe { DISPLAY_UNIQUE_FLAG };
     let variant = match (weighted, unique) {
         (false, false) => Variant::Plain,

@@ -14,7 +14,7 @@ fn main() -> hfst::error::Result<()> {
     let top = defs.get("TOP").expect("no TOP in pmatch result");
     // The pmatch runtime pins the weighted optimized-lookup instantiation;
     // the typed conversion replaces the old implicit convert(HFST_OLW_TYPE).
-    let top_ol = top.to_ol(true)?;
+    let top_ol = top.to_ol(true, "")?;
 
     // Build a runtime container straight from the in-memory transducer.
     let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_ol])?;
