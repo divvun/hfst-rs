@@ -2,7 +2,9 @@ use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_symbol_defs::StringPairVector;
 
 fn p(s: &str) -> StringPairVector {
-    s.chars().map(|c| (c.to_string(), c.to_string())).collect()
+    s.chars()
+        .map(|c| (c.to_string().into(), c.to_string().into()))
+        .collect()
 }
 
 fn main() -> hfst::error::Result<()> {

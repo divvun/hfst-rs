@@ -53,12 +53,19 @@ pub enum PushType {
     TO_FINAL_STATE,
 }
 
+/// A transducer symbol. 'smol_str::SmolStr' stores symbols of up to 23 bytes
+/// inline and clones in O(1), which makes the pervasive per-symbol clones in
+/// conversion/harmonization/coding cheap. It derefs to '&str' and its 'Ord' is
+/// 'str''s 'Ord', so ordered-container iteration order (and therefore symbol
+/// numbering and output bytes) is unchanged.
+pub type Symbol = smol_str::SmolStr;
+
 // [spec:hfst:def:hfst-data-types.hfst.string-pair]
-pub type StringPair = (String, String);
+pub type StringPair = (Symbol, Symbol);
 // [spec:hfst:def:hfst-data-types.hfst.string-pair-set]
 pub type StringPairSet = BTreeSet<StringPair>;
 // [spec:hfst:def:hfst-data-types.hfst.string-vector]
-pub type StringVector = Vec<String>;
+pub type StringVector = Vec<Symbol>;
 // [spec:hfst:def:hfst-data-types.hfst.string-pair-vector]
 pub type StringPairVector = Vec<StringPair>;
 

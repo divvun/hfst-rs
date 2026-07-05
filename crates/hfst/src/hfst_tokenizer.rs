@@ -17,7 +17,7 @@
 
 use icu::segmenter::GraphemeClusterSegmenter;
 
-use crate::hfst_data_types::StringVector;
+use crate::hfst_data_types::{StringVector, Symbol};
 use crate::hfst_flag_diacritics::FdOperation;
 use crate::hfst_symbol_defs::{StringPair, StringPairVector, StringSet, internal_epsilon};
 
@@ -215,7 +215,7 @@ impl HfstTokenizer {
             return;
         }
         self.multi_char_symbols.add(symbol.as_bytes(), 0);
-        self.skip_symbol_set.insert(symbol.to_string());
+        self.skip_symbol_set.insert(Symbol::new(symbol));
     }
 
     pub fn tokenize(&self, input_string: &str, split_characters: bool) -> StringPairVector {
@@ -225,7 +225,7 @@ impl HfstTokenizer {
         let mut s: usize = 0;
         while s < bytes.len() {
             let symbol_size = self.get_next_symbol_size(&input_string[s..], split_characters);
-            let symbol = input_string[s..s + symbol_size as usize].to_string();
+            let symbol = Symbol::new(&input_string[s..s + symbol_size as usize]);
             s += symbol_size as usize;
             if self.is_skip_symbol(&symbol) {
                 continue;
@@ -245,7 +245,7 @@ impl HfstTokenizer {
         let mut s: usize = 0;
         while s < bytes.len() {
             let symbol_size = self.get_next_symbol_size(&input_string[s..], split_characters);
-            let symbol = input_string[s..s + symbol_size as usize].to_string();
+            let symbol = Symbol::new(&input_string[s..s + symbol_size as usize]);
             s += symbol_size as usize;
             if self.is_skip_symbol(&symbol) {
                 continue;
@@ -269,7 +269,7 @@ impl HfstTokenizer {
         while pos < str.len() {
             // end of symbol reached
             if bytes[pos] == b' ' && symbol_pos != NPOS {
-                let symbol = str[symbol_pos..pos].to_string();
+                let symbol = Symbol::new(&str[symbol_pos..pos]);
                 retval.push((symbol.clone(), symbol));
                 symbol_pos = NPOS; // next symbol not yet found
             }
@@ -283,7 +283,7 @@ impl HfstTokenizer {
 
         // last symbol
         if symbol_pos != NPOS {
-            let symbol = str[symbol_pos..].to_string();
+            let symbol = Symbol::new(&str[symbol_pos..]);
             retval.push((symbol.clone(), symbol));
         }
 
@@ -311,7 +311,10 @@ impl HfstTokenizer {
                 jt += 1;
             }
             for k in jt..output_spv.len() {
-                spv.push((internal_epsilon.to_string(), output_spv[k].0.clone()));
+                spv.push((
+                    Symbol::new_static(internal_epsilon),
+                    output_spv[k].0.clone(),
+                ));
             }
         } else {
             let mut it = 0;
@@ -320,7 +323,7 @@ impl HfstTokenizer {
                 it += 1;
             }
             for k in it..input_spv.len() {
-                spv.push((input_spv[k].0.clone(), internal_epsilon.to_string()));
+                spv.push((input_spv[k].0.clone(), Symbol::new_static(internal_epsilon)));
             }
         }
         spv
@@ -352,7 +355,10 @@ impl HfstTokenizer {
                 jt += 1;
             }
             for k in jt..output_spv.len() {
-                let sp = (internal_epsilon.to_string(), output_spv[k].0.clone());
+                let sp = (
+                    Symbol::new_static(internal_epsilon),
+                    output_spv[k].0.clone(),
+                );
                 warn_about_pair(&sp);
                 spv.push(sp);
             }
@@ -365,7 +371,7 @@ impl HfstTokenizer {
                 it += 1;
             }
             for k in it..input_spv.len() {
-                let sp = (input_spv[k].0.clone(), internal_epsilon.to_string());
+                let sp = (input_spv[k].0.clone(), Symbol::new_static(internal_epsilon));
                 warn_about_pair(&sp);
                 spv.push(sp);
             }
@@ -399,7 +405,7 @@ impl HfstTokenizer {
             // string pair to push back to the result (assigned in every branch)
             let sp: StringPair;
             // possible continuation in case of missaligned flags
-            let mut sp_cont: StringPair = (String::new(), String::new());
+            let mut sp_cont: StringPair = (Symbol::default(), Symbol::default());
 
             if it == input_spv.len() {
                 if FdOperation::is_diacritic(&output_spv[jt].0) {
@@ -407,7 +413,10 @@ impl HfstTokenizer {
                     sp = (output_spv[jt].0.clone(), output_spv[jt].0.clone());
                 } else {
                     // pad input with epsilons
-                    sp = (internal_epsilon.to_string(), output_spv[jt].0.clone());
+                    sp = (
+                        Symbol::new_static(internal_epsilon),
+                        output_spv[jt].0.clone(),
+                    );
                 }
                 jt += 1;
             } else if jt == output_spv.len() {
@@ -416,7 +425,10 @@ impl HfstTokenizer {
                     sp = (input_spv[it].0.clone(), input_spv[it].0.clone());
                 } else {
                     // pad output with epsilons
-                    sp = (input_spv[it].0.clone(), internal_epsilon.to_string());
+                    sp = (
+                        input_spv[it].0.clone(),
+                        Symbol::new_static(internal_epsilon),
+                    );
                 }
                 it += 1;
             } else {

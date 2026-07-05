@@ -449,11 +449,11 @@ pub fn print_cg_subreading(
     indent: usize,
     out_beg: usize,
     out_end: usize,
-    out_syms: &[String],
+    out_syms: &[crate::hfst_data_types::Symbol],
     weight: Weight,
     in_beg: usize,
     in_end: usize,
-    in_syms: &[String],
+    in_syms: &[crate::hfst_data_types::Symbol],
     outstream: &mut dyn Write,
     s: &TokenizeSettings,
 ) {
@@ -522,11 +522,11 @@ pub fn print_cg_subreading_ex(
     indent: usize,
     out_beg: usize,
     out_end: usize,
-    out_syms: &[String],
+    out_syms: &[crate::hfst_data_types::Symbol],
     weight: Weight,
     in_beg: usize,
     in_end: usize,
-    in_syms: &[String],
+    in_syms: &[crate::hfst_data_types::Symbol],
     middle: &str,
     outstream: &mut dyn Write,
     s: &TokenizeSettings,
@@ -717,7 +717,7 @@ pub fn split_at(syms: &StringVector, splitpoints: &SplitPoints) -> StringVector 
         for sym in &syms[start..next] {
             ss.push_str(sym);
         }
-        subs.push(ss);
+        subs.push(ss.into());
     }
     subs
 }
@@ -861,13 +861,15 @@ pub fn print_location_vector_giellacg(
             if form.len() != it.len() {
                 // Ensure the spaces we ignored when looking up are output in the
                 // form:
-                let lspace: Vec<String> = vec![" ".to_string(); first];
-                let rspace: Vec<String> = vec![" ".to_string(); it.len() - last];
+                let lspace: Vec<crate::hfst_data_types::Symbol> =
+                    vec![crate::hfst_data_types::Symbol::new_static(" "); first];
+                let rspace: Vec<crate::hfst_data_types::Symbol> =
+                    vec![crate::hfst_data_types::Symbol::new_static(" "); it.len() - last];
                 for lvit in loc.iter_mut() {
                     lvit.input = form.clone();
                     let syms = &mut lvit.input_symbol_strings;
                     // syms.insert(begin, lspace) then syms.insert(end, rspace)
-                    let mut prefixed: Vec<String> = Vec::new();
+                    let mut prefixed: Vec<crate::hfst_data_types::Symbol> = Vec::new();
                     prefixed.extend(lspace.iter().cloned());
                     prefixed.extend(syms.iter().cloned());
                     prefixed.extend(rspace.iter().cloned());
@@ -1394,7 +1396,7 @@ pub fn make_naive_tokenizer<B: AlgebraBackend>(
     let dict_syms = dictionary.get_alphabet()?;
     let tokenizer_syms = tokenizer.get_alphabet()?;
     // What to add to the dictionary
-    let tokenizer_minus_dict: Vec<String> =
+    let tokenizer_minus_dict: Vec<crate::hfst_data_types::Symbol> =
         tokenizer_syms.difference(&dict_syms).cloned().collect();
     for it in tokenizer_minus_dict.iter() {
         dictionary.insert_to_alphabet(it.as_str())?;

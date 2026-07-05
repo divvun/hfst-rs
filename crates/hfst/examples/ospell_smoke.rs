@@ -6,29 +6,11 @@ use hfst::ospell::Speller;
 fn main() -> hfst::error::Result<()> {
     // A tiny "lexicon" accepting exactly the identity path c:c a:a t:t -> "cat".
     let mut basic = HfstBasicTransducer::new();
-    let tr = HfstBasicTransition::new_symbols(
-        1,
-        "c".to_string(),
-        "c".to_string(),
-        0.0,
-        basic.coder_mut(),
-    );
+    let tr = HfstBasicTransition::new_symbols(1, "c".into(), "c".into(), 0.0, basic.coder_mut());
     basic.add_transition(0, &tr, true);
-    let tr = HfstBasicTransition::new_symbols(
-        2,
-        "a".to_string(),
-        "a".to_string(),
-        0.0,
-        basic.coder_mut(),
-    );
+    let tr = HfstBasicTransition::new_symbols(2, "a".into(), "a".into(), 0.0, basic.coder_mut());
     basic.add_transition(1, &tr, true);
-    let tr = HfstBasicTransition::new_symbols(
-        3,
-        "t".to_string(),
-        "t".to_string(),
-        0.0,
-        basic.coder_mut(),
-    );
+    let tr = HfstBasicTransition::new_symbols(3, "t".into(), "t".into(), 0.0, basic.coder_mut());
     basic.add_transition(2, &tr, true);
     basic.set_final_weight(3, &0.0);
 

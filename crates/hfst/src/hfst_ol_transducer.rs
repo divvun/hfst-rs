@@ -559,8 +559,8 @@ mod ol_lookup_ops {
 
             /* Handle spv here. Special symbols (flags, epsilons)
             are always inserted. */
-            let mut istring = String::new();
-            let mut ostring = String::new();
+            let mut istring = crate::hfst_data_types::Symbol::default();
+            let mut ostring = crate::hfst_data_types::Symbol::default();
 
             debug_assert!(fd_state_stack.is_some() || !filter_fd);
             if !filter_fd

@@ -47,7 +47,7 @@ fn get_bin(
 
 // C++ StringPair("a", "b").
 fn sp(a: &str, b: &str) -> StringPair {
-    (a.to_string(), b.to_string())
+    (a.into(), b.into())
 }
 
 // ---------------------------------------------------------------------------

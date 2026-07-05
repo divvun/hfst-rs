@@ -20,7 +20,7 @@ use crate::inc::{
     handle_unary_case,
 };
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
-use hfst::hfst_data_types::ImplementationType;
+use hfst::hfst_data_types::{ImplementationType, Symbol};
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_strings2_fst_tokenizer::{HfstStrings2FstTokenizer, StringPairVector};
 use hfst::hfst_transducer::HfstTransducer;
@@ -35,7 +35,7 @@ static mut HAS_SPACES: bool = false;
 static mut DISJUNCT_STRINGS: bool = false;
 static mut PAIRSTRINGS: bool = false;
 static mut MULTICHAR_SYMBOL_FILENAME: Option<String> = None;
-static mut MULTICHAR_SYMBOLS: Vec<String> = Vec::new();
+static mut MULTICHAR_SYMBOLS: Vec<Symbol> = Vec::new();
 
 static mut SUM_OF_WEIGHTS: f32 = 0.0;
 static mut NORMALIZE_WEIGHTS: bool = false;
@@ -534,7 +534,7 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
                                 multichar_line
                             ));
                             (*std::ptr::addr_of_mut!(MULTICHAR_SYMBOLS))
-                                .push(multichar_line.to_string());
+                                .push(Symbol::new(multichar_line));
                         }
                     }
                 }

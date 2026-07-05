@@ -17,6 +17,7 @@ use std::fmt;
 use crate::backend::AlgebraBackend;
 use crate::hfst_data_types::ImplementationType;
 use crate::hfst_data_types::StringPair;
+use crate::hfst_data_types::Symbol;
 // HfstTransducer, plus the HfstTransducer-dependent aliases
 // (HfstTransducerPair, HfstTransducerPairVector, HfstTransducerVector), live in the
 // facade module that is ported concurrently. Bodies import them from
@@ -285,7 +286,7 @@ pub fn encode_flag_diacritics<B: AlgebraBackend>(
     let mut removeFromAlphabet: StringSet = StringSet::new();
     let transducerAlphabet: StringSet = tr.get_alphabet()?;
     for s in transducerAlphabet.iter() {
-        let alph: String = s.clone();
+        let alph: String = s.to_string();
         // mirrors std::string::substr(0,3): the first (up to) three bytes
         let alphFirst3: String = {
             let n = std::cmp::min(3, alph.len());
@@ -308,7 +309,7 @@ pub fn encode_flag_diacritics<B: AlgebraBackend>(
             || alphFirst3 == "@n."
         {
             let alph = alph.replace('@', "$");
-            realFlagstoFakeFlags.insert(s.clone(), alph);
+            realFlagstoFakeFlags.insert(s.clone(), Symbol::from(alph));
             removeFromAlphabet.insert(s.clone());
         }
     }
@@ -330,7 +331,7 @@ pub fn decode_flag_diacritics<B: AlgebraBackend>(
     let transducerAlphabet: StringSet = tr.get_alphabet()?;
     let mut removeFromAlphabet: StringSet = StringSet::new();
     for s in transducerAlphabet.iter() {
-        let alph: String = s.clone();
+        let alph: String = s.to_string();
         // mirrors std::string::substr(0,3): the first (up to) three bytes
         let alphFirst3: String = {
             let n = std::cmp::min(3, alph.len());
@@ -353,7 +354,7 @@ pub fn decode_flag_diacritics<B: AlgebraBackend>(
             || alphFirst3 == "$n."
         {
             let alph = alph.replace('$', "@");
-            fakeFlagsToRealFlags.insert(s.clone(), alph);
+            fakeFlagsToRealFlags.insert(s.clone(), Symbol::from(alph));
             removeFromAlphabet.insert(s.clone());
         }
     }
@@ -389,15 +390,15 @@ pub fn remove_markers<B: AlgebraBackend>(
 ) -> crate::error::Result<HfstTransducer<B>> {
     let mut retval = tr.clone();
 
-    let leftMarker: String = "@LM@".to_string();
-    let rightMarker: String = "@RM@".to_string();
+    let leftMarker: Symbol = Symbol::new_static("@LM@");
+    let rightMarker: Symbol = Symbol::new_static("@RM@");
 
     retval
         .substitute_symbol_pair(
             &(leftMarker.clone(), leftMarker.clone()),
             &(
-                "@_EPSILON_SYMBOL_@".to_string(),
-                "@_EPSILON_SYMBOL_@".to_string(),
+                Symbol::new_static("@_EPSILON_SYMBOL_@"),
+                Symbol::new_static("@_EPSILON_SYMBOL_@"),
             ),
         )?
         .optimize()?;
@@ -405,8 +406,8 @@ pub fn remove_markers<B: AlgebraBackend>(
         .substitute_symbol_pair(
             &(rightMarker.clone(), rightMarker.clone()),
             &(
-                "@_EPSILON_SYMBOL_@".to_string(),
-                "@_EPSILON_SYMBOL_@".to_string(),
+                Symbol::new_static("@_EPSILON_SYMBOL_@"),
+                Symbol::new_static("@_EPSILON_SYMBOL_@"),
             ),
         )?
         .optimize()?;
@@ -673,7 +674,7 @@ pub fn bracketed_replace<B: AlgebraBackend>(
     TOK.add_multichar_symbol("@_UNKNOWN_SYMBOL_@");
     let leftMarker: String = "@LM@".to_string();
     let rightMarker: String = "@RM@".to_string();
-    let tmpMarker: String = "@TMPM@".to_string();
+    let tmpMarker: Symbol = Symbol::new_static("@TMPM@");
     let leftMarker2: String = "@LM2@".to_string();
     let rightMarker2: String = "@RM2@".to_string();
     let newEpsilon: String = "$Epsilon$".to_string();
@@ -862,8 +863,8 @@ pub fn bracketed_replace<B: AlgebraBackend>(
         .substitute_symbol_pair(
             &(tmpMarker.clone(), tmpMarker.clone()),
             &(
-                "@_EPSILON_SYMBOL_@".to_string(),
-                "@_EPSILON_SYMBOL_@".to_string(),
+                Symbol::new_static("@_EPSILON_SYMBOL_@"),
+                Symbol::new_static("@_EPSILON_SYMBOL_@"),
             ),
         )?
         .optimize()?;
@@ -920,8 +921,11 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
     let mut marker_substitutions: HfstSymbolSubstitutions = HfstSymbolSubstitutions::new();
     for i in 0..ruleVector.len() {
         let marker_string = get_marker_string((i + 1) as u32);
-        marker_symbols.insert(marker_string.clone());
-        marker_substitutions.insert(marker_string.clone(), internal_epsilon.to_string());
+        marker_symbols.insert(Symbol::from(marker_string.clone()));
+        marker_substitutions.insert(
+            Symbol::from(marker_string.clone()),
+            Symbol::new_static(internal_epsilon),
+        );
     }
 
     let mut TOK = HfstTokenizer::new();
@@ -932,7 +936,7 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
     let leftMarker2: String = "@LM2@".to_string();
     let rightMarker2: String = "@RM2@".to_string();
 
-    let tmpMarker: String = "@TMPM@".to_string();
+    let tmpMarker: Symbol = Symbol::new_static("@TMPM@");
     TOK.add_multichar_symbol(&leftMarker);
     TOK.add_multichar_symbol(&rightMarker);
     TOK.add_multichar_symbol(&leftMarker2);
@@ -1175,8 +1179,8 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
         .substitute_symbol_pair(
             &(tmpMarker.clone(), tmpMarker.clone()),
             &(
-                "@_EPSILON_SYMBOL_@".to_string(),
-                "@_EPSILON_SYMBOL_@".to_string(),
+                Symbol::new_static("@_EPSILON_SYMBOL_@"),
+                Symbol::new_static("@_EPSILON_SYMBOL_@"),
             ),
         )?
         .optimize()?;

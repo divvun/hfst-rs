@@ -43,6 +43,7 @@ use nfst_xre::{
 
 use crate::backend::AlgebraBackend;
 use crate::hfst_data_types::ImplementationType;
+use crate::hfst_data_types::Symbol;
 use crate::hfst_transducer::HfstTransducer;
 
 /// Arguments bundle mirroring 'hfst::xre::XreConstructorArguments'
@@ -62,7 +63,7 @@ pub struct XreConstructorArguments<B: AlgebraBackend> {
     /// 'std::map<std::string, unsigned int> function_arguments'.
     pub function_arguments: BTreeMap<String, u32>,
     /// 'std::map<std::string, std::set<std::string>> list_definitions'.
-    pub list_definitions: BTreeMap<String, BTreeSet<String>>,
+    pub list_definitions: BTreeMap<Symbol, BTreeSet<Symbol>>,
 }
 
 // Manual impl: a derived Clone would demand 'B: Clone', but
@@ -87,7 +88,7 @@ impl<B: AlgebraBackend> XreConstructorArguments<B> {
         definitions: BTreeMap<String, HfstTransducer<B>>,
         function_definitions: BTreeMap<String, String>,
         function_arguments: BTreeMap<String, u32>,
-        list_definitions: BTreeMap<String, BTreeSet<String>>,
+        list_definitions: BTreeMap<Symbol, BTreeSet<Symbol>>,
     ) -> Self {
         XreConstructorArguments {
             definitions,
@@ -117,7 +118,7 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// 'std::map<std::string, unsigned int> function_arguments'.
     pub(crate) function_arguments: BTreeMap<String, u32>,
     /// 'std::map<std::string, std::set<std::string>> list_definitions'.
-    pub(crate) list_definitions: BTreeMap<String, BTreeSet<String>>,
+    pub(crate) list_definitions: BTreeMap<Symbol, BTreeSet<Symbol>>,
     /// 'bool verbose' — verbose warnings toggle.
     pub(crate) verbose: bool,
     /// 'xre_utils.cc' global 'bool expand_definitions' (default 'false'):
@@ -543,9 +544,9 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.define-list-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.define-list-fn]
-    pub fn define_list(&mut self, name: &str, symbol_list: &BTreeSet<String>) {
+    pub fn define_list(&mut self, name: &str, symbol_list: &BTreeSet<Symbol>) {
         self.list_definitions
-            .insert(name.to_string(), symbol_list.clone());
+            .insert(Symbol::new(name), symbol_list.clone());
     }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.define-function-fn]
@@ -1497,7 +1498,7 @@ fn insert_angle_bracket_substitutions(
     let b = str.as_bytes();
     if &b[0..3] == b"@_<" && &b[b.len() - 3..] == b">_@" {
         let substituting_str = &str[2..str.len() - 2];
-        substitutions.insert(str.to_string(), substituting_str.to_string());
+        substitutions.insert(Symbol::new(str), Symbol::new(substituting_str));
     }
 }
 
@@ -1598,7 +1599,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                     let alpha = v.get_alphabet()?;
                     let mut v_clone = v.clone();
                     tr.substitute_pair_with_transducer(
-                        &(symbol.to_string(), symbol.to_string()),
+                        &(Symbol::new(symbol), Symbol::new(symbol)),
                         &mut v_clone,
                         false, // do not harmonize
                     )?;
@@ -2307,7 +2308,12 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         Ok(match what {
             // '[ E, a:b, c:d ]  (xre_parse.yy:268)
             SubstituteWhat::Pair { from, to } => {
-                hay.substitute_pair_with_pair(from, to)?;
+                // The parser AST carries plain Strings; convert at the symbol
+                // boundary.
+                hay.substitute_pair_with_pair(
+                    &(Symbol::new(&from.0), Symbol::new(&from.1)),
+                    &(Symbol::new(&to.0), Symbol::new(&to.1)),
+                )?;
                 hay.optimize_with_config(&self.opt_cfg())?;
                 hay
             }
@@ -2325,7 +2331,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                     hay.optimize_with_config(&self.opt_cfg())?;
                     return Ok(hay);
                 }
-                if !hay_alpha.contains(needle) {
+                if !hay_alpha.contains(needle.as_str()) {
                     hay.optimize_with_config(&self.opt_cfg())?;
                     return Ok(hay);
                 }
@@ -2335,7 +2341,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 let mut repl_tr: HfstTransducer<B> =
                     build_symbol_list_transducer(replacement, &self.opt_cfg())?;
                 let alpha3 = repl_tr.get_alphabet()?;
-                let tmp = (needle.clone(), needle.clone());
+                let tmp = (Symbol::new(needle), Symbol::new(needle));
                 let mut tmp_tr = hay.clone();
 
                 let empty = HfstTransducer::new();
@@ -2347,7 +2353,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                     // substitute all transitions {b:a, a:b, b:b} with b:b. The
                     // former 'substitution_function_symbol' global is captured by
                     // this closure instead.
-                    let needle_sym = needle.to_string();
+                    let needle_sym = Symbol::new(needle);
                     tmp_tr.substitute_with_func(|p, sps| {
                         if p.0 == needle_sym || p.1 == needle_sym {
                             sps.insert((needle_sym.clone(), needle_sym.clone()));
@@ -2387,7 +2393,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                         .invert()?;
                 }
 
-                if !alpha3.contains(needle) {
+                if !alpha3.contains(needle.as_str()) {
                     tmp_tr.remove_from_alphabet(needle.as_str())?;
                 }
                 tmp_tr.optimize_with_config(&self.opt_cfg())?;

@@ -56,7 +56,7 @@ fn handle_symbol_tables(
 
                 if label != 0 {
                     // epsilon is not inserted
-                    net.add_symbol_to_alphabet(&sym.to_string());
+                    net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
                 }
             }
         }
@@ -70,7 +70,7 @@ fn handle_symbol_tables(
                     assert!(sym != "");
                     if label != 0 {
                         // epsilon is not inserted
-                        net.add_symbol_to_alphabet(&sym.to_string());
+                        net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
                     }
                 }
             }
@@ -99,7 +99,7 @@ fn copy_alphabet(t: &StdVectorFst, net: &mut HfstBasicTransducer) {
             assert!(sym != "");
             if label != 0 {
                 // epsilon is not inserted
-                net.add_symbol_to_alphabet(&sym.to_string());
+                net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
             }
         }
     }
@@ -108,7 +108,7 @@ fn copy_alphabet(t: &StdVectorFst, net: &mut HfstBasicTransducer) {
             assert!(sym != "");
             if label != 0 {
                 // epsilon is not inserted
-                net.add_symbol_to_alphabet(&sym.to_string());
+                net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
             }
         }
     }

@@ -17,7 +17,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.symbol-type]
-pub type SymbolType = String;
+// C++ 'std::string'; ported to the shared 'Symbol' (SmolStr) so per-symbol
+// clones out of the coder are O(1).
+pub type SymbolType = crate::hfst_data_types::Symbol;
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.weight-type]
 pub type WeightType = f32;
 // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.hfst-tropical-transducer-transition-data.symbol-type-set]
@@ -90,8 +92,9 @@ impl SymbolCoder {
         &self.number2symbol
     }
 
-    /// Map 'number' back to its symbol (throws if out of range, as the C++ does).
-    pub fn get_symbol(&self, number: u32) -> crate::error::Result<String> {
+    /// Map 'number' back to its symbol (throws if out of range, as the C++
+    /// does). The returned 'SymbolType' is an O(1) clone out of the key table.
+    pub fn get_symbol(&self, number: u32) -> crate::error::Result<SymbolType> {
         if number as usize >= self.number2symbol.len() {
             let mut message = String::from("HfstTropicalTransducerTransitionData: number ");
             message.push_str(&number.to_string());
@@ -120,8 +123,9 @@ impl SymbolCoder {
         }
         self.max_number += 1;
         let new_max = self.max_number;
-        self.symbol2number.insert(symbol.to_string(), new_max);
-        self.number2symbol.push(symbol.to_string());
+        let symbol = SymbolType::new(symbol);
+        self.symbol2number.insert(symbol.clone(), new_max);
+        self.number2symbol.push(symbol);
         new_max
     }
 
@@ -417,9 +421,9 @@ impl Number2SymbolVectorInitializer {
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.number2-symbol-vector-initializer.number2-symbol-vector-initializer-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.number2-symbol-vector-initializer.number2-symbol-vector-initializer-fn]
     pub fn new(vect: &mut Number2SymbolVector) -> Self {
-        vect.push(String::from("@_EPSILON_SYMBOL_@"));
-        vect.push(String::from("@_UNKNOWN_SYMBOL_@"));
-        vect.push(String::from("@_IDENTITY_SYMBOL_@"));
+        vect.push(SymbolType::new_static("@_EPSILON_SYMBOL_@"));
+        vect.push(SymbolType::new_static("@_UNKNOWN_SYMBOL_@"));
+        vect.push(SymbolType::new_static("@_IDENTITY_SYMBOL_@"));
         Number2SymbolVectorInitializer
     }
 }
@@ -431,9 +435,9 @@ impl Symbol2NumberMapInitializer {
     // [spec:hfst:def:hfst-tropical-transducer-transition-data.hfst.implementations.symbol2-number-map-initializer.symbol2-number-map-initializer-fn]
     // [spec:hfst:sem:hfst-tropical-transducer-transition-data.hfst.implementations.symbol2-number-map-initializer.symbol2-number-map-initializer-fn]
     pub fn new(map: &mut Symbol2NumberMap) -> Self {
-        map.insert(String::from("@_EPSILON_SYMBOL_@"), 0);
-        map.insert(String::from("@_UNKNOWN_SYMBOL_@"), 1);
-        map.insert(String::from("@_IDENTITY_SYMBOL_@"), 2);
+        map.insert(SymbolType::new_static("@_EPSILON_SYMBOL_@"), 0);
+        map.insert(SymbolType::new_static("@_UNKNOWN_SYMBOL_@"), 1);
+        map.insert(SymbolType::new_static("@_IDENTITY_SYMBOL_@"), 2);
         Symbol2NumberMapInitializer
     }
 }

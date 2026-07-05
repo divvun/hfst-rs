@@ -13,8 +13,11 @@ use crate::hfst_flag_diacritics::FdOperation;
 // [spec:hfst:def:hfst-symbol-defs.hfst.string]
 pub type String = std::string::String;
 
+/// A transducer symbol (re-export; see ['crate::hfst_data_types::Symbol']).
+pub use crate::hfst_data_types::Symbol;
+
 // [spec:hfst:def:hfst-symbol-defs.hfst.string-set]
-pub type StringSet = BTreeSet<String>;
+pub type StringSet = BTreeSet<Symbol>;
 
 // [spec:hfst:def:hfst-symbol-defs.hfst.string-vector]
 pub use crate::hfst_data_types::StringVector;
@@ -29,7 +32,7 @@ pub use crate::hfst_data_types::StringPairVector;
 pub use crate::hfst_data_types::StringPairSet;
 
 // [spec:hfst:def:hfst-symbol-defs.hfst.hfst-symbol-substitutions]
-pub type HfstSymbolSubstitutions = BTreeMap<String, String>;
+pub type HfstSymbolSubstitutions = BTreeMap<Symbol, Symbol>;
 
 // [spec:hfst:def:hfst-symbol-defs.hfst.hfst-symbol-pair-substitutions]
 pub type HfstSymbolPairSubstitutions = BTreeMap<StringPair, StringPair>;
@@ -47,7 +50,7 @@ pub type NumberPairVector = Vec<NumberPair>;
 // [spec:hfst:def:hfst-symbol-defs.hfst.number-pair-set]
 pub type NumberPairSet = BTreeSet<NumberPair>;
 // [spec:hfst:def:hfst-symbol-defs.hfst.string-number-map]
-pub type StringNumberMap = BTreeMap<String, u32>;
+pub type StringNumberMap = BTreeMap<Symbol, u32>;
 // [spec:hfst:def:hfst-symbol-defs.hfst.number-number-map]
 pub type NumberNumberMap = BTreeMap<u32, u32>;
 
@@ -138,16 +141,16 @@ pub fn label_to_stringpair(label: &str) -> Option<StringPair> {
             break;
         }
     }
-    let (mut first, mut second) = match colon {
+    let (mut first, mut second): (Symbol, Symbol) = match colon {
         // (label < colon) && (colon < endstr): a real, interior separator.
-        Some(c) if c > 0 && c < len => (label[0..c].to_string(), label[c + 1..len].to_string()),
+        Some(c) if c > 0 && c < len => (label[0..c].into(), label[c + 1..len].into()),
         _ => return None,
     };
     if first == "@0@" {
-        first = internal_epsilon.to_string();
+        first = Symbol::new_static(internal_epsilon);
     }
     if second == "@0@" {
-        second = internal_epsilon.to_string();
+        second = Symbol::new_static(internal_epsilon);
     }
     Some((first, second))
 }

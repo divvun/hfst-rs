@@ -68,7 +68,9 @@ use nfst_xre::{BinaryOp, UnaryOp};
 
 use crate::backend::AlgebraBackend;
 #[allow(unused_imports)]
-use crate::hfst_data_types::{ImplementationType, StringPair, StringPairVector, StringVector};
+use crate::hfst_data_types::{
+    ImplementationType, StringPair, StringPairVector, StringVector, Symbol,
+};
 use crate::hfst_transducer::HfstTransducer;
 use tracing::{debug, error, info, warn};
 
@@ -84,7 +86,7 @@ pub const TWOLC_FREELY_INSERT: &str = "__HFST_TWOLC_FREELY_INSERT";
 
 // Typedefs (grammar_defs.h / OtherSymbolTransducer.h / variable_src/*):
 pub type SymbolPair = StringPair;
-pub type SymbolRange = Vec<String>;
+pub type SymbolRange = Vec<Symbol>;
 pub type SymbolPairVector = StringPairVector;
 pub type OtherSymbolTransducerVector<B> = Vec<OtherSymbolTransducer<B>>;
 pub type VariableValueMap = BTreeMap<String, String>;
@@ -112,9 +114,9 @@ pub struct OtherSymbolTransducer<B: AlgebraBackend> {
 // match the `pub` OtherSymbolTransducer/Rule methods that thread it (twolc is a
 // `pub mod`).
 pub struct OstConfig {
-    pub(crate) input_symbols: BTreeSet<String>,
-    pub(crate) output_symbols: BTreeSet<String>,
-    pub(crate) diacritics: BTreeSet<String>,
+    pub(crate) input_symbols: BTreeSet<Symbol>,
+    pub(crate) output_symbols: BTreeSet<Symbol>,
+    pub(crate) diacritics: BTreeSet<Symbol>,
     pub(crate) symbol_pairs: BTreeSet<SymbolPair>,
 }
 
@@ -151,7 +153,7 @@ pub struct ConflictResolvingRightArrowRule<B: AlgebraBackend> {
 // [spec:hfst:def:conflict-resolving-left-arrow-rule.conflict-resolving-left-arrow-rule]
 pub struct ConflictResolvingLeftArrowRule<B: AlgebraBackend> {
     pub(crate) base: LeftArrowRule<B>,
-    pub(crate) input_symbol: String,
+    pub(crate) input_symbol: Symbol,
 }
 
 /// The closed sum over the six concrete rule kinds. The C++ dispatched
@@ -231,7 +233,7 @@ pub struct LeftArrowRuleContainer<B: AlgebraBackend> {
     pub(crate) base: RuleContainer<B>,
     pub(crate) report_left_arrow_conflicts: bool,
     pub(crate) resolve_left_arrow_conflicts: bool,
-    pub(crate) input_to_rule_map: BTreeMap<String, Vec<usize>>,
+    pub(crate) input_to_rule_map: BTreeMap<Symbol, Vec<usize>>,
 }
 
 // TwolCGrammar + handles:
@@ -368,8 +370,10 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
             cfg.input_symbols.insert(it.0.clone());
             cfg.output_symbols.insert(it.1.clone());
         }
-        cfg.symbol_pairs
-            .insert((TWOLC_DIAMOND.to_string(), TWOLC_DIAMOND.to_string()));
+        cfg.symbol_pairs.insert((
+            Symbol::new_static(TWOLC_DIAMOND),
+            Symbol::new_static(TWOLC_DIAMOND),
+        ));
     }
 
     /// 'static void define_diacritics(const std::vector<std::string> &diacritics)'.
@@ -378,7 +382,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     /// matching input/output symbols from the alphabet config.
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.define-diacritics-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.define-diacritics-fn]
-    pub fn define_diacritics(cfg: &mut OstConfig, diacritics: &[String]) {
+    pub fn define_diacritics(cfg: &mut OstConfig, diacritics: &[Symbol]) {
         cfg.diacritics.clear();
         for d in diacritics.iter() {
             cfg.diacritics.insert(d.clone());
@@ -386,11 +390,11 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         // Iterate over a snapshot of the diacritics so the mutable erases
         // below do not alias the loop (the C++ iterates 'diacritics' while
         // mutating 'symbol_pairs'/'input_symbols'/'output_symbols').
-        let diac: Vec<String> = cfg.diacritics.iter().cloned().collect();
+        let diac: Vec<Symbol> = cfg.diacritics.iter().cloned().collect();
         for it in diac.iter() {
             cfg.symbol_pairs.remove(&(it.clone(), it.clone()));
             cfg.symbol_pairs
-                .remove(&(it.clone(), TWOLC_EPSILON.to_string()));
+                .remove(&(it.clone(), Symbol::new_static(TWOLC_EPSILON)));
             cfg.input_symbols.remove(it);
             cfg.output_symbols.remove(it);
         }
@@ -419,14 +423,14 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.other-symbol-transducer-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.other-symbol-transducer-fn]
     pub fn new_pair(cfg: &OstConfig, i_symbol: &str, o_symbol: &str) -> crate::error::Result<Self> {
-        let mut input_symbol = i_symbol.to_string();
-        let mut output_symbol = o_symbol.to_string();
+        let mut input_symbol = Symbol::new(i_symbol);
+        let mut output_symbol = Symbol::new(o_symbol);
 
         if input_symbol == TWOLC_UNKNOWN {
-            input_symbol = HFST_UNKNOWN.to_string();
+            input_symbol = Symbol::new_static(HFST_UNKNOWN);
         }
         if output_symbol == TWOLC_UNKNOWN {
-            output_symbol = HFST_UNKNOWN.to_string();
+            output_symbol = Symbol::new_static(HFST_UNKNOWN);
         }
 
         let mut this = OtherSymbolTransducer {
@@ -492,9 +496,9 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     /// 'OtherSymbolTransducer(const std::string &sym)' — build 'symbol:symbol'
     /// (or 'symbol:0' for a diacritic).
     pub fn new_symbol(cfg: &OstConfig, sym: &str) -> crate::error::Result<Self> {
-        let mut symbol = sym.to_string();
+        let mut symbol = Symbol::new(sym);
         if symbol == TWOLC_UNKNOWN {
-            symbol = HFST_UNKNOWN.to_string();
+            symbol = Symbol::new_static(HFST_UNKNOWN);
         }
 
         let is_diacritic = cfg.diacritics.contains(&symbol);
@@ -580,7 +584,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
             else {
                 self.is_broken = !cfg
                     .symbol_pairs
-                    .contains(&(input_symbol.to_string(), output_symbol.to_string()));
+                    .contains(&(Symbol::new(input_symbol), Symbol::new(output_symbol)));
             }
         }
         if self.is_broken {
@@ -1098,12 +1102,12 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         // [spec:hfst:def:other-symbol-transducer.basic-fn]
         // [spec:hfst:sem:other-symbol-transducer.basic-fn]
         let mut basic = HfstBasicTransducer::from_transducer(&self.transducer);
-        let alphabet: BTreeSet<String> = basic.get_alphabet().clone();
+        let alphabet: BTreeSet<Symbol> = basic.get_alphabet().clone();
 
         let basic_t = HfstBasicTransducer::from_transducer(&t.transducer);
-        let t_alphabet: BTreeSet<String> = basic_t.get_alphabet().clone();
+        let t_alphabet: BTreeSet<Symbol> = basic_t.get_alphabet().clone();
 
-        let mut missing_diacritics: BTreeSet<String> = BTreeSet::new();
+        let mut missing_diacritics: BTreeSet<Symbol> = BTreeSet::new();
         for it in cfg.diacritics.iter() {
             if t_alphabet.contains(it) && !alphabet.contains(it) {
                 missing_diacritics.insert(it.clone());
@@ -1192,8 +1196,8 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         fst.set_final_weight(target, &0.0);
         let tr = HfstBasicTransition::new_symbols(
             target,
-            TWOLC_IDENTITY.to_string(),
-            TWOLC_IDENTITY.to_string(),
+            Symbol::new_static(TWOLC_IDENTITY),
+            Symbol::new_static(TWOLC_IDENTITY),
             0.0,
             fst.coder_mut(),
         );
@@ -1228,7 +1232,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         symbol: &str,
     ) -> crate::error::Result<()> {
         let mut mutable_transducer = HfstBasicTransducer::from_transducer(&self.transducer);
-        mutable_transducer.add_symbol_to_alphabet(&symbol.to_string());
+        mutable_transducer.add_symbol_to_alphabet(&Symbol::new(symbol));
         self.transducer = HfstTransducer::new_from_basic(&mutable_transducer)?;
         Ok(())
     }
@@ -1243,7 +1247,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
             self.apply_subst_pair(
                 cfg,
                 &(it.clone(), it.clone()),
-                &(it.clone(), TWOLC_EPSILON.to_string()),
+                &(it.clone(), Symbol::new_static(TWOLC_EPSILON)),
             )?;
         }
         Ok(())
@@ -1278,8 +1282,8 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     ) {
         let tr = HfstBasicTransition::new_symbols(
             target_state as HfstState,
-            input.to_string(),
-            output.to_string(),
+            Symbol::new(input),
+            Symbol::new(output),
             0.0,
             center_t.coder_mut(),
         );
@@ -1587,7 +1591,7 @@ fn have_common_string(
         if let Some(&fst1_target) = fst1_transition_map.get(&symbol_pair) {
             let state_pair: (HfstState, HfstState) = (fst1_target, it.get_target_state());
             if !visited_pairs.contains(&state_pair) {
-                v.push(format!("{}:{}", symbol_pair.0, symbol_pair.1));
+                v.push(Symbol::from(format!("{}:{}", symbol_pair.0, symbol_pair.1)));
                 visited_pairs.insert(state_pair);
                 if have_common_string(state_pair.0, state_pair.1, fst1, fst2, visited_pairs, v) {
                     return true;
@@ -1698,8 +1702,8 @@ impl<B: AlgebraBackend> Rule<B> {
             .apply_subst(cfg, "__HFST_TWOLC_SPACE", " ", true, true)?;
         self.rule_transducer.apply_subst_pair(
             cfg,
-            &("@#@".to_string(), "@#@".to_string()),
-            &("@#@".to_string(), HFST_EPSILON.to_string()),
+            &(Symbol::new_static("@#@"), Symbol::new_static("@#@")),
+            &(Symbol::new_static("@#@"), Symbol::new_static(HFST_EPSILON)),
         )?;
         self.rule_transducer
             .apply_subst(cfg, TWOLC_IDENTITY, HFST_IDENTITY, true, true)?;
@@ -1831,7 +1835,7 @@ impl<B: AlgebraBackend> Rule<B> {
         cfg: &OstConfig,
         diacritics: &SymbolRange,
     ) -> crate::error::Result<()> {
-        let symbol_set: BTreeSet<String> = self.rule_transducer.get_transducer()?.get_alphabet()?;
+        let symbol_set: BTreeSet<Symbol> = self.rule_transducer.get_transducer()?.get_alphabet()?;
         for d in diacritics.iter() {
             if !symbol_set.contains(d) {
                 self.rule_transducer.add_symbol_to_alphabet(cfg, d)?;
@@ -3188,8 +3192,8 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         // absolute word boundary pair.
         self.collect_grammar_pairs(twolc_file, &mut symbol_pairs)?;
         symbol_pairs.insert((
-            "__HFST_TWOLC_.#.".to_string(),
-            "__HFST_TWOLC_.#.".to_string(),
+            Symbol::new_static("__HFST_TWOLC_.#."),
+            Symbol::new_static("__HFST_TWOLC_.#."),
         ));
         OtherSymbolTransducer::<B>::set_symbol_pairs(cfg, &symbol_pairs);
         Ok(())
@@ -3299,8 +3303,8 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
 
     /// Insert one collected pair, skipping pairs with a set-name side (the
     /// 'is_set_pair' filter).
-    fn insert_grammar_pair(&self, upper: String, lower: String, pairs: &mut BTreeSet<SymbolPair>) {
-        if self.sets.contains_key(&upper) || self.sets.contains_key(&lower) {
+    fn insert_grammar_pair(&self, upper: Symbol, lower: Symbol, pairs: &mut BTreeSet<SymbolPair>) {
+        if self.sets.contains_key(upper.as_str()) || self.sets.contains_key(lower.as_str()) {
             return;
         }
         pairs.insert((upper, lower));
@@ -3309,10 +3313,10 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     /// Resolve a pair side to a concrete internal symbol under the variable
     /// assignment, or None when the side is non-concrete ('Any' / a nested
     /// expression).
-    fn concrete_symbol(e: &Spanned<TwolcRegex>, vvm: &VariableValueMap) -> Option<String> {
+    fn concrete_symbol(e: &Spanned<TwolcRegex>, vvm: &VariableValueMap) -> Option<Symbol> {
         match &e.value {
             TwolcRegex::Symbol(s) => Some(substitute_symbol(s, vvm)),
-            TwolcRegex::Epsilon => Some(TWOLC_EPSILON.to_string()),
+            TwolcRegex::Epsilon => Some(Symbol::new_static(TWOLC_EPSILON)),
             TwolcRegex::Group(inner) => Self::concrete_symbol(inner, vvm),
             _ => None,
         }
@@ -3326,7 +3330,10 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         diacritics: &[Spanned<String>],
         grammar: &mut TwolCGrammar<B>,
     ) {
-        let list: SymbolRange = diacritics.iter().map(|d| d.value.clone()).collect();
+        let list: SymbolRange = diacritics
+            .iter()
+            .map(|d| Symbol::from(d.value.clone()))
+            .collect();
         grammar.define_diacritics(cfg, &list);
     }
 
@@ -3334,8 +3341,10 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     /// 'Symbol' naming a set expands to the disjunction of its members.
     pub fn register_sets(&mut self, sets: &[Spanned<SetDefinition>]) {
         for s in sets {
-            self.sets
-                .insert(s.value.name.clone(), s.value.members.clone());
+            self.sets.insert(
+                s.value.name.clone(),
+                s.value.members.iter().map(Symbol::new).collect(),
+            );
         }
     }
 
@@ -3551,10 +3560,10 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
 
     /// The member list of set 'sym', or the singleton '[sym]' when 'sym' names
     /// no set ('Alphabet::define_singleton_set').
-    fn set_of(&self, sym: &str) -> Vec<String> {
+    fn set_of(&self, sym: &str) -> Vec<Symbol> {
         match self.sets.get(sym) {
             Some(members) => members.iter().map(|m| normalize_symbol(m)).collect(),
-            None => vec![sym.to_string()],
+            None => vec![Symbol::new(sym)],
         }
     }
 
@@ -3580,7 +3589,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             return cfg.input_symbols.contains(input);
         }
         cfg.symbol_pairs
-            .contains(&(input.to_string(), output.to_string()))
+            .contains(&(Symbol::new(input), Symbol::new(output)))
     }
 
     // 'Alphabet::compute' ('alphabet_src/Alphabet.cc'): expand a pair whose
@@ -3657,9 +3666,9 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                 // symbol naming a set expands to the declared pairs of the
                 // 'sym:sym' pair set (the 'Alphabet::compute' semantics);
                 // otherwise it is a literal 'sym:sym' pair.
-                if let Some(def) = self.definitions.get(&sym) {
+                if let Some(def) = self.definitions.get(sym.as_str()) {
                     clone_ost(def)
-                } else if self.sets.contains_key(&sym) {
+                } else if self.sets.contains_key(sym.as_str()) {
                     self.pair_transducer(cfg, &sym, &sym)?
                 } else {
                     OtherSymbolTransducer::new_symbol(cfg, &sym)?
@@ -3668,7 +3677,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             TwolcRegex::Pair { upper, lower } => {
                 let up = symbol_of(upper, vvm);
                 let lo = symbol_of(lower, vvm);
-                if self.sets.contains_key(&up) || self.sets.contains_key(&lo) {
+                if self.sets.contains_key(up.as_str()) || self.sets.contains_key(lo.as_str()) {
                     self.pair_transducer(cfg, &up, &lo)?
                 } else {
                     OtherSymbolTransducer::new_pair(cfg, &up, &lo)?
@@ -3829,11 +3838,11 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
 /// the absolute word boundary '.#.'. (The htwolcpre1 lexer performed these
 /// renamings on every symbol token; the other reserved tokens are structural
 /// and never reach the AST as symbols.)
-fn normalize_symbol(sym: &str) -> String {
+fn normalize_symbol(sym: &str) -> Symbol {
     match sym {
-        "0" => TWOLC_EPSILON.to_string(),
-        ".#." => "__HFST_TWOLC_.#.".to_string(),
-        _ => sym.to_string(),
+        "0" => Symbol::new_static(TWOLC_EPSILON),
+        ".#." => Symbol::new_static("__HFST_TWOLC_.#."),
+        _ => Symbol::new(sym),
     }
 }
 
@@ -3841,7 +3850,7 @@ fn normalize_symbol(sym: &str) -> String {
 /// in 'vvm', return its value, else 'sym' unchanged (the 'RuleSymbolVector'
 /// per-symbol 'vvm' lookup). The result is mapped into the internal symbol
 /// namespace (the htwolcpre1 lexer renamings).
-fn substitute_symbol(sym: &str, vvm: &VariableValueMap) -> String {
+fn substitute_symbol(sym: &str, vvm: &VariableValueMap) -> Symbol {
     match vvm.get(sym) {
         Some(val) => normalize_symbol(val),
         None => normalize_symbol(sym),
@@ -3850,11 +3859,11 @@ fn substitute_symbol(sym: &str, vvm: &VariableValueMap) -> String {
 
 /// Resolve a 'TwolcRegex' operand expected to be a single symbol (the upper or
 /// lower side of a 'Pair'), applying variable substitution.
-fn symbol_of(e: &Spanned<TwolcRegex>, vvm: &VariableValueMap) -> String {
+fn symbol_of(e: &Spanned<TwolcRegex>, vvm: &VariableValueMap) -> Symbol {
     match &e.value {
         TwolcRegex::Symbol(s) => substitute_symbol(s, vvm),
-        TwolcRegex::Epsilon => TWOLC_EPSILON.to_string(),
-        TwolcRegex::Any => TWOLC_UNKNOWN.to_string(),
+        TwolcRegex::Epsilon => Symbol::new_static(TWOLC_EPSILON),
+        TwolcRegex::Any => Symbol::new_static(TWOLC_UNKNOWN),
         TwolcRegex::Group(inner) => symbol_of(inner, vvm),
         _ => std::panic::panic_any("twolc pair side must be a single symbol".to_string()),
     }

@@ -71,7 +71,7 @@ pub fn hfst_ol_to_hfst_basic_add_state<T: crate::transducer::TransducerTablesInt
 }
 
 // [spec:hfst:def:convert-ol-transducer.hfst.implementations.string-set]
-pub type StringSet = BTreeSet<String>;
+pub type StringSet = BTreeSet<crate::hfst_data_types::Symbol>;
 
 // [spec:hfst:def:convert-ol-transducer.hfst.implementations.get-states-and-symbols-fn]
 // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.get-states-and-symbols-fn]
@@ -140,16 +140,17 @@ pub fn get_states_and_symbols(
         }
     }
 
-    let mut string_symbol_map: BTreeMap<String, SymbolNumber> = BTreeMap::new();
+    let mut string_symbol_map: BTreeMap<crate::hfst_data_types::Symbol, SymbolNumber> =
+        BTreeMap::new();
 
     // Collect symbols if we need to
     if harmonizer.is_none() {
         // 1) epsilon
         string_symbol_map.insert(
-            internal_epsilon.to_string(),
+            crate::hfst_data_types::Symbol::new_static(internal_epsilon),
             u16::try_from(symbol_table.len()).expect("value out of u16 range"),
         );
-        symbol_table.push(internal_epsilon.to_string());
+        symbol_table.push(crate::hfst_data_types::Symbol::new_static(internal_epsilon));
 
         // 2) input symbols
         for it in input_symbols.iter() {

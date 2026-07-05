@@ -1,11 +1,12 @@
+use hfst::hfst_data_types::Symbol;
 use hfst::hfst_strings2_fst_tokenizer::{HfstStrings2FstTokenizer, StringVector};
 
-fn pair(a: &str, b: &str) -> (String, String) {
-    (a.to_string(), b.to_string())
+fn pair(a: &str, b: &str) -> (Symbol, Symbol) {
+    (a.into(), b.into())
 }
 
 fn main() -> hfst::error::Result<()> {
-    let mc: StringVector = vec!["##".to_string(), "+NOM".to_string()];
+    let mc: StringVector = vec!["##".into(), "+NOM".into()];
     let tok = HfstStrings2FstTokenizer::new(&mc, "@_EPS_@")?;
 
     // identity string pair (no colon)

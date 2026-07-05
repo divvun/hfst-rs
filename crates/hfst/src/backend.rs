@@ -85,7 +85,7 @@ pub trait Backend: Sized {
     /// convert_to_basic_transducer / convert_to_hfst_transducer pair).
     fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
         let mut net = self.to_basic()?;
-        net.add_symbol_to_alphabet(&symbol.to_string());
+        net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(symbol));
         *self = Self::from_basic(&net)?;
         Ok(())
     }

@@ -53,7 +53,7 @@ pub type StateId = u32;
 pub type LogFst = LogVectorFst;
 
 /// 'typedef std::set<std::string> StringSet' (used by the alphabet helpers).
-pub type StringSet = BTreeSet<String>;
+pub type StringSet = BTreeSet<crate::hfst_data_types::Symbol>;
 
 // [spec:hfst:def:log-weight-transducer.hfst.implementations.log-arc-vector]
 pub type LogArcVector = Vec<LogTransition>;
@@ -1028,7 +1028,7 @@ mod construction_io {
             let mut s = StringSet::new();
             let st = t.input_symbols().unwrap();
             for (_l, sym) in st.iter() {
-                s.insert(sym.to_string());
+                s.insert(crate::hfst_data_types::Symbol::new(sym));
             }
             s
         }
@@ -1057,7 +1057,7 @@ mod construction_io {
                 assert!(!sym.is_empty());
 
                 if !FdOperation::is_diacritic(&sym) && arc.ilabel != 0 {
-                    symbols.insert(sym);
+                    symbols.insert(crate::hfst_data_types::Symbol::from(sym));
                 } else if !visited_states.contains(&arc.nextstate) {
                     Self::get_initial_input_symbols_rec(t, arc.nextstate, visited_states, symbols);
                 }
@@ -1098,13 +1098,12 @@ mod construction_io {
                 assert!(!sym.is_empty());
 
                 if !FdOperation::is_diacritic(&sym) && arc.ilabel != 0 {
-                    symbols.insert(
+                    symbols.insert(crate::hfst_data_types::Symbol::new(
                         t.input_symbols()
                             .unwrap()
                             .get_symbol(arc.ilabel)
-                            .unwrap_or("")
-                            .to_string(),
-                    );
+                            .unwrap_or(""),
+                    ));
                 }
                 if !visited_states.contains(&arc.nextstate) {
                     Self::get_first_input_symbols_rec(t, arc.nextstate, visited_states, symbols);
@@ -1153,8 +1152,10 @@ mod construction_io {
         // [spec:hfst:sem:log-weight-transducer.hfst.implementations.log-weight-transducer.get-symbol-vector-fn]
         pub fn get_symbol_vector(t: &LogVectorFst) -> StringVector {
             let biggest_symbol_number = Self::get_biggest_symbol_number(t);
-            let mut symbol_vector: StringVector =
-                vec![String::new(); (biggest_symbol_number + 1) as usize];
+            let mut symbol_vector: StringVector = vec![
+                crate::hfst_data_types::Symbol::default();
+                (biggest_symbol_number + 1) as usize
+            ];
 
             let alphabet = Self::get_alphabet(t);
             for it in alphabet.iter() {
@@ -2266,8 +2267,8 @@ mod lookup_extract_misc {
 
             /* Handle spv here. Special symbols (flags, epsilons) are always
             inserted. */
-            let mut istring = String::new();
-            let mut ostring = String::new();
+            let mut istring = crate::hfst_data_types::Symbol::default();
+            let mut ostring = crate::hfst_data_types::Symbol::default();
 
             if !filter_fd
                 || fd_state_stack
@@ -2279,12 +2280,12 @@ mod lookup_extract_misc {
                     .get_operation(arc.ilabel as i64)
                     .is_none()
             {
-                istring = t
-                    .input_symbols()
-                    .unwrap()
-                    .get_symbol(arc.ilabel)
-                    .unwrap_or("")
-                    .to_string();
+                istring = crate::hfst_data_types::Symbol::new(
+                    t.input_symbols()
+                        .unwrap()
+                        .get_symbol(arc.ilabel)
+                        .unwrap_or(""),
+                );
             }
 
             if !filter_fd
@@ -2297,12 +2298,12 @@ mod lookup_extract_misc {
                     .get_operation(arc.olabel as i64)
                     .is_none()
             {
-                ostring = t
-                    .input_symbols()
-                    .unwrap()
-                    .get_symbol(arc.olabel)
-                    .unwrap_or("")
-                    .to_string();
+                ostring = crate::hfst_data_types::Symbol::new(
+                    t.input_symbols()
+                        .unwrap()
+                        .get_symbol(arc.olabel)
+                        .unwrap_or(""),
+                );
             }
 
             spv.push((istring, ostring));

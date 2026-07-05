@@ -175,8 +175,8 @@ impl Transducer {
             let output: String = path
                 .second
                 .iter()
-                .cloned()
-                .collect::<Vec<String>>()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
                 .concat();
             match self.variant {
                 Variant::Plain | Variant::Fd => self.display_vector.push(output),

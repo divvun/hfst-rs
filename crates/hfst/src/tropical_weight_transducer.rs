@@ -50,7 +50,7 @@ use crate::transducer::IStream;
 pub type StateId = u32;
 
 /// 'typedef std::set<std::string> StringSet' (used by the alphabet helpers).
-pub type StringSet = BTreeSet<String>;
+pub type StringSet = BTreeSet<crate::hfst_data_types::Symbol>;
 
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.std-arc-vector]
 pub type StdArcVector = Vec<StdTransition>;
@@ -1045,7 +1045,7 @@ mod construction_io {
             let mut s = StringSet::new();
             let st = t.input_symbols().unwrap();
             for (_l, sym) in st.iter() {
-                s.insert(sym.to_string());
+                s.insert(crate::hfst_data_types::Symbol::new(sym));
             }
             s
         }
@@ -1071,7 +1071,7 @@ mod construction_io {
                 assert!(!sym.is_empty());
 
                 if !FdOperation::is_diacritic(&sym) && arc.ilabel != 0 {
-                    symbols.insert(sym);
+                    symbols.insert(crate::hfst_data_types::Symbol::from(sym));
                 } else if !visited_states.contains(&arc.nextstate) {
                     Self::get_initial_input_symbols_rec(t, arc.nextstate, visited_states, symbols);
                 }
@@ -1112,13 +1112,12 @@ mod construction_io {
                 assert!(!sym.is_empty());
 
                 if !FdOperation::is_diacritic(&sym) && arc.ilabel != 0 {
-                    symbols.insert(
+                    symbols.insert(crate::hfst_data_types::Symbol::new(
                         t.input_symbols()
                             .unwrap()
                             .get_symbol(arc.ilabel)
-                            .unwrap_or("")
-                            .to_string(),
-                    );
+                            .unwrap_or(""),
+                    ));
                 }
                 if !visited_states.contains(&arc.nextstate) {
                     Self::get_first_input_symbols_rec(t, arc.nextstate, visited_states, symbols);
@@ -1164,8 +1163,10 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-symbol-vector-fn]
         pub fn get_symbol_vector(t: &StdVectorFst) -> StringVector {
             let biggest_symbol_number = Self::get_biggest_symbol_number(t);
-            let mut symbol_vector: StringVector =
-                vec![String::new(); (biggest_symbol_number + 1) as usize];
+            let mut symbol_vector: StringVector = vec![
+                crate::hfst_data_types::Symbol::default();
+                (biggest_symbol_number + 1) as usize
+            ];
 
             let alphabet = Self::get_alphabet(t);
             for it in alphabet.iter() {
@@ -2416,8 +2417,8 @@ mod lookup_extract_misc {
 
             /* Handle spv here. Special symbols (flags, epsilons) are always
             inserted. */
-            let mut istring = String::new();
-            let mut ostring = String::new();
+            let mut istring = crate::hfst_data_types::Symbol::default();
+            let mut ostring = crate::hfst_data_types::Symbol::default();
 
             if !filter_fd
                 || fd_state_stack
@@ -2429,12 +2430,12 @@ mod lookup_extract_misc {
                     .get_operation(arc.ilabel as i64)
                     .is_none()
             {
-                istring = t
-                    .input_symbols()
-                    .unwrap()
-                    .get_symbol(arc.ilabel)
-                    .unwrap_or("")
-                    .to_string();
+                istring = crate::hfst_data_types::Symbol::new(
+                    t.input_symbols()
+                        .unwrap()
+                        .get_symbol(arc.ilabel)
+                        .unwrap_or(""),
+                );
             }
 
             if !filter_fd
@@ -2447,12 +2448,12 @@ mod lookup_extract_misc {
                     .get_operation(arc.olabel as i64)
                     .is_none()
             {
-                ostring = t
-                    .input_symbols()
-                    .unwrap()
-                    .get_symbol(arc.olabel)
-                    .unwrap_or("")
-                    .to_string();
+                ostring = crate::hfst_data_types::Symbol::new(
+                    t.input_symbols()
+                        .unwrap()
+                        .get_symbol(arc.olabel)
+                        .unwrap_or(""),
+                );
             }
 
             spv.push((istring, ostring));
@@ -2576,16 +2577,18 @@ mod lookup_extract_misc {
                 let t_target = arc.nextstate;
 
                 path.second.push((
-                    t.input_symbols()
-                        .unwrap()
-                        .get_symbol(arc.ilabel)
-                        .unwrap_or("")
-                        .to_string(),
-                    t.input_symbols()
-                        .unwrap()
-                        .get_symbol(arc.olabel)
-                        .unwrap_or("")
-                        .to_string(),
+                    crate::hfst_data_types::Symbol::new(
+                        t.input_symbols()
+                            .unwrap()
+                            .get_symbol(arc.ilabel)
+                            .unwrap_or(""),
+                    ),
+                    crate::hfst_data_types::Symbol::new(
+                        t.input_symbols()
+                            .unwrap()
+                            .get_symbol(arc.olabel)
+                            .unwrap_or(""),
+                    ),
                 ));
                 path.first += *arc.weight.value();
 

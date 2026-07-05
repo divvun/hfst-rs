@@ -31,7 +31,7 @@ use std::rc::Rc;
 use crate::backend::{AlgebraBackend, Backend};
 use crate::hfst_basic_transducer::{HfstBasicTransducer, HfstBasicTransitions};
 use crate::hfst_data_types::{HfstOneLevelPaths, HfstTwoLevelPaths, ImplementationType};
-use crate::hfst_data_types::{StringPair, StringPairSet, StringVector};
+use crate::hfst_data_types::{StringPair, StringPairSet, StringVector, Symbol};
 use crate::hfst_input_stream::HfstInputStream;
 use crate::hfst_output_stream::HfstOutputStream;
 use crate::hfst_symbol_defs::StringSet;
@@ -144,7 +144,7 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     pub aliases: BTreeMap<String, String>,
     pub variables: BTreeMap<String, String>,
     pub properties: BTreeMap<String, String>,
-    pub lists: BTreeMap<String, BTreeSet<String>>,
+    pub lists: BTreeMap<String, BTreeSet<Symbol>>,
     pub verbose: bool,
     pub verbose_prompt: bool,
     /* The latest regex that has been compiled when 'compile_regex' has been
@@ -1950,7 +1950,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         oss: &mut dyn std::io::Write,
         tr: &HfstTransducer<B>,
     ) -> &mut Self {
-        let mut label_set: BTreeSet<(String, String)> = BTreeSet::new();
+        let mut label_set: BTreeSet<(Symbol, Symbol)> = BTreeSet::new();
         let fsm = HfstBasicTransducer::new_from_transducer(tr);
 
         for it in fsm.iter() {
@@ -2012,7 +2012,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return self;
         };
 
-        let mut label_map: BTreeMap<(String, String), u32> = BTreeMap::new();
+        let mut label_map: BTreeMap<(Symbol, Symbol), u32> = BTreeMap::new();
         let fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
 
         for it in fsm.iter() {
@@ -2075,7 +2075,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return self;
         }
-        let lists: Vec<(String, BTreeSet<String>)> = self
+        let lists: Vec<(String, BTreeSet<Symbol>)> = self
             .lists
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -3417,12 +3417,12 @@ fn string_to_float(str: &str) -> f32 {
 fn extract_output_paths(paths: &HfstTwoLevelPaths) -> HfstOneLevelPaths {
     let mut retval = HfstOneLevelPaths::new();
     for it in paths.iter() {
-        let mut new_path: Vec<String> = Vec::new();
+        let mut new_path: Vec<Symbol> = Vec::new();
         let path = &it.second;
         for p in path.iter() {
             if p.1 != "@0@" && p.1 != "@_EPSILON_SYMBOL_@" {
                 if p.1 == "@_UNKNOWN_SYMBOL_@" {
-                    new_path.push("?".to_string());
+                    new_path.push(Symbol::new_static("?"));
                 } else {
                     new_path.push(p.1.clone());
                 }
@@ -3522,13 +3522,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         if (start.len() > 1) || (end.len() > 1) {
             warn!("unsupported unicode range {}-{}", start, end);
         }
-        let mut l: BTreeSet<String> = BTreeSet::new();
+        let mut l: BTreeSet<Symbol> = BTreeSet::new();
         let start_c = start.as_bytes().first().copied().unwrap_or(0);
         let end_c = end.as_bytes().first().copied().unwrap_or(0);
         let mut c = start_c;
         while c < end_c {
             let s = (c as char).to_string();
-            l.insert(s);
+            l.insert(Symbol::from(s));
             c += 1;
         }
         self.lists.insert(name.to_string(), l);
@@ -3552,12 +3552,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return self;
         }
-        let mut l: BTreeSet<String> = BTreeSet::new();
+        let mut l: BTreeSet<Symbol> = BTreeSet::new();
         for token in list.split(' ') {
             if token.is_empty() {
                 continue;
             }
-            l.insert(token.to_string());
+            l.insert(Symbol::new(token));
         }
         self.lists.insert(name.to_string(), l.clone());
         self.xre.define_list(name, &l); // XRE
@@ -4282,7 +4282,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
         let result: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::new()));
-        let mut label_set: BTreeSet<(String, String)> = BTreeSet::new();
+        let mut label_set: BTreeSet<(Symbol, Symbol)> = BTreeSet::new();
         let fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
         for it in fsm.iter() {
             for tr_it in it.iter() {
@@ -4805,7 +4805,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.to-literal-regexp-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.to-literal-regexp-fn]
-    fn to_literal_regexp(path: &Vec<(String, String)>, input_side: bool) -> String {
+    fn to_literal_regexp(path: &Vec<(Symbol, Symbol)>, input_side: bool) -> String {
         let mut pathstr = String::from("[");
         for it in path.iter() {
             let symbol = if input_side { &it.0 } else { &it.1 };
@@ -4824,7 +4824,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.to-regexp-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.to-regexp-fn]
-    fn to_regexp(path: &Vec<(String, String)>, input_side: bool, retokenize: bool) -> String {
+    fn to_regexp(path: &Vec<(Symbol, Symbol)>, input_side: bool, retokenize: bool) -> String {
         let mut pathstr = String::from("[");
         for it in path.iter() {
             let symbol = if input_side { &it.0 } else { &it.1 };
@@ -5110,7 +5110,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             tok.add_multichar_symbol(it);
         }
         // XXX: seting for splitc-chars ?
-        let lookup_path: Vec<String> = tok.tokenize_one_level(&token, false);
+        let lookup_path: Vec<Symbol> = tok.tokenize_one_level(&token, false);
 
         let mut cutoff: usize = usize::MAX; // (size_t)-1
         if t.is_lookup_infinitely_ambiguous_string_vector(
@@ -5611,7 +5611,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
 
         let tmp: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::new()));
-        let mcs: Vec<String> = Vec::new(); // no multichar symbols
+        let mcs: Vec<Symbol> = Vec::new(); // no multichar symbols
         // [spec:hfst:def:xfst-compiler.hfst.xfst.tok-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.tok-fn]
         let tok = crate::hfst_strings2_fst_tokenizer::HfstStrings2FstTokenizer::new(
@@ -5668,12 +5668,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         // [spec:hfst:def:xfst-compiler.hfst.xfst.labelstr-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.labelstr-fn]
-        let mut labelstr = label.to_string();
+        let mut labelstr = Symbol::new(label);
         if labelstr == "?" {
-            labelstr = String::from("@_IDENTITY_SYMBOL_@");
+            labelstr = Symbol::new_static("@_IDENTITY_SYMBOL_@");
         }
         if labelstr == "0" {
-            labelstr = String::from("@_EPSILON_SYMBOL_@");
+            labelstr = Symbol::new_static("@_EPSILON_SYMBOL_@");
         }
 
         let mut alpha = top.borrow().get_alphabet()?;
@@ -6187,11 +6187,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let mut pos: usize = 0;
         for i in 0..bytes.len() {
             if bytes[i] == c as u8 {
-                retval.push(s[pos..i].to_string());
+                retval.push(Symbol::new(&s[pos..i]));
                 pos = i + 1;
             }
         }
-        retval.push(s[pos..].to_string());
+        retval.push(Symbol::new(&s[pos..]));
         retval
     }
 
@@ -6200,29 +6200,29 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.symbol-vector-to-symbol-pair-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.symbol-vector-to-symbol-pair-fn]
     fn symbol_vector_to_symbol_pair(sv: &StringVector) -> Option<StringPair> {
-        let mut sp: StringPair = (String::new(), String::new());
+        let mut sp: StringPair = (Symbol::default(), Symbol::default());
         if sv.len() == 2 {
             if sv[0] == "?" {
-                sp.0 = String::from("@_UNKNOWN_SYMBOL_@");
+                sp.0 = Symbol::new_static("@_UNKNOWN_SYMBOL_@");
             } else if sv[0] == "0" {
-                sp.0 = String::from("@_EPSILON_SYMBOL_@");
+                sp.0 = Symbol::new_static("@_EPSILON_SYMBOL_@");
             } else {
                 sp.0 = sv[0].clone();
             }
 
             if sv[1] == "?" {
-                sp.1 = String::from("@_UNKNOWN_SYMBOL_@");
+                sp.1 = Symbol::new_static("@_UNKNOWN_SYMBOL_@");
             } else if sv[1] == "0" {
-                sp.1 = String::from("@_EPSILON_SYMBOL_@");
+                sp.1 = Symbol::new_static("@_EPSILON_SYMBOL_@");
             } else {
                 sp.1 = sv[1].clone();
             }
         } else if sv.len() == 1 {
             if sv[0] == "?" {
                 // special case "?"
-                sp.0 = String::from("@_IDENTITY_SYMBOL_@");
+                sp.0 = Symbol::new_static("@_IDENTITY_SYMBOL_@");
             } else if sv[0] == "0" {
-                sp.0 = String::from("@_EPSILON_SYMBOL_@");
+                sp.0 = Symbol::new_static("@_EPSILON_SYMBOL_@");
             } else {
                 sp.0 = sv[0].clone();
             }

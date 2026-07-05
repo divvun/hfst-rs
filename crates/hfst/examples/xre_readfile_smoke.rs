@@ -53,13 +53,7 @@ fn main() -> hfst::error::Result<()> {
     let pl = tmp("xre_readfile.pl");
     {
         let mut g = HfstBasicTransducer::new();
-        let tr = HfstBasicTransition::new_symbols(
-            1,
-            "a".to_string(),
-            "b".to_string(),
-            0.0,
-            g.coder_mut(),
-        );
+        let tr = HfstBasicTransition::new_symbols(1, "a".into(), "b".into(), 0.0, g.coder_mut());
         g.add_transition(0, &tr, true);
         g.set_final_weight(1, &0.0);
         let mut buf: Vec<u8> = Vec::new();

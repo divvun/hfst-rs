@@ -21,7 +21,7 @@ use std::ops::ControlFlow;
 use std::time::Instant;
 
 use crate::hfst_data_types::{
-    HfstOneLevelPath, HfstOneLevelPaths, HfstTwoLevelPath, HfstTwoLevelPaths, StringVector,
+    HfstOneLevelPath, HfstOneLevelPaths, HfstTwoLevelPath, HfstTwoLevelPaths, StringVector, Symbol,
 };
 use crate::hfst_flag_diacritics::{FdOperation, FdState, FdTable};
 use crate::hfst_symbol_defs::{is_default, is_identity, is_unknown};
@@ -45,11 +45,11 @@ pub type SymbolNumberVector = Vec<SymbolNumber>;
 // [spec:hfst:def:transducer.hfst-ol.transition-table-index-set]
 pub type TransitionTableIndexSet = BTreeSet<TransitionTableIndex>;
 // [spec:hfst:def:transducer.hfst-ol.symbol-table]
-pub type SymbolTable = Vec<String>;
+pub type SymbolTable = Vec<Symbol>;
 
 // for lookup
 // [spec:hfst:def:transducer.hfst-ol.string-pair]
-pub type StringPair = (String, String);
+pub type StringPair = (Symbol, Symbol);
 
 // for ospell
 // [spec:hfst:def:transducer.hfst-ol.flag-diacritic-state]
@@ -57,7 +57,7 @@ pub type FlagDiacriticState = Vec<i16>;
 // [spec:hfst:def:transducer.hfst-ol.operation-map]
 pub type OperationMap = BTreeMap<SymbolNumber, FdOperation>;
 // [spec:hfst:def:transducer.hfst-ol.string-symbol-map]
-pub type StringSymbolMap = BTreeMap<String, SymbolNumber>;
+pub type StringSymbolMap = BTreeMap<Symbol, SymbolNumber>;
 
 // for epsilon loop checking
 // [spec:hfst:def:transducer.hfst-ol.traversal-state]
@@ -623,7 +623,7 @@ pub struct TransducerAlphabet {
 impl TransducerAlphabet {
     pub fn new() -> Self {
         let mut symbol_table = SymbolTable::new();
-        symbol_table.push("@_EPSILON_SYMBOL_@".to_string());
+        symbol_table.push(Symbol::new_static("@_EPSILON_SYMBOL_@"));
         TransducerAlphabet {
             symbol_table,
             fd_table: FdTable::new(),
@@ -669,7 +669,7 @@ impl TransducerAlphabet {
             if !is.good() {
                 crate::bail!(TransducerHasWrongType);
             }
-            alpha.symbol_table.push(str);
+            alpha.symbol_table.push(Symbol::from(str));
             i += 1;
         }
         alpha.orig_symbol_count = u32::try_from(alpha.symbol_table.len())
@@ -690,10 +690,10 @@ impl TransducerAlphabet {
     // [spec:hfst:def:transducer.hfst-ol.transducer-alphabet.add-symbol-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-alphabet.add-symbol-fn]
     pub fn add_symbol_str(&mut self, symbol: &str) {
-        self.symbol_table.push(symbol.to_string());
+        self.symbol_table.push(Symbol::new(symbol));
     }
 
-    pub fn add_symbol(&mut self, symbol: &String) {
+    pub fn add_symbol(&mut self, symbol: &Symbol) {
         self.symbol_table.push(symbol.clone());
     }
 
@@ -864,9 +864,9 @@ impl TransducerAlphabet {
     // [spec:hfst:def:transducer.hfst-ol.transducer-alphabet.string-from-symbol-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-alphabet.string-from-symbol-fn]
     // represent epsilon as blank string
-    pub fn string_from_symbol(&self, symbol: SymbolNumber) -> String {
+    pub fn string_from_symbol(&self, symbol: SymbolNumber) -> Symbol {
         if symbol == 0 {
-            String::new()
+            Symbol::default()
         } else {
             self.symbol_table[symbol as usize].clone()
         }
@@ -2733,7 +2733,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                         return false; // tokenization failed
                     };
                     let new_symbol =
-                        String::from_utf8_lossy(&buf[p..p + bytes_to_tokenize]).into_owned();
+                        Symbol::from(String::from_utf8_lossy(&buf[p..p + bytes_to_tokenize]));
                     p += bytes_to_tokenize;
                     self.alphabet
                         .as_mut()

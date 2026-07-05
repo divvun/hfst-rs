@@ -45,7 +45,7 @@ use crate::hfst_data_types::ImplementationType::XFSM_TYPE;
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_data_types::{
     HfstOneLevelPaths, HfstTwoLevelPath, HfstTwoLevelPaths, PushType, StringPair, StringPairSet,
-    StringPairVector, StringVector,
+    StringPairVector, StringVector, Symbol,
 };
 use crate::hfst_extract_strings::{ExtractStringsCb, RetVal};
 use crate::hfst_flag_diacritics::FdOperation;
@@ -473,7 +473,7 @@ impl<B: Backend> HfstTransducer<B> {
         }
 
         let mut net = self.convert_to_basic_transducer()?;
-        net.remove_symbol_from_alphabet(&symbol.to_string());
+        net.remove_symbol_from_alphabet(&Symbol::new(symbol));
         self.convert_to_hfst_transducer(net)?;
         Ok(())
     }
@@ -666,11 +666,11 @@ impl<B: Backend> HfstTransducer<B> {
                     // flag:foo -> flag:flag 0:foo, foo:flag -> foo:0 flag:flag
                     // flag1:flag2 -> flag1:flag1 flag2:flag2
 
-                    let mut input: String = istr.clone();
-                    let mut out: String = if istr_is_flag {
+                    let mut input = istr.clone();
+                    let mut out = if istr_is_flag {
                         istr.clone()
                     } else {
-                        crate::hfst_symbol_defs::internal_epsilon.to_string()
+                        Symbol::new_static(crate::hfst_symbol_defs::internal_epsilon)
                     };
 
                     let tr = HfstBasicTransition::new_symbols(
@@ -685,7 +685,7 @@ impl<B: Backend> HfstTransducer<B> {
                     input = if ostr_is_flag {
                         ostr.clone()
                     } else {
-                        crate::hfst_symbol_defs::internal_epsilon.to_string()
+                        Symbol::new_static(crate::hfst_symbol_defs::internal_epsilon)
                     };
                     out = ostr.clone();
 
@@ -1009,32 +1009,32 @@ impl<B: Backend> HfstTransducer<B> {
         let mut bt = HfstBasicTransducer::new();
         let tr = HfstBasicTransition::new_symbols(
             1,
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            "@_IDENTITY_SYMBOL_@".to_string(),
+            Symbol::new_static("@_IDENTITY_SYMBOL_@"),
+            Symbol::new_static("@_IDENTITY_SYMBOL_@"),
             0.0,
             bt.coder_mut(),
         );
         bt.add_transition(0, &tr, true);
         let tr = HfstBasicTransition::new_symbols(
             1,
-            "@_UNKNOWN_SYMBOL_@".to_string(),
-            "@_UNKNOWN_SYMBOL_@".to_string(),
+            Symbol::new_static("@_UNKNOWN_SYMBOL_@"),
+            Symbol::new_static("@_UNKNOWN_SYMBOL_@"),
             0.0,
             bt.coder_mut(),
         );
         bt.add_transition(0, &tr, true);
         let tr = HfstBasicTransition::new_symbols(
             1,
-            "@_UNKNOWN_SYMBOL_@".to_string(),
-            "@_EPSILON_SYMBOL_@".to_string(),
+            Symbol::new_static("@_UNKNOWN_SYMBOL_@"),
+            Symbol::new_static("@_EPSILON_SYMBOL_@"),
             0.0,
             bt.coder_mut(),
         );
         bt.add_transition(0, &tr, true);
         let tr = HfstBasicTransition::new_symbols(
             1,
-            "@_EPSILON_SYMBOL_@".to_string(),
-            "@_UNKNOWN_SYMBOL_@".to_string(),
+            Symbol::new_static("@_EPSILON_SYMBOL_@"),
+            Symbol::new_static("@_UNKNOWN_SYMBOL_@"),
             0.0,
             bt.coder_mut(),
         );
@@ -1052,8 +1052,8 @@ impl<B: Backend> HfstTransducer<B> {
         let mut bt = HfstBasicTransducer::new();
         let tr = HfstBasicTransition::new_symbols(
             1,
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            "@_IDENTITY_SYMBOL_@".to_string(),
+            Symbol::new_static("@_IDENTITY_SYMBOL_@"),
+            Symbol::new_static("@_IDENTITY_SYMBOL_@"),
             0.0,
             bt.coder_mut(),
         );
@@ -1993,8 +1993,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // use the default HfstBasicTransducer function
         let mut net = self.convert_to_basic_transducer()?;
         net.substitute_symbol(
-            &old_symbol.to_string(),
-            &new_symbol.to_string(),
+            &Symbol::new(old_symbol),
+            &Symbol::new(new_symbol),
             input_side,
             output_side,
         )?;
@@ -2233,7 +2233,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // [spec:hfst:def:hfst-transducer.hfst.another-basic-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.another-basic-fn]
         let mut another_basic = HfstBasicTransducer::from_transducer(another);
-        let mut markers_added: BTreeSet<String> = BTreeSet::new();
+        let mut markers_added: BTreeSet<Symbol> = BTreeSet::new();
         let result = HfstBasicTransducer::merge(
             &mut this_basic,
             &mut another_basic,
@@ -2275,7 +2275,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             // [spec:hfst:sem:hfst-transducer.hfst.fsm-fn]
             let fsm = HfstBasicTransducer::from_transducer(&initial_merge);
             let symbols = fsm.symbols_used();
-            if !symbols.contains(&symbol) {
+            if !symbols.contains(symbol.as_str()) {
                 initial_merge.remove_from_alphabet(&symbol)?;
             }
         }
@@ -2447,7 +2447,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         for _1_flag in &_1_flags {
             let at_flag = _1_flag.clone();
             // Replace the leading and trailing '@' (both ASCII) with '$'.
-            let dollar_flag = format!("${}$", &at_flag[1..at_flag.len() - 1]);
+            let dollar_flag = Symbol::from(format!("${}$", &at_flag[1..at_flag.len() - 1]));
 
             subst.insert(at_flag.clone(), dollar_flag.clone());
             back_subst.insert(dollar_flag, at_flag);
@@ -2456,7 +2456,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         for _2_flag in &_2_flags {
             let at_flag = _2_flag.clone();
             // Replace the leading and trailing '@' (both ASCII) with '$'.
-            let dollar_flag = format!("${}$", &at_flag[1..at_flag.len() - 1]);
+            let dollar_flag = Symbol::from(format!("${}$", &at_flag[1..at_flag.len() - 1]));
 
             subst.insert(at_flag.clone(), dollar_flag.clone());
             back_subst.insert(dollar_flag, at_flag);
@@ -2573,17 +2573,17 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // Expand ?:? transitions to ?:?|?
         let mut id_or_unk: StringPairSet = StringPairSet::new();
         id_or_unk.insert((
-            "@_UNKNOWN_SYMBOL_@".to_string(),
-            "@_UNKNOWN_SYMBOL_@".to_string(),
+            Symbol::new_static("@_UNKNOWN_SYMBOL_@"),
+            Symbol::new_static("@_UNKNOWN_SYMBOL_@"),
         ));
         id_or_unk.insert((
-            "@_IDENTITY_SYMBOL_@".to_string(),
-            "@_IDENTITY_SYMBOL_@".to_string(),
+            Symbol::new_static("@_IDENTITY_SYMBOL_@"),
+            Symbol::new_static("@_IDENTITY_SYMBOL_@"),
         ));
         retval.substitute_symbol_pair_with_set(
             &(
-                "@_UNKNOWN_SYMBOL_@".to_string(),
-                "@_UNKNOWN_SYMBOL_@".to_string(),
+                Symbol::new_static("@_UNKNOWN_SYMBOL_@"),
+                Symbol::new_static("@_UNKNOWN_SYMBOL_@"),
             ),
             &id_or_unk,
         )?;
@@ -2757,7 +2757,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             // Add the word boundary symbol to the alphabet so harmonization
             // won't touch it.
             let mut basic_this = HfstBasicTransducer::from_transducer(self);
-            basic_this.add_symbol_to_alphabet(&"@#@".to_string());
+            basic_this.add_symbol_to_alphabet(&Symbol::new_static("@#@"));
             *self = HfstTransducer::from_basic(&basic_this);
 
             wb.concatenate(self, true)?
@@ -2776,8 +2776,14 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         if invert {
             harmonized_lexicon.invert()?;
             harmonized_lexicon.substitute_symbol_pair(
-                &("@#@".to_string(), internal_epsilon.to_string()),
-                &(internal_epsilon.to_string(), "@#@".to_string()),
+                &(
+                    Symbol::new_static("@#@"),
+                    Symbol::new_static(internal_epsilon),
+                ),
+                &(
+                    Symbol::new_static(internal_epsilon),
+                    Symbol::new_static("@#@"),
+                ),
             )?;
         }
 
@@ -2800,8 +2806,14 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             if invert {
                 rule_fst.invert()?;
                 rule_fst.substitute_symbol_pair(
-                    &(internal_epsilon.to_string(), "@#@".to_string()),
-                    &("@#@".to_string(), internal_epsilon.to_string()),
+                    &(
+                        Symbol::new_static(internal_epsilon),
+                        Symbol::new_static("@#@"),
+                    ),
+                    &(
+                        Symbol::new_static("@#@"),
+                        Symbol::new_static(internal_epsilon),
+                    ),
                 )?;
             }
 
@@ -2846,8 +2858,14 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             if invert {
                 first_rule_fst.invert()?;
                 first_rule_fst.substitute_symbol_pair(
-                    &(internal_epsilon.to_string(), "@#@".to_string()),
-                    &("@#@".to_string(), internal_epsilon.to_string()),
+                    &(
+                        Symbol::new_static(internal_epsilon),
+                        Symbol::new_static("@#@"),
+                    ),
+                    &(
+                        Symbol::new_static("@#@"),
+                        Symbol::new_static(internal_epsilon),
+                    ),
                 )?;
             }
 
@@ -2856,8 +2874,14 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             if invert {
                 second_rule_fst.invert()?;
                 second_rule_fst.substitute_symbol_pair(
-                    &(internal_epsilon.to_string(), "@#@".to_string()),
-                    &("@#@".to_string(), internal_epsilon.to_string()),
+                    &(
+                        Symbol::new_static(internal_epsilon),
+                        Symbol::new_static("@#@"),
+                    ),
+                    &(
+                        Symbol::new_static("@#@"),
+                        Symbol::new_static(internal_epsilon),
+                    ),
                 )?;
             }
 
@@ -2885,8 +2909,14 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
                 if invert {
                     rule_fst.invert()?;
                     rule_fst.substitute_symbol_pair(
-                        &(internal_epsilon.to_string(), "@#@".to_string()),
-                        &("@#@".to_string(), internal_epsilon.to_string()),
+                        &(
+                            Symbol::new_static(internal_epsilon),
+                            Symbol::new_static("@#@"),
+                        ),
+                        &(
+                            Symbol::new_static("@#@"),
+                            Symbol::new_static(internal_epsilon),
+                        ),
                     )?;
                 }
                 extra_rule_basics.push(HfstBasicTransducer::from_transducer(&rule_fst));
@@ -3221,8 +3251,9 @@ fn substitute_escaped_flags<B: AlgebraBackend>(
         if it.len() > 1 {
             let bytes = it.as_bytes();
             if bytes[0] == b'_' && bytes[1] == b'@' {
-                let mut s = it.clone();
-                s.remove(0);
+                // 'std::string::erase(0)' drops the leading '_'; rebuild the
+                // SmolStr from the remaining bytes instead of mutating in place.
+                let s = Symbol::new(&it[1..]);
                 filter.substitute_symbol(it, &s, true, true)?;
             }
         }
@@ -3548,15 +3579,15 @@ pub fn substitute_single_identity_with_the_other_symbol(
     sp: &StringPair,
     sps: &mut StringPairSet,
 ) -> bool {
-    let mut isymbol: String = sp.0.clone();
-    let mut osymbol: String = sp.1.clone();
+    let mut isymbol: Symbol = sp.0.clone();
+    let mut osymbol: Symbol = sp.1.clone();
 
     if isymbol == "@_IDENTITY_SYMBOL_@" && (osymbol != "@_IDENTITY_SYMBOL_@") {
-        isymbol = String::from("@_UNKNOWN_SYMBOL_@");
+        isymbol = Symbol::new_static("@_UNKNOWN_SYMBOL_@");
         sps.insert((isymbol, osymbol));
         true
     } else if osymbol == "@_IDENTITY_SYMBOL_@" && (isymbol != "@_IDENTITY_SYMBOL_@") {
-        osymbol = String::from("@_UNKNOWN_SYMBOL_@");
+        osymbol = Symbol::new_static("@_UNKNOWN_SYMBOL_@");
         sps.insert((isymbol, osymbol));
         true
     } else {
@@ -3567,12 +3598,12 @@ pub fn substitute_single_identity_with_the_other_symbol(
 // [spec:hfst:def:hfst-transducer.hfst.substitute-unknown-identity-pairs-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.substitute-unknown-identity-pairs-fn]
 pub fn substitute_unknown_identity_pairs(sp: &StringPair, sps: &mut StringPairSet) -> bool {
-    let mut isymbol: String = sp.0.clone();
-    let mut osymbol: String = sp.1.clone();
+    let mut isymbol: Symbol = sp.0.clone();
+    let mut osymbol: Symbol = sp.1.clone();
 
     if isymbol == "@_UNKNOWN_SYMBOL_@" && osymbol == "@_IDENTITY_SYMBOL_@" {
-        isymbol = String::from("@_IDENTITY_SYMBOL_@");
-        osymbol = String::from("@_IDENTITY_SYMBOL_@");
+        isymbol = Symbol::new_static("@_IDENTITY_SYMBOL_@");
+        osymbol = Symbol::new_static("@_IDENTITY_SYMBOL_@");
         sps.insert((isymbol, osymbol));
         return true;
     }
@@ -3600,8 +3631,8 @@ pub fn get_flag_path_restriction<B: Backend>(
 
     let tr = HfstBasicTransition::new_symbols(
         start_state,
-        internal_identity.to_string(),
-        internal_identity.to_string(),
+        Symbol::new_static(internal_identity),
+        Symbol::new_static(internal_identity),
         0.0,
         basic_restriction.coder_mut(),
     );
@@ -3609,8 +3640,8 @@ pub fn get_flag_path_restriction<B: Backend>(
 
     let tr = HfstBasicTransition::new_symbols(
         start_state,
-        internal_identity.to_string(),
-        internal_identity.to_string(),
+        Symbol::new_static(internal_identity),
+        Symbol::new_static(internal_identity),
         0.0,
         basic_restriction.coder_mut(),
     );
@@ -3623,7 +3654,7 @@ pub fn get_flag_path_restriction<B: Backend>(
             .strip_prefix('@')
             .and_then(|s| s.strip_suffix('@'))
             .expect("flag diacritic is @-delimited");
-        let dollar_flag = format!("${inner}$");
+        let dollar_flag = Symbol::from(format!("${inner}$"));
 
         let tr = HfstBasicTransition::new_symbols(
             start_state,
@@ -3642,7 +3673,7 @@ pub fn get_flag_path_restriction<B: Backend>(
             .strip_prefix('@')
             .and_then(|s| s.strip_suffix('@'))
             .expect("flag diacritic is @-delimited");
-        let dollar_flag = format!("${inner}$");
+        let dollar_flag = Symbol::from(format!("${inner}$"));
 
         let tr = HfstBasicTransition::new_symbols(
             seen_2_state,
@@ -3712,21 +3743,21 @@ fn code_symbols_for_shuffle_impl(
         // substitute each symbol foo in the first argument transducer
         // with a symbol @1foo
         ShuffleCoding::ENCODE_FIRST_SHUFFLE_ARGUMENT => {
-            let symbol_escaped = format!("@1{}", sp.0);
+            let symbol_escaped = Symbol::from(format!("@1{}", sp.0));
             let new_sp: StringPair = (symbol_escaped.clone(), symbol_escaped);
             sps.insert(new_sp);
         }
         // substitute each symbol bar in the second argument transducer
         // with a symbol @2bar
         ShuffleCoding::ENCODE_SECOND_SHUFFLE_ARGUMENT => {
-            let symbol_escaped = format!("@2{}", sp.0);
+            let symbol_escaped = Symbol::from(format!("@2{}", sp.0));
             let new_sp: StringPair = (symbol_escaped.clone(), symbol_escaped);
             sps.insert(new_sp);
         }
         // substitute each symbol @1foo or @2bar in the shuffled transducer
         // with the original foo or bar.
         ShuffleCoding::DECODE_AFTER_SHUFFLE => {
-            let symbol_unescaped = sp.0[2..].to_string();
+            let symbol_unescaped = Symbol::new(&sp.0[2..]);
             let new_sp: StringPair = (symbol_unescaped.clone(), symbol_unescaped);
             sps.insert(new_sp);
         }
@@ -3848,7 +3879,7 @@ fn substitute_one_sided_flags(sp: &StringPair, sps: &mut StringPairSet) -> bool 
 fn substitute_input_flag_with_epsilon(sp: &StringPair, sps: &mut StringPairSet) -> bool {
     if FdOperation::is_diacritic(&sp.0) {
         let new_pair: StringPair = (
-            crate::hfst_symbol_defs::internal_epsilon.to_string(),
+            Symbol::new_static(crate::hfst_symbol_defs::internal_epsilon),
             sp.1.clone(),
         );
         sps.insert(new_pair);
@@ -3862,7 +3893,7 @@ fn substitute_output_flag_with_epsilon(sp: &StringPair, sps: &mut StringPairSet)
     if FdOperation::is_diacritic(&sp.1) {
         let new_pair: StringPair = (
             sp.0.clone(),
-            crate::hfst_symbol_defs::internal_epsilon.to_string(),
+            Symbol::new_static(crate::hfst_symbol_defs::internal_epsilon),
         );
         sps.insert(new_pair);
         return true;
@@ -3904,42 +3935,48 @@ impl HfstBasicTransducer {
 
 // [spec:hfst:def:hfst-transducer.hfst.encode-flag-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.encode-flag-fn]
-fn encode_flag(flag_diacritic: &str) -> String {
+fn encode_flag(flag_diacritic: &str) -> Symbol {
     let mut retval: Vec<u8> = flag_diacritic.as_bytes().to_vec();
     let last = retval.len() - 1;
     retval[0] = b'%';
     retval[last] = b'%';
-    String::from_utf8(retval).expect("flag diacritic remains valid UTF-8 after %-escaping")
+    Symbol::from(
+        String::from_utf8(retval).expect("flag diacritic remains valid UTF-8 after %-escaping"),
+    )
 }
 
 // [spec:hfst:def:hfst-transducer.hfst.decode-flag-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.decode-flag-fn]
-fn decode_flag(flag_diacritic: &str) -> String {
+fn decode_flag(flag_diacritic: &str) -> Symbol {
     let bytes = flag_diacritic.as_bytes();
     if bytes[0] != b'%' || bytes[bytes.len() - 1] != b'%' {
-        return flag_diacritic.to_string();
+        return Symbol::new(flag_diacritic);
     }
     let mut retval: Vec<u8> = bytes.to_vec();
     let last = retval.len() - 1;
     retval[0] = b'@';
     retval[last] = b'@';
-    String::from_utf8(retval).expect("flag diacritic remains valid UTF-8 after @-unescaping")
+    Symbol::from(
+        String::from_utf8(retval).expect("flag diacritic remains valid UTF-8 after @-unescaping"),
+    )
 }
 
 // [spec:hfst:def:hfst-transducer.hfst.add-suffix-to-feature-name-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.add-suffix-to-feature-name-fn]
-fn add_suffix_to_feature_name(flag_diacritic: &str, suffix: &str) -> String {
-    "@".to_string()
-        + &FdOperation::get_operator(flag_diacritic)
-        + "."
-        + &FdOperation::get_feature(flag_diacritic)
-        + suffix
-        + &(if FdOperation::has_value(flag_diacritic) {
-            ".".to_string() + &FdOperation::get_value(flag_diacritic)
-        } else {
-            String::new()
-        })
-        + "@"
+fn add_suffix_to_feature_name(flag_diacritic: &str, suffix: &str) -> Symbol {
+    Symbol::from(
+        "@".to_string()
+            + &FdOperation::get_operator(flag_diacritic)
+            + "."
+            + &FdOperation::get_feature(flag_diacritic)
+            + suffix
+            + &(if FdOperation::has_value(flag_diacritic) {
+                ".".to_string() + &FdOperation::get_value(flag_diacritic)
+            } else {
+                String::new()
+            })
+            + "@",
+    )
 }
 
 // [spec:hfst:def:hfst-transducer.hfst.has-flags-fn]
@@ -4089,7 +4126,7 @@ fn encode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
                 }
             }
         }
-        let mut symbol: String = it.clone();
+        let mut symbol: Symbol = it.clone();
         if FdOperation::is_diacritic(&symbol) {
             symbol = encode_flag(&symbol);
         }
@@ -4148,7 +4185,7 @@ fn decode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
     // copy alphabet, decode all flags
     let alpha = basic_fst.get_alphabet().clone();
     for it in alpha.iter() {
-        let mut symbol: String = decode_flag(it);
+        let mut symbol: Symbol = decode_flag(it);
         if !FdOperation::is_diacritic(&symbol) {
             symbol = it.clone();
         }

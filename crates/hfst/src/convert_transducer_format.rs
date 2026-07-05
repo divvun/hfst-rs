@@ -19,7 +19,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::hfst_data_types::StringVector;
+use crate::hfst_data_types::{StringVector, Symbol};
 
 // 'fst::StdArc::StateId', i.e. 'unsigned int'. (Gated by 'HAVE_OPENFST'; the
 // OpenFST converters that use it are deferred to the rustfst backend.)
@@ -27,7 +27,7 @@ use crate::hfst_data_types::StringVector;
 pub type StateId = u32;
 
 // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.string2-number-map]
-pub type String2NumberMap = BTreeMap<String, u32>;
+pub type String2NumberMap = BTreeMap<Symbol, u32>;
 // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.number-vector]
 pub type NumberVector = Vec<u32>;
 
@@ -67,9 +67,9 @@ impl FormatCoder {
     }
 
     /// Map 'number' to its string, or "" if out of range (as the C++ does).
-    pub fn get_string(&self, number: u32) -> String {
+    pub fn get_string(&self, number: u32) -> Symbol {
         if number as usize >= self.number_to_string.len() {
-            return String::from("");
+            return Symbol::default();
         }
         self.number_to_string[number as usize].clone()
     }
@@ -78,10 +78,11 @@ impl FormatCoder {
     pub fn get_number(&mut self, str: &str) -> u32 {
         match self.string_to_number.get(str) {
             None => {
-                self.number_to_string.push(str.to_string());
+                let symbol = Symbol::new(str);
+                self.number_to_string.push(symbol.clone());
                 let new_index =
                     u32::try_from(self.number_to_string.len() - 1).expect("value out of u32 range");
-                self.string_to_number.insert(str.to_string(), new_index);
+                self.string_to_number.insert(symbol, new_index);
                 new_index
             }
             Some(second) => *second,
@@ -138,9 +139,9 @@ impl StringVectorInitializer {
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.string-vector-initializer.string-vector-initializer-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.string-vector-initializer.string-vector-initializer-fn]
     pub fn new(vector: &mut StringVector) -> Self {
-        vector.push(String::from("@_EPSILON_SYMBOL_@"));
-        vector.push(String::from("@_UNKNOWN_SYMBOL_@"));
-        vector.push(String::from("@_IDENTITY_SYMBOL_@"));
+        vector.push(Symbol::new_static("@_EPSILON_SYMBOL_@"));
+        vector.push(Symbol::new_static("@_UNKNOWN_SYMBOL_@"));
+        vector.push(Symbol::new_static("@_IDENTITY_SYMBOL_@"));
         StringVectorInitializer
     }
 }
@@ -152,9 +153,9 @@ impl String2NumberMapInitializer {
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.string2-number-map-initializer.string2-number-map-initializer-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.string2-number-map-initializer.string2-number-map-initializer-fn]
     pub fn new(map: &mut String2NumberMap) -> Self {
-        map.insert(String::from("@_EPSILON_SYMBOL_@"), 0);
-        map.insert(String::from("@_UNKNOWN_SYMBOL_@"), 1);
-        map.insert(String::from("@_IDENTITY_SYMBOL_@"), 2);
+        map.insert(Symbol::new_static("@_EPSILON_SYMBOL_@"), 0);
+        map.insert(Symbol::new_static("@_UNKNOWN_SYMBOL_@"), 1);
+        map.insert(Symbol::new_static("@_IDENTITY_SYMBOL_@"), 2);
         String2NumberMapInitializer
     }
 }

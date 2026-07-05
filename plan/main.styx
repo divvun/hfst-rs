@@ -2088,6 +2088,11 @@ children (
                     }
                 )
             }
+
+            {
+                id smolstr
+                title "SmolStr symbol pass: Symbol = SmolStr through the container typedefs (StringSet/StringVector/StringPair/SymbolTable/coder maps); O(1) symbol clones; BTree order preserved = byte-identical outputs"
+            }
         )
         log (
             {
@@ -2095,6 +2100,14 @@ children (
                 author "brendan@necessary.nu"
                 kind @note
                 text "Oracle verification (2026-07-04, post-b510971b): cargo build --workspace --all-targets = 0 errors; nextest 153 passed / 14 skipped (incl. optimized_lookup_matches_golden, red mid-pass); lang-sma speller rebuild on the mono dist: acceptor.default.hfst 13,620,112 B and errmodel.default.hfst 91,453,378 B — byte-count identical to pre-mono; sma.zhfst 23,131,678 B; divvunspell suggest lea/maana CORRECT, leaa INCORRECT with lea top; the 538MB tokeniser-disamb .pmhfst is BYTE-IDENTICAL to the pre-mono archive (cmp). TIMING NOT YET VALID: all mono-toolchain timings ran under heavy contention from a concurrent rustc session (src/fst 639s real vs 302s pre-mono, pmatch2fst 391s real/201s user vs 143/137 — real>>user gap + E-core scheduling under load); re-benchmark on a quiet machine before drawing perf conclusions."
+                after_done true
+            }
+
+            {
+                at 2026-07-04T19:21:16.257021Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Performance measured (2026-07-04, paired A/B mono vs pre-mono 1f303482, /usr/bin/time user seconds; early runs invalidated by a decaying-load ordering bias — mono ran first in each pair while a concurrent rustc session wound down, manufacturing a phantom +9-12%; counterbalanced (P,M,M,P) and quiet-machine pairs corrected it): COMPILE-side is NEUTRAL — pmatch2fst quiet pair 139.6 (mono) vs 137.7 (pre), matched-load pairs 146.3 vs 144.7 (~1%, noise); errmodel probe dead equal (51.9/44.9 vs 51.9/50.2). Expected: the compile hot loops are inside rustfst (never dyn-dispatched); +15% text size (7.32 vs 6.34MB, double instantiation) did NOT cost measurable icache. Thin-LTO probe: no effect (~1%). LOOKUP-side is the win — hfst optimized-lookup, 500k words through sma analyser-gt-norm.hfstol: mono 13.04/13.28u vs pre 16.01/19.37u = 19-25% faster, output identical — the killed double-vtable-per-table-read in the OL traversal. Remaining compile-side levers: SmolStr/hashbrown symbol paths (task #27), rustfst internals."
                 after_done true
             }
         )

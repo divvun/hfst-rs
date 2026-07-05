@@ -2,7 +2,7 @@ use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 
 fn arc(g: &mut HfstBasicTransducer, from: u32, to: u32, i: &str, o: &str) {
-    let tr = HfstBasicTransition::new_symbols(to, i.to_string(), o.to_string(), 0.0, g.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(to, i.into(), o.into(), 0.0, g.coder_mut());
     g.add_transition(from, &tr, true);
 }
 

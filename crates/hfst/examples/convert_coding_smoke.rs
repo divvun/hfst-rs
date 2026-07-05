@@ -24,12 +24,7 @@ fn main() {
     assert_eq!(m, 4);
 
     // get_harmonization_vector: known symbols map to their numbers; "" -> 0.
-    let coding = vec![
-        "cat".to_string(),
-        "".to_string(),
-        "dog".to_string(),
-        "fish".to_string(),
-    ];
+    let coding = vec!["cat".into(), "".into(), "dog".into(), "fish".into()];
     let hv = coder.get_harmonization_vector(&coding);
     assert_eq!(hv, vec![3, 0, 4, 5]); // "fish" is freshly assigned index 5
     assert_eq!(coder.get_string(5), "fish");

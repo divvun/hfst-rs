@@ -30,9 +30,9 @@ fn main() -> hfst::error::Result<()> {
     // Encoder: ascii single chars are tokenized one byte at a time; multi-byte
     // symbols go through the letter trie.
     let mut st = SymbolTable::new();
-    st.push("@_EPSILON_SYMBOL_@".to_string()); // 0
-    st.push("a".to_string()); // 1
-    st.push("bc".to_string()); // 2
+    st.push("@_EPSILON_SYMBOL_@".into()); // 0
+    st.push("a".into()); // 1
+    st.push("bc".into()); // 2
     let enc = Encoder::new(&st, 3);
 
     let input = b"abc\0";

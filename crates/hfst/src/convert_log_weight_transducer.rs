@@ -69,7 +69,7 @@ impl ConversionFunctions {
                 for (label, sym) in inputsym.iter() {
                     if label != 0 {
                         // epsilon is not inserted
-                        net.add_symbol_to_alphabet(&sym.to_string());
+                        net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
                     }
                 }
             }
@@ -82,7 +82,7 @@ impl ConversionFunctions {
                     for (label, sym) in outputsym.iter() {
                         if label != 0 {
                             // epsilon is not inserted
-                            net.add_symbol_to_alphabet(&sym.to_string());
+                            net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
                         }
                     }
                 }
@@ -138,15 +138,17 @@ impl ConversionFunctions {
                     };
 
                     // Copy the transition
-                    let mut istring: String =
-                        inputsym.get_symbol(arc.ilabel).unwrap_or("").to_string();
-                    let mut ostring: String =
-                        outputsym.get_symbol(arc.olabel).unwrap_or("").to_string();
+                    let mut istring = crate::hfst_data_types::Symbol::new(
+                        inputsym.get_symbol(arc.ilabel).unwrap_or(""),
+                    );
+                    let mut ostring = crate::hfst_data_types::Symbol::new(
+                        outputsym.get_symbol(arc.olabel).unwrap_or(""),
+                    );
                     if arc.ilabel == 0 {
-                        istring = internal_epsilon.to_string();
+                        istring = crate::hfst_data_types::Symbol::new_static(internal_epsilon);
                     }
                     if arc.olabel == 0 {
-                        ostring = internal_epsilon.to_string();
+                        ostring = crate::hfst_data_types::Symbol::new_static(internal_epsilon);
                     }
                     let new_tr = HfstBasicTransition::new_symbols(
                         target as HfstState,
@@ -186,15 +188,17 @@ impl ConversionFunctions {
                         arc.nextstate as i32
                     };
 
-                    let mut istring: String =
-                        inputsym.get_symbol(arc.ilabel).unwrap_or("").to_string();
-                    let mut ostring: String =
-                        outputsym.get_symbol(arc.olabel).unwrap_or("").to_string();
+                    let mut istring = crate::hfst_data_types::Symbol::new(
+                        inputsym.get_symbol(arc.ilabel).unwrap_or(""),
+                    );
+                    let mut ostring = crate::hfst_data_types::Symbol::new(
+                        outputsym.get_symbol(arc.olabel).unwrap_or(""),
+                    );
                     if arc.ilabel == 0 {
-                        istring = internal_epsilon.to_string();
+                        istring = crate::hfst_data_types::Symbol::new_static(internal_epsilon);
                     }
                     if arc.olabel == 0 {
-                        ostring = internal_epsilon.to_string();
+                        ostring = crate::hfst_data_types::Symbol::new_static(internal_epsilon);
                     }
                     let new_tr = HfstBasicTransition::new_symbols(
                         target as HfstState,
@@ -217,13 +221,13 @@ impl ConversionFunctions {
         for (label, sym) in inputsym.iter() {
             if label != 0 {
                 // epsilon is not inserted
-                net.add_symbol_to_alphabet(&sym.to_string());
+                net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
             }
         }
         for (label, sym) in outputsym.iter() {
             if label != 0 {
                 // epsilon is not inserted
-                net.add_symbol_to_alphabet(&sym.to_string());
+                net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
             }
         }
 

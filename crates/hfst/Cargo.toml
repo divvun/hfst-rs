@@ -12,6 +12,7 @@ hfst-openfst = { workspace = true }
 hfst-ol = { workspace = true }
 glob = "0.3"
 icu = "2.2.0"
+smol_str = "0.3"
 nfst-xre = { workspace = true }
 nfst-lexc = { workspace = true }
 nfst-pmatch = { workspace = true }

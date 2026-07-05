@@ -150,7 +150,7 @@ fn modify_weights(f: f32) -> f32 {
 // Used in testing function substitute.
 fn modify_transitions(sp: &StringPair, sps: &mut StringPairSet) -> bool {
     if sp.0 == sp.1 {
-        sps.insert(("<ID>".to_string(), "<ID>".to_string()));
+        sps.insert(("<ID>".into(), "<ID>".into()));
         return true;
     }
     false
@@ -281,9 +281,9 @@ fn function_extract_paths_lookup_nbest<B: AlgebraBackend>() -> Result<(), hfst::
 
     // What we expect to get from the animal transducer.
     let mut expected_results: StringPairSet = StringPairSet::new();
-    expected_results.insert(("cat".to_string(), "cats".to_string()));
-    expected_results.insert(("dog".to_string(), "dogs".to_string()));
-    expected_results.insert(("mouse".to_string(), "mice".to_string()));
+    expected_results.insert(("cat".into(), "cats".into()));
+    expected_results.insert(("dog".into(), "dogs".into()));
+    expected_results.insert(("mouse".into(), "mice".into()));
 
     let mut results: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
     animals.extract_paths(&mut results, 3, 0)?;
@@ -300,7 +300,7 @@ fn function_extract_paths_lookup_nbest<B: AlgebraBackend>() -> Result<(), hfst::
                 ostring.push_str(&pair.1);
             }
         }
-        let sp = (istring.clone(), ostring.clone());
+        let sp: StringPair = (istring.clone().into(), ostring.clone().into());
         assert!(expected_results.contains(&sp));
 
         if B::TYPE == TROPICAL_OPENFST_TYPE || B::TYPE == LOG_OPENFST_TYPE {
@@ -498,7 +498,7 @@ fn function_insert_freely<B: AlgebraBackend>() -> Result<(), hfst::error::Error>
     verbose_print("functions insert_freely", B::TYPE);
 
     let mut t1 = HfstTransducer::<B>::new_symbol_pair("a", "b")?;
-    t1.insert_freely_pair(&("c".to_string(), "d".to_string()), true)?;
+    t1.insert_freely_pair(&("c".into(), "d".into()), true)?;
 
     let mut t2 = HfstTransducer::<B>::new_symbol_pair("a", "b")?;
     let tr = HfstTransducer::<B>::new_symbol_pair("c", "d")?;
@@ -517,7 +517,7 @@ fn function_insert_freely<B: AlgebraBackend>() -> Result<(), hfst::error::Error>
 
     let mut unk2unk =
         HfstTransducer::<B>::new_symbol_pair("@_UNKNOWN_SYMBOL_@", "@_UNKNOWN_SYMBOL_@")?;
-    unk2unk.insert_freely_pair(&("c".to_string(), "d".to_string()), true)?;
+    unk2unk.insert_freely_pair(&("c".into(), "d".into()), true)?;
     let dc = HfstTransducer::<B>::new_symbol_pair("d", "c")?;
 
     let empty = HfstTransducer::<B>::new();
@@ -554,8 +554,7 @@ fn function_push_weights() -> Result<(), hfst::error::Error> {
     // HFST basic transducer [a:b] with transition weight 0.3, final weight 0.5.
     let mut t = HfstBasicTransducer::new();
     t.add_state(1);
-    let tr =
-        HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.3, t.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(1, "a".into(), "b".into(), 0.3, t.coder_mut());
     t.add_transition(0, &tr, true);
     t.set_final_weight(1, &0.5);
 
@@ -587,8 +586,7 @@ fn function_set_final_weights_transform_weights<B: AlgebraBackend>()
 
     let mut t = HfstBasicTransducer::new();
     t.add_state(1);
-    let arc =
-        HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.3, t.coder_mut());
+    let arc = HfstBasicTransition::new_symbols(1, "a".into(), "b".into(), 0.3, t.coder_mut());
     t.add_transition(0, &arc, true);
     t.set_final_weight(1, &0.5);
 
@@ -623,33 +621,21 @@ fn function_substitute<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
 
     // StringPair with StringPair.
     let mut t2 = HfstTransducer::new_copy(&t)?;
-    t2.substitute_pair_with_pair(
-        &("c".to_string(), "c".to_string()),
-        &("C".to_string(), "c".to_string()),
-    )?;
-    t2.substitute_pair_with_pair(
-        &("C".to_string(), "c".to_string()),
-        &("H".to_string(), "h".to_string()),
-    )?;
-    t2.substitute_pair_with_pair(
-        &("a".to_string(), "a".to_string()),
-        &("a".to_string(), "a".to_string()),
-    )?; // special
-    t2.substitute_pair_with_pair(
-        &("foo".to_string(), "bar".to_string()),
-        &("f".to_string(), "b".to_string()),
-    )?; // cases
+    t2.substitute_pair_with_pair(&("c".into(), "c".into()), &("C".into(), "c".into()))?;
+    t2.substitute_pair_with_pair(&("C".into(), "c".into()), &("H".into(), "h".into()))?;
+    t2.substitute_pair_with_pair(&("a".into(), "a".into()), &("a".into(), "a".into()))?; // special
+    t2.substitute_pair_with_pair(&("foo".into(), "bar".into()), &("f".into(), "b".into()))?; // cases
     let t2_expected = HfstTransducer::<B>::new_tokenized_pair("Hat", "hats", &tok)?;
     assert!(t2.compare_default(&t2_expected)?);
 
     // StringPair with StringPairSet.
     let mut t3 = HfstTransducer::new_copy(&t)?;
     let mut sps: StringPairSet = StringPairSet::new();
-    sps.insert(("c".to_string(), "c".to_string()));
-    sps.insert(("C".to_string(), "C".to_string()));
-    sps.insert(("h".to_string(), "h".to_string()));
-    sps.insert(("H".to_string(), "H".to_string()));
-    t3.substitute_pair_with_pair_set(&("c".to_string(), "c".to_string()), &sps)?;
+    sps.insert(("c".into(), "c".into()));
+    sps.insert(("C".into(), "C".into()));
+    sps.insert(("h".into(), "h".into()));
+    sps.insert(("H".into(), "H".into()));
+    t3.substitute_pair_with_pair_set(&("c".into(), "c".into()), &sps)?;
     let mut t3_expected = HfstTransducer::<B>::new_tokenized_pair("cat", "cats", &tok)?;
     let t3_1 = HfstTransducer::<B>::new_tokenized_pair("Cat", "Cats", &tok)?;
     let t3_2 = HfstTransducer::<B>::new_tokenized_pair("hat", "hats", &tok)?;
@@ -663,7 +649,7 @@ fn function_substitute<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     // StringPair with HfstTransducer.
     let mut t4 = HfstTransducer::new_copy(&t)?;
     let mut subs = HfstTransducer::<B>::new_tokenized("ch", &tok)?;
-    t4.substitute_pair_with_transducer(&("c".to_string(), "c".to_string()), &mut subs, true)?;
+    t4.substitute_pair_with_transducer(&("c".into(), "c".into()), &mut subs, true)?;
     let t4_expected = HfstTransducer::<B>::new_tokenized_pair("chat", "chats", &tok)?;
     assert!(t4.compare_default(&t4_expected)?);
 
@@ -678,10 +664,10 @@ fn function_substitute<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     // Multiple string-to-string substitutions.
     let mut t6 = HfstTransducer::new_copy(&t)?;
     let mut subs_symbol: HfstSymbolSubstitutions = HfstSymbolSubstitutions::new();
-    subs_symbol.insert("c".to_string(), "C".to_string());
-    subs_symbol.insert("a".to_string(), "A".to_string());
-    subs_symbol.insert("t".to_string(), "T".to_string());
-    subs_symbol.insert("s".to_string(), "S".to_string());
+    subs_symbol.insert("c".into(), "C".into());
+    subs_symbol.insert("a".into(), "A".into());
+    subs_symbol.insert("t".into(), "T".into());
+    subs_symbol.insert("s".into(), "S".into());
     t6.substitute_symbol_substitutions(&subs_symbol)?;
     let t6_expected = HfstTransducer::<B>::new_tokenized_pair("CAT", "CATS", &tok)?;
     assert!(t6.compare_default(&t6_expected)?);
@@ -689,18 +675,9 @@ fn function_substitute<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     // Multiple string pair-to-string pair substitutions.
     let mut t7 = HfstTransducer::new_copy(&t)?;
     let mut subs_pair: HfstSymbolPairSubstitutions = HfstSymbolPairSubstitutions::new();
-    subs_pair.insert(
-        ("a".to_string(), "a".to_string()),
-        ("A".to_string(), "a".to_string()),
-    );
-    subs_pair.insert(
-        ("s".to_string(), "s".to_string()),
-        ("S".to_string(), "S".to_string()),
-    );
-    subs_pair.insert(
-        ("t".to_string(), "t".to_string()),
-        ("t".to_string(), "T".to_string()),
-    );
+    subs_pair.insert(("a".into(), "a".into()), ("A".into(), "a".into()));
+    subs_pair.insert(("s".into(), "s".into()), ("S".into(), "S".into()));
+    subs_pair.insert(("t".into(), "t".into()), ("t".into(), "T".into()));
     t7.substitute_symbol_pair_substitutions(&subs_pair)?;
     let t7_expected = HfstTransducer::<B>::new_tokenized_pair("cAt", "caTs", &tok)?;
     assert!(t7.compare_default(&t7_expected)?);
@@ -1074,21 +1051,11 @@ fn affix_guessify_adds_one_guess_state_with_identity_loop() -> Result<(), hfst::
 
     let build_input = || -> Result<HfstTransducer<StdVectorFst>, hfst::error::Error> {
         let mut basic = HfstBasicTransducer::new();
-        let tr = HfstBasicTransition::new_symbols(
-            1,
-            "a".to_string(),
-            "a".to_string(),
-            0.0,
-            basic.coder_mut(),
-        );
+        let tr =
+            HfstBasicTransition::new_symbols(1, "a".into(), "a".into(), 0.0, basic.coder_mut());
         basic.add_transition(0, &tr, true);
-        let tr = HfstBasicTransition::new_symbols(
-            2,
-            "b".to_string(),
-            "b".to_string(),
-            0.0,
-            basic.coder_mut(),
-        );
+        let tr =
+            HfstBasicTransition::new_symbols(2, "b".into(), "b".into(), 0.0, basic.coder_mut());
         basic.add_transition(1, &tr, true);
         basic.set_final_weight(2, &0.0);
         HfstTransducer::<StdVectorFst>::new_from_basic(&basic)

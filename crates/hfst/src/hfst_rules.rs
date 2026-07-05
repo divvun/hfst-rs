@@ -22,6 +22,7 @@ use std::collections::BTreeSet;
 use crate::backend::AlgebraBackend;
 use crate::hfst_data_types::StringPair;
 use crate::hfst_data_types::StringPairSet;
+use crate::hfst_data_types::Symbol;
 // HfstTransducer, plus the HfstTransducer-dependent aliases
 // (HfstTransducerPair, HfstTransducerPairVector), live in the facade module that
 // is ported concurrently. Bodies import them from 'crate::hfst_transducer'.
@@ -107,8 +108,8 @@ pub fn replace<B: AlgebraBackend>(
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-transducer-fn]
 pub fn replace_transducer<B: AlgebraBackend>(
     t: &mut HfstTransducer<B>,
-    lm: String,
-    rm: String,
+    lm: Symbol,
+    rm: Symbol,
     repl_type: ReplaceType,
     alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer<B>> {
@@ -137,8 +138,8 @@ pub fn replace_transducer<B: AlgebraBackend>(
 // [spec:hfst:sem:hfst-transducer.hfst.rules.hfst-transducer-replace-context-fn]
 pub fn replace_context<B: AlgebraBackend>(
     t: &HfstTransducer<B>,
-    m1: String,
-    m2: String,
+    m1: Symbol,
+    m2: Symbol,
     alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer<B>> {
     // ct = .* ( m1 >> ( m2 >> t ))  ||  !(.* m1)
@@ -335,22 +336,22 @@ pub fn replace_in_context<B: AlgebraBackend>(
         crate::bail!(ContextTransducersAreNotAutomata);
     }
 
-    let leftm: String = "@_LEFT_MARKER_@".to_string();
-    let rightm: String = "@_RIGHT_MARKER_@".to_string();
+    let leftm: Symbol = Symbol::new_static("@_LEFT_MARKER_@");
+    let rightm: Symbol = Symbol::new_static("@_RIGHT_MARKER_@");
     let epsilon: String = internal_epsilon.to_string();
 
     // HfstTransducer pi(alphabet, type);
 
     // Create the insert boundary transducer (.|<>:<L>|<>:<R>)*
     let mut pi1 = alphabet.clone();
-    pi1.insert((internal_epsilon.to_string(), leftm.clone()));
-    pi1.insert((internal_epsilon.to_string(), rightm.clone()));
+    pi1.insert((Symbol::new_static(internal_epsilon), leftm.clone()));
+    pi1.insert((Symbol::new_static(internal_epsilon), rightm.clone()));
     let ibt = HfstTransducer::from_string_pair_set(&pi1, true)?;
 
     // Create the remove boundary transducer (.|<L>:<>|<R>:<>)*
     let mut pi2 = alphabet.clone();
-    pi2.insert((leftm.clone(), internal_epsilon.to_string()));
-    pi2.insert((rightm.clone(), internal_epsilon.to_string()));
+    pi2.insert((leftm.clone(), Symbol::new_static(internal_epsilon)));
+    pi2.insert((rightm.clone(), Symbol::new_static(internal_epsilon)));
     let rbt = HfstTransducer::from_string_pair_set(&pi2, true)?;
 
     // Add the markers to the alphabet

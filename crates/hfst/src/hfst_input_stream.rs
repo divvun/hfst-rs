@@ -656,9 +656,11 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.process-header-data-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.process-header-data-fn]
+        // Header key/value pairs are metadata (prose), not transducer
+        // symbols; String-typed to match 'get_header_data'.
         fn process_header_data(
             &mut self,
-            header_data: &mut StringPairVector,
+            header_data: &mut Vec<(String, String)>,
             _warnings: bool,
         ) -> crate::error::Result<()> {
             if header_data.len() < 2 {
@@ -893,8 +895,13 @@ mod input_impl {
         // [spec:hfst:sem:hfst-input-stream.hfst-input-stream.get-header-data-fn]
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.get-header-data-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.get-header-data-fn]
-        fn get_header_data(&mut self, header_size: i32) -> crate::error::Result<StringPairVector> {
-            let mut retval: StringPairVector = StringPairVector::new();
+        // Header key/value pairs are metadata (prose), not transducer symbols,
+        // so this stays 'String'-typed rather than using the 'Symbol' pair.
+        fn get_header_data(
+            &mut self,
+            header_size: i32,
+        ) -> crate::error::Result<Vec<(String, String)>> {
+            let mut retval: Vec<(String, String)> = Vec::new();
             let mut bytes_read: i32 = 0;
 
             loop {

@@ -9,6 +9,7 @@ use std::io::Write;
 
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
+use crate::hfst_data_types::Symbol;
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unknown};
 use crate::hfst_transducer::HfstTransducer;
@@ -70,18 +71,18 @@ fn arc_label(old_label: &str, arc: &HfstBasicTransition, coder: &SymbolCoder) ->
     let mut first = arc.get_input_symbol(coder);
     let mut second = arc.get_output_symbol(coder);
     if first == internal_epsilon {
-        first = String::from("00");
+        first = Symbol::new_static("00");
     } else if first == internal_identity {
-        first = String::from("??");
+        first = Symbol::new_static("??");
     } else if first == internal_unknown {
-        first = String::from("?1");
+        first = Symbol::new_static("?1");
     }
     if second == internal_epsilon {
-        second = String::from("00");
+        second = Symbol::new_static("00");
     } else if second == internal_identity {
-        second = String::from("??");
+        second = Symbol::new_static("??");
     } else if second == internal_unknown {
-        second = String::from("?2");
+        second = Symbol::new_static("?2");
     }
     // The C++ allocates a 'DOT_MAX_LABEL_SIZE' byte buffer and 'snprintf's into
     // it; 'snprintf' never returns < 0 for these arguments, so the

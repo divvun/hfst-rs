@@ -51,11 +51,14 @@ pub fn print_pckimmo<B: crate::backend::Backend>(
         .expect("get_basic_transducer on a valid transducer cannot fail");
     let mut s: HfstState = 0;
     let mut last: HfstState = 0;
-    let mut pairs: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut pairs: BTreeSet<(
+        crate::hfst_data_types::Symbol,
+        crate::hfst_data_types::Symbol,
+    )> = BTreeSet::new();
     for state in mutt.iter() {
         for arc in state.iter() {
-            let first: String = arc.get_input_symbol(mutt.coder());
-            let second: String = arc.get_output_symbol(mutt.coder());
+            let first = arc.get_input_symbol(mutt.coder());
+            let second = arc.get_output_symbol(mutt.coder());
             pairs.insert((first, second));
         }
         last += 1;
@@ -104,13 +107,19 @@ pub fn print_pckimmo<B: crate::backend::Backend>(
             write!(out, ": ")?;
         }
         // map everything to sink state 0 first
-        let mut transitions: BTreeMap<(String, String), HfstState> = BTreeMap::new();
+        let mut transitions: BTreeMap<
+            (
+                crate::hfst_data_types::Symbol,
+                crate::hfst_data_types::Symbol,
+            ),
+            HfstState,
+        > = BTreeMap::new();
         for p in &pairs {
             transitions.insert(p.clone(), (-1i32) as u32);
         }
         for arc in state.iter() {
-            let first: String = arc.get_input_symbol(mutt.coder());
-            let second: String = arc.get_output_symbol(mutt.coder());
+            let first = arc.get_input_symbol(mutt.coder());
+            let second = arc.get_output_symbol(mutt.coder());
             transitions.insert((first, second), arc.get_target_state());
         }
         for (_k, v) in &transitions {

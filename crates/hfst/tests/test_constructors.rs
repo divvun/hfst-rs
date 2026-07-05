@@ -119,13 +119,8 @@ fn conversion_from_basic<B: AlgebraBackend>() -> Result<(), hfst::error::Error> 
 
     let mut basic = HfstBasicTransducer::new();
     basic.add_state(1);
-    let tr = HfstBasicTransition::new_symbols(
-        1,
-        "foo".to_string(),
-        "bar".to_string(),
-        0.0,
-        basic.coder_mut(),
-    );
+    let tr =
+        HfstBasicTransition::new_symbols(1, "foo".into(), "bar".into(), 0.0, basic.coder_mut());
     basic.add_transition(0, &tr, true);
     basic.set_final_weight(1, &0.0);
 

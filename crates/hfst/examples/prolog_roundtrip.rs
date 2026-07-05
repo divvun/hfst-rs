@@ -7,8 +7,7 @@ fn main() -> hfst::error::Result<()> {
     // state0 --a:b/0.5--> state1 (final, weight 0.3)
     let mut g = HfstBasicTransducer::new();
     g.name = "foo".to_string();
-    let tr =
-        HfstBasicTransition::new_symbols(1, "a".to_string(), "b".to_string(), 0.5, g.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(1, "a".into(), "b".into(), 0.5, g.coder_mut());
     g.add_transition(0, &tr, true);
     g.set_final_weight(1, &0.3);
 
@@ -29,14 +28,20 @@ fn main() -> hfst::error::Result<()> {
         if let Some((source, target, isym, osym, weight)) =
             HfstBasicTransducer::parse_prolog_arc_line(line, &g2.name)
         {
-            let tr = HfstBasicTransition::new_symbols(target, isym, osym, weight, g2.coder_mut());
+            let tr = HfstBasicTransition::new_symbols(
+                target,
+                isym.into(),
+                osym.into(),
+                weight,
+                g2.coder_mut(),
+            );
             g2.add_transition(source, &tr, true);
         } else if let Some((state, weight)) =
             HfstBasicTransducer::parse_prolog_final_line(line, &g2.name)
         {
             g2.set_final_weight(state, &weight);
         } else if let Some(symbol) = HfstBasicTransducer::parse_prolog_symbol_line(line, &g2.name) {
-            g2.add_symbol_to_alphabet(&symbol);
+            g2.add_symbol_to_alphabet(&symbol.into());
         } else {
             panic!("line not parsed: {line}");
         }

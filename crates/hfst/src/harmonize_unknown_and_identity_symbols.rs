@@ -10,7 +10,7 @@ use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_flag_diacritics::FdOperation;
-use crate::hfst_symbol_defs::StringSet;
+use crate::hfst_symbol_defs::{StringSet, Symbol};
 use crate::pmatch::PmatchAlphabet;
 
 // [spec:hfst:def:harmonize-unknown-and-identity-symbols.hfst.max-fn]
@@ -169,7 +169,7 @@ impl HarmonizeUnknownAndIdentitySymbols {
         for s in 0..t.state_vector.len() {
             // Read every transition's symbols/target/weight via the immutable
             // coder borrow first; the build pass below takes 't.coder_mut()'.
-            let arc_data: Vec<(String, String, HfstState, f32)> = {
+            let arc_data: Vec<(Symbol, Symbol, HfstState, f32)> = {
                 let coder = t.coder();
                 t.state_vector[s]
                     .iter()

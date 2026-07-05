@@ -11,10 +11,7 @@ use hfst::hfst_symbol_defs::{internal_epsilon, label_to_stringpair};
 
 #[test]
 fn plain_pair_splits_at_the_colon() {
-    assert_eq!(
-        label_to_stringpair("a:b"),
-        Some(("a".to_string(), "b".to_string()))
-    );
+    assert_eq!(label_to_stringpair("a:b"), Some(("a".into(), "b".into())));
 }
 
 #[test]
@@ -27,7 +24,7 @@ fn first_interior_colon_wins() {
     // "a:b:c" splits at the first genuine separator, output keeps the rest.
     assert_eq!(
         label_to_stringpair("a:b:c"),
-        Some(("a".to_string(), "b:c".to_string()))
+        Some(("a".into(), "b:c".into()))
     );
 }
 
@@ -35,11 +32,11 @@ fn first_interior_colon_wins() {
 fn epsilon_marker_maps_to_internal_epsilon() {
     assert_eq!(
         label_to_stringpair("@0@:b"),
-        Some((internal_epsilon.to_string(), "b".to_string()))
+        Some((internal_epsilon.into(), "b".into()))
     );
     assert_eq!(
         label_to_stringpair("a:@0@"),
-        Some(("a".to_string(), internal_epsilon.to_string()))
+        Some(("a".into(), internal_epsilon.into()))
     );
 }
 
@@ -50,7 +47,7 @@ fn escaped_colon_is_not_a_separator() {
     // ...but a later unescaped colon does separate, keeping the escaped one.
     assert_eq!(
         label_to_stringpair("a\\:b:c"),
-        Some(("a\\:b".to_string(), "c".to_string()))
+        Some(("a\\:b".into(), "c".into()))
     );
 }
 
@@ -59,6 +56,6 @@ fn escaped_backslash_leaves_the_colon_as_separator() {
     // "a\\:b" — the backslash itself is escaped, so the colon separates.
     assert_eq!(
         label_to_stringpair("a\\\\:b"),
-        Some(("a\\\\".to_string(), "b".to_string()))
+        Some(("a\\\\".into(), "b".into()))
     );
 }

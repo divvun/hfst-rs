@@ -187,7 +187,7 @@ fn check_all_symbols<B: hfst::backend::AlgebraBackend>(
             let output_symbol = it.get_output_symbol(lexicon_b.coder());
 
             if !rule_input_symbols.contains(&output_symbol) {
-                return Ok(output_symbol);
+                return Ok(output_symbol.to_string());
             }
         }
     }
@@ -218,7 +218,7 @@ fn check_multi_char_symbols<B: hfst::backend::AlgebraBackend>(
                 }
 
                 if tokenizer.tokenize_one_level(&output_symbol, false).len() > 1 {
-                    return Ok(output_symbol);
+                    return Ok(output_symbol.to_string());
                 }
             }
         }

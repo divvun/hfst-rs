@@ -32,7 +32,7 @@ use std::collections::BTreeSet;
 use hfst::backend::AlgebraBackend;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
-use hfst::hfst_data_types::{HfstTwoLevelPaths, ImplementationType, StringPair};
+use hfst::hfst_data_types::{HfstTwoLevelPaths, ImplementationType, StringPair, Symbol};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst::log_weight_transducer::LogFst;
 use hfst_openfst::StdVectorFst;
@@ -74,24 +74,20 @@ fn build_t() -> HfstBasicTransducer {
     let s6 = t.add_state_new();
     t.set_final_weight(s6, &0.0);
 
-    let fd1 = "@U.FEATURE.FOO@".to_string();
-    let fd2 = "@U.FEATURE.BAR@".to_string();
+    let fd1 = Symbol::new_static("@U.FEATURE.FOO@");
+    let fd2 = Symbol::new_static("@U.FEATURE.BAR@");
 
     let tr = HfstBasicTransition::new_symbols(s1, fd1.clone(), fd1.clone(), 0.0, t.coder_mut());
     t.add_transition(0, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(s2, "a".to_string(), "a".to_string(), 0.0, t.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(s2, "a".into(), "a".into(), 0.0, t.coder_mut());
     t.add_transition(0, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(s3, "b".to_string(), "b".to_string(), 0.0, t.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(s3, "b".into(), "b".into(), 0.0, t.coder_mut());
     t.add_transition(s1, &tr, true);
     let tr = HfstBasicTransition::new_symbols(s3, fd2.clone(), fd2.clone(), 0.0, t.coder_mut());
     t.add_transition(s2, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(s4, "c".to_string(), "c".to_string(), 0.0, t.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(s4, "c".into(), "c".into(), 0.0, t.coder_mut());
     t.add_transition(s3, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(s5, "d".to_string(), "d".to_string(), 0.0, t.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(s5, "d".into(), "d".into(), 0.0, t.coder_mut());
     t.add_transition(s3, &tr, true);
     let tr = HfstBasicTransition::new_symbols(s6, fd2.clone(), fd2.clone(), 0.0, t.coder_mut());
     t.add_transition(s4, &tr, true);
@@ -154,11 +150,11 @@ fn unification_flags<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
             istring.push_str(i);
             ostring.push_str(o);
         }
-        result_strings.insert((istring, ostring));
+        result_strings.insert((istring.into(), ostring.into()));
     }
 
-    assert!(result_strings.contains(&("ac".to_string(), "ac".to_string())));
-    assert!(result_strings.contains(&("bd".to_string(), "bd".to_string())));
+    assert!(result_strings.contains(&(Symbol::new_static("ac"), Symbol::new_static("ac"))));
+    assert!(result_strings.contains(&(Symbol::new_static("bd"), Symbol::new_static("bd"))));
     Ok(())
 }
 

@@ -968,32 +968,23 @@ fn test1b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let input1 = HfstTransducer::<B>::new_tokenized("aaana", &tok)?;
 
     let mut bt = HfstBasicTransducer::new();
-    let tr =
-        HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 0.0, bt.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(1, "a".into(), "a".into(), 0.0, bt.coder_mut());
     bt.add_transition(0, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(1, "a".to_string(), "x".to_string(), 0.0, bt.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(1, "a".into(), "x".into(), 0.0, bt.coder_mut());
     bt.add_transition(0, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(2, "a".to_string(), "a".to_string(), 0.0, bt.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(2, "a".into(), "a".into(), 0.0, bt.coder_mut());
     bt.add_transition(1, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(2, "a".to_string(), "x".to_string(), 0.0, bt.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(2, "a".into(), "x".into(), 0.0, bt.coder_mut());
     bt.add_transition(1, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(3, "a".to_string(), "a".to_string(), 0.0, bt.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(3, "a".into(), "a".into(), 0.0, bt.coder_mut());
     bt.add_transition(2, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(3, "a".to_string(), "x".to_string(), 0.0, bt.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(3, "a".into(), "x".into(), 0.0, bt.coder_mut());
     bt.add_transition(2, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(4, "n".to_string(), "n".to_string(), 0.0, bt.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(4, "n".into(), "n".into(), 0.0, bt.coder_mut());
     bt.add_transition(3, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(5, "a".to_string(), "a".to_string(), 0.0, bt.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(5, "a".into(), "a".into(), 0.0, bt.coder_mut());
     bt.add_transition(4, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(5, "a".to_string(), "x".to_string(), 0.0, bt.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(5, "a".into(), "x".into(), 0.0, bt.coder_mut());
     bt.add_transition(4, &tr, true);
     bt.set_final_weight(5, &0.0);
 
@@ -2399,22 +2390,21 @@ fn test7h<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let mut bt = HfstBasicTransducer::new();
     let tr = HfstBasicTransition::new_symbols(
         1,
-        "@_EPSILON_SYMBOL_@".to_string(),
-        "a".to_string(),
+        "@_EPSILON_SYMBOL_@".into(),
+        "a".into(),
         0.0,
         bt.coder_mut(),
     );
     bt.add_transition(0, &tr, true);
     let tr = HfstBasicTransition::new_symbols(
         0,
-        "@_IDENTITY_SYMBOL_@".to_string(),
-        "@_IDENTITY_SYMBOL_@".to_string(),
+        "@_IDENTITY_SYMBOL_@".into(),
+        "@_IDENTITY_SYMBOL_@".into(),
         0.0,
         bt.coder_mut(),
     );
     bt.add_transition(1, &tr, true);
-    let tr =
-        HfstBasicTransition::new_symbols(0, "a".to_string(), "a".to_string(), 0.0, bt.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(0, "a".into(), "a".into(), 0.0, bt.coder_mut());
     bt.add_transition(1, &tr, true);
     bt.set_final_weight(1, &0.0);
 

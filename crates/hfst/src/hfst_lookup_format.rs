@@ -447,8 +447,8 @@ pub fn escape_special_characters(s: &str) -> String {
 // [spec:hfst:sem:hfst-lookup.string-to-utf8-fn]
 // [spec:hfst:def:hfst-flookup.string-to-utf8-fn]
 // [spec:hfst:sem:hfst-flookup.string-to-utf8-fn]
-pub fn string_to_utf8(p: &str) -> Result<Vec<String>> {
-    let mut path: Vec<String> = Vec::new();
+pub fn string_to_utf8(p: &str) -> Result<Vec<crate::hfst_data_types::Symbol>> {
+    let mut path: Vec<crate::hfst_data_types::Symbol> = Vec::new();
     let bytes = p.as_bytes();
     let mut idx = 0usize;
     while idx < bytes.len() {
@@ -468,7 +468,9 @@ pub fn string_to_utf8(p: &str) -> Result<Vec<String>> {
             ));
         };
         let end = (idx + u8len).min(bytes.len());
-        path.push(String::from_utf8_lossy(&bytes[idx..end]).into_owned());
+        path.push(crate::hfst_data_types::Symbol::from(
+            String::from_utf8_lossy(&bytes[idx..end]),
+        ));
         idx += u8len;
     }
     Ok(path)
@@ -504,7 +506,7 @@ pub fn parse_lookup_line(
         }
         LookupInputFormat::Utf8TokenInput => {
             if optimized_lookup {
-                rv.second.push(s.clone());
+                rv.second.push(crate::hfst_data_types::Symbol::new(s));
             } else {
                 let escaped = escape_special_characters(s);
                 let spv: StringPairVector = tok.tokenize_string_pair(&escaped, false)?;

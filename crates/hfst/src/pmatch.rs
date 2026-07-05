@@ -146,8 +146,8 @@ pub struct Location {
     pub weight: Weight,
     pub input_parts: Vec<usize>,  // indices in input_symbol_strings
     pub output_parts: Vec<usize>, // indices in output_symbol_strings
-    pub input_symbol_strings: Vec<String>,
-    pub output_symbol_strings: Vec<String>,
+    pub input_symbol_strings: Vec<crate::hfst_data_types::Symbol>,
+    pub output_symbol_strings: Vec<crate::hfst_data_types::Symbol>,
 }
 
 // [spec:hfst:def:pmatch.hfst-ol.location.operator-fn]
@@ -417,7 +417,7 @@ impl PmatchAlphabet {
     pub fn get_symbol_table(&self) -> &crate::transducer::SymbolTable {
         self.base.get_symbol_table()
     }
-    pub fn string_from_symbol(&self, symbol: SymbolNumber) -> String {
+    pub fn string_from_symbol(&self, symbol: SymbolNumber) -> crate::hfst_data_types::Symbol {
         self.base.string_from_symbol(symbol)
     }
     pub fn symbol_from_string(&self, s: &str) -> Option<SymbolNumber> {
@@ -466,7 +466,7 @@ impl PmatchAlphabet {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-alphabet.add-symbol-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-alphabet.add-symbol-fn]
     // override void add_symbol(const std::string &)
-    pub fn add_symbol(&mut self, symbol: &String) {
+    pub fn add_symbol(&mut self, symbol: &crate::hfst_data_types::Symbol) {
         self.symbol2lists.push(NO_SYMBOL_NUMBER);
         self.list2symbols.push(NO_SYMBOL_NUMBER);
         self.capture2captured.push(NO_SYMBOL_NUMBER);
@@ -491,7 +491,7 @@ impl PmatchAlphabet {
     // convenience for the &str-taking callers (e.g. add_symbol(new_symbol) where
     // new_symbol is a char*); forwards to add_symbol.
     pub fn add_symbol_str(&mut self, symbol: &str) {
-        self.add_symbol(&symbol.to_string())
+        self.add_symbol(&crate::hfst_data_types::Symbol::new(symbol))
     }
 
     // ---- static string predicates ----
@@ -763,14 +763,14 @@ impl PmatchAlphabet {
         // regular list or exlusionary list?
         let polarity = str.as_bytes()[1] == b'L';
         let mut begin = "@L.".len();
-        let mut collected_symbols: Vec<String> = Vec::new();
+        let mut collected_symbols: Vec<crate::hfst_data_types::Symbol> = Vec::new();
         while let Some(stop) = str[begin..].find('_').map(|p| p + begin) {
             // For each underscore after the prelude, grab the substring
-            let mut symbol = str[begin..stop].to_string();
+            let mut symbol = crate::hfst_data_types::Symbol::new(&str[begin..stop]);
             if symbol.is_empty() {
                 // If the symbol _is_ an underscore it looks like we got an empty
                 // string
-                symbol = "_".to_string();
+                symbol = crate::hfst_data_types::Symbol::new_static("_");
                 begin = stop + 2;
             } else {
                 begin = stop + 1;
@@ -1269,7 +1269,7 @@ impl PmatchContainer {
                 crate::hfst_transducer::HfstTransducer::new();
             // First we need to collect a unified alphabet from all the
             // transducers.
-            let mut symbols_seen: std::collections::BTreeSet<String> =
+            let mut symbols_seen: std::collections::BTreeSet<crate::hfst_data_types::Symbol> =
                 std::collections::BTreeSet::new();
             // The TOP member: the last transducer named "TOP" (NULL == none).
             let mut top_index: Option<usize> = None;
@@ -1596,7 +1596,9 @@ impl PmatchContainer {
                         bytes_to_tokenize = 1;
                     }
                     let new_symbol_bytes = buf[p..p + bytes_to_tokenize as usize].to_vec();
-                    let new_symbol = String::from_utf8_lossy(&new_symbol_bytes).into_owned();
+                    let new_symbol = crate::hfst_data_types::Symbol::from(
+                        String::from_utf8_lossy(&new_symbol_bytes).into_owned(),
+                    );
                     p += bytes_to_tokenize as usize;
                     self.alphabet.add_symbol(&new_symbol);
                     self.encoder

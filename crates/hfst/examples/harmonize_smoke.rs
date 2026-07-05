@@ -4,8 +4,7 @@ use hfst::hfst_basic_transition::HfstBasicTransition;
 fn main() -> hfst::error::Result<()> {
     // t1 = [a:a]
     let mut t1 = HfstBasicTransducer::new();
-    let tr =
-        HfstBasicTransition::new_symbols(1, "a".to_string(), "a".to_string(), 0.0, t1.coder_mut());
+    let tr = HfstBasicTransition::new_symbols(1, "a".into(), "a".into(), 0.0, t1.coder_mut());
     t1.add_transition(0, &tr, true);
     t1.set_final_weight(1, &0.0);
 
@@ -13,8 +12,8 @@ fn main() -> hfst::error::Result<()> {
     let mut t2 = HfstBasicTransducer::new();
     let tr = HfstBasicTransition::new_symbols(
         1,
-        "@_IDENTITY_SYMBOL_@".to_string(),
-        "@_IDENTITY_SYMBOL_@".to_string(),
+        "@_IDENTITY_SYMBOL_@".into(),
+        "@_IDENTITY_SYMBOL_@".into(),
         0.0,
         t2.coder_mut(),
     );

@@ -20,6 +20,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::hfst_data_types::Symbol;
 use crate::twolc::{
     OstConfig, OtherSymbolTransducer, SymbolPair, SymbolPairVector, SymbolRange, TWOLC_EPSILON,
     TWOLC_UNKNOWN,
@@ -28,11 +29,11 @@ use crate::twolc::{
 // [spec:hfst:def:alphabet.alphabet]
 pub struct Alphabet<B: crate::backend::AlgebraBackend> {
     pub(crate) alphabet_set: BTreeSet<SymbolPair>,
-    pub(crate) input_symbols: BTreeSet<String>,
-    pub(crate) output_symbols: BTreeSet<String>,
-    pub(crate) diacritics: BTreeSet<String>,
+    pub(crate) input_symbols: BTreeSet<Symbol>,
+    pub(crate) output_symbols: BTreeSet<Symbol>,
+    pub(crate) diacritics: BTreeSet<Symbol>,
     pub(crate) alphabet: BTreeMap<SymbolPair, OtherSymbolTransducer<B>>,
-    pub(crate) sets: BTreeMap<String, SymbolRange>,
+    pub(crate) sets: BTreeMap<Symbol, SymbolRange>,
 }
 
 // Manual impl: a derive would demand 'B: Default', which the backends need not
@@ -184,14 +185,14 @@ impl<B: crate::backend::AlgebraBackend> Alphabet<B> {
         }
 
         self.alphabet_set
-            .contains(&(input.to_string(), output.to_string()))
+            .contains(&(Symbol::new(input), Symbol::new(output)))
     }
 
     // [spec:hfst:def:alphabet.alphabet.define-singleton-set-fn]
     // [spec:hfst:sem:alphabet.alphabet.define-singleton-set-fn]
     fn define_singleton_set(&mut self, name: &str) {
         self.sets
-            .insert(name.to_string(), vec![name.to_string(); 1]);
+            .insert(Symbol::new(name), vec![Symbol::new(name); 1]);
     }
 
     // [spec:hfst:def:alphabet.alphabet.is-set-pair-fn]
@@ -205,7 +206,7 @@ impl<B: crate::backend::AlgebraBackend> Alphabet<B> {
     // [spec:hfst:def:alphabet.alphabet.define-set-fn]
     // [spec:hfst:sem:alphabet.alphabet.define-set-fn]
     pub fn define_set(&mut self, name: &str, elements: &SymbolRange) {
-        self.sets.insert(name.to_string(), elements.clone());
+        self.sets.insert(Symbol::new(name), elements.clone());
     }
 
     // [spec:hfst:def:alphabet.alphabet.define-alphabet-pair-fn]
@@ -234,7 +235,7 @@ impl<B: crate::backend::AlgebraBackend> Alphabet<B> {
         for it in self.diacritics.clone().iter() {
             self.alphabet_set.remove(&(it.clone(), it.clone()));
             self.alphabet_set
-                .remove(&(it.clone(), TWOLC_EPSILON.to_string()));
+                .remove(&(it.clone(), Symbol::new_static(TWOLC_EPSILON)));
             self.input_symbols.remove(it);
             self.output_symbols.remove(it);
         }

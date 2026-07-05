@@ -12,6 +12,7 @@
 use crate::backend::{AlgebraBackend, Backend};
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
+use crate::hfst_data_types::Symbol;
 use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_lookup_flag_diacritics::FlagDiacriticTable;
 use crate::hfst_output_stream::HfstOutputStream;
@@ -52,7 +53,7 @@ pub fn remove_flag_diacritics<B: AlgebraBackend>(
 
     for it in alphabet.iter() {
         if FlagDiacriticTable::is_diacritic(it) {
-            flag_diacritic_epsilon_pairs.insert(it.clone(), internal_epsilon.to_string());
+            flag_diacritic_epsilon_pairs.insert(it.clone(), Symbol::new_static(internal_epsilon));
         }
     }
 
@@ -167,14 +168,20 @@ pub fn rewrite_removed_symbols<B: AlgebraBackend>(
     let mut substitution_pairs = HfstSymbolPairSubstitutions::new();
 
     substitution_pairs.insert(
-        (internal_epsilon.to_string(), REMOVED_SYMBOL.to_string()),
-        (internal_epsilon.to_string(), internal_epsilon.to_string()),
+        (
+            Symbol::new_static(internal_epsilon),
+            Symbol::new_static(REMOVED_SYMBOL),
+        ),
+        (
+            Symbol::new_static(internal_epsilon),
+            Symbol::new_static(internal_epsilon),
+        ),
     );
 
     for it in alphabet.iter() {
         if it.as_str() != internal_epsilon {
             substitution_pairs.insert(
-                (it.clone(), REMOVED_SYMBOL.to_string()),
+                (it.clone(), Symbol::new_static(REMOVED_SYMBOL)),
                 (it.clone(), it.clone()),
             );
         }
@@ -237,8 +244,8 @@ pub fn guessify_analyzer<B: AlgebraBackend>(
     while s <= basic_guesser.get_max_state() {
         let arc = HfstBasicTransition::new_symbols(
             sink_state,
-            my_default().to_string(),
-            my_default().to_string(),
+            Symbol::new_static(my_default()),
+            Symbol::new_static(my_default()),
             penalty,
             basic_guesser.coder_mut(),
         );
@@ -257,8 +264,8 @@ pub fn guessify_analyzer<B: AlgebraBackend>(
         {
             let arc = HfstBasicTransition::new_symbols(
                 sink_state,
-                "a".to_string(),
-                "a".to_string(),
+                Symbol::new_static("a"),
+                Symbol::new_static("a"),
                 penalty,
                 basic_guesser.coder_mut(),
             );
@@ -362,8 +369,8 @@ pub fn affix_guessify<B: Backend>(
             let guess_state = repl.add_state(0);
             let guess_arc = HfstBasicTransition::new_symbols(
                 guess_state,
-                internal_identity.to_string(),
-                internal_identity.to_string(),
+                Symbol::new_static(internal_identity),
+                Symbol::new_static(internal_identity),
                 weight,
                 repl.coder_mut(),
             );
@@ -386,8 +393,8 @@ pub fn affix_guessify<B: Backend>(
                 }
                 let guess_arc = HfstBasicTransition::new_symbols(
                     d,
-                    internal_identity.to_string(),
-                    internal_identity.to_string(),
+                    Symbol::new_static(internal_identity),
+                    Symbol::new_static(internal_identity),
                     weight,
                     repl.coder_mut(),
                 );
@@ -422,8 +429,8 @@ pub fn affix_guessify<B: Backend>(
             repl.set_final_weight(guess_state, &0.0f32);
             let guess_arc = HfstBasicTransition::new_symbols(
                 guess_state,
-                internal_identity.to_string(),
-                internal_identity.to_string(),
+                Symbol::new_static(internal_identity),
+                Symbol::new_static(internal_identity),
                 weight,
                 repl.coder_mut(),
             );
@@ -432,8 +439,8 @@ pub fn affix_guessify<B: Backend>(
             for s in 0..=max_state {
                 let newarc = HfstBasicTransition::new_symbols(
                     guess_state,
-                    internal_identity.to_string(),
-                    internal_identity.to_string(),
+                    Symbol::new_static(internal_identity),
+                    Symbol::new_static(internal_identity),
                     weight,
                     repl.coder_mut(),
                 );

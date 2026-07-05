@@ -22,6 +22,7 @@
 use crate::backend::AlgebraBackend;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_data_types::StringPairSet;
+use crate::hfst_data_types::Symbol;
 use crate::hfst_data_types::{StringPair, StringVector};
 use crate::hfst_symbol_defs::StringSet;
 use crate::hfst_symbol_defs::{
@@ -478,7 +479,7 @@ pub trait PmatchObject<B: AlgebraBackend + 'static> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.as-string-pair-fn]
     fn as_string_pair(&mut self, ctx: &mut PmatchEvalContext<B>) -> StringPair {
-        (String::new(), String::new())
+        (Symbol::new_static(""), Symbol::new_static(""))
     }
 }
 
@@ -1806,10 +1807,10 @@ impl<B: AlgebraBackend> PmatchUtilityTransducers<B> {
                     let upper: String = icu::casemap::CaseMapper::new()
                         .uppercase_to_string(it, &icu::locale::LanguageIdentifier::UNKNOWN)
                         .into_owned();
-                    if uppercases_seen.contains(&upper) {
+                    if uppercases_seen.contains(upper.as_str()) {
                         continue;
                     }
-                    uppercases_seen.insert(upper.clone());
+                    uppercases_seen.insert(Symbol::from(upper.clone()));
                     let lower: String = icu::casemap::CaseMapper::new()
                         .lowercase_to_string(it, &icu::locale::LanguageIdentifier::UNKNOWN)
                         .into_owned();
@@ -1841,10 +1842,10 @@ impl<B: AlgebraBackend> PmatchUtilityTransducers<B> {
                     let upper: String = icu::casemap::CaseMapper::new()
                         .uppercase_to_string(it, &icu::locale::LanguageIdentifier::UNKNOWN)
                         .into_owned();
-                    if uppercases_seen.contains(&upper) {
+                    if uppercases_seen.contains(upper.as_str()) {
                         continue;
                     }
-                    uppercases_seen.insert(upper.clone());
+                    uppercases_seen.insert(Symbol::from(upper.clone()));
                     let lower: String = icu::casemap::CaseMapper::new()
                         .lowercase_to_string(it, &icu::locale::LanguageIdentifier::UNKNOWN)
                         .into_owned();
@@ -2127,7 +2128,7 @@ pub fn string_set_has_meta_arc(ss: &mut StringSet) -> bool {
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.is-special-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.is-special-fn]
-pub fn is_special(symbol: &String) -> bool {
+pub fn is_special(symbol: &str) -> bool {
     if symbol.len() < 3 {
         return false;
     }
@@ -2890,7 +2891,7 @@ pub fn fix_list_overlap<B: AlgebraBackend + 'static>(
             let mut overlapping_chars: Vec<String> = Vec::new();
             let mut retained_chars: Vec<String> = Vec::new();
             let mut lst_line: i32 = -1;
-            if let Some(line) = lst_line_map.get(sym) {
+            if let Some(line) = lst_line_map.get(sym.as_str()) {
                 lst_line = *line;
             }
 
@@ -2899,7 +2900,7 @@ pub fn fix_list_overlap<B: AlgebraBackend + 'static>(
             let mut end: Option<usize> = sym[start..].find('_').map(|i| i + start);
             while let Some(e) = end {
                 let sub = sym[start..e].to_string();
-                if literal_set.contains(&sub) {
+                if literal_set.contains(sub.as_str()) {
                     overlapping_chars.push(sub);
                 } else {
                     retained_chars.push(sub);
@@ -2910,7 +2911,7 @@ pub fn fix_list_overlap<B: AlgebraBackend + 'static>(
             // Check last element (before final @)
             if start < sym.len() {
                 let last = sym[start..sym.len() - 1].to_string();
-                if literal_set.contains(&last) {
+                if literal_set.contains(last.as_str()) {
                     overlapping_chars.push(last);
                 }
             }
@@ -2927,7 +2928,7 @@ pub fn fix_list_overlap<B: AlgebraBackend + 'static>(
                 wk.push_str(sym);
                 warn_key = wk;
             } else {
-                warn_key = sym.clone();
+                warn_key = sym.to_string();
             }
             if ctx.lst_overlap_warned_contains(&warn_key) {
                 continue;
@@ -2941,7 +2942,7 @@ pub fn fix_list_overlap<B: AlgebraBackend + 'static>(
                 first = false;
             }
             newlist.push('@');
-            let newsym: StringPair = (newlist.clone(), newlist.clone());
+            let newsym: StringPair = (Symbol::from(newlist.clone()), Symbol::from(newlist.clone()));
             let mut newpairs: StringPairSet = StringPairSet::new();
             newpairs.insert(newsym);
             let mut optimise_msg = String::new();
@@ -2956,8 +2957,10 @@ pub fn fix_list_overlap<B: AlgebraBackend + 'static>(
                 ));
             }
             for i in 0..overlapping_chars.len() {
-                let overlapsym: StringPair =
-                    (overlapping_chars[i].clone(), overlapping_chars[i].clone());
+                let overlapsym: StringPair = (
+                    Symbol::from(overlapping_chars[i].clone()),
+                    Symbol::from(overlapping_chars[i].clone()),
+                );
                 if ctx.verbose {
                     optimise_msg.push_str(&format!("\n  '{}' (", overlapping_chars[i]));
                     let mut buf: Vec<u8> = Vec::new();
@@ -3264,9 +3267,9 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBinaryOperation<B> {
         if self.op == PmatchBinaryOp::CrossProduct {
             let left_string: String = self.left.borrow_mut().as_string(ctx);
             let right_string: String = self.right.borrow_mut().as_string(ctx);
-            return (left_string, right_string);
+            return (Symbol::from(left_string), Symbol::from(right_string));
         }
-        (String::new(), String::new())
+        (Symbol::new_static(""), Symbol::new_static(""))
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.is-unweighted-disjunction-of-strings-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-binary-operation.is-unweighted-disjunction-of-strings-fn]
@@ -3715,7 +3718,7 @@ pub fn PmatchObject_expand_Ins_arcs<B: AlgebraBackend + 'static>(
             let mut this_name_insed = String::from("@I.");
             this_name_insed.push_str(&this_name);
             this_name_insed.push_str("@");
-            expansions_done.insert(this_name_insed);
+            expansions_done.insert(Symbol::from(this_name_insed));
         }
         while !did_no_expansions {
             did_no_expansions = true;
@@ -3745,7 +3748,7 @@ pub fn PmatchObject_expand_Ins_arcs<B: AlgebraBackend + 'static>(
                                     expanded_symbols.insert(s.clone());
                                 }
                             } else {
-                                expanded_symbols.insert(internal_identity.to_string());
+                                expanded_symbols.insert(Symbol::new_static(internal_identity));
                             }
                         }
                     }
@@ -3963,7 +3966,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
                 .collect_strings_into(ctx, strings);
             ctx.used_definitions_insert(self.sym.clone());
         } else {
-            strings.push(self.sym.clone());
+            strings.push(Symbol::from(self.sym.clone()));
         }
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.as-string-fn]
@@ -4013,7 +4016,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchString<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.collect-strings-into-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.collect-strings-into-fn]
     fn collect_strings_into(&mut self, ctx: &mut PmatchEvalContext<B>, strings: &mut StringVector) {
-        strings.push(self.string.clone());
+        strings.push(Symbol::from(self.string.clone()));
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.evaluate-as-arg-fn]
@@ -4038,7 +4041,10 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchString<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.as-string-pair-fn]
     fn as_string_pair(&mut self, ctx: &mut PmatchEvalContext<B>) -> StringPair {
-        (self.string.clone(), self.string.clone())
+        (
+            Symbol::from(self.string.clone()),
+            Symbol::from(self.string.clone()),
+        )
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.is-unweighted-disjunction-of-strings-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.is-unweighted-disjunction-of-strings-fn]
@@ -4072,7 +4078,10 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchQuestionMark<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-pair-fn]
     fn as_string_pair(&mut self, ctx: &mut PmatchEvalContext<B>) -> StringPair {
-        (internal_identity.to_string(), internal_identity.to_string())
+        (
+            Symbol::new_static(internal_identity),
+            Symbol::new_static(internal_identity),
+        )
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-acceptor.evaluate-fn]
@@ -5009,7 +5018,7 @@ pub fn register_lst_line_numbers_from_transducer<B: AlgebraBackend + 'static>(
         if it.find("@L.") == Some(0) {
             // Keep first occurrence if seen before.
             if !ctx.lst_line_map_contains(it) {
-                ctx.lst_line_map_insert(it.clone(), line);
+                ctx.lst_line_map_insert(it.to_string(), line);
             }
         }
     }

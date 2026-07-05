@@ -73,7 +73,7 @@ pub use crate::hfst_data_types::implementations::HfstState;
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-replacement]
 // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-replacement]
 // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-replacement]
-pub type HfstReplacement = (HfstState, Vec<(String, String)>);
+pub type HfstReplacement = (HfstState, Vec<(HfstSymbol, HfstSymbol)>);
 // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-replacements]
 // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-replacements]
 // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-replacements]
@@ -299,10 +299,10 @@ pub struct SummaryStats {
     pub sparsest_arcs: usize,
     pub uniq_input_arcs: usize,
     pub uniq_output_arcs: usize,
-    pub most_ambiguous_input: (String, u32),
-    pub most_ambiguous_output: (String, u32),
-    pub found_alphabet: BTreeSet<String>,
-    pub symbol_pairs: BTreeMap<(String, String), u32>,
+    pub most_ambiguous_input: (HfstSymbol, u32),
+    pub most_ambiguous_output: (HfstSymbol, u32),
+    pub found_alphabet: BTreeSet<HfstSymbol>,
+    pub symbol_pairs: BTreeMap<(HfstSymbol, HfstSymbol), u32>,
     pub acceptor: bool,
     pub input_deterministic: bool,
     pub output_deterministic: bool,
@@ -414,7 +414,7 @@ impl HfstBasicTransducer {
         let line = self
             .alphabet
             .iter()
-            .map(String::as_str)
+            .map(HfstSymbol::as_str)
             .collect::<Vec<_>>()
             .join(", ");
         tracing::debug!("{}", line);
@@ -822,10 +822,10 @@ impl HfstBasicTransducer {
         let mut sparsest_arcs: usize = 1 << 31;
         let mut uniq_input_arcs: usize = 0;
         let mut uniq_output_arcs: usize = 0;
-        let mut most_ambiguous_input: (String, u32) = (String::new(), 0);
-        let mut most_ambiguous_output: (String, u32) = (String::new(), 0);
-        let mut found_alphabet: BTreeSet<String> = BTreeSet::new();
-        let mut symbol_pairs: BTreeMap<(String, String), u32> = BTreeMap::new();
+        let mut most_ambiguous_input: (HfstSymbol, u32) = (HfstSymbol::default(), 0);
+        let mut most_ambiguous_output: (HfstSymbol, u32) = (HfstSymbol::default(), 0);
+        let mut found_alphabet: BTreeSet<HfstSymbol> = BTreeSet::new();
+        let mut symbol_pairs: BTreeMap<(HfstSymbol, HfstSymbol), u32> = BTreeMap::new();
         let mut acceptor = true;
         let mut input_deterministic = true;
         let mut output_deterministic = true;
@@ -841,8 +841,8 @@ impl HfstBasicTransducer {
                 final_states += 1;
             }
             let mut arcs_here: usize = 0;
-            let mut input_ambiguity: BTreeMap<String, u32> = BTreeMap::new();
-            let mut output_ambiguity: BTreeMap<String, u32> = BTreeMap::new();
+            let mut input_ambiguity: BTreeMap<HfstSymbol, u32> = BTreeMap::new();
+            let mut output_ambiguity: BTreeMap<HfstSymbol, u32> = BTreeMap::new();
 
             for tr_it in transitions {
                 arcs += 1;
@@ -955,9 +955,9 @@ impl HfstBasicTransducer {
         }
 
         // Special symbols are always known
-        symbols_found.insert("@_EPSILON_SYMBOL_@".to_string());
-        symbols_found.insert("@_UNKNOWN_SYMBOL_@".to_string());
-        symbols_found.insert("@_IDENTITY_SYMBOL_@".to_string());
+        symbols_found.insert(HfstSymbol::new_static("@_EPSILON_SYMBOL_@"));
+        symbols_found.insert(HfstSymbol::new_static("@_UNKNOWN_SYMBOL_@"));
+        symbols_found.insert(HfstSymbol::new_static("@_IDENTITY_SYMBOL_@"));
 
         // Which symbols in the graph's alphabet did not occur in the graph
         let mut symbols_not_found = HfstAlphabet::new();
@@ -1418,11 +1418,11 @@ impl HfstBasicTransducer {
         if isym != osym {
             let _ = write!(os, "<");
         }
-        let mut s = isym.clone();
+        let mut s = isym.to_string();
         Self::xfstize_symbol(&mut s);
         let _ = write!(os, "{}", s);
         if isym != osym || osym == "@_UNKNOWN_SYMBOL_@" {
-            s = osym.clone();
+            s = osym.to_string();
             Self::xfstize_symbol(&mut s);
             let _ = write!(os, ":{}", s);
         }
@@ -1446,11 +1446,11 @@ impl HfstBasicTransducer {
             write!(file, "<")?;
         }
         // replace all spaces, epsilons and tabs
-        let mut s = isym.clone();
+        let mut s = isym.to_string();
         Self::xfstize_symbol(&mut s);
         write!(file, "{}", s)?;
         if isym != osym || osym == "@_UNKNOWN_SYMBOL_@" {
-            s = osym.clone();
+            s = osym.to_string();
             Self::xfstize_symbol(&mut s);
             write!(file, ":{}", s)?;
         }
@@ -2122,12 +2122,12 @@ impl HfstBasicTransducer {
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data().clone();
 
-                let mut isymbol = data.get_input_symbol(&self.coder);
+                let mut isymbol = data.get_input_symbol(&self.coder).to_string();
                 replace_all(&mut isymbol, " ", "@_SPACE_@");
                 replace_all(&mut isymbol, "@_EPSILON_SYMBOL_@", "@0@");
                 replace_all(&mut isymbol, "\t", "@_TAB_@");
 
-                let mut osymbol = data.get_output_symbol(&self.coder);
+                let mut osymbol = data.get_output_symbol(&self.coder).to_string();
                 replace_all(&mut osymbol, " ", "@_SPACE_@");
                 replace_all(&mut osymbol, "@_EPSILON_SYMBOL_@", "@0@");
                 replace_all(&mut osymbol, "\t", "@_TAB_@");
@@ -2173,12 +2173,12 @@ impl HfstBasicTransducer {
             for tr_it in it.iter() {
                 let data = tr_it.get_transition_data().clone();
 
-                let mut isymbol = data.get_input_symbol(&self.coder);
+                let mut isymbol = data.get_input_symbol(&self.coder).to_string();
                 replace_all(&mut isymbol, " ", "@_SPACE_@");
                 replace_all(&mut isymbol, "@_EPSILON_SYMBOL_@", "@0@");
                 replace_all(&mut isymbol, "\t", "@_TAB_@");
 
-                let mut osymbol = data.get_output_symbol(&self.coder);
+                let mut osymbol = data.get_output_symbol(&self.coder).to_string();
                 replace_all(&mut osymbol, " ", "@_SPACE_@");
                 replace_all(&mut osymbol, "@_EPSILON_SYMBOL_@", "@0@");
                 replace_all(&mut osymbol, "\t", "@_TAB_@");
@@ -2323,8 +2323,8 @@ impl HfstBasicTransducer {
 
             let tr = HfstBasicTransition::new_symbols(
                 parse_state_number(a(1)),
-                input_symbol,
-                output_symbol,
+                input_symbol.into(),
+                output_symbol.into(),
                 weight,
                 self.coder_mut(),
             );
@@ -2432,8 +2432,8 @@ impl HfstBasicTransducer {
             {
                 let tr = HfstBasicTransition::new_symbols(
                     target,
-                    isymbol,
-                    osymbol,
+                    isymbol.into(),
+                    osymbol.into(),
                     weight,
                     retval.coder_mut(),
                 );
@@ -2443,7 +2443,7 @@ impl HfstBasicTransducer {
             {
                 retval.set_final_weight(state, &weight);
             } else if let Some(symbol) = Self::parse_prolog_symbol_line(&linestr, &retval.name) {
-                retval.add_symbol_to_alphabet(&symbol);
+                retval.add_symbol_to_alphabet(&symbol.into());
             } else {
                 let message = format!("line not valid prolog: {linestr}");
                 crate::bail!(NotValidPrologFormat, message);
@@ -3114,8 +3114,8 @@ impl HfstBasicTransducer {
     // textually but round-trips with marker2weight's parse internally.
     // [spec:hfst:def:hfst-transition-graph.std.string-weight2marker-fn]
     // [spec:hfst:sem:hfst-transition-graph.std.string-weight2marker-fn]
-    pub fn weight2marker(weight: f32) -> String {
-        format!("@{}@", weight)
+    pub fn weight2marker(weight: f32) -> HfstSymbol {
+        HfstSymbol::from(format!("@{}@", weight))
     }
 
     /** @brief Replace each non-zero transition weight with a '@w@' marker arc. */
@@ -3238,7 +3238,7 @@ impl HfstBasicTransducer {
                         new_transitions.push(HfstBasicTransition::new_symbols(
                             target,
                             isym,
-                            crate::hfst_symbol_defs::internal_epsilon.to_string(),
+                            HfstSymbol::new_static(crate::hfst_symbol_defs::internal_epsilon),
                             weight,
                             self.coder_mut(),
                         ));
@@ -3543,8 +3543,8 @@ impl HfstBasicTransducer {
                     let weight = self.state_vector[s][i].get_weight();
                     let tr = HfstBasicTransition::new_symbols(
                         target,
-                        "@_EPSILON_SYMBOL_@".to_string(),
-                        "@_EPSILON_SYMBOL_@".to_string(),
+                        HfstSymbol::new_static("@_EPSILON_SYMBOL_@"),
+                        HfstSymbol::new_static("@_EPSILON_SYMBOL_@"),
                         weight,
                         self.coder_mut(),
                     );
@@ -3886,7 +3886,7 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.is-possible-flag-fn]
     // [spec:hfst:def:hfst-transition-graph.is-possible-flag-fn]
     // [spec:hfst:sem:hfst-transition-graph.is-possible-flag-fn]
-    pub fn is_possible_flag(symbol: String, fds: &mut StringVector, obey_flags: bool) -> bool {
+    pub fn is_possible_flag(symbol: HfstSymbol, fds: &mut StringVector, obey_flags: bool) -> bool {
         if FdOperation::is_diacritic(&symbol) {
             let mut fd_t = FlagDiacriticTable::new();
             fds.push(symbol);
@@ -4323,7 +4323,7 @@ impl HfstBasicTransducer {
         &self,
         s: HfstState,
         states_visited: &mut BTreeSet<HfstState>,
-        path: &mut Vec<(String, String)>,
+        path: &mut Vec<(HfstSymbol, HfstSymbol)>,
         full_paths: &mut HfstReplacements,
         input_side: bool,
     ) -> crate::error::Result<()> {
@@ -4379,7 +4379,7 @@ impl HfstBasicTransducer {
             if (input_side && istr == "^[") || (!input_side && ostr == "^[") {
                 let mut states_visited: BTreeSet<HfstState> = BTreeSet::new();
                 states_visited.insert(s);
-                let mut path: Vec<(String, String)> = Vec::new();
+                let mut path: Vec<(HfstSymbol, HfstSymbol)> = Vec::new();
                 path.push((istr.clone(), ostr.clone()));
                 self.find_regexp_paths(
                     transition.get_target_state(),
@@ -4762,7 +4762,7 @@ impl HfstBasicTransducer {
         result: &mut HfstBasicTransducer,
         result_state: HfstState,
         state_map: &mut StateMap,
-        markers_added: &mut BTreeSet<String>,
+        markers_added: &mut BTreeSet<HfstSymbol>,
     ) -> HfstState {
         let graph_target = graph_transition.get_target_state();
         let merger_target = merger_transition.get_target_state();
@@ -4782,13 +4782,13 @@ impl HfstBasicTransducer {
         let graph_osym = graph_transition.get_output_symbol(graph.coder());
         let marker_tr = HfstBasicTransition::new_symbols(
             extra_state,
-            format!("@{}@", graph_isym),
-            format!("@{}@", graph_osym),
+            HfstSymbol::from(format!("@{}@", graph_isym)),
+            HfstSymbol::from(format!("@{}@", graph_osym)),
             0.0,
             result.coder_mut(),
         );
         result.add_transition(result_state, &marker_tr, true);
-        markers_added.insert(format!("@{}@", graph_isym));
+        markers_added.insert(HfstSymbol::from(format!("@{}@", graph_isym)));
 
         let merger_isym = merger_transition.get_input_symbol(merger.coder());
         let merger_osym = merger_transition.get_output_symbol(merger.coder());
@@ -4820,7 +4820,7 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-transition-graph.is-list-symbol-fn]
     pub fn is_list_symbol(
         transition_data: &HfstTropicalTransducerTransitionData,
-        list_symbols: &BTreeMap<String, BTreeSet<String>>,
+        list_symbols: &BTreeMap<HfstSymbol, BTreeSet<HfstSymbol>>,
         coder: &SymbolCoder,
     ) -> crate::error::Result<bool> {
         let isymbol = transition_data.get_input_symbol(coder);
@@ -4849,8 +4849,8 @@ impl HfstBasicTransducer {
         result_state: HfstState,
         state_map: &mut StateMap,
         agenda: &mut BTreeSet<HfstState>,
-        list_symbols: &BTreeMap<String, BTreeSet<String>>,
-        markers_added: &mut BTreeSet<String>,
+        list_symbols: &BTreeMap<HfstSymbol, BTreeSet<HfstSymbol>>,
+        markers_added: &mut BTreeSet<HfstSymbol>,
     ) -> crate::error::Result<()> {
         agenda.insert(result_state); // do not handle 'result_state' twice
         let graph_transitions = &graph.state_vector[graph_state as usize];
@@ -4948,8 +4948,8 @@ impl HfstBasicTransducer {
     pub fn merge(
         graph: &mut HfstBasicTransducer,
         merger: &mut HfstBasicTransducer,
-        list_symbols: &BTreeMap<String, BTreeSet<String>>,
-        markers_added: &mut BTreeSet<String>,
+        list_symbols: &BTreeMap<HfstSymbol, BTreeSet<HfstSymbol>>,
+        markers_added: &mut BTreeSet<HfstSymbol>,
     ) -> crate::error::Result<HfstBasicTransducer> {
         let mut result = HfstBasicTransducer::new();
         let mut state_map: StateMap = BTreeMap::new();

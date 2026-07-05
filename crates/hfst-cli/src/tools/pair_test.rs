@@ -16,8 +16,8 @@ use crate::inc::{
 };
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
-use hfst::hfst_data_types::StringPairVector;
 use hfst::hfst_data_types::implementations::HfstState;
+use hfst::hfst_data_types::{StringPairVector, Symbol};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_strings2_fst_tokenizer::HfstStrings2FstTokenizer;
 use hfst::hfst_symbol_defs::{internal_epsilon, is_epsilon};
@@ -344,14 +344,14 @@ fn get_transducer(
 
 // [spec:hfst:def:hfst-pair-test.unescape-fn]
 // [spec:hfst:sem:hfst-pair-test.unescape-fn]
-fn unescape(symbol: String) -> String {
-    if is_epsilon(&symbol) {
+fn unescape(symbol: &str) -> String {
+    if is_epsilon(symbol) {
         return "0".to_string();
     }
     if symbol == "@#@" {
         return "#".to_string();
     }
-    symbol
+    symbol.to_string()
 }
 
 // [spec:hfst:def:hfst-pair-test.print-recognized-prefix-fn]
@@ -381,14 +381,9 @@ unsafe fn print_recognized_prefix(
             }
 
             if it.0 == it.1 {
-                let _ = write!(outfile, "{} ", unescape(it.0.clone()));
+                let _ = write!(outfile, "{} ", unescape(&it.0));
             } else {
-                let _ = write!(
-                    outfile,
-                    "{}:{} ",
-                    unescape(it.0.clone()),
-                    unescape(it.1.clone())
-                );
+                let _ = write!(outfile, "{}:{} ", unescape(&it.0), unescape(&it.1));
             }
             idx += 1;
         }
@@ -398,14 +393,9 @@ unsafe fn print_recognized_prefix(
         while idx < tokenized_pair_string.len() {
             let it = &tokenized_pair_string[idx];
             if it.0 == it.1 {
-                let _ = write!(outfile, "{} ", unescape(it.0.clone()));
+                let _ = write!(outfile, "{} ", unescape(&it.0));
             } else {
-                let _ = write!(
-                    outfile,
-                    "{}:{} ",
-                    unescape(it.0.clone()),
-                    unescape(it.1.clone())
-                );
+                let _ = write!(outfile, "{}:{} ", unescape(&it.0), unescape(&it.1));
             }
             idx += 1;
         }
@@ -550,7 +540,7 @@ fn is_empty_or_comment(line: &str) -> bool {
 // [spec:hfst:def:hfst-pair-test.get-symbols-fn]
 // [spec:hfst:sem:hfst-pair-test.get-symbols-fn]
 fn get_symbols(t: &HfstBasicTransducer, known_symbols: &mut SymbolSet) {
-    known_symbols.extend(t.symbols_used());
+    known_symbols.extend(t.symbols_used().into_iter().map(String::from));
 }
 
 // [spec:hfst:def:hfst-pair-test.strip-space-fn]
@@ -656,7 +646,7 @@ unsafe fn process_stream(
         if !XEROX_MODE {
             // Define tokenizer with no multi character symbols and an
             // empty epsilon representation.
-            let empty_v: StringVector = Vec::new();
+            let empty_v: Vec<Symbol> = Vec::new();
             let input_tokenizer = match HfstStrings2FstTokenizer::new(&empty_v, "0") {
                 Ok(t) => t,
                 Err(e) => {
@@ -688,10 +678,17 @@ unsafe fn process_stream(
 
                 match tok_result {
                     Ok(mut tokenized_pair_string) => {
-                        tokenized_pair_string
-                            .insert(0, ("@#@".to_string(), internal_epsilon.to_string()));
-                        tokenized_pair_string
-                            .push(("@#@".to_string(), internal_epsilon.to_string()));
+                        tokenized_pair_string.insert(
+                            0,
+                            (
+                                Symbol::new_static("@#@"),
+                                Symbol::new_static(internal_epsilon),
+                            ),
+                        );
+                        tokenized_pair_string.push((
+                            Symbol::new_static("@#@"),
+                            Symbol::new_static(internal_epsilon),
+                        ));
 
                         let new_exit_code = test(
                             &tokenized_pair_string,
@@ -736,7 +733,7 @@ unsafe fn process_stream(
             let mut positive_test_cases: StringVector = Vec::new();
             let mut negative_test_cases: StringVector = Vec::new();
 
-            let symbols: StringVector = known_symbols.iter().cloned().collect();
+            let symbols: Vec<Symbol> = known_symbols.iter().map(Symbol::new).collect();
 
             let input_tokenizer = match HfstStrings2FstTokenizer::new(&symbols, "0") {
                 Ok(t) => t,
@@ -831,8 +828,17 @@ unsafe fn process_stream(
                         unreachable!("error(1, ...) exits the process")
                     }
                 };
-                test_case.insert(0, ("@#@".to_string(), internal_epsilon.to_string()));
-                test_case.push(("@#@".to_string(), internal_epsilon.to_string()));
+                test_case.insert(
+                    0,
+                    (
+                        Symbol::new_static("@#@"),
+                        Symbol::new_static(internal_epsilon),
+                    ),
+                );
+                test_case.push((
+                    Symbol::new_static("@#@"),
+                    Symbol::new_static(internal_epsilon),
+                ));
 
                 let new_exit_code = test(
                     &test_case,
@@ -883,8 +889,17 @@ unsafe fn process_stream(
                         unreachable!("error(1, ...) exits the process")
                     }
                 };
-                test_case.insert(0, ("@#@".to_string(), internal_epsilon.to_string()));
-                test_case.push(("@#@".to_string(), internal_epsilon.to_string()));
+                test_case.insert(
+                    0,
+                    (
+                        Symbol::new_static("@#@"),
+                        Symbol::new_static(internal_epsilon),
+                    ),
+                );
+                test_case.push((
+                    Symbol::new_static("@#@"),
+                    Symbol::new_static(internal_epsilon),
+                ));
 
                 let new_exit_code = test(
                     &test_case,

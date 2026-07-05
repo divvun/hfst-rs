@@ -189,7 +189,7 @@ fn generate_word_forms(
 
     for it in &result_set {
         if !first_form {
-            results.push(", ".to_string());
+            results.push(", ".into());
         }
 
         results.extend(it.iter().cloned());
@@ -198,7 +198,7 @@ fn generate_word_forms(
     }
 
     if results.is_empty() {
-        results.push("<no word forms>".to_string());
+        results.push("<no word forms>".into());
     }
 
     Ok(results)
@@ -241,10 +241,7 @@ fn split(line: &str, separator: &str) -> crate::hfst_symbol_defs::StringPair {
     let first_end = separator_pos.min(line.len());
     let second_start = separator_pos.saturating_add(1).min(line.len());
 
-    (
-        line[..first_end].to_string(),
-        line[second_start..].to_string(),
-    )
+    (line[..first_end].into(), line[second_start..].into())
 }
 
 // [spec:hfst:def:generate-model-forms.read-model-form-fn]
@@ -349,8 +346,8 @@ pub fn get_paradigms(
         )?;
 
         let mut paradigm: StringVector = StringVector::new();
-        paradigm.push(word_form.to_string());
-        paradigm.push("\t".to_string());
+        paradigm.push(word_form.into());
+        paradigm.push("\t".into());
 
         let mut rev_analysis_guess = analysis_guess.clone();
         rev_analysis_guess.reverse();
@@ -359,7 +356,7 @@ pub fn get_paradigms(
         for jt in &results {
             let model_form = jt;
 
-            paradigm.push("\t".to_string());
+            paradigm.push("\t".into());
             paradigm.extend(model_form.iter().cloned());
         }
 

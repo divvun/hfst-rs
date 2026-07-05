@@ -5,13 +5,7 @@ use hfst::hfst_basic_transition::HfstBasicTransition;
 fn main() -> hfst::error::Result<()> {
     // Build a:b / 0.5 with a final state weighted 0.3.
     let mut basic = HfstBasicTransducer::new();
-    let tr = HfstBasicTransition::new_symbols(
-        1,
-        "a".to_string(),
-        "b".to_string(),
-        0.5,
-        basic.coder_mut(),
-    );
+    let tr = HfstBasicTransition::new_symbols(1, "a".into(), "b".into(), 0.5, basic.coder_mut());
     basic.add_transition(0, &tr, true);
     basic.set_final_weight(1, &0.3);
 

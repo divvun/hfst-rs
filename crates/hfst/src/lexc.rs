@@ -37,7 +37,9 @@ use nfst_xre::{SpannedXre, pretty_print};
 
 use crate::backend::AlgebraBackend;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
-use crate::hfst_data_types::{ImplementationType, StringPair, StringPairVector, StringVector};
+use crate::hfst_data_types::{
+    ImplementationType, StringPair, StringPairVector, StringVector, Symbol,
+};
 use crate::hfst_symbol_defs::{HfstSymbolSubstitutions, StringSet};
 use crate::hfst_tokenizer::HfstTokenizer;
 use crate::hfst_transducer::HfstTransducer;
@@ -775,23 +777,23 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         let mut i = 0;
         while i < new_vector.len() {
             if new_vector[i].0 == "0" {
-                new_vector[i].0 = "@0@".to_string();
+                new_vector[i].0 = Symbol::new_static("@0@");
             }
             if let Some(start_pos) = new_vector[i].0.find("@ZERO@") {
-                new_vector[i]
-                    .0
-                    .replace_range(start_pos..start_pos + "@ZERO@".len(), "0");
+                let mut s = new_vector[i].0.to_string();
+                s.replace_range(start_pos..start_pos + "@ZERO@".len(), "0");
+                new_vector[i].0 = Symbol::from(s);
             }
             if new_vector[i].1 == "0" {
-                new_vector[i].1 = "@0@".to_string();
+                new_vector[i].1 = Symbol::new_static("@0@");
             }
             if let Some(start_pos) = new_vector[i].1.find("@ZERO@") {
-                new_vector[i]
-                    .1
-                    .replace_range(start_pos..start_pos + "@ZERO@".len(), "0");
+                let mut s = new_vector[i].1.to_string();
+                s.replace_range(start_pos..start_pos + "@ZERO@".len(), "0");
+                new_vector[i].1 = Symbol::from(s);
             }
             let first = new_vector[i].0.clone();
-            if !self.alphabets.contains(&first) {
+            if !self.alphabets.contains(first.as_str()) {
                 if first.starts_with('@') && first.ends_with('@') {
                     i += 1;
                     continue;
@@ -902,10 +904,10 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             let mut two: Vec<String> = Vec::new();
             for it in &tmp {
                 if it.0 != "@_EPSILON_SYMBOL_@" {
-                    one.push(it.0.clone());
+                    one.push(it.0.to_string());
                 }
                 if it.1 != "@_EPSILON_SYMBOL_@" {
-                    two.push(it.1.clone());
+                    two.push(it.1.to_string());
                 }
             }
 
@@ -964,23 +966,23 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         let mut i = 0;
         while i < new_vector.len() {
             if new_vector[i].0 == "0" {
-                new_vector[i].0 = "@0@".to_string();
+                new_vector[i].0 = Symbol::new_static("@0@");
             }
             if let Some(start_pos) = new_vector[i].0.find("@ZERO@") {
-                new_vector[i]
-                    .0
-                    .replace_range(start_pos..start_pos + "@ZERO@".len(), "0");
+                let mut s = new_vector[i].0.to_string();
+                s.replace_range(start_pos..start_pos + "@ZERO@".len(), "0");
+                new_vector[i].0 = Symbol::from(s);
             }
             if new_vector[i].1 == "0" {
-                new_vector[i].1 = "@0@".to_string();
+                new_vector[i].1 = Symbol::new_static("@0@");
             }
             if let Some(start_pos) = new_vector[i].1.find("@ZERO@") {
-                new_vector[i]
-                    .1
-                    .replace_range(start_pos..start_pos + "@ZERO@".len(), "0");
+                let mut s = new_vector[i].1.to_string();
+                s.replace_range(start_pos..start_pos + "@ZERO@".len(), "0");
+                new_vector[i].1 = Symbol::from(s);
             }
             let first = new_vector[i].0.clone();
-            if !self.alphabets.contains(&first) {
+            if !self.alphabets.contains(first.as_str()) {
                 if first.starts_with('@') && first.ends_with('@') {
                     i += 1;
                     continue;
@@ -1001,7 +1003,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 self.add_alphabet(&first);
             }
             let second = new_vector[i].1.clone();
-            if !self.alphabets.contains(&second) {
+            if !self.alphabets.contains(second.as_str()) {
                 if second.starts_with('@') && second.ends_with('@') {
                     i += 1;
                     continue;
@@ -1058,7 +1060,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         new_paths.optimize()?;
         let new_alphabets = new_paths.get_alphabet()?;
         for new_alpha in &new_alphabets {
-            if self.alphabets.contains(new_alpha) {
+            if self.alphabets.contains(new_alpha.as_str()) {
                 continue;
             }
             if matches!(
@@ -1331,12 +1333,15 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         lexicons.repeat_star()?.optimize()?;
 
         let mut small_substitutions = HfstSymbolSubstitutions::new();
-        small_substitutions.insert("@0@".to_string(), "@_EPSILON_SYMBOL_@".to_string());
         small_substitutions.insert(
-            "@@ANOTHER_EPSILON@@".to_string(),
-            "@_EPSILON_SYMBOL_@".to_string(),
+            Symbol::new_static("@0@"),
+            Symbol::new_static("@_EPSILON_SYMBOL_@"),
         );
-        small_substitutions.insert("@ZERO@".to_string(), "0".to_string());
+        small_substitutions.insert(
+            Symbol::new_static("@@ANOTHER_EPSILON@@"),
+            Symbol::new_static("@_EPSILON_SYMBOL_@"),
+        );
+        small_substitutions.insert(Symbol::new_static("@ZERO@"), Symbol::new_static("0"));
 
         lexicons.substitute_symbol_substitutions(&small_substitutions)?;
         lexicons.prune_alphabet(true)?;
@@ -1369,14 +1374,23 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 let new_vector = self.tokenizer.tokenize(&doubled, false);
                 joiners_trie.disjunct_path(&new_vector, 0.0f32);
 
-                all_joiners_to_epsilon.insert(joiner_enc, "@_EPSILON_SYMBOL_@".to_string());
+                all_joiners_to_epsilon.insert(
+                    Symbol::from(joiner_enc),
+                    Symbol::new_static("@_EPSILON_SYMBOL_@"),
+                );
             }
 
             let root_joiner = joiner_encode(&self.initialLexiconName_);
             let hash_joiner = joiner_encode("#");
 
-            all_joiners_to_epsilon.insert(root_joiner, "@_EPSILON_SYMBOL_@".to_string());
-            all_joiners_to_epsilon.insert(hash_joiner, "@_EPSILON_SYMBOL_@".to_string());
+            all_joiners_to_epsilon.insert(
+                Symbol::from(root_joiner),
+                Symbol::new_static("@_EPSILON_SYMBOL_@"),
+            );
+            all_joiners_to_epsilon.insert(
+                Symbol::from(hash_joiner),
+                Symbol::new_static("@_EPSILON_SYMBOL_@"),
+            );
         } else {
             let root_p = flag_joiner_encode(&self.initialLexiconName_, false);
             let root_r = flag_joiner_encode(&self.initialLexiconName_, true);
@@ -1465,7 +1479,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             for s in &transducer_alphabet {
                 if s.starts_with('$') && s.ends_with('$') && s.len() > 2 {
                     let alph = s.replace('$', "@");
-                    fake_flags_to_real_flags.insert(s.clone(), alph);
+                    fake_flags_to_real_flags.insert(s.clone(), Symbol::from(alph));
                 }
             }
             all_substitutions.extend(fake_flags_to_real_flags);
@@ -1489,7 +1503,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             if key.starts_with('$') {
                 // TODO: do this only for strings that look like $.....$
                 let alph = key.replace('$', "@");
-                fake_regexpr_to_real.insert(key.clone(), alph);
+                fake_regexpr_to_real.insert(Symbol::new(key), Symbol::from(alph));
             }
         }
         lexicons
@@ -1507,7 +1521,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 key.clone()
             };
             let btr = HfstBasicTransducer::from_transducer(tr);
-            reg_mark_to_tr.insert(alph, btr);
+            reg_mark_to_tr.insert(Symbol::from(alph), btr);
         }
 
         let mut lexicons_basic = HfstBasicTransducer::from_transducer(&lexicons);

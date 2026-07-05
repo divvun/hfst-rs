@@ -21,7 +21,7 @@ use crate::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use hfst::hfst_data_types::{ImplementationType, StringPair};
+use hfst::hfst_data_types::{ImplementationType, StringPair, Symbol};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_symbol_defs::{internal_epsilon, label_to_stringpair};
@@ -30,7 +30,7 @@ use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 
 // [spec:hfst:def:hfst-substitute.hfst-symbol-substitutions]
-type HfstSymbolSubstitutions = BTreeMap<String, String>;
+type HfstSymbolSubstitutions = BTreeMap<Symbol, Symbol>;
 // [spec:hfst:def:hfst-substitute.hfst-symbol-pair-substitutions]
 type HfstSymbolPairSubstitutions = BTreeMap<StringPair, StringPair>;
 
@@ -346,7 +346,7 @@ unsafe fn do_substitute<B: hfst::backend::AlgebraBackend>(
                     fl, to_name, transducer_n
                 ));
             }
-            let from_arc: StringPair = (fl.clone(), fl.clone());
+            let from_arc: StringPair = (Symbol::new(fl), Symbol::new(fl));
             let to_t = state
                 .to_transducer
                 .as_mut()
@@ -624,7 +624,7 @@ unsafe fn process_loop<
                             (*(&raw mut LABEL_SUBSTITUTION_MAP))
                                 .as_mut()
                                 .unwrap()
-                                .insert(fl.clone(), tl.clone());
+                                .insert(Symbol::new(&fl), Symbol::new(&tl));
                             symbol_map_in_use = true;
                         } else {
                             if let Err(e) = do_substitute(&mut trans, transducer_n, &mut state) {

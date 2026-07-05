@@ -2,11 +2,11 @@
 //! colon/space/backslash-escaped pair strings into 'StringPairVector's, built
 //! on top of 'HfstTokenizer'.
 
-use crate::hfst_data_types::StringPair;
+use crate::hfst_data_types::{StringPair, Symbol};
 use crate::hfst_tokenizer::HfstTokenizer;
 
 // [spec:hfst:def:hfst-strings2-fst-tokenizer.string-vector]
-pub type StringVector = Vec<String>;
+pub type StringVector = Vec<Symbol>;
 // [spec:hfst:def:hfst-strings2-fst-tokenizer.string-pair]
 // (StringPair = (String, String), shared with hfst_data_types)
 // [spec:hfst:def:hfst-strings2-fst-tokenizer.string-pair-vector]
@@ -84,7 +84,7 @@ impl HfstStrings2FstTokenizer {
         let tokenized_multichar_symbol = self.tokenizer.tokenize_one_level(multichar_symbol, false);
         let multichar_symbol_head = tokenized_multichar_symbol[0].clone();
         self.tokenizer
-            .add_multichar_symbol(&(BACKSLASH.to_string() + &multichar_symbol_head));
+            .add_multichar_symbol(&(BACKSLASH.to_string() + multichar_symbol_head.as_str()));
         Ok(())
     }
 
@@ -133,24 +133,24 @@ impl HfstStrings2FstTokenizer {
         let mut i = 0;
         while i < v.len() {
             if !self.is_pair_input_symbol(v, i) {
-                let mut symbol = self.unescape(v[i].clone())?;
+                let mut symbol = self.unescape(&v[i])?;
                 symbol = if symbol.is_empty() || symbol == self.eps {
-                    EPSILON_SYMBOL.to_string()
+                    Symbol::new_static(EPSILON_SYMBOL)
                 } else {
                     symbol
                 };
                 spv.push((symbol.clone(), symbol));
             } else {
                 let input = if v[i].is_empty() || v[i] == self.eps {
-                    EPSILON_SYMBOL.to_string()
+                    Symbol::new_static(EPSILON_SYMBOL)
                 } else {
-                    self.unescape(v[i].clone())?
+                    self.unescape(&v[i])?
                 };
                 i += 2; // ++(++it)
                 let output = if v[i].is_empty() || v[i] == self.eps {
-                    EPSILON_SYMBOL.to_string()
+                    Symbol::new_static(EPSILON_SYMBOL)
                 } else {
-                    self.unescape(v[i].clone())?
+                    self.unescape(&v[i])?
                 };
                 spv.push((input, output));
             }
@@ -170,17 +170,17 @@ impl HfstStrings2FstTokenizer {
         let mut input_it = 0;
         let mut output_it = 0;
         while input_it < input.len() && output_it < output.len() {
-            let input_symbol = self.unescape(input[input_it].clone())?;
-            let output_symbol = self.unescape(output[output_it].clone())?;
+            let input_symbol = self.unescape(&input[input_it])?;
+            let output_symbol = self.unescape(&output[output_it])?;
 
             spv.push((
                 if input_symbol.is_empty() || input_symbol == self.eps {
-                    EPSILON_SYMBOL.to_string()
+                    Symbol::new_static(EPSILON_SYMBOL)
                 } else {
                     input_symbol
                 },
                 if output_symbol.is_empty() || output_symbol == self.eps {
-                    EPSILON_SYMBOL.to_string()
+                    Symbol::new_static(EPSILON_SYMBOL)
                 } else {
                     output_symbol
                 },
@@ -191,11 +191,11 @@ impl HfstStrings2FstTokenizer {
         if input_it == input.len() {
             while output_it < output.len() {
                 spv.push((
-                    EPSILON_SYMBOL.to_string(),
+                    Symbol::new_static(EPSILON_SYMBOL),
                     if output[output_it].is_empty() || output[output_it] == self.eps {
-                        EPSILON_SYMBOL.to_string()
+                        Symbol::new_static(EPSILON_SYMBOL)
                     } else {
-                        self.unescape(output[output_it].clone())?
+                        self.unescape(&output[output_it])?
                     },
                 ));
                 output_it += 1;
@@ -204,11 +204,11 @@ impl HfstStrings2FstTokenizer {
             while input_it < input.len() {
                 spv.push((
                     if input[input_it].is_empty() || input[input_it] == self.eps {
-                        EPSILON_SYMBOL.to_string()
+                        Symbol::new_static(EPSILON_SYMBOL)
                     } else {
-                        self.unescape(input[input_it].clone())?
+                        self.unescape(&input[input_it])?
                     },
-                    EPSILON_SYMBOL.to_string(),
+                    Symbol::new_static(EPSILON_SYMBOL),
                 ));
                 input_it += 1;
             }
@@ -218,13 +218,15 @@ impl HfstStrings2FstTokenizer {
 
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.unescape-fn]
     // [spec:hfst:sem:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.unescape-fn]
-    fn unescape(&self, mut symbol: String) -> crate::error::Result<String> {
-        self.check_cols(&symbol)?;
+    fn unescape(&self, symbol: &str) -> crate::error::Result<Symbol> {
+        self.check_cols(symbol)?;
 
         if symbol == "\\\\" {
             // BACKSLASH BACKSLASH
-            return Ok(BACKSLASH.to_string());
+            return Ok(Symbol::new_static(BACKSLASH));
         }
+
+        let mut symbol = symbol.to_string();
 
         while let Some(pos) = symbol.find("\\\\") {
             symbol.replace_range(pos..pos + 2, BACKSLASH_ESC);
@@ -250,12 +252,12 @@ impl HfstStrings2FstTokenizer {
             symbol.replace_range(pos..pos + COL_ESCAPE.len(), ":");
         }
 
-        Ok(symbol)
+        Ok(Symbol::from(symbol))
     }
 
     // [spec:hfst:def:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.is-pair-input-symbol-fn]
     // [spec:hfst:sem:hfst-strings2-fst-tokenizer.hfst.hfst-strings2-fst-tokenizer.is-pair-input-symbol-fn]
-    fn is_pair_input_symbol(&self, v: &[String], i: usize) -> bool {
+    fn is_pair_input_symbol(&self, v: &[Symbol], i: usize) -> bool {
         // C++ walks an iterator from 'it': current, then next must be COL, then
         // another must follow.
         if i >= v.len() {
@@ -329,7 +331,7 @@ impl HfstStrings2FstTokenizer {
         while i < sv.len() {
             let it = sv[i].clone();
             if it == SPACE && !symbol.is_empty() {
-                res.push(symbol.clone());
+                res.push(Symbol::new(&symbol));
                 while i + 1 < sv.len() && sv[i + 1] == SPACE {
                     i += 1;
                 }
@@ -342,18 +344,18 @@ impl HfstStrings2FstTokenizer {
                     i += 1;
                 }
             } else if it == COL && !symbol.is_empty() {
-                res.push(symbol.clone());
-                res.push(COL.to_string());
+                res.push(Symbol::new(&symbol));
+                res.push(Symbol::new_static(COL));
                 symbol = EMPTY.to_string();
             } else if it == COL {
-                res.push(COL.to_string());
+                res.push(Symbol::new_static(COL));
             } else {
                 symbol += &it;
             }
             i += 1;
         }
         if !symbol.is_empty() {
-            res.push(symbol);
+            res.push(Symbol::from(symbol));
         }
         res
     }
