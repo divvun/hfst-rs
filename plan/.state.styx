@@ -85,4 +85,5 @@ assertions (
     {id mono.facade, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:40.449906Z}
     {id mono.compilers, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:42.188804Z}
     {id mono.cli, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:43.662793Z}
+    {id smolstr, kind @complete, author "brendan@necessary.nu", at 2026-07-05T00:05:12.309338Z}
 )

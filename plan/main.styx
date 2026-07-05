@@ -2092,6 +2092,19 @@ children (
             {
                 id smolstr
                 title "SmolStr symbol pass: Symbol = SmolStr through the container typedefs (StringSet/StringVector/StringPair/SymbolTable/coder maps); O(1) symbol clones; BTree order preserved = byte-identical outputs"
+                log (
+                    {
+                        at 2026-07-05T00:05:12.309338Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id rustfst-perf
+                title "rustfst perf: profile-driven fixes in the submodule (first: the O(n^2) rm_epsilon distance clone — 69% of pmatch2fst)"
             }
         )
         log (
