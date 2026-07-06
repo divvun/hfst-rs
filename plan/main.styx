@@ -2105,6 +2105,14 @@ children (
             {
                 id rustfst-perf
                 title "rustfst perf: profile-driven fixes in the submodule (first: the O(n^2) rm_epsilon distance clone — 69% of pmatch2fst)"
+                log (
+                    {
+                        at 2026-07-06T10:44:13.698184Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Round-2 profile + rayon assessment: remaining top = dfs_visit ~12% (SccVisitor for ACYCLIC/connect/epsilon-cycle checks; C++ pays the same DFS — further cuts are beyond-parity algorithm consolidation), determinize compute_trs ~7% (subset arithmetic), set_trs_unchecked ~4%. Rayon: no dominant parallel target on the compile side (all loop-carried sequential graph algorithms; parallelizable scraps ≤2-3% each). The rayon-shaped win is per-line-parallel hfst lookup on a read-only transducer (divvunspell pattern); requires per-thread transducer state (OL lookup mutates internal scratch via the SAFETY-ISLAND const-cast) + order-preserving collect. Proposed, not implemented."
+                    }
+                )
             }
         )
         log (
@@ -2124,5 +2132,10 @@ children (
                 after_done true
             }
         )
+    }
+
+    {
+        id idiom-islands
+        title "Eliminate the residual unsafe islands in the hfst lib (the 6 flagged from idiom4): split LookupState from Transducer (kills ol-lookup-paths *mut + as_hfst_ol_ptr const-cast + folds fdstate-self-ref into a borrowed &FdTable, and unblocks parallel lookup); substitute-alias -> store symbol key; read_in_att -> owned (drop Box::leak/from_raw); print_dot from_utf8_unchecked -> checked; input_stream 'a mut T<'a> -> scoped reborrow; pmatch locatefy/stringify -> Rc<PmatchAlphabet>. End state: hfst lib unsafe -> 0, tighten lib.rs deny(unsafe_op_in_unsafe_fn) toward deny(unsafe_code). Oracle: 152/14 hfst + 131 rustfst tests, 538MB pmhfst + errmodel byte-identical."
     }
 )

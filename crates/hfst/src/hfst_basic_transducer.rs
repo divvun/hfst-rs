@@ -253,14 +253,14 @@ pub struct HfstBasicTransducer {
     coder: SymbolCoder,
 }
 
-// Where a substituting copy of a graph is inserted (origin/target state, weight,
-// and a raw pointer to the substituting graph — the C++ stores a
-// 'const_cast' 'HfstBasicTransducer*').
+// Where a substituting copy of a graph is inserted (origin/target state and
+// weight). The C++ also cached a 'const_cast HfstBasicTransducer*' to the
+// substituting graph; here the graph is passed to 'add_substitution' at apply
+// time, so a mutate-then-read alias never has to be spelled.
 pub struct substitution_data {
     pub origin_state: HfstState,
     pub target_state: HfstState,
     pub weight: WeightType,
-    pub substituting_graph: *const HfstBasicTransducer,
 }
 
 impl substitution_data {
@@ -268,17 +268,11 @@ impl substitution_data {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.substitution-data.substitution-data-fn]
     // [spec:hfst:def:hfst-transition-graph.substitution-data.substitution-data-fn]
     // [spec:hfst:sem:hfst-transition-graph.substitution-data.substitution-data-fn]
-    pub fn new(
-        origin: HfstState,
-        target: HfstState,
-        weight: WeightType,
-        substituting: *const HfstBasicTransducer,
-    ) -> Self {
+    pub fn new(origin: HfstState, target: HfstState, weight: WeightType) -> Self {
         substitution_data {
             origin_state: origin,
             target_state: target,
             weight,
-            substituting_graph: substituting,
         }
     }
 }
@@ -3014,7 +3008,6 @@ impl HfstBasicTransducer {
             return Ok(self);
         }
 
-        let graph_ptr = graph as *const HfstBasicTransducer;
         let mut substitutions: Vec<substitution_data> = Vec::new();
 
         for s in 0..self.state_vector.len() {
@@ -3030,7 +3023,6 @@ impl HfstBasicTransducer {
                         s as HfstState,
                         self.state_vector[s][i].get_target_state(),
                         data.get_weight(),
-                        graph_ptr,
                     ));
                     old_indices.push(i);
                 }
@@ -3042,8 +3034,9 @@ impl HfstBasicTransducer {
             }
         }
 
+        // Every substitution here inserts the same graph.
         for substitution in substitutions.iter() {
-            self.add_substitution(substitution);
+            self.add_substitution(substitution, graph);
         }
         Ok(self)
     }
@@ -3054,7 +3047,7 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.add-substitution-fn]
     // [spec:hfst:def:hfst-transition-graph.add-substitution-fn]
     // [spec:hfst:sem:hfst-transition-graph.add-substitution-fn]
-    pub fn add_substitution(&mut self, sub: &substitution_data) {
+    pub fn add_substitution(&mut self, sub: &substitution_data, graph_ref: &HfstBasicTransducer) {
         // Epsilon transition to initial state of the substituting graph.
         let s = self.add_state_new();
         let epsilon_transition = HfstBasicTransition::new_symbols(
@@ -3068,12 +3061,9 @@ impl HfstBasicTransducer {
 
         let offset = s;
 
-        // SAFETY-ISLAND [substitute-alias]: the substitution map's pointed-to
-        // graph is mutated (`get_mut` + `harmonize`) after the pointer is stored
-        // and before it is read here, so a shared `&'a` held across the `&mut` of
-        // the same map fails the borrow check. The graphs are distinct from `self`
-        // (aliasing self would be UB in the C++ too); read-only deref.
-        let graph_ref = unsafe { &*sub.substituting_graph };
+        // The substituting graph is supplied by the caller *after* any
+        // harmonization has finished, so the mutate-then-read ordering the C++
+        // handled with a cached 'const_cast' pointer needs no alias here.
         // The substituting graph has its own coder; resolve its arc symbols
         // through *its* coding, then re-intern them into this graph's coder.
         let graph_coder = graph_ref.coder();
@@ -3594,7 +3584,10 @@ impl HfstBasicTransducer {
         }
 
         let mut substitutions_performed_for_symbols: StringSet = BTreeSet::new();
-        let mut substitutions: Vec<substitution_data> = Vec::new();
+        // Each substitution remembers the map key it came from; the graph itself
+        // is fetched from the map after harmonization, avoiding the C++ pointer
+        // aliased across the intervening 'get_mut'.
+        let mut substitutions: Vec<(substitution_data, HfstSymbol)> = Vec::new();
 
         for s in 0..self.state_vector.len() {
             let mut old_indices: Vec<usize> = Vec::new();
@@ -3615,16 +3608,9 @@ impl HfstBasicTransducer {
                 } else {
                     let target = self.state_vector[s][j].get_target_state();
                     let weight = self.state_vector[s][j].get_weight();
-                    // raw pointer into the map value (the substituting graph)
-                    let graph_ptr = substitution_map
-                        .get(&istr)
-                        .expect("istr was just confirmed present via contains_key")
-                        as *const HfstBasicTransducer;
-                    substitutions.push(substitution_data::new(
-                        s as HfstState,
-                        target,
-                        weight,
-                        graph_ptr,
+                    substitutions.push((
+                        substitution_data::new(s as HfstState, target, weight),
+                        istr.clone(),
                     ));
                     old_indices.push(j);
                     substitutions_performed_for_symbols.insert(istr.clone());
@@ -3655,9 +3641,13 @@ impl HfstBasicTransducer {
             }
         }
 
-        // Add the substitutions (reads the now-harmonized graphs via raw ptr).
-        for substitution in substitutions.iter() {
-            self.add_substitution(substitution);
+        // Add the substitutions, reading each now-harmonized graph back out of
+        // the map by its key (a fresh shared borrow, after all mutation).
+        for (substitution, sym) in substitutions.iter() {
+            let graph = substitution_map
+                .get(sym)
+                .expect("sym was taken from substitution_map keys");
+            self.add_substitution(substitution, graph);
         }
         Ok(self)
     }

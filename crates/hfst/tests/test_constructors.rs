@@ -156,13 +156,10 @@ fn construction_from_att<B: AlgebraBackend>() -> Result<(), hfst::error::Error> 
     // C++ uses the (FILE*, type, epsilon_symbol, linecount) constructor with
     // epsilon "@0@"; read_in_att_format_filename is the facade equivalent that
     // opens the file itself. warn_negs defaults to false.
-    let foobar_att = HfstTransducer::<B>::read_in_att_format_filename(&path, "@0@", false)
+    let mut foobar_att = HfstTransducer::<B>::read_in_att_format_filename(&path, "@0@", false)
         .expect("foobar.att fixture reads as a valid AT&T transducer");
     foobar_att.minimize()?;
-    assert!(foobar.compare_default(foobar_att)?);
-
-    // The facade reader returns a heap HfstTransducer the caller owns/deletes.
-    drop(unsafe { Box::from_raw(foobar_att as *mut HfstTransducer<B>) });
+    assert!(foobar.compare_default(&foobar_att)?);
     Ok(())
 }
 

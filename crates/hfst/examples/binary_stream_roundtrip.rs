@@ -119,8 +119,6 @@ fn read_att_facade() -> hfst::error::Result<()> {
     let expected = HfstTransducer::<StdVectorFst>::new_symbol_pair("a", "b")?;
     assert!(t.compare(&expected, false)?, "att facade: [a:b] read back");
 
-    // C++ returns a heap 'HfstTransducer&' the caller deletes; mirror with Box.
-    drop(unsafe { Box::from_raw(t as *mut HfstTransducer<StdVectorFst>) });
     let _ = std::fs::remove_file(&path);
     println!("att facade read OK");
     Ok(())

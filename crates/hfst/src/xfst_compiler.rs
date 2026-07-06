@@ -5555,9 +5555,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
         match result {
             Ok(r) => {
-                // recover ownership of the heap transducer the reader leaked (Box::leak)
-                let tmp = unsafe { *Box::from_raw(std::ptr::from_mut(r)) };
-                let net = Rc::new(RefCell::new(tmp));
+                let net = Rc::new(RefCell::new(r));
                 net.borrow_mut().optimize()?;
                 self.stack.push(net);
                 self.print_transducer_info();

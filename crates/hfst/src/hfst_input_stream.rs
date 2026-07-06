@@ -504,13 +504,10 @@ mod input_impl {
                     // consumed): peek the payload header's Weighted flag to pick
                     // the table instantiation — the ONE place the OL weightedness
                     // is data rather than type.
-                    // IDIOM-STAGE-2: the backend stream needs a '&'a mut' reader
-                    // that outlives this '&mut self' borrow (the C++ shares the
-                    // 'std::istream*'); the borrow checker can't express this
-                    // self-borrow, so extend the lifetime through a raw pointer.
-                    let reader: &'a mut PushbackReader<'a> =
-                        unsafe { &mut *std::ptr::addr_of_mut!(*self.reader) };
-                    let mut is = IStream::new(reader);
+                    // The backend stream only needs the reader for the duration
+                    // of this arm ('is' does not escape); a scoped reborrow of
+                    // the owned reader is all it takes.
+                    let mut is = IStream::new(&mut *self.reader);
                     let header = TransducerHeader::new_istream(&mut is)?;
                     // The C++ converted the payload when its weightedness
                     // disagreed with the stream tag ('t.convert(self.ty)');

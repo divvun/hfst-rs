@@ -14,7 +14,7 @@ fn main() -> hfst::error::Result<()> {
     let path = path.to_str().unwrap().to_string();
     std::fs::write(&path, att).unwrap();
 
-    let t = HfstTransducer::<StdVectorFst>::read_in_att_format_filename(
+    let mut t = HfstTransducer::<StdVectorFst>::read_in_att_format_filename(
         &path,
         "@_EPSILON_SYMBOL_@",
         false,
@@ -57,7 +57,6 @@ fn main() -> hfst::error::Result<()> {
         best.first
     );
 
-    drop(unsafe { Box::from_raw(t as *mut HfstTransducer<StdVectorFst>) });
     let _ = std::fs::remove_file(&path);
     println!("prune OK (b pruned, a kept with weight 1.0)");
     Ok(())

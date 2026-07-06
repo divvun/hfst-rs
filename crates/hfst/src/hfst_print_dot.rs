@@ -127,9 +127,10 @@ fn arc_label(old_label: &str, arc: &HfstBasicTransition, coder: &SymbolCoder) ->
     let mut l: Vec<u8> = formatted.into_bytes();
     l.truncate(DOT_MAX_LABEL_SIZE - 1);
     trim_to_valid_utf8(&mut l);
-    // C++ 'string sl(l)' copies the raw bytes; 'std::string' is not UTF-8
-    // validated, so keep the bytes verbatim.
-    let mut sl = unsafe { String::from_utf8_unchecked(l) };
+    // 'trim_to_valid_utf8' just dropped any partial trailing code point, so the
+    // bytes are valid UTF-8 by construction (C++ 'string sl(l)' kept them raw
+    // because 'std::string' isn't validated).
+    let mut sl = String::from_utf8(l).expect("trim_to_valid_utf8 leaves valid UTF-8");
     replace_all(&mut sl, "\"", "\\\"");
     sl
 }

@@ -962,11 +962,11 @@ impl<B: Backend> HfstTransducer<B> {
     /// 'HfstTransducer &read_in_att_format(const std::string &filename, type,
     ///  const std::string &epsilon_symbol, bool warn_negs)'. The target type is
     ///  the type parameter now.
-    pub fn read_in_att_format_filename<'a>(
+    pub fn read_in_att_format_filename(
         filename: &str,
         epsilon_symbol: &str,
         warn_negs: bool,
-    ) -> crate::error::Result<&'a mut HfstTransducer<B>> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         let ifile = match std::fs::File::open(filename) {
             Ok(f) => f,
             Err(_) => {
@@ -983,11 +983,11 @@ impl<B: Backend> HfstTransducer<B> {
 
     /// 'HfstTransducer &read_in_att_format(FILE *ifile, type,
     ///  const std::string &epsilon_symbol, bool warn_negs)'.
-    pub fn read_in_att_format_file<'a>(
+    pub fn read_in_att_format_file(
         ifile: &mut dyn std::io::BufRead,
         epsilon_symbol: &str,
         warn_negs: bool,
-    ) -> crate::error::Result<&'a mut HfstTransducer<B>> {
+    ) -> crate::error::Result<HfstTransducer<B>> {
         HfstTokenizer::check_utf8_correctness(epsilon_symbol);
 
         let mut foo: u32 = 0;
@@ -997,10 +997,10 @@ impl<B: Backend> HfstTransducer<B> {
             &mut foo,
             warn_negs,
         )?;
-        // C++ 'new HfstTransducer(net, type)' returned by reference; 'Box::leak'
-        // mirrors the heap allocation the caller takes ownership of / deletes.
+        // C++ 'new HfstTransducer(net, type)' returned a heap pointer the caller
+        // owned; the owned value is the idiomatic equivalent.
         let _ = foo;
-        Ok(Box::leak(Box::new(HfstTransducer::new_from_basic(&net)?)))
+        HfstTransducer::new_from_basic(&net)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.universal-pair-fn]

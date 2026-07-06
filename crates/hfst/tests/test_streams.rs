@@ -74,10 +74,10 @@ fn temp_path(stem: &str) -> String {
 //
 // The reader reads one AT&T block (up to the "--" separator) per call and throws
 // EndOfStreamException once the stream is at EOF. The facade equivalent is
-// HfstTransducer::read_in_att_format_file, which Box::leaks the heap transducer
-// the caller owns (reclaimed and dropped here, mirroring the stack object the
-// C++ destroys each iteration). A single BufReader is reused across calls so the
-// read position persists, mirroring the C++ FILE* loop.
+// HfstTransducer::read_in_att_format_file, which returns an owned transducer
+// (dropped at the end of each iteration, mirroring the stack object the C++
+// destroys). A single BufReader is reused across calls so the read position
+// persists, mirroring the C++ FILE* loop.
 //
 // Faithful structure note: the assertion lives in the catch handler, so (exactly
 // like the C++) it is only checked if a read actually throws. The loop continues
@@ -96,10 +96,8 @@ fn construction_from_att_format<B: AlgebraBackend>() {
     // until the first Err, then assert the same count the catch path checked.
     let result: std::result::Result<(), hfst::error::Error> = (|| {
         while !reader.fill_buf().map(|b| b.is_empty()).unwrap_or(true) {
-            let t = HfstTransducer::<B>::read_in_att_format_file(&mut reader, "<eps>", false)?;
-            // Reclaim the Box::leak-ed heap transducer and drop it (the C++ stack
-            // object t is destroyed at the end of each loop iteration).
-            drop(unsafe { Box::from_raw(t as *mut HfstTransducer<B>) });
+            let _t = HfstTransducer::<B>::read_in_att_format_file(&mut reader, "<eps>", false)?;
+            // '_t' (the C++ stack object) drops at the end of each iteration.
             transducers_read.set(transducers_read.get() + 1);
         }
         Ok(())
