@@ -2259,6 +2259,15 @@ children (
                 id foma-backend.output-stream
                 title "HfstOutputStream FOMA_TYPE arms: write foma transducer through the facade (empty ctor arms; generic operator<< writes header + native .foma)"
                 deps (foma-backend.tests)
+                sealed true
+                log (
+                    {
+                        at 2026-07-06T16:41:24.749689Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
         )
     }
