@@ -412,6 +412,7 @@ dependencies = [
 name = "hfst"
 version = "0.1.0"
 dependencies = [
+ "ariadne",
  "foma",
  "glob",
  "hfst-core",

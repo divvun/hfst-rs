@@ -87,6 +87,16 @@ pub struct LexcCompiler<B: AlgebraBackend> {
     /// threaded into 'compile_lexical's composes. hfst-lexc-compiler defaults this
     /// ON, toggled by its '--xerox-composition' option.
     pub(crate) xerox_composition: bool,
+    /// The lexc source currently being compiled, retained so token-level
+    /// diagnostics can render the offending snippet (ariadne). Empty until
+    /// `parse` runs.
+    pub(crate) source: String,
+    /// Label shown in diagnostics for `source` (a file name, or `"<lexc>"`).
+    pub(crate) source_name: String,
+    /// Byte span in `source` of the entry currently being walked, updated as
+    /// `compile_file` visits each spanned AST node; the anchor for
+    /// `error_at_current_token`/`warning_at_current_token`.
+    pub(crate) current_span: std::ops::Range<usize>,
 }
 // (followed by a doc-comment roster of every method + lexc-utils helper the
 //  bodies fill — public API, AST-walk driver compile/compile_file, and the
@@ -350,6 +360,9 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             parseErrors_: false,
             flag_is_epsilon: false,
             xerox_composition: false,
+            source: String::new(),
+            source_name: String::from("<lexc>"),
+            current_span: 0..0,
         };
         compiler
             .tokenizer
@@ -613,13 +626,25 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     /// The C++ free function printed Flex token positions; the AST-walk port has
     /// no hand-lexer position state, so it just writes the message to stderr.
     fn error_at_current_token(&self, format: &str) {
-        error!("{}", format);
+        crate::diag::emit(
+            &self.source_name,
+            &self.source,
+            self.current_span.clone(),
+            crate::diag::Severity::Error,
+            format,
+        );
     }
 
     // [spec:hfst:def:lexc-utils.hfst.lexc.warning-at-current-token-fn]
     // [spec:hfst:sem:lexc-utils.hfst.lexc.warning-at-current-token-fn]
     fn warning_at_current_token(&self, format: &str) {
-        warn!("{}", format);
+        crate::diag::emit(
+            &self.source_name,
+            &self.source,
+            self.current_span.clone(),
+            crate::diag::Severity::Warning,
+            format,
+        );
     }
 
     // [spec:hfst:def:lexc-utils.hfst.lexc.strip-percents-fn]
@@ -1220,7 +1245,17 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     /// after every source has been parsed. Multi-file flow: call 'parse' on each
     /// source into one compiler, then 'compile_lexical' once. Returns '&mut self'
     /// to mirror the C++ 'LexcCompiler &' chaining return.
+    /// Name shown in source-anchored diagnostics (the lexc file name). Set
+    /// before `parse` so warnings point at the right file; defaults to
+    /// `"<lexc>"`.
+    pub fn set_source_name(&mut self, name: &str) -> &mut Self {
+        self.source_name = name.to_string();
+        self
+    }
+
     pub fn parse(&mut self, lexc_source: &str) -> crate::error::Result<&mut Self> {
+        // Retain the source so diagnostics can render the offending snippet.
+        self.source = lexc_source.to_string();
         match nfst_lexc::parse(lexc_source) {
             Ok(ast) => {
                 self.compile_file(&ast.value)?;
@@ -1252,16 +1287,20 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     /// 'handle_string_pair_entry' / 'handle_regexp_entry').
     pub fn compile_file(&mut self, ast: &LexcFile) -> crate::error::Result<()> {
         for mc in &ast.multichars {
+            self.current_span = mc.span.range.clone();
             self.add_alphabet(&mc.value.0);
         }
         for nf in &ast.noflags {
+            self.current_span = nf.span.range.clone();
             self.add_no_flag(&nf.value.0);
         }
         for def in &ast.definitions {
+            self.current_span = def.span.range.clone();
             let body = nfst_xre::pretty_print(&def.value.body);
             self.add_xre_definition(&def.value.name, &body);
         }
         for lex in &ast.lexicons {
+            self.current_span = lex.span.range.clone();
             // mirror the C++ titlecase-'Lexicon' warning (lexc-parser.yy
             // LEXICON_START_WRONG_CASE), emitted before the lexicon is set.
             if lex.value.case_warning {
@@ -1276,6 +1315,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             }
             self.set_current_lexicon_name(&lex.value.name);
             for entry in &lex.value.entries {
+                self.current_span = entry.span.range.clone();
                 let e = &entry.value;
                 let weight = weight_from_gloss(e.gloss.as_deref());
                 match &e.spec {

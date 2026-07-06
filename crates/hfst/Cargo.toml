@@ -21,6 +21,7 @@ nfst-xfst = { workspace = true }
 foma = { path = "../../../foma/crates/foma", optional = true }
 thiserror = "2.0.18"
 tracing = "0.1.44"
+ariadne = "0.5"
 
 [features]
 foma = ["dep:foma"]

@@ -341,6 +341,7 @@ unsafe fn lexc_streams<B: hfst::backend::AlgebraBackend>(
                 let mut source = String::new();
                 use std::io::Read;
                 let _ = std::io::stdin().read_to_string(&mut source);
+                lexc.set_source_name(&lexcfilenames[i]);
                 if let Err(e) = lexc.parse(&source) {
                     error(1, 0, &format!("{e}"));
                     return 1;
@@ -349,6 +350,7 @@ unsafe fn lexc_streams<B: hfst::backend::AlgebraBackend>(
                 // Read the named file's contents into a string (mirroring the
                 // C++ 'lexc.parse(filename)').
                 let source = std::fs::read_to_string(&lexcfilenames[i]).unwrap_or_default();
+                lexc.set_source_name(&lexcfilenames[i]);
                 if let Err(e) = lexc.parse(&source) {
                     error(1, 0, &format!("{e}"));
                     return 1;

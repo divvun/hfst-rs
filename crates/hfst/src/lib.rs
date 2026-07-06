@@ -34,6 +34,7 @@ pub mod convert_log_weight_transducer;
 pub mod convert_ol_transducer;
 pub mod convert_transducer_format;
 pub mod convert_tropical_weight_transducer;
+pub mod diag;
 pub mod error;
 pub mod expand_equivalences;
 pub mod generate_model_forms;
