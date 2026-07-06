@@ -2199,18 +2199,45 @@ children (
                 id foma-backend.io
                 title "Stream I/O: read .foma (fill hfst_input_stream unimplemented!, gzip) + Backend::write .foma output arm"
                 deps (foma-backend.convert)
+                sealed true
+                log (
+                    {
+                        at 2026-07-06T16:09:39.380577Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
                 id foma-backend.algebra
                 title "AlgebraBackend over foma constructions/determinize/minimize (unweighted ops; the tropical-blowup fix)"
                 deps (foma-backend.convert)
+                sealed true
+                log (
+                    {
+                        at 2026-07-06T16:09:39.432369Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
                 id foma-backend.lookup
                 title "LookupBackend + path extraction over foma::apply"
                 deps (foma-backend.convert)
+                sealed true
+                log (
+                    {
+                        at 2026-07-06T16:09:39.474168Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
