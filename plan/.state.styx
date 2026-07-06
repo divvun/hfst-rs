@@ -96,4 +96,5 @@ assertions (
     {id foma-backend.tests, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:30:52.612506Z}
     {id foma-backend.output-stream, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:41:24.749689Z}
     {id hfst-write-rename, kind @complete, author "brendan@necessary.nu", at 2026-07-06T17:18:32.465522Z}
+    {id sme-validation-fixes, kind @complete, author "brendan@necessary.nu", at 2026-07-06T20:30:16.960378Z}
 )

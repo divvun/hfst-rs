@@ -342,3 +342,28 @@ fn strip_hfst3_headers_drops_trailing_partial_header() {
     strip_hfst3_headers(&b"abcHFST"[..], &mut output).unwrap();
     assert_eq!(output, b"abc");
 }
+
+// --- Empty-stream diagnostics (librarify regression). A 0-byte input reports
+// its own EmptyTransducerStream error rather than falling through header/type
+// probing to the generic "not a transducer stream: transducer type not
+// recognised", which was misleading when a stale 0-byte artifact reached a
+// tool. No symbols are read on this path, so no serialization lock is needed.
+#[test]
+fn empty_file_reports_empty_transducer_stream() {
+    use hfst::error::ErrorKind;
+    let path = temp_path("hfst_empty_stream_test.hfst");
+    std::fs::write(&path, b"").unwrap();
+
+    let err = HfstInputStream::new_filename(&path)
+        .err()
+        .expect("empty file must error");
+    assert_eq!(err.kind, ErrorKind::EmptyTransducerStream);
+    // The context names the file and the 0-byte cause.
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("is empty (0 bytes)"),
+        "unexpected message: {msg}"
+    );
+
+    std::fs::remove_file(&path).ok();
+}

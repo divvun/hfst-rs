@@ -546,13 +546,14 @@ fn get_symbols(t: &HfstBasicTransducer, known_symbols: &mut SymbolSet) {
 // [spec:hfst:def:hfst-pair-test.strip-space-fn]
 // [spec:hfst:sem:hfst-pair-test.strip-space-fn]
 fn strip_space(line: &str) -> String {
-    let first = line.find(|c: char| c != ' ' && c != '\t');
-    let first_non_white_space_pos = match first {
-        None => return String::new(),
-        Some(p) => p,
-    };
-    let last_non_white_space_pos = line.rfind(|c: char| c != ' ' && c != '\t').unwrap();
-    line[first_non_white_space_pos..=last_non_white_space_pos].to_string()
+    // C++ strips leading/trailing ' '/'\t' via find_first/last_not_of + an
+    // inclusive substr. Ported literally that panics on UTF-8: rfind on a char
+    // predicate yields the START byte of the last non-space char, so an
+    // inclusive byte slice `..=last` cuts through a trailing multi-byte char
+    // (e.g. 'ç') mid-codepoint. trim_matches is the char-boundary-safe
+    // equivalent with identical semantics (empty in → empty out).
+    line.trim_matches(|c: char| c == ' ' || c == '\t')
+        .to_string()
 }
 
 // [spec:hfst:def:hfst-pair-test.is-positive-test-line-fn]

@@ -2260,7 +2260,6 @@ children (
                 id foma-backend.output-stream
                 title "HfstOutputStream FOMA_TYPE arms: write foma transducer through the facade (empty ctor arms; generic operator<< writes header + native .foma)"
                 deps (foma-backend.tests)
-                sealed true
                 log (
                     {
                         at 2026-07-06T16:41:24.749689Z
@@ -2276,13 +2275,25 @@ children (
     {
         id hfst-write-rename
         title "Rename operator_shl/operator_shl_os (C++ operator<< transliterations) -> HfstOutputStream::write / free write_to; monomorphise write_to (kill &mut dyn Write)"
-        sealed true
         log (
             {
                 at 2026-07-06T17:18:32.465522Z
                 author "brendan@necessary.nu"
                 kind @status
                 text "Todo → Done (nplan complete)"
+            }
+        )
+    }
+
+    {
+        id sme-validation-fixes
+        title "lang-sme end-to-end validation fixes: (1) twolc compiles an empty/standalone-0 context to real epsilon HFST_EPSILON instead of the __HFST_TWOLC_0 placeholder (was over-restricting any rule with an open context side + epsilon center, e.g. h:0 &lt;=&gt; _ b) — phonology.twolc pair-test now passes + full phonology.hfst is hfst-compare equivalent to C++; (2) hfst-pair-test strip_space UTF-8 char-boundary panic (rfind on char predicate → inclusive byte slice through trailing multi-byte char); (3) HfstInputStream reports EmptyTransducerStream for 0-byte input instead of the generic not-a-transducer-stream. Surfaced by building divvun/lang-sme with the Rust toolchain."
+        log (
+            {
+                at 2026-07-06T20:30:16.960378Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan_complete)"
             }
         )
     }

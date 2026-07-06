@@ -93,6 +93,8 @@ pub enum ErrorKind {
     TransducerIsCyclic,
     #[error("not a transducer stream")]
     NotTransducerStream,
+    #[error("empty transducer stream")]
+    EmptyTransducerStream,
     #[error("file is in gzip format")]
     FileIsInGzFormat,
     #[error("not valid AT&T format")]

@@ -1020,6 +1020,26 @@ mod input_impl {
                 input_stream_active: true,
             };
 
+            // A fresh stream sets its eofbit only once a read runs past the end
+            // (mirroring C++ 'istream::eof'), so 'stream_eof()' never fires on a
+            // still-unread 0-byte input — it would fall through to
+            // 'guess_fst_type' and surface as the generic "not a transducer
+            // stream: transducer type not recognised". Probe the first byte to
+            // force the eof state and special-case an empty stream with a clear
+            // error. 'get()' sets the eofbit at end of stream; test it BEFORE
+            // ungetting, since 'unget()' clears the eofbit again.
+            let first = this.pbr().get();
+            if this.pbr().eof {
+                if this.filename.is_empty() {
+                    crate::bail!(EmptyTransducerStream, "input stream is empty (0 bytes)");
+                }
+                crate::bail!(
+                    EmptyTransducerStream,
+                    format!("'{}' is empty (0 bytes)", this.filename)
+                );
+            }
+            this.pbr().unget(first);
+
             if this.stream_eof() {
                 crate::bail!(EndOfStream);
             }

@@ -3747,7 +3747,18 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                     OtherSymbolTransducer::new_pair(cfg, &up, &lo)?
                 }
             }
-            TwolcRegex::Epsilon => OtherSymbolTransducer::new_symbol(cfg, TWOLC_EPSILON)?,
+            // A standalone '0' regexp (an empty context side, or an explicit
+            // '0') denotes the EMPTY STRING, so it must be a real epsilon
+            // (HFST_EPSILON) — C++ htwolcpre3's 'RE_LIST: /* empty */' builds
+            // 'OtherSymbolTransducer(HFST_EPSILON)'. Using the two-level zero
+            // placeholder 'TWOLC_EPSILON' (__HFST_TWOLC_0) instead makes the empty
+            // side a literal symbol that only harmonizes when a 0:0 pair happens
+            // to be in the alphabet; otherwise 'get_context' yields an unmatchable
+            // context and the rule over-restricts (the center is forbidden
+            // everywhere). TWOLC_EPSILON stays correct for a PAIR side such as
+            // 'h:0' (handled by 'symbol_of'/'new_pair'), which is the realized
+            // zero, not an empty string.
+            TwolcRegex::Epsilon => OtherSymbolTransducer::new_symbol(cfg, HFST_EPSILON)?,
             TwolcRegex::Any => OtherSymbolTransducer::new_symbol(cfg, TWOLC_UNKNOWN)?,
             TwolcRegex::Group(inner) => self.eval_regex_with_vars(cfg, inner, vvm)?,
             TwolcRegex::Optional(inner) => {
