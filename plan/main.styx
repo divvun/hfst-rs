@@ -2146,4 +2146,51 @@ children (
             }
         )
     }
+
+    {
+        id foma-backend
+        title "Native foma backend behind 'foma' feature: unweighted algebra + .foma I/O (path-dep to the foma crate; the plan's fix for the tropical determinize blowup)"
+        children (
+            {
+                id foma-backend.spec
+                title "Spec: draft target-side rules for the foma backend (FomaTransducer, convert, Backend/AlgebraBackend/LookupBackend, .foma streams)"
+            }
+
+            {
+                id foma-backend.seam
+                title "Feature seam: 'foma' Cargo feature + path-dep, FomaTransducer wrapper, availability flip, AnyTransducer::Foma variant + any_delegate arm"
+                deps (foma-backend.spec)
+            }
+
+            {
+                id foma-backend.convert
+                title "to_basic/from_basic: foma Fsm <-> HfstBasicTransducer (sigma nums<->symbols, EPSILON/UNKNOWN/IDENTITY, finality, weight 0.0)"
+                deps (foma-backend.seam)
+            }
+
+            {
+                id foma-backend.io
+                title "Stream I/O: read .foma (fill hfst_input_stream unimplemented!, gzip) + Backend::write .foma output arm"
+                deps (foma-backend.convert)
+            }
+
+            {
+                id foma-backend.algebra
+                title "AlgebraBackend over foma constructions/determinize/minimize (unweighted ops; the tropical-blowup fix)"
+                deps (foma-backend.convert)
+            }
+
+            {
+                id foma-backend.lookup
+                title "LookupBackend + path extraction over foma::apply"
+                deps (foma-backend.convert)
+            }
+
+            {
+                id foma-backend.tests
+                title "Tests: .foma round-trip, algebra parity vs openfst on unweighted cases, pmatch-blowup case, lookup parity"
+                deps (foma-backend.algebra foma-backend.io foma-backend.lookup)
+            }
+        )
+    }
 )
