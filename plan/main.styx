@@ -2154,6 +2154,15 @@ children (
             {
                 id foma-backend.spec
                 title "Spec: draft target-side rules for the foma backend (FomaTransducer, convert, Backend/AlgebraBackend/LookupBackend, .foma streams)"
+                sealed true
+                log (
+                    {
+                        at 2026-07-06T14:41:23.517029Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
