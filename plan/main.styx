@@ -2275,5 +2275,14 @@ children (
     {
         id hfst-write-rename
         title "Rename operator_shl/operator_shl_os (C++ operator<< transliterations) -> HfstOutputStream::write / free write_to; monomorphise write_to (kill &mut dyn Write)"
+        sealed true
+        log (
+            {
+                at 2026-07-06T17:18:32.465522Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
     }
 )
