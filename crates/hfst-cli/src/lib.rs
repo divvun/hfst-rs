@@ -20,8 +20,9 @@
 // per transducer into a generic body.
 // -----------------------------------------------------------------------------
 
-/// Dispatch an expression over all four 'AnyTransducer' variants (each arm
-/// monomorphizes separately).
+/// Dispatch an expression over all 'AnyTransducer' variants (each arm
+/// monomorphizes separately). The 'Foma' arm is present only under the `foma`
+/// feature, matching the cfg-gated enum variant.
 macro_rules! for_any {
     ($any:expr, $t:ident => $body:expr) => {
         match $any {
@@ -29,6 +30,8 @@ macro_rules! for_any {
             hfst::hfst_transducer::AnyTransducer::Log($t) => $body,
             hfst::hfst_transducer::AnyTransducer::OlW($t) => $body,
             hfst::hfst_transducer::AnyTransducer::OlU($t) => $body,
+            #[cfg(feature = "foma")]
+            hfst::hfst_transducer::AnyTransducer::Foma($t) => $body,
         }
     };
 }

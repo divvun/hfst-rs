@@ -2269,6 +2269,19 @@ children (
                     }
                 )
             }
+
+            {
+                id foma-backend.cli
+                title "CLI wiring for the foma backend: add a 'foma' feature to hfst-cli (forwards hfst/foma); handle the cfg-gated AnyTransducer::Foma variant in the for_any! dispatch macro + the one bespoke match (fst2strings) so the tools compile+run with foma; add HfstTransducer::to_foma (basic-&gt;foma, the runtime analogue of C++ HfstTransducer::convert's FOMA_TYPE arm) and a FOMA_TYPE arm in redirect_converting so tools that compile-at-tropical-and-convert-on-write (regexp2fst et al.) can emit --format=foma. Smoke-tested: regexp2fst --format=foma -&gt; summarize reports foma -&gt; lookup round-trips."
+                log (
+                    {
+                        at 2026-07-06T20:47:55.472649Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
+            }
         )
     }
 

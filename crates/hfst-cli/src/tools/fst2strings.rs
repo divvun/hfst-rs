@@ -488,6 +488,8 @@ unsafe fn process_stream(
                 hfst::hfst_transducer::AnyTransducer::Log(t) => process_one_algebra(t, outstream),
                 hfst::hfst_transducer::AnyTransducer::OlW(t) => process_one_ol(t, outstream),
                 hfst::hfst_transducer::AnyTransducer::OlU(t) => process_one_ol(t, outstream),
+                #[cfg(feature = "foma")]
+                hfst::hfst_transducer::AnyTransducer::Foma(t) => process_one_algebra(t, outstream),
             };
             if code != 0 {
                 return code;

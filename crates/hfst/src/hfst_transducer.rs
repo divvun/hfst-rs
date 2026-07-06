@@ -1211,6 +1211,25 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         Ok(t)
     }
 
+    /// Convert to a native foma transducer. The runtime-type analogue of the
+    /// FOMA_TYPE arm of C++ `HfstTransducer::convert`: go through the basic
+    /// transducer (`hfst_basic_transducer_to_foma`) and wrap the result. Used by
+    /// the CLI to write a compiled (algebra-backend) transducer to a foma stream.
+    #[cfg(feature = "foma")]
+    pub fn to_foma(
+        &self,
+    ) -> crate::error::Result<HfstTransducer<crate::backend_foma::FomaTransducer>> {
+        let net = self.get_basic_transducer()?;
+        let foma =
+            <crate::backend_foma::FomaTransducer as crate::backend::Backend>::from_basic(&net)?;
+        let mut t = HfstTransducer::wrap(foma);
+        t.name = self.name.clone();
+        t.props = self.props.clone();
+        t.anonymous = self.anonymous;
+        t.is_trie = self.is_trie;
+        Ok(t)
+    }
+
     // -------------------------------------------------------------------------
     // ----- Construction constructors (define_transducer_* arms) -----
     // -------------------------------------------------------------------------

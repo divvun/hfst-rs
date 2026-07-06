@@ -368,6 +368,11 @@ pub fn redirect_converting<B: hfst::backend::AlgebraBackend>(
             )?;
             outstream.redirect(&mut ol)?;
         }
+        #[cfg(feature = "foma")]
+        ImplementationType::FOMA_TYPE => {
+            let mut foma = t.to_foma()?;
+            outstream.redirect(&mut foma)?;
+        }
         _ => {
             outstream.redirect(t)?;
         }
