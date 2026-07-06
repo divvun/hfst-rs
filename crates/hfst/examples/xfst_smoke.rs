@@ -17,12 +17,13 @@ fn main() {
 
     let stack = c.get_stack();
     assert!(!stack.is_empty(), "xfst script left an empty stack");
-    let states = stack.last().unwrap().borrow().number_of_states();
+    let stack_len = stack.len();
+    let top = *stack.last().unwrap();
+    let states = c.net(top).number_of_states();
     assert!(states >= 1, "expected a non-empty transducer on the stack");
 
     println!(
         "xfst OK: regex a:b / regex c:d / union net -> stack[{}], top {} states",
-        stack.len(),
-        states
+        stack_len, states
     );
 }

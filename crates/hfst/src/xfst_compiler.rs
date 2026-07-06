@@ -13,10 +13,8 @@
 //!
 //! The C++ source held raw 'HfstTransducer*' that it freely aliased (the stack,
 //! 'names'/'definitions' and 'print_name's pointer-identity check). The port
-//! expresses that shared ownership with 'NetRef = Rc<RefCell<HfstTransducer>>'
-//! and pointer identity with 'Rc::ptr_eq'. The only remaining 'unsafe' wraps C
-//! FFI (libc / open_file / HfstInputStream) and ownership recovery from
-//! pointer-returning HFST APIs.
+//! expresses that shared ownership with 'NetId' indices into the compiler's
+//! push-only 'nets' arena and pointer identity with 'NetId' equality.
 #![allow(dead_code)]
 #![allow(unused_variables)]
 #![allow(unused_mut)]
@@ -24,9 +22,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
-use std::rc::Rc;
 
 use crate::backend::{AlgebraBackend, Backend};
 use crate::hfst_basic_transducer::{HfstBasicTransducer, HfstBasicTransitions};
@@ -112,9 +108,11 @@ pub type StringMap = BTreeMap<String, String>;
 // A shared, mutable handle to a stack/definition transducer. The C++ xfst
 // compiler holds raw 'HfstTransducer*' that it freely aliases (e.g. 'name'
 // records the stack top in 'names' while it stays on the stack, and
-// 'print_name' matches by pointer identity). 'Rc<RefCell<..>>' is the safe
-// expression of that shared ownership; pointer identity becomes 'Rc::ptr_eq'.
-pub type NetRef<B> = Rc<RefCell<HfstTransducer<B>>>;
+// 'print_name' matches by pointer identity). A 'NetId' index into the
+// compiler's push-only 'nets' arena is the safe expression of that shared
+// ownership; pointer identity becomes 'NetId' equality.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct NetId(usize);
 
 // @brief Xfst compiler contains all the methods and variables a session of
 // XFST script parser needs.
@@ -134,13 +132,13 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     /* The lexc compiler. */
     pub lexc: LexcCompiler<B>,
     pub original_definitions: BTreeMap<String, String>,
-    pub definitions: BTreeMap<String, NetRef<B>>,
+    pub definitions: BTreeMap<String, NetId>,
     pub original_function_definitions: BTreeMap<String, String>,
     pub function_definitions: BTreeMap<String, String>,
     pub function_arguments: BTreeMap<String, u32>,
     // std::stack mirror: top = last element; pop = pop_back, push = push_back.
-    pub stack: Vec<NetRef<B>>,
-    pub names: BTreeMap<String, NetRef<B>>,
+    pub stack: Vec<NetId>,
+    pub names: BTreeMap<String, NetId>,
     pub aliases: BTreeMap<String, String>,
     pub variables: BTreeMap<String, String>,
     pub properties: BTreeMap<String, String>,
@@ -151,7 +149,7 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     called. The xfst lexer often needs to parse regexps in order to determine
     where they end before giving them to the actual parser. By storing the result
     in this variable, there is no need to parse a regexp again on the parse level. */
-    pub latest_regex_compiled: Option<NetRef<B>>,
+    pub latest_regex_compiled: Option<NetId>,
     // Whether the script has encountered the quit command ('quit', 'exit', etc.).
     // Needed in interactive mode, where user input is read line by line.
     pub quit_requested: bool,
@@ -165,6 +163,46 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     globals in HfstTransducer.cc). Threaded into the transducer ops this compiler
     invokes. */
     pub engine_config: crate::hfst_transducer::EngineConfig,
+    // Push-only arena backing every 'NetId'. Slots are never individually
+    // freed (a net dropped from the stack/definitions stays here, leaked until
+    // the compiler drops); this preserves the raw-pointer aliasing the C++
+    // relied on.
+    nets: Vec<HfstTransducer<B>>,
+}
+
+impl<B: AlgebraBackend> XfstCompiler<B> {
+    // Resolve a 'NetId' to the transducer it names in the arena.
+    pub fn net(&self, id: NetId) -> &HfstTransducer<B> {
+        &self.nets[id.0]
+    }
+    // Resolve a 'NetId' to the transducer it names in the arena, mutably.
+    fn net_mut(&mut self, id: NetId) -> &mut HfstTransducer<B> {
+        &mut self.nets[id.0]
+    }
+    // Push a transducer into the arena and return the 'NetId' naming it.
+    fn alloc_net(&mut self, t: HfstTransducer<B>) -> NetId {
+        let id = NetId(self.nets.len());
+        self.nets.push(t);
+        id
+    }
+    // Two disjoint mutable references into the arena. 'a' and 'b' must name
+    // distinct slots (as the stack always holds distinct 'NetId's); this
+    // replaces the two-cell 'borrow_mut()' pair the 'Rc<RefCell<..>>' model
+    // allowed when 'result' and 't' were separate cells.
+    fn net_pair_mut(
+        &mut self,
+        a: NetId,
+        b: NetId,
+    ) -> (&mut HfstTransducer<B>, &mut HfstTransducer<B>) {
+        assert!(a.0 != b.0, "net_pair_mut requires distinct NetIds");
+        if a.0 < b.0 {
+            let (lo, hi) = self.nets.split_at_mut(b.0);
+            (&mut lo[a.0], &mut hi[0])
+        } else {
+            let (lo, hi) = self.nets.split_at_mut(a.0);
+            (&mut hi[0], &mut lo[b.0])
+        }
+    }
 }
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
@@ -203,6 +241,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             fail_flag: false,
             restricted_mode: false,
             engine_config: crate::hfst_transducer::EngineConfig::default(),
+            nets: Vec::new(),
         };
         c.xre.set_expand_definitions(true);
         c.xre.set_verbosity(c.verbose);
@@ -706,11 +745,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     break;
                 }
             };
-            let t: NetRef<B> = Rc::new(RefCell::new(t));
+            let t: NetId = self.alloc_net(t);
 
             // Add transducer as definition..
             if definitions {
-                let t_type = t.borrow().get_type();
+                let t_type = self.net(t).get_type();
                 if t_type == ImplementationType::HFST_OL_TYPE
                     || t_type == ImplementationType::HFST_OLW_TYPE
                 {
@@ -735,8 +774,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // @brief Add a transducer definition with name given by 't.get_name()'
     // and value \a t.
-    fn add_loaded_definition(&mut self, t: NetRef<B>) -> &mut Self {
-        let def_name = t.borrow().get_name();
+    fn add_loaded_definition(&mut self, t: NetId) -> &mut Self {
+        let def_name = self.net(t).get_name();
         if def_name.is_empty() {
             warn!("loaded transducer definition has no name, skipping it");
             return self;
@@ -746,7 +785,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 "a definition named '{}' already exists, overwriting it",
                 def_name
             );
-            // overwriting drops the previous Rc.
+            // the previous net stays in the arena; the map entry is replaced.
             self.definitions.remove(&def_name);
         }
         self.definitions.insert(def_name, t);
@@ -859,7 +898,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.top-fn]
     // @brief The topmost transducer in the stack.
     // If empty, print a warning message and return NULL.
-    fn top(&mut self) -> Option<NetRef<B>> {
+    fn top(&mut self) -> Option<NetId> {
         if self.stack.is_empty() {
             // EMPTY_STACK
             warn!("Empty stack.");
@@ -867,9 +906,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return None;
         }
-        let retval = self.stack.last().unwrap().clone();
+        let retval = *self.stack.last().unwrap();
         {
-            let t = retval.borrow();
+            let t = self.net(retval);
             if t.get_type() == ImplementationType::HFST_OL_TYPE
                 || t.get_type() == ImplementationType::HFST_OLW_TYPE
             {
@@ -950,9 +989,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     fn print_transducer_info(&mut self) -> &mut Self {
         if self.verbose && !self.stack.is_empty() {
-            let top = self.stack.last().unwrap().clone();
+            let top = *self.stack.last().unwrap();
             {
-                let t = top.borrow();
+                let t = self.net(top);
                 if t.get_type() != B::TYPE {
                     return self;
                 }
@@ -1467,13 +1506,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // The XreCompiler::compile string entry point parses then walks the tree;
     // here the tree is already parsed, so we walk it directly and optimize,
     // returning a shared handle just like xre.compile.
-    fn compile_spanned_xre(
-        &mut self,
-        xre: &nfst_xre::SpannedXre,
-    ) -> crate::error::Result<NetRef<B>> {
+    fn compile_spanned_xre(&mut self, xre: &nfst_xre::SpannedXre) -> crate::error::Result<NetId> {
         let mut t = self.xre.eval(xre)?;
         t.optimize()?;
-        Ok(Rc::new(RefCell::new(t)))
+        Ok(self.alloc_net(t))
     }
 
     // @brief Dispatch a parsed PrintCmd to the corresponding print* method,
@@ -1983,12 +2019,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // @brief Print labels in network @a name
     pub fn print_labels_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
-        match self.definitions.get(name).cloned() {
+        match self.definitions.get(name).copied() {
             None => {
                 let _ = write!(oss, "no such definition '{}'\n", name);
             }
             Some(tr) => {
-                return self.print_labels_tr(oss, &tr.borrow());
+                let net = self.net(tr).clone();
+                return self.print_labels_tr(oss, &net);
             }
         }
         self.flush();
@@ -2002,7 +2039,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return self;
         };
-        return self.print_labels_tr(oss, &topmost.borrow());
+        let net = self.net(topmost).clone();
+        return self.print_labels_tr(oss, &net);
     }
 
     // @brief Print label count
@@ -2013,7 +2051,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
 
         let mut label_map: BTreeMap<(Symbol, Symbol), u32> = BTreeMap::new();
-        let fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
+        let fsm = HfstBasicTransducer::new_from_transducer(self.net(topmost));
 
         for it in fsm.iter() {
             for tr_it in it.iter() {
@@ -2114,7 +2152,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
 
         let mut paths = HfstTwoLevelPaths::new();
-        self.shortest_string(&topmost.borrow(), &mut paths)?;
+        let net = self.net(topmost).clone();
+        self.shortest_string(&net, &mut paths)?;
 
         if paths.len() == 0 {
             print!("transducer is empty\n");
@@ -2137,7 +2176,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
 
         let mut paths = HfstTwoLevelPaths::new();
-        self.shortest_string(&topmost.borrow(), &mut paths)?;
+        let net = self.net(topmost).clone();
+        self.shortest_string(&net, &mut paths)?;
 
         if paths.len() == 0 {
             print!("transducer is empty\n");
@@ -2195,9 +2235,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let Some(temp) = self.top() else {
                 return Ok(self);
             };
-            tmp = HfstTransducer::new_from_transducer(&temp.borrow());
+            tmp = HfstTransducer::new_from_transducer(self.net(temp));
         } else {
-            match self.definitions.get(name).cloned() {
+            match self.definitions.get(name).copied() {
                 None => {
                     let _ = write!(oss, "no such definition '{}'\n", name);
                     self.flush();
@@ -2205,7 +2245,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     return Ok(self);
                 }
                 Some(it) => {
-                    tmp = HfstTransducer::new_from_transducer(&it.borrow());
+                    tmp = HfstTransducer::new_from_transducer(self.net(it));
                 }
             }
         }
@@ -2242,9 +2282,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let Some(temp) = self.top() else {
                 return Ok(self);
             };
-            tmp = HfstTransducer::new_from_transducer(&temp.borrow());
+            tmp = HfstTransducer::new_from_transducer(self.net(temp));
         } else {
-            match self.definitions.get(name).cloned() {
+            match self.definitions.get(name).copied() {
                 None => {
                     let _ = write!(oss, "no such definition '{}\n", name);
                     self.flush();
@@ -2252,7 +2292,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     return Ok(self);
                 }
                 Some(it) => {
-                    tmp = HfstTransducer::new_from_transducer(&it.borrow());
+                    tmp = HfstTransducer::new_from_transducer(self.net(it));
                 }
             }
         }
@@ -2282,14 +2322,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         number: u32,
         oss: &mut dyn std::io::Write,
     ) -> crate::error::Result<&mut Self> {
-        let tmp: NetRef<B>;
+        let tmp: NetId;
         if name.is_empty() {
             let Some(t) = self.top() else {
                 return Ok(self);
             };
             tmp = t;
         } else {
-            match self.definitions.get(name).cloned() {
+            match self.definitions.get(name).copied() {
                 None => {
                     let _ = write!(oss, "no such definition '{}'\n", name);
                     self.flush();
@@ -2303,7 +2343,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         let mut paths = HfstTwoLevelPaths::new();
-        tmp.borrow()
+        self.net(tmp)
             .extract_random_paths(&mut paths, number as i32)?;
         self.print_paths_two(&paths, oss, -1);
         self.flush();
@@ -2318,13 +2358,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return self;
         };
 
-        let entries: Vec<(String, NetRef<B>)> = self
-            .names
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        let entries: Vec<(String, NetId)> =
+            self.names.iter().map(|(k, v)| (k.clone(), *v)).collect();
         for (first, second) in entries.iter() {
-            if Rc::ptr_eq(&tmp, second) {
+            if tmp == *second {
                 let _ = write!(oss, "Name {}\n", first);
                 self.flush();
                 self.prompt();
@@ -2368,7 +2405,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     return self;
                 }
             };
-            crate::hfst_print_dot::print_dot_os(&mut dotfile, &mut *tmp.borrow_mut());
+            crate::hfst_print_dot::print_dot_os(&mut dotfile, self.net_mut(tmp));
         }
         if false || self.verbose {
             debug!("Wrote net, closing file and converting into png format.");
@@ -2399,7 +2436,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        let basic = HfstBasicTransducer::new_from_transducer(&tmp.borrow());
+        let basic = HfstBasicTransducer::new_from_transducer(self.net(tmp));
         basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
         self.flush();
         self.prompt();
@@ -2412,7 +2449,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         name: &str,
         oss: &mut dyn std::io::Write,
     ) -> crate::error::Result<&mut Self> {
-        match self.definitions.get(name).cloned() {
+        match self.definitions.get(name).copied() {
             None => {
                 error!("no such defined network: '{}'", name);
                 self.prompt();
@@ -2420,11 +2457,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
             Some(it) => {
                 if self.variables["print-sigma"] == "ON" {
-                    self.stack.push(it.clone());
+                    self.stack.push(it);
                     self.print_sigma(oss, false /*do not prompt*/)?;
                     self.stack.pop();
                 }
-                let basic = HfstBasicTransducer::new_from_transducer(&it.borrow());
+                let basic = HfstBasicTransducer::new_from_transducer(self.net(it));
                 basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
                 self.flush();
                 self.prompt();
@@ -2443,10 +2480,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        let alpha = t.borrow().get_alphabet()?;
+        let alpha = self.net(t).get_alphabet()?;
 
         // find out whether unknown or identity is used in transitions
-        let (unknown, identity) = is_unknown_or_identity_used_in_transducer(&t.borrow());
+        let (unknown, identity) = is_unknown_or_identity_used_in_transducer(self.net(t));
 
         self.print_alphabet(&alpha, unknown, identity, oss);
         if prompt {
@@ -2485,7 +2522,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return self;
         };
-        let fsm = HfstBasicTransducer::new_from_transducer(&tmp.borrow());
+        let fsm = HfstBasicTransducer::new_from_transducer(self.net(tmp));
         fsm.write_in_att_format_os(oss, self.variables["print-weight"] == "ON");
         self.flush();
         self.prompt();
@@ -2531,8 +2568,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return self;
         }
-        let t = self.stack.last().unwrap().clone();
-        t.borrow_mut().set_name(name);
+        let t = *self.stack.last().unwrap();
+        self.net_mut(t).set_name(name);
         self.names.insert(name.to_string(), t);
         self.print_transducer_info();
         self.prompt();
@@ -2547,7 +2584,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Get current stack of compiler
-    pub fn get_stack(&self) -> &Vec<NetRef<B>> {
+    pub fn get_stack(&self) -> &Vec<NetId> {
         return &self.stack;
     }
 
@@ -2880,8 +2917,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
 
         // Variables needed to find out some properties about the transducer
-        let mut tmp_lower = HfstTransducer::new_from_transducer(&topmost.borrow());
-        let mut tmp_upper = HfstTransducer::new_from_transducer(&topmost.borrow());
+        let mut tmp_lower = HfstTransducer::new_from_transducer(self.net(topmost));
+        let mut tmp_upper = HfstTransducer::new_from_transducer(self.net(topmost));
         tmp_lower.output_project()?.remove_epsilons()?;
         tmp_upper.input_project()?.remove_epsilons()?;
 
@@ -2976,9 +3013,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let Some(tmp) = self.top() else {
                 return Ok(self);
             };
-            temp = HfstTransducer::new_from_transducer(&tmp.borrow());
+            temp = HfstTransducer::new_from_transducer(self.net(tmp));
         } else {
-            match self.definitions.get(name).cloned() {
+            match self.definitions.get(name).copied() {
                 None => {
                     let _ = write!(oss, "no such definition '{}'\n", name);
                     self.flush();
@@ -2986,7 +3023,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     return Ok(self);
                 }
                 Some(it) => {
-                    temp = HfstTransducer::new_from_transducer(&it.borrow());
+                    temp = HfstTransducer::new_from_transducer(self.net(it));
                 }
             }
         }
@@ -3587,7 +3624,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         if self.latest_regex_compiled.is_some() {
-            match self.xre.compile(xre).map(|t| Rc::new(RefCell::new(t))) {
+            let compiled = self.xre.compile(xre);
+            let compiled = compiled.map(|t| self.alloc_net(t));
+            match compiled {
                 Some(compiled) => {
                     self.define_transducer(name, compiled);
                     self.original_definitions
@@ -3625,13 +3664,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.define-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.define-fn]
     // @brief Define transducer
-    pub fn define_transducer(&mut self, name: &str, transducer: NetRef<B>) {
+    pub fn define_transducer(&mut self, name: &str, transducer: NetId) {
         let was_defined = self.xre.is_definition(name);
-        self.xre.define_transducer(name, &transducer.borrow());
+        // 'self.xre' (mut) and the arena entry (shared) are borrowed at once:
+        // destructure 'self' into disjoint field borrows.
+        let XfstCompiler { xre, nets, .. } = self;
+        xre.define_transducer(name, &nets[transducer.0]);
         if self.variables["name-nets"] == "ON" {
-            transducer.borrow_mut().set_name(name);
+            self.net_mut(transducer).set_name(name);
         }
-        // overwriting drops the previous Rc.
+        // the net stays in the arena; the map entry is simply overwritten.
         self.definitions.remove(name);
         self.definitions.insert(name.to_string(), transducer);
 
@@ -3774,8 +3816,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let def = self.definitions[name].clone();
-        let t = Rc::new(RefCell::new(HfstTransducer::new_copy(&def.borrow())?));
+        let def = self.definitions[name];
+        let t = HfstTransducer::new_copy(self.net(def))?;
+        let t = self.alloc_net(t);
         self.stack.push(t);
         // PRINT_INFO_PROMPT_AND_RETURN_THIS
         self.print_transducer_info();
@@ -3785,9 +3828,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // @brief Push last definition on stack
     pub fn push_latest(&mut self) -> crate::error::Result<&mut Self> {
-        let defs: Vec<NetRef<B>> = self.definitions.values().cloned().collect();
+        let defs: Vec<NetId> = self.definitions.values().copied().collect();
         for def in defs {
-            let t = Rc::new(RefCell::new(HfstTransducer::new_copy(&def.borrow())?));
+            let t = HfstTransducer::new_copy(self.net(def))?;
+            let t = self.alloc_net(t);
             self.stack.push(t);
         }
 
@@ -3834,10 +3878,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         if self.latest_regex_compiled.is_some() {
             self.latest_regex_compiled = None;
         }
-        self.latest_regex_compiled = self
-            .xre
-            .compile_first(indata, chars_read)
-            .map(|t| Rc::new(RefCell::new(t))); // XRE
+        let compiled = self.xre.compile_first(indata, chars_read); // XRE
+        self.latest_regex_compiled = compiled.map(|t| self.alloc_net(t));
         self
     }
 
@@ -4016,22 +4058,22 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         }
-        let result = self.stack.last().unwrap().clone();
+        let result = *self.stack.last().unwrap();
         self.stack.pop();
-        let another = self.stack.last().unwrap().clone();
+        let another = *self.stack.last().unwrap();
         self.stack.pop();
-        let another_inner = another.borrow().clone();
+        let another_inner = self.net(another).clone();
 
         match operation {
             BinaryOperation::IGNORE_NET => {
-                result.borrow_mut().insert_freely(&another_inner, true)?;
+                self.net_mut(result).insert_freely(&another_inner, true)?;
             }
             BinaryOperation::MINUS_NET => {
-                result.borrow_mut().subtract(&another_inner, true)?;
+                self.net_mut(result).subtract(&another_inner, true)?;
             }
             BinaryOperation::CROSSPRODUCT_NET => {
-                let cross = result
-                    .borrow_mut()
+                let cross = self
+                    .net_mut(result)
                     .cross_product(&another_inner, true)
                     .map(|_| ());
                 if let Err(e) = cross {
@@ -4055,7 +4097,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
 
-        result.borrow_mut().optimize()?;
+        self.net_mut(result).optimize()?;
         self.stack.push(result);
         self.print_transducer_info();
         self.prompt();
@@ -4078,14 +4120,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         }
-        let result = self.stack.last().unwrap().clone();
+        let result = *self.stack.last().unwrap();
 
         self.stack.pop();
         while !self.stack.is_empty() {
-            let t = self.stack.last().unwrap().clone();
+            let t = *self.stack.last().unwrap();
 
-            let t_type = t.borrow().get_type();
-            let result_type = result.borrow().get_type();
+            let t_type = self.net(t).get_type();
+            let result_type = self.net(result).get_type();
             if t_type != result_type {
                 self.error_message("Stack contains transducers whose type differs.");
                 self.flush();
@@ -4095,14 +4137,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
             match operation {
                 BinaryOperation::INTERSECT_NET => {
-                    result.borrow_mut().intersect(&t.borrow(), true)?;
+                    let (rm, tm) = self.net_pair_mut(result, t);
+                    rm.intersect(tm, true)?;
                 }
                 BinaryOperation::IGNORE_NET => {
-                    result.borrow_mut().insert_freely(&t.borrow(), true)?;
+                    let (rm, tm) = self.net_pair_mut(result, t);
+                    rm.insert_freely(tm, true)?;
                 }
                 BinaryOperation::COMPOSE_NET => {
                     let both_have_flags =
-                        result.borrow().has_flag_diacritics() && t.borrow().has_flag_diacritics();
+                        self.net(result).has_flag_diacritics() && self.net(t).has_flag_diacritics();
                     if both_have_flags {
                         if self.variables["harmonize-flags"] == "OFF" {
                             if self.verbose {
@@ -4114,17 +4158,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                                 self.flush();
                             }
                         } else {
-                            let mut rb = result.borrow_mut();
-                            let mut tb = t.borrow_mut();
-                            rb.harmonize_flag_diacritics(&mut tb, true)?;
+                            let (rb, tb) = self.net_pair_mut(result, t);
+                            rb.harmonize_flag_diacritics(tb, true)?;
                         }
                     }
 
                     let cfg = self.engine_config;
-                    let composed = result
-                        .borrow_mut()
-                        .compose_with_config(&t.borrow(), true, &cfg)
-                        .map(|_| ());
+                    let (rm, tm) = self.net_pair_mut(result, t);
+                    let composed = rm.compose_with_config(tm, true, &cfg).map(|_| ());
                     if let Err(e) = composed {
                         if matches!(
                             e.kind,
@@ -4148,13 +4189,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     }
                 }
                 BinaryOperation::CONCATENATE_NET => {
-                    result.borrow_mut().concatenate(&t.borrow(), true)?;
+                    let (rm, tm) = self.net_pair_mut(result, t);
+                    rm.concatenate(tm, true)?;
                 }
                 BinaryOperation::UNION_NET => {
-                    result.borrow_mut().disjunct(&t.borrow(), true)?;
+                    let (rm, tm) = self.net_pair_mut(result, t);
+                    rm.disjunct(tm, true)?;
                 }
                 BinaryOperation::SHUFFLE_NET => {
-                    result.borrow_mut().shuffle(&t.borrow(), true)?;
+                    let (rm, tm) = self.net_pair_mut(result, t);
+                    rm.shuffle(tm, true)?;
                 }
                 _ => {
                     self.error_message("ERROR: unknown binary operation");
@@ -4163,7 +4207,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
             self.stack.pop();
         }
-        result.borrow_mut().optimize()?;
+        self.net_mut(result).optimize()?;
         self.stack.push(result);
         self.print_transducer_info();
         self.prompt();
@@ -4177,7 +4221,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        top.borrow_mut().prune_alphabet(true)?;
+        self.net_mut(top).prune_alphabet(true)?;
         self.prompt();
         Ok(self)
     }
@@ -4192,7 +4236,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // [spec:hfst:def:xfst-compiler.hfst.xfst.name-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.name-fn]
         let name_str = name.to_string();
-        let elim = tmp.borrow_mut().eliminate_flag(name).map(|_| ());
+        let elim = self.net_mut(tmp).eliminate_flag(name).map(|_| ());
         if let Err(__e) = elim {
             let __name = __e.message.clone().unwrap_or_default();
             error!("could not eliminate flag '{}': {}", name, __name);
@@ -4212,7 +4256,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        tmp.borrow_mut().eliminate_flags()?;
+        self.net_mut(tmp).eliminate_flags()?;
         self.prompt();
         Ok(self)
     }
@@ -4222,7 +4266,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        tmp.borrow_mut().twosided_flag_diacritics()?;
+        self.net_mut(tmp).twosided_flag_diacritics()?;
         self.prompt();
         Ok(self)
     }
@@ -4248,11 +4292,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        let mut fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
+        let mut fsm = HfstBasicTransducer::new_from_transducer(self.net(topmost));
         fsm.complete()?;
-        let result: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::from_basic_transducer(&fsm)));
+        let result: NetId = self.alloc_net(HfstTransducer::from_basic_transducer(&fsm));
         self.stack.pop();
-        result.borrow_mut().optimize()?;
+        self.net_mut(result).optimize()?;
         self.stack.push(result);
         self.print_transducer_info();
         self.prompt();
@@ -4281,9 +4325,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        let result: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::new()));
+        let result: NetId = self.alloc_net(HfstTransducer::new());
         let mut label_set: BTreeSet<(Symbol, Symbol)> = BTreeSet::new();
-        let fsm = HfstBasicTransducer::new_from_transducer(&topmost.borrow());
+        let fsm = HfstBasicTransducer::new_from_transducer(self.net(topmost));
         for it in fsm.iter() {
             for tr_it in it.iter() {
                 label_set.insert((
@@ -4294,9 +4338,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         for it in label_set.iter() {
             let label_tr = HfstTransducer::new_symbol_pair(&it.0, &it.1)?;
-            result.borrow_mut().disjunct(&label_tr, true)?;
+            self.net_mut(result).disjunct(&label_tr, true)?;
         }
-        result.borrow_mut().minimize()?;
+        self.net_mut(result).minimize()?;
         self.stack.pop();
         self.stack.push(result);
         self.print_transducer_info();
@@ -4327,10 +4371,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let t = self.stack.last().unwrap().clone();
-        let t_op = t.clone();
+        let t = *self.stack.last().unwrap();
+        let t_op = t;
 
-        let negated = t_op.borrow_mut().negate().map(|_| ());
+        let negated = self.net_mut(t_op).negate().map(|_| ());
         if let Err(__e) = negated {
             if matches!(__e.kind, crate::error::ErrorKind::TransducerIsNotAutomaton) {
                 error!("Error: Negation is defined only for automata.");
@@ -4344,7 +4388,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
 
-        t.borrow_mut().optimize()?;
+        self.net_mut(t).optimize()?;
         self.print_transducer_info();
         self.prompt();
         Ok(self)
@@ -4378,15 +4422,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        let mut alpha: StringSet = tmp.borrow().get_alphabet()?;
+        let mut alpha: StringSet = self.net(tmp).get_alphabet()?;
         alpha.remove("@_UNKNOWN_SYMBOL_@");
         alpha.remove("@_IDENTITY_SYMBOL_@");
         alpha.remove("@_EPSILON_SYMBOL_@");
         let alpha = crate::hfst_symbol_defs::symbols::to_string_pair_set(&alpha);
-        let sigma: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::new_string_pair_set(
-            &alpha, false,
-        )?));
-        sigma.borrow_mut().optimize()?;
+        let sigma: NetId = self.alloc_net(HfstTransducer::new_string_pair_set(&alpha, false)?);
+        self.net_mut(sigma).optimize()?;
         self.stack.push(sigma);
         self.print_transducer_info();
         self.prompt();
@@ -4400,7 +4442,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let net = HfstBasicTransducer::new_from_transducer(&t.borrow());
+        let net = HfstBasicTransducer::new_from_transducer(self.net(t));
 
         const INSPECT_NET_HELP_MSG: &str =
             "'N' transits arc N, '-N' returns to level N, '<' to previous level, '0' quits.\n";
@@ -4520,7 +4562,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        let mut tmp_cp = HfstTransducer::new_copy(&tmp.borrow())?;
+        let mut tmp_cp = HfstTransducer::new_copy(self.net(tmp))?;
 
         if level == Level::UPPER_LEVEL {
             tmp_cp.input_project()?;
@@ -4546,7 +4588,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let level_not_upper = level != Level::UPPER_LEVEL;
         let retokenize_on = self.variables["retokenize"] == "ON";
 
-        let mut fsm = HfstBasicTransducer::new_from_transducer(&tmp.borrow());
+        let mut fsm = HfstBasicTransducer::new_from_transducer(self.net(tmp));
         let mut early_return = false;
         // The C++ wrapped this block in try/catch (const char*) and demoted a
         // malformed compile-replace regexp to a diagnostic.
@@ -4599,15 +4641,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let result: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::from_basic_transducer(&fsm)));
+        let result: NetId = self.alloc_net(HfstTransducer::from_basic_transducer(&fsm));
 
         // filter out regexps
         let mut cr = Self::contains_regexp_markers_on_one_side(&mut self.xre, level_is_upper);
         cr.optimize()?;
 
-        result.borrow_mut().subtract(&cr, true)?.optimize()?;
-        result
-            .borrow_mut()
+        self.net_mut(result).subtract(&cr, true)?.optimize()?;
+        self.net_mut(result)
             .substitute("@EPSILON_MARKER@", "@_EPSILON_SYMBOL_@", true, true)?;
         self.stack.pop();
         self.stack.push(result);
@@ -4637,46 +4678,46 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
         self.stack.pop();
-        let result_op = result.clone();
+        let result_op = result;
 
         match operation {
             UnaryOperation::DETERMINIZE_NET => {
-                result_op.borrow_mut().determinize()?;
+                self.net_mut(result_op).determinize()?;
             }
             UnaryOperation::EPSILON_REMOVE_NET => {
-                result_op.borrow_mut().remove_epsilons()?;
+                self.net_mut(result_op).remove_epsilons()?;
             }
             UnaryOperation::INVERT_NET => {
-                result_op.borrow_mut().invert()?;
+                self.net_mut(result_op).invert()?;
             }
             UnaryOperation::LOWER_SIDE_NET => {
-                result_op.borrow_mut().output_project()?;
+                self.net_mut(result_op).output_project()?;
             }
             UnaryOperation::UPPER_SIDE_NET => {
-                result_op.borrow_mut().input_project()?;
+                self.net_mut(result_op).input_project()?;
             }
             UnaryOperation::ZERO_PLUS_NET => {
-                result_op.borrow_mut().repeat_star()?;
+                self.net_mut(result_op).repeat_star()?;
             }
             UnaryOperation::ONE_PLUS_NET => {
-                result_op.borrow_mut().repeat_plus()?;
+                self.net_mut(result_op).repeat_plus()?;
             }
             UnaryOperation::OPTIONAL_NET => {
-                result_op.borrow_mut().optionalize()?;
+                self.net_mut(result_op).optionalize()?;
             }
             UnaryOperation::REVERSE_NET => {
-                result_op.borrow_mut().reverse()?;
+                self.net_mut(result_op).reverse()?;
             }
             UnaryOperation::MINIMIZE_NET => {
                 // implicit minimization requested, do not use optimize()
-                result_op.borrow_mut().minimize()?;
+                self.net_mut(result_op).minimize()?;
             }
             UnaryOperation::PRUNE_NET_ => {
                 // 'prune' is a tropical-only facade operation; the C++
                 // converted other types to TROPICAL_OPENFST_TYPE first. The
                 // conversion is typed now ([dec:hfst:monomorphic-backends]):
                 // round-trip through the interchange transducer.
-                let mut tr = result_op.borrow_mut();
+                let tr = self.net_mut(result_op);
                 let mut tropical: HfstTransducer<hfst_openfst::StdVectorFst> =
                     HfstTransducer::new_from_basic(&tr.get_basic_transducer()?)?;
                 tropical.prune()?;
@@ -4688,7 +4729,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             && operation != UnaryOperation::DETERMINIZE_NET
             && operation != UnaryOperation::EPSILON_REMOVE_NET
         {
-            result_op.borrow_mut().optimize()?;
+            self.net_mut(result_op).optimize()?;
         }
         self.stack.push(result);
         self.print_transducer_info();
@@ -4899,8 +4940,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let t = self.stack.last().unwrap().clone();
-        let t_type = t.borrow().get_type();
+        let t = *self.stack.last().unwrap();
+        let t_type = self.net(t).get_type();
 
         let to_format: ImplementationType;
         if t_type == ImplementationType::HFST_OL_TYPE || t_type == ImplementationType::HFST_OLW_TYPE
@@ -4938,8 +4979,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return Ok(self);
         }
-        let t = self.stack.last().unwrap().clone();
-        let t_type = t.borrow().get_type();
+        let t = *self.stack.last().unwrap();
+        let t_type = self.net(t).get_type();
 
         if t_type != ImplementationType::HFST_OL_TYPE && t_type != ImplementationType::HFST_OLW_TYPE
         {
@@ -5005,7 +5046,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return Ok(self);
         }
-        let top = self.stack.last().unwrap().clone();
+        let top = *self.stack.last().unwrap();
         // number of cycles needs to be limited for an infinitely ambiguous ol
         // transducer because it doesn't support
         // is_lookup_infinitely_ambiguous(const string &)
@@ -5017,7 +5058,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let mut fsm: Option<HfstBasicTransducer> = None;
 
         if direction == ApplyDirection::APPLY_UP_DIRECTION {
-            let ty = top.borrow().get_type();
+            let ty = self.net(top).get_type();
             if ty == ImplementationType::HFST_OL_TYPE || ty == ImplementationType::HFST_OLW_TYPE {
                 warn!(
                     "Operation not supported for optimized lookup format. Consider 'remove-optimization' to convert into ordinary format."
@@ -5032,7 +5073,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     "apply up not implemented, inverting transducer and performing apply down\nfor faster performance, invert and minimize top network and do apply down instead"
                 );
             }
-            let mut c = HfstTransducer::new_copy(&top.borrow())?;
+            let mut c = HfstTransducer::new_copy(self.net(top))?;
             // the user has been warned for possible slow performance
             c.invert()?.minimize()?;
             owned_t = Some(c);
@@ -5040,7 +5081,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         let work_type = match &owned_t {
             Some(c) => c.get_type(),
-            None => top.borrow().get_type(),
+            None => self.net(top).get_type(),
         };
 
         // The OL fast-lookup arm is unreachable under a monomorphically typed
@@ -5052,7 +5093,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         {
             fsm = Some(match &owned_t {
                 Some(c) => HfstBasicTransducer::new_from_transducer(c),
-                None => HfstBasicTransducer::new_from_transducer(&top.borrow()),
+                None => HfstBasicTransducer::new_from_transducer(self.net(top)),
             });
         }
 
@@ -5179,7 +5220,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 "apply up not implemented, inverting transducer and performing apply down\nfor faster performance, invert and minimize top network and do apply down instead"
             );
         }
-        let mut copy = HfstTransducer::new_copy(&t.borrow())?;
+        let mut copy = HfstTransducer::new_copy(self.net(t))?;
         // the user has been warned for possible slow performance
         copy.invert()?.minimize()?;
         let fsm = HfstBasicTransducer::new_from_transducer(&copy);
@@ -5196,13 +5237,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return Ok(self);
         }
-        let t = self.stack.last().unwrap().clone();
+        let t = *self.stack.last().unwrap();
         // The OL fast-lookup tail is unreachable under a monomorphically
         // typed stack ([dec:hfst:monomorphic-backends]): 'B: AlgebraBackend'
         // excludes the OL backends, so this non-OL branch is always taken.
         // hfst_fprintf(warnstream_, "lookup might be slow, consider
         // 'convert net'\n");
-        let fsm = HfstBasicTransducer::new_from_transducer(&t.borrow());
+        let fsm = HfstBasicTransducer::new_from_transducer(self.net(t));
         Ok(self.lookup_basic(line, &fsm))
     }
 
@@ -5244,7 +5285,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return self;
         };
-        crate::hfst_print_dot::print_dot_os(&mut outfile, &mut *tmp.borrow_mut());
+        crate::hfst_print_dot::print_dot_os(&mut outfile, self.net_mut(tmp));
         self.prompt();
         self
     }
@@ -5261,7 +5302,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return self;
         };
-        crate::hfst_print_dot::print_dot_os(oss, &mut *tmp.borrow_mut());
+        crate::hfst_print_dot::print_dot_os(oss, self.net_mut(tmp));
         let _ = oss.flush();
         self.prompt();
         self
@@ -5278,12 +5319,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return Ok(self);
         }
-        for (i, tr) in self.stack.iter().rev().enumerate() {
-            let mut name = tr.borrow().get_name();
+        let ids: Vec<NetId> = self.stack.iter().rev().copied().collect();
+        for (i, tr) in ids.iter().enumerate() {
+            let mut name = self.net(*tr).get_name();
             if name.is_empty() {
                 name = "NO_NAME".to_string();
             }
-            let fsm = HfstBasicTransducer::new_from_transducer(&tr.borrow());
+            let fsm = HfstBasicTransducer::new_from_transducer(self.net(*tr));
             let write_weights = self.variables["print-weight"] == "ON";
             fsm.write_in_prolog_format_os(oss, &name, write_weights)?;
             if i + 1 != self.stack.len() {
@@ -5342,8 +5384,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         } else {
             HfstOutputStream::new(B::TYPE, true)?
         };
-        let def_ptr = self.definitions[name].clone();
-        let mut tmp = HfstTransducer::new_copy(&def_ptr.borrow())?;
+        let def_ptr = self.definitions[name];
+        let mut tmp = HfstTransducer::new_copy(self.net(def_ptr))?;
         if self.variables["name-nets"] == "ON" {
             tmp.set_name(name);
         }
@@ -5367,8 +5409,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         } else {
             HfstOutputStream::new(B::TYPE, true)?
         };
-        for (name, def) in self.definitions.iter() {
-            let mut tmp = HfstTransducer::new_copy(&def.borrow())?;
+        let defs: Vec<(String, NetId)> = self
+            .definitions
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        for (name, def) in defs.iter() {
+            let mut tmp = HfstTransducer::new_copy(self.net(*def))?;
             tmp.set_name(name);
             outstream.operator_shl(&mut tmp)?;
         }
@@ -5389,14 +5436,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let top_type = self.stack.last().unwrap().borrow().get_type();
+        let top_type = self.net(*self.stack.last().unwrap()).get_type();
         let mut outstream = if !outfilename.is_empty() {
             HfstOutputStream::new_filename(outfilename, top_type, true)?
         } else {
             HfstOutputStream::new(top_type, true)?
         };
-        for t in self.stack.iter() {
-            outstream.operator_shl(&mut *t.borrow_mut())?;
+        let ids: Vec<NetId> = self.stack.clone();
+        for t in ids.iter() {
+            outstream.operator_shl(self.net_mut(*t))?;
         }
         outstream.close();
         self.prompt();
@@ -5421,10 +5469,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // When calling this function, the regex \a indata should already have
         // been compiled into a transducer which should have been stored to
         // the variable latest_regex_compiled.
-        let compiled = self.latest_regex_compiled.clone();
+        let compiled = self.latest_regex_compiled;
         if let Some(compiled) = compiled {
-            let t = Rc::new(RefCell::new(HfstTransducer::new_copy(&compiled.borrow())?));
-            t.borrow_mut().optimize()?;
+            let t = HfstTransducer::new_copy(self.net(compiled))?;
+            let t = self.alloc_net(t);
+            self.net_mut(t).optimize()?;
             self.stack.push(t);
             self.print_transducer_info();
         } else {
@@ -5520,7 +5569,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
 
         t.optimize()?;
-        self.stack.push(Rc::new(RefCell::new(t)));
+        let t = self.alloc_net(t);
+        self.stack.push(t);
         self.print_transducer_info();
         self.prompt();
         Ok(self)
@@ -5555,8 +5605,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
         match result {
             Ok(r) => {
-                let net = Rc::new(RefCell::new(r));
-                net.borrow_mut().optimize()?;
+                let net = self.alloc_net(r);
+                self.net_mut(net).optimize()?;
                 self.stack.push(net);
                 self.print_transducer_info();
             }
@@ -5608,7 +5658,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         };
 
-        let tmp: NetRef<B> = Rc::new(RefCell::new(HfstTransducer::new()));
+        let tmp: NetId = self.alloc_net(HfstTransducer::new());
         let mcs: Vec<Symbol> = Vec::new(); // no multichar symbols
         // [spec:hfst:def:xfst-compiler.hfst.xfst.tok-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.tok-fn]
@@ -5630,12 +5680,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             // [spec:hfst:def:xfst-compiler.hfst.xfst.line-tr-fn]
             // [spec:hfst:sem:xfst-compiler.hfst.xfst.line-tr-fn]
             let line_tr = HfstTransducer::new_string_pair_vector(&spv)?;
-            tmp.borrow_mut().disjunct(&line_tr, true)?;
+            self.net_mut(tmp).disjunct(&line_tr, true)?;
         }
 
         // The file is closed when 'reader' is dropped.
 
-        tmp.borrow_mut().minimize()?; // a trie should be easily minimizable
+        self.net_mut(tmp).minimize()?; // a trie should be easily minimizable
         self.stack.push(tmp);
         self.print_transducer_info();
         self.prompt();
@@ -5662,7 +5712,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return Ok(self);
         }
-        let def_ptr = self.definitions[variable].clone();
+        let def_ptr = self.definitions[variable];
 
         // [spec:hfst:def:xfst-compiler.hfst.xfst.labelstr-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.labelstr-fn]
@@ -5674,7 +5724,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             labelstr = Symbol::new_static("@_EPSILON_SYMBOL_@");
         }
 
-        let mut alpha = top.borrow().get_alphabet()?;
+        let mut alpha = self.net(top).get_alphabet()?;
         if !alpha.contains(&labelstr) {
             error!("no occurrences of label '{}', cannot substitute", label);
             // MAYBE_QUIT
@@ -5685,7 +5735,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let fsm = HfstBasicTransducer::new_from_transducer(&top.borrow());
+        let fsm = HfstBasicTransducer::new_from_transducer(self.net(top));
 
         for it in fsm.iter() {
             for tr_it in it {
@@ -5709,22 +5759,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // [spec:hfst:def:xfst-compiler.hfst.xfst.labelpair-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.labelpair-fn]
         let labelpair: StringPair = (labelstr.clone(), labelstr.clone());
-        alpha = def_ptr.borrow().get_alphabet()?;
-        top.borrow_mut().substitute_pair_with_transducer(
-            &labelpair,
-            &mut *def_ptr.borrow_mut(),
-            false,
-        )?;
+        alpha = self.net(def_ptr).get_alphabet()?;
+        let (top_m, def_m) = self.net_pair_mut(top, def_ptr);
+        top_m.substitute_pair_with_transducer(&labelpair, def_m, false)?;
 
         if labelstr != "@_EPSILON_SYMBOL_@"
             && labelstr != "@_IDENTITY_SYMBOL_@"
             && !alpha.contains(&labelstr)
         {
-            top.borrow_mut().remove_from_alphabet_string(&labelstr)?;
+            self.net_mut(top).remove_from_alphabet_string(&labelstr)?;
         }
 
         // MAYBE_MINIMIZE(top)
-        top.borrow_mut().optimize()?;
+        self.net_mut(top).optimize()?;
         self.prompt();
         Ok(self)
     }
@@ -5770,7 +5817,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let target_vector = Self::tokenize_string(target, ':');
         match Self::symbol_vector_to_symbol_pair(&target_vector) {
             Some(target_label) => {
-                let fsm = HfstBasicTransducer::new_from_transducer(&top.borrow());
+                let fsm = HfstBasicTransducer::new_from_transducer(self.net(top));
                 let mut target_label_found = false;
 
                 for it in fsm.iter() {
@@ -5795,7 +5842,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     return Ok(self);
                 }
 
-                top.borrow_mut()
+                self.net_mut(top)
                     .substitute_symbol_pair_with_set(&target_label, &symbol_pairs)?;
             }
             None => {
@@ -5808,7 +5855,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         // MAYBE_MINIMIZE(top)
-        top.borrow_mut().optimize()?;
+        self.net_mut(top).optimize()?;
         self.prompt();
         Ok(self)
     }
@@ -5825,7 +5872,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let alpha = top.borrow().get_alphabet()?;
+        let alpha = self.net(top).get_alphabet()?;
         if !alpha.contains(target) {
             error!("no occurrences of symbol '{}', cannot substitute", target);
             // MAYBE_QUIT
@@ -5847,20 +5894,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         // use regex parser to build the substitution: [ [TR] , "s" , L ]
-        self.xre
-            .define_transducer("TempXfstTransducerName", &top.borrow()); // XRE
+        // 'self.xre' (mut) and the arena entry (shared) are borrowed at once:
+        // destructure 'self' into disjoint field borrows.
+        let XfstCompiler { xre, nets, .. } = self;
+        xre.define_transducer("TempXfstTransducerName", &nets[top.0]); // XRE
         let mut subst_regex = String::from("`[ [TempXfstTransducerName] , ");
         subst_regex.push_str(&format!("\"{}\" , {} ]", target, liststr));
-        let substituted = self
-            .xre
-            .compile(&subst_regex)
-            .map(|t| Rc::new(RefCell::new(t))); // XRE
+        let substituted = self.xre.compile(&subst_regex); // XRE
+        let substituted = substituted.map(|t| self.alloc_net(t));
         self.xre.undefine("TempXfstTransducerName"); // XRE
-        drop(top);
 
         if let Some(substituted) = substituted {
             // MAYBE_MINIMIZE(substituted)
-            substituted.borrow_mut().optimize()?;
+            self.net_mut(substituted).optimize()?;
             self.stack.push(substituted);
             self.print_transducer_info();
         } else {
@@ -5879,11 +5925,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         }
-        let first = self.stack.last().unwrap().clone();
+        let first = *self.stack.last().unwrap();
         self.stack.pop();
-        let second = self.stack.last().unwrap().clone();
+        let second = *self.stack.last().unwrap();
         self.stack.pop();
-        let result = first.borrow().compare(&second.borrow(), false)?;
+        let result = self.net(first).compare(self.net(second), false)?;
         self.print_bool(result);
         self.stack.push(second);
         self.stack.push(first);
@@ -5913,9 +5959,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let mut tmp_input = HfstTransducer::new_from_transducer(&tmp.borrow());
+        let mut tmp_input = HfstTransducer::new_from_transducer(self.net(tmp));
         tmp_input.input_project()?;
-        let mut tmp_output = HfstTransducer::new_from_transducer(&tmp.borrow());
+        let mut tmp_output = HfstTransducer::new_from_transducer(self.net(tmp));
         tmp_output.output_project()?;
 
         let result = tmp_input.compare(&tmp_output, false)?;
@@ -5938,7 +5984,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let mut tmp = HfstTransducer::new_from_transducer(&temp.borrow());
+        let mut tmp = HfstTransducer::new_from_transducer(self.net(temp));
         tmp.output_project()?;
         tmp.remove_epsilons()?; // needed for testing cyclicity
 
@@ -5960,7 +6006,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let mut tmp = HfstTransducer::new_from_transducer(&temp.borrow());
+        let mut tmp = HfstTransducer::new_from_transducer(self.net(temp));
         tmp.input_project()?;
         let id = HfstTransducer::new_symbol(internal_identity)?;
         let mut value = false;
@@ -5997,7 +6043,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let mut tmp = HfstTransducer::new_from_transducer(&temp.borrow());
+        let mut tmp = HfstTransducer::new_from_transducer(self.net(temp));
         tmp.input_project()?;
         tmp.remove_epsilons()?; // needed for testing cyclicity
 
@@ -6040,7 +6086,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
 
         let empty: HfstTransducer<B> = HfstTransducer::new();
-        let mut value = empty.compare(&tmp.borrow(), false)?;
+        let mut value = empty.compare(self.net(tmp), false)?;
         if invert_test_result {
             value = !value;
         }
@@ -6071,17 +6117,17 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         // [spec:hfst:def:xfst-compiler.hfst.xfst.copied-stack-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.copied-stack-fn]
-        let mut copied_stack: Vec<NetRef<B>> = self.stack.clone();
+        let mut copied_stack: Vec<NetId> = self.stack.clone();
 
         let topmost = copied_stack
             .pop()
             .expect("stack has at least 2 networks (checked above)");
-        let mut topmost_transducer = HfstTransducer::new_from_transducer(&topmost.borrow());
+        let mut topmost_transducer = HfstTransducer::new_from_transducer(self.net(topmost));
 
         let empty: HfstTransducer<B> = HfstTransducer::new();
 
         while let Some(next) = copied_stack.pop() {
-            let next_transducer = HfstTransducer::new_from_transducer(&next.borrow());
+            let next_transducer = HfstTransducer::new_from_transducer(self.net(next));
 
             match operation {
                 TestOperation::TEST_OVERLAP_ => {
@@ -6163,7 +6209,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let Some(tmp) = self.top() else {
             return Ok(self);
         };
-        let value = tmp.borrow().is_infinitely_ambiguous()?;
+        let value = self.net(tmp).is_infinitely_ambiguous()?;
         self.print_bool(value);
         // MAYBE_ASSERT(assertion, value)
         if !value

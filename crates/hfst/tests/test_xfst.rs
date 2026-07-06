@@ -9,12 +9,8 @@ use hfst_openfst::StdVectorFst;
 
 // Number of states of the transducer on top of the stack.
 fn top_states(c: &XfstCompiler<StdVectorFst>) -> u32 {
-    let stack = c.get_stack();
-    stack
-        .last()
-        .expect("empty stack")
-        .borrow()
-        .number_of_states()
+    let top = *c.get_stack().last().expect("empty stack");
+    c.net(top).number_of_states()
 }
 
 #[test]
