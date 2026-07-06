@@ -88,4 +88,6 @@ assertions (
     {id smolstr, kind @complete, author "brendan@necessary.nu", at 2026-07-05T00:05:12.309338Z}
     {id idiom-islands, kind @complete, author "brendan@necessary.nu", at 2026-07-06T12:34:35.317146Z}
     {id foma-backend.spec, kind @complete, author "brendan@necessary.nu", at 2026-07-06T14:41:23.517029Z}
+    {id foma-backend.seam, kind @complete, author "brendan@necessary.nu", at 2026-07-06T15:02:41.817069Z}
+    {id foma-backend.convert, kind @complete, author "brendan@necessary.nu", at 2026-07-06T15:02:41.864201Z}
 )

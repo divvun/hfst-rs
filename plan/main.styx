@@ -2169,12 +2169,30 @@ children (
                 id foma-backend.seam
                 title "Feature seam: 'foma' Cargo feature + path-dep, FomaTransducer wrapper, availability flip, AnyTransducer::Foma variant + any_delegate arm"
                 deps (foma-backend.spec)
+                sealed true
+                log (
+                    {
+                        at 2026-07-06T15:02:41.817069Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
                 id foma-backend.convert
                 title "to_basic/from_basic: foma Fsm <-> HfstBasicTransducer (sigma nums<->symbols, EPSILON/UNKNOWN/IDENTITY, finality, weight 0.0)"
                 deps (foma-backend.seam)
+                sealed true
+                log (
+                    {
+                        at 2026-07-06T15:02:41.864201Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
