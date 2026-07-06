@@ -430,6 +430,13 @@ fn real_main(mut args: Vec<String>) -> i32 {
     // the compiler's backend type parameter ([dec:hfst:monomorphic-backends]);
     // SFST/FOMA never reach this point (the output stream constructor above
     // rejects them).
+    // Name shown in source-anchored diagnostics: the named input file, or the
+    // library default ("<twolc>") when reading from stdin.
+    let source_name = if command_line.has_input_file {
+        command_line.input_file_name.clone()
+    } else {
+        String::from("<twolc>")
+    };
     let compiled = match command_line.format {
         ImplementationType::LOG_OPENFST_TYPE => {
             TwolcCompiler::<hfst::log_weight_transducer::LogFst>::new_with_options(
@@ -438,6 +445,7 @@ fn real_main(mut args: Vec<String>) -> i32 {
                 command_line.resolve_left_conflicts,
                 command_line.resolve_right_conflicts,
             )
+            .set_source_name(&source_name)
             .compile_and_store(&input, &mut out)
         }
         _ => TwolcCompiler::<hfst_openfst::StdVectorFst>::new_with_options(
@@ -446,6 +454,7 @@ fn real_main(mut args: Vec<String>) -> i32 {
             command_line.resolve_left_conflicts,
             command_line.resolve_right_conflicts,
         )
+        .set_source_name(&source_name)
         .compile_and_store(&input, &mut out),
     };
     match compiled {

@@ -156,6 +156,15 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// 'contained_only_comments'. Moved onto the instance to remove the
     /// thread-global mutable state.
     pub(crate) contains_only_comments: bool,
+    /// The regex source currently being compiled, retained so diagnostics can
+    /// render the offending snippet (ariadne). Empty until `compile` runs.
+    pub(crate) source: String,
+    /// Label shown in diagnostics for `source` (a file name, or `"<regex>"`).
+    pub(crate) source_name: String,
+    /// Byte span in `source` of the AST node currently being evaluated, updated
+    /// as `eval` visits each spanned node; the anchor for `diag_error`/
+    /// `diag_warning`.
+    pub(crate) current_span: std::ops::Range<usize>,
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -351,6 +360,9 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             xerox_composition: false,
             encode_weights: false,
             contains_only_comments: false,
+            source: String::new(),
+            source_name: String::from("<regex>"),
+            current_span: 0..0,
         }
     }
 
@@ -370,6 +382,9 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             xerox_composition: false,
             encode_weights: false,
             contains_only_comments: false,
+            source: String::new(),
+            source_name: String::from("<regex>"),
+            current_span: 0..0,
         }
     }
 }
@@ -392,6 +407,38 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.get-verbosity-fn]
     pub fn get_verbosity(&self) -> bool {
         self.verbose
+    }
+
+    /// Name shown in source-anchored diagnostics (a file name). Set before
+    /// `compile` so warnings point at the right source; defaults to `"<regex>"`,
+    /// which is right for the usual inline-regex case.
+    pub fn set_source_name(&mut self, name: &str) -> &mut Self {
+        self.source_name = name.to_string();
+        self
+    }
+
+    /// Render an error about a problem in the user's regex source, anchored at
+    /// the span of the node currently being evaluated (ariadne).
+    fn diag_error(&self, msg: &str) {
+        crate::diag::emit(
+            &self.source_name,
+            &self.source,
+            self.current_span.clone(),
+            crate::diag::Severity::Error,
+            msg,
+        );
+    }
+
+    /// Render a warning about the user's regex source, anchored at the span of
+    /// the node currently being evaluated (ariadne).
+    fn diag_warning(&self, msg: &str) {
+        crate::diag::emit(
+            &self.source_name,
+            &self.source,
+            self.current_span.clone(),
+            crate::diag::Severity::Warning,
+            msg,
+        );
     }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.set-error-stream-fn]
@@ -526,7 +573,10 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     pub fn define(&mut self, name: &str, xre: &str) -> bool {
         let Some(tr) = self.compile(xre) else {
             if self.verbose {
-                error!("could not parse '{}', leaving '{}' undefined", xre, name);
+                self.diag_error(&format!(
+                    "could not parse '{}', leaving '{}' undefined",
+                    xre, name
+                ));
             }
             return false;
         };
@@ -599,6 +649,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         expression: &str,
         chars_read: &mut u32,
     ) -> Option<HfstTransducer<B>> {
+        // Retain the source so diagnostics can render the offending snippet.
+        self.source = expression.to_string();
         self.contains_only_comments = false;
         // Whitespace/comment-only input: the C++ lexer consumed it to EOF and
         // set contains_only_comments; nfst's parse_all errors on it instead.
@@ -642,6 +694,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     // or comments-only (the latter also flips the contains_only_comments flag,
     // matching the 'XRE: (empty) { contains_only_comments = true; }' action).
     fn compile_impl(&mut self, src: &str) -> Option<HfstTransducer<B>> {
+        // Retain the source so diagnostics can render the offending snippet.
+        self.source = src.to_string();
         self.contains_only_comments = false;
         if is_only_whitespace_or_comments(src) {
             self.contains_only_comments = true;
@@ -679,6 +733,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     // [spec:hfst:def:xre-utils.hfst.xre.compile-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.compile-fn]
     pub(crate) fn eval(&mut self, e: &SpannedXre) -> crate::error::Result<HfstTransducer<B>> {
+        // Anchor any diagnostic emitted while evaluating this node at its span.
+        self.current_span = e.span.range.clone();
         Ok(match &e.value {
             // ---- atoms (LABEL: HALFARC) ----
             XreExpr::Symbol(s) => self.label_from_halfarc(s)?,
@@ -1107,6 +1163,9 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             xerox_composition: self.xerox_composition,
             encode_weights: self.encode_weights,
             contains_only_comments: false,
+            source: self.source.clone(),
+            source_name: self.source_name.clone(),
+            current_span: self.current_span.clone(),
         };
 
         // get_function_xre + recursive compile.
@@ -1867,7 +1926,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         if has_non_identity_pairs(t) {
             if self.verbose {
                 // NB: faithfully reproduces the C++ missing-space concatenation.
-                warn!("using transducer that is not an automatonin containment");
+                self.diag_warning("using transducer that is not an automatonin containment");
             }
             self.contains(t) // ..resort to simple containment
         } else {
@@ -1926,19 +1985,19 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         let name2args = self.function_arguments.get(name);
 
         if name2xre.is_none() || name2args.is_none() {
-            error!("No such function defined: '{}'", name);
+            self.diag_error(&format!("No such function defined: '{}'", name));
             return false;
         }
 
         let number_of_args = *name2args.unwrap();
 
         if number_of_args as usize != args.len() {
-            error!(
+            self.diag_error(&format!(
                 "Wrong number of arguments: function '{}' expects {}, {} given",
                 name,
                 number_of_args as i32,
                 args.len() as i32
-            );
+            ));
             return false;
         }
         true
@@ -1989,7 +2048,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     fn warn_about_xfst_special_symbol(&self, symbol: &str) {
         if symbol == "all" {
             if self.verbose {
-                warn!("symbol 'all' has no special meaning in hfst");
+                self.diag_warning("symbol 'all' has no special meaning in hfst");
             }
             return;
         }
@@ -2013,7 +2072,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         if !self.verbose {
             return;
         }
-        warn!("'{} ' is an ordinary symbol in hfst", symbol);
+        self.diag_warning(&format!("'{} ' is an ordinary symbol in hfst", symbol));
     }
 
     // [spec:hfst:def:xre-utils.hfst.xre.warn-about-special-symbols-in-replace-fn]
@@ -2032,10 +2091,10 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 && it.as_str() != crate::hfst_symbol_defs::internal_unknown
                 && it.as_str() != crate::hfst_symbol_defs::internal_identity
             {
-                warn!(
+                self.diag_warning(&format!(
                     "using special symbol '{}' in replace rule, use substitute instead",
                     it
-                );
+                ));
             }
         }
         Ok(())
@@ -2326,7 +2385,9 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 
                 if self.definitions.contains_key(needle) {
                     if self.verbose {
-                        warn!("using definition as an ordinary label, cannot substitute");
+                        self.diag_warning(
+                            "using definition as an ordinary label, cannot substitute",
+                        );
                     }
                     hay.optimize_with_config(&self.opt_cfg())?;
                     return Ok(hay);

@@ -310,6 +310,16 @@ pub struct TwolcCompiler<B: AlgebraBackend> {
     pub(crate) resolve_right_conflicts: bool,
     pub(crate) sets: BTreeMap<String, SymbolRange>,
     pub(crate) definitions: BTreeMap<String, OtherSymbolTransducer<B>>,
+    /// The twolc source currently being compiled, retained so source-level
+    /// diagnostics can render the offending snippet (ariadne). Empty until
+    /// `compile`/`build_grammar` runs.
+    pub(crate) source: String,
+    /// Label shown in diagnostics for `source` (a file name, or `"<twolc>"`).
+    pub(crate) source_name: String,
+    /// Byte span in `source` of the top-level item currently being walked,
+    /// updated as `build_grammar` visits each spanned AST node; the anchor for
+    /// `diag_error`/`diag_warning`.
+    pub(crate) current_span: std::ops::Range<usize>,
 }
 
 // (followed by the full ~190-line doc roster of method/helper signatures with
@@ -3088,7 +3098,40 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             resolve_right_conflicts: resolve_right,
             sets: BTreeMap::new(),
             definitions: BTreeMap::new(),
+            source: String::new(),
+            source_name: String::from("<twolc>"),
+            current_span: 0..0,
         }
+    }
+
+    /// Name shown in source-anchored diagnostics (the twolc file name). Set
+    /// before `compile` so warnings point at the right file; defaults to
+    /// `"<twolc>"`.
+    pub fn set_source_name(&mut self, name: &str) -> &mut Self {
+        self.source_name = name.to_string();
+        self
+    }
+
+    /// Render a source-anchored error at the current top-level item's span.
+    fn diag_error(&self, msg: &str) {
+        crate::diag::emit(
+            &self.source_name,
+            &self.source,
+            self.current_span.clone(),
+            crate::diag::Severity::Error,
+            msg,
+        );
+    }
+
+    /// Render a source-anchored warning at the current top-level item's span.
+    fn diag_warning(&self, msg: &str) {
+        crate::diag::emit(
+            &self.source_name,
+            &self.source,
+            self.current_span.clone(),
+            crate::diag::Severity::Warning,
+            msg,
+        );
     }
 
     // [spec:hfst:def:twolc-compiler.hfst.twolc.twolc-compiler.compile-fn]
@@ -3129,12 +3172,15 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     // (unless silent) and yields None, like the C++ preprocessor passes that
     // printed to their error stream and made the driver exit.
     fn build_grammar(&mut self, input: &str) -> Option<(OstConfig, TwolCGrammar<B>)> {
+        // Retain the source so diagnostics can render the offending snippet.
+        self.source = input.to_string();
         let file = match nfst_twolc::parse(input) {
             Ok(f) => f,
             Err(e) => {
                 if !self.silent {
                     for d in &e.diagnostics {
-                        error!("{}", d.message);
+                        self.current_span = d.span.range.clone();
+                        self.diag_error(&d.message);
                     }
                 }
                 return None;
@@ -3164,6 +3210,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             .ok()?;
 
         for rule in twolc_file.rules.iter() {
+            self.current_span = rule.span.range.clone();
             self.drive_rule(&cfg, &rule.value, &mut grammar).ok()?;
         }
 
@@ -3357,6 +3404,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         defs: &[Spanned<TwolcDefinition>],
     ) -> crate::error::Result<()> {
         for d in defs {
+            self.current_span = d.span.range.clone();
             let t = self.eval_regex(cfg, &d.value.body)?;
             self.definitions.insert(d.value.name.clone(), t);
         }
@@ -3607,7 +3655,9 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     ) -> crate::error::Result<OtherSymbolTransducer<B>> {
         if cfg.diacritics.contains(input) {
             if input != output && output != TWOLC_EPSILON && output != TWOLC_UNKNOWN {
-                warn!("Diacritic {input} in pair {input}:{output} will correspond 0.");
+                self.diag_warning(&format!(
+                    "Diacritic {input} in pair {input}:{output} will correspond 0."
+                ));
             }
             return OtherSymbolTransducer::new_pair(cfg, input, input);
         }
@@ -3622,16 +3672,16 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         }
         if pair_transducer.is_empty() {
             if input == output {
-                error!(
+                self.diag_error(&format!(
                     "The pair set {} is empty.",
                     Rule::<B>::get_print_name(input)
-                );
+                ));
             } else {
-                error!(
+                self.diag_error(&format!(
                     "The pair set {}:{} is empty.",
                     Rule::<B>::get_print_name(input),
                     Rule::<B>::get_print_name(output)
-                );
+                ));
             }
             crate::bail!(EmptySymbolPairSet);
         }

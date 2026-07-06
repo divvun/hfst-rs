@@ -250,6 +250,7 @@ unsafe fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
         let mut transducer_n: usize = 0;
         let mut line_count: u32 = 0;
         let mut comp = XreCompiler::<B>::new();
+        comp.set_source_name(&globals::input_filename());
         comp.set_verbosity(globals::VERBOSE);
         comp.set_error_stream(());
         comp.set_harmonization(HARMONIZE);
