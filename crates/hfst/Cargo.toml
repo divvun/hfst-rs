@@ -18,5 +18,9 @@ nfst-lexc = { workspace = true }
 nfst-pmatch = { workspace = true }
 nfst-twolc = { workspace = true }
 nfst-xfst = { workspace = true }
+foma = { path = "../../../foma/crates/foma", optional = true }
 thiserror = "2.0.18"
 tracing = "0.1.44"
+
+[features]
+foma = ["dep:foma"]

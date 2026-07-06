@@ -115,7 +115,12 @@ pub fn is_safe_conversion(original: ImplementationType, converted: Implementatio
 // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.is-implementation-type-available-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.is-implementation-type-available-fn]
 pub fn is_implementation_type_available(ty: ImplementationType) -> bool {
-    // #if !HAVE_FOMA
+    // #if !HAVE_FOMA (the `foma` Cargo feature is the HAVE_FOMA switch)
+    #[cfg(feature = "foma")]
+    if ty == FOMA_TYPE {
+        return true;
+    }
+    #[cfg(not(feature = "foma"))]
     if ty == FOMA_TYPE {
         return false;
     }
@@ -136,7 +141,12 @@ pub fn is_implementation_type_available(ty: ImplementationType) -> bool {
 // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.is-lean-implementation-type-available-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.is-lean-implementation-type-available-fn]
 pub fn is_lean_implementation_type_available(ty: ImplementationType) -> bool {
-    // #if !HAVE_FOMA
+    // #if !HAVE_FOMA (the `foma` Cargo feature is the HAVE_FOMA switch)
+    #[cfg(feature = "foma")]
+    if ty == FOMA_TYPE {
+        return true;
+    }
+    #[cfg(not(feature = "foma"))]
     if ty == FOMA_TYPE {
         return false;
     }
@@ -4218,6 +4228,8 @@ pub enum AnyTransducer {
     Log(HfstTransducer<LogFst>),
     OlW(HfstTransducer<Transducer<WeightedTables>>),
     OlU(HfstTransducer<Transducer<UnweightedTables>>),
+    #[cfg(feature = "foma")]
+    Foma(HfstTransducer<crate::backend_foma::FomaTransducer>),
 }
 
 /// Delegate an expression over every variant (each arm monomorphizes
@@ -4229,6 +4241,8 @@ macro_rules! any_delegate {
             AnyTransducer::Log($t) => $body,
             AnyTransducer::OlW($t) => $body,
             AnyTransducer::OlU($t) => $body,
+            #[cfg(feature = "foma")]
+            AnyTransducer::Foma($t) => $body,
         }
     };
 }

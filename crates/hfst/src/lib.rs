@@ -22,6 +22,8 @@
 
 pub mod alphabet;
 pub mod backend;
+#[cfg(feature = "foma")]
+pub mod backend_foma;
 pub mod compose_intersect_fst;
 pub mod compose_intersect_lexicon;
 pub mod compose_intersect_rule;
