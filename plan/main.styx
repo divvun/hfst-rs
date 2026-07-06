@@ -2144,6 +2144,14 @@ children (
                 kind @status
                 text "Todo → Done (nplan_complete)"
             }
+
+            {
+                at 2026-07-06T15:25:24.796795Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "pmatch de-RefCell design (validated 2026-07-06): NOT a full arena. Analysis showed nodes mutate ONLY cache + my_timer during evaluate (set_left/set_right are dead code; children immutable post-construction), and only named-definition nodes cache (should_use_cache = get_name()!=\"\" && call_stack_len()==0) which persist in definitions_table for the whole compile. So: ObjRef/PairRef Rc<RefCell<dyn>> -> Rc<dyn> (immutable shared, DAG sharing kept); cache moves to ctx side-table HashMap<usize,HfstTransducer> keyed by node address (std::ptr::from_ref(self) as *const () as usize — SAFE cast, staleness-free since cacheable nodes never freed mid-compile); my_timer -> returned local from start_timing; all 41 recursive trait methods &mut self -> &self; recursion .borrow_mut().m() -> .m(). Immutable &self re-entry structurally kills the self-referential-definition double-borrow panic. Far less churn than arena (no NodeId, no parser threading, no take/replace). Byte-identity via same eval order + same cache semantics. Oracle: 538MB tokeniser + errmodel + 152 tests."
+                after_done true
+            }
         )
     }
 
@@ -2154,7 +2162,6 @@ children (
             {
                 id foma-backend.spec
                 title "Spec: draft target-side rules for the foma backend (FomaTransducer, convert, Backend/AlgebraBackend/LookupBackend, .foma streams)"
-                sealed true
                 log (
                     {
                         at 2026-07-06T14:41:23.517029Z
@@ -2169,7 +2176,6 @@ children (
                 id foma-backend.seam
                 title "Feature seam: 'foma' Cargo feature + path-dep, FomaTransducer wrapper, availability flip, AnyTransducer::Foma variant + any_delegate arm"
                 deps (foma-backend.spec)
-                sealed true
                 log (
                     {
                         at 2026-07-06T15:02:41.817069Z
@@ -2184,7 +2190,6 @@ children (
                 id foma-backend.convert
                 title "to_basic/from_basic: foma Fsm <-> HfstBasicTransducer (sigma nums<->symbols, EPSILON/UNKNOWN/IDENTITY, finality, weight 0.0)"
                 deps (foma-backend.seam)
-                sealed true
                 log (
                     {
                         at 2026-07-06T15:02:41.864201Z
