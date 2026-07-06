@@ -82,12 +82,12 @@ impl<B: AlgebraBackend> Clone for Rule<B> {
 }
 
 // C++ 'friend std::ostream& operator<<(std::ostream&, const Rule&)' -> 'Display'.
-// Delegates to the free-function port 'operator_shl_os' (defined below) which
+// Delegates to the free-function port 'write_to' (defined below) which
 // holds the actual 1:1 body; this bridges it to the std formatting machinery.
 impl<B: AlgebraBackend> fmt::Display for Rule<B> {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut buf: Vec<u8> = Vec::new();
-        operator_shl_os(&mut buf, self);
+        write_to(&mut buf, self);
         write!(out, "{}", String::from_utf8_lossy(&buf))
     }
 }
@@ -237,7 +237,7 @@ impl<B: AlgebraBackend> Rule<B> {
 }
 
 // Ports 'std::ostream & operator<<(std::ostream &out, const Rule & r)'.
-pub fn operator_shl_os<B: AlgebraBackend>(out: &mut dyn Write, r: &Rule<B>) {
+pub fn write_to<W: Write, B: AlgebraBackend>(out: &mut W, r: &Rule<B>) {
     writeln!(out, "hfst::xeroxRules::Rule:").unwrap();
     write!(out, "repl_type: ").unwrap();
     match r.repl_type {
@@ -259,17 +259,17 @@ pub fn operator_shl_os<B: AlgebraBackend>(out: &mut dyn Write, r: &Rule<B>) {
     writeln!(out, "mapping:").unwrap();
     for (i, it) in r.mapping.iter().enumerate() {
         writeln!(out, "#{} (right side):", i + 1).unwrap();
-        crate::hfst_transducer::operator_shl_os(out, &it.0);
+        crate::hfst_transducer::write_to(out, &it.0);
         writeln!(out, "#{} (left side):", i + 1).unwrap();
-        crate::hfst_transducer::operator_shl_os(out, &it.1);
+        crate::hfst_transducer::write_to(out, &it.1);
     }
 
     writeln!(out, "context:").unwrap();
     for (i, it) in r.context.iter().enumerate() {
         writeln!(out, "#{} (right side):", i + 1).unwrap();
-        crate::hfst_transducer::operator_shl_os(out, &it.0);
+        crate::hfst_transducer::write_to(out, &it.0);
         writeln!(out, "#{} (left side):", i + 1).unwrap();
-        crate::hfst_transducer::operator_shl_os(out, &it.1);
+        crate::hfst_transducer::write_to(out, &it.1);
     }
 }
 

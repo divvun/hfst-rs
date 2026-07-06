@@ -657,7 +657,7 @@ mod tests {
                 true,
             )
             .expect("HfstOutputStream(FOMA_TYPE)");
-            out.operator_shl(&mut tr).expect("write foma transducer <<");
+            out.write(&mut tr).expect("write foma transducer <<");
             out.close();
         }
 
