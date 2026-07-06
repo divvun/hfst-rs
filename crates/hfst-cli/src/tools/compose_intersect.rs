@@ -276,6 +276,14 @@ unsafe fn compose_streams(
                     &mut outstream,
                 )
             }
+            #[cfg(feature = "foma")]
+            hfst::hfst_data_types::ImplementationType::FOMA_TYPE => {
+                compose_streams_typed::<hfst::backend_foma::FomaTransducer>(
+                    firststream,
+                    secondstream,
+                    &mut outstream,
+                )
+            }
             _ => compose_streams_typed::<hfst_openfst::StdVectorFst>(
                 firststream,
                 secondstream,

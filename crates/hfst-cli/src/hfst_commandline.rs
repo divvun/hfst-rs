@@ -281,6 +281,8 @@ pub fn convert_any_with_options(
     Ok(match ty {
         ImplementationType::TROPICAL_OPENFST_TYPE => AnyTransducer::Tropical(t.into_typed()?),
         ImplementationType::LOG_OPENFST_TYPE => AnyTransducer::Log(t.into_typed()?),
+        #[cfg(feature = "foma")]
+        ImplementationType::FOMA_TYPE => AnyTransducer::Foma(t.into_typed()?),
         ImplementationType::HFST_OLW_TYPE | ImplementationType::HFST_OL_TYPE => {
             let weighted = ty == ImplementationType::HFST_OLW_TYPE;
             match t {

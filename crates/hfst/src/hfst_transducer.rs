@@ -4382,3 +4382,13 @@ impl FromAnyTransducer for Transducer<UnweightedTables> {
         }
     }
 }
+
+#[cfg(feature = "foma")]
+impl FromAnyTransducer for crate::backend_foma::FomaTransducer {
+    fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
+        match any {
+            AnyTransducer::Foma(t) => Ok(t),
+            other => any_into_backend_via_basic(other),
+        }
+    }
+}

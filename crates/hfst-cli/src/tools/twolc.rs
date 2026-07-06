@@ -428,8 +428,10 @@ fn real_main(mut args: Vec<String>) -> i32 {
     // collapse into the library's TwolcCompiler (nfst-twolc parse + AST walk +
     // per-rule stream store). The --format value is matched ONCE here into
     // the compiler's backend type parameter ([dec:hfst:monomorphic-backends]);
-    // SFST/FOMA never reach this point (the output stream constructor above
-    // rejects them).
+    // the rules are compiled at the requested type and stored to a same-type
+    // stream (mirroring C++ htwolcpre3, whose OtherSymbolTransducer is typed by
+    // the --format transducer_type). SFST/XFSM still never reach this point (the
+    // output stream constructor above rejects them).
     // Name shown in source-anchored diagnostics: the named input file, or the
     // library default ("<twolc>") when reading from stdin.
     let source_name = if command_line.has_input_file {
@@ -440,6 +442,17 @@ fn real_main(mut args: Vec<String>) -> i32 {
     let compiled = match command_line.format {
         ImplementationType::LOG_OPENFST_TYPE => {
             TwolcCompiler::<hfst::log_weight_transducer::LogFst>::new_with_options(
+                command_line.be_quiet,
+                command_line.be_verbose,
+                command_line.resolve_left_conflicts,
+                command_line.resolve_right_conflicts,
+            )
+            .set_source_name(&source_name)
+            .compile_and_store(&input, &mut out)
+        }
+        #[cfg(feature = "foma")]
+        ImplementationType::FOMA_TYPE => {
+            TwolcCompiler::<hfst::backend_foma::FomaTransducer>::new_with_options(
                 command_line.be_quiet,
                 command_line.be_verbose,
                 command_line.resolve_left_conflicts,

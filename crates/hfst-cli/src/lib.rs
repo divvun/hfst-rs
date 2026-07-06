@@ -37,13 +37,16 @@ macro_rules! for_any {
 }
 pub(crate) use for_any;
 
-/// Dispatch an expression over the two algebra variants; the OL variants run
-/// the 'else' arm (the tools' C++-era optimized-lookup rejection).
+/// Dispatch an expression over the algebra variants; the OL variants run the
+/// 'else' arm (the tools' C++-era optimized-lookup rejection). Foma is a full
+/// FST (algebra) backend, so its cfg-gated arm runs the body, not the 'else'.
 macro_rules! for_algebra {
     ($any:expr, $t:ident => $body:expr, else => $ol:expr) => {
         match $any {
             hfst::hfst_transducer::AnyTransducer::Tropical($t) => $body,
             hfst::hfst_transducer::AnyTransducer::Log($t) => $body,
+            #[cfg(feature = "foma")]
+            hfst::hfst_transducer::AnyTransducer::Foma($t) => $body,
             _ => $ol,
         }
     };
@@ -81,6 +84,12 @@ impl IntoAny
 {
     fn into_any(self) -> hfst::hfst_transducer::AnyTransducer {
         hfst::hfst_transducer::AnyTransducer::OlU(self)
+    }
+}
+#[cfg(feature = "foma")]
+impl IntoAny for hfst::hfst_transducer::HfstTransducer<hfst::backend_foma::FomaTransducer> {
+    fn into_any(self) -> hfst::hfst_transducer::AnyTransducer {
+        hfst::hfst_transducer::AnyTransducer::Foma(self)
     }
 }
 
