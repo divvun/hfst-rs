@@ -2244,6 +2244,15 @@ children (
                 id foma-backend.tests
                 title "Tests: .foma round-trip, algebra parity vs openfst on unweighted cases, pmatch-blowup case, lookup parity"
                 deps (foma-backend.algebra foma-backend.io foma-backend.lookup)
+                sealed true
+                log (
+                    {
+                        at 2026-07-06T16:30:52.612506Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
         )
     }
