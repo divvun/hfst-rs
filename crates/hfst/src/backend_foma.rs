@@ -626,7 +626,55 @@ impl LookupBackend for FomaTransducer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hfst_data_types::ImplementationType;
+    use crate::hfst_input_stream::HfstInputStream;
+    use crate::hfst_output_stream::HfstOutputStream;
+    use crate::hfst_transducer::{AnyTransducer, HfstTransducer};
     use std::collections::BTreeSet;
+
+    // Write a foma transducer through the REAL HfstOutputStream facade (the
+    // FOMA_TYPE arm: operator<< writes the "FOMA" header + Backend::write
+    // payload), then read it back via HfstInputStream — a true facade
+    // round-trip, no hand-assembled framing.
+    // [spec:hfst:sem:foma-backend.stream-io/test]
+    #[test]
+    fn write_through_hfst_output_stream_round_trip() {
+        let ab = FomaTransducer::define_transducer_symbol_pair("a", "b");
+        let cd = FomaTransducer::define_transducer_symbol_pair("c", "d");
+        let original = ab.disjunct(&cd);
+        let states1 = original.to_basic().unwrap().states().len();
+
+        let mut tr = HfstTransducer::wrap(original);
+        let path = std::env::temp_dir().join(format!(
+            "hfst_foma_facade_{}_{}.hfst",
+            std::process::id(),
+            line!()
+        ));
+        {
+            let mut out = HfstOutputStream::new_filename(
+                path.to_str().unwrap(),
+                ImplementationType::FOMA_TYPE,
+                true,
+            )
+            .expect("HfstOutputStream(FOMA_TYPE)");
+            out.operator_shl(&mut tr).expect("write foma transducer <<");
+            out.close();
+        }
+
+        let mut instream = HfstInputStream::new_filename(path.to_str().unwrap())
+            .expect("HfstInputStream over facade-written foma");
+        let any = instream.read().expect("read foma transducer back");
+        instream.close();
+        let _ = std::fs::remove_file(&path);
+
+        match any {
+            AnyTransducer::Foma(t) => {
+                let states2 = t.to_basic().unwrap().states().len();
+                assert_eq!(states1, states2, "state count survives facade round-trip");
+            }
+            other => panic!("expected AnyTransducer::Foma, got {:?}", other.get_type()),
+        }
+    }
 
     /// Reduce a basic transducer to a value that captures its recognized
     /// relation and alphabet: (state count, final states, alphabet, arcs).

@@ -2254,6 +2254,12 @@ children (
                     }
                 )
             }
+
+            {
+                id foma-backend.output-stream
+                title "HfstOutputStream FOMA_TYPE arms: write foma transducer through the facade (empty ctor arms; generic operator<< writes header + native .foma)"
+                deps (foma-backend.tests)
+            }
         )
     }
 )

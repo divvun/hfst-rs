@@ -50,10 +50,11 @@ impl HfstOutputStream {
                 // implementation.sfst = new hfst::implementations::SfstOutputStream();
                 unimplemented!("deferred: SfstOutputStream");
             }
-            ImplementationType::FOMA_TYPE => {
-                // implementation.foma = new hfst::implementations::FomaOutputStream();
-                unimplemented!("deferred: FomaOutputStream");
-            }
+            // Like the openfst/OL backends, foma needs no per-type stream
+            // object: operator<< writes the "FOMA" header generically and the
+            // payload comes from Backend::write (native .foma). Only reachable
+            // with the `foma` feature (availability is gated above).
+            ImplementationType::FOMA_TYPE => {}
             ImplementationType::XFSM_TYPE => {
                 // implementation.xfsm = new XfsmOutputStream(); // throws error
                 unimplemented!("deferred: XfsmOutputStream");
@@ -101,9 +102,9 @@ impl HfstOutputStream {
             ImplementationType::SFST_TYPE => {
                 unimplemented!("deferred: SfstOutputStream");
             }
-            ImplementationType::FOMA_TYPE => {
-                unimplemented!("deferred: FomaOutputStream");
-            }
+            // foma: no per-type stream object; operator<< writes header +
+            // Backend::write payload. Only reachable with the `foma` feature.
+            ImplementationType::FOMA_TYPE => {}
             ImplementationType::XFSM_TYPE => {
                 unimplemented!("deferred: XfsmOutputStream");
             }
