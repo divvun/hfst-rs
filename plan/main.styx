@@ -2137,5 +2137,13 @@ children (
     {
         id idiom-islands
         title "Eliminate the residual unsafe islands in the hfst lib (the 6 flagged from idiom4): split LookupState from Transducer (kills ol-lookup-paths *mut + as_hfst_ol_ptr const-cast + folds fdstate-self-ref into a borrowed &FdTable, and unblocks parallel lookup); substitute-alias -> store symbol key; read_in_att -> owned (drop Box::leak/from_raw); print_dot from_utf8_unchecked -> checked; input_stream 'a mut T<'a> -> scoped reborrow; pmatch locatefy/stringify -> Rc<PmatchAlphabet>. End state: hfst lib unsafe -> 0, tighten lib.rs deny(unsafe_op_in_unsafe_fn) toward deny(unsafe_code). Oracle: 152/14 hfst + 131 rustfst tests, 538MB pmhfst + errmodel byte-identical."
+        log (
+            {
+                at 2026-07-06T12:34:35.317146Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan_complete)"
+            }
+        )
     }
 )
