@@ -102,6 +102,10 @@ pub struct StatePlaceholder {
     pub first_transition: u32,
     pub symbol_to_transition_placeholder_v: Vec<u32>,
     pub transition_placeholders: Vec<Vec<TransitionPlaceholder>>,
+    // Per-group cumulative transition offsets (parallel to
+    // transition_placeholders), built by build_symbol_offsets once the
+    // transitions are final; answers symbol_offset queries in O(1).
+    pub group_offsets: Vec<u32>,
     pub ty: IndexingType,
     pub inputs: SymbolNumber,
     pub is_final: bool,
@@ -118,6 +122,7 @@ impl StatePlaceholder {
             first_transition: first,
             symbol_to_transition_placeholder_v: Vec::new(),
             transition_placeholders: Vec::new(),
+            group_offsets: Vec::new(),
             ty: if state == 0 {
                 IndexingType::nonsimple
             } else {
@@ -136,6 +141,7 @@ impl StatePlaceholder {
             first_transition: u32::MAX,
             symbol_to_transition_placeholder_v: Vec::new(),
             transition_placeholders: Vec::new(),
+            group_offsets: Vec::new(),
             ty: IndexingType::empty,
             inputs: 0,
             is_final: false,
@@ -266,6 +272,55 @@ impl StatePlaceholder {
              present in state",
         );
         crate::bail!(Fatal, message)
+    }
+
+    /// One pass over the state's symbol layout, producing every group's offset
+    /// (the value symbol_offset would compute per query) in group_offsets.
+    /// Epsilon and flag groups sit at offset 0; non-flag groups accumulate in
+    /// the same order symbol_offset scans them.
+    pub fn build_symbol_offsets(&mut self, flag_symbols: &FlagSymbolSet) {
+        self.group_offsets = vec![0; self.transition_placeholders.len()];
+        let mut offset: u32 = 0;
+        if self.input_present(0) {
+            offset = u32::try_from(self.get_transition_placeholders(0).len())
+                .expect("value out of u32 range");
+        }
+        for &flag_it in flag_symbols.iter() {
+            if self.input_present(flag_it) {
+                offset += u32::try_from(self.get_transition_placeholders(flag_it).len())
+                    .expect("value out of u32 range");
+            }
+        }
+        for i in 1..self.symbol_to_transition_placeholder_v.len() {
+            let i = i as SymbolNumber;
+            if self.input_present(i) && !flag_symbols.contains(i) {
+                let group = self.symbol_to_transition_placeholder_v[i as usize] as usize;
+                self.group_offsets[group] = offset;
+                offset += u32::try_from(self.transition_placeholders[group].len())
+                    .expect("value out of u32 range");
+            }
+        }
+    }
+
+    /// O(1) equivalent of symbol_offset for symbols present in this state;
+    /// requires build_symbol_offsets to have run.
+    pub fn symbol_offset_cached(
+        &self,
+        symbol: SymbolNumber,
+        flag_symbols: &FlagSymbolSet,
+    ) -> crate::error::Result<u32> {
+        if symbol == 0 || flag_symbols.contains(symbol) {
+            return Ok(0);
+        }
+        if !self.input_present(symbol) {
+            let message = String::from(
+                "error in conversion between optimized lookup format and \
+                 HfstTransducer;\ntried to calculate symbol_offset for symbol not \
+                 present in state",
+            );
+            crate::bail!(Fatal, message)
+        }
+        Ok(self.group_offsets[self.symbol_to_transition_placeholder_v[symbol as usize] as usize])
     }
 }
 

@@ -111,10 +111,14 @@ pub fn second_reader() -> std::io::Result<Box<dyn BufRead>> {
 /// else the named file. The std counterpart of the old `outfile()` FILE*.
 pub fn output_writer() -> std::io::Result<Box<dyn Write>> {
     let name = output_filename();
+    // Buffered in both arms: raw Stdout locks and newline-scans per write, a
+    // raw File is a syscall per write; the C FILE* these replace buffered.
     if name == "<stdout>" || name == "-" || name.is_empty() {
-        Ok(Box::new(std::io::stdout()))
+        Ok(Box::new(std::io::BufWriter::new(std::io::stdout())))
     } else {
-        Ok(Box::new(std::fs::File::create(&name)?))
+        Ok(Box::new(std::io::BufWriter::new(std::fs::File::create(
+            &name,
+        )?)))
     }
 }
 

@@ -68,7 +68,10 @@ impl HfstOutputStream {
         Ok(HfstOutputStream {
             ty,
             hfst_format,
-            out: Box::new(std::io::stdout()),
+            // Raw Stdout is line-buffered: each write takes the lock and scans
+            // for newlines, which dominates when streaming big binaries. The
+            // C++ FILE* was fully buffered; BufWriter restores that.
+            out: Box::new(std::io::BufWriter::new(std::io::stdout())),
             is_open: true,
         })
     }
@@ -121,7 +124,8 @@ impl HfstOutputStream {
         Ok(HfstOutputStream {
             ty,
             hfst_format,
-            out: Box::new(file),
+            // Unbuffered File = one syscall per write; the C++ FILE* buffered.
+            out: Box::new(std::io::BufWriter::new(file)),
             is_open: true,
         })
     }

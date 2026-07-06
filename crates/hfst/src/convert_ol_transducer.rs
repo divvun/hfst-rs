@@ -424,6 +424,15 @@ impl ConversionFunctions {
         // Now for each index entry we write its input symbol and target
         let mut windex_table: TransducerTable<TransitionWIndex> = TransducerTable::new();
 
+        // Each (state, symbol) pair is queried exactly once below, so build
+        // every state's offsets in one pass each instead of rescanning the
+        // symbol layout per index entry. Only non-simple states get entries.
+        for state in state_placeholders.iter_mut() {
+            if !state.is_simple() {
+                state.build_symbol_offsets(&flag_symbols);
+            }
+        }
+
         let mut greatest_index: u32 = 0;
         if !used_indices.indices.is_empty() {
             greatest_index =
@@ -449,7 +458,7 @@ impl ConversionFunctions {
                 let idx = used_indices.get_target(i).0 as usize;
                 let sym = used_indices.get_target(i).1;
                 let target = state_placeholders[idx].first_transition
-                    + state_placeholders[idx].symbol_offset(sym, &flag_symbols)?
+                    + state_placeholders[idx].symbol_offset_cached(sym, &flag_symbols)?
                     + TA_OFFSET;
                 windex_table.append(TransitionWIndex::new_values(sym, target));
             }
