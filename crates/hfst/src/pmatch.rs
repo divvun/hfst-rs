@@ -983,7 +983,19 @@ impl PmatchAlphabet {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-alphabet.stringify-fn]
     // Reads/writes container.pattern_counts and reads the pattern flags, so the
     // container is passed in (C++ uses the back-pointer 'container').
-    pub fn stringify(&self, str: &DoubleTape, container: &mut PmatchContainer) -> String {
+    // Takes the container fields it touches (the pattern-mode flags by value,
+    // the counts map by exclusive reference) rather than the whole container,
+    // so the caller can hand this its 'alphabet' and 'pattern_counts' fields as
+    // two disjoint borrows.
+    pub fn stringify(
+        &self,
+        str: &DoubleTape,
+        count_patterns: bool,
+        delete_patterns: bool,
+        mark_patterns: bool,
+        extract_patterns: bool,
+        pattern_counts: &mut BTreeMap<String, usize>,
+    ) -> String {
         let mut retval = String::new();
         let mut start_tag_pos: Vec<u32> = Vec::new();
         let mut input_contained_printable_symbol = false;
@@ -999,12 +1011,12 @@ impl PmatchAlphabet {
                     start_tag_pos.pop();
                 }
             } else if self.is_end_tag_sym(output) {
-                if container.count_patterns && input_contained_printable_symbol {
+                if count_patterns && input_contained_printable_symbol {
                     let key = self.start_tag(output);
-                    if !container.pattern_counts.contains_key(&key) {
-                        container.pattern_counts.insert(key, 1);
+                    if !pattern_counts.contains_key(&key) {
+                        pattern_counts.insert(key, 1);
                     } else {
-                        *container.pattern_counts.get_mut(&key).unwrap() += 1;
+                        *pattern_counts.get_mut(&key).unwrap() += 1;
                     }
                 }
                 let pos: u32;
@@ -1014,17 +1026,17 @@ impl PmatchAlphabet {
                 } else {
                     pos = *start_tag_pos.last().unwrap();
                 }
-                if container.delete_patterns {
+                if delete_patterns {
                     let how_much_to_delete = retval.len() - pos as usize;
                     retval.replace_range(
                         pos as usize..pos as usize + how_much_to_delete,
                         &self.start_tag(output),
                     );
-                } else if container.mark_patterns && input_contained_printable_symbol {
+                } else if mark_patterns && input_contained_printable_symbol {
                     retval.insert_str(pos as usize, &self.start_tag(output));
                     retval.push_str(&self.end_tag(output));
                 }
-            } else if (!container.extract_patterns || !start_tag_pos.is_empty())
+            } else if (!extract_patterns || !start_tag_pos.is_empty())
                 && self.is_printable_sym(output)
             {
                 retval.push_str(&self.string_from_symbol(output));
@@ -1039,7 +1051,8 @@ impl PmatchAlphabet {
         &self,
         input_offset: u32,
         str: &WeightedDoubleTape,
-        container: &mut PmatchContainer,
+        count_patterns: bool,
+        pattern_counts: &mut BTreeMap<String, usize>,
     ) -> Location {
         let mut retval = Location {
             start: input_offset,
@@ -1056,12 +1069,12 @@ impl PmatchAlphabet {
             let input = it.input;
             let output = it.output;
             if self.is_end_tag_sym(output) {
-                if container.count_patterns {
+                if count_patterns {
                     let key = self.start_tag(output);
-                    if !container.pattern_counts.contains_key(&key) {
-                        container.pattern_counts.insert(key, 1);
+                    if !pattern_counts.contains_key(&key) {
+                        pattern_counts.insert(key, 1);
                     } else {
-                        *container.pattern_counts.get_mut(&key).unwrap() += 1;
+                        *pattern_counts.get_mut(&key).unwrap() += 1;
                     }
                 }
                 retval.tag = self.start_tag(output);
@@ -3117,17 +3130,27 @@ impl PmatchTransducer {
 
 // Integration helpers: the C++ calls 'alphabet.locatefy(.., this)' and
 // 'alphabet.stringify(.., this)' where 'alphabet' is a member and 'this' is the
-// container — the same member-method-on-'this' aliasing. Both only read the
-// alphabet's own fields and mutate 'container.pattern_counts' (disjoint), so the
-// split borrow is sound; modelled with a raw pointer per the port conventions.
+// container. The alphabet methods only read their own fields and the
+// container's pattern-mode flags while mutating 'pattern_counts', so the two
+// fields are handed over as disjoint borrows — no aliasing to model.
 impl PmatchContainer {
     fn locatefy(&mut self, input_offset: u32, str: &WeightedDoubleTape) -> Location {
-        let a: *const PmatchAlphabet = &self.alphabet;
-        unsafe { (*a).locatefy(input_offset, str, self) }
+        self.alphabet.locatefy(
+            input_offset,
+            str,
+            self.count_patterns,
+            &mut self.pattern_counts,
+        )
     }
     fn stringify(&mut self, str: &DoubleTape) -> String {
-        let a: *const PmatchAlphabet = &self.alphabet;
-        unsafe { (*a).stringify(str, self) }
+        self.alphabet.stringify(
+            str,
+            self.count_patterns,
+            self.delete_patterns,
+            self.mark_patterns,
+            self.extract_patterns,
+            &mut self.pattern_counts,
+        )
     }
 }
 
