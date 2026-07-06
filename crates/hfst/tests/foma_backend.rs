@@ -280,6 +280,58 @@ fn foma_stream_round_trip_through_hfst_input_stream() {
     );
 }
 
+// [spec:hfst:sem:foma-backend.stream-io/test]
+// Regression: a MULTI-transducer FOMA stream (each transducer its own
+// [HFST header][gzip image], as twolc emits one per rule) must read back every
+// transducer, not just the first. The read arm once slurped the whole tail and
+// parsed a single gzip member, so downstream a 46-rule twolc phonology came back
+// as 1 rule. The fix reads exactly one gzip member and ungets the leftover.
+#[test]
+fn foma_stream_reads_every_transducer_in_a_multi_stream() {
+    let pairs = [("a", "b"), ("c", "d"), ("e", "f")];
+    let mut bytes: Vec<u8> = Vec::new();
+    for (i, o) in pairs {
+        let t = FomaTransducer::define_transducer_symbol_pair(i, o);
+        let mut payload: Vec<u8> = Vec::new();
+        t.write(&mut payload, false)
+            .expect("Backend::write foma payload");
+        bytes.extend_from_slice(&hfst_frame_foma(&payload));
+    }
+
+    let path = std::env::temp_dir().join(format!(
+        "hfst_foma_multi_{}_{}.hfst",
+        std::process::id(),
+        line!()
+    ));
+    std::fs::write(&path, &bytes).expect("write temp multi .hfst");
+
+    let mut instream = HfstInputStream::new_filename(path.to_str().unwrap())
+        .expect("HfstInputStream over multi framed foma bytes");
+    let mut got: Vec<std::collections::BTreeSet<(String, String)>> = Vec::new();
+    while !instream.is_eof() {
+        let any = instream
+            .read()
+            .expect("read foma transducer from multi stream");
+        let basic = match any {
+            AnyTransducer::Foma(t) => t.to_basic().expect("to_basic"),
+            other => panic!("expected Foma, got {:?}", other.get_type()),
+        };
+        let t = FomaTransducer::from_basic(&basic).expect("from_basic");
+        got.push(accepted_pairs(&t));
+    }
+    instream.close();
+    let _ = std::fs::remove_file(&path);
+
+    assert_eq!(got.len(), 3, "all three transducers must be read back");
+    for ((i, o), relation) in pairs.iter().zip(got.iter()) {
+        assert_eq!(
+            relation,
+            &expect_pairs(&[(i, o)]),
+            "transducer {i}:{o} round-trips"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Test 2: algebra parity vs the tropical openfst backend.
 // ---------------------------------------------------------------------------

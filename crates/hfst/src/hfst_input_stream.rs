@@ -500,20 +500,23 @@ mod input_impl {
                     // [spec:hfst:sem:foma-backend.stream-io]
                     // Read half of the stream-io node: slurp the remaining bytes
                     // (the native, gzip-aware `.foma` image the probe left
-                    // positioned at) and rebuild the net in memory — no temp file.
-                    // Documented approximation: the whole remainder is consumed,
-                    // so a multi-transducer FOMA stream is not re-split the way the
-                    // OpenFst arms unget their leftover.
+                    // positioned at), decode exactly ONE gzip member, and unget the
+                    // leftover so a multi-transducer FOMA stream re-splits the way
+                    // the OpenFst arms do (each transducer is its own
+                    // [HFST header][gzip image]).
                     #[cfg(feature = "foma")]
                     {
                         let bytes = self.read_remaining_bytes();
-                        let fsm = match foma::io::fsm_read_binary_mem(&bytes) {
-                            Ok(f) => f,
+                        let (fsm, consumed) = match foma::io::fsm_read_binary_mem_prefix(&bytes) {
+                            Ok(fc) => fc,
                             Err(_) => crate::bail!(
                                 NotTransducerStream,
                                 "could not read FOMA transducer payload"
                             ),
                         };
+                        if consumed < bytes.len() {
+                            self.pbr().unget_all(&bytes[consumed..]);
+                        }
                         AnyTransducer::Foma(HfstTransducer::wrap(
                             crate::backend_foma::FomaTransducer(*fsm),
                         ))
