@@ -1427,10 +1427,12 @@ pub fn make_naive_tokenizer<B: AlgebraBackend>(
 fn process_input_0delim_print(
     container: &mut PmatchContainer,
     outstream: &mut dyn Write,
-    cur: &mut String,
+    cur: &mut Vec<u8>,
     s: &TokenizeSettings,
 ) {
-    let input_text = cur.clone();
+    // 'cur' accumulates the raw input bytes (as the C++ std::string does);
+    // decode to UTF-8 here so multibyte characters reach the matcher intact.
+    let input_text = String::from_utf8_lossy(cur).into_owned();
     if !input_text.is_empty() {
         match_and_print(container, outstream, &input_text, s);
     }
@@ -1522,7 +1524,10 @@ pub fn process_input_0delim(
 ) -> i32 {
     let mut buf: Vec<u8> = Vec::new();
     let mut in_blank = false;
-    let mut cur = String::new();
+    // Accumulate raw input bytes (the C++ builds a std::string byte-by-byte);
+    // pushing 'ch as char' here would reinterpret each UTF-8 byte as a Latin-1
+    // codepoint and corrupt multibyte characters before they reach the matcher.
+    let mut cur: Vec<u8> = Vec::new();
     loop {
         buf.clear();
         // C: hfst_getdelim keeps the trailing '\0'; Ok(0) at EOF == len<=0.
@@ -1536,34 +1541,42 @@ pub fn process_input_0delim(
         while i < len {
             let ch = bytes[i as usize];
             if escaped {
-                cur.push(ch as char);
+                cur.push(ch);
                 escaped = false;
                 i += 1;
                 continue;
             } else if do_superblank && !in_blank && ch == b'[' {
                 process_input_0delim_print(container, outstream, &mut cur, s);
-                cur.push(ch as char);
+                cur.push(ch);
                 in_blank = true;
             } else if do_superblank && in_blank && ch == b']' {
-                cur.push(ch as char);
+                cur.push(ch);
                 if i + 1 < len && bytes[(i + 1) as usize] == b'[' {
                     // Join consecutive superblanks
                     i += 1;
-                    cur.push(bytes[i as usize] as char);
+                    cur.push(bytes[i as usize]);
                 } else {
                     in_blank = false;
-                    print_nonmatching_sequence(&cur, outstream, s);
+                    print_nonmatching_sequence(&String::from_utf8_lossy(&cur), outstream, s);
                     cur.clear();
                 }
             } else if !in_blank && ch == b'\n' {
-                cur.push(ch as char);
+                cur.push(ch);
                 if verbose {
-                    let _ = writeln!(outstream, "processing: {}\\n", cur);
+                    let _ = writeln!(
+                        outstream,
+                        "processing: {}\\n",
+                        String::from_utf8_lossy(&cur)
+                    );
                 }
                 process_input_0delim_print(container, outstream, &mut cur, s);
             } else if ch == b'\0' {
                 if verbose {
-                    let _ = writeln!(outstream, "processing: {}\\0", cur);
+                    let _ = writeln!(
+                        outstream,
+                        "processing: {}\\0",
+                        String::from_utf8_lossy(&cur)
+                    );
                 }
                 process_input_0delim_print(container, outstream, &mut cur, s);
                 let _ = writeln!(outstream, "<STREAMCMD:FLUSH>"); // CG format uses this instead of \0
@@ -1571,7 +1584,7 @@ pub fn process_input_0delim(
                     eprintln!("hfst-tokenize: Could not flush file");
                 }
             } else {
-                cur.push(ch as char);
+                cur.push(ch);
             }
             escaped = ch == b'\\';
             i += 1;
@@ -1581,7 +1594,7 @@ pub fn process_input_0delim(
         }
     }
     if in_blank {
-        print_nonmatching_sequence(&cur, outstream, s);
+        print_nonmatching_sequence(&String::from_utf8_lossy(&cur), outstream, s);
     } else {
         process_input_0delim_print(container, outstream, &mut cur, s);
     }

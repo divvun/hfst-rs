@@ -115,3 +115,53 @@ fn match_numerals_runtime() -> Result<(), hfst::error::Error> {
     );
     Ok(())
 }
+
+// Regression: the giellacg (--giella-cg) input driver 'process_input_0delim'
+// accumulated raw input bytes into a Rust String via `ch as char`, which
+// reinterprets each UTF-8 byte as a Latin-1 codepoint and corrupts multibyte
+// characters BEFORE they reach the matcher. A known word containing 'å'
+// (0xC3 0xA5) then failed to match and was split at the byte boundary
+// ("<g>" ... "<etie>"). Drive the driver with a NUL-delimited multibyte input
+// and assert the word tokenizes whole.
+#[test]
+fn giellacg_input_preserves_multibyte_utf8() -> Result<(), hfst::error::Error> {
+    use hfst::pmatch_tokenize::{OutputFormat, TokenizeSettings, process_input_0delim};
+
+    let mut compiler = PmatchCompiler::<StdVectorFst>::new();
+    let defs = compiler.compile("Define TOP {gåetie} EndTag(N) ;\n")?;
+    let top = defs.get("TOP").expect("no TOP in pmatch result");
+    let top_owned = HfstTransducer::<Transducer<WeightedTables>>::new_from_basic(&top.to_basic()?)?;
+    let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_owned])?;
+    container.set_single_codepoint_tokenization(true);
+
+    let settings = TokenizeSettings {
+        output_format: OutputFormat::giellacg,
+        print_all: true,
+        print_weights: true,
+        ..TokenizeSettings::default()
+    };
+
+    // "gåetie\0" — å is the two bytes 0xC3 0xA5.
+    let input: &[u8] = b"g\xc3\xa5etie\0";
+    let mut reader = input;
+    let mut out: Vec<u8> = Vec::new();
+    process_input_0delim(
+        &mut container,
+        &mut reader,
+        &mut out,
+        false,
+        &settings,
+        false,
+    );
+    let out = String::from_utf8_lossy(&out);
+
+    assert!(
+        out.contains("gåetie"),
+        "multibyte word should tokenize whole, got:\n{out}"
+    );
+    assert!(
+        !out.contains("\"<g>\""),
+        "word was split at the multibyte boundary:\n{out}"
+    );
+    Ok(())
+}

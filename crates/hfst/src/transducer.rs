@@ -256,23 +256,31 @@ impl<'a> IStream<'a> {
             return;
         }
         let mut got = 0;
+        // First drain the put-back get-area (LIFO), as the byte-at-a-time loop
+        // did — the last pushed byte is returned first.
         while got < buf.len() {
             if let Some(b) = self.putback.pop() {
                 buf[got] = b;
                 got += 1;
-                continue;
+            } else {
+                break;
             }
-            let mut b = [0u8; 1];
-            match self.inner.read(&mut b) {
+        }
+        // Then bulk-read the remainder straight into 'buf', looping only to
+        // service short reads. (This used to read ONE BYTE PER 'inner.read()'
+        // call, which turned loading a 565MB pmatch/OL table into ~half a
+        // billion syscalls — a multi-minute hang. Filling the caller's buffer
+        // directly reads exactly buf.len() bytes with no read-ahead, so the
+        // multi-transducer stream framing that reborrows the reader stays
+        // correct.)
+        while got < buf.len() {
+            match self.inner.read(&mut buf[got..]) {
                 Ok(0) => {
                     self.eof = true;
                     self.fail = true;
                     return;
                 }
-                Ok(_) => {
-                    buf[got] = b[0];
-                    got += 1;
-                }
+                Ok(n) => got += n,
                 Err(_) => {
                     self.fail = true;
                     return;
