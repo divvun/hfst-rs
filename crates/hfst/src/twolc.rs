@@ -3267,7 +3267,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             self.collect_regex_pairs(&def.value.body, &empty_vvm, pairs);
         }
         for rule in &file.rules {
-            for vvm in Self::variable_assignments(&rule.value)? {
+            for vvm in self.variable_assignments(&rule.value)? {
                 match &rule.value.center {
                     RuleCenter::Pair(ps) => {
                         for p in ps {
@@ -3295,9 +3295,12 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     /// The per-rule variable assignments the ['RuleVariables'] odometer yields
     /// (a single empty assignment when the rule has no 'where'-clause) — the
     /// same expansion ['expand_rule_variables'] drives rules with.
-    fn variable_assignments(rule: &AstTwolcRule) -> crate::error::Result<Vec<VariableValueMap>> {
+    fn variable_assignments(
+        &self,
+        rule: &AstTwolcRule,
+    ) -> crate::error::Result<Vec<VariableValueMap>> {
         let rule_variables = match rule.variables.as_ref() {
-            Some(blocks) if !blocks.is_empty() => Self::build_rule_variables(blocks),
+            Some(blocks) if !blocks.is_empty() => self.build_rule_variables(blocks),
             _ => RuleVariables::new(),
         };
         if rule_variables.empty() {
@@ -3461,7 +3464,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         // rule name is used as-is.
         let blocks_opt = rule.variables.as_ref();
         let rule_variables = match blocks_opt {
-            Some(blocks) if !blocks.is_empty() => Self::build_rule_variables(blocks),
+            Some(blocks) if !blocks.is_empty() => self.build_rule_variables(blocks),
             _ => RuleVariables::new(),
         };
 
@@ -3518,12 +3521,23 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
 
     /// AST 'where'-blocks -> ['RuleVariables'] (the C++
     /// 'set_variable'/'add_values'/'set_matcher' sequence per block).
-    pub fn build_rule_variables(blocks: &[VariableBlock]) -> RuleVariables {
+    pub fn build_rule_variables(&self, blocks: &[VariableBlock]) -> RuleVariables {
         let mut rv = RuleVariables::new();
         for block in blocks {
             for assignment in block.assignments.iter() {
                 rv.set_variable(&assignment.name);
-                rv.add_values(&assignment.values);
+                // A value that names a Set expands to the set's members: the
+                // 'where'-variable iterates over them ('where Cx in (DelCns)'
+                // ranges over g8, m8, n8, h8). nfst_twolc keeps the where-clause
+                // verbatim (the values are raw source strings), so the set
+                // reference is resolved here — a plain symbol is its own
+                // singleton via 'set_of'.
+                let expanded: Vec<String> = assignment
+                    .values
+                    .iter()
+                    .flat_map(|v| self.set_of(v).into_iter().map(|s| s.to_string()))
+                    .collect();
+                rv.add_values(&expanded);
             }
             rv.set_matcher(matcher_from_var_matcher(block.matcher));
         }
