@@ -183,6 +183,8 @@ unsafe fn compare_streams(
                     Some(compare_pair(f, s))
                 }
                 (AnyTransducer::Log(f), AnyTransducer::Log(s)) => Some(compare_pair(f, s)),
+                #[cfg(feature = "foma")]
+                (AnyTransducer::Foma(f), AnyTransducer::Foma(s)) => Some(compare_pair(f, s)),
                 _ => None,
             };
             match outcome {

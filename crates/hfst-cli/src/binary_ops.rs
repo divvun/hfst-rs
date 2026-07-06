@@ -449,6 +449,11 @@ unsafe fn binary_op_streams(
                     process_pair(spec, op, f, s, &ctx, &mut outstream)
                         .map(|(f, s)| (f.into_any(), s.into_any()))
                 }
+                #[cfg(feature = "foma")]
+                (AnyTransducer::Foma(f), AnyTransducer::Foma(s)) => {
+                    process_pair(spec, op, f, s, &ctx, &mut outstream)
+                        .map(|(f, s)| (f.into_any(), s.into_any()))
+                }
                 _ => {
                     // Unreachable: OL streams were rejected before the loop
                     // and the mismatch arm above unified the algebra types;
