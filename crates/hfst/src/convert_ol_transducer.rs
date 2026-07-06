@@ -13,7 +13,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::convert::{
-    IndexPlaceholders, StatePlaceholder, TransitionPlaceholder,
+    FlagSymbolSet, IndexPlaceholders, StatePlaceholder, TransitionPlaceholder,
     write_transitions_from_state_placeholders,
 };
 use crate::convert_transducer_format::ConversionFunctions;
@@ -81,7 +81,7 @@ pub fn get_states_and_symbols(
     state_placeholders: &mut Vec<StatePlaceholder>,
     symbol_table: &mut SymbolTable,
     seen_input_symbols: &mut SymbolNumber,
-    flag_symbols: &mut BTreeSet<SymbolNumber>,
+    flag_symbols: &mut FlagSymbolSet,
     harmonizer: Option<&Transducer>,
 ) {
     // Symbols must be in the following order in an optimized-lookup transducer:
@@ -349,7 +349,7 @@ impl ConversionFunctions {
         let mut state_placeholders: Vec<StatePlaceholder> = Vec::new();
         let mut symbol_table: SymbolTable = SymbolTable::new();
         let mut seen_input_symbols: SymbolNumber = 1; // We always have epsilon
-        let mut flag_symbols: BTreeSet<SymbolNumber> = BTreeSet::new();
+        let mut flag_symbols = FlagSymbolSet::new();
         get_states_and_symbols(
             t,
             &mut state_placeholders,
@@ -367,14 +367,28 @@ impl ConversionFunctions {
         let mut previous_first_index: u32 = 0;
         let mut previous_successful_index: u32 = 0;
         let mut floor_stuck_counter: i32 = 0;
+        // The flag-resolved index offsets of the state under placement; they
+        // don't depend on the probed position, so compute them once per state.
+        let mut state_offsets: Vec<SymbolNumber> = Vec::new();
         for idx in 0..state_placeholders.len() {
             if state_placeholders[idx].is_simple() {
                 continue;
             }
+            state_offsets.clear();
+            state_offsets.extend(state_placeholders[idx].transition_placeholders.iter().map(
+                |group| {
+                    let input = group[0].input;
+                    if flag_symbols.contains(input) {
+                        0
+                    } else {
+                        input
+                    }
+                },
+            ));
             let mut i = first_available_index;
 
             // While this index is not suitable for a starting index, keep going
-            while !used_indices.fits(&state_placeholders[idx], &flag_symbols, i) {
+            while !used_indices.fits(&state_offsets, i) {
                 i += 1;
             }
             state_placeholders[idx].start_index = i;
@@ -382,12 +396,7 @@ impl ConversionFunctions {
             // Insert a finality marker and mark all the used indices
             let state_number = state_placeholders[idx].state_number;
             used_indices.assign(i, state_number, NO_SYMBOL_NUMBER);
-            for tr_idx in 0..state_placeholders[idx].transition_placeholders.len() {
-                let mut index_offset =
-                    state_placeholders[idx].transition_placeholders[tr_idx][0].input;
-                if flag_symbols.contains(&index_offset) {
-                    index_offset = 0;
-                }
+            for &index_offset in state_offsets.iter() {
                 used_indices.assign(i + index_offset as u32 + 1, state_number, index_offset);
             }
 

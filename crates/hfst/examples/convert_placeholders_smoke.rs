@@ -1,8 +1,7 @@
-use hfst::convert::{IndexPlaceholders, StatePlaceholder, TransitionPlaceholder};
-use std::collections::BTreeSet;
+use hfst::convert::{FlagSymbolSet, IndexPlaceholders, StatePlaceholder, TransitionPlaceholder};
 
 fn main() -> hfst::error::Result<()> {
-    let flags: BTreeSet<u16> = BTreeSet::new();
+    let flags = FlagSymbolSet::new();
 
     // State 0 is always nonsimple; a later state starts empty (=> simple).
     let s0 = StatePlaceholder::new(0, false, 0, 0.0);

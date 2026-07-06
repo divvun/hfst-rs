@@ -53,6 +53,38 @@ impl TransitionPlaceholder {
     }
 }
 
+/// The set of flag-diacritic symbol numbers, kept both as an ordered set (the
+/// emission order of flags is part of the OL byte format) and as a dense
+/// membership mask (contains() sits in the packer's innermost loops).
+#[derive(Clone, Default)]
+pub struct FlagSymbolSet {
+    set: BTreeSet<SymbolNumber>,
+    mask: Vec<bool>,
+}
+
+impl FlagSymbolSet {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, symbol: SymbolNumber) {
+        if self.mask.len() <= symbol as usize {
+            self.mask.resize(symbol as usize + 1, false);
+        }
+        self.mask[symbol as usize] = true;
+        self.set.insert(symbol);
+    }
+
+    #[inline]
+    pub fn contains(&self, symbol: SymbolNumber) -> bool {
+        (symbol as usize) < self.mask.len() && self.mask[symbol as usize]
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &SymbolNumber> {
+        self.set.iter()
+    }
+}
+
 // [spec:hfst:def:convert.hfst-ol.state-placeholder.indexing-type]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum IndexingType {
@@ -135,7 +167,7 @@ impl StatePlaceholder {
 
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.add-input-fn]
     // [spec:hfst:sem:convert.hfst-ol.state-placeholder.add-input-fn]
-    pub fn add_input(&mut self, input: SymbolNumber, flag_symbols: &BTreeSet<SymbolNumber>) {
+    pub fn add_input(&mut self, input: SymbolNumber, flag_symbols: &FlagSymbolSet) {
         if self.input_present(input) {
             return;
         }
@@ -151,18 +183,18 @@ impl StatePlaceholder {
             // type. Epsilons and flags both index to 0. If we have only one
             // input symbol, we're simple.
             if self.ty == IndexingType::empty {
-                if input == 0 || flag_symbols.contains(&input) {
+                if input == 0 || flag_symbols.contains(input) {
                     self.ty = IndexingType::simple_zero_index;
                 } else {
                     self.ty = IndexingType::simple_nonzero_index;
                 }
             } else if self.ty == IndexingType::simple_zero_index {
-                if input != 0 && !flag_symbols.contains(&input) {
+                if input != 0 && !flag_symbols.contains(input) {
                     self.ty = IndexingType::nonsimple;
                 }
             } else {
                 // simple_nonzero_index
-                if self.inputs > 1 || input == 0 || flag_symbols.contains(&input) {
+                if self.inputs > 1 || input == 0 || flag_symbols.contains(input) {
                     self.ty = IndexingType::nonsimple;
                 }
             }
@@ -193,7 +225,7 @@ impl StatePlaceholder {
     pub fn symbol_offset(
         &self,
         symbol: SymbolNumber,
-        flag_symbols: &BTreeSet<SymbolNumber>,
+        flag_symbols: &FlagSymbolSet,
     ) -> crate::error::Result<u32> {
         if symbol == 0 {
             return Ok(0);
@@ -217,7 +249,7 @@ impl StatePlaceholder {
         for i in 1..self.symbol_to_transition_placeholder_v.len() {
             let i = i as SymbolNumber;
             if self.input_present(i) {
-                if flag_symbols.contains(&i) {
+                if flag_symbols.contains(i) {
                     // already counted
                     continue;
                 }
@@ -256,6 +288,10 @@ pub fn compare_states_by_state_number(lhs: &StatePlaceholder, rhs: &StatePlaceho
 pub struct IndexPlaceholders {
     pub indices: Vec<u32>,
     pub targets: Vec<(u32, SymbolNumber)>,
+    // One bit per index position, mirroring indices[p] != NO_TABLE_INDEX. The
+    // first-fit search probes millions of positions; the bitset keeps those
+    // probes in cache where the u32 vector would not be.
+    used_bits: Vec<u64>,
 }
 
 impl IndexPlaceholders {
@@ -263,14 +299,16 @@ impl IndexPlaceholders {
         IndexPlaceholders {
             indices: Vec::new(),
             targets: Vec::new(),
+            used_bits: Vec::new(),
         }
     }
 
     // [spec:hfst:def:convert.hfst-ol.index-placeholders.used-fn]
     // [spec:hfst:sem:convert.hfst-ol.index-placeholders.used-fn]
+    #[inline]
     pub fn used(&self, position: u32) -> bool {
-        (position as usize) < self.indices.len()
-            && self.indices[position as usize] != NO_TABLE_INDEX
+        let word = (position >> 6) as usize;
+        word < self.used_bits.len() && (self.used_bits[word] >> (position & 63)) & 1 == 1
     }
 
     // [spec:hfst:def:convert.hfst-ol.index-placeholders.assign-fn]
@@ -282,6 +320,32 @@ impl IndexPlaceholders {
         self.indices[position as usize] =
             u32::try_from(self.targets.len()).expect("value out of u32 range");
         self.targets.push((target, sym));
+        let word = (position >> 6) as usize;
+        if word >= self.used_bits.len() {
+            self.used_bits.resize(word + 1, 0);
+        }
+        self.used_bits[word] |= 1u64 << (position & 63);
+    }
+
+    /// Count set bits in positions [start, start + len).
+    fn count_used(&self, start: u32, len: u32) -> u32 {
+        let end = start as u64 + len as u64; // exclusive
+        let last_word = ((end - 1) >> 6) as usize;
+        let mut count = 0u32;
+        let mut word_idx = (start >> 6) as usize;
+        while word_idx < self.used_bits.len() && word_idx <= last_word {
+            let mut word = self.used_bits[word_idx];
+            let word_start = (word_idx as u64) << 6;
+            if word_start < start as u64 {
+                word &= !0u64 << (start as u64 - word_start);
+            }
+            if word_start + 64 > end {
+                word &= !0u64 >> (word_start + 64 - end);
+            }
+            count += word.count_ones();
+            word_idx += 1;
+        }
+        count
     }
 
     // [spec:hfst:def:convert.hfst-ol.index-placeholders.get-target-fn]
@@ -292,20 +356,14 @@ impl IndexPlaceholders {
 
     // [spec:hfst:def:convert.hfst-ol.index-placeholders.fits-fn]
     // [spec:hfst:sem:convert.hfst-ol.index-placeholders.fits-fn]
-    pub fn fits(
-        &self,
-        state: &StatePlaceholder,
-        flag_symbols: &BTreeSet<SymbolNumber>,
-        position: u32,
-    ) -> bool {
+    // Takes the state's flag-resolved index offsets (position-invariant, so the
+    // caller computes them once per state instead of once per probed position).
+    #[inline]
+    pub fn fits(&self, state_offsets: &[SymbolNumber], position: u32) -> bool {
         if self.used(position) {
             return false;
         }
-        for it in state.transition_placeholders.iter() {
-            let mut index_offset = it[0].input;
-            if flag_symbols.contains(&index_offset) {
-                index_offset = 0;
-            }
+        for &index_offset in state_offsets {
             if self.used(index_offset as u32 + position + 1) {
                 return false;
             }
@@ -315,19 +373,19 @@ impl IndexPlaceholders {
 
     // [spec:hfst:def:convert.hfst-ol.index-placeholders.unsuitable-fn]
     // [spec:hfst:sem:convert.hfst-ol.index-placeholders.unsuitable-fn]
+    // The C++ scans position by position with an early exit; since the running
+    // count only grows and the threshold is fixed, "some prefix reaches the
+    // threshold" is equivalent to "the full window's count reaches it", which a
+    // word-level popcount answers with identical results.
     pub fn unsuitable(&self, index: u32, symbols: SymbolNumber, packing_aggression: f32) -> bool {
         if self.used(index) {
             return true;
         }
-
-        let mut filled: u32 = 0;
-        for i in 0..symbols {
-            filled += self.used(index + i as u32 + 1) as u32;
-            if filled as f32 >= packing_aggression * symbols as f32 {
-                return true; // too full
-            }
+        if symbols == 0 {
+            return false;
         }
-        false
+        let filled = self.count_used(index + 1, symbols as u32);
+        filled as f32 >= packing_aggression * symbols as f32
     }
 }
 
@@ -342,7 +400,7 @@ impl Default for IndexPlaceholders {
 pub fn write_transitions_from_state_placeholders(
     transition_table: &mut TransducerTable<TransitionW>,
     state_placeholders: &[StatePlaceholder],
-    flag_symbols: &BTreeSet<SymbolNumber>,
+    flag_symbols: &FlagSymbolSet,
 ) {
     for idx in 0..state_placeholders.len() {
         let it = &state_placeholders[idx];
@@ -377,7 +435,7 @@ pub fn write_transitions_from_state_placeholders(
         }
         for i in 1..it.symbol_to_transition_placeholder_v.len() {
             let i = i as SymbolNumber;
-            if !it.input_present(i) || flag_symbols.contains(&i) {
+            if !it.input_present(i) || flag_symbols.contains(i) {
                 continue;
             }
             add_transitions_with(
@@ -401,7 +459,7 @@ pub fn add_transitions_with(
     transitions: &[TransitionPlaceholder],
     transition_table: &mut TransducerTable<TransitionW>,
     state_placeholders: &[StatePlaceholder],
-    _flag_symbols: &BTreeSet<SymbolNumber>,
+    _flag_symbols: &FlagSymbolSet,
 ) {
     for it in transitions.iter() {
         // before writing each transition, find out whether its target is simple
