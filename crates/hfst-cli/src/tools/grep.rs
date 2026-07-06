@@ -548,7 +548,7 @@ unsafe fn read_matcher(expression: &str) {
         if globals::VERBOSE {
             verbose_print("Resulting FSM:\n");
             // C: std::cerr << *matcher;
-            hfst::hfst_transducer::operator_shl_os(&mut std::io::stderr(), &*MATCHER);
+            hfst::hfst_transducer::write_to(&mut std::io::stderr(), &*MATCHER);
         }
     }
 }
@@ -684,7 +684,7 @@ unsafe fn extend_matcher_with_options() {
         }
         if globals::VERBOSE {
             verbose_print("Resulting FSM:\n");
-            hfst::hfst_transducer::operator_shl_os(&mut std::io::stderr(), &*MATCHER);
+            hfst::hfst_transducer::write_to(&mut std::io::stderr(), &*MATCHER);
         }
     }
 }

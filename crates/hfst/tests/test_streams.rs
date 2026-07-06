@@ -152,10 +152,10 @@ fn stream_round_trip<B: AlgebraBackend + FromAnyTransducer>() -> Result<(), hfst
     let path = temp_path(&format!("hfst_test_streams{:?}.hfst", B::TYPE));
     {
         let mut out = HfstOutputStream::new_filename(&path, B::TYPE, true)?;
-        out.operator_shl(&mut tr1)?;
-        out.operator_shl(&mut tr2)?;
-        out.operator_shl(&mut tr3)?;
-        out.operator_shl(&mut tr4)?;
+        out.write(&mut tr1)?;
+        out.write(&mut tr2)?;
+        out.write(&mut tr3)?;
+        out.write(&mut tr4)?;
         out.close();
     }
 
@@ -259,7 +259,7 @@ fn sparse_symtable_round_trip<B: AlgebraBackend + FromAnyTransducer>()
     let path = temp_path(&format!("hfst_sparse_symt{:?}.hfst", B::TYPE));
     {
         let mut out = HfstOutputStream::new_filename(&path, B::TYPE, true)?;
-        out.operator_shl(&mut killed)?;
+        out.write(&mut killed)?;
         out.close();
     }
 

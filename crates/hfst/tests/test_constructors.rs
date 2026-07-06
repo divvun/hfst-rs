@@ -173,7 +173,7 @@ fn construction_from_stream<B: AlgebraBackend + FromAnyTransducer>()
     {
         let mut out = HfstOutputStream::new_filename(&path, foobar.get_type(), true)?;
         foobar.set_name("foobar");
-        out.operator_shl(&mut foobar)?;
+        out.write(&mut foobar)?;
         out.close();
     }
     let mut instream = HfstInputStream::new_filename(&path)?;

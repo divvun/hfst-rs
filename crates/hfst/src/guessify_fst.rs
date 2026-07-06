@@ -314,7 +314,7 @@ pub fn store_guesser<B: AlgebraBackend>(
     for (property, value) in guesser.get_properties() {
         guesser_olw.set_property(property, value);
     }
-    out.operator_shl(&mut guesser_olw)?;
+    out.write(&mut guesser_olw)?;
 
     if compile_generator {
         generator.invert()?;
@@ -329,7 +329,7 @@ pub fn store_guesser<B: AlgebraBackend>(
         for (property, value) in generator.get_properties() {
             generator_olw.set_property(property, value);
         }
-        out.operator_shl(&mut generator_olw)?;
+        out.write(&mut generator_olw)?;
     }
     Ok(())
 }

@@ -4205,7 +4205,7 @@ fn decode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
 // C++ 'operator<<(std::ostream &out, const HfstTransducer &t)' (HfstTransducer.cc:6419)
 // — write the transducer in AT&T format. Implemented only for the internal
 // (basic) transducer format: convert to a HfstBasicTransducer and write it.
-pub fn operator_shl_os<B: Backend>(out: &mut dyn std::io::Write, t: &HfstTransducer<B>) {
+pub fn write_to<W: std::io::Write, B: Backend>(out: &mut W, t: &HfstTransducer<B>) {
     let net = HfstBasicTransducer::from_transducer(t);
     // C++ writes weights for every type except SFST/FOMA (both out of scope here).
     let write_weights = t.get_type() != ImplementationType::SFST_TYPE
@@ -4286,7 +4286,7 @@ impl AnyTransducer {
         &mut self,
         out: &mut crate::hfst_output_stream::HfstOutputStream,
     ) -> crate::error::Result<()> {
-        any_delegate!(self, t => { out.operator_shl(t)?; Ok(()) })
+        any_delegate!(self, t => { out.write(t)?; Ok(()) })
     }
 
     /// Typed extraction from the stream sum — the C++ pattern

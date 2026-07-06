@@ -5389,7 +5389,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         if self.variables["name-nets"] == "ON" {
             tmp.set_name(name);
         }
-        outstream.operator_shl(&mut tmp)?;
+        outstream.write(&mut tmp)?;
         outstream.close();
         self.prompt();
         Ok(self)
@@ -5417,7 +5417,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         for (name, def) in defs.iter() {
             let mut tmp = HfstTransducer::new_copy(self.net(*def))?;
             tmp.set_name(name);
-            outstream.operator_shl(&mut tmp)?;
+            outstream.write(&mut tmp)?;
         }
         outstream.close();
         self.prompt();
@@ -5444,7 +5444,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
         let ids: Vec<NetId> = self.stack.clone();
         for t in ids.iter() {
-            outstream.operator_shl(self.net_mut(*t))?;
+            outstream.write(self.net_mut(*t))?;
         }
         outstream.close();
         self.prompt();

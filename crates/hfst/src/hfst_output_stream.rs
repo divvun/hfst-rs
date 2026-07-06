@@ -9,7 +9,7 @@
 //! 'Backend::write'. So the union collapses to ONE owned writer here; the
 //! 'ty' tag survives because an output stream's format genuinely is runtime
 //! data (the CLI '--format' value), and it is checked once per transducer
-//! against 'Backend::stream_type()' in 'operator_shl'. Writing a runtime-typed
+//! against 'Backend::stream_type()' in 'write'. Writing a runtime-typed
 //! transducer goes through the one runtime sum: 'AnyTransducer::write'.
 
 #![allow(non_snake_case)]
@@ -50,10 +50,11 @@ impl HfstOutputStream {
                 // implementation.sfst = new hfst::implementations::SfstOutputStream();
                 unimplemented!("deferred: SfstOutputStream");
             }
-            ImplementationType::FOMA_TYPE => {
-                // implementation.foma = new hfst::implementations::FomaOutputStream();
-                unimplemented!("deferred: FomaOutputStream");
-            }
+            // Like the openfst/OL backends, foma needs no per-type stream
+            // object: operator<< writes the "FOMA" header generically and the
+            // payload comes from Backend::write (native .foma). Only reachable
+            // with the `foma` feature (availability is gated above).
+            ImplementationType::FOMA_TYPE => {}
             ImplementationType::XFSM_TYPE => {
                 // implementation.xfsm = new XfsmOutputStream(); // throws error
                 unimplemented!("deferred: XfsmOutputStream");
@@ -101,9 +102,9 @@ impl HfstOutputStream {
             ImplementationType::SFST_TYPE => {
                 unimplemented!("deferred: SfstOutputStream");
             }
-            ImplementationType::FOMA_TYPE => {
-                unimplemented!("deferred: FomaOutputStream");
-            }
+            // foma: no per-type stream object; operator<< writes header +
+            // Backend::write payload. Only reachable with the `foma` feature.
+            ImplementationType::FOMA_TYPE => {}
             ImplementationType::XFSM_TYPE => {
                 unimplemented!("deferred: XfsmOutputStream");
             }
@@ -210,11 +211,11 @@ impl HfstOutputStream {
         &mut self,
         transducer: &mut HfstTransducer<B>,
     ) -> crate::error::Result<&mut Self> {
-        self.operator_shl(transducer)
+        self.write(transducer)
     }
 
     /// 'HfstOutputStream &operator<< (HfstTransducer &transducer)'.
-    pub fn operator_shl<B: Backend>(
+    pub fn write<B: Backend>(
         &mut self,
         transducer: &mut HfstTransducer<B>,
     ) -> crate::error::Result<&mut Self> {

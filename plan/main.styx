@@ -2204,24 +2204,85 @@ children (
                 id foma-backend.io
                 title "Stream I/O: read .foma (fill hfst_input_stream unimplemented!, gzip) + Backend::write .foma output arm"
                 deps (foma-backend.convert)
+                log (
+                    {
+                        at 2026-07-06T16:09:39.380577Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
                 id foma-backend.algebra
                 title "AlgebraBackend over foma constructions/determinize/minimize (unweighted ops; the tropical-blowup fix)"
                 deps (foma-backend.convert)
+                log (
+                    {
+                        at 2026-07-06T16:09:39.432369Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
                 id foma-backend.lookup
                 title "LookupBackend + path extraction over foma::apply"
                 deps (foma-backend.convert)
+                log (
+                    {
+                        at 2026-07-06T16:09:39.474168Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
                 id foma-backend.tests
                 title "Tests: .foma round-trip, algebra parity vs openfst on unweighted cases, pmatch-blowup case, lookup parity"
                 deps (foma-backend.algebra foma-backend.io foma-backend.lookup)
+                log (
+                    {
+                        at 2026-07-06T16:30:52.612506Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
+            }
+
+            {
+                id foma-backend.output-stream
+                title "HfstOutputStream FOMA_TYPE arms: write foma transducer through the facade (empty ctor arms; generic operator<< writes header + native .foma)"
+                deps (foma-backend.tests)
+                sealed true
+                log (
+                    {
+                        at 2026-07-06T16:41:24.749689Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
+            }
+        )
+    }
+
+    {
+        id hfst-write-rename
+        title "Rename operator_shl/operator_shl_os (C++ operator<< transliterations) -> HfstOutputStream::write / free write_to; monomorphise write_to (kill &mut dyn Write)"
+        sealed true
+        log (
+            {
+                at 2026-07-06T17:18:32.465522Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
             }
         )
     }

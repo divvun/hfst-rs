@@ -90,4 +90,10 @@ assertions (
     {id foma-backend.spec, kind @complete, author "brendan@necessary.nu", at 2026-07-06T14:41:23.517029Z}
     {id foma-backend.seam, kind @complete, author "brendan@necessary.nu", at 2026-07-06T15:02:41.817069Z}
     {id foma-backend.convert, kind @complete, author "brendan@necessary.nu", at 2026-07-06T15:02:41.864201Z}
+    {id foma-backend.io, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:09:39.380577Z}
+    {id foma-backend.algebra, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:09:39.432369Z}
+    {id foma-backend.lookup, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:09:39.474168Z}
+    {id foma-backend.tests, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:30:52.612506Z}
+    {id foma-backend.output-stream, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:41:24.749689Z}
+    {id hfst-write-rename, kind @complete, author "brendan@necessary.nu", at 2026-07-06T17:18:32.465522Z}
 )
