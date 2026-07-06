@@ -3117,19 +3117,13 @@ impl HfstTransducer<StdVectorFst> {
 macro_rules! ol_lookup_facade {
     ($tables:ty) => {
         impl HfstTransducer<Transducer<$tables>> {
-            // IDIOM-STAGE-2: the OL lookup methods take '&mut self' (they mutate
-            // internal lookup state), but HfstTransducer exposes lookup on
-            // '&self' — as C++ does on a const transducer, mutating the OL
-            // backend through a const-cast on the union pointer. Until the OL
-            // lookup path no longer needs '&mut', this const-cast is reached
-            // through a raw pointer.
-            #[inline]
-            pub(crate) fn as_hfst_ol_ptr(&self) -> *mut Transducer<$tables> {
-                &self.fst as *const Transducer<$tables> as *mut Transducer<$tables>
-            }
-
+            // The OL lookup methods take '&mut self': looking up an input that
+            // contains a symbol outside the transducer's alphabet grows that
+            // alphabet (initialize_input), so a lookup genuinely mutates the
+            // backend. The C++ exposed these as const and mutated through a
+            // const-cast; '&mut self' states the mutation honestly instead.
             pub fn lookup_string_vector(
-                &self,
+                &mut self,
                 s: &StringVector,
                 limit: isize,
                 time_cutoff: f64,
@@ -3138,7 +3132,7 @@ macro_rules! ol_lookup_facade {
             }
 
             pub fn lookup_string(
-                &self,
+                &mut self,
                 s: &str,
                 limit: isize,
                 time_cutoff: f64,
@@ -3149,38 +3143,38 @@ macro_rules! ol_lookup_facade {
             // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.lookup-pairs-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.lookup-pairs-fn]
             pub fn lookup_pairs(
-                &self,
+                &mut self,
                 s: &str,
                 limit: isize,
                 time_cutoff: f64,
             ) -> HfstTwoLevelPaths {
-                unsafe { (*self.as_hfst_ol_ptr()).lookup_fd_pairs_str(s, limit, time_cutoff) }
+                self.fst.lookup_fd_pairs_str(s, limit, time_cutoff)
             }
 
             // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.lookup-fd-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.lookup-fd-fn]
             pub fn lookup_fd_string_vector(
-                &self,
+                &mut self,
                 s: &StringVector,
                 limit: isize,
                 time_cutoff: f64,
             ) -> crate::error::Result<HfstOneLevelPaths> {
-                Ok(unsafe { (*self.as_hfst_ol_ptr()).lookup_fd_strvec(s, limit, time_cutoff) })
+                Ok(self.fst.lookup_fd_strvec(s, limit, time_cutoff))
             }
 
             pub fn lookup_fd_string(
-                &self,
+                &mut self,
                 s: &str,
                 limit: isize,
                 time_cutoff: f64,
             ) -> crate::error::Result<HfstOneLevelPaths> {
-                Ok(unsafe { (*self.as_hfst_ol_ptr()).lookup_fd_str(s, limit, time_cutoff) })
+                Ok(self.fst.lookup_fd_str(s, limit, time_cutoff))
             }
 
             // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.lookup-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.lookup-fn]
             pub fn lookup_tokenizer(
-                &self,
+                &mut self,
                 tok: &HfstTokenizer,
                 s: &str,
                 limit: isize,
@@ -3192,12 +3186,15 @@ macro_rules! ol_lookup_facade {
 
             // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.is-lookup-infinitely-ambiguous-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.is-lookup-infinitely-ambiguous-fn]
-            pub fn is_lookup_infinitely_ambiguous_string_vector(&self, s: &StringVector) -> bool {
-                unsafe { (*self.as_hfst_ol_ptr()).is_lookup_infinitely_ambiguous_strvec(s) }
+            pub fn is_lookup_infinitely_ambiguous_string_vector(
+                &mut self,
+                s: &StringVector,
+            ) -> bool {
+                self.fst.is_lookup_infinitely_ambiguous_strvec(s)
             }
 
-            pub fn is_lookup_infinitely_ambiguous_string(&self, s: &str) -> bool {
-                unsafe { (*self.as_hfst_ol_ptr()).is_lookup_infinitely_ambiguous_str(s) }
+            pub fn is_lookup_infinitely_ambiguous_string(&mut self, s: &str) -> bool {
+                self.fst.is_lookup_infinitely_ambiguous_str(s)
             }
         }
     };

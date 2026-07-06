@@ -136,7 +136,7 @@ enum OlInner {
 
 impl OlInner {
     fn lookup_fd_string(
-        &self,
+        &mut self,
         s: &str,
         limit: isize,
         time_cutoff: f64,

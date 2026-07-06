@@ -632,18 +632,15 @@ mod ol_lookup_ops {
             t: &Transducer<T>,
             callback: &mut dyn ExtractStringsCb,
             cycles: i32,
-            fd: *const FdTable<SymbolNumber>,
+            fd: Option<&FdTable<SymbolNumber>>,
             filter_fd: bool,
         ) {
             //std::vector<char> lbuffer(BUFFER_START_SIZE, 0);
             //std::vector<char> ubuffer(BUFFER_START_SIZE, 0);
             let all_visitations: BTreeMap<TransitionTableIndex, u16> = BTreeMap::new();
             let path_visitations: BTreeMap<TransitionTableIndex, u16> = BTreeMap::new();
-            let mut fd_state_stack: Option<Vec<FdState<SymbolNumber>>> = if fd.is_null() {
-                None
-            } else {
-                Some(vec![FdState::new(unsafe { &*fd })])
-            };
+            let mut fd_state_stack: Option<Vec<FdState<SymbolNumber>>> =
+                fd.map(|table| vec![FdState::new(table)]);
 
             let mut spv = StringPairVector::new();
 

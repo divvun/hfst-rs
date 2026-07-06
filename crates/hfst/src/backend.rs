@@ -574,7 +574,7 @@ impl Backend for Transducer<WeightedTables> {
         Ok(Transducer::is_infinitely_ambiguous(self))
     }
     fn extract_paths_cb(&self, callback: &mut dyn ExtractStringsCb, cycles: i32) {
-        HfstOlTransducer::extract_paths(self, callback, cycles, std::ptr::null(), false);
+        HfstOlTransducer::extract_paths(self, callback, cycles, None, false);
     }
     fn extract_paths_fd_cb(
         &self,
@@ -583,7 +583,7 @@ impl Backend for Transducer<WeightedTables> {
         filter_fd: bool,
     ) {
         let t_hfst_ol = HfstOlTransducer::get_flag_diacritics(self);
-        HfstOlTransducer::extract_paths(self, callback, cycles, t_hfst_ol as *const _, filter_fd);
+        HfstOlTransducer::extract_paths(self, callback, cycles, Some(t_hfst_ol), filter_fd);
         // don't delete t_hfst_ol, it's not a copy of the FdTable but the
         // real thing
     }
@@ -629,7 +629,7 @@ impl Backend for Transducer<UnweightedTables> {
         Ok(Transducer::is_infinitely_ambiguous(self))
     }
     fn extract_paths_cb(&self, callback: &mut dyn ExtractStringsCb, cycles: i32) {
-        HfstOlTransducer::extract_paths(self, callback, cycles, std::ptr::null(), false);
+        HfstOlTransducer::extract_paths(self, callback, cycles, None, false);
     }
     fn extract_paths_fd_cb(
         &self,
@@ -638,7 +638,7 @@ impl Backend for Transducer<UnweightedTables> {
         filter_fd: bool,
     ) {
         let t_hfst_ol = HfstOlTransducer::get_flag_diacritics(self);
-        HfstOlTransducer::extract_paths(self, callback, cycles, t_hfst_ol as *const _, filter_fd);
+        HfstOlTransducer::extract_paths(self, callback, cycles, Some(t_hfst_ol), filter_fd);
         // don't delete t_hfst_ol, it's not a copy of the FdTable but the
         // real thing
     }

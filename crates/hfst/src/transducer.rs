@@ -2129,13 +2129,11 @@ pub struct Transducer<T: TransducerTablesInterface = WeightedTables> {
 
     // for lookup
     current_weight: Weight,
-    // SAFETY-ISLAND [ol-lookup-paths]: raw aliasing pointer exactly as the C++
-    // 'HfstTwoLevelPaths *' — it aliases a function-local result set across the
-    // recursive '&mut self' 'get_analyses'/'note_analysis' OL traversal (set in
-    // 'lookup_fd'/'lookup_fd_pairs', read at the deref sites below). A safe
-    // '&mut HfstTwoLevelPaths' would have to thread through the entire recursive
-    // lookup hot path; valid only across the 'get_analyses' call it brackets.
-    lookup_paths: *mut HfstTwoLevelPaths,
+    // The result set the recursive OL traversal accumulates into. It lives on
+    // the transducer (all the traversal methods are '&mut self') and is cleared
+    // at the start of each lookup; the C++ pointed a 'HfstTwoLevelPaths *'
+    // member at a function-local set, which the owned field replaces directly.
+    lookup_paths: HfstTwoLevelPaths,
     encoder: Option<Box<Encoder>>,
     input_tape: Tape,
     output_tape: DoubleTape,
@@ -2169,7 +2167,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             alphabet: None,
             tables: None,
             current_weight: 0.0,
-            lookup_paths: std::ptr::null_mut(),
+            lookup_paths: BTreeSet::new(),
             encoder: None,
             input_tape: Tape::new(),
             output_tape: DoubleTape::new(),
@@ -2215,7 +2213,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             alphabet: Some(alphabet),
             tables: None,
             current_weight: 0.0,
-            lookup_paths: std::ptr::null_mut(),
+            lookup_paths: BTreeSet::new(),
             encoder: Some(encoder),
             input_tape: Tape::new(),
             output_tape: DoubleTape::new(),
@@ -2247,7 +2245,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             alphabet: Some(alphabet),
             tables: Some(tables),
             current_weight: 0.0,
-            lookup_paths: std::ptr::null_mut(),
+            lookup_paths: BTreeSet::new(),
             encoder: Some(encoder),
             input_tape: Tape::new(),
             output_tape: DoubleTape::new(),
@@ -2279,7 +2277,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             alphabet: Some(alphabet_box),
             tables: Some(tables),
             current_weight: 0.0,
-            lookup_paths: std::ptr::null_mut(),
+            lookup_paths: BTreeSet::new(),
             encoder: Some(encoder),
             input_tape: Tape::new(),
             output_tape: DoubleTape::new(),
@@ -2810,10 +2808,10 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         if !self.initialize_input(s) {
             return results;
         }
-        let mut paths: Box<HfstTwoLevelPaths> = Box::new(BTreeSet::new());
-        self.lookup_paths = paths.as_mut() as *mut HfstTwoLevelPaths;
+        self.lookup_paths.clear();
         self.traversal_states.clear();
         self.get_analyses(0, 0, 0);
+        let paths = std::mem::take(&mut self.lookup_paths);
         for it in paths.iter() {
             let mut output_path = HfstOneLevelPath {
                 first: it.first,
@@ -2824,7 +2822,6 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             }
             results.insert(output_path);
         }
-        self.lookup_paths = std::ptr::null_mut();
         results
     }
 
@@ -2842,16 +2839,13 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             self.max_time = time_cutoff;
             self.start_clock = Some(Instant::now());
         }
-        let mut results: Box<HfstTwoLevelPaths> = Box::new(BTreeSet::new());
-        self.lookup_paths = results.as_mut() as *mut HfstTwoLevelPaths;
+        self.lookup_paths.clear();
         if !self.initialize_input(s) {
-            self.lookup_paths = std::ptr::null_mut();
-            return *results;
+            return std::mem::take(&mut self.lookup_paths);
         }
         self.traversal_states.clear();
         self.get_analyses(0, 0, 0);
-        self.lookup_paths = std::ptr::null_mut();
-        *results
+        std::mem::take(&mut self.lookup_paths)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.try-epsilon-transitions-fn]
@@ -2986,9 +2980,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         if self.recursion_depth_left == 0 {
             return;
         }
-        if self.max_lookups >= 0
-            && unsafe { (*self.lookup_paths).len() } as isize >= self.max_lookups
-        {
+        if self.max_lookups >= 0 && self.lookup_paths.len() as isize >= self.max_lookups {
             // Back out because we have enough results already
             return;
         }
@@ -3005,9 +2997,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             i -= TRANSITION_TARGET_TABLE_START;
             // First we check for finality and collect the result
             if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
-                if self.max_lookups < 0
-                    || (unsafe { (*self.lookup_paths).len() } as isize) < self.max_lookups
-                {
+                if self.max_lookups < 0 || (self.lookup_paths.len() as isize) < self.max_lookups {
                     self.output_tape
                         .write_pair(output_pos, NO_SYMBOL_NUMBER, NO_SYMBOL_NUMBER);
                     if self.tbl().get_transition_finality(i) {
@@ -3051,9 +3041,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             }
         } else {
             if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
-                if self.max_lookups < 0
-                    || (unsafe { (*self.lookup_paths).len() } as isize) < self.max_lookups
-                {
+                if self.max_lookups < 0 || (self.lookup_paths.len() as isize) < self.max_lookups {
                     self.output_tape
                         .write_pair(output_pos, NO_SYMBOL_NUMBER, NO_SYMBOL_NUMBER);
                     if self.tbl().get_index_finality(i) {
@@ -3117,9 +3105,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             idx += 1;
         }
         result.first = self.current_weight;
-        unsafe {
-            (*self.lookup_paths).insert(result);
-        }
+        self.lookup_paths.insert(result);
     }
 
     // ---- find_epsilon_loops.cc ----

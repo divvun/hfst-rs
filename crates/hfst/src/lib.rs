@@ -8,16 +8,17 @@
 //! downstream backend dependency.
 //!
 //! Faithfulness over idiom: C++ identifiers are kept verbatim (hence the
-//! crate-wide naming lints below), bugs are preserved, and 'unsafe'/raw
-//! pointers mirror the C++ where it uses them.
+//! crate-wide naming lints below) and bugs are preserved, but the library is
+//! now free of `unsafe`: every raw-pointer idiom the C++ used has been
+//! rewritten in safe Rust (owned values, shared `Arc` handles, disjoint
+//! borrows, `&mut` where a lookup genuinely mutates).
 
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
-// Wave-4 idiom: every unsafe op must sit in an explicit, justified `unsafe {}`
-// block — even inside an `unsafe fn`. The only remaining unsafe is the flagged
-// raw-pointer islands (search `SAFETY-ISLAND`).
-#![deny(unsafe_op_in_unsafe_fn)]
+// The hfst library contains no `unsafe`; `forbid` keeps it that way (a module
+// cannot opt back in with a local `#[allow]`).
+#![forbid(unsafe_code)]
 
 pub mod alphabet;
 pub mod backend;

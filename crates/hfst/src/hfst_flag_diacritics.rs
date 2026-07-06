@@ -368,15 +368,16 @@ impl<T: Ord + Clone> Default for FdTable<T> {
 /// \brief Contains the values of each of the flag diacritic features from a
 /// table. It allows for evaluating a series of diacritic operations.
 // [spec:hfst:def:hfst-flag-diacritics.hfst.fd-state]
-// SAFETY-ISLAND [fdstate-self-ref]: `table` borrows the `FdTable` that the owning
-// structs (hfst-ol `Transducer`, `PmatchContainer`, the lookup state) also hold
-// by value — so a `&'a FdTable` field would make those structs self-referential,
-// which safe Rust can't express without Rc/arena. The pointer is set from a live
-// `&FdTable` in `new` (null in `new_default`, never dereferenced then), the table
-// outlives the `FdState`, and every deref below is a shared read.
+// `table` is a shared handle on the `FdTable` this state evaluates against. The
+// owning structs (hfst-ol `Transducer`, `PmatchContainer`, the lookup state)
+// hold the table by value; a plain `&FdTable` field would make them
+// self-referential, so the handle is an `Arc` instead — the table is cloned
+// once when the state is built, and per-node `Clone` (the lookup stack pushes
+// copies of the state) is then just a refcount bump. `None` is the
+// default-constructed state, which never evaluates an operation.
 #[derive(Clone)]
 pub struct FdState<T: Ord + Clone> {
-    table: *const FdTable<T>,
+    table: Option<std::sync::Arc<FdTable<T>>>,
 
     // This is indexed with values of type FdFeature
     values: Vec<FdValue>,
@@ -392,7 +393,7 @@ impl<T: Ord + Clone> FdState<T> {
     // [spec:hfst:sem:hfst-flag-diacritics.hfst.fd-state.fd-state-fn]
     pub fn new(t: &FdTable<T>) -> Self {
         FdState {
-            table: t as *const FdTable<T>,
+            table: Some(std::sync::Arc::new(t.clone())),
             values: vec![0 as FdValue; t.num_features() as usize],
             num_features: t.num_features(),
             error_flag: false,
@@ -401,15 +402,21 @@ impl<T: Ord + Clone> FdState<T> {
 
     pub fn new_default() -> Self {
         FdState {
-            table: std::ptr::null(),
+            table: None,
             values: Vec::new(),
             num_features: 0,
             error_flag: false,
         }
     }
 
+    fn table(&self) -> &FdTable<T> {
+        self.table
+            .as_deref()
+            .expect("FdState operation on a default-constructed (tableless) state")
+    }
+
     pub fn get_table(&self) -> &FdTable<T> {
-        unsafe { &*self.table }
+        self.table()
     }
 
     pub fn get_values(&self) -> &Vec<FdValue> {
@@ -426,9 +433,8 @@ impl<T: Ord + Clone> FdState<T> {
     }
 
     pub fn apply_operation_symbol(&mut self, symbol: T) -> bool {
-        let op = unsafe { (*self.table).get_operation(symbol) };
+        let op = self.table().get_operation(symbol).cloned();
         if let Some(op) = op {
-            let op = op.clone();
             return self.apply_operation(&op);
         }
         true // if the symbol isn't a diacritic
@@ -491,9 +497,8 @@ impl<T: Ord + Clone> FdState<T> {
     }
 
     pub fn apply_operation_string(&mut self, symbol: &str) -> bool {
-        let op = unsafe { (*self.table).get_operation_by_string(symbol) };
+        let op = self.table().get_operation_by_string(symbol).cloned();
         if let Some(op) = op {
-            let op = op.clone();
             return self.apply_operation(&op);
         }
         true
@@ -510,7 +515,7 @@ impl<T: Ord + Clone> FdState<T> {
     pub fn reset(&mut self) {
         self.error_flag = false;
         self.values.clear();
-        let nf = unsafe { (*self.table).num_features() } as usize;
+        let nf = self.table().num_features() as usize;
         self.values.resize(nf, 0);
     }
 }

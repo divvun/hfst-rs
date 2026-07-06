@@ -540,7 +540,7 @@ enum OlTransducer {
 
 impl OlTransducer {
     fn lookup_fd_string_vector(
-        &self,
+        &mut self,
         s: &StringVector,
         limit: isize,
         time_cutoff: f64,
@@ -551,7 +551,7 @@ impl OlTransducer {
         }
     }
 
-    fn is_lookup_infinitely_ambiguous_string_vector(&self, s: &StringVector) -> bool {
+    fn is_lookup_infinitely_ambiguous_string_vector(&mut self, s: &StringVector) -> bool {
         match self {
             OlTransducer::W(t) => t.is_lookup_infinitely_ambiguous_string_vector(s),
             OlTransducer::U(t) => t.is_lookup_infinitely_ambiguous_string_vector(s),

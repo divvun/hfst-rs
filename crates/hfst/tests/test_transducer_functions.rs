@@ -340,7 +340,8 @@ fn function_extract_paths_lookup_nbest<B: AlgebraBackend>() -> Result<(), hfst::
 
     // Convert to optimized lookup format. For TROPICAL/LOG the weighted OL
     // type; the typed conversion goes through the interchange transducer.
-    let animals_ol = HfstTransducer::<Transducer<WeightedTables>>::from_basic(&animals.to_basic()?);
+    let mut animals_ol =
+        HfstTransducer::<Transducer<WeightedTables>>::from_basic(&animals.to_basic()?);
 
     // No limit to the number of lookup results.
     let limit: isize = -1;

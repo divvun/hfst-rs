@@ -113,7 +113,7 @@ enum OlTransducer {
 
 impl OlTransducer {
     fn lookup_fd_string_vector(
-        &self,
+        &mut self,
         s: &StringVector,
         limit: isize,
         time_cutoff: f64,
@@ -124,14 +124,14 @@ impl OlTransducer {
         }
     }
 
-    fn lookup_pairs(&self, s: &str, limit: isize, time_cutoff: f64) -> HfstTwoLevelPaths {
+    fn lookup_pairs(&mut self, s: &str, limit: isize, time_cutoff: f64) -> HfstTwoLevelPaths {
         match self {
             OlTransducer::W(t) => t.lookup_pairs(s, limit, time_cutoff),
             OlTransducer::U(t) => t.lookup_pairs(s, limit, time_cutoff),
         }
     }
 
-    fn is_lookup_infinitely_ambiguous_string_vector(&self, s: &StringVector) -> bool {
+    fn is_lookup_infinitely_ambiguous_string_vector(&mut self, s: &StringVector) -> bool {
         match self {
             OlTransducer::W(t) => t.is_lookup_infinitely_ambiguous_string_vector(s),
             OlTransducer::U(t) => t.is_lookup_infinitely_ambiguous_string_vector(s),
@@ -506,7 +506,7 @@ unsafe fn get_lookup_string(s: &StringVector) -> String {
 #[allow(clippy::too_many_arguments)]
 unsafe fn lookup_fd_and_print(
     tr: Option<&HfstBasicTransducer>,
-    transducer: Option<&OlTransducer>,
+    transducer: Option<&mut OlTransducer>,
     results: &mut HfstOneLevelPaths,
     s: &HfstOneLevelPath,
     limit: Option<isize>,
@@ -618,7 +618,7 @@ unsafe fn lookup_fd_and_print(
 #[allow(clippy::too_many_arguments)]
 unsafe fn lookup_simple_ol(
     s: &HfstOneLevelPath,
-    t: &OlTransducer,
+    t: &mut OlTransducer,
     infinity: &mut bool,
     print_pairs_at_this_point: bool,
     print_fail: bool,
@@ -659,7 +659,7 @@ unsafe fn lookup_simple_ol(
             if PRINT_PAIRS {
                 lookup_fd_and_print(
                     None,
-                    Some(t),
+                    Some(&mut *t),
                     &mut results,
                     s,
                     Some(maxnum),
@@ -682,7 +682,7 @@ unsafe fn lookup_simple_ol(
         } else if PRINT_PAIRS {
             lookup_fd_and_print(
                 None,
-                Some(t),
+                Some(&mut *t),
                 &mut results,
                 s,
                 Some(MAX_NUMBER),
@@ -780,7 +780,7 @@ unsafe fn lookup_simple_basic(
 // engine driving this tool's optimized-lookup single-transducer lookup.
 unsafe fn lookup_cascading_ol(
     s: &HfstOneLevelPath,
-    cascade: &[OlTransducer],
+    cascade: &mut [OlTransducer],
     infinity: &mut bool,
     out: &mut dyn Write,
 ) -> HfstOneLevelPaths {
@@ -795,7 +795,7 @@ unsafe fn lookup_cascading_ol(
                 if step.composed_from.is_some() {
                     lookup_simple_ol(
                         input,
-                        &cascade[step.index],
+                        &mut cascade[step.index],
                         infinity,
                         step.is_last,
                         false,
@@ -806,7 +806,7 @@ unsafe fn lookup_cascading_ol(
                 } else {
                     lookup_simple_ol(
                         input,
-                        &cascade[step.index],
+                        &mut cascade[step.index],
                         infinity,
                         false,
                         false,
@@ -885,7 +885,7 @@ unsafe fn lookup_cascading_basic(
 
 unsafe fn perform_lookups_ol(
     origin: &HfstOneLevelPath,
-    cascade: &[OlTransducer],
+    cascade: &mut [OlTransducer],
     unknown: bool,
     infinite: &mut bool,
     out: &mut dyn Write,
@@ -895,7 +895,7 @@ unsafe fn perform_lookups_ol(
             if cascade.len() == 1 {
                 lookup_simple_ol(
                     origin,
-                    &cascade[0],
+                    &mut cascade[0],
                     infinite,
                     true,
                     true,
@@ -1161,7 +1161,7 @@ unsafe fn process_stream(inputstream: &mut HfstInputStream, outstream: &mut dyn 
             }
 
             let kvs = if only_optimized_lookup {
-                perform_lookups_ol(&kv, &cascade, unknown, &mut infinite, &mut *outstream)
+                perform_lookups_ol(&kv, &mut cascade, unknown, &mut infinite, &mut *outstream)
             } else {
                 perform_lookups_basic(&kv, &cascade_mut, unknown, &mut infinite, &mut *outstream)
             };
