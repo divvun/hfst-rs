@@ -496,7 +496,34 @@ mod input_impl {
                     AnyTransducer::Log(HfstTransducer::wrap(fst))
                 }
                 ImplementationType::FOMA_TYPE => {
-                    unimplemented!("deferred: FomaInputStream::read_transducer (no foma backend)")
+                    // [spec:hfst:def:foma-backend.stream-io]
+                    // [spec:hfst:sem:foma-backend.stream-io]
+                    // Read half of the stream-io node: slurp the remaining bytes
+                    // (the native, gzip-aware `.foma` image the probe left
+                    // positioned at) and rebuild the net in memory — no temp file.
+                    // Documented approximation: the whole remainder is consumed,
+                    // so a multi-transducer FOMA stream is not re-split the way the
+                    // OpenFst arms unget their leftover.
+                    #[cfg(feature = "foma")]
+                    {
+                        let bytes = self.read_remaining_bytes();
+                        let fsm = match foma::io::fsm_read_binary_mem(&bytes) {
+                            Ok(f) => f,
+                            Err(_) => crate::bail!(
+                                NotTransducerStream,
+                                "could not read FOMA transducer payload"
+                            ),
+                        };
+                        AnyTransducer::Foma(HfstTransducer::wrap(
+                            crate::backend_foma::FomaTransducer(*fsm),
+                        ))
+                    }
+                    #[cfg(not(feature = "foma"))]
+                    {
+                        unimplemented!(
+                            "deferred: FomaInputStream::read_transducer (no foma backend)"
+                        )
+                    }
                 }
                 ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
                     // Read the OL payload directly off the owned reader
@@ -1013,6 +1040,9 @@ mod input_impl {
                 ImplementationType::SFST_TYPE => {
                     unimplemented!("deferred: SfstInputStream (no SFST backend)")
                 }
+                #[cfg(feature = "foma")]
+                ImplementationType::FOMA_TYPE => {}
+                #[cfg(not(feature = "foma"))]
                 ImplementationType::FOMA_TYPE => {
                     unimplemented!("deferred: FomaInputStream (no foma backend)")
                 }
