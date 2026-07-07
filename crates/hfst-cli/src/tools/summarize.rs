@@ -151,7 +151,7 @@ fn parse_options(
 fn process_stream(
     common: &CommonOptions,
     options: &Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
 ) -> i32 {
     let mut out = match common.output_writer() {
         Ok(w) => w,

@@ -146,7 +146,7 @@ fn parse_options(
 fn process_stream(
     common: &mut CommonOptions,
     options: &Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
 ) -> i32 {
     let mut transducer_n: usize = 0;
     while instream.is_good() {

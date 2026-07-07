@@ -183,7 +183,7 @@ impl BinaryToolOp for ConcatenateOp {
         common: &CommonOptions,
         first: &mut HfstTransducer<B>,
         second: &mut HfstTransducer<B>,
-        _ctx: &PairContext,
+        _ctx: &PairContext<'_>,
     ) -> Result<(), i32> {
         let both_have_flags = first.has_flag_diacritics() && second.has_flag_diacritics();
         if both_have_flags {

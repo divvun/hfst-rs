@@ -101,8 +101,8 @@ fn parse_options(mut common: CommonOptions, args: &mut Vec<String>) -> Result<Co
 // [spec:hfst:sem:hfst-check-alpha.process-stream-fn]
 fn process_stream(
     common: &CommonOptions,
-    firststream: &mut HfstInputStream,
-    secondstream: &mut HfstInputStream,
+    firststream: &mut HfstInputStream<'_>,
+    secondstream: &mut HfstInputStream<'_>,
 ) -> i32 {
     let mut out = match common.output_writer() {
         Ok(w) => w,

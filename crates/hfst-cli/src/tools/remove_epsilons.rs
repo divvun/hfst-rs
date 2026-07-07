@@ -85,7 +85,7 @@ fn parse_options(mut common: CommonOptions, args: &mut Vec<String>) -> Result<Co
 // [spec:hfst:sem:hfst-remove-epsilons.process-stream-fn]
 fn process_stream(
     common: &CommonOptions,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
     outstream: &mut HfstOutputStream,
 ) -> i32 {
     // instream.open();

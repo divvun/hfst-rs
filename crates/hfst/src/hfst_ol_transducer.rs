@@ -234,7 +234,7 @@ mod ol_construction_io {
         /// 'static int is_fst(std::istream &s);'
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-fst-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-fst-fn]
-        pub fn is_fst_istream(s: &mut IStream) -> i32 {
+        pub fn is_fst_istream(s: &mut IStream<'_>) -> i32 {
             // C++ reads 24 bytes, inspects buffer[20..24] for the weighted flag,
             // then puts every read byte back. gcount = bytes actually read.
             if !s.good() {

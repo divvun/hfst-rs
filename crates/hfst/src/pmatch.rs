@@ -303,7 +303,7 @@ impl PmatchAlphabet {
     // and touches hfst::FdOperation::get_feature/get_value plus fd_table mutation,
     // which is part of the istream-reading facade path.
     pub fn new_from_stream(
-        inputstream: &mut crate::transducer::IStream,
+        inputstream: &mut crate::transducer::IStream<'_>,
         symbol_count: SymbolNumber,
         cont: &mut PmatchContainer,
     ) -> crate::error::Result<PmatchAlphabet> {
@@ -1118,7 +1118,7 @@ impl PmatchContainer {
     // explicit PmatchContainer(std::istream &) — reads a binary pmatch archive:
     // the TOP transducer followed by any UNCOMPOSE L/R nets and RTN sub-nets.
     pub fn new_from_stream(
-        is: &mut crate::transducer::IStream,
+        is: &mut crate::transducer::IStream<'_>,
     ) -> crate::error::Result<PmatchContainer> {
         use crate::transducer::{Encoder, TransducerAlphabet, TransducerHeader};
         let mut c = PmatchContainer::new();
@@ -2018,7 +2018,7 @@ impl PmatchContainer {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.parse-hfst3-header-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.parse-hfst3-header-fn]
     pub fn parse_hfst3_header(
-        f: &mut crate::transducer::IStream,
+        f: &mut crate::transducer::IStream<'_>,
     ) -> crate::error::Result<BTreeMap<String, String>> {
         let mut properties: BTreeMap<String, String> = BTreeMap::new();
         let header1 = b"HFST";
@@ -2328,7 +2328,7 @@ impl PmatchTransducer {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.pmatch-transducer-fn]
     // ctor from istream
     pub fn new_from_stream(
-        is: &mut crate::transducer::IStream,
+        is: &mut crate::transducer::IStream<'_>,
         index_table_size: TransitionTableIndex,
         transition_table_size: TransitionTableIndex,
         alphabet: &PmatchAlphabet,

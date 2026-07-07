@@ -94,8 +94,8 @@ fn parse_options(
 // [spec:hfst:sem:hfst-binary-tool.binaryoperate-streams-fn]
 fn binaryoperate_streams(
     common: &CommonOptions,
-    firststream: &mut HfstInputStream,
-    secondstream: &mut HfstInputStream,
+    firststream: &mut HfstInputStream<'_>,
+    secondstream: &mut HfstInputStream<'_>,
     outstream: &mut HfstOutputStream,
 ) -> i32 {
     // (the C opens each stream here; the Rust streams are opened by their

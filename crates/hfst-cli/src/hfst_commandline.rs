@@ -405,7 +405,7 @@ pub fn redirect_converting<B: hfst::backend::AlgebraBackend>(
 
 // [spec:hfst:def:hfst-commandline.is-input-stream-in-ol-format-fn]
 // [spec:hfst:sem:hfst-commandline.is-input-stream-in-ol-format-fn]
-pub fn is_input_stream_in_ol_format(is: &HfstInputStream, program: &str) -> bool {
+pub fn is_input_stream_in_ol_format(is: &HfstInputStream<'_>, program: &str) -> bool {
     if is.get_type() == ImplementationType::HFST_OL_TYPE
         || is.get_type() == ImplementationType::HFST_OLW_TYPE
     {

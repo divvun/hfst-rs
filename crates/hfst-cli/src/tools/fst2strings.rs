@@ -490,7 +490,7 @@ impl ExtractStringsCb for Callback<'_> {
 fn process_stream(
     common: &CommonOptions,
     options: &mut Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
     outstream: &mut dyn std::io::Write,
 ) -> i32 {
     let mut first_transducer = true;

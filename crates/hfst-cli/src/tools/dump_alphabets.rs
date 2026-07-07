@@ -187,7 +187,7 @@ fn parse_options(
 fn process_stream(
     common: &CommonOptions,
     options: &Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
 ) -> i32 {
     // Data output goes to a std stream (the std counterpart of the libc
     // outfile FILE*); `emit` writes a string and ignores errors, matching the

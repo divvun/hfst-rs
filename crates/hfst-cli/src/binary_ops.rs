@@ -102,7 +102,7 @@ pub trait BinaryToolOp {
         common: &CommonOptions,
         first: &mut HfstTransducer<B>,
         second: &mut HfstTransducer<B>,
-        ctx: &PairContext,
+        ctx: &PairContext<'_>,
     ) -> Result<(), i32> {
         let _ = (common, first, second, ctx);
         Ok(())
@@ -228,7 +228,11 @@ pub fn open_output_stream(
 
 /// Emits the per-pair "--do-not-convert was requested" error (exits, as
 /// error() with a non-zero status does).
-pub fn print_do_not_convert_error(common: &CommonOptions, spec: &BinaryOpSpec, ctx: &PairContext) {
+pub fn print_do_not_convert_error(
+    common: &CommonOptions,
+    spec: &BinaryOpSpec,
+    ctx: &PairContext<'_>,
+) {
     error(
         common,
         1,
@@ -286,7 +290,7 @@ fn process_pair<B: AlgebraBackend>(
     op: &mut impl BinaryToolOp,
     mut first: HfstTransducer<B>,
     mut second: HfstTransducer<B>,
-    ctx: &PairContext,
+    ctx: &PairContext<'_>,
     outstream: &mut HfstOutputStream,
 ) -> Result<(HfstTransducer<B>, HfstTransducer<B>), i32> {
     if let Err(code) = op.pre_apply(common, &mut first, &mut second, ctx) {
@@ -336,8 +340,8 @@ fn process_pair<B: AlgebraBackend>(
 fn binary_op_streams(
     common: &CommonOptions,
     spec: &BinaryOpSpec,
-    firststream: &mut HfstInputStream,
-    secondstream: &mut HfstInputStream,
+    firststream: &mut HfstInputStream<'_>,
+    secondstream: &mut HfstInputStream<'_>,
     op: &mut impl BinaryToolOp,
 ) -> i32 {
     // there must be at least one transducer in both input streams

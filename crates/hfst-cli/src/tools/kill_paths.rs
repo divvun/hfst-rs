@@ -148,7 +148,7 @@ fn do_killing<B: hfst::backend::AlgebraBackend>(
 fn process_stream(
     common: &CommonOptions,
     options: &mut Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
     outstream: &mut HfstOutputStream,
 ) -> i32 {
     let mut transducer_n: usize = 0;

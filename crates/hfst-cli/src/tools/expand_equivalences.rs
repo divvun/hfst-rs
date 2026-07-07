@@ -239,7 +239,7 @@ fn check_options(common: &CommonOptions, options: &mut Options) {
 fn process_stream(
     common: &CommonOptions,
     options: &Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
     outstream: &mut HfstOutputStream,
 ) {
     let mut transducer_n: usize = 0;

@@ -180,7 +180,7 @@ fn parse_options(
 fn process_stream(
     common: &CommonOptions,
     options: &Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
     out: &mut HfstOutputStream,
 ) -> i32 {
     let mut transducer_n: usize = 0;

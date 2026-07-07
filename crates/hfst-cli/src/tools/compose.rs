@@ -239,7 +239,7 @@ impl BinaryToolOp for ComposeOp {
         common: &CommonOptions,
         first: &mut HfstTransducer<B>,
         second: &mut HfstTransducer<B>,
-        _ctx: &PairContext,
+        _ctx: &PairContext<'_>,
     ) -> Result<(), i32> {
         let has_flags = first.has_flag_diacritics() || second.has_flag_diacritics();
         if has_flags {

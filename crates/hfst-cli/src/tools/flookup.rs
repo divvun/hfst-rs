@@ -716,7 +716,7 @@ fn lookup_cascading_ol(
         CascadeVariant::Union,
         options.print_pairs,
         &mut |msg: &str| verbose_print(common, msg),
-        &mut |input: &HfstOneLevelPath, step: &CascadeStep, _out: &mut dyn Write| {
+        &mut |input: &HfstOneLevelPath, step: &CascadeStep<'_>, _out: &mut dyn Write| {
             lookup_simple_ol(common, options, input, &mut cascade[step.index], infinity)
         },
         &mut std::io::sink(),
@@ -747,7 +747,7 @@ fn lookup_cascading_basic(
         CascadeVariant::Union,
         options.print_pairs,
         &mut |msg: &str| verbose_print(common, msg),
-        &mut |input: &HfstOneLevelPath, step: &CascadeStep, out: &mut dyn Write| {
+        &mut |input: &HfstOneLevelPath, step: &CascadeStep<'_>, out: &mut dyn Write| {
             options.transducer_number = step.index as u32; // needed for lookup_simple
             lookup_simple_basic(common, options, input, &cascade[step.index], infinity, out)
         },
@@ -806,7 +806,7 @@ fn perform_lookups_basic(
 fn process_stream(
     common: &CommonOptions,
     options: &mut Options,
-    inputstream: &mut HfstInputStream,
+    inputstream: &mut HfstInputStream<'_>,
     outstream: &mut dyn Write,
 ) -> i32 {
     let mut cascade: Vec<OlTransducer> = Vec::new();

@@ -260,7 +260,7 @@ fn parse_options(
 fn process_stream(
     common: &CommonOptions,
     options: &Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
     outstream: &mut HfstOutputStream,
 ) -> i32 {
     if instream.get_type() == ImplementationType::FOMA_TYPE && !instream.is_hfst_header_included() {

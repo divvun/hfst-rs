@@ -605,7 +605,7 @@ fn substr_from_bytes(s: &str, byte_off: usize) -> String {
 fn process_stream(
     common: &CommonOptions,
     options: &Options,
-    inputstream: &mut HfstInputStream,
+    inputstream: &mut HfstInputStream<'_>,
     outstream: &mut dyn std::io::Write,
 ) -> i32 {
     let mut grammar: BasicTransducerVector = Vec::new();

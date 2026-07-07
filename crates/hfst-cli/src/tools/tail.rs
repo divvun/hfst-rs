@@ -118,7 +118,7 @@ fn parse_options(
 fn process_stream(
     common: &CommonOptions,
     options: &Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
     outstream: &mut HfstOutputStream,
 ) -> i32 {
     let mut last_n: VecDeque<AnyTransducer> = VecDeque::new();

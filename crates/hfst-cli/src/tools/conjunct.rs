@@ -170,7 +170,7 @@ impl BinaryToolOp for ConjunctOp {
         common: &CommonOptions,
         first: &mut HfstTransducer<B>,
         second: &mut HfstTransducer<B>,
-        _ctx: &PairContext,
+        _ctx: &PairContext<'_>,
     ) -> Result<(), i32> {
         if first.has_flag_diacritics() || second.has_flag_diacritics() {
             if !self.harmonize_flags {

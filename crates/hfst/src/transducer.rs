@@ -393,7 +393,7 @@ impl TransducerHeader {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.read-bool-property-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-header.read-bool-property-fn]
-    fn read_bool_property(is: &mut IStream) -> crate::error::Result<bool> {
+    fn read_bool_property(is: &mut IStream<'_>) -> crate::error::Result<bool> {
         let prop = is.read_u32();
         if prop == 0 {
             return Ok(false);
@@ -455,7 +455,7 @@ impl TransducerHeader {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.transducer-header-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-header.transducer-header-fn]
-    pub fn new_istream(is: &mut IStream) -> crate::error::Result<Self> {
+    pub fn new_istream(is: &mut IStream<'_>) -> crate::error::Result<Self> {
         let header = TransducerHeader {
             number_of_input_symbols: is.read_u16(),
             number_of_symbols: is.read_u16(),
@@ -646,7 +646,7 @@ impl TransducerAlphabet {
     // [spec:hfst:def:transducer.hfst-ol.transducer-alphabet.transducer-alphabet-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-alphabet.transducer-alphabet-fn]
     pub fn new_istream(
-        is: &mut IStream,
+        is: &mut IStream<'_>,
         symbol_count: SymbolNumber,
         preserve_diacritic_strings: bool,
     ) -> crate::error::Result<Self> {
@@ -687,7 +687,7 @@ impl TransducerAlphabet {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-alphabet.fake-read-alphabet-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-alphabet.fake-read-alphabet-fn]
-    pub fn fake_read_alphabet(is: &mut IStream, symbol_count: SymbolNumber) {
+    pub fn fake_read_alphabet(is: &mut IStream<'_>, symbol_count: SymbolNumber) {
         let mut i: SymbolNumber = 0;
         while i < symbol_count {
             let _str = is.read_until(b'\0');
@@ -984,7 +984,7 @@ impl TransitionIndex {
 
     // [spec:hfst:def:transducer.hfst-ol.transition-index.transition-index-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transition-index.transition-index-fn]
-    pub fn new_istream(is: &mut IStream) -> Self {
+    pub fn new_istream(is: &mut IStream<'_>) -> Self {
         let mut ti = TransitionIndex {
             input_symbol: NO_SYMBOL_NUMBER,
             first_transition_index: 0,
@@ -1463,7 +1463,7 @@ impl<T: TableEntry + Clone> TransducerTable<T> {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-table.transducer-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-table.transducer-table-fn]
-    pub fn new_istream(is: &mut IStream, index_count: TransitionTableIndex) -> Self {
+    pub fn new_istream(is: &mut IStream<'_>, index_count: TransitionTableIndex) -> Self {
         let total = T::SIZE * index_count as usize;
         let mut buf = vec![0u8; total];
         is.read(&mut buf);
@@ -1558,7 +1558,7 @@ pub trait TransducerTablesInterface {
     fn new_empty() -> Self;
     /// Read both tables from a stream ('TransducerTables(istream&, ...)').
     fn new_istream(
-        is: &mut IStream,
+        is: &mut IStream<'_>,
         index_table_size: TransitionTableIndex,
         transition_table_size: TransitionTableIndex,
     ) -> Self;
@@ -1625,7 +1625,7 @@ impl<T1: IndexEntry + TableEntry + Clone + IndexCtor, T2: TransitionEntry + Tabl
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.transducer-tables-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.transducer-tables-fn]
     pub fn new_istream(
-        is: &mut IStream,
+        is: &mut IStream<'_>,
         index_table_size: TransitionTableIndex,
         transition_table_size: TransitionTableIndex,
     ) -> Self {
@@ -1669,7 +1669,7 @@ impl<T1: IndexEntry + TableEntry + Clone + IndexCtor, T2: TransitionEntry + Tabl
         Self::new()
     }
     fn new_istream(
-        is: &mut IStream,
+        is: &mut IStream<'_>,
         index_table_size: TransitionTableIndex,
         transition_table_size: TransitionTableIndex,
     ) -> Self {
@@ -2188,7 +2188,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         }
     }
 
-    pub fn new_istream(is: &mut IStream) -> crate::error::Result<Self> {
+    pub fn new_istream(is: &mut IStream<'_>) -> crate::error::Result<Self> {
         let header = TransducerHeader::new_istream(is)?;
         Self::new_istream_with_header(header, is)
     }
@@ -2198,7 +2198,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     /// instantiation, then hands the header over.
     pub fn new_istream_with_header(
         header: TransducerHeader,
-        is: &mut IStream,
+        is: &mut IStream<'_>,
     ) -> crate::error::Result<Self> {
         let header = Box::new(header);
         // The weightedness is now static; a stream of the other flavour is the
@@ -2471,7 +2471,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.load-tables-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.load-tables-fn]
-    pub fn load_tables(&mut self, is: &mut IStream) -> crate::error::Result<()> {
+    pub fn load_tables(&mut self, is: &mut IStream<'_>) -> crate::error::Result<()> {
         if self.hdr().probe_flag(HeaderFlag::Weighted) != T::WEIGHTED {
             crate::bail!(TransducerHasWrongType);
         }

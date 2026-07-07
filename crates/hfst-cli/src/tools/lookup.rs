@@ -849,7 +849,7 @@ fn lookup_cascading_ol(
         options.cascade,
         options.print_pairs,
         &mut |msg: &str| verbose_print(common, msg),
-        &mut |input: &HfstOneLevelPath, step: &CascadeStep, out: &mut dyn Write| {
+        &mut |input: &HfstOneLevelPath, step: &CascadeStep<'_>, out: &mut dyn Write| {
             if step.composed_from.is_some() {
                 lookup_simple_ol(
                     common,
@@ -908,7 +908,7 @@ fn lookup_cascading_basic(
         options.cascade,
         options.print_pairs,
         &mut |msg: &str| verbose_print(common, msg),
-        &mut |input: &HfstOneLevelPath, step: &CascadeStep, out: &mut dyn Write| {
+        &mut |input: &HfstOneLevelPath, step: &CascadeStep<'_>, out: &mut dyn Write| {
             state.transducer_number = step.index as u32; // needed for lookup_simple
             if let Some(origin) = step.composed_from {
                 // if last transducer in cascade, print results if
@@ -1024,7 +1024,7 @@ fn perform_lookups_basic(
 fn process_stream(
     common: &CommonOptions,
     options: &mut Options,
-    inputstream: &mut HfstInputStream,
+    inputstream: &mut HfstInputStream<'_>,
     outstream: &mut dyn Write,
 ) -> i32 {
     let mut state = LookupState::new();

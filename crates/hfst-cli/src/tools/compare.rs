@@ -140,8 +140,8 @@ fn parse_options(
 fn compare_streams(
     common: &CommonOptions,
     options: &Options,
-    firststream: &mut HfstInputStream,
-    secondstream: &mut HfstInputStream,
+    firststream: &mut HfstInputStream<'_>,
+    secondstream: &mut HfstInputStream<'_>,
 ) -> i32 {
     let mut out = match common.output_writer() {
         Ok(w) => w,

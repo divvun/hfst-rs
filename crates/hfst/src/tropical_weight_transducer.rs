@@ -431,7 +431,7 @@ mod construction_io {
         }
 
         /// 'static bool is_fst(std::istream &s);'
-        pub fn is_fst_istream(s: &mut IStream) -> bool {
+        pub fn is_fst_istream(s: &mut IStream<'_>) -> bool {
             // C++ 's.good() && s.peek() == 0xd6'. peek = get then put the byte back.
             if !s.good() {
                 return false;

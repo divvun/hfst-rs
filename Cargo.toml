@@ -21,8 +21,15 @@ repository = "https://github.com/divvun/rust-hfst"
 # hfst-cli C-port `static mut` globals) must be de-globalized into safe threaded
 # state, not silenced.
 unsafe_code = "forbid"
+# Idiom hygiene (edition-independent): elided_lifetimes_in_paths,
+# explicit_outlives_requirements, unused_extern_crates, bare_trait_objects.
+# Zero violations today; deny keeps it that way. priority -1 so a specific
+# lint could still override the group.
+rust_2018_idioms = { level = "deny", priority = -1 }
 
 [workspace.lints.clippy]
+# No leftover `todo!()` macros (complements the nplan stub gate).
+todo = "deny"
 # No silent `_` arms on enum matches: a match over an ImplementationType (or any
 # enum) must name every variant it handles, so adding a backend/format can never
 # fall through to a wrong default. A hard error — the only escape is an explicit

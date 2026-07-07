@@ -260,8 +260,8 @@ fn harmonize_rules<B: hfst::backend::AlgebraBackend>(
 fn compose_streams(
     common: &CommonOptions,
     options: &Options,
-    firststream: &mut HfstInputStream,
-    secondstream: &mut HfstInputStream,
+    firststream: &mut HfstInputStream<'_>,
+    secondstream: &mut HfstInputStream<'_>,
 ) -> i32 {
     // there must be at least one transducer in both input streams
     let type1 = firststream.get_type();
@@ -325,8 +325,8 @@ fn compose_streams_typed<
 >(
     common: &CommonOptions,
     options: &Options,
-    firststream: &mut HfstInputStream,
-    secondstream: &mut HfstInputStream,
+    firststream: &mut HfstInputStream<'_>,
+    secondstream: &mut HfstInputStream<'_>,
     outstream: &mut hfst::hfst_output_stream::HfstOutputStream,
 ) -> i32 {
     let mut rules: HfstTransducerVector<B> = Vec::new();

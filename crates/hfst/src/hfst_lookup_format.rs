@@ -617,7 +617,7 @@ pub fn apply_cascade(
     verbose: &mut dyn FnMut(&str),
     lookup_one: &mut dyn FnMut(
         &HfstOneLevelPath,
-        &CascadeStep,
+        &CascadeStep<'_>,
         &mut dyn Write,
     ) -> HfstOneLevelPaths,
     out: &mut dyn Write,

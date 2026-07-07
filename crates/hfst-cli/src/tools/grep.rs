@@ -504,7 +504,7 @@ fn string_to_utf8(state: &MatcherState, p: &str) -> Vec<String> {
 fn read_matcher_stream(
     common: &CommonOptions,
     state: &mut MatcherState,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
 ) -> i32 {
     let mut transducer_n: usize = 0;
     state.matcher = HfstTransducer::new();

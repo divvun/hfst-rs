@@ -174,7 +174,7 @@ impl BinaryToolOp for SubtractOp {
         common: &CommonOptions,
         first: &mut HfstTransducer<B>,
         second: &mut HfstTransducer<B>,
-        _ctx: &PairContext,
+        _ctx: &PairContext<'_>,
     ) -> Result<(), i32> {
         if second.has_flag_diacritics() {
             warning(

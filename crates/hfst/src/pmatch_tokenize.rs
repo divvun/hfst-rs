@@ -1282,7 +1282,7 @@ pub fn match_and_print(
 // [spec:hfst:sem:pmatch-tokenize.hfst-ol-tokenize.process-input-fn]
 pub fn process_input(
     container: &mut PmatchContainer,
-    instream: &mut crate::transducer::IStream,
+    instream: &mut crate::transducer::IStream<'_>,
     outstream: &mut dyn Write,
     s: &TokenizeSettings,
 ) {

@@ -427,7 +427,7 @@ fn perform_delayed<B: hfst::backend::AlgebraBackend>(
 fn process_stream(
     common: &CommonOptions,
     options: &mut Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
 ) -> i32 {
     let mut to_any: Option<hfst::hfst_transducer::AnyTransducer> = None;
     let mut output_type = ImplementationType::UNSPECIFIED_TYPE;
@@ -555,7 +555,7 @@ fn process_stream(
 fn process_loop<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer>(
     common: &CommonOptions,
     options: &mut Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
     outstream: &mut HfstOutputStream,
     to_any: Option<hfst::hfst_transducer::AnyTransducer>,
 ) -> i32 {

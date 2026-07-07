@@ -196,7 +196,7 @@ fn main_loop(common: &CommonOptions, trans: &HfstBasicTransducer) -> i32 {
 fn process_stream(
     common: &CommonOptions,
     options: &Options,
-    instream: &mut HfstInputStream,
+    instream: &mut HfstInputStream<'_>,
 ) -> i32 {
     let mut msg = common.message_writer();
     let mut transducer_n: usize = 0;
