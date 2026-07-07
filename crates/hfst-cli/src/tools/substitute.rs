@@ -534,7 +534,15 @@ fn process_stream(
                 to_any,
             )
         }
-        _ => process_loop::<hfst_openfst::StdVectorFst>(
+        ImplementationType::SFST_TYPE
+        | ImplementationType::TROPICAL_OPENFST_TYPE
+        | ImplementationType::FOMA_TYPE
+        | ImplementationType::XFSM_TYPE
+        | ImplementationType::HFST_OL_TYPE
+        | ImplementationType::HFST_OLW_TYPE
+        | ImplementationType::HFST2_TYPE
+        | ImplementationType::UNSPECIFIED_TYPE
+        | ImplementationType::ERROR_TYPE => process_loop::<hfst_openfst::StdVectorFst>(
             common,
             options,
             instream,

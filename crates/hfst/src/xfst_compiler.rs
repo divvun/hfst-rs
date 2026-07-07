@@ -1449,7 +1449,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                                     .append(true)
                                     .create(true)
                                     .open(&redirect.path),
-                                _ => std::fs::File::create(&redirect.path),
+                                RedirectKind::In | RedirectKind::Out => {
+                                    std::fs::File::create(&redirect.path)
+                                }
                             };
                             if let Ok(mut f) = opened {
                                 match inner {
@@ -1459,7 +1461,42 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                                     XfstCommand::Save(nfst_xfst::SaveCmd::Att(_)) => {
                                         self.write_att(&mut f);
                                     }
-                                    _ => {
+                                    XfstCommand::Regex(_)
+                                    | XfstCommand::Define { .. }
+                                    | XfstCommand::DefineFunction { .. }
+                                    | XfstCommand::DefineAlias { .. }
+                                    | XfstCommand::DefineList { .. }
+                                    | XfstCommand::Undefine(_)
+                                    | XfstCommand::Unlist(_)
+                                    | XfstCommand::Clear
+                                    | XfstCommand::Pop
+                                    | XfstCommand::Push(_)
+                                    | XfstCommand::Turn
+                                    | XfstCommand::Rotate
+                                    | XfstCommand::LoadStack(_)
+                                    | XfstCommand::LoadDefinitions(_)
+                                    | XfstCommand::Network(_)
+                                    | XfstCommand::Apply(..)
+                                    | XfstCommand::LookupOptimize
+                                    | XfstCommand::RemoveOptimization
+                                    | XfstCommand::Read(_)
+                                    | XfstCommand::Save(_)
+                                    | XfstCommand::Test(_)
+                                    | XfstCommand::Set { .. }
+                                    | XfstCommand::Show(_)
+                                    | XfstCommand::Echo(_)
+                                    | XfstCommand::System(_)
+                                    | XfstCommand::Source(_)
+                                    | XfstCommand::Quit
+                                    | XfstCommand::Substitute(_)
+                                    | XfstCommand::Apropos(_)
+                                    | XfstCommand::Describe(_)
+                                    | XfstCommand::Assert(_)
+                                    | XfstCommand::AddProps(_)
+                                    | XfstCommand::EditProps
+                                    | XfstCommand::Hfst(_)
+                                    | XfstCommand::For
+                                    | XfstCommand::Redirected { .. } => {
                                         self.eval_command(inner)?;
                                     }
                                 }
@@ -1497,7 +1534,39 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                             XfstCommand::LoadDefinitions(_) => {
                                 self.load_definitions(path);
                             }
-                            _ => {
+                            XfstCommand::Regex(_)
+                            | XfstCommand::Define { .. }
+                            | XfstCommand::DefineFunction { .. }
+                            | XfstCommand::DefineAlias { .. }
+                            | XfstCommand::DefineList { .. }
+                            | XfstCommand::Undefine(_)
+                            | XfstCommand::Unlist(_)
+                            | XfstCommand::Clear
+                            | XfstCommand::Pop
+                            | XfstCommand::Push(_)
+                            | XfstCommand::Turn
+                            | XfstCommand::Rotate
+                            | XfstCommand::Network(_)
+                            | XfstCommand::LookupOptimize
+                            | XfstCommand::RemoveOptimization
+                            | XfstCommand::Read(_)
+                            | XfstCommand::Save(_)
+                            | XfstCommand::Print(_)
+                            | XfstCommand::Test(_)
+                            | XfstCommand::Set { .. }
+                            | XfstCommand::Show(_)
+                            | XfstCommand::Echo(_)
+                            | XfstCommand::System(_)
+                            | XfstCommand::Source(_)
+                            | XfstCommand::Quit
+                            | XfstCommand::Substitute(_)
+                            | XfstCommand::Apropos(_)
+                            | XfstCommand::Describe(_)
+                            | XfstCommand::Assert(_)
+                            | XfstCommand::EditProps
+                            | XfstCommand::Hfst(_)
+                            | XfstCommand::For
+                            | XfstCommand::Redirected { .. } => {
                                 self.eval_command(inner)?;
                             }
                         }
@@ -4097,7 +4166,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     }
                 }
             }
-            _ => {
+            BinaryOperation::INTERSECT_NET
+            | BinaryOperation::COMPOSE_NET
+            | BinaryOperation::CONCATENATE_NET
+            | BinaryOperation::UNION_NET
+            | BinaryOperation::SHUFFLE_NET => {
                 self.error_message("ERROR: unknown binary operation");
                 self.flush();
                 self.xfst_fail();
@@ -4207,7 +4280,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     let (rm, tm) = self.net_pair_mut(result, t);
                     rm.shuffle(tm, true)?;
                 }
-                _ => {
+                BinaryOperation::MINUS_NET | BinaryOperation::CROSSPRODUCT_NET => {
                     self.error_message("ERROR: unknown binary operation");
                     self.flush();
                 }

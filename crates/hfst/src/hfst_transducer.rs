@@ -4347,7 +4347,9 @@ impl FromAnyTransducer for StdVectorFst {
     fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
         match any {
             AnyTransducer::Tropical(t) => Ok(t),
-            other => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Log(_)
+            | other @ AnyTransducer::OlW(_)
+            | other @ AnyTransducer::OlU(_) => any_into_backend_via_basic(other),
         }
     }
 }
@@ -4356,7 +4358,9 @@ impl FromAnyTransducer for LogFst {
     fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
         match any {
             AnyTransducer::Log(t) => Ok(t),
-            other => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Tropical(_)
+            | other @ AnyTransducer::OlW(_)
+            | other @ AnyTransducer::OlU(_) => any_into_backend_via_basic(other),
         }
     }
 }
@@ -4365,7 +4369,9 @@ impl FromAnyTransducer for Transducer<WeightedTables> {
     fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
         match any {
             AnyTransducer::OlW(t) => Ok(t),
-            other => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Tropical(_)
+            | other @ AnyTransducer::Log(_)
+            | other @ AnyTransducer::OlU(_) => any_into_backend_via_basic(other),
         }
     }
 }
@@ -4378,7 +4384,9 @@ impl FromAnyTransducer for Transducer<UnweightedTables> {
             // tables, which the interim invariant of
             // [dec:hfst:monomorphic-backends] rules out (conversions always
             // build weighted-shaped tables); 'from_basic' reports that.
-            other => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Tropical(_)
+            | other @ AnyTransducer::Log(_)
+            | other @ AnyTransducer::OlW(_) => any_into_backend_via_basic(other),
         }
     }
 }

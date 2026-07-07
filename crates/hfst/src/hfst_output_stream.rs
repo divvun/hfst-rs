@@ -63,7 +63,9 @@ impl HfstOutputStream {
             | ImplementationType::LOG_OPENFST_TYPE
             | ImplementationType::HFST_OL_TYPE
             | ImplementationType::HFST_OLW_TYPE => {}
-            _ => crate::bail!(SpecifiedTypeRequired),
+            ImplementationType::HFST2_TYPE
+            | ImplementationType::UNSPECIFIED_TYPE
+            | ImplementationType::ERROR_TYPE => crate::bail!(SpecifiedTypeRequired),
         }
 
         Ok(HfstOutputStream {
@@ -112,7 +114,9 @@ impl HfstOutputStream {
             | ImplementationType::LOG_OPENFST_TYPE
             | ImplementationType::HFST_OL_TYPE
             | ImplementationType::HFST_OLW_TYPE => {}
-            _ => crate::bail!(SpecifiedTypeRequired),
+            ImplementationType::HFST2_TYPE
+            | ImplementationType::UNSPECIFIED_TYPE
+            | ImplementationType::ERROR_TYPE => crate::bail!(SpecifiedTypeRequired),
         }
 
         // The tropical/log backend streams panicked on a failed open ('cannot
@@ -181,7 +185,9 @@ impl HfstOutputStream {
             ImplementationType::XFSM_TYPE => "XFSM".to_string(),
             ImplementationType::HFST_OL_TYPE => "HFST_OL".to_string(),
             ImplementationType::HFST_OLW_TYPE => "HFST_OLW".to_string(),
-            _ => {
+            ImplementationType::HFST2_TYPE
+            | ImplementationType::UNSPECIFIED_TYPE
+            | ImplementationType::ERROR_TYPE => {
                 assert!(false);
                 String::new()
             }

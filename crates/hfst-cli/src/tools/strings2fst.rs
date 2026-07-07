@@ -350,7 +350,17 @@ fn process_stream(
         ImplementationType::LOG_OPENFST_TYPE => process_stream_typed::<
             hfst::log_weight_transducer::LogFst,
         >(common, options, outstream, input),
-        _ => process_stream_typed::<hfst_openfst::StdVectorFst>(common, options, outstream, input),
+        ImplementationType::SFST_TYPE
+        | ImplementationType::TROPICAL_OPENFST_TYPE
+        | ImplementationType::FOMA_TYPE
+        | ImplementationType::XFSM_TYPE
+        | ImplementationType::HFST_OL_TYPE
+        | ImplementationType::HFST_OLW_TYPE
+        | ImplementationType::HFST2_TYPE
+        | ImplementationType::UNSPECIFIED_TYPE
+        | ImplementationType::ERROR_TYPE => {
+            process_stream_typed::<hfst_openfst::StdVectorFst>(common, options, outstream, input)
+        }
     }
 }
 

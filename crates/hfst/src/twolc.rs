@@ -2760,7 +2760,12 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
                     },
                 );
             }
-            _ => panic!("TwolCGrammar::add_rule_pair: unexpected operator {oper:?}"),
+            Operator::RE_RIGHT
+            | Operator::RE_LEFT
+            | Operator::RE_NOT_LEFT
+            | Operator::RE_LEFT_RIGHT => {
+                panic!("TwolCGrammar::add_rule_pair: unexpected operator {oper:?}")
+            }
         }
         Ok(())
     }
@@ -2842,7 +2847,9 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
                     },
                 );
             }
-            _ => panic!("TwolCGrammar::add_rule_regex: unexpected operator {oper:?}"),
+            Operator::RIGHT | Operator::LEFT | Operator::NOT_LEFT | Operator::LEFT_RIGHT => {
+                panic!("TwolCGrammar::add_rule_regex: unexpected operator {oper:?}")
+            }
         }
         Ok(())
     }
@@ -2932,7 +2939,12 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
                         },
                     );
                 }
-                _ => panic!("TwolCGrammar::add_rule_pairs: unexpected operator {oper:?}"),
+                Operator::RE_RIGHT
+                | Operator::RE_LEFT
+                | Operator::RE_NOT_LEFT
+                | Operator::RE_LEFT_RIGHT => {
+                    panic!("TwolCGrammar::add_rule_pairs: unexpected operator {oper:?}")
+                }
             }
         }
         Ok(())
@@ -3368,7 +3380,13 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             TwolcRegex::Symbol(s) => Some(substitute_symbol(s, vvm)),
             TwolcRegex::Epsilon => Some(Symbol::new_static(TWOLC_EPSILON)),
             TwolcRegex::Group(inner) => Self::concrete_symbol(inner, vvm),
-            _ => None,
+            TwolcRegex::Pair { .. }
+            | TwolcRegex::Any
+            | TwolcRegex::Optional(_)
+            | TwolcRegex::Binary(..)
+            | TwolcRegex::Unary(..)
+            | TwolcRegex::RepeatN(..)
+            | TwolcRegex::RepeatNToK(..) => None,
         }
     }
 
@@ -3898,7 +3916,20 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                     &right,
                 )?;
             }
-            other => {
+            other @ BinaryOp::LenientCompose
+            | other @ BinaryOp::CrossProduct
+            | other @ BinaryOp::MergeRight
+            | other @ BinaryOp::MergeLeft
+            | other @ BinaryOp::Before
+            | other @ BinaryOp::After
+            | other @ BinaryOp::Shuffle
+            | other @ BinaryOp::UpperSubtract
+            | other @ BinaryOp::LowerSubtract
+            | other @ BinaryOp::UpperPriorityUnion
+            | other @ BinaryOp::LowerPriorityUnion
+            | other @ BinaryOp::Ignoring
+            | other @ BinaryOp::IgnoreInternally
+            | other @ BinaryOp::LeftQuotient => {
                 std::panic::panic_any(format!(
                     "twolc regex: unsupported binary operator {other:?}"
                 ));
@@ -3940,7 +3971,14 @@ fn symbol_of(e: &Spanned<TwolcRegex>, vvm: &VariableValueMap) -> Symbol {
         TwolcRegex::Epsilon => Symbol::new_static(TWOLC_EPSILON),
         TwolcRegex::Any => Symbol::new_static(TWOLC_UNKNOWN),
         TwolcRegex::Group(inner) => symbol_of(inner, vvm),
-        _ => std::panic::panic_any("twolc pair side must be a single symbol".to_string()),
+        TwolcRegex::Pair { .. }
+        | TwolcRegex::Optional(_)
+        | TwolcRegex::Binary(..)
+        | TwolcRegex::Unary(..)
+        | TwolcRegex::RepeatN(..)
+        | TwolcRegex::RepeatNToK(..) => {
+            std::panic::panic_any("twolc pair side must be a single symbol".to_string())
+        }
     }
 }
 

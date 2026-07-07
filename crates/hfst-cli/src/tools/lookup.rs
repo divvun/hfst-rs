@@ -1118,7 +1118,8 @@ fn process_stream(
         match trans {
             hfst::hfst_transducer::AnyTransducer::OlW(t) => cascade.push(OlTransducer::W(t)),
             hfst::hfst_transducer::AnyTransducer::OlU(t) => cascade.push(OlTransducer::U(t)),
-            _ => {}
+            hfst::hfst_transducer::AnyTransducer::Tropical(_)
+            | hfst::hfst_transducer::AnyTransducer::Log(_) => {}
         }
         id_or_unk_seen = false;
     }

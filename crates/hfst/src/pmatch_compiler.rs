@@ -5539,7 +5539,52 @@ fn build_stringlike<B: AlgebraBackend + FromAnyTransducer + 'static>(
         PE::QuotedLiteral(s) => pmb_string(s.clone(), false),
         PE::CurlyLiteral(s) => pmb_string(s.clone(), true),
         PE::Symbol(s) => pmb_symbol(s.clone()),
-        _ => build_object(ctx, e)?,
+        PE::Literal(_)
+        | PE::Epsilon
+        | PE::Any
+        | PE::BoundaryMarker
+        | PE::Acceptor(_)
+        | PE::CharacterRange { .. }
+        | PE::Binary(..)
+        | PE::Unary(..)
+        | PE::Group(_)
+        | PE::Optional(_)
+        | PE::BracketedDotted(_)
+        | PE::Pair { .. }
+        | PE::Weighted { .. }
+        | PE::RepeatN(..)
+        | PE::RepeatNPlus(..)
+        | PE::RepeatNMinus(..)
+        | PE::RepeatNToK(..)
+        | PE::Replace { .. }
+        | PE::Restriction { .. }
+        | PE::Ins(_)
+        | PE::EndTag(_)
+        | PE::Capture(_)
+        | PE::Tag { .. }
+        | PE::With { .. }
+        | PE::Counter(_)
+        | PE::CaseOp { .. }
+        | PE::DefineWrapper(_)
+        | PE::Explode(_)
+        | PE::Implode(_)
+        | PE::Like { .. }
+        | PE::Lst(_)
+        | PE::Exc(_)
+        | PE::Sigma(_)
+        | PE::Interpolate(_)
+        | PE::Substitute(..)
+        | PE::Uncompose(..)
+        | PE::Lc(_)
+        | PE::Rc(_)
+        | PE::Nlc(_)
+        | PE::Nrc(_)
+        | PE::OrContext(_)
+        | PE::AndContext(_)
+        | PE::Call { .. }
+        | PE::ReadFile { .. }
+        | PE::ReadLexc(_)
+        | PE::ReadVec(_) => build_object(ctx, e)?,
     })
 }
 // CONCATENATED_STRING_LIST: right-folded Concatenate of STRINGLIKEs.

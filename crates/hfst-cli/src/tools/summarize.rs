@@ -191,7 +191,9 @@ fn process_stream(
                         }
                     }
                 }
-                _ => None,
+                hfst::hfst_transducer::AnyTransducer::Log(_)
+                | hfst::hfst_transducer::AnyTransducer::OlW(_)
+                | hfst::hfst_transducer::AnyTransducer::OlU(_) => None,
             }
         } else {
             None
@@ -245,7 +247,7 @@ fn process_stream(
                     is_mutable = false;
                     weighted = true;
                 }
-                _ => {
+                ImplementationType::XFSM_TYPE | ImplementationType::HFST2_TYPE | ImplementationType::UNSPECIFIED_TYPE | ImplementationType::ERROR_TYPE => {
                     is_mutable = false;
                 }
             }
@@ -311,7 +313,7 @@ fn process_stream(
                 ImplementationType::HFST_OLW_TYPE => {
                     let _ = write!(out, "fst type: HFST optimized lookup\narc type: weighted\n");
                 }
-                _ => {
+                ImplementationType::XFSM_TYPE | ImplementationType::HFST2_TYPE | ImplementationType::UNSPECIFIED_TYPE | ImplementationType::ERROR_TYPE => {
                     let _ = write!(out, "fst type: ???\narc type: ???\n");
                 }
             }

@@ -307,7 +307,7 @@ pub fn convert_any_with_options(
                 AnyTransducer::Log(x) => AnyTransducer::OlW(x.to_ol(weighted, options)?),
                 // OL -> OL retag (only the header weightedness differs):
                 // through the algebra, as the C++ went through basic.
-                other => {
+                other @ AnyTransducer::OlW(_) | other @ AnyTransducer::OlU(_) => {
                     let x: HfstTransducer<hfst_openfst::StdVectorFst> = other.into_typed()?;
                     AnyTransducer::OlW(x.to_ol(weighted, options)?)
                 }

@@ -479,7 +479,17 @@ pub fn run(mut args: Vec<String>) -> i32 {
         ImplementationType::LOG_OPENFST_TYPE => {
             run_typed::<hfst::log_weight_transducer::LogFst>(&common, &options, &mut outstream)
         }
-        _ => run_typed::<hfst_openfst::StdVectorFst>(&common, &options, &mut outstream),
+        ImplementationType::SFST_TYPE
+        | ImplementationType::TROPICAL_OPENFST_TYPE
+        | ImplementationType::FOMA_TYPE
+        | ImplementationType::XFSM_TYPE
+        | ImplementationType::HFST_OL_TYPE
+        | ImplementationType::HFST_OLW_TYPE
+        | ImplementationType::HFST2_TYPE
+        | ImplementationType::UNSPECIFIED_TYPE
+        | ImplementationType::ERROR_TYPE => {
+            run_typed::<hfst_openfst::StdVectorFst>(&common, &options, &mut outstream)
+        }
     }
 }
 

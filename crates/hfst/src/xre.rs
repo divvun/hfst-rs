@@ -332,7 +332,23 @@ fn xre_pair_side_kind(e: &SpannedXre) -> Option<XrePairSide> {
         // completeness. Per the porting spec the boundary symbol is ".#.".
         XreExpr::BoundaryMarker => Some(XrePairSide::Half(".#.".to_string())),
         XreExpr::Curly(s) => Some(XrePairSide::Curly(s.clone())),
-        _ => None,
+        XreExpr::Pair { .. }
+        | XreExpr::Weighted { .. }
+        | XreExpr::ReadFile { .. }
+        | XreExpr::FunctionCall { .. }
+        | XreExpr::Group(_)
+        | XreExpr::Optional(_)
+        | XreExpr::BracketedDotted(_)
+        | XreExpr::Unary(..)
+        | XreExpr::Binary(..)
+        | XreExpr::RepeatN(..)
+        | XreExpr::RepeatNPlus(..)
+        | XreExpr::RepeatNMinus(..)
+        | XreExpr::RepeatNToK(..)
+        | XreExpr::ContainmentWithWeight { .. }
+        | XreExpr::Replace { .. }
+        | XreExpr::Restriction { .. }
+        | XreExpr::Substitute { .. } => None,
     }
 }
 

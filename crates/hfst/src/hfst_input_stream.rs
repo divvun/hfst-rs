@@ -368,7 +368,15 @@ mod input_impl {
                     //return this->implementation.sfst->
                     //set_implementation_specific_header_data(data, index);
                 }
-                _ => {}
+                ImplementationType::TROPICAL_OPENFST_TYPE
+                | ImplementationType::LOG_OPENFST_TYPE
+                | ImplementationType::FOMA_TYPE
+                | ImplementationType::XFSM_TYPE
+                | ImplementationType::HFST_OL_TYPE
+                | ImplementationType::HFST_OLW_TYPE
+                | ImplementationType::HFST2_TYPE
+                | ImplementationType::UNSPECIFIED_TYPE
+                | ImplementationType::ERROR_TYPE => {}
             }
             // #endif
             false
@@ -557,7 +565,10 @@ mod input_impl {
                     }
                 }
                 // case ERROR_TYPE: default:
-                _ => {
+                ImplementationType::XFSM_TYPE
+                | ImplementationType::HFST2_TYPE
+                | ImplementationType::UNSPECIFIED_TYPE
+                | ImplementationType::ERROR_TYPE => {
                     debug_error("#1");
                     crate::bail!(NotTransducerStream);
                 }

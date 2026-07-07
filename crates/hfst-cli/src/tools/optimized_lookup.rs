@@ -483,7 +483,8 @@ fn setup(options: &Options, path: &str) -> i32 {
     let t = match any {
         hfst::hfst_transducer::AnyTransducer::OlW(t) => OlInner::W(t),
         hfst::hfst_transducer::AnyTransducer::OlU(t) => OlInner::U(t),
-        other => match other.into_typed() {
+        other @ hfst::hfst_transducer::AnyTransducer::Tropical(_)
+        | other @ hfst::hfst_transducer::AnyTransducer::Log(_) => match other.into_typed() {
             Ok(t) => OlInner::W(t),
             Err(e) => {
                 print_err(&format!("{e}\n"));
