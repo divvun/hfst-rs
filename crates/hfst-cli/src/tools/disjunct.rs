@@ -8,9 +8,9 @@
 use crate::binary_ops::{
     BinaryOpSpec, BinaryToolOp, LoopStyle, RetryPolicy, run_binary_streams_tool,
 };
-use crate::globals;
-use crate::hfst_commandline::{EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name};
-use crate::hfst_getopt as getopt;
+use crate::globals::CommonOptions;
+use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
+use crate::hfst_getopt::{self as getopt, Getopt};
 use crate::hfst_program_options::{
     hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
     print_common_binary_program_parameter_instructions, print_common_program_options,
@@ -23,19 +23,32 @@ use hfst::backend::AlgebraBackend;
 use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
-static mut HARMONIZE_FLAGS: bool = false;
-static mut HARMONIZE: bool = true;
+/// hfst-disjunct's own options (the former tool-specific `static mut`s).
+struct Options {
+    /// '-F, --harmonize-flags': harmonize flag diacritics.
+    harmonize_flags: bool,
+    /// '-H, --do-not-harmonize' clears this (harmonize symbols; default true).
+    harmonize: bool,
+}
+
+impl Default for Options {
+    fn default() -> Options {
+        Options {
+            harmonize_flags: false,
+            harmonize: true,
+        }
+    }
+}
 
 // [spec:hfst:def:hfst-disjunct.print-usage-fn]
 // [spec:hfst:sem:hfst-disjunct.print-usage-fn]
-fn print_usage() {
-    let mut msg = globals::message_writer();
+fn print_usage(common: &CommonOptions) {
+    let mut msg = common.message_writer();
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let program_name = globals::program_name();
     let _ = write!(
         msg,
         "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nDisjunct (union, OR) two transducers\n\n",
-        program_name
+        common.program_name
     );
     print_common_program_options(&mut *msg);
     print_common_binary_program_options(&mut *msg);
@@ -49,62 +62,67 @@ fn print_usage() {
     let _ = write!(
         msg,
         "\nExamples:\n  {} -o cat_or_dog.hfst cat.hfst dog.hfst\n\n",
-        program_name
+        common.program_name
     );
 }
 
 // [spec:hfst:def:hfst-disjunct.parse-options-fn]
 // [spec:hfst:sem:hfst-disjunct.parse-options-fn]
-unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
-    unsafe {
-        extend_options_from_env(args);
-        // use of this function requires options are settable on global scope
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "do-not-harmonize",
-                has_arg: 0,
-                val: b'H' as i32,
-            });
-            // add tool-specific options here
-            let c = getopt::getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then binary cases, then the tool's own ('H'), then the
-            // terminal error arm.
-            match handle_common_case(c, print_usage) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_binary_case(c) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == b'H' as i32 {
-                HARMONIZE = false;
-                continue;
-            }
-            return handle_error_case(c);
+//
+// Parse argv into the shared + tool options; `Err(code)` is an exit code the
+// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
+fn parse_options(
+    mut common: CommonOptions,
+    args: &mut Vec<String>,
+) -> Result<(CommonOptions, Options), i32> {
+    let mut options = Options::default();
+    let mut opt = Getopt::new();
+    extend_options_from_env(args);
+    loop {
+        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
+        long_options.extend(hfst_getopt_common_long());
+        long_options.extend(hfst_getopt_binary_long());
+        // add tool-specific options here
+        long_options.push(getopt::GetOpt {
+            name: "do-not-harmonize",
+            has_arg: getopt::NO_ARGUMENT,
+            val: b'H' as i32,
+        });
+        // add tool-specific options here
+        let c = opt.getopt_long(args, &long_options);
+        if -1 == c {
+            break;
         }
 
-        check_common_params();
-        check_binary_params(args);
-        EXIT_CONTINUE
+        // The C switch chains the #include'd case groups in order: common
+        // cases, then binary cases, then the tool's own ('H'), then the
+        // terminal error arm.
+        match handle_common_case(&mut common, &opt, c, print_usage) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        match handle_binary_case(&mut common, &opt, c) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        if c == b'H' as i32 {
+            options.harmonize = false;
+            continue;
+        }
+        return Err(handle_error_case(&common, &opt, c));
     }
+
+    check_common_params(&mut common);
+    check_binary_params(&mut common, &opt, args);
+    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-disjunct.disjunct-streams-fn]
 // [spec:hfst:sem:hfst-disjunct.disjunct-streams-fn]
 // The streams loop lives in crate::binary_ops::run_binary_streams_tool;
-// this descriptor plus the apply closure in real_main carry the tool's
+// this descriptor plus the apply closure in run carry the tool's
 // behaviour contract.
 const SPEC: BinaryOpSpec = BinaryOpSpec {
     tool_name: "hfst-disjunct",
@@ -122,25 +140,20 @@ const SPEC: BinaryOpSpec = BinaryOpSpec {
 
 // [spec:hfst:def:hfst-disjunct.main-fn]
 // [spec:hfst:sem:hfst-disjunct.main-fn]
-pub fn run(args: Vec<String>) -> i32 {
-    unsafe { real_main(args) }
-}
+pub fn run(mut args: Vec<String>) -> i32 {
+    let argv0 = args.first().cloned().unwrap_or_default();
 
-unsafe fn real_main(mut args: Vec<String>) -> i32 {
-    unsafe {
-        let argv0 = args.first().cloned().unwrap_or_default();
+    let common = hfst_set_program_name(&argv0, "0.1", "HfstDisjunct");
+    let (common, options) = match parse_options(common, &mut args) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
 
-        hfst_set_program_name(&argv0, "0.1", "HfstDisjunct");
-        let retval = parse_options(&mut args);
-        if retval != EXIT_CONTINUE {
-            return retval;
-        }
-        let _ = HARMONIZE_FLAGS;
-        let mut op = DisjunctOp {
-            harmonize: HARMONIZE,
-        };
-        run_binary_streams_tool(&SPEC, &mut op)
-    }
+    let _ = options.harmonize_flags;
+    let mut op = DisjunctOp {
+        harmonize: options.harmonize,
+    };
+    run_binary_streams_tool(&common, &SPEC, &mut op)
 }
 
 struct DisjunctOp {

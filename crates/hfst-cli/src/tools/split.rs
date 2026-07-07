@@ -1,13 +1,17 @@
-#![allow(static_mut_refs)]
 //! Faithful 1:1 port of tools/src/hfst-split.cc — the transducer archive
 //! exploding tool. Drives the hfst-cli foundation (globals, getopt,
 //! commandline, program-options, tool-metadata, inc fragments).
+//!
+//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
+//! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
+//! `parse_options` and threaded into the processing functions. There are no
+//! `static mut` globals and no `unsafe`.
 
-use crate::globals;
+use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, extend_options_from_env, hfst_set_program_name, verbose_print,
+    error, extend_options_from_env, hfst_set_program_name, verbose_print,
 };
-use crate::hfst_getopt as getopt;
+use crate::hfst_getopt::{self as getopt, Getopt};
 use crate::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
 use crate::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
@@ -16,26 +20,32 @@ use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use std::io::Write;
 
-// add tools-specific variables here
-static mut PREFIX: String = String::new();
-static mut EXTENSION: String = String::new();
-
-fn prefix() -> String {
-    unsafe { (*std::ptr::addr_of!(PREFIX)).clone() }
+/// hfst-split's own options (the former tool-specific `static mut`s).
+struct Options {
+    /// '-p, --prefix=PRE': prefix used in naming output files.
+    prefix: String,
+    /// '-e, --extension=EXT': extension used in naming output files.
+    extension: String,
 }
-fn extension() -> String {
-    unsafe { (*std::ptr::addr_of!(EXTENSION)).clone() }
+
+impl Default for Options {
+    fn default() -> Options {
+        Options {
+            prefix: String::new(),
+            extension: ".hfst".to_string(),
+        }
+    }
 }
 
 // [spec:hfst:def:hfst-split.print-usage-fn]
 // [spec:hfst:sem:hfst-split.print-usage-fn]
-fn print_usage() {
+fn print_usage(common: &CommonOptions) {
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let mut msg = globals::message_writer();
+    let mut msg = common.message_writer();
     let _ = write!(
         msg,
         "Usage: {} [OPTIONS...] [INFILE]\nExtract transducers from archive with systematic file names\n\n",
-        globals::program_name()
+        common.program_name
     );
     print_common_program_options(&mut *msg);
     let _ = write!(
@@ -52,107 +62,116 @@ fn print_usage() {
 
 // [spec:hfst:def:hfst-split.parse-options-fn]
 // [spec:hfst:sem:hfst-split.parse-options-fn]
-unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
-    unsafe {
-        extend_options_from_env(args);
-        // use of this function requires options are settable on global scope
-        *std::ptr::addr_of_mut!(EXTENSION) = ".hfst".to_string();
-        *std::ptr::addr_of_mut!(PREFIX) = String::new();
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "input",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: b'i' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "prefix",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: b'p' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "extension",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: b'e' as i32,
-            });
-            let c = getopt::getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd common case group, then this
-            // tool's own input/output cases, then the terminal error arm.
-            match handle_common_case(c, print_usage) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c {
-                c if c == b'i' as i32 => {
-                    globals::set_input_filename(getopt::optarg());
-                    // C: inputfile = hfst_fopen(inputfilename, "r"); if it resolves
-                    // to stdin ("-"), reset the name to "<stdin>". Otherwise the C
-                    // opened the file eagerly to validate it; mirror that by trying
-                    // to open it and erroring through the same path on failure.
-                    if globals::input_filename() == "-" {
-                        globals::set_input_filename("<stdin>");
-                    } else if std::fs::File::open(globals::input_filename()).is_err() {
-                        crate::hfst_commandline::error(
-                            1,
-                            0,
-                            &format!("Could not open '{}'. ", globals::input_filename()),
-                        );
-                    }
-                    globals::INPUT_NAMED = true;
-                    continue;
-                }
-                c if c == b'p' as i32 => {
-                    *std::ptr::addr_of_mut!(PREFIX) = getopt::optarg();
-                    continue;
-                }
-                c if c == b'e' as i32 => {
-                    *std::ptr::addr_of_mut!(EXTENSION) = getopt::optarg();
-                    continue;
-                }
-                _ => {}
-            }
-            return handle_error_case(c);
+//
+// Parse argv into the shared + tool options; `Err(code)` is an exit code the
+// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
+fn parse_options(
+    mut common: CommonOptions,
+    args: &mut Vec<String>,
+) -> Result<(CommonOptions, Options), i32> {
+    let mut options = Options::default();
+    let mut opt = Getopt::new();
+    extend_options_from_env(args);
+    loop {
+        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
+        long_options.extend(hfst_getopt_common_long());
+        // add tool-specific options here
+        long_options.push(getopt::GetOpt {
+            name: "input",
+            has_arg: getopt::REQUIRED_ARGUMENT,
+            val: b'i' as i32,
+        });
+        long_options.push(getopt::GetOpt {
+            name: "prefix",
+            has_arg: getopt::REQUIRED_ARGUMENT,
+            val: b'p' as i32,
+        });
+        long_options.push(getopt::GetOpt {
+            name: "extension",
+            has_arg: getopt::REQUIRED_ARGUMENT,
+            val: b'e' as i32,
+        });
+        let c = opt.getopt_long(args, &long_options);
+        if -1 == c {
+            break;
         }
 
-        check_common_params();
-        check_unary_params(args);
-        EXIT_CONTINUE
+        // The C switch chains the #include'd common case group, then this
+        // tool's own input/output cases, then the terminal error arm.
+        match handle_common_case(&mut common, &opt, c, print_usage) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        match c {
+            c if c == b'i' as i32 => {
+                common.input_filename = opt.optarg();
+                // C: inputfile = hfst_fopen(inputfilename, "r"); if it resolves
+                // to stdin ("-"), reset the name to "<stdin>". Otherwise the C
+                // opened the file eagerly to validate it; mirror that by trying
+                // to open it and erroring through the same path on failure.
+                if common.input_filename == "-" {
+                    common.input_filename = "<stdin>".to_string();
+                } else if std::fs::File::open(&common.input_filename).is_err() {
+                    error(
+                        &common,
+                        1,
+                        0,
+                        &format!("Could not open '{}'. ", common.input_filename),
+                    );
+                }
+                common.input_named = true;
+                continue;
+            }
+            c if c == b'p' as i32 => {
+                options.prefix = opt.optarg();
+                continue;
+            }
+            c if c == b'e' as i32 => {
+                options.extension = opt.optarg();
+                continue;
+            }
+            _ => {}
+        }
+        return Err(handle_error_case(&common, &opt, c));
     }
+
+    check_common_params(&mut common);
+    check_unary_params(&mut common, &opt, args);
+    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-split.process-stream-fn]
 // [spec:hfst:sem:hfst-split.process-stream-fn]
-unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
+fn process_stream(
+    common: &mut CommonOptions,
+    options: &Options,
+    instream: &mut HfstInputStream,
+) -> i32 {
     let mut transducer_n: usize = 0;
     while instream.is_good() {
         transducer_n += 1;
-        let outfilename = format!("{}{}{}", prefix(), transducer_n, extension());
-        globals::set_output_filename(outfilename.clone());
-        verbose_print(&format!(
-            "Writing {} of {} to {}...\n",
-            transducer_n,
-            globals::input_filename(),
-            outfilename
-        ));
+        let outfilename = format!("{}{}{}", options.prefix, transducer_n, options.extension);
+        common.output_filename = outfilename.clone();
+        verbose_print(
+            common,
+            &format!(
+                "Writing {} of {} to {}...\n",
+                transducer_n, common.input_filename, outfilename
+            ),
+        );
         let mut outstream =
             match HfstOutputStream::new_filename(&outfilename, instream.get_type(), true) {
                 Ok(s) => s,
                 Err(e) => {
-                    crate::hfst_commandline::error(1, 0, &format!("{e}"));
+                    error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
             };
         let any = match instream.read() {
             Ok(t) => t,
             Err(e) => {
-                crate::hfst_commandline::error(1, 0, &format!("{e}"));
+                error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
         };
@@ -160,15 +179,15 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
         crate::for_any!(any, trans => {
             let mut trans = trans;
             if let Err(e) = outstream.redirect(&mut trans) {
-                crate::hfst_commandline::error(1, 0, &format!("{e}"));
+                error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
             if let Err(e) = outstream.flush() {
-                crate::hfst_commandline::error(1, 0, &format!("{e}"));
+                error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
             outstream.close();
-            globals::set_output_filename("");
+            common.output_filename = String::new();
         });
     }
     instream.close();
@@ -177,43 +196,39 @@ unsafe fn process_stream(instream: &mut HfstInputStream) -> i32 {
 
 // [spec:hfst:def:hfst-split.main-fn]
 // [spec:hfst:sem:hfst-split.main-fn]
-pub fn run(args: Vec<String>) -> i32 {
-    unsafe { real_main(args) }
-}
+pub fn run(mut args: Vec<String>) -> i32 {
+    let argv0 = args.first().cloned().unwrap_or_default();
 
-unsafe fn real_main(mut args: Vec<String>) -> i32 {
-    unsafe {
-        let argv0 = args.first().cloned().unwrap_or_default();
+    let common = hfst_set_program_name(&argv0, "0.1", "HfstSplit");
+    let (mut common, options) = match parse_options(common, &mut args) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
 
-        hfst_set_program_name(&argv0, "0.1", "HfstSplit");
-        let retval = parse_options(&mut args);
-        if retval != EXIT_CONTINUE {
-            return retval;
-        }
-        // close buffers, we use streams
-        verbose_print(&format!(
+    // close buffers, we use streams
+    verbose_print(
+        &common,
+        &format!(
             "Reading from {}, writing to {}...{}\n",
-            globals::input_filename(),
-            prefix(),
-            extension()
-        ));
-        // here starts the buffer handling part
-        // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
-        // currently panics on a bad file rather than throwing, so the catch arm
-        // is not reproduced faithfully here.)
-        let instream_result = if globals::input_filename() != "<stdin>" {
-            HfstInputStream::new_filename(&globals::input_filename())
-        } else {
-            HfstInputStream::new()
-        };
-        let mut instream = match instream_result {
-            Ok(s) => s,
-            Err(e) => {
-                crate::hfst_commandline::error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
+            common.input_filename, options.prefix, options.extension
+        ),
+    );
+    // here starts the buffer handling part
+    // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
+    // currently panics on a bad file rather than throwing, so the catch arm
+    // is not reproduced faithfully here.)
+    let instream_result = if common.input_filename != "<stdin>" {
+        HfstInputStream::new_filename(&common.input_filename)
+    } else {
+        HfstInputStream::new()
+    };
+    let mut instream = match instream_result {
+        Ok(s) => s,
+        Err(e) => {
+            error(&common, 1, 0, &format!("{e}"));
+            return 1;
+        }
+    };
 
-        process_stream(&mut instream)
-    }
+    process_stream(&mut common, &options, &mut instream)
 }

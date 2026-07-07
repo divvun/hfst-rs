@@ -13,6 +13,22 @@ edition = "2024"
 license = "LGPL-3.0-or-later"
 repository = "https://github.com/divvun/rust-hfst"
 
+# Workspace-wide lints. Each in-scope crate opts in with `[lints] workspace =
+# true`. Keep this the single source of truth for shared lint policy.
+[workspace.lints.rust]
+# No `unsafe` anywhere in the workspace — a hard build error, no per-crate
+# override. The library crates are already at zero. Any remaining `unsafe` (the
+# hfst-cli C-port `static mut` globals) must be de-globalized into safe threaded
+# state, not silenced.
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# No silent `_` arms on enum matches: a match over an ImplementationType (or any
+# enum) must name every variant it handles, so adding a backend/format can never
+# fall through to a wrong default. Surfaced by hfst-xfst's format->backend
+# dispatch silently mapping unsupported formats to tropical.
+wildcard_enum_match_arm = "warn"
+
 [workspace.dependencies]
 # internal crates (dependency layers, bottom-up)
 hfst-types = { path = "crates/hfst-types" }

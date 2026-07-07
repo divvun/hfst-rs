@@ -1,13 +1,17 @@
 //! Faithful 1:1 port of tools/src/hfst-check-alpha.cc — the tool that compares
 //! the compatibility of alphabets within and between automata. Drives the
-//! hfst-cli foundation (globals, getopt, commandline, program-options,
-//! tool-metadata, inc fragments). A binary tool (two input streams).
+//! hfst-cli foundation (getopt, commandline, program-options, tool-metadata,
+//! inc fragments). A binary tool (two input streams).
+//!
+//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
+//! shared `-v/-q/-1/-2/…` fields) built by `parse_options` and threaded into
+//! the processing functions. There are no `static mut` globals and no `unsafe`.
 
-use crate::globals;
+use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, verbose_print,
+    error, extend_options_from_env, hfst_set_program_name, verbose_print,
 };
-use crate::hfst_getopt as getopt;
+use crate::hfst_getopt::{self as getopt, Getopt};
 use crate::hfst_program_options::{
     hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
     print_common_binary_program_parameter_instructions, print_common_program_options,
@@ -24,13 +28,13 @@ use std::io::Write;
 
 // [spec:hfst:def:hfst-check-alpha.print-usage-fn]
 // [spec:hfst:sem:hfst-check-alpha.print-usage-fn]
-fn print_usage() {
+fn print_usage(common: &CommonOptions) {
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let mut msg = globals::message_writer();
+    let mut msg = common.message_writer();
     let _ = write!(
         msg,
         "Usage: {} [OPTIONS...] [INFILEs]\nCompare the compatibility of alphabets between INFILEs\n\n",
-        globals::program_name()
+        common.program_name
     );
     print_common_program_options(&mut *msg);
     print_common_binary_program_options(&mut *msg);
@@ -56,133 +60,192 @@ fn fprint_stringset(outfile: &mut dyn Write, strings: &StringSet) {
 
 // [spec:hfst:def:hfst-check-alpha.parse-options-fn]
 // [spec:hfst:sem:hfst-check-alpha.parse-options-fn]
-unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
-    unsafe {
-        extend_options_from_env(args);
-        // use of this function requires options are settable on global scope
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            let c = getopt::getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: binary
-            // cases, then common cases, then the tool's own (none here), then the
-            // terminal error arm.
-            match handle_binary_case(c) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_common_case(c, print_usage) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            return handle_error_case(c);
+//
+// Parse argv into the shared options; `Err(code)` is an exit code the caller
+// should return (the former EXIT_CONTINUE sentinel is now `Ok`).
+fn parse_options(mut common: CommonOptions, args: &mut Vec<String>) -> Result<CommonOptions, i32> {
+    let mut opt = Getopt::new();
+    extend_options_from_env(args);
+    loop {
+        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
+        long_options.extend(hfst_getopt_common_long());
+        long_options.extend(hfst_getopt_binary_long());
+        // add tool-specific options here
+        let c = opt.getopt_long(args, &long_options);
+        if -1 == c {
+            break;
         }
 
-        check_binary_params(args);
-        check_common_params();
-        EXIT_CONTINUE
+        // The C switch chains the #include'd case groups in order: binary
+        // cases, then common cases, then the tool's own (none here), then the
+        // terminal error arm.
+        match handle_binary_case(&mut common, &opt, c) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        match handle_common_case(&mut common, &opt, c, print_usage) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        return Err(handle_error_case(&common, &opt, c));
     }
+
+    check_binary_params(&mut common, &opt, args);
+    check_common_params(&mut common);
+    Ok(common)
 }
 
 // [spec:hfst:def:hfst-check-alpha.process-stream-fn]
 // [spec:hfst:sem:hfst-check-alpha.process-stream-fn]
-unsafe fn process_stream(
+fn process_stream(
+    common: &CommonOptions,
     firststream: &mut HfstInputStream,
     secondstream: &mut HfstInputStream,
 ) -> i32 {
-    unsafe {
-        let mut out = match globals::output_writer() {
-            Ok(w) => w,
+    let mut out = match common.output_writer() {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("hfst-check-alpha: cannot open output: {e}");
+            return 1;
+        }
+    };
+    let mut continue_reading = firststream.is_good() && secondstream.is_good();
+    let mut transducer_n: usize = 0;
+    let mut mismatch = 0;
+    while continue_reading {
+        transducer_n += 1;
+
+        if transducer_n < 2 {
+            verbose_print(common, "Checking alphas...\n");
+        } else {
+            verbose_print(common, &format!("Checking alphas... {}\n", transducer_n));
+        }
+        // read first alphas
+        let first = match firststream.read() {
+            Ok(t) => t,
             Err(e) => {
-                eprintln!("hfst-check-alpha: cannot open output: {e}");
+                error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
         };
-        let mut continue_reading = firststream.is_good() && secondstream.is_good();
-        let mut transducer_n: usize = 0;
-        let mut mismatch = 0;
-        while continue_reading {
-            transducer_n += 1;
-
-            if transducer_n < 2 {
-                verbose_print("Checking alphas...\n");
-            } else {
-                verbose_print(&format!("Checking alphas... {}\n", transducer_n));
+        // one dispatch per read ([dec:hfst:monomorphic-backends]); the
+        // alphabet queries are backend-independent values.
+        let (mutt, first_transducer_alphabet): (HfstBasicTransducer, StringSet) = crate::for_any!(&first, t => {
+            let mutt = match HfstBasicTransducer::try_from_transducer(t) {
+                Ok(m) => m,
+                Err(e) => {
+                    error(common, 1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            let alpha = match t.get_alphabet() {
+                Ok(a) => a,
+                Err(e) => {
+                    error(common, 1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
+            (mutt, alpha)
+        });
+        let transducer_knows_alphabet = true;
+        let first_found_alphabet: StringSet = mutt.symbols_used();
+        // read second alphas
+        let second = match secondstream.read() {
+            Ok(t) => t,
+            Err(e) => {
+                error(common, 1, 0, &format!("{e}"));
+                return 1;
             }
-            // read first alphas
-            let first = match firststream.read() {
-                Ok(t) => t,
+        };
+        let (secondmutt, second_transducer_alphabet): (HfstBasicTransducer, StringSet) = crate::for_any!(&second, t => {
+            let mutt = match HfstBasicTransducer::try_from_transducer(t) {
+                Ok(m) => m,
                 Err(e) => {
-                    error(1, 0, &format!("{e}"));
+                    error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            // one dispatch per read ([dec:hfst:monomorphic-backends]); the
-            // alphabet queries are backend-independent values.
-            let (mutt, first_transducer_alphabet): (HfstBasicTransducer, StringSet) = crate::for_any!(&first, t => {
-                let mutt = match HfstBasicTransducer::try_from_transducer(t) {
-                    Ok(m) => m,
-                    Err(e) => {
-                        error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                };
-                let alpha = match t.get_alphabet() {
-                    Ok(a) => a,
-                    Err(e) => {
-                        error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                };
-                (mutt, alpha)
-            });
-            let transducer_knows_alphabet = true;
-            let first_found_alphabet: StringSet = mutt.symbols_used();
-            // read second alphas
-            let second = match secondstream.read() {
-                Ok(t) => t,
+            let alpha = match t.get_alphabet() {
+                Ok(a) => a,
                 Err(e) => {
-                    error(1, 0, &format!("{e}"));
+                    error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            let (secondmutt, second_transducer_alphabet): (HfstBasicTransducer, StringSet) = crate::for_any!(&second, t => {
-                let mutt = match HfstBasicTransducer::try_from_transducer(t) {
-                    Ok(m) => m,
-                    Err(e) => {
-                        error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                };
-                let alpha = match t.get_alphabet() {
-                    Ok(a) => a,
-                    Err(e) => {
-                        error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                };
-                (mutt, alpha)
-            });
-            let second_found_alphabet: StringSet = secondmutt.symbols_used();
-            // match
-            let _ = write!(out, "Actual alphabet differences:\n");
-            let first_minus_second: StringSet = first_found_alphabet
-                .difference(&second_found_alphabet)
+            (mutt, alpha)
+        });
+        let second_found_alphabet: StringSet = secondmutt.symbols_used();
+        // match
+        let _ = write!(out, "Actual alphabet differences:\n");
+        let first_minus_second: StringSet = first_found_alphabet
+            .difference(&second_found_alphabet)
+            .cloned()
+            .collect();
+        if !first_minus_second.is_empty() {
+            mismatch = 1;
+            let _ = write!(
+                out,
+                "In first {} but not in second {}:",
+                first.get_name(),
+                second.get_name()
+            );
+            fprint_stringset(&mut *out, &first_minus_second);
+        } else {
+            let _ = write!(
+                out,
+                "First {} alpha is superset of second {}.",
+                first.get_name(),
+                second.get_name()
+            );
+        }
+        let _ = write!(out, "\n");
+        let second_minus_first: StringSet = second_found_alphabet
+            .difference(&first_found_alphabet)
+            .cloned()
+            .collect();
+        if !second_minus_first.is_empty() {
+            mismatch = 1;
+            let _ = write!(
+                out,
+                "In second {} but not in first {}:",
+                second.get_name(),
+                second.get_name()
+            );
+            fprint_stringset(&mut *out, &second_minus_first);
+        } else {
+            let _ = write!(
+                out,
+                "Second {} alpha is superset of second {}.",
+                second.get_name(),
+                second.get_name()
+            );
+        }
+        let _ = write!(out, "\n");
+        if common.verbose {
+            let _ = write!(out, "{} alphabet:", first.get_name());
+            fprint_stringset(&mut *out, &first_found_alphabet);
+            let _ = write!(out, "\n");
+            let _ = write!(out, "{} alphabet:", second.get_name());
+            fprint_stringset(&mut *out, &second_found_alphabet);
+            let _ = write!(out, "\n");
+        }
+        if transducer_knows_alphabet {
+            let _ = write!(out, "sigma set difference:\n");
+            let first_minus_second: StringSet = first_transducer_alphabet
+                .difference(&second_transducer_alphabet)
+                .cloned()
+                .collect();
+            let second_minus_first: StringSet = second_transducer_alphabet
+                .difference(&first_transducer_alphabet)
                 .cloned()
                 .collect();
             if !first_minus_second.is_empty() {
                 mismatch = 1;
                 let _ = write!(
                     out,
-                    "In first {} but not in second {}:",
+                    "First {} has but second {} does not: ",
                     first.get_name(),
                     second.get_name()
                 );
@@ -196,184 +259,127 @@ unsafe fn process_stream(
                 );
             }
             let _ = write!(out, "\n");
-            let second_minus_first: StringSet = second_found_alphabet
-                .difference(&first_found_alphabet)
-                .cloned()
-                .collect();
             if !second_minus_first.is_empty() {
                 mismatch = 1;
                 let _ = write!(
                     out,
-                    "In second {} but not in first {}:",
+                    "Second {} has but first {} does not: ",
                     second.get_name(),
-                    second.get_name()
+                    first.get_name()
                 );
                 fprint_stringset(&mut *out, &second_minus_first);
             } else {
                 let _ = write!(
                     out,
-                    "Second {} alpha is superset of second {}.",
+                    "Second {} alpha is superset of first {}.",
                     second.get_name(),
-                    second.get_name()
+                    first.get_name()
                 );
             }
             let _ = write!(out, "\n");
-            if globals::VERBOSE {
-                let _ = write!(out, "{} alphabet:", first.get_name());
-                fprint_stringset(&mut *out, &first_found_alphabet);
+            if common.verbose {
+                let _ = write!(out, "First ({}):", first.get_name());
+                fprint_stringset(&mut *out, &first_transducer_alphabet);
                 let _ = write!(out, "\n");
-                let _ = write!(out, "{} alphabet:", second.get_name());
-                fprint_stringset(&mut *out, &second_found_alphabet);
+                let _ = write!(out, "Second ({}):", second.get_name());
+                fprint_stringset(&mut *out, &second_transducer_alphabet);
                 let _ = write!(out, "\n");
             }
-            if transducer_knows_alphabet {
-                let _ = write!(out, "sigma set difference:\n");
-                let first_minus_second: StringSet = first_transducer_alphabet
-                    .difference(&second_transducer_alphabet)
-                    .cloned()
-                    .collect();
-                let second_minus_first: StringSet = second_transducer_alphabet
-                    .difference(&first_transducer_alphabet)
-                    .cloned()
-                    .collect();
-                if !first_minus_second.is_empty() {
-                    mismatch = 1;
-                    let _ = write!(
-                        out,
-                        "First {} has but second {} does not: ",
-                        first.get_name(),
-                        second.get_name()
-                    );
-                    fprint_stringset(&mut *out, &first_minus_second);
-                } else {
-                    let _ = write!(
-                        out,
-                        "First {} alpha is superset of second {}.",
-                        first.get_name(),
-                        second.get_name()
-                    );
-                }
-                let _ = write!(out, "\n");
-                if !second_minus_first.is_empty() {
-                    mismatch = 1;
-                    let _ = write!(
-                        out,
-                        "Second {} has but first {} does not: ",
-                        second.get_name(),
-                        first.get_name()
-                    );
-                    fprint_stringset(&mut *out, &second_minus_first);
-                } else {
-                    let _ = write!(
-                        out,
-                        "Second {} alpha is superset of first {}.",
-                        second.get_name(),
-                        first.get_name()
-                    );
-                }
-                let _ = write!(out, "\n");
-                if globals::VERBOSE {
-                    let _ = write!(out, "First ({}):", first.get_name());
-                    fprint_stringset(&mut *out, &first_transducer_alphabet);
-                    let _ = write!(out, "\n");
-                    let _ = write!(out, "Second ({}):", second.get_name());
-                    fprint_stringset(&mut *out, &second_transducer_alphabet);
-                    let _ = write!(out, "\n");
-                }
-            } else {
-                let _ = write!(out, "No internal alphabets to compare in this format\n");
-            } // FSTs know their alphas
-            continue_reading = firststream.is_good() && secondstream.is_good();
-        }
-
-        let _ = write!(out, "\nRead {} transducers in total.\n", transducer_n);
-        mismatch
+        } else {
+            let _ = write!(out, "No internal alphabets to compare in this format\n");
+        } // FSTs know their alphas
+        continue_reading = firststream.is_good() && secondstream.is_good();
     }
+
+    let _ = write!(out, "\nRead {} transducers in total.\n", transducer_n);
+    mismatch
 }
 
 // [spec:hfst:def:hfst-check-alpha.main-fn]
 // [spec:hfst:sem:hfst-check-alpha.main-fn]
-pub fn run(args: Vec<String>) -> i32 {
-    unsafe { real_main(args) }
-}
+pub fn run(mut args: Vec<String>) -> i32 {
+    let argv0 = args.first().cloned().unwrap_or_default();
 
-unsafe fn real_main(mut args: Vec<String>) -> i32 {
-    unsafe {
-        let argv0 = args.first().cloned().unwrap_or_default();
+    let common = hfst_set_program_name(&argv0, "0.1", "HfstALphaFix");
+    let common = match parse_options(common, &mut args) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
 
-        hfst_set_program_name(&argv0, "0.1", "HfstALphaFix");
-        let retval = parse_options(&mut args);
-        if retval != EXIT_CONTINUE {
-            return retval;
-        }
-        // close buffers, we use streams
-        let first_opened = globals::first_filename() != "<stdin>";
-        let second_opened = globals::second_filename() != "<stdin>";
-        verbose_print(&format!(
+    // close buffers, we use streams
+    let first_opened = common.first_filename != "<stdin>";
+    let second_opened = common.second_filename != "<stdin>";
+    verbose_print(
+        &common,
+        &format!(
             "Reading from {} and {}, writing to {}\n",
-            globals::first_filename(),
-            globals::second_filename(),
-            globals::output_filename()
-        ));
-        // here starts the buffer handling part
-        // (the C wraps each ctor in try/catch on HfstException, calling error()
-        // and returning EXIT_FAILURE; the Rust ctors now return a Result, so the
-        // error path and message are preserved via a match on that Result.)
-        let firststream = if first_opened {
-            let name = globals::first_filename();
-            match HfstInputStream::new_filename(&name) {
-                Ok(s) => s,
-                Err(_) => {
-                    error(1, 0, &format!("{} is not a valid transducer file", name));
-                    return 1;
-                }
+            common.first_filename, common.second_filename, common.output_filename
+        ),
+    );
+    // here starts the buffer handling part
+    // (the C wraps each ctor in try/catch on HfstException, calling error()
+    // and returning EXIT_FAILURE; the Rust ctors now return a Result, so the
+    // error path and message are preserved via a match on that Result.)
+    let firststream = if first_opened {
+        let name = common.first_filename.clone();
+        match HfstInputStream::new_filename(&name) {
+            Ok(s) => s,
+            Err(_) => {
+                error(
+                    &common,
+                    1,
+                    0,
+                    &format!("{} is not a valid transducer file", name),
+                );
+                return 1;
             }
-        } else {
-            match HfstInputStream::new() {
-                Ok(s) => s,
-                Err(_) => {
-                    error(
-                        1,
-                        0,
-                        &format!(
-                            "{} is not a valid transducer file",
-                            globals::first_filename()
-                        ),
-                    );
-                    return 1;
-                }
+        }
+    } else {
+        match HfstInputStream::new() {
+            Ok(s) => s,
+            Err(_) => {
+                error(
+                    &common,
+                    1,
+                    0,
+                    &format!("{} is not a valid transducer file", common.first_filename),
+                );
+                return 1;
             }
-        };
-        let secondstream = if second_opened {
-            let name = globals::second_filename();
-            match HfstInputStream::new_filename(&name) {
-                Ok(s) => s,
-                Err(_) => {
-                    error(1, 0, &format!("{} is not a valid transducer file", name));
-                    return 1;
-                }
+        }
+    };
+    let secondstream = if second_opened {
+        let name = common.second_filename.clone();
+        match HfstInputStream::new_filename(&name) {
+            Ok(s) => s,
+            Err(_) => {
+                error(
+                    &common,
+                    1,
+                    0,
+                    &format!("{} is not a valid transducer file", name),
+                );
+                return 1;
             }
-        } else {
-            match HfstInputStream::new() {
-                Ok(s) => s,
-                Err(_) => {
-                    error(
-                        1,
-                        0,
-                        &format!(
-                            "{} is not a valid transducer file",
-                            globals::second_filename()
-                        ),
-                    );
-                    return 1;
-                }
+        }
+    } else {
+        match HfstInputStream::new() {
+            Ok(s) => s,
+            Err(_) => {
+                error(
+                    &common,
+                    1,
+                    0,
+                    &format!("{} is not a valid transducer file", common.second_filename),
+                );
+                return 1;
             }
-        };
-        let mut firststream = firststream;
-        let mut secondstream = secondstream;
+        }
+    };
+    let mut firststream = firststream;
+    let mut secondstream = secondstream;
 
-        let _retval = process_stream(&mut firststream, &mut secondstream);
+    let _retval = process_stream(&common, &mut firststream, &mut secondstream);
 
-        0
-    }
+    0
 }

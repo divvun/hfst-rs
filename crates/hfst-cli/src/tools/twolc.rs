@@ -4,7 +4,7 @@
 //! Drives the hfst TwolcCompiler (which replaces the three htwolcpre
 //! Flex/Bison preprocessor passes with the nfst-twolc parser + AST walk).
 
-use crate::hfst_getopt as getopt;
+use crate::hfst_getopt::{self as getopt, Getopt};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::twolc::TwolcCompiler;
@@ -136,7 +136,9 @@ impl CommandLine {
         let mut debug_file_name: Option<String> = None;
         let mut form = ImplementationType::TROPICAL_OPENFST_TYPE;
 
-        // use of this function requires options are settable on global scope
+        // The getopt parser state (was the file-scope static-mut globals) lives
+        // in this owned value and is threaded through the loop.
+        let mut opt = Getopt::new();
         loop {
             // The C long-option table names '--resolve-left' where the help
             // text (and the Giella build macros) say '--resolve'; both names
@@ -160,7 +162,7 @@ impl CommandLine {
                 .iter()
                 .map(|&(name, has_arg, val)| getopt::GetOpt { name, has_arg, val })
                 .collect();
-            let c = getopt::getopt_long(args, &table);
+            let c = opt.getopt_long(args, &table);
             if -1 == c {
                 break;
             }
@@ -192,18 +194,18 @@ impl CommandLine {
                 }
                 'i' => {
                     input_named = true;
-                    infilename = Some(getopt::optarg());
+                    infilename = Some(opt.optarg());
                 }
                 'd' => {
                     is_debug = true;
-                    debug_file_name = Some(getopt::optarg());
+                    debug_file_name = Some(opt.optarg());
                 }
                 'o' => {
                     output_named = true;
-                    outfilename = Some(getopt::optarg());
+                    outfilename = Some(opt.optarg());
                 }
                 'f' => {
-                    let optarg = getopt::optarg();
+                    let optarg = opt.optarg();
                     // The two leading standalone 'if's are preserved
                     // bug-for-bug from the C: "tropical-weight" and
                     // "tropical" set the format but still fall into the
@@ -247,7 +249,7 @@ impl CommandLine {
                     }
                 }
                 ':' => {
-                    let optopt = unsafe { getopt::OPTOPT };
+                    let optopt = opt.optopt;
                     eprintln!(
                         "Missing argument for -{}. Try using --help.",
                         optopt as u8 as char
@@ -255,7 +257,7 @@ impl CommandLine {
                     return Err(1);
                 }
                 _ => {
-                    let optopt = unsafe { getopt::OPTOPT };
+                    let optopt = opt.optopt;
                     eprintln!(
                         "Unknown commandline option: -{}. Try using --help.",
                         optopt as u8 as char
@@ -265,7 +267,7 @@ impl CommandLine {
             }
         }
 
-        let optind = unsafe { getopt::OPTIND };
+        let optind = opt.optind;
         if !input_named {
             if (args.len() - optind) == 1 {
                 input_named = true;

@@ -4,12 +4,12 @@
 //!
 //! Unlike most unary tools, this one does not build HfstInputStream /
 //! HfstOutputStream objects: it opens its input/output as std streams (from the
-//! filename globals, with the "<stdin>"/"<stdout>" sentinels) and delegates the
+//! filename fields, with the "<stdin>"/"<stdout>" sentinels) and delegates the
 //! byte copy + HFST3-header stripping to hfst_input_stream::strip_hfst3_headers.
 
-use crate::globals;
-use crate::hfst_commandline::{EXIT_CONTINUE, hfst_set_program_name, verbose_print};
-use crate::hfst_getopt as getopt;
+use crate::globals::CommonOptions;
+use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name, verbose_print};
+use crate::hfst_getopt::{self as getopt, Getopt};
 use crate::hfst_program_options::{
     hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
     print_common_unary_program_options, print_common_unary_program_parameter_instructions,
@@ -23,13 +23,13 @@ use std::io::Write;
 
 // [spec:hfst:def:hfst-strip-header.print-usage-fn]
 // [spec:hfst:sem:hfst-strip-header.print-usage-fn]
-fn print_usage() {
+fn print_usage(common: &CommonOptions) {
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let mut msg = globals::message_writer();
+    let mut msg = common.message_writer();
     let _ = write!(
         msg,
         "Usage: {} [OPTIONS...] [INFILE]\nRemove any HFST3 headers\n\n",
-        globals::program_name()
+        common.program_name
     );
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
@@ -40,57 +40,59 @@ fn print_usage() {
 
 // [spec:hfst:def:hfst-strip-header.parse-options-fn]
 // [spec:hfst:sem:hfst-strip-header.parse-options-fn]
-unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
-    unsafe {
-        // use of this function requires options are settable on global scope
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            let c = getopt::getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the terminal error arm.
-            match handle_common_case(c, print_usage) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(c) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            return handle_error_case(c);
+//
+// Parse argv into the shared options; `Err(code)` is an exit code the caller
+// should return (the former EXIT_CONTINUE sentinel is now `Ok`).
+fn parse_options(mut common: CommonOptions, args: &mut Vec<String>) -> Result<CommonOptions, i32> {
+    let mut opt = Getopt::new();
+    extend_options_from_env(args);
+    loop {
+        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
+        long_options.extend(hfst_getopt_common_long());
+        long_options.extend(hfst_getopt_unary_long());
+        // add tool-specific options here
+        let c = opt.getopt_long(args, &long_options);
+        if -1 == c {
+            break;
         }
 
-        check_common_params();
-        check_unary_params(args);
-        EXIT_CONTINUE
+        // The C switch chains the #include'd case groups in order: common
+        // cases, then unary cases, then the terminal error arm.
+        match handle_common_case(&mut common, &opt, c, print_usage) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        match handle_unary_case(&mut common, &opt, c) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        return Err(handle_error_case(&common, &opt, c));
     }
+
+    check_common_params(&mut common);
+    check_unary_params(&mut common, &opt, args);
+    Ok(common)
 }
 
 // [spec:hfst:def:hfst-strip-header.process-stream-fn]
 // [spec:hfst:sem:hfst-strip-header.process-stream-fn]
-unsafe fn process_stream() -> i32 {
+fn process_stream(common: &CommonOptions) -> i32 {
     // De-C-ified: open the input/output as std streams (resolved from the
-    // filename globals by globals::input_reader / output_writer, which honour the
+    // filename fields by common.input_reader / output_writer, which honour the
     // "<stdin>"/"<stdout>" sentinels) and delegate the HFST3-header stripping to
     // hfst_input_stream::strip_hfst3_headers. The C printed "Stripping..." once
     // per byte under -v; that per-byte trace is dropped (diagnostic only — the
     // stripped output is unchanged).
-    let input = match globals::input_reader() {
+    let input = match common.input_reader() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("hfst-strip-header: could not open input: {e}");
             return 1;
         }
     };
-    let output = match globals::output_writer() {
+    let output = match common.output_writer() {
         Ok(w) => w,
         Err(e) => {
             eprintln!("hfst-strip-header: could not open output: {e}");
@@ -109,25 +111,21 @@ unsafe fn process_stream() -> i32 {
 
 // [spec:hfst:def:hfst-strip-header.main-fn]
 // [spec:hfst:sem:hfst-strip-header.main-fn]
-pub fn run(args: Vec<String>) -> i32 {
-    unsafe { real_main(args) }
-}
+pub fn run(mut args: Vec<String>) -> i32 {
+    let argv0 = args.first().cloned().unwrap_or_default();
 
-unsafe fn real_main(mut args: Vec<String>) -> i32 {
-    unsafe {
-        let argv0 = args.first().cloned().unwrap_or_default();
-
-        hfst_set_program_name(&argv0, "0.1", "HfstStripHeader");
-        let retval = parse_options(&mut args);
-        if retval != EXIT_CONTINUE {
-            return retval;
-        }
-        verbose_print(&format!(
+    let common = hfst_set_program_name(&argv0, "0.1", "HfstStripHeader");
+    let common = match parse_options(common, &mut args) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    verbose_print(
+        &common,
+        &format!(
             "Reading from {}, writing to {}\n",
-            globals::input_filename(),
-            globals::output_filename()
-        ));
+            common.input_filename, common.output_filename
+        ),
+    );
 
-        process_stream()
-    }
+    process_stream(&common)
 }

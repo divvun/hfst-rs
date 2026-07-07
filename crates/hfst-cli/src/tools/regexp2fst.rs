@@ -2,13 +2,18 @@
 //! compiling command-line tool. Drives the hfst-cli foundation (globals,
 //! getopt, commandline, program-options, tool-metadata, inc fragments) plus the
 //! hfst XreCompiler.
+//!
+//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
+//! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
+//! `parse_options` and threaded into the processing functions. There are no
+//! `static mut` globals and no `unsafe`.
 
-use crate::globals;
+use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_from_env, hfst_error_at_line, hfst_parse_format_name,
+    error, extend_options_from_env, hfst_error_at_line, hfst_parse_format_name,
     hfst_set_program_name, redirect_converting, verbose_print,
 };
-use crate::hfst_getopt as getopt;
+use crate::hfst_getopt::{self as getopt, Getopt};
 use crate::hfst_program_options::{
     hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
     print_common_unary_program_options,
@@ -24,32 +29,60 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst::xre::XreCompiler;
 use std::io::{BufRead, Write};
 
-// File-scope tool state, mirroring the static globals in the C++ source.
-static mut EPSILONNAME: Option<String> = None;
-static mut DISJUNCT_EXPRESSIONS: bool = false;
-static mut LINE_SEPARATED: bool = true;
-static mut ENCODE_WEIGHTS: bool = false;
-static mut OUTPUT_FORMAT: ImplementationType = ImplementationType::UNSPECIFIED_TYPE;
-static mut HARMONIZE: bool = true;
-static mut HARMONIZE_FLAGS: bool = false;
-static mut MINIMIZE_RESULT: bool = true;
-// '--xfst flag-is-epsilon' (was the 'flag_is_epsilon_in_composition' file-static
-// global; now threaded into the XRE compiler via 'set_flag_is_epsilon').
-static mut FLAG_IS_EPSILON: bool = false;
-// '--xerox-composition' (was the 'xerox_composition' file-static global; now
-// threaded into the XRE compiler via 'set_xerox_composition').
-static mut XEROX_COMPOSITION: bool = false;
+/// hfst-regexp2fst's own options (the former tool-specific `static mut`s).
+struct Options {
+    /// '-e, --epsilon=EPS': map EPS as zero, i.e. epsilon.
+    epsilonname: Option<String>,
+    /// '-j, --disjunct': disjunct all regexps into a single transducer.
+    disjunct_expressions: bool,
+    /// '-l, --line' / '-S, --semicolon': input is line separated (default).
+    line_separated: bool,
+    /// '-E, --encode-weights': encode weights when minimizing.
+    encode_weights: bool,
+    /// '-f, --format=FMT': write result in FMT format.
+    output_format: ImplementationType,
+    /// '-H, --do-not-harmonize': whether to expand '?' symbols.
+    harmonize: bool,
+    /// '-F, --harmonize-flags': harmonize flag diacritics.
+    harmonize_flags: bool,
+    /// '-M, --do-not-minimize': determinize result instead of minimizing.
+    minimize_result: bool,
+    /// '--xfst flag-is-epsilon' (was the 'flag_is_epsilon_in_composition'
+    /// file-static global; now threaded into the XRE compiler via
+    /// 'set_flag_is_epsilon').
+    flag_is_epsilon: bool,
+    /// '--xerox-composition' (was the 'xerox_composition' file-static global;
+    /// now threaded into the XRE compiler via 'set_xerox_composition').
+    xerox_composition: bool,
+}
+
+impl Default for Options {
+    fn default() -> Options {
+        Options {
+            epsilonname: None,
+            disjunct_expressions: false,
+            line_separated: true,
+            encode_weights: false,
+            output_format: ImplementationType::UNSPECIFIED_TYPE,
+            harmonize: true,
+            harmonize_flags: false,
+            minimize_result: true,
+            flag_is_epsilon: false,
+            xerox_composition: false,
+        }
+    }
+}
 
 // [spec:hfst:def:hfst-regexp2fst.print-usage-fn]
 // [spec:hfst:sem:hfst-regexp2fst.print-usage-fn]
-fn print_usage() {
-    let mut msg = globals::message_writer();
+fn print_usage(common: &CommonOptions) {
+    let mut msg = common.message_writer();
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
     let _ = write!(
         msg,
         "Usage: {} [OPTIONS...] [INFILE]\n\
          Compile (weighted) regular expressions into transducer(s)\n",
-        globals::program_name()
+        common.program_name
     );
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
@@ -94,367 +127,385 @@ fn print_usage() {
          \x20 echo \" cat ; dog ; \"3\" \" | {0} -S  create transducers\n\
          \x20                                             \"cat\" and \"dog\" and \"3\"\n\
          \n",
-        globals::program_name()
+        common.program_name
     );
     let _ = write!(msg, "\n");
 }
 
 // [spec:hfst:def:hfst-regexp2fst.parse-options-fn]
 // [spec:hfst:sem:hfst-regexp2fst.parse-options-fn]
-unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
-    unsafe {
-        extend_options_from_env(args);
-        // use of this function requires options are settable on global scope
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            let tool_opts: [(&'static str, i32, i32); 11] = [
-                ("disjunct", getopt::NO_ARGUMENT, 'j' as i32),
-                ("epsilon", getopt::REQUIRED_ARGUMENT, 'e' as i32),
-                ("line", getopt::NO_ARGUMENT, 'l' as i32),
-                ("semicolon", getopt::NO_ARGUMENT, 'S' as i32),
-                ("format", getopt::REQUIRED_ARGUMENT, 'f' as i32),
-                ("do-not-harmonize", getopt::NO_ARGUMENT, 'H' as i32),
-                ("harmonize-flags", getopt::NO_ARGUMENT, 'F' as i32),
-                ("encode-weights", getopt::NO_ARGUMENT, 'E' as i32),
-                ("xerox-composition", getopt::REQUIRED_ARGUMENT, 'x' as i32),
-                ("xfst", getopt::REQUIRED_ARGUMENT, 'X' as i32),
-                ("do-not-minimize", getopt::NO_ARGUMENT, 'M' as i32),
-            ];
-            for (name, has_arg, val) in tool_opts {
-                long_options.push(getopt::GetOpt { name, has_arg, val });
-            }
-            let c = getopt::getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own, then the terminal
-            // error arm.
-            match handle_common_case(c, print_usage) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(c) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c as u8 as char {
-                'e' => {
-                    EPSILONNAME = Some(getopt::optarg());
-                    continue;
-                }
-                'j' => {
-                    DISJUNCT_EXPRESSIONS = true;
-                    continue;
-                }
-                'S' => {
-                    LINE_SEPARATED = false;
-                    continue;
-                }
-                'l' => {
-                    LINE_SEPARATED = true;
-                    continue;
-                }
-                'f' => {
-                    OUTPUT_FORMAT = hfst_parse_format_name(&getopt::optarg());
-                    continue;
-                }
-                'H' => {
-                    HARMONIZE = false;
-                    continue;
-                }
-                'F' => {
-                    HARMONIZE_FLAGS = true;
-                    continue;
-                }
-                'E' => {
-                    ENCODE_WEIGHTS = true;
-                    continue;
-                }
-                'M' => {
-                    MINIMIZE_RESULT = false;
-                    continue;
-                }
-                'x' => {
-                    let argument = getopt::optarg();
-                    if argument == "yes" || argument == "true" || argument == "ON" {
-                        XEROX_COMPOSITION = true;
-                    } else if argument == "no" || argument == "false" || argument == "OFF" {
-                        XEROX_COMPOSITION = false;
-                    } else {
-                        error(
-                            1,
-                            0,
-                            &format!("unknown option to --xerox-composition: '{}'\n", argument),
-                        );
-                        return 1;
-                    }
-                    continue;
-                }
-                'X' => {
-                    let argument = getopt::optarg();
-                    if argument == "flag-is-epsilon" {
-                        FLAG_IS_EPSILON = true;
-                    } else {
-                        error(
-                            1,
-                            0,
-                            &format!("Error: unknown option to --xfst: '{}'\n", argument),
-                        );
-                        return 1;
-                    }
-                    continue;
-                }
-                _ => {}
-            }
-            return handle_error_case(c);
+//
+// Parse argv into the shared + tool options; `Err(code)` is an exit code the
+// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
+fn parse_options(
+    mut common: CommonOptions,
+    args: &mut Vec<String>,
+) -> Result<(CommonOptions, Options), i32> {
+    let mut options = Options::default();
+    let mut opt = Getopt::new();
+    extend_options_from_env(args);
+    loop {
+        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
+        long_options.extend(hfst_getopt_common_long());
+        long_options.extend(hfst_getopt_unary_long());
+        // add tool-specific options here
+        let tool_opts: [(&'static str, i32, i32); 11] = [
+            ("disjunct", getopt::NO_ARGUMENT, 'j' as i32),
+            ("epsilon", getopt::REQUIRED_ARGUMENT, 'e' as i32),
+            ("line", getopt::NO_ARGUMENT, 'l' as i32),
+            ("semicolon", getopt::NO_ARGUMENT, 'S' as i32),
+            ("format", getopt::REQUIRED_ARGUMENT, 'f' as i32),
+            ("do-not-harmonize", getopt::NO_ARGUMENT, 'H' as i32),
+            ("harmonize-flags", getopt::NO_ARGUMENT, 'F' as i32),
+            ("encode-weights", getopt::NO_ARGUMENT, 'E' as i32),
+            ("xerox-composition", getopt::REQUIRED_ARGUMENT, 'x' as i32),
+            ("xfst", getopt::REQUIRED_ARGUMENT, 'X' as i32),
+            ("do-not-minimize", getopt::NO_ARGUMENT, 'M' as i32),
+        ];
+        for (name, has_arg, val) in tool_opts {
+            long_options.push(getopt::GetOpt { name, has_arg, val });
+        }
+        let c = opt.getopt_long(args, &long_options);
+        if -1 == c {
+            break;
         }
 
-        check_common_params();
-        check_unary_params(args);
-        if OUTPUT_FORMAT == ImplementationType::UNSPECIFIED_TYPE {
-            verbose_print("Output format not specified, defaulting to openfst tropical\n");
-            OUTPUT_FORMAT = ImplementationType::TROPICAL_OPENFST_TYPE;
+        // The C switch chains the #include'd case groups in order: common
+        // cases, then unary cases, then the tool's own, then the terminal
+        // error arm.
+        match handle_common_case(&mut common, &opt, c, print_usage) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
         }
-        EXIT_CONTINUE
+        match handle_unary_case(&mut common, &opt, c) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        match c as u8 as char {
+            'e' => {
+                options.epsilonname = Some(opt.optarg());
+                continue;
+            }
+            'j' => {
+                options.disjunct_expressions = true;
+                continue;
+            }
+            'S' => {
+                options.line_separated = false;
+                continue;
+            }
+            'l' => {
+                options.line_separated = true;
+                continue;
+            }
+            'f' => {
+                options.output_format = hfst_parse_format_name(&common, &opt.optarg());
+                continue;
+            }
+            'H' => {
+                options.harmonize = false;
+                continue;
+            }
+            'F' => {
+                options.harmonize_flags = true;
+                continue;
+            }
+            'E' => {
+                options.encode_weights = true;
+                continue;
+            }
+            'M' => {
+                options.minimize_result = false;
+                continue;
+            }
+            'x' => {
+                let argument = opt.optarg();
+                if argument == "yes" || argument == "true" || argument == "ON" {
+                    options.xerox_composition = true;
+                } else if argument == "no" || argument == "false" || argument == "OFF" {
+                    options.xerox_composition = false;
+                } else {
+                    error(
+                        &common,
+                        1,
+                        0,
+                        &format!("unknown option to --xerox-composition: '{}'\n", argument),
+                    );
+                    return Err(1);
+                }
+                continue;
+            }
+            'X' => {
+                let argument = opt.optarg();
+                if argument == "flag-is-epsilon" {
+                    options.flag_is_epsilon = true;
+                } else {
+                    error(
+                        &common,
+                        1,
+                        0,
+                        &format!("Error: unknown option to --xfst: '{}'\n", argument),
+                    );
+                    return Err(1);
+                }
+                continue;
+            }
+            _ => {}
+        }
+        return Err(handle_error_case(&common, &opt, c));
     }
+
+    check_common_params(&mut common);
+    check_unary_params(&mut common, &opt, args);
+    if options.output_format == ImplementationType::UNSPECIFIED_TYPE {
+        verbose_print(
+            &common,
+            "Output format not specified, defaulting to openfst tropical\n",
+        );
+        options.output_format = ImplementationType::TROPICAL_OPENFST_TYPE;
+    }
+    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-regexp2fst.process-stream-fn]
 // [spec:hfst:sem:hfst-regexp2fst.process-stream-fn]
-unsafe fn process_stream(outstream: &mut HfstOutputStream, input: &mut dyn BufRead) -> i32 {
-    unsafe {
-        // The parsed --format is matched ONCE into the compiler's backend
-        // type parameter ([dec:hfst:monomorphic-backends]); optimized-lookup
-        // formats compile at tropical and convert at each write.
-        match OUTPUT_FORMAT {
-            ImplementationType::LOG_OPENFST_TYPE => {
-                process_stream_typed::<hfst::log_weight_transducer::LogFst>(outstream, input)
-            }
-            _ => process_stream_typed::<hfst_openfst::StdVectorFst>(outstream, input),
-        }
-    }
-}
-
-unsafe fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
+fn process_stream(
+    common: &CommonOptions,
+    options: &Options,
     outstream: &mut HfstOutputStream,
     input: &mut dyn BufRead,
 ) -> i32 {
-    unsafe {
-        let mut transducer_n: usize = 0;
-        let mut line_count: u32 = 0;
-        let mut comp = XreCompiler::<B>::new();
-        comp.set_source_name(&globals::input_filename());
-        comp.set_verbosity(globals::VERBOSE);
-        comp.set_error_stream(());
-        comp.set_harmonization(HARMONIZE);
-        comp.set_flag_harmonization(HARMONIZE_FLAGS);
-        comp.set_minimize_result(MINIMIZE_RESULT);
-        comp.set_flag_is_epsilon(FLAG_IS_EPSILON);
-        comp.set_xerox_composition(XEROX_COMPOSITION);
-        comp.set_encode_weights(ENCODE_WEIGHTS);
-        let mut disjunction: HfstTransducer<B> = HfstTransducer::new();
+    // The parsed --format is matched ONCE into the compiler's backend
+    // type parameter ([dec:hfst:monomorphic-backends]); optimized-lookup
+    // formats compile at tropical and convert at each write.
+    match options.output_format {
+        ImplementationType::LOG_OPENFST_TYPE => process_stream_typed::<
+            hfst::log_weight_transducer::LogFst,
+        >(common, options, outstream, input),
+        _ => process_stream_typed::<hfst_openfst::StdVectorFst>(common, options, outstream, input),
+    }
+}
 
-        let mut first_line: Option<String> = None;
+fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
+    common: &CommonOptions,
+    options: &Options,
+    outstream: &mut HfstOutputStream,
+    input: &mut dyn BufRead,
+) -> i32 {
+    let mut transducer_n: usize = 0;
+    let mut line_count: u32 = 0;
+    let mut comp = XreCompiler::<B>::new();
+    comp.set_source_name(&common.input_filename);
+    comp.set_verbosity(common.verbose);
+    comp.set_error_stream(());
+    comp.set_harmonization(options.harmonize);
+    comp.set_flag_harmonization(options.harmonize_flags);
+    comp.set_minimize_result(options.minimize_result);
+    comp.set_flag_is_epsilon(options.flag_is_epsilon);
+    comp.set_xerox_composition(options.xerox_composition);
+    comp.set_encode_weights(options.encode_weights);
+    let _ = &options.epsilonname;
+    let mut disjunction: HfstTransducer<B> = HfstTransducer::new();
 
-        if !LINE_SEPARATED {
-            // C: read the whole input into a NUL-terminated buffer and walk it
-            // with a char* cursor. Here we read it into a String and track a byte
-            // offset; compile_first reports how many bytes it consumed.
-            let mut content = String::new();
-            let _ = input.read_to_string(&mut content);
-            let mut offset: usize = 0;
-            let mut chars_read: u32 = 0;
+    let mut first_line: Option<String> = None;
 
-            loop {
-                transducer_n += 1;
-                verbose_print(&format!("Compiling expression #{}\n", transducer_n as i32));
-                let remaining = &content[offset..];
-                let compiled = comp.compile_first(remaining, &mut chars_read);
-                // (the C wraps compile_first in try/catch on HfstException; the
-                // Rust path currently panics rather than throwing, so the catch
-                // arm that calls hfst_error is not reproduced here.)
-                if compiled.is_none() {
-                    if comp.contained_only_comments() {
-                        if transducer_n == 1 {
-                            error(
-                                1,
-                                0,
-                                &format!(
-                                    "{}: XRE parsing failed: expression #{} \
-                                     contains only whitespace or comments",
-                                    globals::input_filename(),
-                                    transducer_n as u32
-                                ),
-                            );
-                        }
-                        break;
-                    } else {
+    if !options.line_separated {
+        // C: read the whole input into a NUL-terminated buffer and walk it
+        // with a char* cursor. Here we read it into a String and track a byte
+        // offset; compile_first reports how many bytes it consumed.
+        let mut content = String::new();
+        let _ = input.read_to_string(&mut content);
+        let mut offset: usize = 0;
+        let mut chars_read: u32 = 0;
+
+        loop {
+            transducer_n += 1;
+            verbose_print(
+                common,
+                &format!("Compiling expression #{}\n", transducer_n as i32),
+            );
+            let remaining = &content[offset..];
+            let compiled = comp.compile_first(remaining, &mut chars_read);
+            // (the C wraps compile_first in try/catch on HfstException; the
+            // Rust path currently panics rather than throwing, so the catch
+            // arm that calls hfst_error is not reproduced here.)
+            if compiled.is_none() {
+                if comp.contained_only_comments() {
+                    if transducer_n == 1 {
                         error(
+                            common,
                             1,
                             0,
                             &format!(
-                                "{}: XRE parsing failed \
-                                 in expression #{} separated by semicolons",
-                                globals::input_filename(),
-                                transducer_n as u32
+                                "{}: XRE parsing failed: expression #{} \
+                                 contains only whitespace or comments",
+                                common.input_filename, transducer_n as u32
                             ),
                         );
                     }
-                }
-                offset += chars_read as usize;
-                if let Some(mut compiled) = compiled {
-                    if DISJUNCT_EXPRESSIONS {
-                        if let Err(e) = disjunction.disjunct(&compiled, HARMONIZE) {
-                            error(1, 0, &format!("{e}"));
-                            return 1;
-                        }
-                    } else {
-                        hfst_set_name(&mut compiled, "?", "xre");
-                        if let Err(e) = redirect_converting(outstream, &mut compiled) {
-                            error(1, 0, &format!("{e}"));
-                            return 1;
-                        }
-                    }
-                    // C: delete compiled; -> owned, drops here.
-                }
-                if offset >= content.len() {
                     break;
+                } else {
+                    error(
+                        common,
+                        1,
+                        0,
+                        &format!(
+                            "{}: XRE parsing failed \
+                             in expression #{} separated by semicolons",
+                            common.input_filename, transducer_n as u32
+                        ),
+                    );
                 }
             }
-        } else {
-            let mut input_contains_only_whitespace_or_comments = true;
-            let mut line = String::new();
-            loop {
-                line.clear();
-                if input.read_line(&mut line).unwrap_or(0) == 0 {
-                    if input_contains_only_whitespace_or_comments {
-                        error(
-                            1,
-                            0,
-                            &format!(
-                                "{}: XRE parsing failed: \
-                                 input contains only whitespace or comments",
-                                globals::input_filename()
-                            ),
-                        );
-                    }
-                    break;
-                }
-                if first_line.is_none() {
-                    first_line = Some(line.clone());
-                }
-                // Skip leading '\n', '\r' and ' ' (C: pointer-walk over exp).
-                let exp = line.trim_start_matches(['\n', '\r', ' ']).to_string();
-                line_count += 1;
-                if exp.is_empty() {
-                    verbose_print(&format!("Skipping whitespace expression #{}", line_count));
-                    continue;
-                }
-                transducer_n += 1;
-                let _ = transducer_n; // C++ counts but never reads it
-                verbose_print(&format!("Compiling expression {}\n", line_count));
-                let compiled = comp.compile(&exp);
-                // (the C wraps compile in try/catch on HfstException calling
-                // hfst_error_at_line; the Rust path panics rather than throwing,
-                // so the catch arm is not reproduced here.)
-                let Some(mut compiled) = compiled else {
-                    if !comp.contained_only_comments() {
-                        hfst_error_at_line(
-                            1,
-                            0,
-                            &globals::input_filename(),
-                            line_count,
-                            "XRE parsing failed\n",
-                        );
-                    }
-                    continue;
-                };
-                input_contains_only_whitespace_or_comments = false;
-
-                if DISJUNCT_EXPRESSIONS {
-                    if let Err(e) = disjunction.disjunct(&compiled, HARMONIZE) {
-                        error(1, 0, &format!("{e}"));
+            offset += chars_read as usize;
+            if let Some(mut compiled) = compiled {
+                if options.disjunct_expressions {
+                    if let Err(e) = disjunction.disjunct(&compiled, options.harmonize) {
+                        error(common, 1, 0, &format!("{e}"));
                         return 1;
                     }
                 } else {
                     hfst_set_name(&mut compiled, "?", "xre");
                     if let Err(e) = redirect_converting(outstream, &mut compiled) {
-                        error(1, 0, &format!("{e}"));
+                        error(common, 1, 0, &format!("{e}"));
                         return 1;
                     }
                 }
                 // C: delete compiled; -> owned, drops here.
             }
-        }
-
-        if DISJUNCT_EXPRESSIONS {
-            // Both branches of the C++ if/else set the same name.
-            hfst_set_name(&mut disjunction, "?", "xre");
-            if let Err(e) = redirect_converting(outstream, &mut disjunction) {
-                error(1, 0, &format!("{e}"));
-                return 1;
+            if offset >= content.len() {
+                break;
             }
         }
-        // C: free(line); free(first_line); -> owned String/Option, drop here.
-        drop(first_line);
-        0
+    } else {
+        let mut input_contains_only_whitespace_or_comments = true;
+        let mut line = String::new();
+        loop {
+            line.clear();
+            if input.read_line(&mut line).unwrap_or(0) == 0 {
+                if input_contains_only_whitespace_or_comments {
+                    error(
+                        common,
+                        1,
+                        0,
+                        &format!(
+                            "{}: XRE parsing failed: \
+                             input contains only whitespace or comments",
+                            common.input_filename
+                        ),
+                    );
+                }
+                break;
+            }
+            if first_line.is_none() {
+                first_line = Some(line.clone());
+            }
+            // Skip leading '\n', '\r' and ' ' (C: pointer-walk over exp).
+            let exp = line.trim_start_matches(['\n', '\r', ' ']).to_string();
+            line_count += 1;
+            if exp.is_empty() {
+                verbose_print(
+                    common,
+                    &format!("Skipping whitespace expression #{}", line_count),
+                );
+                continue;
+            }
+            transducer_n += 1;
+            let _ = transducer_n; // C++ counts but never reads it
+            verbose_print(common, &format!("Compiling expression {}\n", line_count));
+            let compiled = comp.compile(&exp);
+            // (the C wraps compile in try/catch on HfstException calling
+            // hfst_error_at_line; the Rust path panics rather than throwing,
+            // so the catch arm is not reproduced here.)
+            let Some(mut compiled) = compiled else {
+                if !comp.contained_only_comments() {
+                    hfst_error_at_line(
+                        common,
+                        1,
+                        0,
+                        &common.input_filename,
+                        line_count,
+                        "XRE parsing failed\n",
+                    );
+                }
+                continue;
+            };
+            input_contains_only_whitespace_or_comments = false;
+
+            if options.disjunct_expressions {
+                if let Err(e) = disjunction.disjunct(&compiled, options.harmonize) {
+                    error(common, 1, 0, &format!("{e}"));
+                    return 1;
+                }
+            } else {
+                hfst_set_name(&mut compiled, "?", "xre");
+                if let Err(e) = redirect_converting(outstream, &mut compiled) {
+                    error(common, 1, 0, &format!("{e}"));
+                    return 1;
+                }
+            }
+            // C: delete compiled; -> owned, drops here.
+        }
     }
+
+    if options.disjunct_expressions {
+        // Both branches of the C++ if/else set the same name.
+        hfst_set_name(&mut disjunction, "?", "xre");
+        if let Err(e) = redirect_converting(outstream, &mut disjunction) {
+            error(common, 1, 0, &format!("{e}"));
+            return 1;
+        }
+    }
+    // C: free(line); free(first_line); -> owned String/Option, drop here.
+    drop(first_line);
+    0
 }
 
 // [spec:hfst:def:hfst-regexp2fst.main-fn]
 // [spec:hfst:sem:hfst-regexp2fst.main-fn]
-pub fn run(args: Vec<String>) -> i32 {
-    unsafe { real_main(args) }
-}
+pub fn run(mut args: Vec<String>) -> i32 {
+    let argv0 = args.first().cloned().unwrap_or_default();
 
-unsafe fn real_main(mut args: Vec<String>) -> i32 {
-    unsafe {
-        let argv0 = args.first().cloned().unwrap_or_default();
-
-        hfst_set_program_name(&argv0, "0.2", "Regexp2Fst");
-        let retval = parse_options(&mut args);
-        if retval != EXIT_CONTINUE {
-            return retval;
-        }
-        if globals::DEBUG {
-            // xredebug = 1;
-        }
-
-        // close buffers, we use streams
-        let output_opened = globals::output_filename() != "<stdout>";
-        verbose_print(&format!(
-            "Reading from {}, writing to {}\n",
-            globals::input_filename(),
-            globals::output_filename()
-        ));
-        // here starts the buffer handling part
-        let mut outstream = match if output_opened {
-            HfstOutputStream::new_filename(&globals::output_filename(), OUTPUT_FORMAT, true)
-        } else {
-            HfstOutputStream::new(OUTPUT_FORMAT, true)
-        } {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("hfst-regexp2fst: cannot open output: {e}");
-                return 1;
-            }
-        };
-        let mut input = match globals::input_reader() {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("hfst-regexp2fst: cannot open input: {e}");
-                return 1;
-            }
-        };
-        process_stream(&mut outstream, &mut *input);
-
-        0
+    let common = hfst_set_program_name(&argv0, "0.2", "Regexp2Fst");
+    let (common, options) = match parse_options(common, &mut args) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    if common.debug {
+        // xredebug = 1;
     }
+
+    // close buffers, we use streams
+    let output_opened = common.output_filename != "<stdout>";
+    verbose_print(
+        &common,
+        &format!(
+            "Reading from {}, writing to {}\n",
+            common.input_filename, common.output_filename
+        ),
+    );
+    // here starts the buffer handling part
+    let mut outstream = match if output_opened {
+        HfstOutputStream::new_filename(&common.output_filename, options.output_format, true)
+    } else {
+        HfstOutputStream::new(options.output_format, true)
+    } {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("hfst-regexp2fst: cannot open output: {e}");
+            return 1;
+        }
+    };
+    let mut input = match common.input_reader() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("hfst-regexp2fst: cannot open input: {e}");
+            return 1;
+        }
+    };
+    process_stream(&common, &options, &mut outstream, &mut *input);
+
+    0
 }

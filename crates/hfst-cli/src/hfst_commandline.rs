@@ -14,7 +14,7 @@
 //!
 //! Globals live once in 'crate::globals'; in C they were '#include'd per tool.
 
-use crate::globals::{self, ColourTristate};
+use crate::globals::{ColourTristate, CommonOptions};
 use hfst::backend::Backend;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -78,18 +78,25 @@ pub fn error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg
 
 // [spec:hfst:def:hfst-commandline.hfst-error-at-line-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-error-at-line-fn]
-pub fn hfst_error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg: &str) {
+pub fn hfst_error_at_line(
+    opts: &CommonOptions,
+    status: i32,
+    errnum: i32,
+    filename: &str,
+    linenum: u32,
+    msg: &str,
+) {
     let f = &mut std::io::stderr();
-    maybe_print_colour(f, COLOUR_BOLD);
+    maybe_print_colour(opts, f, COLOUR_BOLD);
     let _ = write!(f, "{}.{}: ", filename, linenum);
-    maybe_print_colour(f, COLOUR_RED);
+    maybe_print_colour(opts, f, COLOUR_RED);
     let _ = write!(f, "Error: ");
-    maybe_print_colour(f, COLOUR_RESET);
+    maybe_print_colour(opts, f, COLOUR_RESET);
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
-        maybe_print_colour(f, COLOUR_MAGENTA);
+        maybe_print_colour(opts, f, COLOUR_MAGENTA);
         let _ = write!(f, "{}", os_error_string(errnum));
-        maybe_print_colour(f, COLOUR_RESET);
+        maybe_print_colour(opts, f, COLOUR_RESET);
     }
     if status != 0 {
         std::process::exit(status);
@@ -98,18 +105,25 @@ pub fn hfst_error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32
 
 // [spec:hfst:def:hfst-commandline.hfst-warning-at-line-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-warning-at-line-fn]
-pub fn hfst_warning_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg: &str) {
+pub fn hfst_warning_at_line(
+    opts: &CommonOptions,
+    status: i32,
+    errnum: i32,
+    filename: &str,
+    linenum: u32,
+    msg: &str,
+) {
     let f = &mut std::io::stderr();
-    maybe_print_colour(f, COLOUR_BOLD);
+    maybe_print_colour(opts, f, COLOUR_BOLD);
     let _ = write!(f, "{}.{}: ", filename, linenum);
-    maybe_print_colour(f, COLOUR_YELLOW);
+    maybe_print_colour(opts, f, COLOUR_YELLOW);
     let _ = write!(f, "Warning: ");
-    maybe_print_colour(f, COLOUR_RESET);
+    maybe_print_colour(opts, f, COLOUR_RESET);
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
-        maybe_print_colour(f, COLOUR_MAGENTA);
+        maybe_print_colour(opts, f, COLOUR_MAGENTA);
         let _ = write!(f, "{}", os_error_string(errnum));
-        maybe_print_colour(f, COLOUR_RESET);
+        maybe_print_colour(opts, f, COLOUR_RESET);
     }
     if status != 0 {
         std::process::exit(status);
@@ -118,9 +132,9 @@ pub fn hfst_warning_at_line(status: i32, errnum: i32, filename: &str, linenum: u
 
 // [spec:hfst:def:hfst-commandline.error-fn]
 // [spec:hfst:sem:hfst-commandline.error-fn]
-pub fn error(status: i32, errnum: i32, msg: &str) {
+pub fn error(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
-    let _ = write!(f, "{}: {}", globals::program_name(), msg);
+    let _ = write!(f, "{}: {}", opts.program_name, msg);
     if errnum != 0 {
         let _ = write!(f, "{}", os_error_string(errnum));
     }
@@ -132,18 +146,18 @@ pub fn error(status: i32, errnum: i32, msg: &str) {
 
 // [spec:hfst:def:hfst-commandline.hfst-error-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-error-fn]
-pub fn hfst_error(status: i32, errnum: i32, msg: &str) {
+pub fn hfst_error(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
-    maybe_print_colour(f, COLOUR_BOLD);
-    let _ = write!(f, "{}: ", globals::program_name());
-    maybe_print_colour(f, COLOUR_RED);
+    maybe_print_colour(opts, f, COLOUR_BOLD);
+    let _ = write!(f, "{}: ", opts.program_name);
+    maybe_print_colour(opts, f, COLOUR_RED);
     let _ = write!(f, "Error: ");
-    maybe_print_colour(f, COLOUR_RESET);
+    maybe_print_colour(opts, f, COLOUR_RESET);
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
-        maybe_print_colour(f, COLOUR_MAGENTA);
+        maybe_print_colour(opts, f, COLOUR_MAGENTA);
         let _ = write!(f, "{}", os_error_string(errnum));
-        maybe_print_colour(f, COLOUR_RESET);
+        maybe_print_colour(opts, f, COLOUR_RESET);
     }
     let _ = writeln!(f);
     if status != 0 {
@@ -153,9 +167,9 @@ pub fn hfst_error(status: i32, errnum: i32, msg: &str) {
 
 // [spec:hfst:def:hfst-commandline.warning-fn]
 // [spec:hfst:sem:hfst-commandline.warning-fn]
-pub fn warning(status: i32, errnum: i32, msg: &str) {
+pub fn warning(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
-    let _ = write!(f, "{}: warning: {}", globals::program_name(), msg);
+    let _ = write!(f, "{}: warning: {}", opts.program_name, msg);
     if errnum != 0 {
         let _ = write!(f, "{}", os_error_string(errnum));
     }
@@ -167,18 +181,18 @@ pub fn warning(status: i32, errnum: i32, msg: &str) {
 
 // [spec:hfst:def:hfst-commandline.hfst-warning-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-warning-fn]
-pub fn hfst_warning(status: i32, errnum: i32, msg: &str) {
+pub fn hfst_warning(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
-    maybe_print_colour(f, COLOUR_BOLD);
-    let _ = write!(f, "{}: ", globals::program_name());
-    maybe_print_colour(f, COLOUR_YELLOW);
+    maybe_print_colour(opts, f, COLOUR_BOLD);
+    let _ = write!(f, "{}: ", opts.program_name);
+    maybe_print_colour(opts, f, COLOUR_YELLOW);
     let _ = write!(f, "Warning: ");
-    maybe_print_colour(f, COLOUR_RESET);
+    maybe_print_colour(opts, f, COLOUR_RESET);
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
-        maybe_print_colour(f, COLOUR_MAGENTA);
+        maybe_print_colour(opts, f, COLOUR_MAGENTA);
         let _ = write!(f, "{}", os_error_string(errnum));
-        maybe_print_colour(f, COLOUR_RESET);
+        maybe_print_colour(opts, f, COLOUR_RESET);
     }
     let _ = writeln!(f);
     if status != 0 {
@@ -201,10 +215,11 @@ pub fn get_compatible_fst_format() -> i32 {
 // [spec:hfst:def:hfst-commandline.debug-save-transducer-fn]
 // [spec:hfst:sem:hfst-commandline.debug-save-transducer-fn]
 pub fn debug_save_transducer<B: Backend>(
+    opts: &CommonOptions,
     t: &HfstTransducer<B>,
     name: &str,
 ) -> hfst::error::Result<()> {
-    if unsafe { globals::DEBUG } {
+    if opts.debug {
         // C built "DEBUG %s" with sprintf; that always succeeds here.
         let mut t = t.clone();
         let debug_name = format!("DEBUG {}", name);
@@ -212,11 +227,13 @@ pub fn debug_save_transducer<B: Backend>(
         let Ok(mut debug_out) = HfstOutputStream::new_filename(name, t.get_type(), true) else {
             return Ok(());
         };
-        debug_print(&format!(
-            "*** DEBUG ({}): saving current transducer to {}\n",
-            globals::program_name(),
-            name
-        ));
+        debug_print(
+            opts,
+            &format!(
+                "*** DEBUG ({}): saving current transducer to {}\n",
+                opts.program_name, name
+            ),
+        );
         debug_out.redirect(&mut t)?;
         debug_out.close();
     }
@@ -225,8 +242,8 @@ pub fn debug_save_transducer<B: Backend>(
 
 // [spec:hfst:def:hfst-commandline.debug-printf-fn]
 // [spec:hfst:sem:hfst-commandline.debug-printf-fn]
-pub fn debug_print(msg: &str) {
-    if unsafe { globals::DEBUG } {
+pub fn debug_print(opts: &CommonOptions, msg: &str) {
+    if opts.debug {
         let f = &mut std::io::stderr();
         let _ = write!(f, "\nDEBUG: {}\n", msg);
     }
@@ -234,9 +251,9 @@ pub fn debug_print(msg: &str) {
 
 // [spec:hfst:def:hfst-commandline.verbose-printf-fn]
 // [spec:hfst:sem:hfst-commandline.verbose-printf-fn]
-pub fn verbose_print(msg: &str) {
-    if unsafe { globals::VERBOSE } {
-        let _ = write!(globals::message_writer(), "{}", msg);
+pub fn verbose_print(opts: &CommonOptions, msg: &str) {
+    if opts.verbose {
+        let _ = write!(opts.message_writer(), "{}", msg);
     }
 }
 
@@ -303,6 +320,7 @@ pub fn convert_any_with_options(
 // [spec:hfst:def:hfst-commandline.convert-transducers-fn]
 // [spec:hfst:sem:hfst-commandline.convert-transducers-fn]
 pub fn convert_transducers(
+    opts: &CommonOptions,
     first: AnyTransducer,
     second: AnyTransducer,
 ) -> hfst::error::Result<(AnyTransducer, AnyTransducer)> {
@@ -314,6 +332,7 @@ pub fn convert_transducers(
         Ok((first, second))
     } else if ct == 1 {
         hfst_warning(
+            opts,
             0,
             0,
             &format!(
@@ -325,6 +344,7 @@ pub fn convert_transducers(
         Ok((first, second))
     } else if ct == 2 {
         hfst_warning(
+            opts,
             0,
             0,
             &format!(
@@ -336,6 +356,7 @@ pub fn convert_transducers(
         Ok((first, second))
     } else if ct == -1 {
         hfst_warning(
+            opts,
             0,
             0,
             &format!(
@@ -404,11 +425,16 @@ pub fn is_input_stream_in_ol_format(is: &HfstInputStream, program: &str) -> bool
 
 // [spec:hfst:def:hfst-commandline.hfst-strtoweight-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strtoweight-fn]
-pub fn hfst_strtoweight(s: &str) -> f32 {
+pub fn hfst_strtoweight(opts: &CommonOptions, s: &str) -> f32 {
     match s.parse::<f64>() {
         Ok(rv) => rv as f32,
         Err(_) => {
-            hfst_error(1, last_os_error_code(), &format!("{} not a weight", s));
+            hfst_error(
+                opts,
+                1,
+                last_os_error_code(),
+                &format!("{} not a weight", s),
+            );
             0.0
         }
     }
@@ -416,7 +442,7 @@ pub fn hfst_strtoweight(s: &str) -> f32 {
 
 // [spec:hfst:def:hfst-commandline.hfst-strtonumber-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strtonumber-fn]
-pub fn hfst_strtonumber(s: &str, infinite: Option<&mut bool>) -> i32 {
+pub fn hfst_strtonumber(opts: &CommonOptions, s: &str, infinite: Option<&mut bool>) -> i32 {
     let mut infinite = infinite;
     if let Some(ref mut b) = infinite {
         **b = false;
@@ -424,7 +450,12 @@ pub fn hfst_strtonumber(s: &str, infinite: Option<&mut bool>) -> i32 {
     let rv = match s.parse::<f64>() {
         Ok(rv) => rv,
         Err(_) => {
-            hfst_error(1, last_os_error_code(), &format!("{} not a number", s));
+            hfst_error(
+                opts,
+                1,
+                last_os_error_code(),
+                &format!("{} not a number", s),
+            );
             return 0;
         }
     };
@@ -444,11 +475,12 @@ pub fn hfst_strtonumber(s: &str, infinite: Option<&mut bool>) -> i32 {
 
 // [spec:hfst:def:hfst-commandline.hfst-strtoul-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strtoul-fn]
-pub fn parse_u64(s: &str, base: i32) -> u64 {
+pub fn parse_u64(opts: &CommonOptions, s: &str, base: i32) -> u64 {
     match u64::from_str_radix(s, base as u32) {
         Ok(rv) => rv,
         Err(_) => {
             hfst_error(
+                opts,
                 1,
                 last_os_error_code(),
                 &format!("{} is not a valid unsigned number string", s),
@@ -460,11 +492,12 @@ pub fn parse_u64(s: &str, base: i32) -> u64 {
 
 // [spec:hfst:def:hfst-commandline.hfst-strtol-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strtol-fn]
-pub fn parse_i64(s: &str, base: i32) -> i64 {
+pub fn parse_i64(opts: &CommonOptions, s: &str, base: i32) -> i64 {
     match i64::from_str_radix(s, base as u32) {
         Ok(rv) => rv,
         Err(_) => {
             hfst_error(
+                opts,
                 1,
                 last_os_error_code(),
                 &format!("{} is not a valid signed number string", s),
@@ -480,7 +513,7 @@ pub fn parse_i64(s: &str, base: i32) -> i64 {
 
 // [spec:hfst:def:hfst-commandline.hfst-parse-format-name-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-parse-format-name-fn]
-pub fn hfst_parse_format_name(s: &str) -> ImplementationType {
+pub fn hfst_parse_format_name(opts: &CommonOptions, s: &str) -> ImplementationType {
     let lower = s.to_ascii_lowercase();
     let rv;
     if lower == "sfst" {
@@ -492,6 +525,7 @@ pub fn hfst_parse_format_name(s: &str) -> ImplementationType {
     } else if lower == "openfst" || lower == "ofst" {
         rv = ImplementationType::TROPICAL_OPENFST_TYPE;
         hfst_warning(
+            opts,
             0,
             0,
             &format!("Ambiguous format name {}, guessing openfst-tropical", s),
@@ -507,6 +541,7 @@ pub fn hfst_parse_format_name(s: &str) -> ImplementationType {
     } else if lower == "optimized-lookup" || lower == "ol" {
         rv = ImplementationType::HFST_OLW_TYPE;
         hfst_warning(
+            opts,
             0,
             0,
             &format!(
@@ -516,6 +551,7 @@ pub fn hfst_parse_format_name(s: &str) -> ImplementationType {
         );
     } else {
         hfst_error(
+            opts,
             1,
             0,
             &format!("Could not parse format name from string {}", s),
@@ -563,9 +599,9 @@ pub fn hfst_strformat(format: ImplementationType) -> &'static str {
 //
 // The non-readline fallback (the real readline-library path is #if'd out): print
 // the prompt, then read a line (trailing '\n' kept, as getline did). None at EOF.
-pub fn hfst_readline(prompt: &str) -> Option<String> {
+pub fn hfst_readline(opts: &CommonOptions, prompt: &str) -> Option<String> {
     {
-        let mut mw = globals::message_writer();
+        let mut mw = opts.message_writer();
         let _ = write!(mw, "{}", prompt);
         let _ = mw.flush();
     }
@@ -578,7 +614,7 @@ pub fn hfst_readline(prompt: &str) -> Option<String> {
 
 // [spec:hfst:def:hfst-commandline.set-program-name-fn]
 // [spec:hfst:sem:hfst-commandline.set-program-name-fn]
-fn set_program_name(argv0: &str) {
+fn program_name_from_argv0(argv0: &str) -> String {
     // this's gnulib
     let bytes = argv0.as_bytes();
     let slash = bytes.iter().rposition(|&c| c == b'/');
@@ -596,12 +632,11 @@ fn set_program_name(argv0: &str) {
         }
     }
     let name = &argv0[start..];
-    let chosen = if name == "hfst-calculate" {
-        "hfst-sfstpl2fst"
+    if name == "hfst-calculate" {
+        "hfst-sfstpl2fst".to_string()
     } else {
-        name
-    };
-    globals::set_program_name(chosen);
+        name.to_string()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -610,9 +645,9 @@ fn set_program_name(argv0: &str) {
 
 // [spec:hfst:def:hfst-commandline.hfst-set-program-name-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-set-program-name-fn]
-pub fn hfst_set_program_name(argv0: &str, version_vector: &str, wikiname: &str) {
+pub fn hfst_set_program_name(argv0: &str, version_vector: &str, wikiname: &str) -> CommonOptions {
     // Install the shared `tracing` subscriber once, idempotently. Library
-    // diagnostics are already gated at their call sites (SILENT / verbose), so a
+    // diagnostics are already gated at their call sites (silent / verbose), so a
     // permissive (TRACE) subscriber renders exactly what the code chooses to
     // emit. Replaces the former hfst::set_warning_stream(&std::cerr).
     let _ = tracing_subscriber::fmt()
@@ -621,33 +656,37 @@ pub fn hfst_set_program_name(argv0: &str, version_vector: &str, wikiname: &str) 
         .without_time()
         .with_target(false)
         .try_init();
-    set_program_name(argv0);
-    globals::set_hfst_tool_version(version_vector);
-    globals::set_hfst_tool_wikiname(wikiname);
+    // Seed the tool's CommonOptions with its identity; parse_options fills the
+    // rest. The idiomatic replacement for the former program-name/version
+    // globals.
+    CommonOptions {
+        program_name: program_name_from_argv0(argv0),
+        hfst_tool_version: version_vector.to_string(),
+        hfst_tool_wikiname: wikiname.to_string(),
+        ..CommonOptions::default()
+    }
 }
 
 // [spec:hfst:def:hfst-commandline.print-short-help-fn]
 // [spec:hfst:sem:hfst-commandline.print-short-help-fn]
-pub fn print_short_help() {
-    let mut mw = globals::message_writer();
+pub fn print_short_help(opts: &CommonOptions) {
+    let mut mw = opts.message_writer();
     let _ = write!(
         mw,
         "Try ``{} --help'' for more information.\n",
-        globals::program_name()
+        opts.program_name
     );
 }
 
 // print version message
 // [spec:hfst:def:hfst-commandline.print-version-fn]
 // [spec:hfst:sem:hfst-commandline.print-version-fn]
-pub fn print_version() {
-    let mut mw = globals::message_writer();
+pub fn print_version(opts: &CommonOptions) {
+    let mut mw = opts.message_writer();
     let _ = write!(
         mw,
         "{} {} ({})\n",
-        globals::program_name(),
-        globals::hfst_tool_version(),
-        PACKAGE_STRING
+        opts.program_name, opts.hfst_tool_version, PACKAGE_STRING
     );
     let _ = write!(
         mw,
@@ -678,8 +717,8 @@ pub fn extend_options_from_env(args: &mut Vec<String>) {
 
 // [spec:hfst:def:hfst-commandline.should-colourise-fn]
 // [spec:hfst:sem:hfst-commandline.should-colourise-fn]
-pub fn should_colourise() -> bool {
-    let colour = unsafe { globals::COLOUR };
+pub fn should_colourise(opts: &CommonOptions) -> bool {
+    let colour = opts.colour;
     if colour == ColourTristate::COLOUR_AUTO {
         // this is not the best heuristic but wfm
         std::io::stdout().is_terminal()
@@ -695,8 +734,8 @@ pub fn should_colourise() -> bool {
 
 // [spec:hfst:def:hfst-commandline.maybe-print-colour-fn]
 // [spec:hfst:sem:hfst-commandline.maybe-print-colour-fn]
-pub fn maybe_print_colour(f: &mut dyn Write, colour: &str) {
-    if should_colourise() {
+pub fn maybe_print_colour(opts: &CommonOptions, f: &mut dyn Write, colour: &str) {
+    if should_colourise(opts) {
         let _ = write!(f, "{}", colour);
     }
 }

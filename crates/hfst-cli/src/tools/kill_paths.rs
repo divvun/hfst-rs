@@ -1,16 +1,15 @@
-#![allow(static_mut_refs)]
 //! Faithful 1:1 port of tools/src/hfst-kill-paths.cc — the path-killing
 //! command-line tool: removes every arc whose input or output symbol matches a
 //! given symbol (one --symbol, or a list from a --tsv-file), then removes
 //! epsilons. Drives the hfst-cli foundation (globals, getopt, commandline,
 //! program-options, tool-metadata, inc fragments).
 
-use crate::globals;
+use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name,
-    is_input_stream_in_ol_format, verbose_print,
+    error, extend_options_from_env, hfst_set_program_name, is_input_stream_in_ol_format,
+    verbose_print,
 };
-use crate::hfst_getopt as getopt;
+use crate::hfst_getopt::{self as getopt, Getopt};
 use crate::hfst_program_options::{
     hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
     print_common_unary_program_options, print_common_unary_program_parameter_instructions,
@@ -25,21 +24,27 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 
-// add tools-specific variables here
-static mut SYMBOL: Option<String> = None;
-static mut TSV_FILE_NAME: Option<String> = None;
-static mut TSV_FILE: Option<std::fs::File> = None;
+/// hfst-kill-paths's own options (the former tool-specific `static mut`s).
+#[derive(Default)]
+struct Options {
+    /// '-S, --symbol=SYM': the symbol whose arcs to kill.
+    symbol: Option<String>,
+    /// '-T, --tsv-file=TFILE': the file listing kill symbols.
+    tsv_file_name: Option<String>,
+    /// The opened kill-rules file (from `tsv_file_name`).
+    tsv_file: Option<std::fs::File>,
+}
 
 // [spec:hfst:def:hfst-kill-paths.print-usage-fn]
 // [spec:hfst:sem:hfst-kill-paths.print-usage-fn]
-fn print_usage() {
-    let mut msg = globals::message_writer();
+fn print_usage(common: &CommonOptions) {
+    let mut msg = common.message_writer();
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
     // Usage line
     let _ = write!(
         msg,
         "Usage: {} [OPTIONS...] [INFILE]\nKill all paths with specific symbols\n\n",
-        globals::program_name()
+        common.program_name
     );
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
@@ -58,242 +63,245 @@ fn print_usage() {
 
 // [spec:hfst:def:hfst-kill-paths.parse-options-fn]
 // [spec:hfst:sem:hfst-kill-paths.parse-options-fn]
-unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
-    unsafe {
-        extend_options_from_env(args);
-        // use of this function requires options are settable on global scope
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "symbol",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'S' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "tsv",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'T' as i32,
-            });
-            let c = getopt::getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own ('S'/'T'), then the
-            // terminal error arm.
-            match handle_common_case(c, print_usage) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(c) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == 'S' as i32 {
-                SYMBOL = Some(getopt::optarg());
-                continue;
-            }
-            if c == 'T' as i32 {
-                TSV_FILE_NAME = Some(getopt::optarg());
-                continue;
-            }
-            return handle_error_case(c);
+fn parse_options(
+    mut common: CommonOptions,
+    args: &mut Vec<String>,
+) -> Result<(CommonOptions, Options), i32> {
+    let mut options = Options::default();
+    let mut opt = Getopt::new();
+    extend_options_from_env(args);
+    loop {
+        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
+        long_options.extend(hfst_getopt_common_long());
+        long_options.extend(hfst_getopt_unary_long());
+        // add tool-specific options here
+        long_options.push(getopt::GetOpt {
+            name: "symbol",
+            has_arg: getopt::REQUIRED_ARGUMENT,
+            val: 'S' as i32,
+        });
+        long_options.push(getopt::GetOpt {
+            name: "tsv",
+            has_arg: getopt::REQUIRED_ARGUMENT,
+            val: 'T' as i32,
+        });
+        let c = opt.getopt_long(args, &long_options);
+        if -1 == c {
+            break;
         }
 
-        if SYMBOL.is_none() && TSV_FILE_NAME.is_none() {
-            error(1, 0, "Either --symbol or --tsv-file is required");
-            return 1;
+        // The C switch chains the #include'd case groups in order: common
+        // cases, then unary cases, then the tool's own ('S'/'T'), then the
+        // terminal error arm.
+        match handle_common_case(&mut common, &opt, c, print_usage) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
         }
-
-        check_common_params();
-        check_unary_params(args);
-        if let Some(name) = &TSV_FILE_NAME {
-            match std::fs::File::open(name) {
-                Ok(f) => TSV_FILE = Some(f),
-                Err(_) => {
-                    error(1, 0, &format!("Could not open '{}'", name));
-                    return 1;
-                }
-            }
+        match handle_unary_case(&mut common, &opt, c) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
         }
-        EXIT_CONTINUE
+        if c == 'S' as i32 {
+            options.symbol = Some(opt.optarg());
+            continue;
+        }
+        if c == 'T' as i32 {
+            options.tsv_file_name = Some(opt.optarg());
+            continue;
+        }
+        return Err(handle_error_case(&common, &opt, c));
     }
+
+    if options.symbol.is_none() && options.tsv_file_name.is_none() {
+        error(&common, 1, 0, "Either --symbol or --tsv-file is required");
+        return Err(1);
+    }
+
+    check_common_params(&mut common);
+    check_unary_params(&mut common, &opt, args);
+    if let Some(name) = &options.tsv_file_name {
+        match std::fs::File::open(name) {
+            Ok(f) => options.tsv_file = Some(f),
+            Err(_) => {
+                error(&common, 1, 0, &format!("Could not open '{}'", name));
+                return Err(1);
+            }
+        }
+    }
+    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-kill-paths.original-fn]
 // [spec:hfst:sem:hfst-kill-paths.original-fn]
-unsafe fn do_killing<B: hfst::backend::AlgebraBackend>(trans: &mut HfstTransducer<B>) {
-    unsafe {
-        let symbol = SYMBOL.clone().unwrap_or_default();
-        *trans = trans.kill_paths(&symbol);
-    }
+fn do_killing<B: hfst::backend::AlgebraBackend>(
+    symbol: Option<&str>,
+    trans: &mut HfstTransducer<B>,
+) {
+    let symbol = symbol.unwrap_or_default();
+    *trans = trans.kill_paths(symbol);
 }
 
 // [spec:hfst:def:hfst-kill-paths.process-stream-fn]
 // [spec:hfst:sem:hfst-kill-paths.process-stream-fn]
-unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOutputStream) -> i32 {
-    unsafe {
-        let mut transducer_n: usize = 0;
-        while instream.is_good() {
-            transducer_n += 1;
-            let any = match instream.read() {
-                Ok(v) => v,
+fn process_stream(
+    common: &CommonOptions,
+    options: &mut Options,
+    instream: &mut HfstInputStream,
+    outstream: &mut HfstOutputStream,
+) -> i32 {
+    let mut transducer_n: usize = 0;
+    while instream.is_good() {
+        transducer_n += 1;
+        let any = match instream.read() {
+            Ok(v) => v,
+            Err(e) => {
+                error(common, 1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
+        // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+        crate::for_algebra!(any, trans => {
+            let mut trans = trans;
+            let inputname = hfst_get_name(&trans, &common.input_filename);
+            if transducer_n == 1 {
+                verbose_print(common, &format!("Path killing {}...\n", inputname));
+            } else {
+                verbose_print(common, &format!("Path killing {}...{}\n", inputname, transducer_n));
+            }
+            if options.tsv_file.is_none() {
+                do_killing(options.symbol.as_deref(), &mut trans);
+                // C: hfst_set_name(trans, trans, "pathkill"); dest and src are the
+                // same object, which Rust cannot alias mut+const, so the read side
+                // is taken from a copy (name/formula are unchanged by the copy).
+                let src = trans.clone();
+                hfst_set_name_unary(&mut trans, &src, "pathkill");
+                hfst_set_formula_unary(&mut trans, &src, "PK");
+            } else {
+                // C: rewind(tsv_file) — seek the std file back to the start.
+                let tsv_file = options.tsv_file.as_mut().unwrap();
+                let _ = tsv_file.seek(SeekFrom::Start(0));
+                options.symbol = None;
+                let mut _linen: usize = 0;
+                verbose_print(common, &format!(
+                    "Reading reweights from {}\n",
+                    options.tsv_file_name.clone().unwrap_or_default()
+                ));
+                let tsv_file = options.tsv_file.as_mut().unwrap();
+                let mut reader = BufReader::new(tsv_file);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                        break;
+                    }
+                    _linen += 1;
+                    let bytes = line.as_bytes();
+                    if bytes.first() == Some(&b'\n') {
+                        continue;
+                    }
+                    if bytes.first() == Some(&b'#') {
+                        continue;
+                    }
+                    // const char *endptr = line; advance to '\0' or '\n'
+                    let mut endptr = 0usize;
+                    while endptr < bytes.len() && bytes[endptr] != b'\n' {
+                        endptr += 1;
+                    }
+                    let sym = String::from_utf8_lossy(&bytes[..endptr]).into_owned();
+                    verbose_print(common, &format!("Killing patsh with symbol {}\n", sym));
+                    do_killing(Some(&sym), &mut trans);
+                } // getline
+                let src = trans.clone();
+                hfst_set_name_unary(&mut trans, &src, "pathkill");
+                hfst_set_formula_unary(&mut trans, &src, "PK");
+            } // if tsv_file
+            let reduced = match trans.remove_epsilons() {
+                Ok(t) => t,
                 Err(e) => {
-                    error(1, 0, &format!("{e}"));
+                    error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
-            crate::for_algebra!(any, trans => {
-                let mut trans = trans;
-                let inputname = hfst_get_name(&trans, &globals::input_filename());
-                if transducer_n == 1 {
-                    verbose_print(&format!("Path killing {}...\n", inputname));
-                } else {
-                    verbose_print(&format!("Path killing {}...{}\n", inputname, transducer_n));
-                }
-                if TSV_FILE.is_none() {
-                    do_killing(&mut trans);
-                    // C: hfst_set_name(trans, trans, "pathkill"); dest and src are the
-                    // same object, which Rust cannot alias mut+const, so the read side
-                    // is taken from a copy (name/formula are unchanged by the copy).
-                    let src = trans.clone();
-                    hfst_set_name_unary(&mut trans, &src, "pathkill");
-                    hfst_set_formula_unary(&mut trans, &src, "PK");
-                } else {
-                    // C: rewind(tsv_file) — seek the std file back to the start.
-                    let tsv_file = TSV_FILE.as_mut().unwrap();
-                    let _ = tsv_file.seek(SeekFrom::Start(0));
-                    SYMBOL = None;
-                    let mut _linen: usize = 0;
-                    verbose_print(&format!(
-                        "Reading reweights from {}\n",
-                        TSV_FILE_NAME.clone().unwrap_or_default()
-                    ));
-                    let mut reader = BufReader::new(tsv_file);
-                    let mut line = String::new();
-                    loop {
-                        line.clear();
-                        // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
-                        if reader.read_line(&mut line).unwrap_or(0) == 0 {
-                            break;
-                        }
-                        _linen += 1;
-                        let bytes = line.as_bytes();
-                        if bytes.first() == Some(&b'\n') {
-                            continue;
-                        }
-                        if bytes.first() == Some(&b'#') {
-                            continue;
-                        }
-                        // const char *endptr = line; advance to '\0' or '\n'
-                        let mut endptr = 0usize;
-                        while endptr < bytes.len() && bytes[endptr] != b'\n' {
-                            endptr += 1;
-                        }
-                        let sym = String::from_utf8_lossy(&bytes[..endptr]).into_owned();
-                        SYMBOL = Some(sym.clone());
-                        verbose_print(&format!("Killing patsh with symbol {}\n", sym));
-                        do_killing(&mut trans);
-                    } // getline
-                    let src = trans.clone();
-                    hfst_set_name_unary(&mut trans, &src, "pathkill");
-                    hfst_set_formula_unary(&mut trans, &src, "PK");
-                } // if tsv_file
-                let reduced = match trans.remove_epsilons() {
-                    Ok(t) => t,
-                    Err(e) => {
-                        error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                };
-                if let Err(e) = outstream.redirect(reduced) {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            }, else => {
-                // Unreachable: the optimized-lookup stream rejection already
-                // returned before the loop; keep its text for safety.
-                let _ = write!(
-                    std::io::stderr(),
-                    "Error: hfst-kill-paths cannot process transducers that are in optimized lookup format.\n"
-                );
+            if let Err(e) = outstream.redirect(reduced) {
+                error(common, 1, 0, &format!("{e}"));
                 return 1;
-            });
-        } // foreach transducer
-        instream.close();
-        outstream.close();
-        0
-    }
+            }
+        }, else => {
+            // Unreachable: the optimized-lookup stream rejection already
+            // returned before the loop; keep its text for safety.
+            let _ = write!(
+                std::io::stderr(),
+                "Error: hfst-kill-paths cannot process transducers that are in optimized lookup format.\n"
+            );
+            return 1;
+        });
+    } // foreach transducer
+    instream.close();
+    outstream.close();
+    0
 }
 
 // [spec:hfst:def:hfst-kill-paths.main-fn]
 // [spec:hfst:sem:hfst-kill-paths.main-fn]
-pub fn run(args: Vec<String>) -> i32 {
-    unsafe { real_main(args) }
-}
+pub fn run(mut args: Vec<String>) -> i32 {
+    let argv0 = args.first().cloned().unwrap_or_default();
 
-unsafe fn real_main(mut args: Vec<String>) -> i32 {
-    unsafe {
-        let argv0 = args.first().cloned().unwrap_or_default();
+    let common = hfst_set_program_name(&argv0, "0.1", "HfstKillPaths");
+    let (common, mut options) = match parse_options(common, &mut args) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
 
-        hfst_set_program_name(&argv0, "0.1", "HfstKillPaths");
-        let retval = parse_options(&mut args);
-        if retval != EXIT_CONTINUE {
-            return retval;
-        }
-        // close buffers, we use streams
-        let input_opened = globals::input_filename() != "<stdin>";
-        let output_opened = globals::output_filename() != "<stdout>";
-        verbose_print(&format!(
+    // close buffers, we use streams
+    let input_opened = common.input_filename != "<stdin>";
+    let output_opened = common.output_filename != "<stdout>";
+    verbose_print(
+        &common,
+        &format!(
             "Reading from {}, writing to {}\n",
-            globals::input_filename(),
-            globals::output_filename()
-        ));
-        verbose_print("Killing paths\n");
-        if let Some(sym) = &SYMBOL {
-            verbose_print(&format!("only if arc has symbol {}\n", sym));
-        }
+            common.input_filename, common.output_filename
+        ),
+    );
+    verbose_print(&common, "Killing paths\n");
+    if let Some(sym) = &options.symbol {
+        verbose_print(&common, &format!("only if arc has symbol {}\n", sym));
+    }
 
-        // here starts the buffer handling part
-        let mut instream = match if input_opened {
-            HfstInputStream::new_filename(&globals::input_filename())
-        } else {
-            HfstInputStream::new()
-        } {
-            Ok(s) => s,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-        // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
-        // currently panics on a bad file rather than throwing, so the catch arm
-        // is not reproduced here.)
-
-        let ty = instream.get_type();
-        let mut outstream = match if output_opened {
-            HfstOutputStream::new_filename(&globals::output_filename(), ty, true)
-        } else {
-            HfstOutputStream::new(ty, true)
-        } {
-            Ok(s) => s,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-
-        if is_input_stream_in_ol_format(&instream, "hfst-kill-paths") {
+    // here starts the buffer handling part
+    let mut instream = match if input_opened {
+        HfstInputStream::new_filename(&common.input_filename)
+    } else {
+        HfstInputStream::new()
+    } {
+        Ok(s) => s,
+        Err(e) => {
+            error(&common, 1, 0, &format!("{e}"));
             return 1;
         }
+    };
+    // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
+    // currently panics on a bad file rather than throwing, so the catch arm
+    // is not reproduced here.)
 
-        process_stream(&mut instream, &mut outstream)
+    let ty = instream.get_type();
+    let mut outstream = match if output_opened {
+        HfstOutputStream::new_filename(&common.output_filename, ty, true)
+    } else {
+        HfstOutputStream::new(ty, true)
+    } {
+        Ok(s) => s,
+        Err(e) => {
+            error(&common, 1, 0, &format!("{e}"));
+            return 1;
+        }
+    };
+
+    if is_input_stream_in_ol_format(&instream, "hfst-kill-paths") {
+        return 1;
     }
+
+    process_stream(&common, &mut options, &mut instream, &mut outstream)
 }

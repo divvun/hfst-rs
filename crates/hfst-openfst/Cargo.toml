@@ -8,3 +8,6 @@ repository.workspace = true
 [dependencies]
 hfst-types = { workspace = true }
 rustfst = { workspace = true }
+
+[lints]
+workspace = true

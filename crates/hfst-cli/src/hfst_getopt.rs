@@ -1,9 +1,12 @@
 //! Rust-native reimplementation of HFST's `getopt_long` fallback (was a 1:1 port
-//! of tools/src/hfst-getopt.cc). It works directly on the program's `Vec<String>`
-//! arguments: the option tables, the `OPTARG`/`OPTOPT`/`OPTIND` module state, and
-//! the argument-permuting behaviour (non-option arguments shuffled to the tail of
-//! `args`, `OPTIND` left pointing at the first of them) are preserved so each
-//! tool's `while getopt_long(...) != -1` loop is unchanged.
+//! of tools/src/hfst-getopt.cc). The parser state — `optarg`/`optopt`/`optind`
+//! and the argument-permuting accumulators — lives in a [`Getopt`] value that a
+//! tool's `parse_options` owns and threads through the getopt loop and the
+//! `crate::inc` case handlers (the idiomatic replacement for the former
+//! file-scope `static mut` globals). The argument-permuting behaviour
+//! (non-option arguments shuffled to the tail of `args`, `optind` left pointing
+//! at the first of them) is preserved so each tool's `while
+//! getopt_long(...) != -1` loop is unchanged.
 
 pub const NO_ARGUMENT: i32 = 0;
 pub const REQUIRED_ARGUMENT: i32 = 1;
@@ -16,90 +19,97 @@ pub struct GetOpt {
     pub val: i32,
 }
 
-// The file-scope getopt state, read by every tool after each call. `OPTIND` is a
-// 1-based index into `args` (args[0] is the program name); `OPTARG` carries the
-// option argument of the last returned option.
-pub static mut OPTARG: Option<String> = None;
-pub static mut OPTOPT: i32 = 0;
-pub static mut OPTIND: usize = 1;
-
-/// The option argument of the last returned option, or None if it took none.
-pub fn optarg_opt() -> Option<String> {
-    unsafe { (*std::ptr::addr_of!(OPTARG)).clone() }
+/// The getopt parser state, read by a tool after each `getopt_long` call.
+/// `optind` is a 1-based index into `args` (args[0] is the program name);
+/// `optarg` carries the option argument of the last returned option.
+pub struct Getopt {
+    pub optarg: Option<String>,
+    pub optopt: i32,
+    pub optind: usize,
+    // Accumulators for the permutation: option tokens (+ their separate-word
+    // values) versus the free (non-option) arguments.
+    free_arguments: Vec<String>,
+    other_arguments: Vec<String>,
 }
 
-/// The option argument as an owned String (empty when there was none).
-pub fn optarg() -> String {
-    optarg_opt().unwrap_or_default()
-}
-
-// Accumulators for the permutation: option tokens (+ their separate-word values)
-// versus the free (non-option) arguments. Reached via addr_of_mut! to stay clear
-// of the edition-2024 static_mut_refs error.
-static mut FREE_ARGUMENTS: Vec<String> = Vec::new();
-static mut OTHER_ARGUMENTS: Vec<String> = Vec::new();
-
-fn free_arguments() -> &'static mut Vec<String> {
-    unsafe { &mut *std::ptr::addr_of_mut!(FREE_ARGUMENTS) }
-}
-fn other_arguments() -> &'static mut Vec<String> {
-    unsafe { &mut *std::ptr::addr_of_mut!(OTHER_ARGUMENTS) }
-}
-
-// Rebuild `args` as [program-name, ...options, ...free] and leave OPTIND pointing
-// at the first free argument; the end-of-options return.
-fn finish(args: &mut Vec<String>) -> i32 {
-    let program = args.first().cloned().unwrap_or_default();
-    let mut rebuilt = Vec::with_capacity(args.len());
-    rebuilt.push(program);
-    rebuilt.append(other_arguments());
-    let optind = rebuilt.len();
-    rebuilt.append(free_arguments());
-    *args = rebuilt;
-    unsafe {
-        OPTIND = optind;
+impl Default for Getopt {
+    fn default() -> Getopt {
+        Getopt {
+            optarg: None,
+            optopt: 0,
+            optind: 1,
+            free_arguments: Vec::new(),
+            other_arguments: Vec::new(),
+        }
     }
-    -1
 }
 
-// [spec:hfst:def:hfst-getopt.getopt-long-fn]
-// [spec:hfst:sem:hfst-getopt.getopt-long-fn]
-pub fn getopt_long(args: &mut Vec<String>, longopts: &[GetOpt]) -> i32 {
-    let argc = args.len();
-    unsafe {
+impl Getopt {
+    pub fn new() -> Getopt {
+        Getopt::default()
+    }
+
+    /// The option argument of the last returned option, or None if it took none.
+    pub fn optarg_opt(&self) -> Option<String> {
+        self.optarg.clone()
+    }
+
+    /// The option argument as an owned String (empty when there was none).
+    pub fn optarg(&self) -> String {
+        self.optarg.clone().unwrap_or_default()
+    }
+
+    // Rebuild `args` as [program-name, ...options, ...free] and leave `optind`
+    // pointing at the first free argument; the end-of-options return.
+    fn finish(&mut self, args: &mut Vec<String>) -> i32 {
+        let program = args.first().cloned().unwrap_or_default();
+        let mut rebuilt = Vec::with_capacity(args.len());
+        rebuilt.push(program);
+        rebuilt.append(&mut self.other_arguments);
+        let optind = rebuilt.len();
+        rebuilt.append(&mut self.free_arguments);
+        *args = rebuilt;
+        self.optind = optind;
+        -1
+    }
+
+    // [spec:hfst:def:hfst-getopt.getopt-long-fn]
+    // [spec:hfst:sem:hfst-getopt.getopt-long-fn]
+    pub fn getopt_long(&mut self, args: &mut Vec<String>, longopts: &[GetOpt]) -> i32 {
+        let argc = args.len();
         // skip free arguments: anything not beginning with '-', plus the
         // getopt specials — a lone "-" is an operand (conventionally stdin),
         // and "--" terminates option parsing with the rest as operands.
         loop {
-            if OPTIND >= argc {
-                return finish(args);
+            if self.optind >= argc {
+                return self.finish(args);
             }
-            if args[OPTIND] == "--" {
-                OPTIND += 1;
-                while OPTIND < argc {
-                    free_arguments().push(args[OPTIND].clone());
-                    OPTIND += 1;
+            if args[self.optind] == "--" {
+                self.optind += 1;
+                while self.optind < argc {
+                    self.free_arguments.push(args[self.optind].clone());
+                    self.optind += 1;
                 }
-                return finish(args);
+                return self.finish(args);
             }
-            if args[OPTIND].as_bytes().first() != Some(&b'-') || args[OPTIND] == "-" {
-                free_arguments().push(args[OPTIND].clone());
-                OPTIND += 1;
+            if args[self.optind].as_bytes().first() != Some(&b'-') || args[self.optind] == "-" {
+                self.free_arguments.push(args[self.optind].clone());
+                self.optind += 1;
             } else {
                 break;
             }
         }
 
-        other_arguments().push(args[OPTIND].clone());
+        self.other_arguments.push(args[self.optind].clone());
 
         // work on a copy since we are possibly splitting the argument at '='
-        let token = args[OPTIND].clone();
+        let token = args[self.optind].clone();
         // skip initial '-' signs
         let stripped = token.trim_start_matches('-');
 
         // empty arg string of dashes beyond the specials (e.g. "---")
         if stripped.is_empty() {
-            OPTOPT = -2;
+            self.optopt = -2;
             return b'?' as i32;
         }
 
@@ -121,7 +131,7 @@ pub fn getopt_long(args: &mut Vec<String>, longopts: &[GetOpt]) -> i32 {
         // Go through all possible option strings
         for opt in longopts {
             if opt.name == name || (short_option && opt.val == first_char) {
-                OPTIND += 1;
+                self.optind += 1;
                 if opt.has_arg == NO_ARGUMENT {
                     if eq_used {
                         eprint!("warning: argument ignored for option '--{}'\n", opt.name);
@@ -129,26 +139,26 @@ pub fn getopt_long(args: &mut Vec<String>, longopts: &[GetOpt]) -> i32 {
                     return opt.val;
                 } else if opt.has_arg == REQUIRED_ARGUMENT || opt.has_arg == OPTIONAL_ARGUMENT {
                     if let Some(value) = eq_value {
-                        OPTARG = Some(value);
+                        self.optarg = Some(value);
                         return opt.val;
                     }
                     // no inline value: the next word is the argument
-                    if OPTIND >= argc {
+                    if self.optind >= argc {
                         if opt.has_arg == REQUIRED_ARGUMENT {
-                            OPTOPT = opt.val;
+                            self.optopt = opt.val;
                             return b':' as i32;
                         } else {
-                            OPTOPT = 0;
+                            self.optopt = 0;
                             return opt.val;
                         }
                     }
                     if opt.has_arg == REQUIRED_ARGUMENT {
-                        OPTARG = Some(args[OPTIND].clone());
-                        other_arguments().push(args[OPTIND].clone());
-                        OPTIND += 1;
+                        self.optarg = Some(args[self.optind].clone());
+                        self.other_arguments.push(args[self.optind].clone());
+                        self.optind += 1;
                         return opt.val;
                     } else {
-                        OPTOPT = 0;
+                        self.optopt = 0;
                         return opt.val;
                     }
                 } else {
@@ -169,18 +179,18 @@ pub fn getopt_long(args: &mut Vec<String>, longopts: &[GetOpt]) -> i32 {
         {
             for opt in longopts {
                 if opt.val == first_char && opt.has_arg != NO_ARGUMENT {
-                    OPTIND += 1;
+                    self.optind += 1;
                     // everything after the option letter, including any '='
                     // (GNU keeps it verbatim in optarg for attached args)
-                    OPTARG = Some(stripped[1..].to_string());
+                    self.optarg = Some(stripped[1..].to_string());
                     return opt.val;
                 }
             }
         }
 
         // no match found
-        OPTIND += 1;
-        OPTOPT = if short_option { first_char } else { -2 };
+        self.optind += 1;
+        self.optopt = if short_option { first_char } else { -2 };
         b'?' as i32
     }
 }

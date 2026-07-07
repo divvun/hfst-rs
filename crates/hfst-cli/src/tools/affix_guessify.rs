@@ -3,12 +3,12 @@
 //! automaton. Drives the hfst-cli foundation (globals, getopt, commandline,
 //! program-options, tool-metadata, inc fragments).
 
-use crate::globals;
+use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name, hfst_strtoweight,
+    error, extend_options_from_env, hfst_set_program_name, hfst_strtoweight,
     is_input_stream_in_ol_format, verbose_print,
 };
-use crate::hfst_getopt as getopt;
+use crate::hfst_getopt::{self as getopt, Getopt};
 use crate::hfst_program_options::{
     hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
     print_common_unary_program_options, print_common_unary_program_parameter_instructions,
@@ -22,22 +22,36 @@ use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use std::io::Write;
 
-// add tools-specific variables here
-// GuessDirection and the per-transducer affix-guesser construction now live in
-// hfst::guessify_fst; this tool keeps only the option-driven globals + the
-// stream-driver loop.
-static mut DIRECTION: GuessDirection = GuessDirection::GuessSuffix;
-static mut WEIGHT: f32 = 1.0f32;
+/// hfst-affix-guessify's own options (the former tool-specific `static mut`s).
+///
+/// GuessDirection and the per-transducer affix-guesser construction now live in
+/// hfst::guessify_fst; this tool keeps only the option-driven state + the
+/// stream-driver loop.
+struct Options {
+    /// '-D, --direction=DIR': direction of guessing.
+    direction: GuessDirection,
+    /// '-w, --weight=WEIGHT': weight difference of affix lengths.
+    weight: f32,
+}
+
+impl Default for Options {
+    fn default() -> Options {
+        Options {
+            direction: GuessDirection::GuessSuffix,
+            weight: 1.0f32,
+        }
+    }
+}
 
 // [spec:hfst:def:hfst-affix-guessify.print-usage-fn]
 // [spec:hfst:sem:hfst-affix-guessify.print-usage-fn]
-fn print_usage() {
+fn print_usage(common: &CommonOptions) {
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let mut msg = globals::message_writer();
+    let mut msg = common.message_writer();
     let _ = write!(
         msg,
         "Usage: {} [OPTIONS...] [INFILE]\nCreate weighted affix guesser from automaton\n\n",
-        globals::program_name()
+        common.program_name
     );
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
@@ -57,190 +71,196 @@ fn print_usage() {
 
 // [spec:hfst:def:hfst-affix-guessify.parse-options-fn]
 // [spec:hfst:sem:hfst-affix-guessify.parse-options-fn]
-unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
-    unsafe {
-        extend_options_from_env(args);
-        // use of this function requires options are settable on global scope
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "weight",
-                has_arg: 1, // required_argument
-                val: 'w' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "direction",
-                has_arg: 1, // required_argument
-                val: 'D' as i32,
-            });
-            // add tool-specific options here
-            let c = getopt::getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own ('w'/'D'), then the
-            // terminal error arm.
-            match handle_common_case(c, print_usage) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(c) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c {
-                x if x == 'w' as i32 => {
-                    WEIGHT = hfst_strtoweight(&getopt::optarg());
-                    continue;
-                }
-                x if x == 'D' as i32 => {
-                    let optarg = getopt::optarg();
-                    if optarg.starts_with("prefix") {
-                        DIRECTION = GuessDirection::GuessPrefix;
-                    } else if optarg.starts_with("suffix") {
-                        DIRECTION = GuessDirection::GuessSuffix;
-                    } else {
-                        error(
-                            1,
-                            0,
-                            &format!(
-                                "Unable to parse guessing direction from {};\nplease use one of 'prefix' or 'suffix'",
-                                optarg
-                            ),
-                        );
-                    }
-                    continue;
-                }
-                _ => {}
-            }
-            return handle_error_case(c);
+//
+// Parse argv into the shared + tool options; `Err(code)` is an exit code the
+// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
+fn parse_options(
+    mut common: CommonOptions,
+    args: &mut Vec<String>,
+) -> Result<(CommonOptions, Options), i32> {
+    let mut options = Options::default();
+    let mut opt = Getopt::new();
+    extend_options_from_env(args);
+    loop {
+        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
+        long_options.extend(hfst_getopt_common_long());
+        long_options.extend(hfst_getopt_unary_long());
+        // add tool-specific options here
+        long_options.push(getopt::GetOpt {
+            name: "weight",
+            has_arg: 1, // required_argument
+            val: 'w' as i32,
+        });
+        long_options.push(getopt::GetOpt {
+            name: "direction",
+            has_arg: 1, // required_argument
+            val: 'D' as i32,
+        });
+        // add tool-specific options here
+        let c = opt.getopt_long(args, &long_options);
+        if -1 == c {
+            break;
         }
 
-        check_common_params();
-        check_unary_params(args);
-        EXIT_CONTINUE
+        // The C switch chains the #include'd case groups in order: common
+        // cases, then unary cases, then the tool's own ('w'/'D'), then the
+        // terminal error arm.
+        match handle_common_case(&mut common, &opt, c, print_usage) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        match handle_unary_case(&mut common, &opt, c) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        match c {
+            x if x == 'w' as i32 => {
+                options.weight = hfst_strtoweight(&common, &opt.optarg());
+                continue;
+            }
+            x if x == 'D' as i32 => {
+                let optarg = opt.optarg();
+                if optarg.starts_with("prefix") {
+                    options.direction = GuessDirection::GuessPrefix;
+                } else if optarg.starts_with("suffix") {
+                    options.direction = GuessDirection::GuessSuffix;
+                } else {
+                    error(
+                        &common,
+                        1,
+                        0,
+                        &format!(
+                            "Unable to parse guessing direction from {};\nplease use one of 'prefix' or 'suffix'",
+                            optarg
+                        ),
+                    );
+                }
+                continue;
+            }
+            _ => {}
+        }
+        return Err(handle_error_case(&common, &opt, c));
     }
+
+    check_common_params(&mut common);
+    check_unary_params(&mut common, &opt, args);
+    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-affix-guessify.process-stream-fn]
 // [spec:hfst:sem:hfst-affix-guessify.process-stream-fn]
-unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOutputStream) -> i32 {
-    unsafe {
-        let mut transducer_n: usize = 0;
-        while instream.is_good() {
-            transducer_n += 1;
-            let any = match instream.read() {
-                Ok(v) => v,
+fn process_stream(
+    common: &CommonOptions,
+    options: &Options,
+    instream: &mut HfstInputStream,
+    outstream: &mut HfstOutputStream,
+) -> i32 {
+    let mut transducer_n: usize = 0;
+    while instream.is_good() {
+        transducer_n += 1;
+        let any = match instream.read() {
+            Ok(v) => v,
+            Err(e) => {
+                error(common, 1, 0, &format!("{e}"));
+                return 1;
+            }
+        };
+        // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+        crate::for_algebra!(any, trans => {
+            let trans = trans;
+            // C: inputname = trans->get_name(); if empty, use inputfilename.
+            let inputname = if !trans.get_name().is_empty() {
+                trans.get_name()
+            } else {
+                common.input_filename.clone()
+            };
+            if transducer_n < 2 {
+                verbose_print(common, &format!("Guessifying {}...\n", inputname));
+            } else {
+                verbose_print(common, &format!("Guessifying {}... {}\n", inputname, transducer_n));
+            }
+            let mut t = match affix_guessify(&trans, options.direction, options.weight) {
+                Ok(t) => t,
                 Err(e) => {
-                    error(1, 0, &format!("{e}"));
+                    error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
-            crate::for_algebra!(any, trans => {
-                let trans = trans;
-                // C: inputname = trans->get_name(); if empty, use inputfilename.
-                let inputname = if !trans.get_name().is_empty() {
-                    trans.get_name()
-                } else {
-                    globals::input_filename()
-                };
-                if transducer_n < 2 {
-                    verbose_print(&format!("Guessifying {}...\n", inputname));
-                } else {
-                    verbose_print(&format!("Guessifying {}... {}\n", inputname, transducer_n));
-                }
-                let mut t = match affix_guessify(&trans, DIRECTION, WEIGHT) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                };
-                if let Err(e) = outstream.redirect(&mut t) {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            }, else => {
-                // Unreachable: the optimized-lookup stream rejection already
-                // returned before the loop; keep its text for safety.
-                let _ = write!(
-                    std::io::stderr(),
-                    "Error: hfst-affix-guessify cannot process transducers that are in optimized lookup format.\n"
-                );
+            if let Err(e) = outstream.redirect(&mut t) {
+                error(common, 1, 0, &format!("{e}"));
                 return 1;
-            });
-        } // good instream
-        0
-    }
+            }
+        }, else => {
+            // Unreachable: the optimized-lookup stream rejection already
+            // returned before the loop; keep its text for safety.
+            let _ = write!(
+                std::io::stderr(),
+                "Error: hfst-affix-guessify cannot process transducers that are in optimized lookup format.\n"
+            );
+            return 1;
+        });
+    } // good instream
+    0
 }
 
 // [spec:hfst:def:hfst-affix-guessify.main-fn]
 // [spec:hfst:sem:hfst-affix-guessify.main-fn]
-pub fn run(args: Vec<String>) -> i32 {
-    unsafe { real_main(args) }
-}
+pub fn run(mut args: Vec<String>) -> i32 {
+    let argv0 = args.first().cloned().unwrap_or_default();
 
-unsafe fn real_main(mut args: Vec<String>) -> i32 {
-    unsafe {
-        let argv0 = args.first().cloned().unwrap_or_default();
+    let common = hfst_set_program_name(&argv0, "0.1", "HfstAffixGuessify");
+    let (common, options) = match parse_options(common, &mut args) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
 
-        hfst_set_program_name(&argv0, "0.1", "HfstAffixGuessify");
-        let retval = parse_options(&mut args);
-        if retval != EXIT_CONTINUE {
-            return retval;
-        }
-        // close buffers, we use streams
-        let input_opened = globals::input_filename() != "<stdin>";
-        let output_opened = globals::output_filename() != "<stdout>";
-        verbose_print(&format!(
+    // close buffers, we use streams
+    let input_opened = common.input_filename != "<stdin>";
+    let output_opened = common.output_filename != "<stdout>";
+    verbose_print(
+        &common,
+        &format!(
             "Reading from {}, writing to {}\n",
-            globals::input_filename(),
-            globals::output_filename()
-        ));
+            common.input_filename, common.output_filename
+        ),
+    );
 
-        // here starts the buffer handling part
-        // (the C wraps the ctor in try/catch on HfstException reporting
-        // "%s is not a valid transducer file"; the Rust ctor currently panics on
-        // a bad file rather than throwing, so the catch arm is not reproduced.)
-        let instream_res = if input_opened {
-            HfstInputStream::new_filename(&globals::input_filename())
-        } else {
-            HfstInputStream::new()
-        };
-        let mut instream = match instream_res {
-            Ok(s) => s,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-
-        let ty = instream.get_type();
-        let outstream_res = if output_opened {
-            HfstOutputStream::new_filename(&globals::output_filename(), ty, true)
-        } else {
-            HfstOutputStream::new(ty, true)
-        };
-        let mut outstream = match outstream_res {
-            Ok(s) => s,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-
-        if is_input_stream_in_ol_format(&instream, "hfst-affix-guessify") {
+    // here starts the buffer handling part
+    // (the C wraps the ctor in try/catch on HfstException reporting
+    // "%s is not a valid transducer file"; the Rust ctor currently panics on
+    // a bad file rather than throwing, so the catch arm is not reproduced.)
+    let instream_res = if input_opened {
+        HfstInputStream::new_filename(&common.input_filename)
+    } else {
+        HfstInputStream::new()
+    };
+    let mut instream = match instream_res {
+        Ok(s) => s,
+        Err(e) => {
+            error(&common, 1, 0, &format!("{e}"));
             return 1;
         }
+    };
 
-        process_stream(&mut instream, &mut outstream)
+    let ty = instream.get_type();
+    let outstream_res = if output_opened {
+        HfstOutputStream::new_filename(&common.output_filename, ty, true)
+    } else {
+        HfstOutputStream::new(ty, true)
+    };
+    let mut outstream = match outstream_res {
+        Ok(s) => s,
+        Err(e) => {
+            error(&common, 1, 0, &format!("{e}"));
+            return 1;
+        }
+    };
+
+    if is_input_stream_in_ol_format(&instream, "hfst-affix-guessify") {
+        return 1;
     }
+
+    process_stream(&common, &options, &mut instream, &mut outstream)
 }

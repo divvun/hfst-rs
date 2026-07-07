@@ -25,3 +25,6 @@ ariadne = "0.5"
 
 [features]
 foma = ["dep:foma"]
+
+[lints]
+workspace = true

@@ -6,13 +6,20 @@
 //! provided by the hfst library crate's optimized-lookup runtime
 //! (`HfstTransducer::lookup_fd_string`), so the tool no longer carries its own
 //! binary-format reader or traversal code.
+//!
+//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
+//! shared program-name/version/verbosity fields) and a tool-local [`Options`] —
+//! both built by `parse_options` and threaded into the processing functions.
+//! There are no `static mut` globals and no `unsafe`.
 
-use crate::hfst_getopt as getopt;
+use crate::globals::CommonOptions;
+use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
+use crate::hfst_getopt::{self as getopt, Getopt};
+use std::io::Write;
 
 // ---------------------------------------------------------------------------
 // config.h-defined constants
 // ---------------------------------------------------------------------------
-const PACKAGE_NAME: &str = "hfst-optimized-lookup";
 const PACKAGE_STRING: &str = "hfst-optimized-lookup 1.2";
 
 // ---------------------------------------------------------------------------
@@ -46,35 +53,59 @@ enum OutputType {
 use OutputType::Xerox;
 
 // ---------------------------------------------------------------------------
-// global mutable tool state (the C++ globals)
+// tool-local option state (the former tool-specific `static mut`s)
 // ---------------------------------------------------------------------------
-static mut OUTPUT_TYPE: OutputType = OutputType::Xerox;
-#[allow(dead_code)]
-static mut VERBOSE_FLAG: bool = false;
-static mut DISPLAY_WEIGHTS_FLAG: bool = false;
-static mut DISPLAY_UNIQUE_FLAG: bool = false;
-static mut ECHO_INPUTS_FLAG: bool = false;
-static mut BE_FAST: bool = false;
-static mut MAX_ANALYSES: i32 = i32::MAX;
-static mut TIME_CUTOFF: f64 = 0.0;
+/// hfst-optimized-lookup's own options. `impl Default` matches the old
+/// `static mut` initializers (not all are the type default).
+struct Options {
+    output_type: OutputType,
+    #[allow(dead_code)]
+    verbose_flag: bool,
+    display_weights_flag: bool,
+    display_unique_flag: bool,
+    echo_inputs_flag: bool,
+    be_fast: bool,
+    max_analyses: i32,
+    time_cutoff: f64,
+    beam: f32,
+    #[allow(dead_code)]
+    pipe_input: bool,
+    #[allow(dead_code)]
+    pipe_output: bool,
+    /// The single positional operand (the transducer path), resolved from the
+    /// leftover free argument once the getopt loop finishes. `None` when no
+    /// input file was given.
+    input_path: Option<String>,
+}
 
-static mut BEAM: f32 = -1.0;
-#[allow(dead_code)]
-static mut PIPE_INPUT: bool = false;
-#[allow(dead_code)]
-static mut PIPE_OUTPUT: bool = false;
+impl Default for Options {
+    fn default() -> Options {
+        Options {
+            output_type: OutputType::Xerox,
+            verbose_flag: false,
+            display_weights_flag: false,
+            display_unique_flag: false,
+            echo_inputs_flag: false,
+            be_fast: false,
+            max_analyses: i32::MAX,
+            time_cutoff: 0.0,
+            beam: -1.0,
+            pipe_input: false,
+            pipe_output: false,
+            input_path: None,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // small i/o helpers
 // ---------------------------------------------------------------------------
 fn print_out(s: &str) {
-    use std::io::Write;
     let mut o = std::io::stdout();
     let _ = o.write_all(s.as_bytes());
 }
 
 fn print_err(s: &str) {
-    use std::io::Write;
     let mut e = std::io::stderr();
     let _ = e.write_all(s.as_bytes());
 }
@@ -160,9 +191,9 @@ struct Transducer {
 impl Transducer {
     // Run the library optimized-lookup engine on the input and route each path
     // into the variant's display sink, mirroring the C++ note_analysis hooks.
-    fn analyze(&mut self, input: &str) {
+    fn analyze(&mut self, options: &Options, input: &str) {
         let limit: isize = -1; // no max-lookups cap (preserve current behaviour)
-        let time_cutoff: f64 = unsafe { TIME_CUTOFF };
+        let time_cutoff: f64 = options.time_cutoff;
         let paths = match self.inner.lookup_fd_string(input, limit, time_cutoff) {
             Ok(p) => p,
             Err(e) => {
@@ -216,15 +247,15 @@ impl Transducer {
     // [spec:hfst:sem:hfst-optimized-lookup.transducer-w-uniq.print-analyses-fn]
     // [spec:hfst:def:hfst-optimized-lookup.transducer-w-fd-uniq.print-analyses-fn]
     // [spec:hfst:sem:hfst-optimized-lookup.transducer-w-fd-uniq.print-analyses-fn]
-    fn print_analyses(&mut self, prepend: &str) {
-        let output_type = unsafe { OUTPUT_TYPE };
-        let display_weights = unsafe { DISPLAY_WEIGHTS_FLAG };
-        let max_analyses = unsafe { MAX_ANALYSES };
-        let beam = unsafe { BEAM };
+    fn print_analyses(&mut self, options: &Options, prepend: &str) {
+        let output_type = options.output_type;
+        let display_weights = options.display_weights_flag;
+        let max_analyses = options.max_analyses;
+        let beam = options.beam;
         match self.variant {
             Variant::Plain | Variant::Fd => {
                 // Transducer::printAnalyses (Fd inherits it). beFast -> nothing.
-                if unsafe { BE_FAST } {
+                if options.be_fast {
                     return;
                 }
                 if output_type == Xerox && self.display_vector.is_empty() {
@@ -395,7 +426,7 @@ fn fmt_weight(w: Weight) -> String {
 // ---------------------------------------------------------------------------
 // [spec:hfst:def:hfst-optimized-lookup.run-transducer-fn]
 // [spec:hfst:sem:hfst-optimized-lookup.run-transducer-fn]
-fn run_transducer(t: &mut Transducer) {
+fn run_transducer(options: &Options, t: &mut Transducer) {
     use std::io::BufRead;
     let stdin = std::io::stdin();
     let mut handle = stdin.lock();
@@ -416,12 +447,12 @@ fn run_transducer(t: &mut Transducer) {
 
         let str_display = String::from_utf8_lossy(&line_bytes).into_owned();
 
-        if unsafe { ECHO_INPUTS_FLAG } {
+        if options.echo_inputs_flag {
             print_out(&format!("{}\n", str_display));
         }
 
-        t.analyze(&str_display);
-        t.print_analyses(&str_display);
+        t.analyze(options, &str_display);
+        t.print_analyses(options, &str_display);
     }
 }
 
@@ -430,7 +461,7 @@ fn run_transducer(t: &mut Transducer) {
 // ---------------------------------------------------------------------------
 // [spec:hfst:def:hfst-optimized-lookup.setup-fn]
 // [spec:hfst:sem:hfst-optimized-lookup.setup-fn]
-fn setup(path: &str) -> i32 {
+fn setup(options: &Options, path: &str) -> i32 {
     let mut instream = match hfst::hfst_input_stream::HfstInputStream::new_filename(path) {
         Ok(v) => v,
         Err(e) => {
@@ -460,7 +491,7 @@ fn setup(path: &str) -> i32 {
             }
         },
     };
-    let unique = unsafe { DISPLAY_UNIQUE_FLAG };
+    let unique = options.display_unique_flag;
     let variant = match (weighted, unique) {
         (false, false) => Variant::Plain,
         (false, true) => Variant::Uniq,
@@ -475,7 +506,7 @@ fn setup(path: &str) -> i32 {
         display_multimap: DisplayMultiMap::new(),
         display_map: DisplayMap::new(),
     };
-    run_transducer(&mut tr);
+    run_transducer(options, &mut tr);
     0
 }
 
@@ -484,8 +515,10 @@ fn setup(path: &str) -> i32 {
 // ---------------------------------------------------------------------------
 // [spec:hfst:def:hfst-optimized-lookup.print-usage-fn]
 // [spec:hfst:sem:hfst-optimized-lookup.print-usage-fn]
-fn print_usage() -> bool {
-    print_out(&format!(
+fn print_usage(common: &CommonOptions) -> bool {
+    let mut msg = common.message_writer();
+    let _ = write!(
+        msg,
         "\nUsage: {} [OPTIONS] TRANSDUCER\n\
 Run a transducer on standard input (one word per line) and print analyses\n\
 NOTE: hfst-optimized-lookup does lookup from left to right as opposed to xfst\n\
@@ -521,26 +554,167 @@ Input is read interactively line by line from the user. If you redirect input\n\
 from a file, use --pipe-mode=input. --pipe-mode=output is ignored on non-windows\n\
 platforms.\n\
 \n",
-        PACKAGE_NAME
-    ));
+        common.program_name
+    );
     true
 }
 
 // [spec:hfst:def:hfst-optimized-lookup.print-version-fn]
 // [spec:hfst:sem:hfst-optimized-lookup.print-version-fn]
-fn print_version() -> bool {
-    print_out(&format!(
+fn print_version(common: &CommonOptions) -> bool {
+    let mut msg = common.message_writer();
+    let _ = write!(
+        msg,
         "\n{}\ncopyright (C) 2009 University of Helsinki\n",
         PACKAGE_STRING
-    ));
+    );
     true
 }
 
 // [spec:hfst:def:hfst-optimized-lookup.print-short-help-fn]
 // [spec:hfst:sem:hfst-optimized-lookup.print-short-help-fn]
-fn print_short_help() -> bool {
-    print_usage();
+fn print_short_help(common: &CommonOptions) -> bool {
+    print_usage(common);
     true
+}
+
+// ---------------------------------------------------------------------------
+// parse_options
+// ---------------------------------------------------------------------------
+// [spec:hfst:def:hfst-optimized-lookup.parse-options-fn]
+// [spec:hfst:sem:hfst-optimized-lookup.parse-options-fn]
+//
+// Parse argv into the shared + tool options; `Err(code)` is an exit code the
+// caller should return. hfst-optimized-lookup carries its own long-option
+// table and its own `-h/-V/-v/-q/-s` cases (it does not use the shared
+// getopt-cases fragments).
+fn parse_options(
+    common: CommonOptions,
+    args: &mut Vec<String>,
+) -> Result<(CommonOptions, Options), i32> {
+    let mut options = Options::default();
+    let mut opt = Getopt::new();
+    extend_options_from_env(args);
+    loop {
+        let long_options: [getopt::GetOpt; 14] = [
+            // first the hfst-mandated options
+            opt_def("help", 0, b'h'),
+            opt_def("version", 0, b'V'),
+            opt_def("verbose", 0, b'v'),
+            opt_def("quiet", 0, b'q'),
+            opt_def("silent", 0, b's'),
+            // the hfst-optimized-lookup-specific options
+            opt_def("echo-inputs", 0, b'e'),
+            opt_def("show-weights", 0, b'w'),
+            opt_def("beam", 1, b'b'),
+            opt_def("time-cutoff", 1, b't'),
+            opt_def("unique", 0, b'u'),
+            opt_def("xerox", 0, b'x'),
+            opt_def("fast", 0, b'f'),
+            opt_def("pipe-mode", 2, b'p'),
+            opt_def("analyses", 1, b'n'),
+        ];
+
+        let c = opt.getopt_long(args, &long_options);
+
+        if c == -1 {
+            // no more options to look at
+            break;
+        }
+
+        match c as u8 {
+            b'h' => {
+                print_usage(&common);
+                return Err(0);
+            }
+            b'V' => {
+                print_version(&common);
+                return Err(0);
+            }
+            b'v' => {
+                options.verbose_flag = true;
+            }
+            b'q' | b's' => {
+                options.verbose_flag = false;
+            }
+            b'e' => {
+                options.echo_inputs_flag = true;
+            }
+            b'w' => {
+                options.display_weights_flag = true;
+            }
+            b'u' => {
+                options.display_unique_flag = true;
+            }
+            b'b' => {
+                options.beam = parse_leading_f64(&opt.optarg()) as f32;
+                if options.beam < 0.0 {
+                    print_err("Invalid argument for --beam\n");
+                    return Err(1);
+                }
+            }
+            b't' => {
+                options.time_cutoff = parse_leading_f64(&opt.optarg());
+                if options.time_cutoff < 0.0 {
+                    print_err("Invalid argument for --time-cutoff\n");
+                    return Err(1);
+                }
+            }
+            b'n' => {
+                options.max_analyses = parse_leading_i32(&opt.optarg());
+                if options.max_analyses < 1 {
+                    print_err("Invalid or no argument for analyses count\n");
+                    return Err(1);
+                }
+            }
+            b'x' => {
+                options.output_type = Xerox;
+            }
+            b'f' => {
+                options.be_fast = true;
+            }
+            b'p' => match opt.optarg_opt() {
+                None => {
+                    options.pipe_input = true;
+                    options.pipe_output = true;
+                }
+                Some(a) => {
+                    if a == "both" || a == "BOTH" {
+                        options.pipe_input = true;
+                        options.pipe_output = true;
+                    } else if a == "input" || a == "INPUT" || a == "in" || a == "IN" {
+                        options.pipe_input = true;
+                    } else if a == "output" || a == "OUTPUT" || a == "out" || a == "OUT" {
+                        options.pipe_output = true;
+                    } else {
+                        print_err(&format!("--pipe-mode argument {} unrecognised\n\n", a));
+                        return Err(1);
+                    }
+                }
+            },
+            _ => {
+                print_err("Invalid option\n\n");
+                print_short_help(&common);
+                return Err(1);
+            }
+        }
+    }
+
+    // no more options, we should now be at the input filename. `optind` is the
+    // getopt parser's index of the first free (non-option) argument after the
+    // permutation.
+    let optind = opt.optind;
+    if (optind + 1) < args.len() {
+        print_err("More than one input file given\n");
+        return Err(1);
+    } else if (optind + 1) == args.len() {
+        options.input_path = Some(args[optind].clone());
+    } else {
+        // (no operand; run() reports "No input file given")
+        options.input_path = None;
+    }
+
+    Ok((common, options))
 }
 
 // ---------------------------------------------------------------------------
@@ -548,126 +722,23 @@ fn print_short_help() -> bool {
 // ---------------------------------------------------------------------------
 // [spec:hfst:def:hfst-optimized-lookup.main-fn]
 // [spec:hfst:sem:hfst-optimized-lookup.main-fn]
-pub fn run(args: Vec<String>) -> i32 {
-    unsafe { real_main(args) }
-}
+pub fn run(mut args: Vec<String>) -> i32 {
+    let argv0 = args.first().cloned().unwrap_or_default();
 
-unsafe fn real_main(mut args: Vec<String>) -> i32 {
-    unsafe {
-        loop {
-            let long_options: [getopt::GetOpt; 14] = [
-                // first the hfst-mandated options
-                opt("help", 0, b'h'),
-                opt("version", 0, b'V'),
-                opt("verbose", 0, b'v'),
-                opt("quiet", 0, b'q'),
-                opt("silent", 0, b's'),
-                // the hfst-optimized-lookup-specific options
-                opt("echo-inputs", 0, b'e'),
-                opt("show-weights", 0, b'w'),
-                opt("beam", 1, b'b'),
-                opt("time-cutoff", 1, b't'),
-                opt("unique", 0, b'u'),
-                opt("xerox", 0, b'x'),
-                opt("fast", 0, b'f'),
-                opt("pipe-mode", 2, b'p'),
-                opt("analyses", 1, b'n'),
-            ];
+    let common = hfst_set_program_name(&argv0, "1.2", "HfstOptimizedLookup");
+    let (_common, options) = match parse_options(common, &mut args) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
 
-            let c = getopt::getopt_long(&mut args, &long_options);
-
-            if c == -1 {
-                // no more options to look at
-                break;
-            }
-
-            match c as u8 {
-                b'h' => {
-                    print_usage();
-                    return 0;
-                }
-                b'V' => {
-                    print_version();
-                    return 0;
-                }
-                b'v' => {
-                    VERBOSE_FLAG = true;
-                }
-                b'q' | b's' => {
-                    VERBOSE_FLAG = false;
-                }
-                b'e' => {
-                    ECHO_INPUTS_FLAG = true;
-                }
-                b'w' => {
-                    DISPLAY_WEIGHTS_FLAG = true;
-                }
-                b'u' => {
-                    DISPLAY_UNIQUE_FLAG = true;
-                }
-                b'b' => {
-                    BEAM = parse_leading_f64(&getopt::optarg()) as f32;
-                    if BEAM < 0.0 {
-                        print_err("Invalid argument for --beam\n");
-                        return 1;
-                    }
-                }
-                b't' => {
-                    TIME_CUTOFF = parse_leading_f64(&getopt::optarg());
-                    if TIME_CUTOFF < 0.0 {
-                        print_err("Invalid argument for --time-cutoff\n");
-                        return 1;
-                    }
-                }
-                b'n' => {
-                    MAX_ANALYSES = parse_leading_i32(&getopt::optarg());
-                    if MAX_ANALYSES < 1 {
-                        print_err("Invalid or no argument for analyses count\n");
-                        return 1;
-                    }
-                }
-                b'x' => {
-                    OUTPUT_TYPE = Xerox;
-                }
-                b'f' => {
-                    BE_FAST = true;
-                }
-                b'p' => match getopt::optarg_opt() {
-                    None => {
-                        PIPE_INPUT = true;
-                        PIPE_OUTPUT = true;
-                    }
-                    Some(a) => {
-                        if a == "both" || a == "BOTH" {
-                            PIPE_INPUT = true;
-                            PIPE_OUTPUT = true;
-                        } else if a == "input" || a == "INPUT" || a == "in" || a == "IN" {
-                            PIPE_INPUT = true;
-                        } else if a == "output" || a == "OUTPUT" || a == "out" || a == "OUT" {
-                            PIPE_OUTPUT = true;
-                        } else {
-                            print_err(&format!("--pipe-mode argument {} unrecognised\n\n", a));
-                            return 1;
-                        }
-                    }
-                },
-                _ => {
-                    print_err("Invalid option\n\n");
-                    print_short_help();
-                    return 1;
-                }
-            }
+    // the single positional operand (the transducer path) was resolved in
+    // parse_options while the getopt state was live.
+    match &options.input_path {
+        Some(path) => {
+            let pathstr = path.clone();
+            setup(&options, &pathstr)
         }
-
-        // no more options, we should now be at the input filename
-        let optind = getopt::OPTIND;
-        if (optind + 1) < args.len() {
-            print_err("More than one input file given\n");
-            1
-        } else if (optind + 1) == args.len() {
-            let pathstr = args[optind].clone();
-            setup(&pathstr)
-        } else {
+        None => {
             print_err("No input file given\n");
             1
         }
@@ -675,7 +746,7 @@ unsafe fn real_main(mut args: Vec<String>) -> i32 {
 }
 
 // helpers -------------------------------------------------------------------
-fn opt(name: &'static str, has_arg: i32, val: u8) -> getopt::GetOpt {
+fn opt_def(name: &'static str, has_arg: i32, val: u8) -> getopt::GetOpt {
     getopt::GetOpt {
         name,
         has_arg,

@@ -1,14 +1,18 @@
-#![allow(static_mut_refs)]
 //! Faithful 1:1 port of tools/src/hfst-insert-freely.cc — the freely-insert
 //! a symbol (pair) command-line tool. Drives the hfst-cli foundation (globals,
 //! getopt, commandline, program-options, tool-metadata, inc fragments).
+//!
+//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
+//! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
+//! `parse_options` and threaded into the processing functions. There are no
+//! `static mut` globals and no `unsafe`.
 
-use crate::globals;
+use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    EXIT_CONTINUE, error, extend_options_from_env, hfst_set_program_name,
-    is_input_stream_in_ol_format, verbose_print,
+    error, extend_options_from_env, hfst_set_program_name, is_input_stream_in_ol_format,
+    verbose_print,
 };
-use crate::hfst_getopt as getopt;
+use crate::hfst_getopt::{self as getopt, Getopt};
 use crate::hfst_program_options::{
     hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
     print_common_unary_program_options, print_common_unary_program_parameter_instructions,
@@ -24,23 +28,26 @@ use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_symbol_defs::{internal_epsilon, label_to_stringpair};
 use std::io::Write;
 
-// add tools-specific variables here
-static mut LABEL: Option<String> = None;
-static mut HARMONISE_FLAGS: bool = false;
-static mut SYMBOL_PAIR: Option<StringPair> = None;
+/// hfst-insert-freely's own options (the former tool-specific `static mut`s).
+#[derive(Default)]
+struct Options {
+    label: Option<String>,
+    harmonise_flags: bool,
+    symbol_pair: Option<StringPair>,
+}
 
 // FMT: Copied from hfst-substitute.cc ... should probably go in a library function
 
 // [spec:hfst:def:hfst-insert-freely.print-usage-fn]
 // [spec:hfst:sem:hfst-insert-freely.print-usage-fn]
-fn print_usage() {
+fn print_usage(common: &CommonOptions) {
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
     // Usage line
-    let mut msg = globals::message_writer();
+    let mut msg = common.message_writer();
     let _ = write!(
         msg,
         "Usage: {} [OPTIONS...] [INFILE]\nFreely insert a symbol (pair)\n\n",
-        globals::program_name()
+        common.program_name
     );
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
@@ -59,190 +66,196 @@ fn print_usage() {
 
 // [spec:hfst:def:hfst-insert-freely.parse-options-fn]
 // [spec:hfst:sem:hfst-insert-freely.parse-options-fn]
-unsafe fn parse_options(args: &mut Vec<String>) -> i32 {
-    unsafe {
-        extend_options_from_env(args);
-        // use of this function requires options are settable on global scope
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "symbol-pair",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'a' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "harmonise",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'H' as i32,
-            });
-            let c = getopt::getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own, then the terminal
-            // error arm.
-            match handle_common_case(c, print_usage) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(c) {
-                CaseResult::Return(code) => return code,
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c as u8 {
-                b'a' => {
-                    // This will probably break for unicode
-                    let mut lbl = getopt::optarg();
-                    if lbl == "@0@" {
-                        lbl = internal_epsilon.to_string();
-                    }
-                    SYMBOL_PAIR = label_to_stringpair(&lbl);
-                    if lbl.is_empty() {
-                        error(
-                            1,
-                            0,
-                            &format!(
-                                "argument of source label option is empty;\nif you REALLY want to replace epsilons with something, use @0@ or {}",
-                                internal_epsilon
-                            ),
-                        );
-                    }
-                    LABEL = Some(lbl);
-                    continue;
-                }
-                b'H' => {
-                    HARMONISE_FLAGS = true;
-                    continue;
-                }
-                _ => {}
-            }
-            return handle_error_case(c);
+//
+// Parse argv into the shared + tool options; `Err(code)` is an exit code the
+// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
+fn parse_options(
+    mut common: CommonOptions,
+    args: &mut Vec<String>,
+) -> Result<(CommonOptions, Options), i32> {
+    let mut options = Options::default();
+    let mut opt = Getopt::new();
+    extend_options_from_env(args);
+    loop {
+        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
+        long_options.extend(hfst_getopt_common_long());
+        long_options.extend(hfst_getopt_unary_long());
+        // add tool-specific options here
+        long_options.push(getopt::GetOpt {
+            name: "symbol-pair",
+            has_arg: getopt::REQUIRED_ARGUMENT,
+            val: 'a' as i32,
+        });
+        long_options.push(getopt::GetOpt {
+            name: "harmonise",
+            has_arg: getopt::REQUIRED_ARGUMENT,
+            val: 'H' as i32,
+        });
+        let c = opt.getopt_long(args, &long_options);
+        if -1 == c {
+            break;
         }
 
-        check_common_params();
-        check_unary_params(args);
-        EXIT_CONTINUE
+        // The C switch chains the #include'd case groups in order: common
+        // cases, then unary cases, then the tool's own, then the terminal
+        // error arm.
+        match handle_common_case(&mut common, &opt, c, print_usage) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        match handle_unary_case(&mut common, &opt, c) {
+            CaseResult::Return(code) => return Err(code),
+            CaseResult::Break => continue,
+            CaseResult::NotHandled => {}
+        }
+        match c as u8 {
+            b'a' => {
+                // This will probably break for unicode
+                let mut lbl = opt.optarg();
+                if lbl == "@0@" {
+                    lbl = internal_epsilon.to_string();
+                }
+                options.symbol_pair = label_to_stringpair(&lbl);
+                if lbl.is_empty() {
+                    error(
+                        &common,
+                        1,
+                        0,
+                        &format!(
+                            "argument of source label option is empty;\nif you REALLY want to replace epsilons with something, use @0@ or {}",
+                            internal_epsilon
+                        ),
+                    );
+                }
+                options.label = Some(lbl);
+                continue;
+            }
+            b'H' => {
+                options.harmonise_flags = true;
+                continue;
+            }
+            _ => {}
+        }
+        return Err(handle_error_case(&common, &opt, c));
     }
+
+    check_common_params(&mut common);
+    check_unary_params(&mut common, &opt, args);
+    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-insert-freely.process-stream-fn]
 // [spec:hfst:sem:hfst-insert-freely.process-stream-fn]
-unsafe fn process_stream(instream: &mut HfstInputStream, outstream: &mut HfstOutputStream) -> i32 {
-    unsafe {
-        let mut transducer_n: usize = 0;
-        while instream.is_good() {
-            transducer_n += 1;
-            let any = match instream.read() {
-                Ok(v) => v,
-                Err(e) => {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
-            crate::for_algebra!(any, trans => {
-                let mut trans = trans;
-                let _inputname = hfst_get_name(&trans, &globals::input_filename());
-                if transducer_n == 1 {
-                    // If harmonize is true, then identity and unknown symbols in the
-                    // transducer will be expanded by the symbols in symbol pair.
-                    // Otherwise they aren't.
-                    let pair = SYMBOL_PAIR.as_ref().expect("symbol pair must be set");
-                    if let Err(e) = trans.insert_freely_pair(pair, HARMONISE_FLAGS) {
-                        error(1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                    // C: hfst_set_name(trans, trans, "insert-freely") and
-                    // hfst_set_formula(trans, trans, "Id"); dest and src are the
-                    // same object, so the read side is taken from a copy.
-                    let src = trans.clone();
-                    hfst_set_name_unary(&mut trans, &src, "insert-freely");
-                    hfst_set_formula_unary(&mut trans, &src, "Id");
-                }
-                if let Err(e) = outstream.redirect(&mut trans) {
-                    error(1, 0, &format!("{e}"));
-                    return 1;
-                }
-            }, else => {
-                // Unreachable: the optimized-lookup stream rejection already
-                // returned before the loop; keep its text for safety.
-                let _ = write!(
-                    std::io::stderr(),
-                    "Error: hfst-insert-freely cannot process transducers that are in optimized lookup format.\n"
-                );
+fn process_stream(
+    common: &CommonOptions,
+    options: &Options,
+    instream: &mut HfstInputStream,
+    outstream: &mut HfstOutputStream,
+) -> i32 {
+    let mut transducer_n: usize = 0;
+    while instream.is_good() {
+        transducer_n += 1;
+        let any = match instream.read() {
+            Ok(v) => v,
+            Err(e) => {
+                error(common, 1, 0, &format!("{e}"));
                 return 1;
-            });
-        }
-        instream.close();
-        outstream.close();
-        0
+            }
+        };
+        // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
+        crate::for_algebra!(any, trans => {
+            let mut trans = trans;
+            let _inputname = hfst_get_name(&trans, &common.input_filename);
+            if transducer_n == 1 {
+                // If harmonize is true, then identity and unknown symbols in the
+                // transducer will be expanded by the symbols in symbol pair.
+                // Otherwise they aren't.
+                let pair = options.symbol_pair.as_ref().expect("symbol pair must be set");
+                if let Err(e) = trans.insert_freely_pair(pair, options.harmonise_flags) {
+                    error(common, 1, 0, &format!("{e}"));
+                    return 1;
+                }
+                // C: hfst_set_name(trans, trans, "insert-freely") and
+                // hfst_set_formula(trans, trans, "Id"); dest and src are the
+                // same object, so the read side is taken from a copy.
+                let src = trans.clone();
+                hfst_set_name_unary(&mut trans, &src, "insert-freely");
+                hfst_set_formula_unary(&mut trans, &src, "Id");
+            }
+            if let Err(e) = outstream.redirect(&mut trans) {
+                error(common, 1, 0, &format!("{e}"));
+                return 1;
+            }
+        }, else => {
+            // Unreachable: the optimized-lookup stream rejection already
+            // returned before the loop; keep its text for safety.
+            let _ = write!(
+                std::io::stderr(),
+                "Error: hfst-insert-freely cannot process transducers that are in optimized lookup format.\n"
+            );
+            return 1;
+        });
     }
+    instream.close();
+    outstream.close();
+    0
 }
 
 // [spec:hfst:def:hfst-insert-freely.main-fn]
 // [spec:hfst:sem:hfst-insert-freely.main-fn]
-pub fn run(args: Vec<String>) -> i32 {
-    unsafe { real_main(args) }
-}
+pub fn run(mut args: Vec<String>) -> i32 {
+    let argv0 = args.first().cloned().unwrap_or_default();
 
-unsafe fn real_main(mut args: Vec<String>) -> i32 {
-    unsafe {
-        let argv0 = args.first().cloned().unwrap_or_default();
+    let common = hfst_set_program_name(&argv0, "0.1", "HfstPush");
+    let (common, options) = match parse_options(common, &mut args) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
 
-        hfst_set_program_name(&argv0, "0.1", "HfstPush");
-        let retval = parse_options(&mut args);
-        if retval != EXIT_CONTINUE {
-            return retval;
-        }
-        // close buffers, we use streams
-        let input_opened = globals::input_filename() != "<stdin>";
-        let output_opened = globals::output_filename() != "<stdout>";
-        verbose_print(&format!(
+    // close buffers, we use streams
+    let input_opened = common.input_filename != "<stdin>";
+    let output_opened = common.output_filename != "<stdout>";
+    verbose_print(
+        &common,
+        &format!(
             "Reading from {}, writing to {}\n",
-            globals::input_filename(),
-            globals::output_filename()
-        ));
+            common.input_filename, common.output_filename
+        ),
+    );
 
-        // here starts the buffer handling part
-        let mut instream = match if input_opened {
-            HfstInputStream::new_filename(&globals::input_filename())
-        } else {
-            HfstInputStream::new()
-        } {
-            Ok(v) => v,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-        // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
-        // currently panics on a bad file rather than throwing, so the catch arm
-        // is not reproduced here.)
-
-        let ty = instream.get_type();
-        let mut outstream = match if output_opened {
-            HfstOutputStream::new_filename(&globals::output_filename(), ty, true)
-        } else {
-            HfstOutputStream::new(ty, true)
-        } {
-            Ok(v) => v,
-            Err(e) => {
-                error(1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-
-        if is_input_stream_in_ol_format(&instream, "hfst-insert-freely") {
+    // here starts the buffer handling part
+    let mut instream = match if input_opened {
+        HfstInputStream::new_filename(&common.input_filename)
+    } else {
+        HfstInputStream::new()
+    } {
+        Ok(v) => v,
+        Err(e) => {
+            error(&common, 1, 0, &format!("{e}"));
             return 1;
         }
+    };
+    // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
+    // currently panics on a bad file rather than throwing, so the catch arm
+    // is not reproduced here.)
 
-        process_stream(&mut instream, &mut outstream)
+    let ty = instream.get_type();
+    let mut outstream = match if output_opened {
+        HfstOutputStream::new_filename(&common.output_filename, ty, true)
+    } else {
+        HfstOutputStream::new(ty, true)
+    } {
+        Ok(v) => v,
+        Err(e) => {
+            error(&common, 1, 0, &format!("{e}"));
+            return 1;
+        }
+    };
+
+    if is_input_stream_in_ol_format(&instream, "hfst-insert-freely") {
+        return 1;
     }
+
+    process_stream(&common, &options, &mut instream, &mut outstream)
 }

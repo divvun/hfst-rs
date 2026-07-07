@@ -12,3 +12,6 @@ nfst-lexc = { workspace = true }
 nfst-pmatch = { workspace = true }
 nfst-twolc = { workspace = true }
 nfst-xfst = { workspace = true }
+
+[lints]
+workspace = true
