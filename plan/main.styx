@@ -493,6 +493,14 @@ children (
                         kind @status
                         text "Doing → Done (nplan_complete)"
                     }
+
+                    {
+                        at 2026-07-07T11:14:45.438578Z
+                        author "brendan@necessary.nu"
+                        kind @errata
+                        text "MISMARKED DONE: the \"residual plain static mut -> safe\" clause was never completed. As of 2026-07 hfst-cli still had 346 `static mut` + ~572 `unsafe` (the C-port option/getopt globals). The libc-removal half (idiom2.io/cstr/drop-libc) WAS done; the de-globalization half was not. Surfaced by adding `[workspace.lints.rust] unsafe_code = \"forbid\"` — the build correctly failed on hfst-cli. Remediation in progress: NOT safety-wrapping the globals (atomics/Mutex is a hack per operator) but de-globalizing idiomatically — parse options into a `CommonOptions` struct (globals.rs) + a `Getopt` parser struct (hfst_getopt.rs), threaded through the shared handlers (inc.rs) + commandline helpers (hfst_commandline.rs), and each tool builds+threads a local `Options`. Foundation + the `minimize` template converted + verified clean under forbid(unsafe_code); remaining 60 tool files + binary_ops.rs being converted per the minimize template."
+                        after_done true
+                    }
                 )
             }
 

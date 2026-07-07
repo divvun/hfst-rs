@@ -2490,10 +2490,7 @@ mod lookup_extract_misc {
             None => return true, // C++: start_state < 0
             Some(s) => s,
         };
-        for _arc in t.get_trs(start_state).unwrap().trs() {
-            return false;
-        }
-        true
+        t.get_trs(start_state).unwrap().trs().is_empty()
     }
 
     // Tiny op-local xorshift PRNG replacing the C 'rand()'/'srand()' that the
@@ -2568,8 +2565,10 @@ mod lookup_extract_misc {
                 return Ok(path);
             }
 
-            /* Go through all transitions in a random order. */
-            while !t_transitions.is_empty() {
+            /* Pick one transition at random and proceed to its target; the
+             * outer loop has already returned when there are none, so this
+             * runs exactly once per state (it was a `while ... break` before). */
+            if !t_transitions.is_empty() {
                 let index = (rng.next() as usize) % t_transitions.len();
                 let arc = t_transitions[index].clone();
                 t_transitions.remove(index);
@@ -2622,7 +2621,6 @@ mod lookup_extract_misc {
 
                 /* Proceed to the target state. */
                 current_state = t_target;
-                break;
             }
         }
     }

@@ -640,7 +640,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                         "transducer is in optimized lookup format, 'apply up' is the only operation it supports"
                     );
                 }
-            } else if self.verbose {
+            } else {
+                // C++ hfst-xfst THROWS TransducerTypeMismatchException for a
+                // cross-backend read ("loading automata in different formats
+                // (OpenFst, foma) is not supported in XFST scripts"); we are
+                // more permissive and convert through the basic transducer.
+                // That is not a problem, but the conversion should never be
+                // silent: log it unconditionally at info level (the tracing
+                // level filter, not xfst's own -v flag, decides visibility).
                 let mut line = format!(
                     "converting transducer type from {} to {}",
                     crate::hfst_data_types::implementation_type_to_format(t_type),
@@ -655,7 +662,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 if !crate::hfst_transducer::is_safe_conversion(t_type, B::TYPE) {
                     line.push_str(" (loss of information is possible)");
                 }
-                warn!("{}", line);
+                info!("{}", line);
             }
         }
         // The typed extraction ([dec:hfst:monomorphic-backends]): the matching

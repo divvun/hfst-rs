@@ -1600,7 +1600,6 @@ fn unescape_enclosing_angle_brackets<B: AlgebraBackend>(
 // [spec:hfst:sem:xre-utils.hfst.xre.get-weight-fn]
 // xre_utils.cc:610. Parses a trailing weight, skipping leading ' '/'\t'/';'.
 fn get_weight(s: &str) -> f64 {
-    let mut rv: f64 = -3.1415;
     let b = s.as_bytes();
     let mut weightstart: usize = 0;
     while weightstart < b.len()
@@ -1611,8 +1610,7 @@ fn get_weight(s: &str) -> f64 {
     }
     let (val, endp) = parse_float_prefix(b, weightstart);
     assert!(endp != weightstart);
-    rv = val;
-    rv
+    val
 }
 
 // [spec:hfst:def:xre-utils.should-colourise-fn]
@@ -2486,6 +2484,26 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(path)?;
                 let any = instream.read()?;
                 instream.close();
+                let src_type = any.get_type();
+                if src_type != B::TYPE {
+                    // C++ hfst-xfst THROWS TransducerTypeMismatchException for a
+                    // cross-backend `read regex @"file"` ("loading automata in
+                    // different formats (OpenFst, foma) is not supported in XFST
+                    // scripts"); we are more permissive and convert through the
+                    // basic transducer. That is not a problem, but the
+                    // conversion should never be silent: log it at info level
+                    // (the tracing level filter decides visibility).
+                    let mut line = format!(
+                        "converting transducer type from {} to {} when reading from file '{}'",
+                        crate::hfst_data_types::implementation_type_to_format(src_type),
+                        crate::hfst_data_types::implementation_type_to_format(B::TYPE),
+                        path
+                    );
+                    if !crate::hfst_transducer::is_safe_conversion(src_type, B::TYPE) {
+                        line.push_str(" (loss of information is possible)");
+                    }
+                    tracing::info!("{}", line);
+                }
                 let net = any.to_basic()?;
                 let mut retval: HfstTransducer<B> = HfstTransducer::new_from_basic(&net)?;
                 retval.name = any.get_name();
