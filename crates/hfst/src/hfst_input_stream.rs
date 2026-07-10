@@ -48,6 +48,7 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
+use std::path::Path;
 
 use hfst_openfst::StdVectorFst;
 
@@ -247,6 +248,15 @@ pub struct HfstInputStream<'a> {
     /// type is still being established (reads behave like the raw 'input_stream'),
     /// 'false' once 'read_transducer' has taken over.
     input_stream_active: bool,
+    /// The single transducer preloaded from a `.thfst` directory (ty ==
+    /// THFST_TYPE). THFST has no byte-stream encoding — a directory holds
+    /// exactly one transducer, loaded eagerly in 'new_filename' via 'read_dir'
+    /// — so the byte-probing path is skipped entirely and the stream state is
+    /// driven by this slot: 'read()' takes it (the first read yields it, the
+    /// second yields EndOfStream), 'is_eof' <=> it is 'None', 'is_good' <=> it
+    /// is 'Some'. 'None' for every byte-stream source.
+    // [spec:hfst:def:thfst-backend.stream-io]
+    preloaded: Option<AnyTransducer>,
 }
 
 // ===== input_impl (workflow body) =====
@@ -407,6 +417,18 @@ mod input_impl {
         // whole-buffer 'load'), so for that type we read the payload directly
         // off the owned reader and rebuild the fst here.
         pub fn read(&mut self) -> crate::error::Result<AnyTransducer> {
+            // THFST is a preloaded directory load, not a byte stream: the first
+            // read yields the single preloaded transducer, the second (and
+            // every later) read yields EndOfStream — the same error a byte
+            // stream raises at its end, so `while is_good() { read() }` loops
+            // exit cleanly after exactly one transducer
+            // [spec:hfst:sem:thfst-backend.stream-io].
+            if self.ty == ImplementationType::THFST_TYPE {
+                return self
+                    .preloaded
+                    .take()
+                    .ok_or_else(|| crate::error::Error::new(crate::error::ErrorKind::EndOfStream));
+            }
             if self.ty != ImplementationType::XFSM_TYPE {
                 if self.input_stream_active {
                     // first transducer in the stream
@@ -547,11 +569,13 @@ mod input_impl {
                 }
                 ImplementationType::THFST_TYPE => {
                     // Unreachable: THFST has no byte-stream encoding and is never
-                    // produced by byte probing (only via the .thfst-directory path
-                    // of new_filename, a later stage)
+                    // produced by byte probing. A THFST stream is served from the
+                    // preloaded directory load in the early-return above (this
+                    // byte-dispatch match is reached only for byte-probed types),
+                    // so control never falls through to this arm
                     // [spec:hfst:sem:thfst-backend.directory-format].
                     unreachable!(
-                        "THFST is constructed only via the .thfst-directory path of new_filename (later stage), never by byte probing"
+                        "THFST is served from the preloaded directory load at the top of read(); never reached via byte probing"
                     )
                 }
                 // case ERROR_TYPE: default:
@@ -1018,6 +1042,7 @@ mod input_impl {
                 hfst_version_2_weighted_transducer: false,
                 reader: Box::new(PushbackReader::new(inner)),
                 input_stream_active: true,
+                preloaded: None,
             };
 
             // A fresh stream sets its eofbit only once a read runs past the end
@@ -1099,6 +1124,15 @@ mod input_impl {
             // route those to stdin rather than opening a file literally named
             // "<stdin>".
             if !filename.is_empty() && filename != "<stdin>" {
+                // A THFST transducer on disk is a DIRECTORY, not a byte stream:
+                // special-case it BEFORE opening as a file, load it eagerly via
+                // `read_dir`, and skip ALL byte probing (THFST has no HFST3
+                // header and never appears in byte-sniffing detection)
+                // [spec:hfst:sem:thfst-backend.stream-io].
+                let path = Path::new(filename);
+                if path.is_dir() {
+                    return Self::new_thfst_dir(path, filename);
+                }
                 let f = match File::open(filename) {
                     Ok(f) => f,
                     Err(_) => {
@@ -1109,6 +1143,46 @@ mod input_impl {
             } else {
                 Self::new_with_reader(Box::new(std::io::stdin()), String::new())
             }
+        }
+
+        /// Load a `.thfst` directory into a preloaded stream (ty == THFST_TYPE).
+        /// Requires the three member files (`alphabet`, `index`, `transition`);
+        /// a directory missing any of them is 'NotTransducerStream'. No byte
+        /// probing runs — the reader is an empty source and 'has_hfst_header'
+        /// stays false; the stream state is driven by the preloaded slot.
+        // [spec:hfst:def:thfst-backend.stream-io]
+        // [spec:hfst:sem:thfst-backend.stream-io]
+        fn new_thfst_dir(dir: &Path, filename: &str) -> crate::error::Result<Self> {
+            let has_all = ["alphabet", "index", "transition"]
+                .iter()
+                .all(|m| dir.join(m).is_file());
+            if !has_all {
+                crate::bail!(
+                    NotTransducerStream,
+                    format!(
+                        "'{filename}' is a directory but is not a .thfst transducer: \
+                         it must contain the files 'alphabet', 'index' and 'transition'"
+                    )
+                );
+            }
+            let t = crate::backend_thfst::ThfstTransducer::read_dir(dir)?;
+            Ok(HfstInputStream {
+                implementation: StreamImplementation::default(),
+                ty: ImplementationType::THFST_TYPE,
+                name: String::new(),
+                props: BTreeMap::new(),
+                bytes_to_skip: 0,
+                filename: filename.to_string(),
+                has_hfst_header: false,
+                hfst_version_2_weighted_transducer: false,
+                // No bytes are read for a preloaded THFST directory; back the
+                // reader with an empty source so the `stream_*` primitives (and
+                // the byte-path `is_eof`/`is_good`, which are never taken for
+                // THFST_TYPE) have a valid reader.
+                reader: Box::new(PushbackReader::new(Box::new(std::io::empty()))),
+                input_stream_active: false,
+                preloaded: Some(AnyTransducer::Thfst(HfstTransducer::wrap(t))),
+            })
         }
 
         // HfstInputStream(std::istream &is)
@@ -1136,6 +1210,12 @@ mod input_impl {
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.is-eof-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.is-eof-fn]
         pub fn is_eof(&mut self) -> bool {
+            // THFST is a preloaded directory load, not a byte stream: eof once
+            // the single preloaded transducer has been taken
+            // [spec:hfst:sem:thfst-backend.stream-io].
+            if self.ty == ImplementationType::THFST_TYPE {
+                return self.preloaded.is_none();
+            }
             // C++ dispatches to the active backend's 'is_eof', which peeks the
             // shared stream ('peek() == EOF'). The owned reader IS that stream.
             let c = self.pbr().get();
@@ -1151,6 +1231,12 @@ mod input_impl {
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.is-bad-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.is-bad-fn]
         pub fn is_bad(&mut self) -> bool {
+            // THFST directory loads never enter a "bad" byte-stream state: the
+            // preloaded slot either holds the transducer or has been consumed
+            // [spec:hfst:sem:thfst-backend.stream-io].
+            if self.ty == ImplementationType::THFST_TYPE {
+                return false;
+            }
             // C++ backend 'is_bad' ~ '!stream.good()'.
             self.pbr().fail
         }
@@ -1160,6 +1246,13 @@ mod input_impl {
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.is-good-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.is-good-fn]
         pub fn is_good(&mut self) -> bool {
+            // THFST is a preloaded directory load: good while the single
+            // preloaded transducer is still available, not-good once taken —
+            // so `while is_good() { read() }` yields exactly one transducer then
+            // exits [spec:hfst:sem:thfst-backend.stream-io].
+            if self.ty == ImplementationType::THFST_TYPE {
+                return self.preloaded.is_some();
+            }
             // C++ backend 'is_good': false at eof, else 'stream.good()'.
             if self.is_eof() {
                 return false;

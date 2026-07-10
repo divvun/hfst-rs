@@ -110,6 +110,21 @@ pub trait Backend: Sized {
     /// HFST framing is written).
     fn write(&self, os: &mut dyn std::io::Write, hfst_format: bool) -> crate::error::Result<()>;
 
+    /// Serialize this backend's payload to a directory container — the
+    /// directory-format counterpart of 'write' used by the '.thfst' sink of
+    /// 'HfstOutputStream'. Every byte-stream backend has no directory encoding,
+    /// so the default errors; the THFST backend overrides it to delegate to its
+    /// 'write_dir' serializer. This is how the generic
+    /// 'HfstOutputStream::write<B: Backend>' reaches the directory writer
+    /// without a runtime downcast.
+    // [spec:hfst:def:thfst-backend.stream-io]
+    fn write_to_dir(&self, _dir: &std::path::Path) -> crate::error::Result<()> {
+        crate::bail!(
+            StreamCannotBeWritten,
+            "this backend has no directory serialization"
+        )
+    }
+
     /// 'extract_paths' dispatch arm (no flag-diacritic filtering).
     fn extract_paths_cb(&self, callback: &mut dyn ExtractStringsCb, cycles: i32);
 

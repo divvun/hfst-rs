@@ -82,16 +82,18 @@ fn print_usage(common: &CommonOptions) {
          \u{20}\u{20}-t, --openfst-tropical            Write output in (HFST's) tropical weight (OpenFST) implementation\n\
          \u{20}\u{20}-O, --optimized-lookup-unweighted Write output in the HFST optimized-lookup implementation\n\
          \u{20}\u{20}-w, --optimized-lookup-weighted   Write output in optimized-lookup (weighted) implementation\n\
-         \u{20}\u{20}-Q  --quick                       When converting to optimized-lookup, don't try hard to compress\n"
+         \u{20}\u{20}-Q  --quick                       When converting to optimized-lookup, don't try hard to compress\n\
+         \u{20}\u{20}    --format=thfst                Write output as a divvunspell .thfst directory (use -f thfst -o OUT.thfst)\n"
     );
     let _ = write!(msg, "\n");
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(
         msg,
         "FMT must be name of a format usable by libhfst, i.e. one of the following:\n\
-         {{ foma, openfst-tropical, sfst, xfsm\n\
+         {{ foma, openfst-tropical, sfst, xfsm, thfst\n\
          \u{20}\u{20}optimized-lookup-weighted, optimized-lookup-unweighted }}.\n\
-         Note that xfsm format is always written in native format without HFST wrappers.\n"
+         Note that xfsm format is always written in native format without HFST wrappers,\n\
+         and thfst is a directory format written without HFST wrappers (use -o OUT.thfst).\n"
     );
     let _ = write!(msg, "\n");
 }
@@ -374,6 +376,21 @@ pub fn run(mut args: Vec<String>) -> i32 {
                 0,
                 "Writing to standard output not supported for xfsm transducers,\n\
                  use 'hfst-fst2fst [--output|-o] OUTFILE' instead",
+            );
+            return 1;
+        }
+    }
+
+    // THFST is a directory format with no byte-stream encoding, so it can never
+    // be written to standard output [spec:hfst:sem:thfst-backend.stream-io].
+    if options.output_type == ImplementationType::THFST_TYPE {
+        if common.output_filename == "<stdout>" {
+            error(
+                &common,
+                1,
+                0,
+                "Writing to standard output not supported for thfst transducers,\n\
+                 use 'hfst-fst2fst [--output|-o] OUT.thfst' instead",
             );
             return 1;
         }

@@ -514,3 +514,165 @@ fn thfst_reader_rejects() {
     let _ = std::fs::remove_dir_all(dir_a.parent().expect("parent"));
     let _ = std::fs::remove_dir_all(dir_b.parent().expect("parent"));
 }
+
+// -----------------------------------------------------------------------------
+// thfst.streams — HfstInputStream / HfstOutputStream directory-format arms.
+// -----------------------------------------------------------------------------
+
+use hfst::hfst_input_stream::HfstInputStream;
+use hfst::hfst_output_stream::HfstOutputStream;
+
+/// A THFST facade over the animals source (via the shared basic-transducer ->
+/// weighted-OL path), for the output-stream tests that need a
+/// `HfstTransducer<ThfstTransducer>` to `write`.
+fn animals_thfst_facade() -> HfstTransducer<ThfstTransducer> {
+    let animals = build_animals().expect("build animals");
+    let basic = animals.get_basic_transducer().expect("basic");
+    HfstTransducer::<ThfstTransducer>::new_from_basic(&basic).expect("thfst facade")
+}
+
+// [spec:hfst:sem:thfst-backend.stream-io/test]
+#[test]
+fn thfst_stream_roundtrip() {
+    let _guard = serialized();
+    let (_thfst, mut olw) = animals_thfst();
+
+    // Reference lookups BEFORE writing to disk (via the OLW facade of the same
+    // source).
+    let tok = HfstTokenizer::new();
+    let words = ["cat", "dog", "mouse", "hippopotamus"];
+    let mut refs = Vec::new();
+    for word in words {
+        let sv = tok_one_level(&tok, word);
+        refs.push(as_pairs(
+            &olw.lookup_string_vector(&sv, -1, 0.0).expect("olw ref"),
+        ));
+    }
+
+    // Write through the OUTPUT STREAM: new_filename with hfst_format=true, which
+    // the THFST arm must SILENTLY FORCE OFF (a directory format has no HFST3
+    // header). The directory is created on the first write.
+    let dir = unique_tmp("stream-roundtrip").join("animals.thfst");
+    let dir_str = dir.to_str().expect("utf8 dir");
+    let mut out = HfstOutputStream::new_filename(dir_str, THFST_TYPE, true)
+        .expect("thfst output stream (hfst_format forced off)");
+    assert_eq!(out.get_type(), THFST_TYPE);
+    {
+        let mut facade = animals_thfst_facade();
+        out.write(&mut facade).expect("write thfst to directory");
+    }
+    out.close();
+
+    // The three member files exist on disk.
+    for member in ["alphabet", "index", "transition"] {
+        assert!(
+            dir.join(member).is_file(),
+            "member {member:?} written to the .thfst directory"
+        );
+    }
+
+    // Read back through the INPUT STREAM: new_filename on the directory path.
+    let mut input = HfstInputStream::new_filename(dir_str).expect("thfst input stream");
+    assert_eq!(input.get_type(), THFST_TYPE);
+    assert!(input.is_good(), "stream is good before the first read");
+    assert!(!input.is_eof(), "stream is not eof before the first read");
+
+    let any = input.read().expect("read the preloaded thfst");
+    assert_eq!(any.get_type(), THFST_TYPE, "read yields a THFST transducer");
+
+    // After the single read the stream is exhausted: not good, at eof, not bad.
+    assert!(!input.is_good(), "stream is not good after the read");
+    assert!(input.is_eof(), "stream is at eof after the read");
+    assert!(!input.is_bad(), "stream is not bad after the read");
+
+    // A second read errors exactly the way byte streams end: EndOfStream.
+    let err = input.read().err().expect("second read errors");
+    assert_eq!(
+        err.kind,
+        hfst::error::ErrorKind::EndOfStream,
+        "second read yields EndOfStream, matching byte-stream end"
+    );
+
+    // Lookup parity on the re-read engine: convert the read AnyTransducer back
+    // to a THFST facade, then O(1)-move to the weighted OL engine to look up
+    // each word (the THFST facade delegates lookup through the OLW engine).
+    let mut reread = any
+        .into_typed::<ThfstTransducer>()
+        .expect("into thfst")
+        .into_olw();
+    for (word, want) in words.iter().zip(refs.iter()) {
+        let sv = tok_one_level(&tok, word);
+        let got = as_pairs(&reread.lookup_string_vector(&sv, -1, 0.0).expect("lookup"));
+        assert_eq!(
+            *want, got,
+            "re-read THFST lookup of {word:?} matches pre-write"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(dir.parent().expect("parent"));
+}
+
+// [spec:hfst:sem:thfst-backend.stream-io/test]
+#[test]
+fn thfst_stream_single() {
+    let _guard = serialized();
+
+    let dir = unique_tmp("stream-single").join("animals.thfst");
+    let dir_str = dir.to_str().expect("utf8 dir");
+    let mut out =
+        HfstOutputStream::new_filename(dir_str, THFST_TYPE, false).expect("thfst output stream");
+
+    // First write succeeds.
+    {
+        let mut facade = animals_thfst_facade();
+        out.write(&mut facade).expect("first write succeeds");
+    }
+    // A .thfst directory holds exactly one transducer: the second write errors.
+    let mut facade2 =
+        HfstTransducer::<ThfstTransducer>::new_from_basic(&build_ab_weighted()).expect("thfst2");
+    let err = out
+        .write(&mut facade2)
+        .err()
+        .expect("second write into the same .thfst directory errors");
+    assert_eq!(
+        err.kind,
+        hfst::error::ErrorKind::StreamCannotBeWritten,
+        "second write -> StreamCannotBeWritten"
+    );
+    out.close();
+
+    let _ = std::fs::remove_dir_all(dir.parent().expect("parent"));
+}
+
+// [spec:hfst:sem:thfst-backend.stream-io/test]
+#[test]
+fn thfst_stream_errors() {
+    let _guard = serialized();
+
+    // (a) new (stdout) with THFST_TYPE errors: a directory format cannot be
+    // streamed to standard output.
+    let stdout_err = HfstOutputStream::new(THFST_TYPE, false)
+        .err()
+        .expect("thfst on stdout errors");
+    assert_eq!(
+        stdout_err.kind,
+        hfst::error::ErrorKind::StreamCannotBeWritten,
+        "thfst stdout -> StreamCannotBeWritten"
+    );
+
+    // (b) new_filename on a directory missing the THFST members is
+    // NotTransducerStream.
+    let dir = unique_tmp("stream-missing").join("empty.thfst");
+    std::fs::create_dir_all(&dir).expect("create empty dir");
+    let dir_str = dir.to_str().expect("utf8 dir");
+    let read_err = HfstInputStream::new_filename(dir_str)
+        .err()
+        .expect("directory missing members errors");
+    assert_eq!(
+        read_err.kind,
+        hfst::error::ErrorKind::NotTransducerStream,
+        "directory missing members -> NotTransducerStream"
+    );
+
+    let _ = std::fs::remove_dir_all(dir.parent().expect("parent"));
+}

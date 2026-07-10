@@ -82,6 +82,16 @@ impl Backend for ThfstTransducer {
         )
     }
 
+    /// The directory-format serialization hook — overrides the erroring
+    /// default so the generic `HfstOutputStream::write<B: Backend>` reaches the
+    /// `.thfst` directory writer without a runtime downcast. Delegates to the
+    /// inherent `write_dir`.
+    // [spec:hfst:def:thfst-backend.stream-io]
+    // [spec:hfst:sem:thfst-backend.stream-io]
+    fn write_to_dir(&self, dir: &std::path::Path) -> crate::error::Result<()> {
+        self.write_dir(dir)
+    }
+
     // Every remaining method delegates to the inner `Transducer<WeightedTables>`
     // `Backend` impl body-for-body via fully-qualified trait calls (the inner
     // engine also carries inherent methods of the same names that would

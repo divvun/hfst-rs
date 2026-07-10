@@ -2411,6 +2411,21 @@ children (
                 id thfst.streams
                 title "Stream integration: HfstInputStream::new_filename .thfst-dir detection -> preloaded single-read slot (EndOfStream on second read); HfstOutputStream dir sink (hfst_format forced off, one-transducer-per-dir, stdout rejected); fst2fst -f thfst usage + stdout guard (XFSM precedent)"
                 deps (thfst.io)
+                log (
+                    {
+                        at 2026-07-10T16:52:11.744195Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-10T17:17:35.633124Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

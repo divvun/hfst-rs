@@ -20,6 +20,25 @@ use crate::backend::Backend;
 use crate::hfst_data_types::ImplementationType;
 use crate::hfst_transducer::HfstTransducer;
 
+/// The stream's sink. Almost every backend serializes to a byte stream (a
+/// file or stdout); THFST is a directory format with no byte encoding, so its
+/// sink is a target directory written once via 'Backend::write_to_dir'
+/// [spec:hfst:sem:thfst-backend.stream-io].
+// [spec:hfst:def:hfst-output-stream.hfst.hfst-output-stream.stream-implementation]
+enum OutSink {
+    /// The single owned byte sink — the collapse of the C++ per-backend
+    /// output-stream union ('StreamImplementation'), whose members each owned
+    /// an equivalent writer.
+    Bytes(Box<dyn std::io::Write>),
+    /// A '.thfst' directory sink. The directory is created and populated on the
+    /// first 'write' (deferred until then); 'written' guards the one-transducer
+    /// invariant — a second 'write' errors.
+    ThfstDir {
+        dir: std::path::PathBuf,
+        written: bool,
+    },
+}
+
 /// A stream for writing binary transducers.
 // [spec:hfst:def:hfst-output-stream.hfst.hfst-output-stream]
 pub struct HfstOutputStream {
@@ -28,11 +47,9 @@ pub struct HfstOutputStream {
     ty: ImplementationType,
     /// Whether an hfst header is written before every transducer.
     hfst_format: bool,
-    /// The single owned byte sink — the collapse of the C++ per-backend
-    /// output-stream union ('StreamImplementation'), whose members each owned
-    /// an equivalent writer.
-    // [spec:hfst:def:hfst-output-stream.hfst.hfst-output-stream.stream-implementation]
-    out: Box<dyn std::io::Write>,
+    /// The owned sink: a byte stream for every byte-format backend, or a
+    /// '.thfst' directory for THFST.
+    out: OutSink,
     /// If file is open.
     is_open: bool,
 }
@@ -82,7 +99,7 @@ impl HfstOutputStream {
             // Raw Stdout is line-buffered: each write takes the lock and scans
             // for newlines, which dominates when streaming big binaries. The
             // C++ FILE* was fully buffered; BufWriter restores that.
-            out: Box::new(std::io::BufWriter::new(std::io::stdout())),
+            out: OutSink::Bytes(Box::new(std::io::BufWriter::new(std::io::stdout()))),
             is_open: true,
         })
     }
@@ -124,13 +141,20 @@ impl HfstOutputStream {
             | ImplementationType::HFST_OL_TYPE
             | ImplementationType::HFST_OLW_TYPE => {}
             ImplementationType::THFST_TYPE => {
-                // TODO(thfst.streams): directory sink — the streams stage replaces
-                // this arm with a .thfst directory sink that forces hfst_format off
-                // (the XFSM native-only precedent) [spec:hfst:sem:thfst-backend.stream-io].
-                crate::bail!(
-                    StreamCannotBeWritten,
-                    "thfst is a directory format; cannot write to a byte stream (directory sink not yet implemented)"
-                );
+                // THFST binds a DIRECTORY sink, not a byte sink, and forces
+                // hfst_format off — there is no HFST3 wrapper header at all (the
+                // XFSM native-only precedent). The directory is NOT created here;
+                // it is created and populated on the first `write`
+                // [spec:hfst:sem:thfst-backend.stream-io].
+                return Ok(HfstOutputStream {
+                    ty,
+                    hfst_format: false,
+                    out: OutSink::ThfstDir {
+                        dir: std::path::PathBuf::from(filename),
+                        written: false,
+                    },
+                    is_open: true,
+                });
             }
             ImplementationType::HFST2_TYPE
             | ImplementationType::UNSPECIFIED_TYPE
@@ -148,7 +172,7 @@ impl HfstOutputStream {
             ty,
             hfst_format,
             // Unbuffered File = one syscall per write; the C++ FILE* buffered.
-            out: Box::new(std::io::BufWriter::new(file)),
+            out: OutSink::Bytes(Box::new(std::io::BufWriter::new(file))),
             is_open: true,
         })
     }
@@ -182,9 +206,18 @@ impl HfstOutputStream {
     // [spec:hfst:sem:hfst-output-stream.hfst.hfst-output-stream.write-fn]
     fn write_char(&mut self, c: char) {
         // The C++ dispatched this byte write to the active backend stream;
-        // every in-scope backend just wrote to its owned writer.
-        if self.out.write_all(&[c as u8]).is_err() {
-            tracing::error!("HfstOutputStream: could not write a byte");
+        // every in-scope backend just wrote to its owned writer. Only ever
+        // reached on the byte-stream path — the header writer runs only when
+        // hfst_format is set, which THFST forces off.
+        match &mut self.out {
+            OutSink::Bytes(w) => {
+                if w.write_all(&[c as u8]).is_err() {
+                    tracing::error!("HfstOutputStream: could not write a byte");
+                }
+            }
+            OutSink::ThfstDir { .. } => {
+                tracing::error!("HfstOutputStream: cannot write a byte to a .thfst directory sink");
+            }
         }
     }
 
@@ -277,6 +310,22 @@ impl HfstOutputStream {
            Note: in XFSM format, we never write the HFST header. hfst_format is always
            false if the stream is of XFSM format.
         */
+        // Dispatch on the sink. A '.thfst' directory holds exactly one
+        // transducer: the first write serializes via 'Backend::write_to_dir'
+        // (overridden by ThfstTransducer); a second write errors
+        // [spec:hfst:sem:thfst-backend.stream-io].
+        if let OutSink::ThfstDir { dir, written } = &mut self.out {
+            if *written {
+                crate::bail!(
+                    StreamCannotBeWritten,
+                    "a .thfst directory holds exactly one transducer"
+                );
+            }
+            transducer.fst.write_to_dir(dir)?;
+            *written = true;
+            return Ok(self);
+        }
+
         if self.hfst_format {
             const MAX_HEADER_LENGTH: i32 = 65535;
 
@@ -317,9 +366,16 @@ impl HfstOutputStream {
         } // if (hfst_format)
 
         // The per-type 'implementation.X->write_transducer(...)' dispatch is
-        // the backend's own payload serialization now.
-        transducer.fst.write(&mut *self.out, self.hfst_format)?;
-        if self.out.flush().is_err() {
+        // the backend's own payload serialization now. The ThfstDir sink
+        // returned early above, so 'out' is a byte sink here.
+        let OutSink::Bytes(w) = &mut self.out else {
+            crate::bail!(
+                StreamCannotBeWritten,
+                "internal: byte-stream write reached a non-byte sink"
+            );
+        };
+        transducer.fst.write(&mut **w, self.hfst_format)?;
+        if w.flush().is_err() {
             crate::bail!(StreamCannotBeWritten, "could not flush output stream");
         }
         Ok(self)
@@ -330,8 +386,15 @@ impl HfstOutputStream {
     pub fn close(&mut self) {
         // Flush unconditionally: stdout is a buffered std::io::stdout() and the
         // tools exit via std::process::exit (no Drop), so it must be flushed.
-        if self.out.flush().is_err() {
-            tracing::error!("HfstOutputStream: could not flush output stream on close");
+        // The '.thfst' directory sink is written synchronously in 'write', so
+        // there is nothing to flush.
+        match &mut self.out {
+            OutSink::Bytes(w) => {
+                if w.flush().is_err() {
+                    tracing::error!("HfstOutputStream: could not flush output stream on close");
+                }
+            }
+            OutSink::ThfstDir { .. } => {}
         }
         self.is_open = false;
     }
