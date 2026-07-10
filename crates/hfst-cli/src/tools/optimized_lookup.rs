@@ -476,7 +476,9 @@ fn setup(options: &Options, path: &str) -> i32 {
             return 1;
         }
     };
-    let weighted = any.get_type() == hfst::hfst_data_types::ImplementationType::HFST_OLW_TYPE;
+    // THFST is a weighted optimized-lookup format, so it is weighted like OLW.
+    let weighted = any.get_type() == hfst::hfst_data_types::ImplementationType::HFST_OLW_TYPE
+        || any.get_type() == hfst::hfst_data_types::ImplementationType::THFST_TYPE;
     // the one dispatch per stream read ([dec:hfst:monomorphic-backends]):
     // the two OL table shapes move in as-is; anything else converts to the
     // weighted OL tables the lookup engine runs on.

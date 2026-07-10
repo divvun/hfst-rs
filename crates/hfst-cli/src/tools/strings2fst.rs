@@ -353,6 +353,7 @@ fn process_stream(
         | ImplementationType::XFSM_TYPE
         | ImplementationType::HFST_OL_TYPE
         | ImplementationType::HFST_OLW_TYPE
+        | ImplementationType::THFST_TYPE
         | ImplementationType::HFST2_TYPE
         | ImplementationType::UNSPECIFIED_TYPE
         | ImplementationType::ERROR_TYPE => {

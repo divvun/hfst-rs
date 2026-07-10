@@ -335,6 +335,9 @@ pub fn run(mut args: Vec<String>) -> i32 {
         ImplementationType::HFST_OLW_TYPE => {
             verbose_print(&common, "Using optimized lookup weighted output\n");
         }
+        ImplementationType::THFST_TYPE => {
+            verbose_print(&common, "Using thfst (directory) output\n");
+        }
         ImplementationType::XFSM_TYPE
         | ImplementationType::HFST2_TYPE
         | ImplementationType::UNSPECIFIED_TYPE
@@ -408,6 +411,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
         | ImplementationType::XFSM_TYPE
         | ImplementationType::HFST_OL_TYPE
         | ImplementationType::HFST_OLW_TYPE
+        | ImplementationType::THFST_TYPE
         | ImplementationType::HFST2_TYPE
         | ImplementationType::UNSPECIFIED_TYPE
         | ImplementationType::ERROR_TYPE => {

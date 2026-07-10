@@ -511,7 +511,8 @@ fn process_stream(
         /* Pairstring format is not supported on optimized lookup format. */
         if options.print_in_pairstring_format
             && (instream.get_type() == ImplementationType::HFST_OL_TYPE
-                || instream.get_type() == ImplementationType::HFST_OLW_TYPE)
+                || instream.get_type() == ImplementationType::HFST_OLW_TYPE
+                || instream.get_type() == ImplementationType::THFST_TYPE)
         {
             eprint!(
                 "Error: option --print-in-pairstring-format not supported on \n       optimized lookup transducers, exiting program\n"

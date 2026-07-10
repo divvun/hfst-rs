@@ -62,6 +62,15 @@ impl HfstOutputStream {
             ImplementationType::TROPICAL_OPENFST_TYPE
             | ImplementationType::HFST_OL_TYPE
             | ImplementationType::HFST_OLW_TYPE => {}
+            ImplementationType::THFST_TYPE => {
+                // THFST is a directory format with no byte-stream encoding, so it
+                // can never appear on standard output
+                // [spec:hfst:sem:thfst-backend.directory-format].
+                crate::bail!(
+                    StreamCannotBeWritten,
+                    "thfst is a directory format; cannot write to standard output"
+                );
+            }
             ImplementationType::HFST2_TYPE
             | ImplementationType::UNSPECIFIED_TYPE
             | ImplementationType::ERROR_TYPE => crate::bail!(SpecifiedTypeRequired),
@@ -114,6 +123,15 @@ impl HfstOutputStream {
             ImplementationType::TROPICAL_OPENFST_TYPE
             | ImplementationType::HFST_OL_TYPE
             | ImplementationType::HFST_OLW_TYPE => {}
+            ImplementationType::THFST_TYPE => {
+                // TODO(thfst.streams): directory sink — the streams stage replaces
+                // this arm with a .thfst directory sink that forces hfst_format off
+                // (the XFSM native-only precedent) [spec:hfst:sem:thfst-backend.stream-io].
+                crate::bail!(
+                    StreamCannotBeWritten,
+                    "thfst is a directory format; cannot write to a byte stream (directory sink not yet implemented)"
+                );
+            }
             ImplementationType::HFST2_TYPE
             | ImplementationType::UNSPECIFIED_TYPE
             | ImplementationType::ERROR_TYPE => crate::bail!(SpecifiedTypeRequired),
@@ -184,6 +202,12 @@ impl HfstOutputStream {
             ImplementationType::XFSM_TYPE => "XFSM".to_string(),
             ImplementationType::HFST_OL_TYPE => "HFST_OL".to_string(),
             ImplementationType::HFST_OLW_TYPE => "HFST_OLW".to_string(),
+            // THFST streams are never constructed with hfst_format: the directory
+            // format has no HFST3 wrapper header at all, so this header-writer is
+            // never reached [spec:hfst:sem:thfst-backend.directory-format].
+            ImplementationType::THFST_TYPE => {
+                unreachable!("thfst streams are never constructed with hfst_format")
+            }
             ImplementationType::HFST2_TYPE
             | ImplementationType::UNSPECIFIED_TYPE
             | ImplementationType::ERROR_TYPE => {

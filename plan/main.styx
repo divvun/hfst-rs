@@ -2348,6 +2348,21 @@ children (
                 id thfst.type
                 title "ImplementationType::THFST_TYPE: variant + is_weighted + every exhaustive match (deny-wildcard-driven: output/input stream ctors bail/unreachable, hfst_strformat, parse 'thfst', per-tool OLW-parity arms, equality-check sites lookup.rs/optimized_lookup.rs/format.rs) + serde/serde_json deps in crates/hfst"
                 deps (thfst.spec)
+                log (
+                    {
+                        at 2026-07-10T13:58:44.458496Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-10T14:19:23.887105Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

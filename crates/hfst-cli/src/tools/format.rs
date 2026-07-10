@@ -164,6 +164,7 @@ fn parse_options(
                 && is_implementation_type_available(ImplementationType::HFST_OL_TYPE))
             || (fmt == "optimized-lookup-weighted"
                 && is_implementation_type_available(ImplementationType::HFST_OLW_TYPE))
+            || (fmt == "thfst" && is_implementation_type_available(ImplementationType::THFST_TYPE))
         {
             std::process::exit(0);
         }
@@ -195,6 +196,10 @@ fn parse_options(
             fput_stdout(
                 " Optimized lookup (unweighted)   optimized-lookup-weighted, olw, optimized-lookup, ol\n",
             );
+        }
+
+        if is_implementation_type_available(ImplementationType::THFST_TYPE) {
+            fput_stdout(" THFST (divvunspell speller format)          thfst\n");
         }
 
         std::process::exit(0);

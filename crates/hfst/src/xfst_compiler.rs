@@ -633,6 +633,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         if t_type != B::TYPE {
             if t_type == ImplementationType::HFST_OL_TYPE
                 || t_type == ImplementationType::HFST_OLW_TYPE
+                || t_type == ImplementationType::THFST_TYPE
             {
                 if self.verbose {
                     warn!(
@@ -758,6 +759,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 let t_type = self.net(t).get_type();
                 if t_type == ImplementationType::HFST_OL_TYPE
                     || t_type == ImplementationType::HFST_OLW_TYPE
+                    || t_type == ImplementationType::THFST_TYPE
                 {
                     error!("cannot load optimized lookup transducers as definitions");
                     self.flush();
@@ -917,6 +919,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let t = self.net(retval);
             if t.get_type() == ImplementationType::HFST_OL_TYPE
                 || t.get_type() == ImplementationType::HFST_OLW_TYPE
+                || t.get_type() == ImplementationType::THFST_TYPE
             {
                 warn!(
                     "Operation not supported for optimized lookup format. Consider 'remove-optimization' to convert into ordinary format."
@@ -5023,7 +5026,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let t_type = self.net(t).get_type();
 
         let to_format: ImplementationType;
-        if t_type == ImplementationType::HFST_OL_TYPE || t_type == ImplementationType::HFST_OLW_TYPE
+        if t_type == ImplementationType::HFST_OL_TYPE
+            || t_type == ImplementationType::HFST_OLW_TYPE
+            || t_type == ImplementationType::THFST_TYPE
         {
             info!("Network is already optimized for lookup.");
             self.prompt();
@@ -5059,7 +5064,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let t = *self.stack.last().unwrap();
         let t_type = self.net(t).get_type();
 
-        if t_type != ImplementationType::HFST_OL_TYPE && t_type != ImplementationType::HFST_OLW_TYPE
+        if t_type != ImplementationType::HFST_OL_TYPE
+            && t_type != ImplementationType::HFST_OLW_TYPE
+            && t_type != ImplementationType::THFST_TYPE
         {
             info!("Network is already in ordinary format.");
             self.prompt();
@@ -5136,7 +5143,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         if direction == ApplyDirection::APPLY_UP_DIRECTION {
             let ty = self.net(top).get_type();
-            if ty == ImplementationType::HFST_OL_TYPE || ty == ImplementationType::HFST_OLW_TYPE {
+            if ty == ImplementationType::HFST_OL_TYPE
+                || ty == ImplementationType::HFST_OLW_TYPE
+                || ty == ImplementationType::THFST_TYPE
+            {
                 warn!(
                     "Operation not supported for optimized lookup format. Consider 'remove-optimization' to convert into ordinary format."
                 );
@@ -5167,6 +5177,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // always goes through the basic transducer.
         if work_type != ImplementationType::HFST_OL_TYPE
             && work_type != ImplementationType::HFST_OLW_TYPE
+            && work_type != ImplementationType::THFST_TYPE
         {
             fsm = Some(match &owned_t {
                 Some(c) => HfstBasicTransducer::new_from_transducer(c),

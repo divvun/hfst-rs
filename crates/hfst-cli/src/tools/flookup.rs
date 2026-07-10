@@ -836,7 +836,10 @@ fn process_stream(
         }
         let mut symbols_seen: StringSet = StringSet::new();
 
-        if ty != ImplementationType::HFST_OL_TYPE && ty != ImplementationType::HFST_OLW_TYPE {
+        if ty != ImplementationType::HFST_OL_TYPE
+            && ty != ImplementationType::HFST_OLW_TYPE
+            && ty != ImplementationType::THFST_TYPE
+        {
             only_optimized_lookup = false;
         } else if !options.invert && !options.force_ol {
             hfst_error(
@@ -862,7 +865,10 @@ fn process_stream(
         }
 
         if !options.invert {
-            if ty != ImplementationType::HFST_OL_TYPE && ty != ImplementationType::HFST_OLW_TYPE {
+            if ty != ImplementationType::HFST_OL_TYPE
+                && ty != ImplementationType::HFST_OLW_TYPE
+                && ty != ImplementationType::THFST_TYPE
+            {
                 crate::for_algebra!(&mut trans, t => {
                     if let Err(e) = t.invert() {
                         hfst_error(common, 1, 0, &format!("{e}"));
@@ -950,7 +956,8 @@ fn process_stream(
 
     if options.print_pairs
         && (inputstream.get_type() == ImplementationType::HFST_OL_TYPE
-            || inputstream.get_type() == ImplementationType::HFST_OLW_TYPE)
+            || inputstream.get_type() == ImplementationType::HFST_OLW_TYPE
+            || inputstream.get_type() == ImplementationType::THFST_TYPE)
     {
         hfst_error(
             common,

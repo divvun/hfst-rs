@@ -366,11 +366,15 @@ mod input_impl {
                     //return this->implementation.sfst->
                     //set_implementation_specific_header_data(data, index);
                 }
+                // THFST has no implementation-specific header data: it is a
+                // directory format with no HFST3 header at all
+                // [spec:hfst:sem:thfst-backend.directory-format].
                 ImplementationType::TROPICAL_OPENFST_TYPE
                 | ImplementationType::FOMA_TYPE
                 | ImplementationType::XFSM_TYPE
                 | ImplementationType::HFST_OL_TYPE
                 | ImplementationType::HFST_OLW_TYPE
+                | ImplementationType::THFST_TYPE
                 | ImplementationType::HFST2_TYPE
                 | ImplementationType::UNSPECIFIED_TYPE
                 | ImplementationType::ERROR_TYPE => {}
@@ -541,6 +545,15 @@ mod input_impl {
                         ))
                     }
                 }
+                ImplementationType::THFST_TYPE => {
+                    // Unreachable: THFST has no byte-stream encoding and is never
+                    // produced by byte probing (only via the .thfst-directory path
+                    // of new_filename, a later stage)
+                    // [spec:hfst:sem:thfst-backend.directory-format].
+                    unreachable!(
+                        "THFST is constructed only via the .thfst-directory path of new_filename (later stage), never by byte probing"
+                    )
+                }
                 // case ERROR_TYPE: default:
                 ImplementationType::XFSM_TYPE
                 | ImplementationType::HFST2_TYPE
@@ -568,6 +581,10 @@ mod input_impl {
 
         // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.guess-fst-type-fn]
         // [spec:hfst:sem:hfst-input-stream.hfst.hfst-input-stream.guess-fst-type-fn]
+        // THFST is deliberately absent from byte-sniffing here: it is a directory
+        // format with no byte encoding and no HFST3 header, so it can never appear
+        // on a byte stream and is detected by path (a .thfst directory) in a later
+        // stage, not by probing [spec:hfst:sem:thfst-backend.directory-format].
         fn guess_fst_type(&mut self, bytes_read: &mut i32) -> crate::error::Result<TransducerType> {
             *bytes_read = 0;
 

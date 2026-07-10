@@ -311,6 +311,9 @@ pub fn convert_any_with_options(
                 }
             }
         }
+        // TODO(thfst.seam): THFST currently falls through here and bails; the seam
+        // stage adds the O(1) OLW<->THFST table-move conversion path
+        // [spec:hfst:sem:thfst-backend.olw-moves].
         other => hfst::bail!(ImplementationTypeNotAvailable(other)),
     })
 }
@@ -406,6 +409,7 @@ pub fn redirect_converting<B: hfst::backend::AlgebraBackend>(
 pub fn is_input_stream_in_ol_format(is: &HfstInputStream<'_>, program: &str) -> bool {
     if is.get_type() == ImplementationType::HFST_OL_TYPE
         || is.get_type() == ImplementationType::HFST_OLW_TYPE
+        || is.get_type() == ImplementationType::THFST_TYPE
     {
         let _ = write!(
             std::io::stderr(),
@@ -534,6 +538,8 @@ pub fn hfst_parse_format_name(opts: &CommonOptions, s: &str) -> ImplementationTy
         rv = ImplementationType::HFST_OL_TYPE;
     } else if lower == "optimized-lookup-weighted" || lower == "olw" {
         rv = ImplementationType::HFST_OLW_TYPE;
+    } else if lower == "thfst" {
+        rv = ImplementationType::THFST_TYPE;
     } else if lower == "optimized-lookup" || lower == "ol" {
         rv = ImplementationType::HFST_OLW_TYPE;
         hfst_warning(
@@ -567,6 +573,9 @@ pub fn hfst_strformat(format: ImplementationType) -> &'static str {
         ImplementationType::XFSM_TYPE => "xfsm",
         ImplementationType::HFST_OL_TYPE => "Hfst's lookup optimized, unweighted",
         ImplementationType::HFST_OLW_TYPE => "Hfst's lookup optimized, weighted",
+        ImplementationType::THFST_TYPE => {
+            "thfst (divvunspell optimized-lookup, weighted, directory format)"
+        }
         ImplementationType::HFST2_TYPE => "Hfst 2 legacy (deprecated)",
         ImplementationType::ERROR_TYPE | ImplementationType::UNSPECIFIED_TYPE => {
             "ERROR (not a HFST supported transducer)"

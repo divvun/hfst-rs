@@ -8,6 +8,8 @@ use hfst::hfst_data_types::ImplementationType as IT;
 fn weighted_types() {
     assert!(IT::TROPICAL_OPENFST_TYPE.is_weighted());
     assert!(IT::HFST_OLW_TYPE.is_weighted());
+    // THFST is a weighted-only optimized-lookup directory format.
+    assert!(IT::THFST_TYPE.is_weighted());
 }
 
 #[test]
@@ -19,4 +21,11 @@ fn unweighted_types() {
     assert!(!IT::HFST2_TYPE.is_weighted());
     assert!(!IT::UNSPECIFIED_TYPE.is_weighted());
     assert!(!IT::ERROR_TYPE.is_weighted());
+}
+
+#[test]
+fn thfst_type_name_and_format_strings() {
+    use hfst::hfst_data_types::{implementation_type_to_format, implementation_type_to_string};
+    assert_eq!(implementation_type_to_string(IT::THFST_TYPE), "THFST_TYPE");
+    assert_eq!(implementation_type_to_format(IT::THFST_TYPE), "thfst");
 }

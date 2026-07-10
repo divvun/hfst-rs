@@ -26,6 +26,11 @@ pub enum ImplementationType {
     XFSM_TYPE,
     HFST_OL_TYPE,
     HFST_OLW_TYPE,
+    /// divvunspell's mmap-optimized weighted optimized-lookup DIRECTORY format
+    /// ('X.thfst/' with alphabet/index/transition files). Weighted-only,
+    /// native-only (no HFST3 header, no byte-stream encoding).
+    /// [spec:hfst:def:thfst-backend.directory-format]
+    THFST_TYPE,
     HFST2_TYPE,
     UNSPECIFIED_TYPE,
     ERROR_TYPE,
@@ -37,7 +42,10 @@ impl ImplementationType {
     /// optimized-lookup format; SFST, foma, plain optimized-lookup, and the
     /// metadata-only types are unweighted.
     pub fn is_weighted(&self) -> bool {
-        matches!(self, Self::TROPICAL_OPENFST_TYPE | Self::HFST_OLW_TYPE)
+        matches!(
+            self,
+            Self::TROPICAL_OPENFST_TYPE | Self::HFST_OLW_TYPE | Self::THFST_TYPE
+        )
     }
 }
 
@@ -146,6 +154,7 @@ pub fn implementation_type_to_string(ty: ImplementationType) -> &'static str {
         ImplementationType::XFSM_TYPE => "XFSM_TYPE",
         ImplementationType::HFST_OL_TYPE => "HFST_OL_TYPE",
         ImplementationType::HFST_OLW_TYPE => "HFST_OLW_TYPE",
+        ImplementationType::THFST_TYPE => "THFST_TYPE",
         ImplementationType::HFST2_TYPE => "HFST2_TYPE",
         ImplementationType::UNSPECIFIED_TYPE => "UNSPECIFIED_TYPE",
         ImplementationType::ERROR_TYPE => "ERROR_TYPE",
@@ -162,6 +171,7 @@ pub fn implementation_type_to_format(ty: ImplementationType) -> &'static str {
         ImplementationType::XFSM_TYPE => "xfsm",
         ImplementationType::HFST_OL_TYPE => "hfst-optimized-lookup-unweighted",
         ImplementationType::HFST_OLW_TYPE => "hfst-optimized-lookup-weighted",
+        ImplementationType::THFST_TYPE => "thfst",
         ImplementationType::HFST2_TYPE => "hfst2",
         ImplementationType::UNSPECIFIED_TYPE => "unspecified-type",
         ImplementationType::ERROR_TYPE => "error-type",

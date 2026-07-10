@@ -238,7 +238,9 @@ fn process_stream(
                     is_mutable = false;
                     weighted = false;
                 }
-                ImplementationType::HFST_OLW_TYPE => {
+                // THFST is the weighted optimized-lookup family (directory format);
+                // same immutable, weighted answer as HFST_OLW.
+                ImplementationType::HFST_OLW_TYPE | ImplementationType::THFST_TYPE => {
                     is_mutable = false;
                     weighted = true;
                 }
@@ -302,7 +304,7 @@ fn process_stream(
                         "fst type: HFST optimized lookup\narc type: unweighted\n"
                     );
                 }
-                ImplementationType::HFST_OLW_TYPE => {
+                ImplementationType::HFST_OLW_TYPE | ImplementationType::THFST_TYPE => {
                     let _ = write!(out, "fst type: HFST optimized lookup\narc type: weighted\n");
                 }
                 ImplementationType::XFSM_TYPE | ImplementationType::HFST2_TYPE | ImplementationType::UNSPECIFIED_TYPE | ImplementationType::ERROR_TYPE => {

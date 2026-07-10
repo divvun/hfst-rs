@@ -1056,7 +1056,12 @@ fn process_stream(
         }
         let mut symbols_seen: StringSet = StringSet::new();
 
-        if ty != ImplementationType::HFST_OL_TYPE && ty != ImplementationType::HFST_OLW_TYPE {
+        // THFST is a member of the optimized-lookup family (weighted directory
+        // format), so it counts as optimized-lookup here alongside HFST_OL/OLW.
+        if ty != ImplementationType::HFST_OL_TYPE
+            && ty != ImplementationType::HFST_OLW_TYPE
+            && ty != ImplementationType::THFST_TYPE
+        {
             only_optimized_lookup = false;
         }
 
@@ -1126,7 +1131,8 @@ fn process_stream(
 
     if !options.obey_flags
         && (inputstream.get_type() == ImplementationType::HFST_OL_TYPE
-            || inputstream.get_type() == ImplementationType::HFST_OLW_TYPE)
+            || inputstream.get_type() == ImplementationType::HFST_OLW_TYPE
+            || inputstream.get_type() == ImplementationType::THFST_TYPE)
     {
         hfst_error(
             common,
