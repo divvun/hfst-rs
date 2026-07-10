@@ -542,6 +542,9 @@ fn process_stream(
             hfst::hfst_transducer::AnyTransducer::OlU(t) => {
                 process_one_ol(common, options, t, outstream)
             }
+            hfst::hfst_transducer::AnyTransducer::Thfst(t) => {
+                process_one_ol(common, options, t, outstream)
+            }
             #[cfg(feature = "foma")]
             hfst::hfst_transducer::AnyTransducer::Foma(t) => {
                 process_one_algebra(common, options, t, outstream)

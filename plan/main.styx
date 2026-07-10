@@ -2369,6 +2369,21 @@ children (
                 id thfst.seam
                 title "Backend citizen: backend_thfst.rs newtype ThfstTransducer(Transducer<WeightedTables>), Backend impl (TYPE=THFST, write bails, new provided Backend::write_to_dir hook), LookupBackend delegation, AnyTransducer::Thfst + any_delegate/for_any/IntoAny, FromAnyTransducer with O(1) Thfst<->OlW table moves, convert_any_with_options THFST arm"
                 deps (thfst.type)
+                log (
+                    {
+                        at 2026-07-10T14:21:02.959672Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-10T14:39:09.701676Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

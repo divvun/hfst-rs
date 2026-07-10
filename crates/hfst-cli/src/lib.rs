@@ -31,6 +31,7 @@ macro_rules! for_any {
             hfst::hfst_transducer::AnyTransducer::OlU($t) => $body,
             #[cfg(feature = "foma")]
             hfst::hfst_transducer::AnyTransducer::Foma($t) => $body,
+            hfst::hfst_transducer::AnyTransducer::Thfst($t) => $body,
         }
     };
 }
@@ -83,6 +84,11 @@ impl IntoAny
 impl IntoAny for hfst::hfst_transducer::HfstTransducer<hfst::backend_foma::FomaTransducer> {
     fn into_any(self) -> hfst::hfst_transducer::AnyTransducer {
         hfst::hfst_transducer::AnyTransducer::Foma(self)
+    }
+}
+impl IntoAny for hfst::hfst_transducer::HfstTransducer<hfst::backend_thfst::ThfstTransducer> {
+    fn into_any(self) -> hfst::hfst_transducer::AnyTransducer {
+        hfst::hfst_transducer::AnyTransducer::Thfst(self)
     }
 }
 

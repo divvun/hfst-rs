@@ -3170,6 +3170,31 @@ ol_lookup_facade!(WeightedTables);
 ol_lookup_facade!(UnweightedTables);
 
 // -----------------------------------------------------------------------------
+// THFST <-> OLW cheap conversions — O(1) table MOVES that transfer the inner
+// weighted optimized-lookup engine and preserve the facade metadata (the inner
+// 'fst' is 'pub(crate)', so these must live in the hfst crate).
+// -----------------------------------------------------------------------------
+
+impl HfstTransducer<Transducer<WeightedTables>> {
+    /// Re-tag this weighted optimized-lookup transducer as THFST — an O(1)
+    /// table move, not a round-trip through the basic transducer; the facade
+    /// metadata survives.
+    // [spec:hfst:def:thfst-backend.olw-moves]
+    // [spec:hfst:sem:thfst-backend.olw-moves]
+    pub fn into_thfst(self) -> HfstTransducer<crate::backend_thfst::ThfstTransducer> {
+        rewrap_facade(self, crate::backend_thfst::ThfstTransducer::from_ol)
+    }
+}
+
+impl HfstTransducer<crate::backend_thfst::ThfstTransducer> {
+    /// Re-tag this THFST transducer as weighted optimized-lookup — the inverse
+    /// O(1) table move; the facade metadata survives.
+    pub fn into_olw(self) -> HfstTransducer<Transducer<WeightedTables>> {
+        rewrap_facade(self, |b| b.into_ol())
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Flag-elimination helpers (file-scope free functions in the C++).
 // -----------------------------------------------------------------------------
 
@@ -4185,6 +4210,7 @@ pub enum AnyTransducer {
     OlU(HfstTransducer<Transducer<UnweightedTables>>),
     #[cfg(feature = "foma")]
     Foma(HfstTransducer<crate::backend_foma::FomaTransducer>),
+    Thfst(HfstTransducer<crate::backend_thfst::ThfstTransducer>),
 }
 
 /// Delegate an expression over every variant (each arm monomorphizes
@@ -4197,6 +4223,7 @@ macro_rules! any_delegate {
             AnyTransducer::OlU($t) => $body,
             #[cfg(feature = "foma")]
             AnyTransducer::Foma($t) => $body,
+            AnyTransducer::Thfst($t) => $body,
         }
     };
 }
@@ -4261,6 +4288,25 @@ pub trait FromAnyTransducer: Backend {
     fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>>;
 }
 
+/// Re-tag a facade around a transformed backend, preserving the metadata
+/// (name, properties, anonymous, is_trie). The O(1)-move analogue of
+/// ['any_into_backend_via_basic']: the backend is transferred by 'f', not
+/// rebuilt through the interchange transducer.
+/// [spec:hfst:def:thfst-backend.olw-moves]
+/// [spec:hfst:sem:thfst-backend.olw-moves]
+fn rewrap_facade<A: Backend, B: Backend>(
+    src: HfstTransducer<A>,
+    f: impl FnOnce(A) -> B,
+) -> HfstTransducer<B> {
+    HfstTransducer {
+        name: src.name,
+        props: src.props,
+        anonymous: src.anonymous,
+        is_trie: src.is_trie,
+        fst: f(src.fst),
+    }
+}
+
 /// The convert-through-basic arm of ['AnyTransducer::into_typed'].
 fn any_into_backend_via_basic<B: Backend>(
     any: AnyTransducer,
@@ -4287,6 +4333,7 @@ impl FromAnyTransducer for StdVectorFst {
             }
             #[cfg(feature = "foma")]
             other @ AnyTransducer::Foma(_) => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Thfst(_) => any_into_backend_via_basic(other),
         }
     }
 }
@@ -4295,6 +4342,12 @@ impl FromAnyTransducer for Transducer<WeightedTables> {
     fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
         match any {
             AnyTransducer::OlW(t) => Ok(t),
+            // THFST <-> OLW is an O(1) table MOVE, not a round-trip through the
+            // basic transducer: recover the inner engine and rewrap the facade
+            // metadata unchanged.
+            // [spec:hfst:def:thfst-backend.olw-moves]
+            // [spec:hfst:sem:thfst-backend.olw-moves]
+            AnyTransducer::Thfst(t) => Ok(rewrap_facade(t, |b| b.into_ol())),
             other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlU(_) => {
                 any_into_backend_via_basic(other)
             }
@@ -4317,6 +4370,7 @@ impl FromAnyTransducer for Transducer<UnweightedTables> {
             }
             #[cfg(feature = "foma")]
             other @ AnyTransducer::Foma(_) => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Thfst(_) => any_into_backend_via_basic(other),
         }
     }
 }
@@ -4326,7 +4380,30 @@ impl FromAnyTransducer for crate::backend_foma::FomaTransducer {
     fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
         match any {
             AnyTransducer::Foma(t) => Ok(t),
-            other => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Tropical(_)
+            | other @ AnyTransducer::OlW(_)
+            | other @ AnyTransducer::OlU(_)
+            | other @ AnyTransducer::Thfst(_) => any_into_backend_via_basic(other),
+        }
+    }
+}
+
+impl FromAnyTransducer for crate::backend_thfst::ThfstTransducer {
+    fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
+        match any {
+            AnyTransducer::Thfst(t) => Ok(t),
+            // THFST <-> OLW is an O(1) table MOVE: transfer the inner engine
+            // and rewrap the facade metadata unchanged.
+            // [spec:hfst:sem:thfst-backend.olw-moves]
+            AnyTransducer::OlW(t) => Ok(rewrap_facade(
+                t,
+                crate::backend_thfst::ThfstTransducer::from_ol,
+            )),
+            other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlU(_) => {
+                any_into_backend_via_basic(other)
+            }
+            #[cfg(feature = "foma")]
+            other @ AnyTransducer::Foma(_) => any_into_backend_via_basic(other),
         }
     }
 }

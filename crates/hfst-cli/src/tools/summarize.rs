@@ -192,7 +192,8 @@ fn process_stream(
                     }
                 }
                 hfst::hfst_transducer::AnyTransducer::OlW(_)
-                | hfst::hfst_transducer::AnyTransducer::OlU(_) => None,
+                | hfst::hfst_transducer::AnyTransducer::OlU(_)
+                | hfst::hfst_transducer::AnyTransducer::Thfst(_) => None,
             }
         } else {
             None

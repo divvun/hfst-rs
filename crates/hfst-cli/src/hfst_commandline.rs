@@ -309,11 +309,45 @@ pub fn convert_any_with_options(
                     let x: HfstTransducer<hfst_openfst::StdVectorFst> = other.into_typed()?;
                     AnyTransducer::OlW(x.to_ol(weighted, options)?)
                 }
+                // THFST -> OLW: O(1) table move back to the weighted engine,
+                // then the same weightedness retag as the OLW/OlU arms (through
+                // the tropical algebra, as the C++ went through basic).
+                // [spec:hfst:sem:thfst-backend.olw-moves]
+                AnyTransducer::Thfst(t) => {
+                    let x: HfstTransducer<hfst_openfst::StdVectorFst> =
+                        AnyTransducer::OlW(t.into_olw()).into_typed()?;
+                    AnyTransducer::OlW(x.to_ol(weighted, options)?)
+                }
             }
         }
-        // TODO(thfst.seam): THFST currently falls through here and bails; the seam
-        // stage adds the O(1) OLW<->THFST table-move conversion path
-        // [spec:hfst:sem:thfst-backend.olw-moves].
+        // THFST target: O(1) table move from the weighted engine (OLW), or a
+        // build-through-OLW-then-move for everything else. THFST is a
+        // lookup-tier citizen like OLW; its target is always the weighted
+        // engine retagged as THFST.
+        // [spec:hfst:def:thfst-backend.olw-moves]
+        // [spec:hfst:sem:thfst-backend.olw-moves]
+        ImplementationType::THFST_TYPE => match t {
+            // O(1) table move: OLW is already the weighted engine THFST wraps.
+            AnyTransducer::OlW(x) => AnyTransducer::Thfst(x.into_thfst()),
+            // Build weighted OL tables through the algebra, then move.
+            AnyTransducer::Tropical(x) => {
+                AnyTransducer::Thfst(x.to_ol(true, options)?.into_thfst())
+            }
+            // OlU (and any foma source) routes through the tropical algebra
+            // into weighted OL tables, exactly as the OLW target's OlU arm does.
+            other @ AnyTransducer::OlU(_) => {
+                let x: HfstTransducer<hfst_openfst::StdVectorFst> = other.into_typed()?;
+                AnyTransducer::Thfst(x.to_ol(true, options)?.into_thfst())
+            }
+            #[cfg(feature = "foma")]
+            other @ AnyTransducer::Foma(_) => {
+                let x: HfstTransducer<hfst_openfst::StdVectorFst> = other.into_typed()?;
+                AnyTransducer::Thfst(x.to_ol(true, options)?.into_thfst())
+            }
+            // Thfst -> Thfst cannot reach here (early return on equal types),
+            // but the match must be exhaustive.
+            AnyTransducer::Thfst(x) => AnyTransducer::Thfst(x),
+        },
         other => hfst::bail!(ImplementationTypeNotAvailable(other)),
     })
 }

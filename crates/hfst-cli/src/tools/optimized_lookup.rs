@@ -485,6 +485,9 @@ fn setup(options: &Options, path: &str) -> i32 {
     let t = match any {
         hfst::hfst_transducer::AnyTransducer::OlW(t) => OlInner::W(t),
         hfst::hfst_transducer::AnyTransducer::OlU(t) => OlInner::U(t),
+        // THFST is the weighted OL engine under a distinct tag; recover it as
+        // the weighted lookup handle (O(1) table move).
+        hfst::hfst_transducer::AnyTransducer::Thfst(t) => OlInner::W(t.into_olw()),
         other @ hfst::hfst_transducer::AnyTransducer::Tropical(_) => match other.into_typed() {
             Ok(t) => OlInner::W(t),
             Err(e) => {

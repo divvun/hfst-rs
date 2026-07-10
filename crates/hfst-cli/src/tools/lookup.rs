@@ -1122,6 +1122,11 @@ fn process_stream(
         match trans {
             hfst::hfst_transducer::AnyTransducer::OlW(t) => cascade.push(OlTransducer::W(t)),
             hfst::hfst_transducer::AnyTransducer::OlU(t) => cascade.push(OlTransducer::U(t)),
+            // THFST is the weighted OL engine under a distinct tag; recover it
+            // as the weighted lookup handle (O(1) table move).
+            hfst::hfst_transducer::AnyTransducer::Thfst(t) => {
+                cascade.push(OlTransducer::W(t.into_olw()))
+            }
             hfst::hfst_transducer::AnyTransducer::Tropical(_) => {}
         }
         id_or_unk_seen = false;
