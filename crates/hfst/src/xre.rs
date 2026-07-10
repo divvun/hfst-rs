@@ -957,12 +957,17 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 t
             }
             UnaryOp::Complement => {
-                // ~A : [?:?]* - A, only for automata.
+                // ~A : [? | flags(A)]* - A, only for automata. A's flag
+                // diacritics enter the identity universe as ORDINARY symbols so
+                // subtract harmonization cannot erase them
+                // ([spec:hfst:sem:xre-compiler.hfst.xre.complement-compilation-fn]):
+                // this DIVERGES from upstream C++ XRE ([?:?]* - A, which swallows
+                // flags) to match the Xerox transcript and HfstTransducer::negate().
                 let a = self.eval(inner)?;
                 if !a.is_automaton()? {
                     crate::bail!(Hfst, "Complement operator ~ is defined only for automata");
                 }
-                let mut complement = HfstTransducer::identity_pair();
+                let mut complement = HfstTransducer::identity_with_flags_of(&a)?;
                 complement.repeat_star()?;
                 complement.optimize_with_config(&self.opt_cfg())?;
                 complement.subtract(&a, true)?;
@@ -970,10 +975,15 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 complement
             }
             UnaryOp::TermComplement => {
-                // \A : [?] - A
+                // \A : [? | flags(A)] - A. Same flag-ordinary universe as ~A but
+                // without the star, so \A matches any SINGLE symbol other than A
+                // ([spec:hfst:sem:xre-compiler.hfst.xre.term-complement-compilation-fn]):
+                // this DIVERGES from upstream C++ XRE ([?] - A, which swallows
+                // flags) to match the Xerox transcript (hfst/hfst#349).
                 let a = self.eval(inner)?;
-                let mut any = HfstTransducer::new_symbol(internal_identity)?;
+                let mut any = HfstTransducer::identity_with_flags_of(&a)?;
                 any.subtract(&a, true)?;
+                any.prune_alphabet(false)?;
                 any
             }
             UnaryOp::Containment => {

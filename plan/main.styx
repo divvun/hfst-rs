@@ -2478,4 +2478,36 @@ children (
             }
         )
     }
+
+    {
+        id flag-complement
+        title "hfst/hfst#349: flag diacritics under complement — XRE ~ and \\ swallow flags (upstream fixed only the xfst negate command, cdab3f74); make complement universes flag-ordinary like HfstTransducer::negate(), audit every embedded ?*-universe ($/filters/pmatch/xerox-rules)"
+        children (
+            {
+                id flag-complement.fix
+                title "Fix xre.rs UnaryOp::Complement (~A) + TermComplement (\\A): factor the flag-ordinary universe builder out of HfstTransducer::negate() and reuse it (universe = identity ∪ flags-of-A, starred for ~, unstarred for \\); spec sem rule bump in XreCompiler.md recording the deliberate divergence from upstream C++ XRE; tests porting the issue transcript (Xerox 3-state/6-arc net, double-complement identity, ~A ≡ negate-command cross-check, \\ flag case)"
+                log (
+                    {
+                        at 2026-07-10T21:47:11.95105Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-10T21:58:29.947351Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id flag-complement.audit
+                title "Audit every other embedded ?*/identity-universe for flag interaction: xre Containment family (contains/contains_with_weight/contains_once/contains_once_optional — the ~$[...] filter use-case from the issue), pmatch Complement/TermComplement/Containment (pmatch.rs — same naive pattern per pmatch_utils.md spec), hfst_xerox_rules restriction/replace compilations; classify each (correct / fix by the flag-ordinary principle / documented deferral), fix the clear ones with tests"
+                deps (flag-complement.fix)
+            }
+        )
+    }
 )

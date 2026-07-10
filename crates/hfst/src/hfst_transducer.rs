@@ -1756,6 +1756,26 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         Ok(self)
     }
 
+    /// `[? | flag1 | ... | flagN]` — the single-symbol identity universe with
+    /// `other`'s flag diacritics inserted as ORDINARY symbols (so subtract
+    /// harmonization cannot erase them). This is the building block of every
+    /// flag-correct complement (hfst/hfst#349): starring it and subtracting
+    /// gives `~A` / `negate`, using it unstarred and subtracting gives the term
+    /// complement `\A = [? - A]`. Both must treat flags as plain symbols to
+    /// match the Xerox transcript, so both share this constructor.
+    pub fn identity_with_flags_of(
+        other: &HfstTransducer<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
+        let mut universe = HfstTransducer::new_from_symbol("@_IDENTITY_SYMBOL_@")?;
+        // diacritics will not be harmonized in subtract
+        let flags = universe.insert_missing_diacritics_to_alphabet_from(other)?;
+        for flag in flags.iter() {
+            let tr = HfstTransducer::new_from_symbol(flag)?;
+            universe.disjunct(&tr, true)?;
+        }
+        Ok(universe)
+    }
+
     pub fn negate(&mut self) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false; // This could be done so that is_trie is preserved
 
@@ -1763,13 +1783,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             crate::bail!(TransducerIsNotAutomaton);
         }
 
-        let mut idstar = HfstTransducer::new_from_symbol("@_IDENTITY_SYMBOL_@")?;
-        // diacritics will not be harmonized in subtract
-        let flags = idstar.insert_missing_diacritics_to_alphabet_from(self)?;
-        for flag in flags.iter() {
-            let tr = HfstTransducer::new_from_symbol(flag)?;
-            idstar.disjunct(&tr, true)?;
-        }
+        let mut idstar = HfstTransducer::identity_with_flags_of(self)?;
         idstar.repeat_star()?;
         idstar.minimize()?;
         idstar.subtract(self, true)?;

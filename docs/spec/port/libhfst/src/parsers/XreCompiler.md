@@ -289,3 +289,51 @@
 > each available backend, call `define("vowels", "a | e | i | o | u | y")`.
 > Print "ok." and return `EXIT_SUCCESS`.
 
+## Complement compilation (REGEXP8/9/10 unary operators)
+
+The `~` (complement) and `\` (term complement) unary regex operators are
+compiled by the AST walker (`eval_unary`). Upstream C++ XRE built their
+universe from the bare identity `[?:?]`, which means subtract's harmonization
+erases any flag diacritics contained in the operand — flags are swallowed. The
+port DIVERGES here to match the Xerox semantics of the issue and the already-
+fixed `negate` command (`HfstTransducer::negate`, upstream commit cdab3f74):
+flag diacritics are treated as ORDINARY symbols in both operators. Both share
+the universe constructor `HfstTransducer::identity_with_flags_of(A)` =
+`[? | flag1 | ... | flagN]`, which inserts A's flags into the identity universe
+as plain single-symbol arcs so subtract cannot erase them.
+
+> [spec:hfst:def:xre-compiler.hfst.xre.complement-compilation-fn]
+> ~A (REGEXP8/9/10 complement)
+
+> [spec:hfst:sem:xre-compiler.hfst.xre.complement-compilation-fn]
+> Compiling `~A` (complement). A MUST be an automaton; otherwise raise the
+> error "Complement operator ~ is defined only for automata". The result is
+> `[? | flags(A)]* - A`: build the flag-ordinary single-symbol universe
+> `HfstTransducer::identity_with_flags_of(A)` (identity `?` disjoined with each
+> flag diacritic of A as an ordinary single-symbol arc), star it, optimize with
+> the compiler's optimization config, subtract A (harmonize=true), then
+> `prune_alphabet(false)`. Because the starred universe always uses the identity
+> symbol in its transitions, `prune_alphabet(false)` is a no-op on the alphabet
+> (it refuses to prune while identity/unknown symbols are in use), so A's flags
+> survive in sigma as ordinary symbols. This DIVERGES from upstream C++ XRE
+> (which compiled `[?:?]* - A`, swallowing flags): the divergence is deliberate
+> (hfst/hfst#349) and makes `~A` agree with `HfstTransducer::negate()` — the
+> issue's Xerox transcript (the 3-state/6-arc complement of a single flag) and
+> the double-complement identity `~[~A] == A` both hold.
+
+> [spec:hfst:def:xre-compiler.hfst.xre.term-complement-compilation-fn]
+> \A (REGEXP8/9/10 term complement)
+
+> [spec:hfst:sem:xre-compiler.hfst.xre.term-complement-compilation-fn]
+> Compiling `\A` (term complement). The result is `[? | flags(A)] - A`: build
+> the same flag-ordinary single-symbol universe
+> `HfstTransducer::identity_with_flags_of(A)` used by `~A`, but WITHOUT starring
+> it (a term complement matches exactly one symbol), subtract A (harmonize=true),
+> then `prune_alphabet(false)` (a no-op on the alphabet because the universe uses
+> the identity symbol). So `\A` accepts any single symbol other than A, with A's
+> flag diacritics kept in sigma as ordinary symbols. This DIVERGES from upstream
+> C++ XRE (which compiled `[?] - A`, swallowing flags): the divergence is
+> deliberate (hfst/hfst#349) and matches the Xerox transcript — `\flag` does not
+> accept the flag, does accept any other single symbol, and `[\flag | flag]`
+> recovers the full flag-ordinary single-symbol universe `[? | flag]`.
+
