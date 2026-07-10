@@ -2532,4 +2532,292 @@ children (
             }
         )
     }
+
+    {
+        id upstream-bugs
+        title "Triage of open hfst/hfst issues against the Rust port (2026-07-11, 139 open reviewed): ~60 dropped (bindings/packaging/build, hfst-proc excluded, SFST, memory-safety-only mechanics void under forbid(unsafe), #349 already fixed, #374 moot — library is LGPL); remainder tiered below. Each leaf = reproduce in the port → fix or document → regression test."
+        children (
+            {
+                id upstream-bugs.t1
+                title "Tier 1 — high-impact correctness bugs (speller/composition/compiler-critical)"
+                children (
+                    {
+                        id upstream-bugs.t1.i341
+                        title "hfst#341: weighted priority union (.P.) loses ALL of the right-hand fst — catastrophic speller-relevant correctness; priority_union in hfst_transducer.rs (spec'd: negate/prune_alphabet internals in HfstTransducer.md ~:67)"
+                        priority 1
+                    }
+
+                    {
+                        id upstream-bugs.t1.i143
+                        title "hfst#143: flag-diacritic harmonisation generates spurious/duplicated flags during composition — Giella-wide flag bloat; continues the #349 flags arc (harmonize/flag interplay in the tropical backend + hfst_transducer)"
+                        priority 1
+                    }
+
+                    {
+                        id upstream-bugs.t1.i399
+                        title "hfst#399: compilation hangs when a pmatch/tokeniser LC/RC context ends in ':?* 0:?*' — Giella tokenizer builds; hang now catchable under the 10s nextest cap (pmatch_compiler context compilation)"
+                        priority 1
+                    }
+
+                    {
+                        id upstream-bugs.t1.i435
+                        title "hfst#435: hfst-lexc goes into an infinite loop on certain lexicon structures — lexc compiler (nfst-lexc AST walk / lexc.rs compilation); reproduce upstream's input, cap-guarded test"
+                        priority 1
+                    }
+
+                    {
+                        id upstream-bugs.t1.i383
+                        title "hfst#383: composing languages DROPS legal strings — core compose correctness (harmonization/unknown-expansion suspect); reproduce upstream's example against our compose"
+                        priority 1
+                    }
+
+                    {
+                        id upstream-bugs.t1.i467
+                        title "hfst#467: hfst-eliminate-flags -F produces corrupt transducers (upstream segfaults on summarize of the result) — flag elimination logic; the corruption is the logic bug, the segfault was just C++'s symptom"
+                        priority 1
+                    }
+
+                    {
+                        id upstream-bugs.t1.i426
+                        title "hfst#426: hfst-regexp2fst compiles weights wrongly — XRE weight attachment (::w placement/accumulation) in xre.rs; reproduce upstream examples, compare against documented Xerox semantics"
+                        priority 1
+                    }
+
+                    {
+                        id upstream-bugs.t1.i571
+                        title "hfst#571: 'regexp2fst [] -> a || _' mis-compiles (empty-language LHS in replace rule inserts wrongly) — xerox-rules replace compilation (hfst_xerox_rules.rs); compare against Xerox insertion semantics"
+                        priority 1
+                    }
+                )
+            }
+
+            {
+                id upstream-bugs.t2
+                title "Tier 2 — hfst-tokenise fidelity cluster (Divvun's core tool: tokenise output must match lookup)"
+                children (
+                    {
+                        id upstream-bugs.t2.i500
+                        title "hfst#500: hfst-tokenise --xerox output differs from hfst-lookup on the same transducer — tokenise output-formatting/analysis parity (tokenize.rs vs lookup.rs paths)"
+                        priority 2
+                    }
+
+                    {
+                        id upstream-bugs.t2.i367
+                        title "hfst#367: composed characters on single arcs work in hfst-lookup but NOT hfst-tokenise — tokeniser input segmentation vs the transducer's multichar/composed-char arcs (pmatch runtime tokenization)"
+                        priority 2
+                    }
+
+                    {
+                        id upstream-bugs.t2.i439
+                        title "hfst#439: hfst-lookup analyses Cyrillic + U+0300 combining diacritics but hfst-tokenise does not — same family as #367 (combining vs composed normalization in the tokeniser input path)"
+                        priority 2
+                    }
+
+                    {
+                        id upstream-bugs.t2.i562
+                        title "hfst#562: hfst-tokenise returns 'unknown' when analysis weight != 0 and --weight-classes=1 — weight-class bucketing logic drops valid analyses (tokenize.rs weight-classes handling)"
+                        priority 2
+                    }
+
+                    {
+                        id upstream-bugs.t2.i354
+                        title "hfst#354: missing wordforms in hfst-tokenise -g when unknowns use 'Ins' — generation path loses forms (tokeniser -g + Ins-tagged unknowns)"
+                        priority 2
+                    }
+
+                    {
+                        id upstream-bugs.t2.i483
+                        title "hfst#483: hfst-tokenize hangs on large input sentences in the interactive REPL — input buffering/chunking logic (possibly adjacent to the 565MB OL-load hang already fixed in the port; verify)"
+                        priority 2
+                    }
+                )
+            }
+
+            {
+                id upstream-bugs.t3
+                title "Tier 3 — parser conformance sweep (nfst-lexc/twolc/xre are NEW parsers: many likely already fixed — verify against upstream reproduction, lock with regression tests either way)"
+                children (
+                    {
+                        id upstream-bugs.t3.i281
+                        title "hfst#281: hfst-lexc fails when a linebreak precedes the semicolon (Xerox accepts it) — nfst-lexc grammar conformance; likely already fixed by the new parser: verify + regression test"
+                        priority 3
+                    }
+
+                    {
+                        id upstream-bugs.t3.i274
+                        title "hfst#274: hfst-lexc reads unescaped zeros as literal zeros (Xerox: 0 = epsilon unless escaped %0) — nfst-lexc tokenization of 0; verify against Xerox semantics + regression test"
+                        priority 3
+                    }
+
+                    {
+                        id upstream-bugs.t3.i211
+                        title "hfst#211: lexc multichar symbols containing zeros handled inconsistently with Xerox — nfst-lexc multichar tokenization (companion to #274); verify + regression test"
+                        priority 3
+                    }
+
+                    {
+                        id upstream-bugs.t3.i255
+                        title "hfst#255: at sign (@) breaks multichar symbols in lexc — @-prefixed non-flag multichars mis-tokenized; nfst-lexc symbol classification (@...@ flag detection vs plain @-containing symbols); verify + test"
+                        priority 3
+                    }
+
+                    {
+                        id upstream-bugs.t3.i189
+                        title "hfst#189: hfst-twolc confused by pairs whose characters contain spaces — nfst-twolc pair tokenization; verify + regression test"
+                        priority 3
+                    }
+
+                    {
+                        id upstream-bugs.t3.i570
+                        title "hfst#570: unescaped quotation mark in a twol rule silently produces a bad FST with no error — nfst-twolc lexer strictness; must error, not mis-compile; verify + test"
+                        priority 3
+                    }
+
+                    {
+                        id upstream-bugs.t3.i334
+                        title "hfst#334: non-existent multichar symbols in twol rules generate nondeterministic garbage instead of an error — nfst-twolc symbol validation against the declared alphabet; verify + test"
+                        priority 3
+                    }
+
+                    {
+                        id upstream-bugs.t3.i287
+                        title "hfst#287: hfst-regexp2fst stack-smashing on omorfi regex input — the C++ overflow is void in Rust, but the port must PARSE the same input correctly (or error cleanly): run upstream's reproduction through nfst-xre; lock behavior"
+                        priority 3
+                    }
+
+                    {
+                        id upstream-bugs.t3.i253
+                        title "hfst#253: regexp2fst segfaults on malformed input — Rust must produce a clean diagnostic, never a panic: feed upstream's malformed inputs to nfst-xre + xre.rs; lock with error-path tests"
+                        priority 3
+                    }
+                )
+            }
+
+            {
+                id upstream-bugs.t4
+                title "Tier 4 — lookup/enumeration/OL-archive bugs (perf holes, infinite loops, wrong results in lookup + fst2strings + multi-fst OL archives)"
+                children (
+                    {
+                        id upstream-bugs.t4.i476
+                        title "hfst#476: hfst-lookup memory hole / time-cutoff ineffective on pathological FSTs — lookup resource bounding (max_time/recursion limits in the OL runtime); verify cutoffs actually bound work in the port"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i327
+                        title "hfst#327: hfst-fst2strings time cutoff ineffective and/or memory leak — enumeration bounding in fst2strings/extract_paths; the 'leak' is C++, the unbounded work is ours to verify"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i490
+                        title "hfst#490: hfst-fst2strings -c 0 loops infinitely on digit-combinatoric FSTs — cycle handling when max-cycles=0 (extract_paths cycles parameter); cap-guarded reproduction"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i293
+                        title "hfst#293: lookup accumulates huge weights before printing infinities (epsilon-loop weight explosion) — OL lookup epsilon-cycle weight handling; affects affix-guessify too"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i225
+                        title "hfst#225: @_IDENTITY_SYMBOL_@ handling broken in lookup / affix-guessify — identity arcs don't match unknown input symbols during lookup; guessify pipeline consumer"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i445
+                        title "hfst#445: hfst-lookup doesn't match '?' (unknown/any) as expected — lookup unknown-symbol semantics vs regex-side expectations; clarify + fix or document"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i460
+                        title "hfst#460: lookup-optimize after building a prefix-acceptor FSA loses outputs — OL conversion drops output symbols on prefix acceptors (convert_ol path); reproduce + fix"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i587
+                        title "hfst#587: hfst-expand -P (prefix expansion) broken on transducers with initial epsilons — fst2strings/expand prefix matching; reproduce + fix"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i170
+                        title "hfst#170: hfst-fst2strings segfaults or prints nothing on certain FSTs — the segfault is C++'s; 'prints nothing' is the logic bug to reproduce in our extract_paths"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i222
+                        title "hfst#222: fst2strings throws after ~9M lines of enumeration — resource/format ceiling in long enumerations; verify the port's behavior on unbounded enumeration"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i444
+                        title "hfst#444: hfst-fst2strings -r (random) generates nothing for guesser FSTs — extract_random_paths on cyclic/guesser structures; reproduce + fix"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i441
+                        title "hfst#441: hfst-fst2strings -r -w misses some weights — random-path extraction drops weights; companion to #444"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i395
+                        title "hfst#395: hfst-optimized-lookup doesn't handle multiple FSTs in a single archive (hfst-lookup unions them; OL tool reads only the first) — multi-transducer OL archive semantics in optimized_lookup.rs"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i409
+                        title "hfst#409: optimized-lookup tool claims multiple transducers when there is only one — OL stream EOF/next-transducer detection miscounts; companion to #395 (same reader logic)"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i335
+                        title "hfst#335: duplicate Location results in pmatch — pmatch runtime emits duplicate matches (minimization/epsilon artifact); reproduce + dedupe or fix at source"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.i357
+                        title "hfst#357: hfst-compose-intersect memory/time blowup on large rule sets — compose_intersect_lexicon perf; benchmark the port (rustfst backend + native foma may already mitigate); fix or document improvement"
+                        priority 4
+                    }
+                )
+            }
+
+            {
+                id upstream-bugs.limits
+                title "Format limits — inherited on-disk width ceilings shared by OL and THFST (document as spec'd limitations or extend the format deliberately)"
+                children (
+                    {
+                        id upstream-bugs.limits.i458
+                        title "hfst#458: OL format u16 symbol-count ceiling (USHRT_MAX) — large lexicons overflow SymbolNumber; inherited by THFST (same u16 records); decide: hard-error with a clear diagnostic at conversion time (minimum) or format extension (spec'd divergence)"
+                        priority 5
+                    }
+
+                    {
+                        id upstream-bugs.limits.i123
+                        title "hfst#123: HFST3 header length field width (u16) + OL u32 table-size ceilings on huge automata — audit every on-disk width in hfst_output_stream/transducer.rs writers; minimum: overflow checks with clean errors instead of silent wraps"
+                        priority 5
+                    }
+
+                    {
+                        id upstream-bugs.limits.i328
+                        title "hfst#328: endian-neutrality — the port's OL writer is native-endian (faithful to C++); THFST is already explicitly LE. Decide: document LE-only support, or make OL I/O explicitly LE (byte-compat on all current targets, spec'd divergence)"
+                        priority 5
+                    }
+                )
+            }
+        )
+    }
 )
