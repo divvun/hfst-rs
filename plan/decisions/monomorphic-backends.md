@@ -18,11 +18,15 @@ alternatives (
     }
 )
 consequences {
-    accepted ("The working tree is red for the whole pass; the oracle (153 tests + byte-identical lang-sma artifacts) is only checked at the end and at designated midpoints.")
-    accepted ("The ~103 FunctionNotImplemented/TransducerHasWrongType runtime bail sites for capability mismatches become compile-time impossibilities and are deleted, a deliberate behavior change from C++ (errors move from runtime to compile time).")
-    accepted ("CLI tools that read arbitrary .hfst files dispatch once at the stream boundary; each tool body is a generic fn instantiated per backend.")
-    deferred ("SmolStr symbol interning is a separate pass (task #27).")
-    deferred ("hfst-c FFI re-binding to the generic facade (hfst-c is out of scope per [dec:hfst:hfst-c-out-of-scope]).")
+    accepted (
+        "The working tree is red for the whole pass; the oracle (153 tests + byte-identical lang-sma artifacts) is only checked at the end and at designated midpoints."
+        "The ~103 FunctionNotImplemented/TransducerHasWrongType runtime bail sites for capability mismatches become compile-time impossibilities and are deleted, a deliberate behavior change from C++ (errors move from runtime to compile time)."
+        "CLI tools that read arbitrary .hfst files dispatch once at the stream boundary; each tool body is a generic fn instantiated per backend."
+    )
+    deferred (
+        "SmolStr symbol interning is a separate pass (task #27)."
+        "hfst-c FFI re-binding to the generic facade (hfst-c is out of scope per [dec:hfst:hfst-c-out-of-scope])."
+    )
 }
 codifies ()
 establishes ([arch:hfst:backend-dispatch])

@@ -2326,4 +2326,59 @@ children (
             }
         )
     }
+
+    {
+        id thfst
+        title "THFST backend + BHFST packer: first post-parity NOVEL backend (divvunspell interop; proves the monomorphic seam extensible; replaces the zip+thfst-tools pipeline steps) [dec:hfst:thfst-backend]"
+        children (
+            {
+                id thfst.spec
+                title "Spec + decision: greenfield thfst-backend.* rules (directory format, index/transition record layouts, alphabet-json algorithm, stream-io, bhfst layout/meta/tool) + [dec:hfst:thfst-backend]"
+                log (
+                    {
+                        at 2026-07-10T13:42:26.337614Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id thfst.type
+                title "ImplementationType::THFST_TYPE: variant + is_weighted + every exhaustive match (deny-wildcard-driven: output/input stream ctors bail/unreachable, hfst_strformat, parse 'thfst', per-tool OLW-parity arms, equality-check sites lookup.rs/optimized_lookup.rs/format.rs) + serde/serde_json deps in crates/hfst"
+                deps (thfst.spec)
+            }
+
+            {
+                id thfst.seam
+                title "Backend citizen: backend_thfst.rs newtype ThfstTransducer(Transducer<WeightedTables>), Backend impl (TYPE=THFST, write bails, new provided Backend::write_to_dir hook), LookupBackend delegation, AnyTransducer::Thfst + any_delegate/for_any/IntoAny, FromAnyTransducer with O(1) Thfst<->OlW table moves, convert_any_with_options THFST arm"
+                deps (thfst.type)
+            }
+
+            {
+                id thfst.io
+                title "Serializers (thfst_io.rs): alphabet-json writer replicating divvunspell's parser from symbol strings (0-based first-encounter numbering, NOT FdTable's), LE table writers (raw index u32 bit-copy), read_dir with header synthesis (sizes exact, weighted=true, documented input_symbol_count/flag divergences) + tests: roundtrip lookup parity, golden bytes, alphabet numbering, truncation rejection"
+                deps (thfst.seam)
+            }
+
+            {
+                id thfst.streams
+                title "Stream integration: HfstInputStream::new_filename .thfst-dir detection -> preloaded single-read slot (EndOfStream on second read); HfstOutputStream dir sink (hfst_format forced off, one-transducer-per-dir, stdout rejected); fst2fst -f thfst usage + stdout guard (XFSM precedent)"
+                deps (thfst.io)
+            }
+
+            {
+                id thfst.bhfst
+                title "hfst-bhfst tool: box-format (git pin = divvunspell lock rev, writer feature, align 8, Stored-only) pack of acceptor/errmodel (.thfst dirs or auto-converted transducers, canonical entry names) + index.xml->meta.json (serde-xml-rs =0.6 parity, id .hfst->.thfst rewrite) / meta.json verbatim + --info; house getopt pattern; TOOLS/ABOUTS registration"
+                deps (thfst.streams)
+            }
+
+            {
+                id thfst.oracle
+                title "Oracle validation: thfst-tools byte-compare (index/transition identical, alphabet jq -S semantic-equal) on a real OLW (lang-sma acceptor); hfst-bhfst archive readable by thfst-tools bhfst-info + divvunspell suggest parity vs the thfst-tools-built bhfst; regression suites (default + --features foma) green"
+                deps (thfst.bhfst)
+            }
+        )
+    }
 )
