@@ -24,5 +24,17 @@ mimalloc = { version = "0.1", default-features = false }
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 
+# BHFST packing (hfst-bhfst). box-format is pinned to the exact git rev
+# divvunspell pins (its Cargo.lock: git+https://github.com/bbqsrc/box
+# rev 3d3818ce6251201916f2ce99a2aedfef321ba3ad), so the archives rust-hfst
+# emits are byte-compatible with what divvunspell consumes. The `reader`
+# feature is pulled in for `hfst-bhfst -I` (metadata inspection); `writer`
+# transitively enables it, but we name it explicitly for clarity.
+box-format = { git = "https://github.com/bbqsrc/box", rev = "3d3818ce6251201916f2ce99a2aedfef321ba3ad", default-features = false, features = ["writer", "reader"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde-xml-rs = { version = "=0.6.0", default-features = false }
+tempfile = "3"
+
 [lints]
 workspace = true

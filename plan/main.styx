@@ -2432,6 +2432,21 @@ children (
                 id thfst.bhfst
                 title "hfst-bhfst tool: box-format (git pin = divvunspell lock rev, writer feature, align 8, Stored-only) pack of acceptor/errmodel (.thfst dirs or auto-converted transducers, canonical entry names) + index.xml->meta.json (serde-xml-rs =0.6 parity, id .hfst->.thfst rewrite) / meta.json verbatim + --info; house getopt pattern; TOOLS/ABOUTS registration"
                 deps (thfst.streams)
+                log (
+                    {
+                        at 2026-07-10T17:18:29.386333Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-10T21:26:42.429296Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

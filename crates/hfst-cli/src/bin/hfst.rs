@@ -49,6 +49,10 @@ const ABOUTS: &[(&str, &str)] = &[
     ),
     ("hfst-binary-tool", "Do things with two transducers"),
     (
+        "hfst-bhfst",
+        "Pack a THFST acceptor/errmodel pair (+ speller metadata) into a BHFST archive",
+    ),
+    (
         "hfst-check-alpha",
         "Compare the compatibility of alphabets between INFILEs",
     ),

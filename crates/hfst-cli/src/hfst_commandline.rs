@@ -688,12 +688,31 @@ pub fn hfst_set_program_name(argv0: &str, version_vector: &str, wikiname: &str) 
     // diagnostics are already gated at their call sites (silent / verbose), so a
     // permissive (TRACE) subscriber renders exactly what the code chooses to
     // emit. Replaces the former hfst::set_warning_stream(&std::cerr).
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_writer(std::io::stderr)
-        .without_time()
-        .with_target(false)
-        .try_init();
+    //
+    // Foreign crates do NOT gate at their call sites, so the known-noisy
+    // third-party targets are clamped to WARN: serde-xml-rs / xml-rs (log
+    // records, bridged by tracing-log) and box-format (native tracing) would
+    // otherwise flood hfst-bhfst's stderr with parser/archive traces.
+    {
+        use tracing::level_filters::LevelFilter;
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+        let _ = tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(std::io::stderr)
+                    .without_time()
+                    .with_target(false),
+            )
+            .with(
+                tracing_subscriber::filter::Targets::new()
+                    .with_default(LevelFilter::TRACE)
+                    .with_target("serde_xml_rs", LevelFilter::WARN)
+                    .with_target("xml", LevelFilter::WARN)
+                    .with_target("box_format", LevelFilter::WARN),
+            )
+            .try_init();
+    }
     // Seed the tool's CommonOptions with its identity; parse_options fills the
     // rest. The idiomatic replacement for the former program-name/version
     // globals.

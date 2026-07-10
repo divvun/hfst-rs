@@ -5,6 +5,7 @@
 //! the TOOLS table below, keyed by the original binary names.
 
 pub mod affix_guessify;
+pub mod bhfst;
 pub mod binary_tool;
 pub mod check_alpha;
 pub mod compare;
@@ -80,6 +81,7 @@ pub const TOOLS: &[(&str, fn(Vec<String>) -> i32)] = &[
     ("hfst-tokenise", tokenize::run),
     ("hfst-optimised-lookup", optimized_lookup::run),
     ("hfst-binary-tool", binary_tool::run),
+    ("hfst-bhfst", bhfst::run),
     ("hfst-check-alpha", check_alpha::run),
     ("hfst-compare", compare::run),
     ("hfst-compose", compose::run),
