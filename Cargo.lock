@@ -625,6 +625,8 @@ dependencies = [
  "flate2",
  "nfst-lexc",
  "nfst-xre",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

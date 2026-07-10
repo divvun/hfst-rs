@@ -270,6 +270,24 @@
 > Context ops: `LC`→if `!transducer_has_context_symbol(retval)`: `retval->reverse()`, build `tmp = new HfstTransducer(internal_epsilon, LC_ENTRY_SYMBOL, format)`, `tmp->concatenate(*retval)`, concatenate an `(internal_epsilon, LC_EXIT_SYMBOL)` transducer, delete old retval, retval = tmp; else if verbose print a "ignoring nested context condition" warning naming `eval_stack.back()`. `NLC`→if no existing context symbol: `retval->reverse()`, build a minimization-guard head transducer (`make_minimization_guard()->evaluate()`), build `nlc_entry = (epsilon, NLC_ENTRY_SYMBOL)`, concatenate `*retval`, concatenate `(epsilon, NLC_EXIT_SYMBOL)`, disjunct with a `PASSTHROUGH_SYMBOL` transducer, `head->concatenate(nlc_entry)`, delete retval, retval = head; else verbose warning. `RC`→if no existing context symbol: build `tmp = (epsilon, RC_ENTRY_SYMBOL)`, concatenate `*retval`, concatenate `(epsilon, RC_EXIT_SYMBOL)` (no reverse), delete old, retval = tmp; else verbose warning. `NRC`→like NLC but no reverse, using `NRC_ENTRY_SYMBOL`/`NRC_EXIT_SYMBOL` with the minimization guard and passthrough disjunction.
 > After dispatch: `retval->set_final_weights(double_to_float(weight), true)`, pop `name` from `eval_stack` if set. If `cache==NULL && should_use_cache()`, set `cache = retval`, `cache->minimize()`, `report_time(" with " + get_size_info(cache))`, return a copy of `*cache`. Otherwise `report_time()` and return `retval`.
 
+> PORT NOTE (flag-complement.audit, follow-up to hfst/hfst#349): unlike the XRE
+> `~`/`\` operators — which the port made flag-ordinary via
+> `HfstTransducer::identity_with_flags_of` — the pmatch `Complement`,
+> `TermComplement`, and `Containment` universes here are kept 1:1 with upstream
+> and therefore DO NOT treat flag diacritics as ordinary sigma members.
+> `TermComplement` iterates `get_non_special_alphabet`, which drops every
+> `@...@` symbol (flags included, via `PmatchAlphabet::is_printable`), so a flag
+> in the operand is silently excluded and never subtracted. `Complement` builds
+> its `[?* - retval]` universe from the bare `internal_identity`, so a flag
+> mid-string is swallowed by subtract harmonization. This is a DELIBERATE
+> NON-DIVERGENCE: the pmatch RUNTIME (`PmatchAlphabet`/`FdState` in
+> `pmatch.rs`) executes flag diacritics as `FdOperation` constraints rather than
+> matching them as ordinary input, so the flag-ordinary treatment that is
+> correct for XRE boolean algebra is not the pmatch semantics; upstream C++
+> never fixed it and the giellacg tokenizer does not place flags under pmatch
+> complement. The deferral is locked by
+> `test_flag_complement.rs::deferral_pmatch_term_complement_excludes_flag`.
+
 > [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.get-initial-nrc-initial-symbols-fn]
 > StringSet
 

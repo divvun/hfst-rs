@@ -106,4 +106,5 @@ assertions (
     {id thfst.bhfst, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:26:42.429296Z}
     {id thfst.oracle, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:32:07.099264Z}
     {id flag-complement.fix, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:58:29.947351Z}
+    {id flag-complement.audit, kind @complete, author "brendan@necessary.nu", at 2026-07-10T22:09:10.825079Z}
 )

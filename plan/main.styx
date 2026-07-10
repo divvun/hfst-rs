@@ -2507,6 +2507,28 @@ children (
                 id flag-complement.audit
                 title "Audit every other embedded ?*/identity-universe for flag interaction: xre Containment family (contains/contains_with_weight/contains_once/contains_once_optional — the ~$[...] filter use-case from the issue), pmatch Complement/TermComplement/Containment (pmatch.rs — same naive pattern per pmatch_utils.md spec), hfst_xerox_rules restriction/replace compilations; classify each (correct / fix by the flag-ordinary principle / documented deferral), fix the clear ones with tests"
                 deps (flag-complement.fix)
+                log (
+                    {
+                        at 2026-07-10T21:59:33.232765Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-10T22:09:02.252027Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "AUDIT COMPLETE — no additional production fix required. Site-by-site: (1) xre containment family (contains xre.rs:1822, contains_with_weight :1861, contains_once :1878, contains_once_optional :1931) — ALREADY CORRECT: contains' harmonizing concatenate carries the operand's flags into the result alphabet, the ?* wings match flags mid-string (verified empirically), and the fixed outer ~ finds those flags via identity_with_flags_of — so the issue thread's pressing use-case ~$[flag] now works end-to-end (accepts a/ab, rejects flag-alone and a·flag·b, keeps flag in sigma; filter compose {a,flag,ab,a·flag·b} & ~$[flag] = {a,ab}). (2) pmatch Complement/TermComplement/Containment (pmatch_compiler.rs:2464/2483/2470) — DEFERRED, deliberate non-divergence: the pmatch RUNTIME executes flags as flag operations, not ordinary symbols, so XRE's flag-ordinary boolean treatment is not pmatch semantics; get_non_special_alphabet deliberately drops @...@; upstream never changed it; giellacg doesn't put flags under pmatch complement. PORT NOTE added to pmatch_utils.md; behavior locked by test deferral_pmatch_term_complement_excludes_flag. (3) hfst_xerox_rules replace family (692/990/1115) — FLAG-SAFE BY CONSTRUCTION: Rule::encode_flags() turns flags into ordinary $...$ before any subtract. Restriction/before/after (2822/2936/2979) + bracket subtracts do NOT encode flags → a flag in a bare restriction context would be erased — DEFERRED (unusual construction, no known consumer, heavily-spec'd 1:1 port); PORT NOTE in HfstXeroxRules.md; flag-free baseline locked by test. (4) Other identity_pair/internal_identity hits (guessify_fst, xfst_compiler:6099, expand_equivalences:107, converters) — unrelated (no subtract of flag-bearing operands). Tests +4 (test_flag_complement.rs now 10). Suite 157 passed / 3 skipped."
+                    }
+
+                    {
+                        at 2026-07-10T22:09:10.825079Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
         )
     }

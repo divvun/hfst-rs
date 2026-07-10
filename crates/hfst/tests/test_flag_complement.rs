@@ -224,3 +224,214 @@ fn plain_symbol_unchanged() {
         "\\a must equal [? - a]"
     );
 }
+
+// ---------------------------------------------------------------------------
+// flag-complement.audit follow-up: the containment `$` family and the
+// `~$[flag]` filter use-case from the issue thread.
+//
+// Containment itself does NOT subtract, so the erasure only bites when the
+// containment result is later complemented (`~$[flag]`). The audit's key
+// empirical question is whether that composite now works end-to-end. The
+// containment result's own alphabet already carries the flag (via
+// `contains`'s harmonizing `concatenate(t, true)`), and the outer `~` (fixed
+// in flag-complement.fix) finds it through `identity_with_flags_of`. The
+// containment `?*` wings match a flag anywhere in the string, so a flag
+// before/after the target still counts as "containing" it. These tests lock
+// that composite; the audit found the `$` family itself needs no change.
+// ---------------------------------------------------------------------------
+
+// Concatenate a list of single-symbol nets into one string acceptor (at least
+// one symbol required).
+fn string_net<B: AlgebraBackend>(syms: &[&str]) -> HfstTransducer<B> {
+    let (first, rest) = syms.split_first().expect("string_net needs >=1 symbol");
+    let mut t = symbol::<B>(first);
+    for s in rest {
+        t.concatenate(&symbol::<B>(s), true).expect("concatenate");
+    }
+    t
+}
+
+// True iff `t` accepts (intersects non-empty with) the exact string `other`.
+fn accepts<B: AlgebraBackend>(t: &HfstTransducer<B>, other: &HfstTransducer<B>) -> bool {
+    let empty = HfstTransducer::<B>::new();
+    let mut hit = t.clone();
+    hit.intersect(other, true).expect("intersect");
+    !hit.compare(&empty, true).expect("compare")
+}
+
+// `$[flag]` accepts any string CONTAINING the flag (the flag alone, or a flag
+// between other symbols), and rejects flag-free strings. Proves the `?*` wings
+// match a flag symbol mid-string.
+#[test]
+fn containment_of_flag_matches_flag_anywhere() {
+    let _guard = serialized();
+
+    let cont = compile(&format!("$[\"{FLAG}\"]"));
+
+    // Flag stays in the containment alphabet.
+    assert!(
+        cont.get_alphabet().expect("alphabet").contains(FLAG),
+        "$[flag] alphabet must contain the flag"
+    );
+
+    // Contains the flag: flag alone, and a flag wrapped by other symbols.
+    assert!(
+        accepts(&cont, &flag_net::<StdVectorFst>()),
+        "$[flag] must accept the bare flag"
+    );
+    assert!(
+        accepts(&cont, &string_net::<StdVectorFst>(&["a", FLAG, "b"])),
+        "$[flag] must accept a string with the flag in the middle"
+    );
+
+    // Does not contain the flag: flag-free strings.
+    assert!(
+        !accepts(&cont, &symbol::<StdVectorFst>("a")),
+        "$[flag] must reject the flag-free string 'a'"
+    );
+    assert!(
+        !accepts(&cont, &string_net::<StdVectorFst>(&["a", "b"])),
+        "$[flag] must reject the flag-free string 'ab'"
+    );
+}
+
+// The issue thread's pressing use-case: the filter `~$[flag]` (accept any
+// string that does NOT contain the flag), composed against inputs with and
+// without the flag. Before flag-complement.fix the outer `~` swallowed the
+// flag and this filter degenerated. Now it is the exact complement of
+// `$[flag]`.
+#[test]
+fn negated_containment_filter_end_to_end() {
+    let _guard = serialized();
+
+    let filter = compile(&format!("~$[\"{FLAG}\"]"));
+
+    // The flag survives in the filter's alphabet as an ordinary symbol.
+    assert!(
+        filter.get_alphabet().expect("alphabet").contains(FLAG),
+        "~$[flag] alphabet must keep the flag"
+    );
+
+    // Accepts flag-free strings.
+    assert!(
+        accepts(&filter, &symbol::<StdVectorFst>("a")),
+        "~$[flag] must accept the flag-free string 'a'"
+    );
+    assert!(
+        accepts(&filter, &string_net::<StdVectorFst>(&["a", "b"])),
+        "~$[flag] must accept the flag-free string 'ab'"
+    );
+
+    // Rejects strings containing the flag anywhere.
+    assert!(
+        !accepts(&filter, &flag_net::<StdVectorFst>()),
+        "~$[flag] must reject the bare flag"
+    );
+    assert!(
+        !accepts(&filter, &string_net::<StdVectorFst>(&["a", FLAG, "b"])),
+        "~$[flag] must reject a string with the flag in the middle"
+    );
+
+    // Filter compose: {a, flag, ab, a-flag-b} & ~$[flag] keeps exactly the
+    // flag-free inputs.
+    let mut inputs = symbol::<StdVectorFst>("a");
+    inputs
+        .disjunct(&flag_net::<StdVectorFst>(), true)
+        .expect("disjunct");
+    inputs
+        .disjunct(&string_net::<StdVectorFst>(&["a", "b"]), true)
+        .expect("disjunct");
+    inputs
+        .disjunct(&string_net::<StdVectorFst>(&["a", FLAG, "b"]), true)
+        .expect("disjunct");
+
+    let expected = {
+        let mut e = symbol::<StdVectorFst>("a");
+        e.disjunct(&string_net::<StdVectorFst>(&["a", "b"]), true)
+            .expect("disjunct");
+        e
+    };
+
+    let mut filtered = inputs.clone();
+    filtered.intersect(&filter, true).expect("intersect");
+    assert!(
+        filtered.compare(&expected, true).expect("compare"),
+        "{{a, flag, ab, a-flag-b}} & ~$[flag] must equal {{a, ab}}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// DOCUMENTED DEFERRALS (flag-complement.audit). These tests lock the CURRENT
+// behavior of sites the audit deliberately left unchanged, so the deferral is
+// checkable and any future change is a conscious decision, not a silent drift.
+// ---------------------------------------------------------------------------
+
+// DEFERRAL 1 — pmatch TermComplement (`\`) EXCLUDES flag diacritics.
+//
+// pmatch's PmatchUnaryOp::TermComplement iterates `get_non_special_alphabet`,
+// which drops every `@...@` symbol (flags included, via PmatchAlphabet::
+// is_printable). Unlike XRE, the pmatch RUNTIME (pmatch.rs) executes flag
+// diacritics as FdOperation constraints rather than matching them as ordinary
+// input, so treating a flag as an ordinary sigma member under complement is
+// not the pmatch semantics. The upstream C++ pmatch never fixed this, the
+// pmatch_utils.md spec is a 1:1 port, and there is no evidence the giellacg
+// tokenizer places flags under pmatch complement. Deferred with rationale.
+//
+// This test locks the observed behavior: `\flag` in pmatch does NOT keep the
+// flag in its alphabet (it was never subtracted, so never harmonized in).
+#[test]
+fn deferral_pmatch_term_complement_excludes_flag() {
+    use hfst::pmatch_compiler::PmatchCompiler;
+    let _guard = serialized();
+
+    let mut c = PmatchCompiler::<StdVectorFst>::new();
+    let defs = c
+        .compile(&format!("Define TOP \\\"{FLAG}\" ;\n"))
+        .expect("pmatch compile");
+    let top = defs.get("TOP").expect("no TOP");
+    let sigma = top.get_alphabet().expect("alphabet");
+
+    // Documented deferral: the flag is NOT in sigma (excluded as a special
+    // symbol). If this ever flips, the pmatch deferral must be revisited.
+    assert!(
+        !sigma.contains(FLAG),
+        "DEFERRAL: pmatch \\flag currently EXCLUDES the flag from sigma (got {sigma:?})"
+    );
+}
+
+// DEFERRAL 2 — hfst_xerox_rules restriction/before/after build `[?* - X]`
+// contexts WITHOUT flag-ordinary universes.
+//
+// The replace rules call `Rule::encode_flags()` first (flags become ordinary
+// `$...$` symbols before any subtract, so they are already flag-safe). But the
+// restriction (`=>`), `before`, and `after` operators build their universe
+// straight from `identity_pair()` and subtract a `[?* X ?* Y ?*]` context
+// without encoding flags. Flags inside a restriction context are a genuinely
+// unusual Xerox construction, these are heavily-spec'd 1:1 ports with their own
+// test suite (test_xerox_rules.rs), and upstream C++ behaves identically.
+// Deferred with rationale.
+//
+// This test documents that a plain (flag-free) restriction still compiles and
+// behaves, so the deferral does not hide a regression in the common path.
+#[test]
+fn deferral_xerox_restriction_flag_free_baseline() {
+    use hfst::hfst_xerox_rules::restriction;
+    let _guard = serialized();
+
+    // a => b _ c : `a` is allowed only between `b` and `c`.
+    let center = symbol::<StdVectorFst>("a");
+    let left = symbol::<StdVectorFst>("b");
+    let right = symbol::<StdVectorFst>("c");
+    let context = vec![(left, right)];
+    let r = restriction(&center, &context).expect("restriction compiles");
+
+    // "bac" satisfies the restriction; "a" alone does not.
+    assert!(
+        accepts(&r, &string_net::<StdVectorFst>(&["b", "a", "c"])),
+        "restriction must accept 'bac'"
+    );
+    assert!(
+        !accepts(&r, &symbol::<StdVectorFst>("a")),
+        "restriction must reject a bare 'a' (no b_c context)"
+    );
+}

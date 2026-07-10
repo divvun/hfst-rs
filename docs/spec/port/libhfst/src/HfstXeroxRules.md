@@ -291,6 +291,19 @@
 > Build `contextMarked` by iterating contexts: for each context i, copy `context[i].first` into `lefContext` and `context[i].second` into `rightContext`, inserting `@_D_@` into each one's alphabet; build `RES` = `universalWithoutDStar . lefContext . mark . universalWithoutDStar . mark . rightContext . universalWithoutDStar`, optimized (`[U* L @_D_@ U* @_D_@ R U*]`). For i==0 assign to `contextMarked`, else disjunct and optimize.
 > Build `centerMinusCtx` = `centerMarked` minus `contextMarked`, optimized. Build `tmp` = `noDUpper . compose centerMinusCtx . compose noDLower`, optimized (`NODU .o. (CEN1 - RES) .o. NODL`). Build `retval` = `universalWithoutDStar` minus `tmp`, optimized (`U* - tmp`). Remove `@_D_@` from `retval`'s alphabet. Finally `retval = applyBoundaryMark(retval)` and return `retval`.
 
+> PORT NOTE (flag-complement.audit, follow-up to hfst/hfst#349): `restriction`,
+> `before`, and `after` build their `U*`/`[?* X ?* Y ?*]` universes straight from
+> `identity_pair()` and subtract WITHOUT first encoding flag diacritics, so — as
+> in upstream C++ — a flag diacritic inside a restriction/before/after context is
+> erased by subtract harmonization (the flag-swallowing shape fixed for XRE `~`).
+> This is DEFERRED (kept 1:1 with upstream): the replace-rule family already
+> guards itself by calling `Rule::encode_flags()` (flags become ordinary `$...$`
+> symbols before any subtract), flags inside a bare restriction context are a
+> genuinely unusual Xerox construction with no known consumer, and these
+> operators are a heavily-spec'd 1:1 port with their own test suite
+> (`HfstXeroxRulesTest.md` / `test_xerox_rules.rs`). The flag-free common path is
+> locked by `test_flag_complement.rs::deferral_xerox_restriction_flag_free_baseline`.
+
 > [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.right-most-constraint-fn]
 > HfstTransducer rightMostConstraint( const HfstTransducer &uncondidtionalTr )
 
