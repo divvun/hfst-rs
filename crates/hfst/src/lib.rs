@@ -70,6 +70,7 @@ pub mod pmatch_compiler;
 pub mod pmatch_tokenize;
 pub mod string_manipulation;
 pub mod string_utils;
+pub mod thfst_io;
 pub mod transducer;
 pub mod tropical_weight_transducer;
 pub mod twolc;

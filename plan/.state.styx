@@ -101,4 +101,5 @@ assertions (
     {id thfst.spec, kind @complete, author "brendan@necessary.nu", at 2026-07-10T13:42:26.337614Z}
     {id thfst.type, kind @complete, author "brendan@necessary.nu", at 2026-07-10T14:19:23.887105Z}
     {id thfst.seam, kind @complete, author "brendan@necessary.nu", at 2026-07-10T14:39:09.701676Z}
+    {id thfst.io, kind @complete, author "brendan@necessary.nu", at 2026-07-10T16:51:25.863726Z}
 )

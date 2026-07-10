@@ -37,6 +37,29 @@ impl ThfstTransducer {
     pub fn into_ol(self) -> Transducer<WeightedTables> {
         self.0
     }
+
+    /// Serialize this THFST transducer to a `X.thfst/` directory (the three
+    /// member files `alphabet`, `index`, `transition`) — a thin wrapper over
+    /// [`crate::thfst_io::write_dir`] on the inner weighted OL engine. Creates
+    /// `dir` and its parents if absent. Against the reference producer
+    /// (`thfst-tools`) the `index`/`transition` files are byte-identical and
+    /// the `alphabet` is semantically equal.
+    // [spec:hfst:def:thfst-backend.write-dir-fn]
+    // [spec:hfst:sem:thfst-backend.write-dir-fn]
+    pub fn write_dir(&self, dir: &std::path::Path) -> crate::error::Result<()> {
+        crate::thfst_io::write_dir(&self.0, dir)
+    }
+
+    /// Load a THFST transducer from a `X.thfst/` directory — a thin wrapper
+    /// over [`crate::thfst_io::read_dir`]. The directory must contain all three
+    /// member files (else `NotTransducerStream`); the OL header THFST does not
+    /// store is synthesized (both symbol counts = key_table length, table sizes
+    /// = the exact record counts, weighted = true, all property flags false).
+    // [spec:hfst:def:thfst-backend.read-dir-fn]
+    // [spec:hfst:sem:thfst-backend.read-dir-fn]
+    pub fn read_dir(dir: &std::path::Path) -> crate::error::Result<Self> {
+        Ok(ThfstTransducer(crate::thfst_io::read_dir(dir)?))
+    }
 }
 
 impl Backend for ThfstTransducer {

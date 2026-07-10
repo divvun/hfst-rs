@@ -2390,6 +2390,21 @@ children (
                 id thfst.io
                 title "Serializers (thfst_io.rs): alphabet-json writer replicating divvunspell's parser from symbol strings (0-based first-encounter numbering, NOT FdTable's), LE table writers (raw index u32 bit-copy), read_dir with header synthesis (sizes exact, weighted=true, documented input_symbol_count/flag divergences) + tests: roundtrip lookup parity, golden bytes, alphabet numbering, truncation rejection"
                 deps (thfst.seam)
+                log (
+                    {
+                        at 2026-07-10T14:40:18.120692Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-10T16:51:25.863726Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
