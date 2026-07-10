@@ -4285,6 +4285,8 @@ impl FromAnyTransducer for StdVectorFst {
             other @ AnyTransducer::OlW(_) | other @ AnyTransducer::OlU(_) => {
                 any_into_backend_via_basic(other)
             }
+            #[cfg(feature = "foma")]
+            other @ AnyTransducer::Foma(_) => any_into_backend_via_basic(other),
         }
     }
 }
@@ -4296,6 +4298,8 @@ impl FromAnyTransducer for Transducer<WeightedTables> {
             other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlU(_) => {
                 any_into_backend_via_basic(other)
             }
+            #[cfg(feature = "foma")]
+            other @ AnyTransducer::Foma(_) => any_into_backend_via_basic(other),
         }
     }
 }
@@ -4311,6 +4315,8 @@ impl FromAnyTransducer for Transducer<UnweightedTables> {
             other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlW(_) => {
                 any_into_backend_via_basic(other)
             }
+            #[cfg(feature = "foma")]
+            other @ AnyTransducer::Foma(_) => any_into_backend_via_basic(other),
         }
     }
 }

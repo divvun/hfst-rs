@@ -500,7 +500,10 @@ mod input_impl {
                             self.pbr().unget_all(&bytes[consumed..]);
                         }
                         AnyTransducer::Foma(HfstTransducer::wrap(
-                            crate::backend_foma::FomaTransducer(*fsm),
+                            crate::backend_foma::FomaTransducer {
+                                net: *fsm,
+                                opts: foma::options::FomaOptions::default(),
+                            },
                         ))
                     }
                     #[cfg(not(feature = "foma"))]
