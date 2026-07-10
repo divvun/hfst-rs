@@ -104,4 +104,5 @@ assertions (
     {id thfst.io, kind @complete, author "brendan@necessary.nu", at 2026-07-10T16:51:25.863726Z}
     {id thfst.streams, kind @complete, author "brendan@necessary.nu", at 2026-07-10T17:17:35.633124Z}
     {id thfst.bhfst, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:26:42.429296Z}
+    {id thfst.oracle, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:32:07.099264Z}
 )

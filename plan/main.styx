@@ -2453,6 +2453,28 @@ children (
                 id thfst.oracle
                 title "Oracle validation: thfst-tools byte-compare (index/transition identical, alphabet jq -S semantic-equal) on a real OLW (lang-sma acceptor); hfst-bhfst archive readable by thfst-tools bhfst-info + divvunspell suggest parity vs the thfst-tools-built bhfst; regression suites (default + --features foma) green"
                 deps (thfst.bhfst)
+                log (
+                    {
+                        at 2026-07-10T21:27:30.012989Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-10T21:31:58.792183Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Oracle validation PASSED on the real lang-sma speller pair (build/sma.zhfst/: acceptor 14.6MB OLW, errmodel 113.9MB OLW, both rust-hfst-built). (1) Byte oracle vs thfst-tools hfst-to-thfst: index and transition files BYTE-IDENTICAL for both acceptor (6,023,592 B index / 10,103,784 B transition) and errmodel; alphabet JSON semantically equal (jq -S diff empty; byte sizes identical too, 26,964 B acceptor). (2) hfst-bhfst packed mine.bhfst (130,771,987 B, incl. index.xml->meta.json) vs thfst-tools thfsts-to-bhfst theirs.bhfst; thfst-tools bhfst-info reads OUR archive and prints the converted metadata. (3) divvunspell suggest parity: 7/7 test words (gåetie gåatan maanaj tjaeleme gieles åarjelsaemien girjje) produce IDENTICAL output from both archives (e.g. girjje -> gijje 24.99983, gijjie 32.99983, ...). (4) Regression: nextest 147 passed / 3 skipped; foma feature blocked externally by uncommitted Wave-9 WIP in the sibling foma repo (pre-existing). FINDING: divvunspell repo's acceptor.converted.hfst fixtures carry a minimal non-key-value HFST3 header (8-byte block = bare \"HFST_OLW\") that divvunspell's blind header-skip tolerates but standard hfst readers (ours and C++) reject — those fixtures are not standard hfst products; lang-sma artifacts used instead."
+                    }
+
+                    {
+                        at 2026-07-10T21:32:07.099264Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
         )
     }
