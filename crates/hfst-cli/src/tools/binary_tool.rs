@@ -155,7 +155,6 @@ fn binaryoperate_streams(
             (AnyTransducer::Tropical(f), AnyTransducer::Tropical(s)) => {
                 concatenate_pair(f, s, outstream)
             }
-            (AnyTransducer::Log(f), AnyTransducer::Log(s)) => concatenate_pair(f, s, outstream),
             _ => {
                 eprintln!("hfst-binary-tool: {}", hfst::err!(TransducerTypeMismatch));
                 return 1;

@@ -1227,7 +1227,6 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 // xre_parse.yy:51 'bool is_weighted()'
 fn is_weighted(format: ImplementationType) -> bool {
     format == ImplementationType::TROPICAL_OPENFST_TYPE
-        || format == ImplementationType::LOG_OPENFST_TYPE
 }
 
 // xre_parse.yy:41 'float zero_weights(float f)'.

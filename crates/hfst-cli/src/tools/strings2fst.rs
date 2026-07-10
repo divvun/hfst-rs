@@ -159,7 +159,7 @@ fn print_usage(common: &CommonOptions) {
 
     let _ = write!(
         msg,
-        "If OUTFILE or INFILE is missing or -, standard streams will be used.\nFMT can be {{ foma, openfst-tropical, openfst-log, sfst, \noptimized-lookup-weighted, optimized-lookup-unweighted }}.\nIf EPS is not defined, the default representation of @0@ is used.\nOption --norm precedes option --log.\nThe FILE of option -m lists all multichar-symbols, each symbol\non its own line.\nBackslash '\\' may be used to escape ':', tab and itself. For any\nother symbol x '\\x' means x literally, i.e. is the same as 'x'.\nThe weight of a string can be given after the string separated\nby a tabulator. The weight cannot be zero.\n\n",
+        "If OUTFILE or INFILE is missing or -, standard streams will be used.\nFMT can be {{ foma, openfst-tropical, sfst, \noptimized-lookup-weighted, optimized-lookup-unweighted }}.\nIf EPS is not defined, the default representation of @0@ is used.\nOption --norm precedes option --log.\nThe FILE of option -m lists all multichar-symbols, each symbol\non its own line.\nBackslash '\\' may be used to escape ':', tab and itself. For any\nother symbol x '\\x' means x literally, i.e. is the same as 'x'.\nThe weight of a string can be given after the string separated\nby a tabulator. The weight cannot be zero.\n\n",
     );
 
     let _ = write!(
@@ -347,9 +347,6 @@ fn process_stream(
     // ([dec:hfst:monomorphic-backends]); optimized-lookup formats build
     // at tropical and convert at each write.
     match options.output_format {
-        ImplementationType::LOG_OPENFST_TYPE => process_stream_typed::<
-            hfst::log_weight_transducer::LogFst,
-        >(common, options, outstream, input),
         ImplementationType::SFST_TYPE
         | ImplementationType::TROPICAL_OPENFST_TYPE
         | ImplementationType::FOMA_TYPE

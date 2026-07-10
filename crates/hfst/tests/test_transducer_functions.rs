@@ -8,19 +8,16 @@
 //
 // SCOPE: the C++ main loops over implementation types
 // {SFST_TYPE, TROPICAL_OPENFST_TYPE, FOMA_TYPE} (LOG commented out there). Per
-// the Wave-2 port scope only the in-scope OpenFST backends are exercised here:
-// TROPICAL_OPENFST_TYPE (backend StdVectorFst) and LOG_OPENFST_TYPE (backend
-// LogFst), plus the fixed HFST_OLW_TYPE (backend Transducer<WeightedTables>)
-// conversion used inside the lookup block. The out-of-scope SFST_TYPE /
-// FOMA_TYPE / XFSM_TYPE iterations are intentionally skipped, as is the
-// trailing SFST+TROPICAL+FOMA "special case" block (needs SFST and FOMA).
+// the Wave-2 port scope only the in-scope OpenFST backend is exercised here:
+// TROPICAL_OPENFST_TYPE (backend StdVectorFst), plus the fixed HFST_OLW_TYPE
+// (backend Transducer<WeightedTables>) conversion used inside the lookup block.
+// The out-of-scope SFST_TYPE / FOMA_TYPE / XFSM_TYPE iterations are
+// intentionally skipped, as is the trailing SFST+TROPICAL+FOMA "special case"
+// block (needs SFST and FOMA).
 //
 // Each logical group from the C++ loop body (delimited there by verbose_print
 // labels) becomes its own helper, generic over the backend B and run once per
-// in-scope backend. The LOG iteration was never actually run by the C++ suite
-// (commented out), but the in-loop guards "if (types[i] != LOG_OPENFST_TYPE)" /
-// "if (TROPICAL || LOG)" are ported faithfully (as B::TYPE checks) so the LOG
-// run skips exactly what the C++ would have skipped.
+// in-scope backend.
 //
 // C++ compare(another) defaults harmonize=true, mirrored here by compare_default.
 // The binary ops (concatenate/disjunct/intersect/subtract/compose/insert_freely)
@@ -31,9 +28,7 @@ use hfst::generate_model_forms::{compile_generator_from_guesser, is_guesser};
 use hfst::guessify_fst::{GuessDirection, affix_guessify};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
-use hfst::hfst_data_types::ImplementationType::{
-    self, HFST_OLW_TYPE, LOG_OPENFST_TYPE, TROPICAL_OPENFST_TYPE,
-};
+use hfst::hfst_data_types::ImplementationType::{self, HFST_OLW_TYPE, TROPICAL_OPENFST_TYPE};
 use hfst::hfst_data_types::PushType::{TO_FINAL_STATE, TO_INITIAL_STATE};
 use hfst::hfst_data_types::{HfstOneLevelPaths, HfstTwoLevelPaths, StringPair, StringVector};
 use hfst::hfst_symbol_defs::{
@@ -42,11 +37,10 @@ use hfst::hfst_symbol_defs::{
 };
 use hfst::hfst_tokenizer::HfstTokenizer;
 use hfst::hfst_transducer::HfstTransducer;
-use hfst::log_weight_transducer::LogFst;
 use hfst::transducer::{Transducer, WeightedTables};
 use hfst_openfst::StdVectorFst;
 
-// The tropical/log transition-data symbol coding lives in process-global statics
+// The tropical transition-data symbol coding lives in process-global statics
 // guarded by their own mutexes; concurrent callers can race and throw
 // HfstFatalException. The C++ suite never hit this (each C++ test is its own
 // process); cargo runs every #[test] as a parallel thread in one process.
@@ -178,8 +172,8 @@ fn function_compare<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     // One transducer is minimal, another is not.
     assert!(t1.compare_default(&t4)?);
 
-    // Weights (TROPICAL or LOG -- both in scope here).
-    if B::TYPE == TROPICAL_OPENFST_TYPE || B::TYPE == LOG_OPENFST_TYPE {
+    // Weights (TROPICAL is the in-scope weighted type here).
+    if B::TYPE == TROPICAL_OPENFST_TYPE {
         let mut t6 = HfstTransducer::<B>::new_symbol_pair("foo", "bar")?;
         t6.set_final_weights(0.3, false)?;
         let mut t7 = HfstTransducer::<B>::new_symbol_pair("foo", "bar")?;
@@ -303,7 +297,7 @@ fn function_extract_paths_lookup_nbest<B: AlgebraBackend>() -> Result<(), hfst::
         let sp: StringPair = (istring.clone().into(), ostring.clone().into());
         assert!(expected_results.contains(&sp));
 
-        if B::TYPE == TROPICAL_OPENFST_TYPE || B::TYPE == LOG_OPENFST_TYPE {
+        if B::TYPE == TROPICAL_OPENFST_TYPE {
             // Rounding can affect precision.
             if istring == "cat" {
                 assert!(it.first > 2.99 && it.first < 3.01);
@@ -323,22 +317,18 @@ fn function_extract_paths_lookup_nbest<B: AlgebraBackend>() -> Result<(), hfst::
         B::TYPE,
     );
 
-    // Add an animal with two possible plural forms. For LOG this hits a fatal
-    // "EncodeMapper: Weight-encoded arc has non-trivial weight", so it is
-    // skipped (faithful to the C++ guard).
-    if B::TYPE != LOG_OPENFST_TYPE {
-        let mut hippopotamus1 =
-            HfstTransducer::<B>::new_tokenized_pair("hippopotamus", "hippopotami", &tok)?;
-        hippopotamus1.set_final_weights(1.2, false)?;
-        let mut hippopotamus2 =
-            HfstTransducer::<B>::new_tokenized_pair("hippopotamus", "hippopotamuses", &tok)?;
-        hippopotamus2.set_final_weights(1.4, false)?;
-        animals.disjunct(&hippopotamus1, true)?;
-        animals.disjunct(&hippopotamus2, true)?;
-        animals.minimize()?;
-    }
+    // Add an animal with two possible plural forms.
+    let mut hippopotamus1 =
+        HfstTransducer::<B>::new_tokenized_pair("hippopotamus", "hippopotami", &tok)?;
+    hippopotamus1.set_final_weights(1.2, false)?;
+    let mut hippopotamus2 =
+        HfstTransducer::<B>::new_tokenized_pair("hippopotamus", "hippopotamuses", &tok)?;
+    hippopotamus2.set_final_weights(1.4, false)?;
+    animals.disjunct(&hippopotamus1, true)?;
+    animals.disjunct(&hippopotamus2, true)?;
+    animals.minimize()?;
 
-    // Convert to optimized lookup format. For TROPICAL/LOG the weighted OL
+    // Convert to optimized lookup format. For TROPICAL the weighted OL
     // type; the typed conversion goes through the interchange transducer.
     let mut animals_ol =
         HfstTransducer::<Transducer<WeightedTables>>::from_basic(&animals.to_basic()?);
@@ -364,11 +354,9 @@ fn function_extract_paths_lookup_nbest<B: AlgebraBackend>() -> Result<(), hfst::
     assert_eq!(results_cat.len(), 1);
     assert_eq!(results_dog.len(), 1);
     assert_eq!(results_mouse.len(), 1);
-    if B::TYPE != LOG_OPENFST_TYPE {
-        assert_eq!(results_hippopotamus.len(), 2);
-    }
+    assert_eq!(results_hippopotamus.len(), 2);
 
-    let test_weight = B::TYPE == TROPICAL_OPENFST_TYPE || B::TYPE == LOG_OPENFST_TYPE;
+    let test_weight = B::TYPE == TROPICAL_OPENFST_TYPE;
 
     let mut expected_path = tok.tokenize_one_level("cats", false);
     assert!(do_hfst_lookup_paths_contain(
@@ -395,32 +383,26 @@ fn function_extract_paths_lookup_nbest<B: AlgebraBackend>() -> Result<(), hfst::
     ));
 
     expected_path = tok.tokenize_one_level("hippopotami", false);
-    if B::TYPE != LOG_OPENFST_TYPE {
-        assert!(do_hfst_lookup_paths_contain(
-            &results_hippopotamus,
-            &expected_path,
-            1.2,
-            test_weight
-        ));
-    }
+    assert!(do_hfst_lookup_paths_contain(
+        &results_hippopotamus,
+        &expected_path,
+        1.2,
+        test_weight
+    ));
 
     expected_path = tok.tokenize_one_level("hippopotamuses", false);
-    if B::TYPE != LOG_OPENFST_TYPE {
-        assert!(do_hfst_lookup_paths_contain(
-            &results_hippopotamus,
-            &expected_path,
-            1.4,
-            test_weight
-        ));
-    }
+    assert!(do_hfst_lookup_paths_contain(
+        &results_hippopotamus,
+        &expected_path,
+        1.4,
+        test_weight
+    ));
 
-    // Function n_best. For LOG this hits a fatal "SingleShortestPath: Weight
-    // needs to have the path property" so the whole n_best block is skipped
-    // (faithful to the C++ guard).
-    if B::TYPE != LOG_OPENFST_TYPE {
+    // Function n_best.
+    {
         verbose_print("function n_best", B::TYPE);
 
-        let weighted = B::TYPE == TROPICAL_OPENFST_TYPE || B::TYPE == LOG_OPENFST_TYPE;
+        let weighted = B::TYPE == TROPICAL_OPENFST_TYPE;
 
         let mut animals1 = HfstTransducer::new_copy(&animals)?;
         animals1.n_best(1)?;
@@ -580,7 +562,7 @@ fn function_push_weights() -> Result<(), hfst::error::Error> {
     Ok(())
 }
 
-// --- Functions set_final_weights and transform_weights (TROPICAL or LOG).
+// --- Functions set_final_weights and transform_weights (TROPICAL).
 fn function_set_final_weights_transform_weights<B: AlgebraBackend>()
 -> Result<(), hfst::error::Error> {
     verbose_print("functions set_final_weights and transform_weights", B::TYPE);
@@ -800,7 +782,7 @@ fn shuffle_tropical() -> Result<(), hfst::error::Error> {
 #[test]
 fn convert_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
-    function_convert::<StdVectorFst, LogFst>()?;
+    function_convert::<StdVectorFst, Transducer<WeightedTables>>()?;
     Ok(())
 }
 
@@ -857,94 +839,6 @@ fn alphabets_tropical() -> Result<(), hfst::error::Error> {
 fn binary_operations_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     function_binary_operations::<StdVectorFst>()?;
-    Ok(())
-}
-
-// =====================================================================
-// LOG_OPENFST_TYPE (LogFst) tests
-// =====================================================================
-
-// PORT DISCREPANCY (LOG-only; C++ never ran the LOG iteration). The identical
-// body passes for TROPICAL.
-#[test]
-#[ignore = "PORT DISCREPANCY: under LOG_OPENFST_TYPE compare treats foo:bar and (foo:eps)(eps:bar)-minimized as equal, so the C++ 'alignments differ' assertion (not equal) fails"]
-fn compare_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    function_compare::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-#[ignore = "PORT DISCREPANCY: under LOG_OPENFST_TYPE composing foo:bar (w=2) with bar:baz (w=3) does not compare equal to foo:baz (w=5); LOG weight/compare semantics diverge from the C++ expectation"]
-fn compose_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    function_compose::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn shuffle_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    function_shuffle::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn convert_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    function_convert::<LogFst, StdVectorFst>()?;
-    Ok(())
-}
-
-#[test]
-#[ignore = "PORT DISCREPANCY: converting the LOG_OPENFST_TYPE animals transducer to HFST_OLW for lookup throws EmptyStringException (empty symbol reaches HfstTropicalTransducerTransitionData::new_symbols during the OL conversion)"]
-fn extract_paths_lookup_nbest_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    function_extract_paths_lookup_nbest::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-#[ignore = "PORT DISCREPANCY: under LOG_OPENFST_TYPE insert_freely of c:d into a:b does not compare equal to (c:d)* a:b (c:d)*; LOG insert_freely/compare diverges from the C++ expectation"]
-fn insert_freely_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    function_insert_freely::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn is_cyclic_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    function_is_cyclic::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn set_final_weights_transform_weights_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    function_set_final_weights_transform_weights::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-#[ignore = "PORT DISCREPANCY: under LOG_OPENFST_TYPE the StringPair-with-StringPairSet substitution result does not compare equal to the expected cat|Cat|hat|Hat disjunction; LOG disjunct/minimize/compare diverges"]
-fn substitute_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    function_substitute::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn alphabets_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    function_alphabets::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn binary_operations_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    function_binary_operations::<LogFst>()?;
     Ok(())
 }
 

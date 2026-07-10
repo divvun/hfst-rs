@@ -211,9 +211,6 @@ fn compare_streams(
             (AnyTransducer::Tropical(f), AnyTransducer::Tropical(s)) => {
                 Some(compare_pair(common, options, f, s))
             }
-            (AnyTransducer::Log(f), AnyTransducer::Log(s)) => {
-                Some(compare_pair(common, options, f, s))
-            }
             #[cfg(feature = "foma")]
             (AnyTransducer::Foma(f), AnyTransducer::Foma(s)) => {
                 Some(compare_pair(common, options, f, s))

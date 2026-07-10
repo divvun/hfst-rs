@@ -364,23 +364,6 @@ impl ComposeIntersectLexicon {
         self.result.add_transition(origin, &tr, true);
         Ok(())
     }
-
-    // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.identity-compose-fn]
-    // [spec:hfst:sem:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.identity-compose-fn]
-    //
-    // Declared in the header ('ComposeIntersectLexicon.h') but never defined in
-    // 'ComposeIntersectLexicon.cc'; reproduced as an unimplemented stub.
-    #[allow(dead_code)]
-    fn identity_compose(
-        &mut self,
-        _transitions: &TransitionSet,
-        _transition: &HfstBasicTransition,
-        _origin: HfstState,
-    ) {
-        unimplemented!(
-            "ComposeIntersectLexicon::identity_compose: declared in header but never defined in C++"
-        )
-    }
 }
 
 impl Default for ComposeIntersectLexicon {

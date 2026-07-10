@@ -5,9 +5,9 @@
 // (and rightmost) functions, the restriction rule, and the before/after rules.
 //
 // The C++ main loops over several backends. Per the Wave-2 port scope only
-// TROPICAL_OPENFST_TYPE is exercised here: LOG_OPENFST is weak in this port and
-// SFST / FOMA / XFSM are out of scope (is_implementation_type_available returns
-// false for them in this build). Each C++ void testX(ImplementationType) becomes
+// TROPICAL_OPENFST_TYPE is exercised here: SFST / FOMA / XFSM are out of scope
+// (is_implementation_type_available returns false for them in this build).
+// Each C++ void testX(ImplementationType) becomes
 // a Rust helper fn generic over the backend B, plus a #[test] wrapper that runs
 // it for TROPICAL (StdVectorFst). The C++ MAIN_TEST driver is not ported; the
 // wrappers are the driver.
@@ -31,7 +31,7 @@ use hfst::hfst_xerox_rules::ReplaceType::{REPL_DOWN, REPL_LEFT, REPL_RIGHT, REPL
 use hfst::hfst_xerox_rules::Rule;
 use hfst_openfst::StdVectorFst;
 
-// The tropical/log transition-data symbol coding lives in process-global statics
+// The tropical transition-data symbol coding lives in process-global statics
 // behind Mutexes. cargo runs every #[test] as a parallel thread in ONE process,
 // but each C++ test was its own process. Serializing the tests through this lock
 // restores the one-at-a-time-per-process model without touching the library or

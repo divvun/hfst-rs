@@ -8,16 +8,11 @@
 // array {SFST, TROPICAL, FOMA, HFST_OL, HFST_OLW}. The loop bound is
 // TYPES_SIZE-2, so it only ever iterates i = 0,1,2 -> SFST, TROPICAL, FOMA
 // (the HFST_OL/HFST_OLW entries are deliberately excluded by the C++ author
-// with the comment "FIXME: infinite loop in HFST_OL_TYPE"). LOG_OPENFST_TYPE
-// is commented out of the array entirely, but the loop body still carries a
-// guard 'if (types[i] != LOG_OPENFST_TYPE)' around the first ("Identities with
-// flags") block, showing LOG was intended to run only the second block.
+// with the comment "FIXME: infinite loop in HFST_OL_TYPE").
 //
-// Per the Wave-2 port scope, only the in-scope OpenFST backends are exercised:
+// Per the Wave-2 port scope, only the in-scope OpenFST backend is exercised:
 //   - TROPICAL_OPENFST_TYPE: runs BOTH logical blocks (this is the one in-scope
 //     type the C++ loop actually iterates).
-//   - LOG_OPENFST_TYPE: runs ONLY the "Unification flags" block, honouring the
-//     C++ guard that skips "Identities with flags" for LOG.
 // The out-of-scope SFST_TYPE / FOMA_TYPE iterations are intentionally skipped.
 // HFST_OL_TYPE / HFST_OLW_TYPE are not used by the executed loop body (excluded
 // by TYPES_SIZE-2), so they are not exercised here either.
@@ -34,10 +29,9 @@ use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::hfst_data_types::{HfstTwoLevelPaths, ImplementationType, StringPair, Symbol};
 use hfst::hfst_transducer::HfstTransducer;
-use hfst::log_weight_transducer::LogFst;
 use hfst_openfst::StdVectorFst;
 
-// The tropical/log transition-data symbol coding lives in process-global
+// The tropical transition-data symbol coding lives in process-global
 // statics (NUMBER2SYMBOL_MAP / SYMBOL2NUMBER_MAP / MAX_NUMBER, each behind its
 // own Mutex). get_number bumps MAX_NUMBER under one lock and then appends to the
 // symbol vector under another, so concurrent callers race. The C++ test suite
@@ -173,28 +167,5 @@ fn identities_with_flags_tropical() -> Result<(), hfst::error::Error> {
 fn unification_flags_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     unification_flags::<StdVectorFst>()?;
-    Ok(())
-}
-
-// =====================================================================
-// LOG_OPENFST_TYPE (in-scope; C++ guard runs only "Unification flags" for LOG,
-// and "Identities with flags" is intentionally NOT ported for LOG to honour it)
-// =====================================================================
-
-// PORT DISCREPANCY (latent C++ bug surfaced, not a Rust regression): converting
-// the basic transducer t to LOG_OPENFST_TYPE mis-builds the graph because
-// hfst_basic_transducer_to_log_ofst hardcodes source_state = 0 and never
-// advances it (convert_log_weight_transducer.rs, a faithfully ported C++ bug).
-// Every transition then originates from state 0, so the only paths reaching the
-// (sole) final state s6 are the two direct 0->s6 flag transitions; after fd
-// filtering the surviving strings are the empty/flag-only paths, NOT "ac"/"bd".
-// results.len() == 2 happens to still hold (two distinct flag paths), but the
-// result_strings.contains("ac") assertion fails. The C++ suite never triggered
-// this because LOG was commented out of the types array.
-#[test]
-#[ignore = "PORT DISCREPANCY: LOG basic->log conversion hardcodes source_state=0 (faithfully ported C++ bug), so all transitions originate at state 0 and only the direct 0->s6 flag transitions remain; extract_paths_fd no longer yields ac/bd and the contains(ac) assertion fails; never exercised by C++ (LOG commented out of types array)"]
-fn unification_flags_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    unification_flags::<LogFst>()?;
     Ok(())
 }

@@ -47,8 +47,8 @@ impl HfstOutputStream {
 
         match ty {
             ImplementationType::SFST_TYPE => {
-                // implementation.sfst = new hfst::implementations::SfstOutputStream();
-                unimplemented!("deferred: SfstOutputStream");
+                // Unreachable: SFST is excluded by is_lean_implementation_type_available above.
+                unreachable!("SFST_TYPE excluded by the availability guard above");
             }
             // Like the openfst/OL backends, foma needs no per-type stream
             // object: operator<< writes the "FOMA" header generically and the
@@ -56,11 +56,10 @@ impl HfstOutputStream {
             // with the `foma` feature (availability is gated above).
             ImplementationType::FOMA_TYPE => {}
             ImplementationType::XFSM_TYPE => {
-                // implementation.xfsm = new XfsmOutputStream(); // throws error
-                unimplemented!("deferred: XfsmOutputStream");
+                // Unreachable: XFSM is excluded by is_lean_implementation_type_available above.
+                unreachable!("XFSM_TYPE excluded by the availability guard above");
             }
             ImplementationType::TROPICAL_OPENFST_TYPE
-            | ImplementationType::LOG_OPENFST_TYPE
             | ImplementationType::HFST_OL_TYPE
             | ImplementationType::HFST_OLW_TYPE => {}
             ImplementationType::HFST2_TYPE
@@ -102,16 +101,17 @@ impl HfstOutputStream {
 
         match ty {
             ImplementationType::SFST_TYPE => {
-                unimplemented!("deferred: SfstOutputStream");
+                // Unreachable: SFST is excluded by is_lean_implementation_type_available above.
+                unreachable!("SFST_TYPE excluded by the availability guard above");
             }
             // foma: no per-type stream object; operator<< writes header +
             // Backend::write payload. Only reachable with the `foma` feature.
             ImplementationType::FOMA_TYPE => {}
             ImplementationType::XFSM_TYPE => {
-                unimplemented!("deferred: XfsmOutputStream");
+                // Unreachable: XFSM is excluded by is_lean_implementation_type_available above.
+                unreachable!("XFSM_TYPE excluded by the availability guard above");
             }
             ImplementationType::TROPICAL_OPENFST_TYPE
-            | ImplementationType::LOG_OPENFST_TYPE
             | ImplementationType::HFST_OL_TYPE
             | ImplementationType::HFST_OLW_TYPE => {}
             ImplementationType::HFST2_TYPE
@@ -119,7 +119,7 @@ impl HfstOutputStream {
             | ImplementationType::ERROR_TYPE => crate::bail!(SpecifiedTypeRequired),
         }
 
-        // The tropical/log backend streams panicked on a failed open ('cannot
+        // The tropical backend stream panicked on a failed open ('cannot
         // open file'); the failure is now surfaced as a stream error instead.
         let file = match std::fs::File::create(filename) {
             Ok(f) => f,
@@ -180,7 +180,6 @@ impl HfstOutputStream {
         let type_value: String = match self.ty {
             ImplementationType::SFST_TYPE => "SFST".to_string(),
             ImplementationType::TROPICAL_OPENFST_TYPE => "TROPICAL_OPENFST".to_string(),
-            ImplementationType::LOG_OPENFST_TYPE => "LOG_OPENFST".to_string(),
             ImplementationType::FOMA_TYPE => "FOMA".to_string(),
             ImplementationType::XFSM_TYPE => "XFSM".to_string(),
             ImplementationType::HFST_OL_TYPE => "HFST_OL".to_string(),

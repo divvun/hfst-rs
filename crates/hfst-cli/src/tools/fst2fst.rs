@@ -80,7 +80,6 @@ fn print_usage(common: &CommonOptions) {
          \u{20}\u{20}-F, --foma                        Write output in (HFST's) foma implementation\n\
          \u{20}\u{20}-x, --xfsm                        Write output in native xfsm format\n\
          \u{20}\u{20}-t, --openfst-tropical            Write output in (HFST's) tropical weight (OpenFST) implementation\n\
-         \u{20}\u{20}-l, --openfst-log                 Write output in (HFST's) log weight (OpenFST) implementation\n\
          \u{20}\u{20}-O, --optimized-lookup-unweighted Write output in the HFST optimized-lookup implementation\n\
          \u{20}\u{20}-w, --optimized-lookup-weighted   Write output in optimized-lookup (weighted) implementation\n\
          \u{20}\u{20}-Q  --quick                       When converting to optimized-lookup, don't try hard to compress\n"
@@ -90,7 +89,7 @@ fn print_usage(common: &CommonOptions) {
     let _ = write!(
         msg,
         "FMT must be name of a format usable by libhfst, i.e. one of the following:\n\
-         {{ foma, openfst-tropical, openfst-log, sfst, xfsm\n\
+         {{ foma, openfst-tropical, sfst, xfsm\n\
          \u{20}\u{20}optimized-lookup-weighted, optimized-lookup-unweighted }}.\n\
          Note that xfsm format is always written in native format without HFST wrappers.\n"
     );
@@ -143,11 +142,6 @@ fn parse_options(
             name: "openfst-tropical",
             has_arg: 0,
             val: b't' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "openfst-log",
-            has_arg: 0,
-            val: b'l' as i32,
         });
         long_options.push(getopt::GetOpt {
             name: "optimized-lookup-unweighted",
@@ -218,10 +212,6 @@ fn parse_options(
                     &mut options,
                     ImplementationType::TROPICAL_OPENFST_TYPE,
                 );
-                continue;
-            }
-            b'l' => {
-                set_output_type(&common, &mut options, ImplementationType::LOG_OPENFST_TYPE);
                 continue;
             }
             b'O' => {

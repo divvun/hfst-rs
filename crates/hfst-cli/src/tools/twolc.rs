@@ -109,7 +109,7 @@ impl CommandLine {
         );
         let _ = write!(
             f,
-            "Format may be one of openfst-log, openfst-tropical, foma or sfst.\n\n"
+            "Format may be one of openfst-tropical, foma or sfst.\n\n"
         );
         let _ = write!(
             f,
@@ -216,18 +216,10 @@ impl CommandLine {
                     if optarg == "tropical" {
                         form = ImplementationType::TROPICAL_OPENFST_TYPE;
                     }
-                    if optarg == "log" {
-                        form = ImplementationType::LOG_OPENFST_TYPE;
-                    } else if optarg == "tropical-openfst" {
+                    if optarg == "tropical-openfst" {
                         form = ImplementationType::TROPICAL_OPENFST_TYPE;
                     } else if optarg == "openfst-tropical" {
                         form = ImplementationType::TROPICAL_OPENFST_TYPE;
-                    } else if optarg == "log-weight" {
-                        form = ImplementationType::LOG_OPENFST_TYPE;
-                    } else if optarg == "log-openfst" {
-                        form = ImplementationType::LOG_OPENFST_TYPE;
-                    } else if optarg == "openfst-log" {
-                        form = ImplementationType::LOG_OPENFST_TYPE;
                     } else if optarg == "openfst" {
                         form = ImplementationType::TROPICAL_OPENFST_TYPE;
                     } else if optarg == "weighted" {
@@ -355,8 +347,6 @@ impl CommandLine {
     }
 }
 
-// [spec:hfst:def:hfst-twolc.main-fn]
-// [spec:hfst:sem:hfst-twolc.main-fn]
 pub fn run(args: Vec<String>) -> i32 {
     real_main(args)
 }
@@ -442,16 +432,6 @@ fn real_main(mut args: Vec<String>) -> i32 {
         String::from("<twolc>")
     };
     let compiled = match command_line.format {
-        ImplementationType::LOG_OPENFST_TYPE => {
-            TwolcCompiler::<hfst::log_weight_transducer::LogFst>::new_with_options(
-                command_line.be_quiet,
-                command_line.be_verbose,
-                command_line.resolve_left_conflicts,
-                command_line.resolve_right_conflicts,
-            )
-            .set_source_name(&source_name)
-            .compile_and_store(&input, &mut out)
-        }
         #[cfg(feature = "foma")]
         ImplementationType::FOMA_TYPE => {
             TwolcCompiler::<hfst::backend_foma::FomaTransducer>::new_with_options(

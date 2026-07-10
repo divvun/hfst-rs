@@ -9,11 +9,9 @@
 //!
 //! The method bodies are the facade's former per-backend closure pairs (the
 //! `apply`/`apply_bool`/`apply_n`/`apply_binary` functors of HfstApply.cc) —
-//! those pairs were already the adaptation layer between the uneven
-//! `TropicalWeightTransducer`/`LogWeightTransducer` wrapper signatures, so
-//! they move here verbatim. An impl ignores arguments its backend never used
-//! (e.g. the log backend ignores `encode_weights`, exactly as its closure
-//! did).
+//! those pairs were already the adaptation layer between the uneven per-backend
+//! wrapper signatures, so they move here verbatim. An impl ignores arguments
+//! its backend never used.
 
 use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
@@ -24,7 +22,6 @@ use crate::hfst_data_types::{
 use crate::hfst_extract_strings::ExtractStringsCb;
 use crate::hfst_ol_transducer::HfstOlTransducer;
 use crate::hfst_symbol_defs::StringSet;
-use crate::log_weight_transducer::{LogFst, LogWeightTransducer};
 use crate::transducer::{Transducer, UnweightedTables, WeightedTables};
 use crate::tropical_weight_transducer::TropicalWeightTransducer;
 use hfst_openfst::StdVectorFst;
@@ -75,7 +72,7 @@ pub trait Backend: Sized {
     /// 'print_alphabet' (test function): tropical-only, no-op elsewhere.
     fn print_alphabet(&self) {}
 
-    /// 'has_weights': tropical real, log 'unimplemented!', false elsewhere.
+    /// 'has_weights': tropical real, false elsewhere.
     fn has_weights(&self) -> bool {
         false
     }
@@ -127,7 +124,7 @@ pub trait Backend: Sized {
     );
 }
 
-/// The mutable FST algebra (tropical + log): every operation of the former
+/// The mutable FST algebra (tropical): every operation of the former
 /// HfstApply.cc functor pairs plus the binary ops. Each returns a fresh
 /// backend (the C++ freed the old one and stored the new — the facade's
 /// assignment does that implicitly).
@@ -161,8 +158,7 @@ pub trait AlgebraBackend: Backend {
     fn define_transducer_symbol_pair(isymbol: &str, osymbol: &str) -> Self;
 
     // ----- queries -----
-    /// 'compare' backend arm. The log backend never consulted
-    /// 'encode_weights' (its wrapper has no such parameter).
+    /// 'compare' backend arm.
     fn are_equivalent(&self, another: &Self, encode_weights: bool) -> bool;
     fn is_automaton(&self) -> bool;
     fn get_initial_input_symbols(&self) -> StringSet;
@@ -171,7 +167,7 @@ pub trait AlgebraBackend: Backend {
     // ----- paths and weights -----
     fn n_best(&self, n: u32) -> Self;
     fn extract_random_paths(&self, results: &mut HfstTwoLevelPaths, max_num: i32);
-    /// 'set_final_weights': the log wrapper has no 'increment' parameter.
+    /// 'set_final_weights'.
     fn set_final_weights(&self, weight: f32, increment: bool) -> Self;
     fn push_labels(&self, to_initial_state: bool) -> Self;
     fn push_weights(&self, to_initial_state: bool) -> Self;
@@ -179,13 +175,12 @@ pub trait AlgebraBackend: Backend {
 
     // ----- substitution -----
     /// The both-sides symbol-substitution fast path of
-    /// 'HfstTransducer::substitute(string, string, bool, bool)': live for the
-    /// log backend, dead code ('if (false && ...)') for the tropical backend.
-    /// 'None' sends the facade down the generic basic-transducer path.
+    /// 'HfstTransducer::substitute(string, string, bool, bool)': dead code
+    /// ('if (false && ...)') for the tropical backend, which returns 'None' to
+    /// send the facade down the generic basic-transducer path.
     fn substitute_symbol_fast(&self, old_symbol: &str, new_symbol: &str) -> Option<Self>;
     fn substitute_string_transducer(&self, old_symbol_pair: StringPair, transducer: &Self) -> Self;
-    /// 'disjunct(spv)': tropical mutates in place; the log arm was
-    /// 'FunctionNotImplemented' in C++ and stays a panic.
+    /// 'disjunct(spv)': tropical mutates in place.
     fn disjunct_spv(&mut self, spv: &StringPairVector);
 }
 
@@ -363,169 +358,6 @@ impl AlgebraBackend for StdVectorFst {
     }
     fn disjunct_spv(&mut self, spv: &StringPairVector) {
         TropicalWeightTransducer::disjunct_spv(self, spv);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Log (openfst-log)
-// ---------------------------------------------------------------------------
-
-impl Backend for LogFst {
-    const TYPE: ImplementationType = ImplementationType::LOG_OPENFST_TYPE;
-    fn empty() -> Self {
-        LogWeightTransducer::create_empty_transducer()
-    }
-    fn copy(&self) -> crate::error::Result<Self> {
-        Ok(LogWeightTransducer::copy(self))
-    }
-    fn to_basic(&self) -> crate::error::Result<HfstBasicTransducer> {
-        ConversionFunctions::log_ofst_to_hfst_basic_transducer(self, true)
-    }
-    fn from_basic(net: &HfstBasicTransducer) -> crate::error::Result<Self> {
-        Ok(ConversionFunctions::hfst_basic_transducer_to_log_ofst(net))
-    }
-    fn get_alphabet(&self) -> StringSet {
-        LogWeightTransducer::get_alphabet(self)
-    }
-    fn is_cyclic(&self) -> bool {
-        LogWeightTransducer::is_cyclic(self)
-    }
-    fn has_weights(&self) -> bool {
-        unimplemented!("has_weights: not implemented for this transducer type")
-    }
-    fn write(&self, os: &mut dyn std::io::Write, _hfst_format: bool) -> crate::error::Result<()> {
-        // The log .cc has no 'hfst_format' branch — it always re-symbols.
-        LogWeightTransducer::write_transducer_to(self, os)
-    }
-    fn extract_paths_cb(&self, callback: &mut dyn ExtractStringsCb, cycles: i32) {
-        LogWeightTransducer::extract_paths(self, callback, cycles, None, false);
-    }
-    fn extract_paths_fd_cb(
-        &self,
-        callback: &mut dyn ExtractStringsCb,
-        cycles: i32,
-        filter_fd: bool,
-    ) {
-        let t_log_ofst = LogWeightTransducer::get_flag_diacritics(self);
-        LogWeightTransducer::extract_paths(self, callback, cycles, Some(&t_log_ofst), filter_fd);
-    }
-}
-
-impl AlgebraBackend for LogFst {
-    fn remove_epsilons(&self) -> Self {
-        LogWeightTransducer::remove_epsilons(self)
-    }
-    fn determinize(&self, _encode_weights: bool) -> Self {
-        // The log backend never encoded weights (its closure ignored the flag).
-        LogWeightTransducer::determinize(self)
-    }
-    fn minimize(&self, _encode_weights: bool) -> Self {
-        LogWeightTransducer::minimize(self)
-    }
-    fn repeat_star(&self) -> Self {
-        LogWeightTransducer::repeat_star(self)
-    }
-    fn repeat_plus(&self) -> Self {
-        LogWeightTransducer::repeat_plus(self)
-    }
-    fn repeat_n(&self, n: u32) -> Self {
-        LogWeightTransducer::repeat_n(self, n)
-    }
-    fn repeat_le_n(&self, n: u32) -> Self {
-        LogWeightTransducer::repeat_le_n(self, n)
-    }
-    fn optionalize(&self) -> Self {
-        LogWeightTransducer::optionalize(self)
-    }
-    fn invert(&self) -> Self {
-        LogWeightTransducer::invert(self)
-    }
-    fn reverse(&self) -> Self {
-        LogWeightTransducer::reverse(self)
-    }
-    fn extract_input_language(&self) -> Self {
-        LogWeightTransducer::extract_input_language(self)
-    }
-    fn extract_output_language(&self) -> Self {
-        LogWeightTransducer::extract_output_language(self)
-    }
-
-    fn concatenate(&self, another: &Self) -> Self {
-        LogWeightTransducer::concatenate(self, another)
-    }
-    fn disjunct(&self, another: &Self) -> Self {
-        LogWeightTransducer::disjunct(self, another)
-    }
-    fn intersect(&self, another: &Self) -> Self {
-        LogWeightTransducer::intersect(self, another)
-    }
-    fn subtract(&self, another: &Self) -> Self {
-        LogWeightTransducer::subtract(self, another)
-    }
-    fn compose(&self, another: &Self) -> Self {
-        LogWeightTransducer::compose(self, another)
-    }
-
-    fn define_transducer_spv(spv: &StringPairVector) -> Self {
-        LogWeightTransducer::define_transducer_spv(spv)
-    }
-    fn define_transducer_sps(sps: &StringPairSet, cyclic: bool) -> Self {
-        LogWeightTransducer::define_transducer_sps(sps, cyclic)
-    }
-    fn define_transducer_spsv(spsv: &[StringPairSet]) -> Self {
-        LogWeightTransducer::define_transducer_spsv(spsv)
-    }
-    fn define_transducer_symbol(symbol: &str) -> Self {
-        LogWeightTransducer::define_transducer_symbol(symbol)
-    }
-    fn define_transducer_symbol_pair(isymbol: &str, osymbol: &str) -> Self {
-        LogWeightTransducer::define_transducer_symbol_pair(isymbol, osymbol)
-    }
-
-    fn are_equivalent(&self, another: &Self, _encode_weights: bool) -> bool {
-        LogWeightTransducer::are_equivalent(self, another)
-    }
-    fn is_automaton(&self) -> bool {
-        LogWeightTransducer::is_automaton(self)
-    }
-    fn get_initial_input_symbols(&self) -> StringSet {
-        unimplemented!("get_first_input_symbols")
-    }
-    fn get_first_input_symbols(&self) -> StringSet {
-        unimplemented!("get_first_input_symbols")
-    }
-
-    fn n_best(&self, n: u32) -> Self {
-        LogWeightTransducer::n_best(self, n)
-    }
-    fn extract_random_paths(&self, results: &mut HfstTwoLevelPaths, max_num: i32) {
-        LogWeightTransducer::extract_random_paths(self, results, max_num);
-    }
-    fn set_final_weights(&self, weight: f32, _increment: bool) -> Self {
-        LogWeightTransducer::set_final_weights(self, weight)
-    }
-    fn push_labels(&self, to_initial_state: bool) -> Self {
-        LogWeightTransducer::push_labels(self, to_initial_state)
-    }
-    fn push_weights(&self, to_initial_state: bool) -> Self {
-        LogWeightTransducer::push_weights(self, to_initial_state)
-    }
-    fn transform_weights(&self, func: fn(f32) -> f32) -> Self {
-        LogWeightTransducer::transform_weights(self, func)
-    }
-
-    fn substitute_symbol_fast(&self, old_symbol: &str, new_symbol: &str) -> Option<Self> {
-        Some(LogWeightTransducer::substitute_symbol(
-            self,
-            old_symbol.to_string(),
-            new_symbol.to_string(),
-        ))
-    }
-    fn substitute_string_transducer(&self, old_symbol_pair: StringPair, transducer: &Self) -> Self {
-        LogWeightTransducer::substitute_string_transducer(self, old_symbol_pair, transducer)
-    }
-    fn disjunct_spv(&mut self, _spv: &StringPairVector) {
-        unimplemented!("disjunct_spv: not implemented for this transducer type");
     }
 }
 

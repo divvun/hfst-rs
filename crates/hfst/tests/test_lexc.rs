@@ -7,12 +7,10 @@
 //
 // The C++ main loops over the implementation types {SFST, TROPICAL, FOMA} (with
 // LOG commented out). Per the Wave-2 port scope, only the in-scope OpenFST
-// backends are exercised here: with the monomorphic backends the loop body
-// becomes helpers generic over the backend type, instantiated once per
-// formerly-exercised type: TROPICAL_OPENFST_TYPE -> StdVectorFst and
-// LOG_OPENFST_TYPE -> LogFst. The out-of-scope SFST_TYPE / FOMA_TYPE /
-// XFSM_TYPE iterations are intentionally skipped. LOG was commented out in the
-// original C++ array but is in scope for the Rust port, so it is run here too.
+// backend is exercised here: with the monomorphic backends the loop body
+// becomes helpers generic over the backend type, instantiated for the
+// formerly-exercised TROPICAL_OPENFST_TYPE -> StdVectorFst. The out-of-scope
+// SFST_TYPE / FOMA_TYPE / XFSM_TYPE iterations are intentionally skipped.
 //
 // Each logical group from the C++ loop body becomes its own helper, run once
 // per in-scope type:
@@ -35,10 +33,9 @@ use hfst::backend::AlgebraBackend;
 use hfst::hfst_tokenizer::HfstTokenizer;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst::lexc::LexcCompiler;
-use hfst::log_weight_transducer::LogFst;
 use hfst_openfst::StdVectorFst;
 
-// The tropical/log transition-data symbol coding lives in process-global
+// The tropical transition-data symbol coding lives in process-global
 // statics behind Mutexes; cargo runs every #[test] as a parallel thread in ONE
 // process, so concurrent symbol-table mutation can race and throw
 // HfstFatalException. Each C++ test was its own process and never hit this.
@@ -99,7 +96,7 @@ fn valid_file_parse<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
 }
 
 // (1) The same valid file via HfstTransducer::read_lexc. C++ catches
-// FunctionNotImplementedException and asserts false; for TROPICAL/LOG read_lexc
+// FunctionNotImplementedException and asserts false; for TROPICAL read_lexc
 // does not throw it.
 fn valid_file_read_lexc<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let animals = build_animals::<B>()?;
@@ -154,48 +151,4 @@ fn invalid_file_parse_tropical() {
 fn missing_file_parse_tropical() {
     let _g = serialized();
     missing_file_parse::<StdVectorFst>();
-}
-
-// =====================================================================
-// LOG_OPENFST_TYPE (LogFst; commented out in the C++ array; in scope for the port)
-// =====================================================================
-
-// PORT DISCREPANCY: building cat | dog | mouse for LOG goes through disjunct,
-// which harmonizes by converting log->basic via
-// log_ofst_to_hfst_basic_transducer (convert_log_weight_transducer.rs:202). That
-// LOG conversion emits a transition with an empty symbol, so
-// HfstTropicalTransducerTransitionData::new_symbols throws EmptyStringException
-// and the test panics. This LOG log<->basic conversion is the same backend that
-// the C++ array left commented out (/*LOG_OPENFST_TYPE,*/), so the C++ suite
-// never exercised it.
-#[test]
-#[ignore = "PORT DISCREPANCY: LOG disjunct/harmonize converts log->basic (log_ofst_to_hfst_basic_transducer) which emits an empty-symbol transition, throwing EmptyStringException; LOG was commented out in the C++ array"]
-fn valid_file_parse_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    valid_file_parse::<LogFst>()?;
-    Ok(())
-}
-
-// read_lexc itself is now fixed (the tropical case passes); the LOG case falls
-// through to the genuine LOG conversion bug: log_ofst_to_hfst_basic_transducer
-// emits an empty-symbol transition, so HfstTropicalTransducerTransitionData
-// throws EmptyStringException. Same root cause as valid_file_parse_log.
-#[test]
-#[ignore = "PORT DISCREPANCY: LOG log->basic conversion (log_ofst_to_hfst_basic_transducer) emits an empty-symbol transition, throwing EmptyStringException; LOG was commented out in the C++ array"]
-fn valid_file_read_lexc_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    valid_file_read_lexc::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn invalid_file_parse_log() {
-    let _g = serialized();
-    invalid_file_parse::<LogFst>();
-}
-
-#[test]
-fn missing_file_parse_log() {
-    let _g = serialized();
-    missing_file_parse::<LogFst>();
 }

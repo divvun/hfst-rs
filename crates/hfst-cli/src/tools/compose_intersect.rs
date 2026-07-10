@@ -291,15 +291,6 @@ fn compose_streams(
     // parameter ([dec:hfst:monomorphic-backends]); every read converts to
     // it, exactly as the C++ convert(output_type) calls did.
     match output_type {
-        hfst::hfst_data_types::ImplementationType::LOG_OPENFST_TYPE => {
-            compose_streams_typed::<hfst::log_weight_transducer::LogFst>(
-                common,
-                options,
-                firststream,
-                secondstream,
-                &mut outstream,
-            )
-        }
         #[cfg(feature = "foma")]
         hfst::hfst_data_types::ImplementationType::FOMA_TYPE => {
             compose_streams_typed::<hfst::backend_foma::FomaTransducer>(

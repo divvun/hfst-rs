@@ -22,7 +22,6 @@ use std::collections::BTreeSet;
 pub enum ImplementationType {
     SFST_TYPE,
     TROPICAL_OPENFST_TYPE,
-    LOG_OPENFST_TYPE,
     FOMA_TYPE,
     XFSM_TYPE,
     HFST_OL_TYPE,
@@ -34,14 +33,11 @@ pub enum ImplementationType {
 
 impl ImplementationType {
     /// Whether transducers of this implementation type carry weights. The
-    /// weighted HFST backends are tropical/log OpenFST and the weighted
+    /// weighted HFST backends are tropical OpenFST and the weighted
     /// optimized-lookup format; SFST, foma, plain optimized-lookup, and the
     /// metadata-only types are unweighted.
     pub fn is_weighted(&self) -> bool {
-        matches!(
-            self,
-            Self::TROPICAL_OPENFST_TYPE | Self::LOG_OPENFST_TYPE | Self::HFST_OLW_TYPE
-        )
+        matches!(self, Self::TROPICAL_OPENFST_TYPE | Self::HFST_OLW_TYPE)
     }
 }
 
@@ -146,7 +142,6 @@ pub fn implementation_type_to_string(ty: ImplementationType) -> &'static str {
     match ty {
         ImplementationType::SFST_TYPE => "SFST_TYPE",
         ImplementationType::TROPICAL_OPENFST_TYPE => "TROPICAL_OPENFST_TYPE",
-        ImplementationType::LOG_OPENFST_TYPE => "LOG_OPENFST_TYPE",
         ImplementationType::FOMA_TYPE => "FOMA_TYPE",
         ImplementationType::XFSM_TYPE => "XFSM_TYPE",
         ImplementationType::HFST_OL_TYPE => "HFST_OL_TYPE",
@@ -163,7 +158,6 @@ pub fn implementation_type_to_format(ty: ImplementationType) -> &'static str {
     match ty {
         ImplementationType::SFST_TYPE => "sfst",
         ImplementationType::TROPICAL_OPENFST_TYPE => "openfst-tropical",
-        ImplementationType::LOG_OPENFST_TYPE => "openfst-log",
         ImplementationType::FOMA_TYPE => "foma",
         ImplementationType::XFSM_TYPE => "xfsm",
         ImplementationType::HFST_OL_TYPE => "hfst-optimized-lookup-unweighted",

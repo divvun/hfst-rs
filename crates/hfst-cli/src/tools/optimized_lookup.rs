@@ -483,8 +483,7 @@ fn setup(options: &Options, path: &str) -> i32 {
     let t = match any {
         hfst::hfst_transducer::AnyTransducer::OlW(t) => OlInner::W(t),
         hfst::hfst_transducer::AnyTransducer::OlU(t) => OlInner::U(t),
-        other @ hfst::hfst_transducer::AnyTransducer::Tropical(_)
-        | other @ hfst::hfst_transducer::AnyTransducer::Log(_) => match other.into_typed() {
+        other @ hfst::hfst_transducer::AnyTransducer::Tropical(_) => match other.into_typed() {
             Ok(t) => OlInner::W(t),
             Err(e) => {
                 print_err(&format!("{e}\n"));
@@ -582,8 +581,6 @@ fn print_short_help(common: &CommonOptions) -> bool {
 // ---------------------------------------------------------------------------
 // parse_options
 // ---------------------------------------------------------------------------
-// [spec:hfst:def:hfst-optimized-lookup.parse-options-fn]
-// [spec:hfst:sem:hfst-optimized-lookup.parse-options-fn]
 //
 // Parse argv into the shared + tool options; `Err(code)` is an exit code the
 // caller should return. hfst-optimized-lookup carries its own long-option

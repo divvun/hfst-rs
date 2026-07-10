@@ -38,7 +38,6 @@ use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::ImplementationType;
 use crate::hfst_data_types::ImplementationType::FOMA_TYPE;
-use crate::hfst_data_types::ImplementationType::LOG_OPENFST_TYPE;
 use crate::hfst_data_types::ImplementationType::SFST_TYPE;
 use crate::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
 use crate::hfst_data_types::ImplementationType::XFSM_TYPE;
@@ -54,7 +53,6 @@ use crate::hfst_symbol_defs::{
     internal_identity, internal_unknown, is_epsilon, is_unknown,
 };
 use crate::hfst_tokenizer::HfstTokenizer;
-use crate::log_weight_transducer::LogFst;
 use crate::transducer::{Transducer, UnweightedTables, WeightedTables};
 use crate::tropical_weight_transducer::TropicalWeightTransducer;
 
@@ -89,13 +87,7 @@ pub fn is_safe_conversion(original: ImplementationType, converted: Implementatio
     if original == converted {
         return true;
     }
-    if original == TROPICAL_OPENFST_TYPE && converted == LOG_OPENFST_TYPE {
-        return false;
-    }
-    if original == LOG_OPENFST_TYPE && converted == TROPICAL_OPENFST_TYPE {
-        return false;
-    }
-    if original == TROPICAL_OPENFST_TYPE || original == LOG_OPENFST_TYPE {
+    if original == TROPICAL_OPENFST_TYPE {
         if converted == SFST_TYPE {
             return false;
         }
@@ -778,49 +770,6 @@ impl<B: Backend> HfstTransducer<B> {
     }
 
     // -------------------------------------------------------------------------
-    // ----- Lookdown (unimplemented in the C++ for every in-scope backend) -----
-    // -------------------------------------------------------------------------
-
-    // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.lookdown-fn]
-    // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.lookdown-fn]
-    pub fn lookdown_string_vector(&self, s: &StringVector, limit: isize) -> HfstOneLevelPaths {
-        let _ = s;
-        let _ = limit;
-        unimplemented!("lookdown_string_vector: not implemented for this transducer type")
-    }
-
-    // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.lookdown-fd-fn]
-    // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.lookdown-fd-fn]
-    pub fn lookdown_fd_string_vector(
-        &self,
-        s: &mut StringVector,
-        limit: isize,
-    ) -> HfstOneLevelPaths {
-        let _ = s;
-        let _ = limit;
-        unimplemented!("lookdown_fd_string_vector: not implemented for this transducer type")
-    }
-
-    pub fn lookdown_string(&self, s: &str, limit: isize) -> HfstOneLevelPaths {
-        let _ = s;
-        let _ = limit;
-        unimplemented!("lookdown_string: not implemented for this transducer type")
-    }
-
-    pub fn lookdown_fd_string(&self, s: &str, limit: isize) -> HfstOneLevelPaths {
-        let _ = s;
-        let _ = limit;
-        unimplemented!("lookdown_fd_string: not implemented for this transducer type")
-    }
-
-    // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.is-lookdown-infinitely-ambiguous-fn]
-    // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.is-lookdown-infinitely-ambiguous-fn]
-    pub fn is_lookdown_infinitely_ambiguous(&self, s: &StringVector) -> bool {
-        let _ = s;
-        unimplemented!("is_lookdown_infinitely_ambiguous: not implemented for this transducer type")
-    }
-
-    // -------------------------------------------------------------------------
     // ----- Path extraction -----
     // -------------------------------------------------------------------------
 
@@ -1184,7 +1133,7 @@ impl<B: Backend> Clone for HfstTransducer<B> {
 }
 
 // -----------------------------------------------------------------------------
-// The mutable FST algebra (tropical/log instantiations only).
+// The mutable FST algebra (tropical instantiation only).
 // -----------------------------------------------------------------------------
 
 impl<B: AlgebraBackend> HfstTransducer<B> {
@@ -1552,14 +1501,13 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
         another_copy = one_copy
             .harmonize_copy(&another_copy)?
-            .expect("harmonize_copy returns Some for tropical/log types");
+            .expect("harmonize_copy returns Some for tropical types");
 
         one_copy.determinize()?;
         another_copy.determinize()?;
 
         // No caller configures equivalence-checking, so the former global
-        // 'encode_weights' is read at its C++ default (false) here. (The log
-        // backend never consulted it.)
+        // 'encode_weights' is read at its C++ default (false) here.
         Ok(one_copy.fst.are_equivalent(&another_copy.fst, false))
     }
 
@@ -1688,7 +1636,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
     /// 'determinize', reading 'encode_weights' (the only engine-policy flag this op
     /// consults) from the supplied config. The tropical backend encodes weights iff
-    /// 'config.encode_weights'; the log backend never did, so it ignores it.
+    /// 'config.encode_weights'.
     pub fn determinize_with_config(
         &mut self,
         config: &EngineConfig,
@@ -1916,14 +1864,14 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         max_num: i32,
     ) -> crate::error::Result<()> {
         // (The SFST/FOMA convert-to-tropical arms are compiled out with those
-        // backends; tropical and log answer directly.)
+        // backends; tropical answers directly.)
         self.fst.extract_random_paths(results, max_num);
         Ok(())
     }
 
     pub fn n_best(&mut self, n: u32) -> crate::error::Result<&mut HfstTransducer<B>> {
         // (The C++ SFST/FOMA round-trip through TROPICAL_OPENFST_TYPE is gone
-        // with those backends; tropical and log answer directly.)
+        // with those backends; tropical answers directly.)
         self.fst = self.fst.n_best(n);
         Ok(self)
     }
@@ -2010,8 +1958,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         }
 
         // if there are implementations available, use them: the per-backend
-        // both-sides fast path (dead code for tropical — 'if (false && ...)' —
-        // and live for log) is 'AlgebraBackend::substitute_symbol_fast'.
+        // both-sides fast path (dead code for tropical — 'if (false && ...)') is
+        // 'AlgebraBackend::substitute_symbol_fast'.
         if input_side && output_side {
             if let Some(tmp) = self.fst.substitute_symbol_fast(old_symbol, new_symbol) {
                 self.fst = tmp;
@@ -2405,7 +2353,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // compiled out).
         another_copy = self
             .harmonize_copy(&another_copy)?
-            .expect("harmonize_copy returns Some for tropical/log types");
+            .expect("harmonize_copy returns Some for tropical types");
 
         /* Take care of unknown and identity symbols being handled right in
         composition. */
@@ -3036,20 +2984,9 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         &mut self,
         spv: &StringPairVector,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        // tropical mutates in place; the log arm was 'FunctionNotImplemented'
-        // in C++ and stays a panic inside the trait impl.
+        // The tropical backend mutates in place via the trait impl.
         self.fst.disjunct_spv(spv);
         Ok(self)
-    }
-
-    // TODO... (every arm was 'FunctionNotImplemented' in this build; kept as a
-    // stub so the trie-disjunction call sites keep their C++ shape)
-    pub(crate) fn disjunct_as_tries(
-        &mut self,
-        another: &mut HfstTransducer<B>,
-    ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        let _ = another;
-        unimplemented!("disjunct_as_tries: not implemented for this transducer type")
     }
 
     pub fn disjunct(
@@ -4244,7 +4181,6 @@ pub fn write_to<W: std::io::Write, B: Backend>(out: &mut W, t: &HfstTransducer<B
 // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.transducer-implementation]
 pub enum AnyTransducer {
     Tropical(HfstTransducer<StdVectorFst>),
-    Log(HfstTransducer<LogFst>),
     OlW(HfstTransducer<Transducer<WeightedTables>>),
     OlU(HfstTransducer<Transducer<UnweightedTables>>),
     #[cfg(feature = "foma")]
@@ -4257,7 +4193,6 @@ macro_rules! any_delegate {
     ($any:expr, $t:ident => $body:expr) => {
         match $any {
             AnyTransducer::Tropical($t) => $body,
-            AnyTransducer::Log($t) => $body,
             AnyTransducer::OlW($t) => $body,
             AnyTransducer::OlU($t) => $body,
             #[cfg(feature = "foma")]
@@ -4347,20 +4282,9 @@ impl FromAnyTransducer for StdVectorFst {
     fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
         match any {
             AnyTransducer::Tropical(t) => Ok(t),
-            other @ AnyTransducer::Log(_)
-            | other @ AnyTransducer::OlW(_)
-            | other @ AnyTransducer::OlU(_) => any_into_backend_via_basic(other),
-        }
-    }
-}
-
-impl FromAnyTransducer for LogFst {
-    fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
-        match any {
-            AnyTransducer::Log(t) => Ok(t),
-            other @ AnyTransducer::Tropical(_)
-            | other @ AnyTransducer::OlW(_)
-            | other @ AnyTransducer::OlU(_) => any_into_backend_via_basic(other),
+            other @ AnyTransducer::OlW(_) | other @ AnyTransducer::OlU(_) => {
+                any_into_backend_via_basic(other)
+            }
         }
     }
 }
@@ -4369,9 +4293,9 @@ impl FromAnyTransducer for Transducer<WeightedTables> {
     fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
         match any {
             AnyTransducer::OlW(t) => Ok(t),
-            other @ AnyTransducer::Tropical(_)
-            | other @ AnyTransducer::Log(_)
-            | other @ AnyTransducer::OlU(_) => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlU(_) => {
+                any_into_backend_via_basic(other)
+            }
         }
     }
 }
@@ -4384,9 +4308,9 @@ impl FromAnyTransducer for Transducer<UnweightedTables> {
             // tables, which the interim invariant of
             // [dec:hfst:monomorphic-backends] rules out (conversions always
             // build weighted-shaped tables); 'from_basic' reports that.
-            other @ AnyTransducer::Tropical(_)
-            | other @ AnyTransducer::Log(_)
-            | other @ AnyTransducer::OlW(_) => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlW(_) => {
+                any_into_backend_via_basic(other)
+            }
         }
     }
 }

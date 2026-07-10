@@ -297,14 +297,12 @@ pub fn convert_any_with_options(
     }
     Ok(match ty {
         ImplementationType::TROPICAL_OPENFST_TYPE => AnyTransducer::Tropical(t.into_typed()?),
-        ImplementationType::LOG_OPENFST_TYPE => AnyTransducer::Log(t.into_typed()?),
         #[cfg(feature = "foma")]
         ImplementationType::FOMA_TYPE => AnyTransducer::Foma(t.into_typed()?),
         ImplementationType::HFST_OLW_TYPE | ImplementationType::HFST_OL_TYPE => {
             let weighted = ty == ImplementationType::HFST_OLW_TYPE;
             match t {
                 AnyTransducer::Tropical(x) => AnyTransducer::OlW(x.to_ol(weighted, options)?),
-                AnyTransducer::Log(x) => AnyTransducer::OlW(x.to_ol(weighted, options)?),
                 // OL -> OL retag (only the header weightedness differs):
                 // through the algebra, as the C++ went through basic.
                 other @ AnyTransducer::OlW(_) | other @ AnyTransducer::OlU(_) => {
@@ -520,8 +518,6 @@ pub fn hfst_parse_format_name(opts: &CommonOptions, s: &str) -> ImplementationTy
         rv = ImplementationType::SFST_TYPE;
     } else if lower == "openfst-tropical" || lower == "ofst-tropical" {
         rv = ImplementationType::TROPICAL_OPENFST_TYPE;
-    } else if lower == "openfst-log" || lower == "ofst-log" {
-        rv = ImplementationType::LOG_OPENFST_TYPE;
     } else if lower == "openfst" || lower == "ofst" {
         rv = ImplementationType::TROPICAL_OPENFST_TYPE;
         hfst_warning(
@@ -567,7 +563,6 @@ pub fn hfst_strformat(format: ImplementationType) -> &'static str {
     match format {
         ImplementationType::SFST_TYPE => "SFST (1.4 compatible)",
         ImplementationType::TROPICAL_OPENFST_TYPE => "OpenFST, std arc, tropical semiring",
-        ImplementationType::LOG_OPENFST_TYPE => "OpenFST, std arc, log semiring",
         ImplementationType::FOMA_TYPE => "foma",
         ImplementationType::XFSM_TYPE => "xfsm",
         ImplementationType::HFST_OL_TYPE => "Hfst's lookup optimized, unweighted",

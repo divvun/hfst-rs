@@ -110,7 +110,7 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "If OUTFILE or INFILE is missing or -, standard streams will be used.\n\
          FMT must be one of the following: \
-         {{foma, sfst, openfst-tropical, openfst-log}}.\n\
+         {{foma, sfst, openfst-tropical}}.\n\
          If EPS is not defined, the default representation of 0 is used\n\
          VALUEs recognized are {{true,ON,yes}} and {{false,OFF,no}}.\n\
          Xfst variables are {{flag-is-epsilon (default OFF)}}.\n\
@@ -281,9 +281,6 @@ fn process_stream(
     // type parameter ([dec:hfst:monomorphic-backends]); optimized-lookup
     // formats compile at tropical and convert at each write.
     match options.output_format {
-        ImplementationType::LOG_OPENFST_TYPE => process_stream_typed::<
-            hfst::log_weight_transducer::LogFst,
-        >(common, options, outstream, input),
         ImplementationType::SFST_TYPE
         | ImplementationType::TROPICAL_OPENFST_TYPE
         | ImplementationType::FOMA_TYPE

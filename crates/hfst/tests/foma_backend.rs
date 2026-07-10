@@ -26,7 +26,7 @@ use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
 use hfst::transducer::{Transducer, WeightedTables};
 use hfst_openfst::StdVectorFst;
 
-/// The tropical/log/OL symbol coding lives in process-global statics behind
+/// The tropical/OL symbol coding lives in process-global statics behind
 /// their own mutexes; cargo runs every `#[test]` as a parallel thread in ONE
 /// process, so tests touching the OpenFst family serialize through this lock to
 /// restore the one-at-a-time-per-process model (mirrors test_streams.rs).

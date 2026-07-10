@@ -5,13 +5,12 @@
 // replace_down_karttunen.
 //
 // The C++ main loops over the implementation types {SFST, TROPICAL, FOMA}.
-// Per the Wave-2 port scope only the in-scope OpenFST backends are exercised:
+// Per the Wave-2 port scope only the in-scope OpenFST backend is exercised:
 // with the monomorphic backends the loop body becomes helpers generic over the
-// backend type, instantiated once per formerly-exercised type:
-// TROPICAL_OPENFST_TYPE -> StdVectorFst and LOG_OPENFST_TYPE -> LogFst (the
-// latter following the sibling ported suites' convention of also running LOG).
-// The out-of-scope SFST_TYPE / FOMA_TYPE / XFSM_TYPE iterations are
-// intentionally skipped -- those backends are not compiled in this build.
+// backend type, instantiated for the formerly-exercised
+// TROPICAL_OPENFST_TYPE -> StdVectorFst. The out-of-scope SFST_TYPE / FOMA_TYPE
+// / XFSM_TYPE iterations are intentionally skipped -- those backends are not
+// compiled in this build.
 //
 // Blocks of the C++ main mapped to tests below:
 //   1. two_level_if / only_if / if_and_only_if construction. In C++ this block
@@ -38,10 +37,9 @@ use hfst::hfst_data_types::{StringPair, StringPairSet};
 use hfst::hfst_rules;
 use hfst::hfst_tokenizer::HfstTokenizer;
 use hfst::hfst_transducer::{HfstTransducer, HfstTransducerPair};
-use hfst::log_weight_transducer::LogFst;
 use hfst_openfst::StdVectorFst;
 
-// The tropical/log transition-data symbol coding lives in process-global
+// The tropical transition-data symbol coding lives in process-global
 // statics behind Mutexes. cargo runs every #[test] as a parallel thread in ONE
 // process, but each C++ test was its own process. Serializing the tests through
 // this lock restores the one-at-a-time-per-process model without touching the
@@ -108,12 +106,6 @@ fn two_level_rules_tropical() -> Result<(), hfst::error::Error> {
     Ok(())
 }
 
-#[test]
-fn two_level_rules_log() -> Result<(), hfst::error::Error> {
-    run_two_level_rules::<LogFst>()?;
-    Ok(())
-}
-
 // ---------------------------------------------------------------------------
 // Block 2: replace_down_karttunen.
 // ---------------------------------------------------------------------------
@@ -151,12 +143,5 @@ fn run_replace_down_karttunen<B: AlgebraBackend>() -> Result<(), hfst::error::Er
 #[test]
 fn replace_down_karttunen_tropical() -> Result<(), hfst::error::Error> {
     run_replace_down_karttunen::<StdVectorFst>()?;
-    Ok(())
-}
-
-#[test]
-#[ignore = "PORT DISCREPANCY: replace_down_karttunen for LOG_OPENFST throws EmptyStringException -- the faithfully-ported LOG log->basic conversion (source_state hardcoded to 0) emits an empty-symbol transition; LOG was commented out of the C++ types array so this path is never exercised upstream"]
-fn replace_down_karttunen_log() -> Result<(), hfst::error::Error> {
-    run_replace_down_karttunen::<LogFst>()?;
     Ok(())
 }

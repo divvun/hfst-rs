@@ -126,3 +126,19 @@
 > rule. After processing all TSV lines, sets the result's name to "reweight"
 > and formula to "W". In both branches the transducer with epsilons removed is
 > written to the output stream. Closes both streams and returns EXIT_SUCCESS.
+
+> [spec:hfst:def:hfst-reweight.reweight-fn]
+> static float reweight(float w, const char * i, const char * o)
+
+> [spec:hfst:sem:hfst-reweight.reweight-fn]
+> The per-weight transform applied to a single weight w. i and o are the arc's
+> input/output symbols, or both null when w is a final weight. Returns w
+> unchanged (no reweighting) whenever a guard fails: w lies outside the
+> [lower_bound, upper_bound] window; or w is a final weight (i and o both null)
+> and arcs_only is set; or w is an arc weight (i and o both non-null) and
+> ends_only is set; or a single 'symbol' filter is set and neither i nor o
+> equals it; or both input_symbol and output_symbol are set and i differs from
+> input_symbol and o differs from output_symbol; or only input_symbol is set and
+> i differs from it; or only output_symbol is set and o differs from it.
+> Otherwise returns multiplier * (*func)(w) + addition — the selected per-weight
+> function scaled by MULTIPLIER and offset by ADDITION.

@@ -39,7 +39,6 @@ use crate::xre::XreCompiler;
 use std::io::BufRead;
 use tracing::{debug, error, info, warn};
 
-// [spec:hfst:def:xfst-compiler.apply-end-string]
 static APPLY_END_STRING: &str = "<ctrl-d>";
 
 // Used internally in function 'apply_unary_operator'.
@@ -5029,9 +5028,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             info!("Network is already optimized for lookup.");
             self.prompt();
             return Ok(self);
-        } else if t_type == ImplementationType::TROPICAL_OPENFST_TYPE
-            || t_type == ImplementationType::LOG_OPENFST_TYPE
-        {
+        } else if t_type == ImplementationType::TROPICAL_OPENFST_TYPE {
             to_format = ImplementationType::HFST_OLW_TYPE;
         } else {
             to_format = ImplementationType::HFST_OL_TYPE;

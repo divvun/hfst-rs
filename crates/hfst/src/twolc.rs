@@ -323,7 +323,7 @@ pub struct TwolcCompiler<B: AlgebraBackend> {
 }
 
 // (followed by the full ~190-line doc roster of method/helper signatures with
-//  their [spec:hfst:def:...] ids — see the file.)
+//  their spec def ids — see the file.)
 
 // ===== body 0 (flattened, module scope) =====
 // ───────────────────────────────────────────────────────────────────────────
@@ -4010,8 +4010,6 @@ pub fn replace_substr(s: &str, substr: &str, replacement: &str) -> String {
     s.replace(substr, replacement)
 }
 
-// [spec:hfst:def:rule.unescape-name-fn]
-// [spec:hfst:sem:rule.unescape-name-fn]
 // [spec:hfst:def:string-manipulation.unescape-name-fn]
 // [spec:hfst:sem:string-manipulation.unescape-name-fn]
 pub fn unescape_name(name: &str) -> String {
@@ -4023,7 +4021,6 @@ pub fn unescape_name(name: &str) -> String {
 }
 
 impl RuleVariables {
-    // [spec:hfst:def:rule-variables.rule-variables.rule-variables-fn]
     pub fn new() -> Self {
         RuleVariables {
             freely_blocks: Vec::new(),
@@ -4205,7 +4202,6 @@ impl RuleVariablesConstIterator {
         }
     }
 
-    // [spec:hfst:def:rule-variables-const-iterator.rule-variables-const-iterator.operator-increment-fn]
     pub fn increment(&mut self) {
         if self.at_end {
             return;

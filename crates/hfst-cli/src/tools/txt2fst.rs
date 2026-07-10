@@ -93,7 +93,7 @@ fn print_usage(common: &CommonOptions) {
     let _ = write!(msg, "\n");
     let _ = write!(
         msg,
-        "If OUTFILE or INFILE is missing or -, standard streams will be used.\nIf FMT is not given, OpenFst's tropical format will be used.\nThe possible values for FMT are {{ foma, openfst-tropical, openfst-log,\nsfst, optimized-lookup-weighted, optimized-lookup-unweighted }}.\nIf EPS is not given, @0@ will be used.\n\nSpace in transition symbols must be escaped as '@_SPACE_@' when using\natt format.\n",
+        "If OUTFILE or INFILE is missing or -, standard streams will be used.\nIf FMT is not given, OpenFst's tropical format will be used.\nThe possible values for FMT are {{ foma, openfst-tropical,\nsfst, optimized-lookup-weighted, optimized-lookup-unweighted }}.\nIf EPS is not given, @0@ will be used.\n\nSpace in transition symbols must be escaped as '@_SPACE_@' when using\natt format.\n",
     );
     let _ = write!(msg, "\n");
 }
@@ -269,9 +269,6 @@ fn process_stream(
     // through the basic transducer at tropical and convert at each write,
     // as the C++ HfstTransducer(net, HFST_OL*_TYPE) constructor did.
     match options.output_format {
-        ImplementationType::LOG_OPENFST_TYPE => process_stream_typed::<
-            hfst::log_weight_transducer::LogFst,
-        >(common, options, outstream, input),
         ImplementationType::SFST_TYPE
         | ImplementationType::TROPICAL_OPENFST_TYPE
         | ImplementationType::FOMA_TYPE
@@ -487,9 +484,6 @@ pub fn run(mut args: Vec<String>) -> i32 {
         }
         ImplementationType::TROPICAL_OPENFST_TYPE => {
             verbose_print(&common, "Using OpenFst's tropical weights as output\n");
-        }
-        ImplementationType::LOG_OPENFST_TYPE => {
-            verbose_print(&common, "Using OpenFst's log weight output\n");
         }
         ImplementationType::FOMA_TYPE => {
             verbose_print(&common, "Using foma as output handler\n");

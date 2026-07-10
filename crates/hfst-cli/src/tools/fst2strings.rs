@@ -535,9 +535,6 @@ fn process_stream(
             hfst::hfst_transducer::AnyTransducer::Tropical(t) => {
                 process_one_algebra(common, options, t, outstream)
             }
-            hfst::hfst_transducer::AnyTransducer::Log(t) => {
-                process_one_algebra(common, options, t, outstream)
-            }
             hfst::hfst_transducer::AnyTransducer::OlW(t) => {
                 process_one_ol(common, options, t, outstream)
             }

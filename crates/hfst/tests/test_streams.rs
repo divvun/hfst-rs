@@ -5,13 +5,10 @@
 //
 // The C++ main loops over the implementation types {SFST, TROPICAL, FOMA}
 // (with LOG commented out). Per the Wave-2 port scope, only the in-scope
-// OpenFST backends are exercised: with the monomorphic backends the loop body
-// becomes helpers generic over the backend type, instantiated once per
-// formerly-exercised type: TROPICAL_OPENFST_TYPE -> StdVectorFst and
-// LOG_OPENFST_TYPE -> LogFst. The out-of-scope SFST_TYPE / FOMA_TYPE /
-// XFSM_TYPE iterations are intentionally skipped. Following the sibling port
-// test_constructors.rs, the commented-out LOG iteration is also run here (it
-// widens oracle coverage).
+// OpenFST backend is exercised: with the monomorphic backends the loop body
+// becomes helpers generic over the backend type, instantiated for the
+// formerly-exercised TROPICAL_OPENFST_TYPE -> StdVectorFst. The out-of-scope
+// SFST_TYPE / FOMA_TYPE / XFSM_TYPE iterations are intentionally skipped.
 //
 // The C++ loop body has three logical sections, each becomes its own helper run
 // once per in-scope type:
@@ -26,10 +23,9 @@ use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::{FromAnyTransducer, HfstTransducer};
-use hfst::log_weight_transducer::LogFst;
 use hfst_openfst::StdVectorFst;
 
-// The tropical/log transition-data symbol coding lives in process-global statics
+// The tropical transition-data symbol coding lives in process-global statics
 // guarded by their own Mutexes; concurrent get_number / reverse-harmonization
 // callers race (see the longer note in test_constructors.rs). cargo runs each
 // #[test] as a parallel thread in ONE process, so every test here serializes
@@ -207,37 +203,6 @@ fn stream_round_trip_tropical() -> Result<(), hfst::error::Error> {
     Ok(())
 }
 
-// =====================================================================
-// LOG_OPENFST_TYPE (LogFst)  (commented out in the C++ type list; run here,
-// mirroring the sibling test_constructors.rs, to widen oracle coverage)
-// =====================================================================
-
-#[test]
-fn construction_from_att_format_log() {
-    let _g = serialized();
-    construction_from_att_format::<LogFst>();
-}
-
-// PORT DISCREPANCY (LOG-only; tropical passes the identical code path): for
-// LOG_OPENFST_TYPE the concatenate+minimize+write_in_att chain emits the wrong
-// symbols on the second transition -- "baz:baz" where it should read "foo:bar"
-// (full output "0 1 baz @0@ / 1 2 baz baz / 2"). Same LOG conversion bug family
-// documented in test_constructors.rs; the C++ never hit it (LOG commented out).
-#[test]
-#[ignore = "PORT DISCREPANCY: LOG concatenate+minimize+write_in_att produces baz:baz instead of foo:bar on the second transition (LOG conversion bug; tropical OK; C++ LOG commented out)"]
-fn writing_att_format_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    writing_att_format::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn stream_round_trip_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    stream_round_trip::<LogFst>()?;
-    Ok(())
-}
-
 // --- Regression: sparse symbol-table round trip (not a C++ port block).
 //
 // A transducer whose symbol table has a hole — a symbol dropped from the
@@ -298,13 +263,6 @@ fn sparse_symtable_round_trip<B: AlgebraBackend + FromAnyTransducer>()
 fn sparse_symtable_round_trip_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     sparse_symtable_round_trip::<StdVectorFst>()?;
-    Ok(())
-}
-
-#[test]
-fn sparse_symtable_round_trip_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    sparse_symtable_round_trip::<LogFst>()?;
     Ok(())
 }
 

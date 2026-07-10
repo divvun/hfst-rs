@@ -1,13 +1,12 @@
 // Regression oracle for ImplementationType::is_weighted — the weighting predicate
 // lifted out of hfst-fst2txt's bespoke per-type check. The weighted HFST backends
-// are tropical/log OpenFST and the weighted optimized-lookup format.
+// are tropical OpenFST and the weighted optimized-lookup format.
 
 use hfst::hfst_data_types::ImplementationType as IT;
 
 #[test]
 fn weighted_types() {
     assert!(IT::TROPICAL_OPENFST_TYPE.is_weighted());
-    assert!(IT::LOG_OPENFST_TYPE.is_weighted());
     assert!(IT::HFST_OLW_TYPE.is_weighted());
 }
 

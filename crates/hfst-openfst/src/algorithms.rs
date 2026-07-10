@@ -1,16 +1,16 @@
 //! OpenFST-shaped algorithm wrappers over rustfst.
 //!
 //! These mirror the 'fst::'-namespace function names and call shapes that HFST's
-//! 'TropicalWeightTransducer'/'LogWeightTransducer' use ('using namespace fst'),
+//! 'TropicalWeightTransducer' uses ('using namespace fst'),
 //! so the wrapper ports can translate 'ArcSort(fst, ILabelCompare())',
 //! 'Determinize(ifst, &ofst)', etc. nearly 1:1. Each delegates to rustfst and
 //! unwraps its 'Result' — OpenFST's algorithms are infallible by contract
 //! (errors abort), so a failed rustfst call is a panic here too.
 //!
-//! Generic over the weight 'W' and fst 'F' (covering both 'VectorFst<Tropical>'
-//! and 'VectorFst<Log>'); the heavier bounds ('WeaklyDivisibleSemiring',
+//! Generic over the weight 'W' and fst 'F' (instantiated with
+//! 'VectorFst<Tropical>'); the heavier bounds ('WeaklyDivisibleSemiring',
 //! 'WeightQuantize') are required only by determinize/minimize/reweight, which
-//! both HFST semirings satisfy.
+//! the tropical semiring satisfies.
 
 use rustfst::prelude::*;
 // The module-shaped algorithms need their inner fn (the prelude brings the

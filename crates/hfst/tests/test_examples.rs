@@ -18,12 +18,10 @@
 //      SFST is out of scope -- skipped. (The free function "function" the C++
 //      passes is only ever used by this SFST block.)
 //
-// Per the Wave-2 port scope only the in-scope OpenFST backends are exercised in
-// block 1: TROPICAL_OPENFST_TYPE and LOG_OPENFST_TYPE (the latter following the
-// sibling ported suites' convention of also running LOG, even though the C++
-// array commented it out). The out-of-scope SFST_TYPE / FOMA_TYPE / XFSM_TYPE
-// iterations are intentionally skipped -- is_implementation_type_available
-// returns false for them in this build.
+// Per the Wave-2 port scope only the in-scope OpenFST backend is exercised in
+// block 1: TROPICAL_OPENFST_TYPE. The out-of-scope SFST_TYPE / FOMA_TYPE /
+// XFSM_TYPE iterations are intentionally skipped --
+// is_implementation_type_available returns false for them in this build.
 //
 // Each in-scope type yields one #[test] for block 1a (the disjunct/minimize
 // oracle) and one #[test] for block 1b (the NotValidAttFormatException check).
@@ -36,16 +34,14 @@ use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_transducer::HfstTransducer;
-use hfst::log_weight_transducer::LogFst;
 use hfst_openfst::StdVectorFst;
 
-// The tropical/log transition-data symbol coding lives in process-global
+// The tropical transition-data symbol coding lives in process-global
 // statics behind Mutexes. cargo runs every #[test] as a parallel thread in ONE
 // process, but each C++ test was its own process. Serializing the tests through
 // this lock restores the one-at-a-time-per-process model without touching the
-// library or weakening any assertion. It also makes the global panic-hook
-// swapping in expect_hfst_exception safe (only one test at a time). into_inner()
-// recovers from a poisoned lock so one failing test does not cascade.
+// library or weakening any assertion. into_inner() recovers from a poisoned
+// lock so one failing test does not cascade.
 static SYMBOL_TABLE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn serialized() -> std::sync::MutexGuard<'static, ()> {
@@ -55,22 +51,6 @@ fn serialized() -> std::sync::MutexGuard<'static, ()> {
 // Shared helper inlined from test/libhfst/auxiliary_functions.cc (verbose_print).
 fn verbose_print(msg: &str, ty: ImplementationType) {
     eprintln!("Testing:\t{msg} for type {ty:?}...");
-}
-
-// Run a closure that is expected to throw an HFST exception (a panic_any
-// carrying a typed exception payload). The C++ does this with try { ... }
-// catch (NotValidAttFormatException e). Returns the panic payload so the caller
-// can downcast to the specific exception type the C++ catch named. The panic
-// hook is silenced so the expected, caught panic does not print a backtrace.
-fn expect_hfst_exception<F: FnOnce()>(f: F) -> Box<dyn std::any::Any + Send> {
-    let prev = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-    std::panic::set_hook(prev);
-    match result {
-        Ok(()) => panic!("expected an HfstException to be thrown, but the closure returned"),
-        Err(payload) => payload,
-    }
 }
 
 // Build tr1 = [ @_UNKNOWN_SYMBOL_@:foo ] as in the C++ main.
@@ -195,21 +175,4 @@ fn expanding_unknowns_tropical() -> Result<(), hfst::error::Error> {
 fn not_valid_att_format_tropical() {
     let _g = serialized();
     run_not_valid_att_format::<StdVectorFst>();
-}
-
-// =====================================================================
-// LOG_OPENFST_TYPE
-// =====================================================================
-
-#[test]
-fn expanding_unknowns_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    run_expanding_unknowns::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn not_valid_att_format_log() {
-    let _g = serialized();
-    run_not_valid_att_format::<LogFst>();
 }

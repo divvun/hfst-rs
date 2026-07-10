@@ -256,10 +256,10 @@ fn process_one<B: hfst::backend::Backend>(
         {
             printw = false;
         } else if ty.is_weighted() {
-            // tropical/log OpenFST and weighted optimized-lookup; the prior
+            // tropical OpenFST and weighted optimized-lookup; the prior
             // SFST/foma/xfsm arm already returned false, and the else arm
-            // below also yields true, so this is byte-for-byte equivalent to
-            // the original `ty == TROPICAL_OPENFST || ty == LOG_OPENFST`.
+            // below also yields true, so this branch is equivalent to the
+            // original weighted-format check.
             printw = true;
         } else {
             // this should not happen

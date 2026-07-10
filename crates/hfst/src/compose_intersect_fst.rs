@@ -37,7 +37,6 @@ use crate::hfst_tropical_transducer_transition_data::SymbolCoder;
 // The compose-intersect `StateNotDefined` signal (a C++ `HfstException` child)
 // is now `crate::error::ErrorKind::StateNotDefined`; `crate::bail!(StateNotDefined)`
 // raises it via the unified `Error` payload.
-// [spec:hfst:def:compose-intersect-fst.state-not-defined]
 
 // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.transition]
 #[derive(Clone, Debug)]
@@ -302,8 +301,6 @@ impl ComposeIntersectFst {
             == self.t.coder_mut().get_number("@_IDENTITY_SYMBOL_@") as usize)
     }
 
-    // [spec:hfst:def:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-symbols-fn]
-    // [spec:hfst:sem:compose-intersect-fst.hfst.implementations.compose-intersect-fst.get-symbols-fn]
     pub fn get_symbols(&self) -> &SymbolSet {
         &self.symbol_set
     }

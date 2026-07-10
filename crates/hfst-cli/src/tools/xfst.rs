@@ -57,8 +57,6 @@ impl Default for Options {
     }
 }
 
-// [spec:hfst:def:hfst-xfst.print-usage-fn]
-// [spec:hfst:sem:hfst-xfst.print-usage-fn]
 fn print_usage(common: &CommonOptions) {
     let mut msg = common.message_writer();
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -89,7 +87,7 @@ fn print_usage(common: &CommonOptions) {
          \n\
          Option --execute can be invoked many times.\n\
          If FMT is not given, OpenFst's tropical format will be used.\n\
-         The possible values for FMT are {{ foma, openfst-tropical, openfst-log, sfst }}.\n\
+         The possible values for FMT are {{ foma, openfst-tropical, sfst }}.\n\
          Readline library, if enabled when configuring, is used for input by default.\n\
          Input files are always treated as UTF-8.\n\
          \n\
@@ -101,8 +99,6 @@ fn print_usage(common: &CommonOptions) {
     let _ = write!(msg, "\n");
 }
 
-// [spec:hfst:def:hfst-xfst.parse-options-fn]
-// [spec:hfst:sem:hfst-xfst.parse-options-fn]
 //
 // The C++ copies the common getopt cases inline "with exceptions" (no '-o'
 // case; '--colour=auto' maps to COLOUR_NEVER) rather than #include'ing them,
@@ -257,8 +253,6 @@ fn parse_options(
     Ok((common, options))
 }
 
-// [spec:hfst:def:hfst-xfst.parse-file-fn]
-// [spec:hfst:sem:hfst-xfst.parse-file-fn]
 //
 // Parse file 'filename' using compiler 'comp'.
 // Filename "<stdin>" uses stdin for reading.
@@ -299,8 +293,6 @@ fn parse_file<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyT
     0
 }
 
-// [spec:hfst:def:hfst-xfst.expression-continues-fn]
-// [spec:hfst:sem:hfst-xfst.expression-continues-fn]
 fn expression_continues(expr: &mut String) -> bool {
     // get rid of extra newlines...
     if expr.ends_with('\n') {
@@ -318,8 +310,6 @@ fn expression_continues(expr: &mut String) -> bool {
     false
 }
 
-// [spec:hfst:def:hfst-xfst.main-fn]
-// [spec:hfst:sem:hfst-xfst.main-fn]
 pub fn run(mut args: Vec<String>) -> i32 {
     let argv0 = args.first().cloned().unwrap_or_default();
 
@@ -335,9 +325,6 @@ pub fn run(mut args: Vec<String>) -> i32 {
         }
         ImplementationType::TROPICAL_OPENFST_TYPE => {
             verbose_print(&common, "Using OpenFst's tropical weights as output\n");
-        }
-        ImplementationType::LOG_OPENFST_TYPE => {
-            verbose_print(&common, "Using OpenFst's log weight output\n");
         }
         ImplementationType::FOMA_TYPE => {
             verbose_print(&common, "Using foma as output handler\n");
@@ -392,9 +379,6 @@ pub fn run(mut args: Vec<String>) -> i32 {
     match options.output_format {
         ImplementationType::TROPICAL_OPENFST_TYPE => {
             run_compiler::<hfst_openfst::StdVectorFst>(&common, &options)
-        }
-        ImplementationType::LOG_OPENFST_TYPE => {
-            run_compiler::<hfst::log_weight_transducer::LogFst>(&common, &options)
         }
         ImplementationType::FOMA_TYPE => {
             #[cfg(feature = "foma")]

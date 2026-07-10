@@ -461,10 +461,6 @@ fn binary_op_streams(
                 process_pair(common, spec, op, f, s, &ctx, &mut outstream)
                     .map(|(f, s)| (f.into_any(), s.into_any()))
             }
-            (AnyTransducer::Log(f), AnyTransducer::Log(s)) => {
-                process_pair(common, spec, op, f, s, &ctx, &mut outstream)
-                    .map(|(f, s)| (f.into_any(), s.into_any()))
-            }
             #[cfg(feature = "foma")]
             (AnyTransducer::Foma(f), AnyTransducer::Foma(s)) => {
                 process_pair(common, spec, op, f, s, &ctx, &mut outstream)

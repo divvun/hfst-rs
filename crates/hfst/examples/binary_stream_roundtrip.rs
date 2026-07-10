@@ -7,7 +7,6 @@ use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::{FromAnyTransducer, HfstTransducer};
-use hfst::log_weight_transducer::LogFst;
 use hfst_openfst::StdVectorFst;
 
 fn roundtrip<B: AlgebraBackend + FromAnyTransducer>(label: &str) -> hfst::error::Result<()> {
@@ -126,7 +125,6 @@ fn read_att_facade() -> hfst::error::Result<()> {
 
 fn main() -> hfst::error::Result<()> {
     roundtrip::<StdVectorFst>("tropical")?;
-    roundtrip::<LogFst>("log")?;
     roundtrip_hfst_ol(false, "hfst_ol")?;
     roundtrip_hfst_ol(true, "hfst_olw")?;
     read_att_facade()?;

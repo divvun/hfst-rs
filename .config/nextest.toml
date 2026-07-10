@@ -1,0 +1,6 @@
+# Cap every test at 10 seconds of wall-clock time. A test still running after
+# the period is marked slow and then terminated (terminate-after = 1 -> killed
+# at 1 x period = 10s). This stops a non-terminating op (e.g. a pathological
+# determinization) from hanging the whole run.
+[profile.default]
+slow-timeout = { period = "10s", terminate-after = 1 }

@@ -191,8 +191,7 @@ fn process_stream(
                         }
                     }
                 }
-                hfst::hfst_transducer::AnyTransducer::Log(_)
-                | hfst::hfst_transducer::AnyTransducer::OlW(_)
+                hfst::hfst_transducer::AnyTransducer::OlW(_)
                 | hfst::hfst_transducer::AnyTransducer::OlU(_) => None,
             }
         } else {
@@ -228,10 +227,6 @@ fn process_stream(
                     weighted = false;
                 }
                 ImplementationType::TROPICAL_OPENFST_TYPE => {
-                    is_mutable = true;
-                    weighted = true;
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
                     is_mutable = true;
                     weighted = true;
                 }
@@ -297,9 +292,6 @@ fn process_stream(
                 }
                 ImplementationType::TROPICAL_OPENFST_TYPE => {
                     let _ = write!(out, "fst type: OpenFST\narc type: tropical\n");
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    let _ = write!(out, "fst type: OpenFST\narc type: log\n");
                 }
                 ImplementationType::FOMA_TYPE => {
                     let _ = write!(out, "fst type: foma\narc type: foma\n");

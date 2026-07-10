@@ -110,12 +110,12 @@ fn print_usage(common: &CommonOptions) {
     );
     let _ = write!(msg, "\n");
     let _ = msg.write_all(
-        "If INFILE or OUTFILE are omitted or -, standard streams will be used\nThe possible values for FORMAT are { sfst, openfst-tropical, openfst-log,\nfoma, optimized-lookup-unweighted, optimized-lookup-weighted }.\nBOOL is one of {true,ON,yes} or {false,OFF,no}.\nXfst variables are {flag-is-epsilon (default OFF)}.\n"
+        "If INFILE or OUTFILE are omitted or -, standard streams will be used\nThe possible values for FORMAT are { sfst, openfst-tropical,\nfoma, optimized-lookup-unweighted, optimized-lookup-weighted }.\nBOOL is one of {true,ON,yes} or {false,OFF,no}.\nXfst variables are {flag-is-epsilon (default OFF)}.\n"
             .as_bytes(),
     );
     let _ = write!(
         msg,
-        "\nExamples:\n  {0} -o cat.hfst cat.lexc               Compile single-file lexicon\n  {0} -o L.hfst Root.lexc 2.lexc 3.lexc  Compile multi-file lexicon\n\nUsing weights:\n  LEXICON Root\n  cat # \"weight: 2\" ;    Define weight for a word\n  <[dog::1]+> # ;        Use weights in regular expressions\n\nUsing weights has an effect only if FORMAT is weighted, i.e.\n{{ openfst-tropical, openfst-log, optimized-lookup-weighted }}.\n\n",
+        "\nExamples:\n  {0} -o cat.hfst cat.lexc               Compile single-file lexicon\n  {0} -o L.hfst Root.lexc 2.lexc 3.lexc  Compile multi-file lexicon\n\nUsing weights:\n  LEXICON Root\n  cat # \"weight: 2\" ;    Define weight for a word\n  <[dog::1]+> # ;        Use weights in regular expressions\n\nUsing weights has an effect only if FORMAT is weighted, i.e.\n{{ openfst-tropical, optimized-lookup-weighted }}.\n\n",
         common.program_name
     );
 }
@@ -476,9 +476,6 @@ pub fn run(mut args: Vec<String>) -> i32 {
     // type ([dec:hfst:monomorphic-backends]); optimized-lookup formats
     // compile at tropical and convert at the write.
     match options.format {
-        ImplementationType::LOG_OPENFST_TYPE => {
-            run_typed::<hfst::log_weight_transducer::LogFst>(&common, &options, &mut outstream)
-        }
         ImplementationType::SFST_TYPE
         | ImplementationType::TROPICAL_OPENFST_TYPE
         | ImplementationType::FOMA_TYPE

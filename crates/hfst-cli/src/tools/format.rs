@@ -159,8 +159,6 @@ fn parse_options(
         if (fmt == "sfst" && is_implementation_type_available(ImplementationType::SFST_TYPE))
             || (fmt == "openfst-tropical"
                 && is_implementation_type_available(ImplementationType::TROPICAL_OPENFST_TYPE))
-            || (fmt == "openfst-log"
-                && is_implementation_type_available(ImplementationType::LOG_OPENFST_TYPE))
             || (fmt == "foma" && is_implementation_type_available(ImplementationType::FOMA_TYPE))
             || (fmt == "optimized-lookup-unweighted"
                 && is_implementation_type_available(ImplementationType::HFST_OL_TYPE))
@@ -183,10 +181,6 @@ fn parse_options(
             fput_stdout(
                 " OpenFst (tropical weights)      openfst-tropical, openfst, ofst, ofst-tropical\n",
             );
-        }
-
-        if is_implementation_type_available(ImplementationType::LOG_OPENFST_TYPE) {
-            fput_stdout(" OpenFst (logarithmic weights)   openfst-log, ofst-log\n");
         }
 
         if is_implementation_type_available(ImplementationType::FOMA_TYPE) {

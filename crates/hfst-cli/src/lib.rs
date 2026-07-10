@@ -27,7 +27,6 @@ macro_rules! for_any {
     ($any:expr, $t:ident => $body:expr) => {
         match $any {
             hfst::hfst_transducer::AnyTransducer::Tropical($t) => $body,
-            hfst::hfst_transducer::AnyTransducer::Log($t) => $body,
             hfst::hfst_transducer::AnyTransducer::OlW($t) => $body,
             hfst::hfst_transducer::AnyTransducer::OlU($t) => $body,
             #[cfg(feature = "foma")]
@@ -44,7 +43,6 @@ macro_rules! for_algebra {
     ($any:expr, $t:ident => $body:expr, else => $ol:expr) => {
         match $any {
             hfst::hfst_transducer::AnyTransducer::Tropical($t) => $body,
-            hfst::hfst_transducer::AnyTransducer::Log($t) => $body,
             #[cfg(feature = "foma")]
             hfst::hfst_transducer::AnyTransducer::Foma($t) => $body,
             _ => $ol,
@@ -61,11 +59,6 @@ pub(crate) trait IntoAny {
 impl IntoAny for hfst::hfst_transducer::HfstTransducer<hfst_openfst::StdVectorFst> {
     fn into_any(self) -> hfst::hfst_transducer::AnyTransducer {
         hfst::hfst_transducer::AnyTransducer::Tropical(self)
-    }
-}
-impl IntoAny for hfst::hfst_transducer::HfstTransducer<hfst::log_weight_transducer::LogFst> {
-    fn into_any(self) -> hfst::hfst_transducer::AnyTransducer {
-        hfst::hfst_transducer::AnyTransducer::Log(self)
     }
 }
 impl IntoAny

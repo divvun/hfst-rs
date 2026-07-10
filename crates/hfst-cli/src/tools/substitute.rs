@@ -525,15 +525,6 @@ fn process_stream(
     // type parameter ([dec:hfst:monomorphic-backends]); OL streams were
     // rejected before this point.
     match output_type {
-        ImplementationType::LOG_OPENFST_TYPE => {
-            process_loop::<hfst::log_weight_transducer::LogFst>(
-                common,
-                options,
-                instream,
-                &mut outstream,
-                to_any,
-            )
-        }
         ImplementationType::SFST_TYPE
         | ImplementationType::TROPICAL_OPENFST_TYPE
         | ImplementationType::FOMA_TYPE

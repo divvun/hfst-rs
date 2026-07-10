@@ -900,7 +900,6 @@ fn process_stream(
         // add multicharacter symbols to mc_symbols
         if ty == ImplementationType::SFST_TYPE
             || ty == ImplementationType::TROPICAL_OPENFST_TYPE
-            || ty == ImplementationType::LOG_OPENFST_TYPE
             || ty == ImplementationType::FOMA_TYPE
         {
             // [spec:hfst:def:hfst-flookup.basic-fn]
@@ -942,8 +941,7 @@ fn process_stream(
         match trans {
             hfst::hfst_transducer::AnyTransducer::OlW(t) => cascade.push(OlTransducer::W(t)),
             hfst::hfst_transducer::AnyTransducer::OlU(t) => cascade.push(OlTransducer::U(t)),
-            hfst::hfst_transducer::AnyTransducer::Tropical(_)
-            | hfst::hfst_transducer::AnyTransducer::Log(_) => {}
+            hfst::hfst_transducer::AnyTransducer::Tropical(_) => {}
         }
         id_or_unk_seen = false;
     }

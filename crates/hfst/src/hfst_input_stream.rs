@@ -33,7 +33,7 @@
 //! 'xfsm' are unported collaborators (deferred placeholders).
 //!
 //! ## In-scope reads
-//!   * TROPICAL_OPENFST / LOG_OPENFST: after the HFST header is consumed, the
+//!   * TROPICAL_OPENFST: after the HFST header is consumed, the
 //!     remaining bytes are the OpenFst/rustfst 'VectorFst' payload that
 //!     'HfstOutputStream' wrote via 'store()'; we slurp them and rebuild with
 //!     'SerializableFst::load'.
@@ -55,7 +55,6 @@ use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_data_types::{ImplementationType, StringPairVector};
 use crate::hfst_ol_transducer::HfstOlInputStream as HfstOlBackendInputStream;
 use crate::hfst_transducer::{AnyTransducer, HfstTransducer};
-use crate::log_weight_transducer::{LogFst, LogWeightInputStream};
 use crate::transducer::{
     HeaderFlag, IStream, Transducer, TransducerHeader, UnweightedTables, WeightedTables,
 };
@@ -177,14 +176,13 @@ impl<'a> Read for PushbackReader<'a> {
 /// Port of the C++ 'union StreamImplementation' (the backend implementation).
 /// Kept for fidelity with the C++ union; in this single-owned-reader port the
 /// in-scope backend stream is built transiently in 'read_transducer', so these
-/// fields stay 'None'. The tropical/log/hfst_ol members carry the reader lifetime
+/// fields stay 'None'. The tropical/hfst_ol members carry the reader lifetime
 /// ('IStream<'a>'); the rest are deferred placeholders.
 // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-implementation]
 #[derive(Default)]
 pub struct StreamImplementation<'a> {
     pub sfst: Option<Box<SfstInputStream>>,
     pub tropical_ofst: Option<Box<TropicalWeightInputStream<'a>>>,
-    pub log_ofst: Option<Box<LogWeightInputStream<'a>>>,
     pub foma: Option<Box<FomaInputStream>>,
     pub xfsm: Option<Box<XfsmInputStream>>,
     pub hfst_ol: Option<Box<HfstOlBackendInputStream<'a>>>,
@@ -369,7 +367,6 @@ mod input_impl {
                     //set_implementation_specific_header_data(data, index);
                 }
                 ImplementationType::TROPICAL_OPENFST_TYPE
-                | ImplementationType::LOG_OPENFST_TYPE
                 | ImplementationType::FOMA_TYPE
                 | ImplementationType::XFSM_TYPE
                 | ImplementationType::HFST_OL_TYPE
@@ -401,9 +398,9 @@ mod input_impl {
         // Reads the next transducer from the stream. The C++ filled a
         // caller-provided union-backed 'HfstTransducer'; the runtime type
         // decision now happens exactly here, producing the one runtime sum
-        // ('AnyTransducer', [dec:hfst:monomorphic-backends]). The tropical/log
+        // ('AnyTransducer', [dec:hfst:monomorphic-backends]). The tropical
         // backend 'read_transducer' is deferred (rustfst exposes only the
-        // whole-buffer 'load'), so for those types we read the payload directly
+        // whole-buffer 'load'), so for that type we read the payload directly
         // off the owned reader and rebuild the fst here.
         pub fn read(&mut self) -> crate::error::Result<AnyTransducer> {
             if self.ty != ImplementationType::XFSM_TYPE {
@@ -434,8 +431,9 @@ mod input_impl {
 
             let mut t: AnyTransducer = match self.ty {
                 ImplementationType::SFST_TYPE => {
-                    // implementation.sfst->read_transducer() — no SFST backend.
-                    unimplemented!("deferred: SfstInputStream::read_transducer (no SFST backend)")
+                    // Unreachable: SFST is rejected at stream construction by the
+                    // availability guard (is_lean_implementation_type_available).
+                    unreachable!("SFST_TYPE rejected at stream construction")
                 }
                 ImplementationType::TROPICAL_OPENFST_TYPE => {
                     // Slurp the rest of the stream, parse exactly ONE FST off the
@@ -470,38 +468,14 @@ mod input_impl {
                     // SFST alphabet. It needs the backend 'stream_get' loop, which
                     // is not available in this port.
                     if self.hfst_version_2_weighted_transducer {
-                        unimplemented!(
-                            "deferred: HFST version 2 weighted transducer (appended SFST alphabet)"
-                        );
+                        // A legacy HFST v2 weighted transducer with an appended SFST
+                        // alphabet needs the backend 'stream_get' loop, absent in this port.
+                        crate::bail!(ImplementationTypeNotAvailable(
+                            ImplementationType::HFST2_TYPE
+                        ));
                     }
 
                     AnyTransducer::Tropical(HfstTransducer::wrap(fst))
-                }
-                ImplementationType::LOG_OPENFST_TYPE => {
-                    let bytes = self.read_remaining_bytes();
-                    let (mut fst, consumed) = match LogFst::load_prefix(&bytes) {
-                        Ok(fc) => fc,
-                        Err(_) => crate::bail!(
-                            NotTransducerStream,
-                            "could not read LOG_OPENFST transducer payload"
-                        ),
-                    };
-                    if consumed < bytes.len() {
-                        self.pbr().unget_all(&bytes[consumed..]);
-                    }
-
-                    if !self.has_hfst_header {
-                        let net =
-                            ConversionFunctions::log_ofst_to_hfst_basic_transducer(&fst, false)?;
-                        fst = ConversionFunctions::hfst_basic_transducer_to_log_ofst(&net);
-                    }
-
-                    if self.hfst_version_2_weighted_transducer {
-                        // this should not happen
-                        crate::bail!(Fatal, "not transducer stream");
-                    }
-
-                    AnyTransducer::Log(HfstTransducer::wrap(fst))
                 }
                 ImplementationType::FOMA_TYPE => {
                     // [spec:hfst:def:foma-backend.stream-io]
@@ -531,9 +505,9 @@ mod input_impl {
                     }
                     #[cfg(not(feature = "foma"))]
                     {
-                        unimplemented!(
-                            "deferred: FomaInputStream::read_transducer (no foma backend)"
-                        )
+                        // Unreachable: without the `foma` feature, FOMA is rejected at
+                        // stream construction by the availability guard.
+                        unreachable!("FOMA_TYPE rejected at stream construction (no foma feature)")
                     }
                 }
                 ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
@@ -728,10 +702,6 @@ mod input_impl {
                 || "TROPICAL_OFST" == header_data[1].1.as_str()
             {
                 self.ty = ImplementationType::TROPICAL_OPENFST_TYPE;
-            } else if "LOG_OPENFST" == header_data[1].1.as_str()
-                || "LOG_OFST" == header_data[1].1.as_str()
-            {
-                self.ty = ImplementationType::LOG_OPENFST_TYPE;
             } else if "HFST_OL" == header_data[1].1.as_str() {
                 self.ty = ImplementationType::HFST_OL_TYPE;
             } else if "HFST_OLW" == header_data[1].1.as_str() {
@@ -824,10 +794,6 @@ mod input_impl {
             if fst_type == "TROPICAL_OPENFST_TYPE" {
                 *bytes_read = 19;
                 return Ok(ImplementationType::TROPICAL_OPENFST_TYPE);
-            }
-            if fst_type == "LOG_OPENFST_TYPE" {
-                *bytes_read = 14;
-                return Ok(ImplementationType::LOG_OPENFST_TYPE);
             }
             if fst_type == "HFST_OL_TYPE" {
                 *bytes_read = 13;
@@ -1005,7 +971,7 @@ mod input_impl {
                 }
                 TransducerType::HFST_VERSION_2_UNWEIGHTED => ImplementationType::SFST_TYPE,
                 TransducerType::OPENFST_TROPICAL_ => ImplementationType::TROPICAL_OPENFST_TYPE,
-                TransducerType::OPENFST_LOG_ => ImplementationType::LOG_OPENFST_TYPE,
+                TransducerType::OPENFST_LOG_ => ImplementationType::ERROR_TYPE,
                 TransducerType::SFST_ => ImplementationType::SFST_TYPE,
                 TransducerType::FOMA_ => ImplementationType::FOMA_TYPE,
                 TransducerType::XFSM_ => ImplementationType::XFSM_TYPE,
@@ -1068,20 +1034,22 @@ mod input_impl {
             // the unsupported / unrecognised types up front.
             match this.ty {
                 ImplementationType::TROPICAL_OPENFST_TYPE
-                | ImplementationType::LOG_OPENFST_TYPE
                 | ImplementationType::HFST_OL_TYPE
                 | ImplementationType::HFST_OLW_TYPE => {}
                 ImplementationType::SFST_TYPE => {
-                    unimplemented!("deferred: SfstInputStream (no SFST backend)")
+                    // Unreachable: excluded by the availability guard above.
+                    unreachable!("SFST_TYPE excluded by the availability guard above")
                 }
                 #[cfg(feature = "foma")]
                 ImplementationType::FOMA_TYPE => {}
                 #[cfg(not(feature = "foma"))]
                 ImplementationType::FOMA_TYPE => {
-                    unimplemented!("deferred: FomaInputStream (no foma backend)")
+                    // Unreachable: excluded by the availability guard above.
+                    unreachable!("FOMA_TYPE excluded by the availability guard above")
                 }
                 ImplementationType::XFSM_TYPE => {
-                    unimplemented!("deferred: XfsmInputStream (no xfsm backend)")
+                    // Unreachable: excluded by the availability guard above.
+                    unreachable!("XFSM_TYPE excluded by the availability guard above")
                 }
                 _ => {
                     debug_error("#10");

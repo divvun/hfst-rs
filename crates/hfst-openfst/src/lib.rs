@@ -2,8 +2,8 @@
 //! ['rustfst'] (the 'necessary-nu/rustfst' fork, a git submodule at 'rustfst/').
 //!
 //! This crate is a **thin adapter**: it re-exports / wraps rustfst's
-//! 'VectorFst', the tropical/log semirings, 'SymbolTable', and algorithms so the
-//! HFST facade's 'Tropical/LogWeightTransducer' wrappers can call them in
+//! 'VectorFst', the tropical semiring, 'SymbolTable', and algorithms so the
+//! HFST facade's 'TropicalWeightTransducer' wrapper can call them in
 //! HFST-shaped terms. It is NOT a reimplementation — porting OpenFST 1:1 was
 //! ~30K LOC and rejected in favour of rustfst.
 //!
@@ -27,18 +27,12 @@ pub mod algorithms;
 
 /// 'fst::TropicalWeight' — the tropical semiring (min, +) over 'f32'.
 pub type TropicalWeight = rustfst::semirings::TropicalWeight;
-/// 'fst::LogWeight' — the log semiring.
-pub type LogWeight = rustfst::semirings::LogWeight;
 
 /// 'fst::StdArc' — a tropical-weighted transition (rustfst 'Tr').
 pub type StdTransition = rustfst::Tr<TropicalWeight>;
-/// 'fst::LogArc' — a log-weighted transition.
-pub type LogTransition = rustfst::Tr<LogWeight>;
 
 /// 'fst::StdVectorFst' — the mutable tropical-weighted vector FST that HFST's
 /// 'TropicalWeightTransducer' is built on.
 pub type StdVectorFst = rustfst::fst_impls::VectorFst<TropicalWeight>;
-/// 'fst::LogFst' — the log-weighted vector FST.
-pub type LogVectorFst = rustfst::fst_impls::VectorFst<LogWeight>;
 
 pub use rustfst::SymbolTable;

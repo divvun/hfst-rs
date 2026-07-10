@@ -5,13 +5,12 @@
 //
 // The C++ main loops over the implementation types {SFST, TROPICAL, FOMA}
 // (with LOG commented out). Per the Wave-2 port scope, only the in-scope
-// OpenFST backends are exercised here; with the monomorphic backends the loop
-// body becomes helpers generic over the backend type, instantiated once per
-// formerly-exercised type: TROPICAL_OPENFST_TYPE -> StdVectorFst and
-// LOG_OPENFST_TYPE -> LogFst. The out-of-scope SFST_TYPE / FOMA_TYPE /
-// XFSM_TYPE iterations are intentionally skipped. The fixed HFST_OL_TYPE /
-// HFST_OLW_TYPE usages inside the loop body (the operator= block) are ported
-// faithfully.
+// OpenFST backend is exercised here; with the monomorphic backends the loop
+// body becomes helpers generic over the backend type, instantiated for the
+// formerly-exercised TROPICAL_OPENFST_TYPE -> StdVectorFst. The out-of-scope
+// SFST_TYPE / FOMA_TYPE / XFSM_TYPE iterations are intentionally skipped. The
+// fixed HFST_OL_TYPE / HFST_OLW_TYPE usages inside the loop body (the
+// operator= block) are ported faithfully.
 //
 // Each logical group from the C++ loop body (delimited there by verbose_print
 // labels) becomes its own helper, run once per in-scope type. C++
@@ -25,11 +24,10 @@ use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_tokenizer::HfstTokenizer;
 use hfst::hfst_transducer::{AnyTransducer, FromAnyTransducer, HfstTransducer};
-use hfst::log_weight_transducer::LogFst;
 use hfst::transducer::{Transducer, WeightedTables};
 use hfst_openfst::StdVectorFst;
 
-// The tropical/log transition-data symbol coding lives in process-global
+// The tropical transition-data symbol coding lives in process-global
 // statics (NUMBER2SYMBOL_MAP / SYMBOL2NUMBER_MAP / MAX_NUMBER, each behind its
 // own Mutex). get_number bumps MAX_NUMBER under one lock and then appends to the
 // symbol vector under another, so concurrent callers race and
@@ -74,11 +72,6 @@ trait IntoAny: AlgebraBackend {
 impl IntoAny for StdVectorFst {
     fn into_any(t: HfstTransducer<Self>) -> AnyTransducer {
         AnyTransducer::Tropical(t)
-    }
-}
-impl IntoAny for LogFst {
-    fn into_any(t: HfstTransducer<Self>) -> AnyTransducer {
-        AnyTransducer::Log(t)
     }
 }
 
@@ -305,67 +298,6 @@ fn operator_assign_tropical() -> Result<(), hfst::error::Error> {
 }
 
 // =====================================================================
-// LOG_OPENFST_TYPE (LogFst)
-// =====================================================================
-
-#[test]
-fn smoke_constructors_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    smoke_constructors::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn copy_constructor_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    copy_constructor::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn conversion_from_basic_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    conversion_from_basic::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn construction_by_tokenization_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    construction_by_tokenization::<LogFst>()?;
-    Ok(())
-}
-
-// PORT DISCREPANCY (latent C++ bug surfaced, not a Rust regression): for
-// LOG_OPENFST_TYPE the att chain 0->1->2->3 is mis-built so every transition
-// originates from state 0, leaving foo:bar unreachable; after minimize the
-// transducer collapses to the empty-string acceptor and the compare fails.
-// Root cause is faithfully ported from the C++: hfst_basic_transducer_to_log_ofst
-// hardcodes source_state = 0 and never advances it (convert_log_weight_transducer.rs).
-// The C++ suite never triggered this because its LOG iteration was commented out.
-#[test]
-#[ignore = "PORT DISCREPANCY: LOG basic->log conversion hardcodes source_state=0 (faithfully ported C++ bug), so the att foo:bar transducer collapses to empty after minimize; never exercised by C++ (LOG commented out)"]
-fn construction_from_att_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    construction_from_att::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn construction_from_stream_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    construction_from_stream::<LogFst>()?;
-    Ok(())
-}
-
-#[test]
-fn operator_assign_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    operator_assign::<LogFst>()?;
-    Ok(())
-}
-
-// =====================================================================
 // HFST_OL / HFST_OLW usages (fixed types inside the C++ operator= block)
 // =====================================================================
 
@@ -380,12 +312,5 @@ fn copy_constructor_preserves_name_after_olw_convert_test() -> Result<(), hfst::
 fn operator_assign_ol_tropical() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     operator_assign_ol::<StdVectorFst>()?;
-    Ok(())
-}
-
-#[test]
-fn operator_assign_ol_log() -> Result<(), hfst::error::Error> {
-    let _g = serialized();
-    operator_assign_ol::<LogFst>()?;
     Ok(())
 }
