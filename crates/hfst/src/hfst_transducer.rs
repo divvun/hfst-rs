@@ -2698,6 +2698,21 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         let mut t1upper = t1.clone();
         t1upper.input_project()?.optimize()?;
 
+        // DIVERGENCE from upstream C++ (hfst#341 investigation): when Q carries
+        // flag diacritics, input_project keeps each flag as a LITERAL arc, so the
+        // subsequent negate() treats the flag as an ordinary symbol. The flagless
+        // string that Q actually accepts (flags obeyed) then falls OUTSIDE t1upper,
+        // lands INSIDE the complement, and R's lower-priority mapping LEAKS through
+        // — Q .P. R yields the string twice (Q's weight and R's weight) instead of
+        // just Q's. Upstream shares this bug. We fix it by resolving flag diacritics
+        // on the input projection FIRST: eliminate_flags rewrites t1upper into the
+        // flagless automaton whose language is exactly the strings Q accepts with
+        // flags obeyed — precisely the universe the complement must be taken over.
+        if t1upper.has_flag_diacritics() {
+            t1upper.eliminate_flags()?;
+            t1upper.optimize()?;
+        }
+
         // [spec:hfst:def:hfst-transducer.hfst.complement-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.complement-fn]
         let mut complement = t1upper.clone();

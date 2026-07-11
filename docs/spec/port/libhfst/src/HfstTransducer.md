@@ -1339,6 +1339,20 @@
 > projection (`Q.u`) of the left operand. It is subsequently copied into
 > `complement`, which is negated/pruned and composed with `t2` to form the
 > right-hand disjunct.
+>
+> PORT DIVERGENCE (upstream leak deliberately fixed — hfst#341 investigation):
+> upstream computes the complement directly over `Q.u`, where each flag diacritic
+> is left as a LITERAL arc. `negate()` then treats that flag as an ordinary
+> symbol, so the FLAGLESS string Q actually accepts (with flags obeyed) falls
+> OUTSIDE `t1upper`, lands INSIDE the complement `~[Q.u]`, and R's lower-priority
+> mapping for that same flagless input LEAKS through — the string ends up mapped
+> twice (Q's weight and R's weight) instead of only Q's. The port fixes this: when
+> `t1upper` carries flag diacritics it is rewritten by `eliminate_flags()` before
+> the complement is taken, so the complement is computed over the flag-RESOLVED
+> input language of Q (the flagless automaton whose language is exactly the strings
+> Q accepts with flags obeyed) — precisely the universe over which the complement
+> must be taken. Flagless inputs are then correctly inside `t1upper`, excluded from
+> `~[Q.u]`, and R cannot leak. When Q has no flags the construction is unchanged.
 
 > [spec:hfst:def:hfst-transducer.hfst.t2-fn]
 > HfstTransducer t2(another)
