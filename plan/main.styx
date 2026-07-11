@@ -2580,6 +2580,13 @@ children (
                                 kind @note
                                 text "INVESTIGATED (opus, 2026-07-11): NOT-REPRODUCIBLE — resolved BY CONSTRUCTION, not by our code. The harmonization logic is a faithful port of the buggy C++ (harmonize_flag_diacritics hfst_transducer.rs:1454 == HfstTransducer.cc:3573; insert_freely_missing_flags_from :613 == :3226 adds @flag@:@flag@ self-loops on every state), but the port's compose delegates to rustfst whose default ComposeConfig uses ComposeFilterEnum::AutoFilter (rustfst compose_static.rs:56-59) — the epsilon-aware filter collapses the redundant epsilon-path ambiguity that gave upstream 2^18 = 262144 duplicate paths / 65x arc duplication. Reproduced upstream's exact scenario (output-side flags @U.DECL-NX.SG@/@U.DECL-CX.NOM@ composed -F): our port yields exactly 1 path, 10 unique arcs, in every config (-F, -F -x true, both-operands-flagged, longer operands). RISK: the correctness is LIBRARY-PROVIDED — if the rustfst fork's default compose_filter ever changes, the 2^N bloat returns silently. ACTION: regression test in test_flag_diacritics.rs locking 1-path/no-duplicate-arcs (S). No source change."
                             }
+
+                            {
+                                at 2026-07-11T20:18:42.883424Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Done (nplan_complete)"
+                            }
                         )
                     }
 
@@ -2650,6 +2657,13 @@ children (
                                 kind @note
                                 text "INVESTIGATED (opus, 2026-07-11): NOT-REPRODUCIBLE as a defect — documented upstream behavior, port byte-identical to C++. Reproduced with the issue's actual attachment (debugcompose.zip: real acceptor with @D/@P/@R/@U flags composed against a flag-free explicit-sigma identity): with the default flag-is-epsilon OFF, the flag-bearing path (mkizin) is dropped — flags on otw's input side have nothing to align against in the flag-free operand, standard flag-in-composition semantics; maa (flagless) survives. With `set flag-is-epsilon ON` (upstream's own resolution in the issue comment), mkizin is preserved — our plumbing works: xfst set (xfst_compiler.rs:1913-1921) -> EngineConfig.flag_is_epsilon_in_composition -> compose guard (hfst_transducer.rs:2334-2347, substitute_*_flag_with_epsilon :3866-3904) == C++ HfstTransducer.cc:4413-4425. Defaults match C++ exactly (Rust :3838 false == C++ :103; xfst var OFF both sides). NO code change — flipping the default would diverge from upstream and break lang-sma byte-identity. COVERAGE GAP: no test exercises flag-in-compose at all (grep flag_is_epsilon in tests = 0). ACTION: locking test (S) pinning BOTH behaviors via compose_with_config (flag-path dropped when false, preserved when true) in test_transducer_functions.rs."
                             }
+
+                            {
+                                at 2026-07-11T20:18:52.913288Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Done (nplan_complete)"
+                            }
                         )
                     }
 
@@ -2664,6 +2678,13 @@ children (
                                 kind @note
                                 text "INVESTIGATED (opus, 2026-07-11): NOT-REPRODUCIBLE — ALREADY FIXED in the port by commit cab4fb06 (2026-07-03, originally motivated by the lang-sma eliminate-flag collapse). Upstream mechanism: single-feature -F builds a constraint filter over escaped flags and composes with PLAIN compose; flag harmonization adds foreign-feature flags to the filter's alphabet without arcs, the filter's ? can't match them -> dangling -1 arc targets = corrupt output (upstream summarize segfaults). Our port composes the filter with EngineConfig { xerox_composition: true } (hfst_transducer.rs:1594-1615 single-feature, :1543-1560 full) so foreign flags pass positionally through identity — the deliberate divergence that IS the fix. Verified with the issue's own AT&T example (xX:Yy with F/D/G flags): -F F / -F D / -F G all structurally valid (summarize clean, no -1 targets), lookup xX = Yy everywhere, negatives rejected, and sequential -F F∘G∘D compares == to full elimination. RISK: if the port is ever re-synced 1:1 against HfstTransducer.cc this fix must not be \"corrected\" back. ACTION: add the #467 AT&T example as a dedicated regression test (S) — current coverage is only indirect (check-flag-results.sh full-mode + sma builds)."
                             }
+
+                            {
+                                at 2026-07-11T20:19:03.72794Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Done (nplan_complete)"
+                            }
                         )
                     }
 
@@ -2677,6 +2698,13 @@ children (
                                 author "brendan@necessary.nu"
                                 kind @note
                                 text "INVESTIGATED (opus, 2026-07-11): COSMETIC-ONLY — path weights are CORRECT; the issue is a misreading of weight-pushed output. Our port reproduces upstream's alarming ATT dump byte-for-byte for '?* k:j::1.2 ?*' (1.2 printed on state-0 self-loops), but the decisive check jk->jj traverses the j:j arc that PRINTS 1.2 plus the k:j arc printing 0 and totals exactly 1.2, not 2.4 — every single-mapping path totals 1.2 (verified k, jk, kk, aka). --do-not-minimize shows the weight in its natural trailing position (set_final_weights on the k:j sub-FST, xre.rs:787-795 — correct Xerox whole-subexpression semantics); minimize's internal weight-pushing toward the initial state creates the visual artifact. Parser attachment correct (nfst-xre parser.rs:868-879 binds ::w at the label level). Bare k:j::1.2 compiles to the single expected arc. Error-model scoring is unaffected (totals correct). ACTION: close as COSMETIC-ONLY; optional S presentational follow-up (push_weights toward FINAL states post-minimize in regexp2fst) must be verified weight-preserving via the lookup table — a wrong push would corrupt every Giella error model. Optionally lock the path-weight table as a test."
+                            }
+
+                            {
+                                at 2026-07-11T20:19:11.501316Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Done (nplan_complete)"
                             }
                         )
                     }

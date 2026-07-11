@@ -112,4 +112,8 @@ assertions (
     {id upstream-bugs.t1.i341, kind @complete, author "brendan@necessary.nu", at 2026-07-11T15:45:51.055464Z}
     {id upstream-bugs.t1.i435, kind @complete, author "brendan@necessary.nu", at 2026-07-11T15:48:34.394935Z}
     {id smolstr-symbols, kind @doing, author "brendan@necessary.nu", at 2026-07-11T15:49:44.79698Z}
+    {id upstream-bugs.t1.i143, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:18:42.883424Z}
+    {id upstream-bugs.t1.i383, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:18:52.913288Z}
+    {id upstream-bugs.t1.i467, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:19:03.72794Z}
+    {id upstream-bugs.t1.i426, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:19:11.501316Z}
 )
