@@ -18,6 +18,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::hfst_data_types::Symbol;
 use crate::transducer::{
     SymbolNumber, SymbolTable, Transducer, TransducerAlphabet, TransducerHeader, TransducerTable,
     TransducerTables, TransitionW, TransitionWIndex, WeightedTables,
@@ -72,13 +73,14 @@ pub struct ThfstFlagOp {
 
 /// The `alphabet` JSON object — the serde shape of divvunspell's
 /// `TransducerAlphabet`, fields in the exact order divvunspell declares them.
-/// `key_table`/`string_to_symbol` use owned `String` (not `SmolStr`) so the
-/// crate needs no `smol_str` serde feature; the JSON text is identical.
+/// `key_table`/`string_to_symbol` carry `Symbol` (`SmolStr`), which is exactly
+/// what divvunspell's `TransducerAlphabet` uses; `SmolStr` serializes as a
+/// plain string so the JSON text is byte-identical.
 // [spec:hfst:def:thfst-backend.alphabet-json]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ThfstAlphabet {
     /// Symbol i's string; epsilon and unhandled specials are stored as "".
-    pub key_table: Vec<String>,
+    pub key_table: Vec<Symbol>,
     /// The header symbol count N (divvunspell: `initial_symbol_count`).
     pub initial_symbol_count: u16,
     /// Count of distinct flag features.
@@ -86,7 +88,7 @@ pub struct ThfstAlphabet {
     /// Σ over the original symbol strings of (byte length + 1).
     pub length: usize,
     /// Plain symbol string → symbol number (no flags/specials).
-    pub string_to_symbol: BTreeMap<String, u16>,
+    pub string_to_symbol: BTreeMap<Symbol, u16>,
     /// Symbol number → flag operation (serde stringifies the integer key).
     pub operations: BTreeMap<u16, ThfstFlagOp>,
     pub identity_symbol: Option<u16>,
@@ -112,8 +114,8 @@ pub fn build_alphabet_json(t: &Transducer<WeightedTables>) -> crate::error::Resu
         );
     }
 
-    let mut key_table: Vec<String> = Vec::with_capacity(symbols.len());
-    let mut string_to_symbol: BTreeMap<String, u16> = BTreeMap::new();
+    let mut key_table: Vec<Symbol> = Vec::with_capacity(symbols.len());
+    let mut string_to_symbol: BTreeMap<Symbol, u16> = BTreeMap::new();
     let mut operations: BTreeMap<u16, ThfstFlagOp> = BTreeMap::new();
     let mut identity_symbol: Option<u16> = None;
     let mut unknown_symbol: Option<u16> = None;
@@ -194,7 +196,7 @@ pub fn build_alphabet_json(t: &Transducer<WeightedTables>) -> crate::error::Resu
                         value: val,
                     },
                 );
-                key_table.push(key.to_string());
+                key_table.push(key.clone());
             } else if key == "@_EPSILON_SYMBOL_@" {
                 // Epsilon: key_table gets "", and "" is inserted into the value
                 // bucket consuming the next value number (val 0 for symbol-0).
@@ -203,23 +205,23 @@ pub fn build_alphabet_json(t: &Transducer<WeightedTables>) -> crate::error::Resu
                     val_n += 1;
                     n
                 });
-                key_table.push(String::new());
+                key_table.push(Symbol::default());
             } else if key == "@_IDENTITY_SYMBOL_@" {
                 identity_symbol = Some(i);
-                key_table.push(key.to_string());
+                key_table.push(key.clone());
             } else if key == "@_UNKNOWN_SYMBOL_@" {
                 unknown_symbol = Some(i);
-                key_table.push(key.to_string());
+                key_table.push(key.clone());
             } else {
                 // An unrecognised @...@ special: push "" with a warning. The
                 // string is lost, exactly as in divvunspell.
                 tracing::warn!("unhandled THFST alphabet key '{key}'");
-                key_table.push(String::new());
+                key_table.push(Symbol::default());
             }
         } else {
             // A plain symbol: pushed literally with a string_to_symbol entry.
-            key_table.push(key.to_string());
-            string_to_symbol.insert(key.to_string(), i);
+            key_table.push(key.clone());
+            string_to_symbol.insert(key.clone(), i);
         }
     }
 
@@ -360,7 +362,7 @@ pub fn read_dir(dir: &Path) -> crate::error::Result<Transducer<WeightedTables>> 
         if i == 0 && s.is_empty() {
             symbol_table.push("@_EPSILON_SYMBOL_@".into());
         } else {
-            symbol_table.push(s.as_str().into());
+            symbol_table.push(s.clone());
         }
     }
     let n_syms = u16::try_from(symbol_table.len())

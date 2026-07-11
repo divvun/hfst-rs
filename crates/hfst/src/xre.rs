@@ -57,11 +57,12 @@ use crate::hfst_transducer::HfstTransducer;
 // [spec:hfst:def:xre-compiler.hfst.xre.xre-constructor-arguments]
 pub struct XreConstructorArguments<B: AlgebraBackend> {
     /// 'std::map<std::string, hfst::HfstTransducer*> definitions'.
-    pub definitions: BTreeMap<String, HfstTransducer<B>>,
-    /// 'std::map<std::string, std::string> function_definitions'.
-    pub function_definitions: BTreeMap<String, String>,
+    pub definitions: BTreeMap<Symbol, HfstTransducer<B>>,
+    /// 'std::map<std::string, std::string> function_definitions'. The VALUE is
+    /// the function-body regex source text (general text), so it stays String.
+    pub function_definitions: BTreeMap<Symbol, String>,
     /// 'std::map<std::string, unsigned int> function_arguments'.
-    pub function_arguments: BTreeMap<String, u32>,
+    pub function_arguments: BTreeMap<Symbol, u32>,
     /// 'std::map<std::string, std::set<std::string>> list_definitions'.
     pub list_definitions: BTreeMap<Symbol, BTreeSet<Symbol>>,
 }
@@ -85,9 +86,9 @@ impl<B: AlgebraBackend> XreConstructorArguments<B> {
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-constructor-arguments.xre-constructor-arguments-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-constructor-arguments.xre-constructor-arguments-fn]
     pub fn new(
-        definitions: BTreeMap<String, HfstTransducer<B>>,
-        function_definitions: BTreeMap<String, String>,
-        function_arguments: BTreeMap<String, u32>,
+        definitions: BTreeMap<Symbol, HfstTransducer<B>>,
+        function_definitions: BTreeMap<Symbol, String>,
+        function_arguments: BTreeMap<Symbol, u32>,
         list_definitions: BTreeMap<Symbol, BTreeSet<Symbol>>,
     ) -> Self {
         XreConstructorArguments {
@@ -112,11 +113,12 @@ impl<B: AlgebraBackend> XreConstructorArguments<B> {
 pub struct XreCompiler<B: AlgebraBackend> {
     /// 'std::map<std::string, hfst::HfstTransducer*> definitions'.
     /// Owned transducers (C++ stored raw pointers freed by '~XreCompiler').
-    pub(crate) definitions: BTreeMap<String, HfstTransducer<B>>,
-    /// 'std::map<std::string, std::string> function_definitions'.
-    pub(crate) function_definitions: BTreeMap<String, String>,
+    pub(crate) definitions: BTreeMap<Symbol, HfstTransducer<B>>,
+    /// 'std::map<std::string, std::string> function_definitions'. The VALUE is
+    /// the function-body regex source text (general text), so it stays String.
+    pub(crate) function_definitions: BTreeMap<Symbol, String>,
     /// 'std::map<std::string, unsigned int> function_arguments'.
-    pub(crate) function_arguments: BTreeMap<String, u32>,
+    pub(crate) function_arguments: BTreeMap<Symbol, u32>,
     /// 'std::map<std::string, std::set<std::string>> list_definitions'.
     pub(crate) list_definitions: BTreeMap<Symbol, BTreeSet<Symbol>>,
     /// 'bool verbose' — verbose warnings toggle.
@@ -597,7 +599,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             return false;
         };
         self.undefine(name);
-        self.definitions.insert(name.to_string(), tr);
+        self.definitions.insert(Symbol::new(name), tr);
         true
     }
 
@@ -605,7 +607,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     pub fn define_transducer(&mut self, name: &str, transducer: &HfstTransducer<B>) {
         self.undefine(name);
         self.definitions
-            .insert(name.to_string(), transducer.clone());
+            .insert(Symbol::new(name), transducer.clone());
     }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.define-list-fn]
@@ -618,9 +620,9 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.define-function-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.define-function-fn]
     pub fn define_function(&mut self, name: &str, arguments: u32, xre: &str) -> bool {
-        self.function_arguments.insert(name.to_string(), arguments);
+        self.function_arguments.insert(Symbol::new(name), arguments);
         self.function_definitions
-            .insert(name.to_string(), xre.to_string());
+            .insert(Symbol::new(name), xre.to_string());
         true
     }
 
@@ -1151,13 +1153,13 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         let n_args = arg_trs.len();
 
         // is_valid_function_call: defined + correct arity.
-        let expected = match self.function_arguments.get(&fname) {
+        let expected = match self.function_arguments.get(fname.as_str()) {
             Some(n) => *n,
             None => {
                 crate::bail!(Hfst, format!("No such function defined: '{}'", name))
             }
         };
-        if !self.function_definitions.contains_key(&fname) {
+        if !self.function_definitions.contains_key(fname.as_str()) {
             crate::bail!(Hfst, format!("No such function defined: '{}'", name));
         }
         if expected as usize != n_args {
@@ -1173,7 +1175,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         // define_function_args: definitions["@name N@"] = arg (1-based).
         let mut sub_defs = self.definitions.clone();
         for (i, arg) in arg_trs.into_iter().enumerate() {
-            sub_defs.insert(format!("@{}{}@", fname, i + 1), arg);
+            sub_defs.insert(Symbol::from(format!("@{}{}@", fname, i + 1)), arg);
         }
         let mut sub = XreCompiler {
             definitions: sub_defs,
@@ -1197,7 +1199,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         // get_function_xre + recursive compile.
         let body = self
             .function_definitions
-            .get(&fname)
+            .get(fname.as_str())
             .cloned()
             .expect("function definition present (checked above)");
         Ok(match parse(&body) {
@@ -2050,7 +2052,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         }
         let mut arg_number: u32 = 1;
         for it in args.iter() {
-            let function_arg = format!("@{}{}@", name, arg_number);
+            let function_arg = Symbol::from(format!("@{}{}@", name, arg_number));
             self.definitions.insert(function_arg, it.clone());
             arg_number += 1;
         }
@@ -2066,7 +2068,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         };
         for arg_number in 1..=n {
             let function_arg = format!("@{}{}@", name, arg_number);
-            self.definitions.remove(&function_arg);
+            self.definitions.remove(function_arg.as_str());
         }
     }
 

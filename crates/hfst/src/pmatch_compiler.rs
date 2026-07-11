@@ -522,7 +522,7 @@ pub struct PmatchSymbol<B: AlgebraBackend + 'static> {
     pub line_defined: i32,
     // This handles argumentless function calls and definition invocations,
     // which are the same thing under the hood.
-    pub sym: String,
+    pub sym: Symbol,
     _marker: std::marker::PhantomData<B>,
 }
 
@@ -531,7 +531,7 @@ pub struct PmatchString<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
-    pub string: String,
+    pub string: Symbol,
     pub multichar: bool,
     _marker: std::marker::PhantomData<B>,
 }
@@ -610,7 +610,7 @@ pub struct PmatchFunction<B: AlgebraBackend + 'static> {
     pub name: String,
     pub weight: f64,
     pub line_defined: i32,
-    pub args: Vec<String>,
+    pub args: Vec<Symbol>,
     pub root: ObjRef<B>,
 }
 
@@ -749,7 +749,7 @@ pub struct PmatchParallelRulesContainer<B: AlgebraBackend + 'static> {
 impl<B: AlgebraBackend + 'static> PmatchSymbol<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.pmatch-symbol-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.pmatch-symbol-fn]
-    pub fn new(str: String) -> Rc<PmatchSymbol<B>> {
+    pub fn new(str: Symbol) -> Rc<PmatchSymbol<B>> {
         Rc::new(PmatchSymbol {
             name: String::new(),
             weight: 0.0,
@@ -763,7 +763,7 @@ impl<B: AlgebraBackend + 'static> PmatchSymbol<B> {
 impl<B: AlgebraBackend + 'static> PmatchString<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.pmatch-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.pmatch-string-fn]
-    pub fn new(str: String, is_multichar: bool) -> Rc<PmatchString<B>> {
+    pub fn new(str: Symbol, is_multichar: bool) -> Rc<PmatchString<B>> {
         Rc::new(PmatchString {
             name: String::new(),
             weight: 0.0,
@@ -847,7 +847,7 @@ impl<B: AlgebraBackend + 'static> PmatchTernaryOperation<B> {
 impl<B: AlgebraBackend + 'static> PmatchFunction<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-function.pmatch-function-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-function.pmatch-function-fn]
-    pub fn new(argument_vector: Vec<String>, function_root: ObjRef<B>) -> Rc<PmatchFunction<B>> {
+    pub fn new(argument_vector: Vec<Symbol>, function_root: ObjRef<B>) -> Rc<PmatchFunction<B>> {
         Rc::new(PmatchFunction {
             name: String::new(),
             weight: 0.0,
@@ -1056,12 +1056,12 @@ pub struct PmatchEvalContext<B: AlgebraBackend + 'static> {
     call_stack: Vec<BTreeMap<String, ObjRef<B>>>,
     eval_stack: Vec<String>,
     def_insed_expressions: BTreeMap<String, ObjRef<B>>,
-    inserted_names: BTreeSet<String>,
-    uncomposed: BTreeSet<String>,
-    unsatisfied_insertions: BTreeSet<String>,
-    used_definitions: BTreeSet<String>,
-    function_names: BTreeSet<String>,
-    capture_names: BTreeSet<String>,
+    inserted_names: BTreeSet<Symbol>,
+    uncomposed: BTreeSet<Symbol>,
+    unsatisfied_insertions: BTreeSet<Symbol>,
+    used_definitions: BTreeSet<Symbol>,
+    function_names: BTreeSet<Symbol>,
+    capture_names: BTreeSet<Symbol>,
     word_vectors: Vec<WordVector>,
     named_transducers: BTreeMap<String, HfstTransducer<B>>,
     includedir: String,
@@ -1074,11 +1074,11 @@ pub struct PmatchEvalContext<B: AlgebraBackend + 'static> {
 }
 
 macro_rules! pmatch_ctx_string_set {
-    ($field:ident, $contains:ident, $insert:ident, $clear:ident, $len:ident, $is_empty:ident, $snapshot:ident) => {
+    ($elem:ty, $field:ident, $contains:ident, $insert:ident, $clear:ident, $len:ident, $is_empty:ident, $snapshot:ident) => {
         fn $contains(&self, k: &str) -> bool {
             self.$field.contains(k)
         }
-        fn $insert(&mut self, k: String) {
+        fn $insert(&mut self, k: $elem) {
             self.$field.insert(k);
         }
         fn $clear(&mut self) {
@@ -1090,7 +1090,7 @@ macro_rules! pmatch_ctx_string_set {
         fn $is_empty(&self) -> bool {
             self.$field.is_empty()
         }
-        fn $snapshot(&self) -> Vec<String> {
+        fn $snapshot(&self) -> Vec<$elem> {
             self.$field.iter().cloned().collect()
         }
     };
@@ -1301,8 +1301,9 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         self.eval_stack.clear();
     }
 
-    // --- string-set collections ---
+    // --- symbol-set collections (definition/insertion/function names) ---
     pmatch_ctx_string_set!(
+        Symbol,
         inserted_names,
         inserted_names_contains,
         inserted_names_insert,
@@ -1312,6 +1313,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         inserted_names_snapshot
     );
     pmatch_ctx_string_set!(
+        Symbol,
         uncomposed,
         uncomposed_contains,
         uncomposed_insert,
@@ -1321,6 +1323,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         uncomposed_snapshot
     );
     pmatch_ctx_string_set!(
+        Symbol,
         unsatisfied_insertions,
         unsatisfied_insertions_contains,
         unsatisfied_insertions_insert,
@@ -1330,6 +1333,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         unsatisfied_insertions_snapshot
     );
     pmatch_ctx_string_set!(
+        Symbol,
         used_definitions,
         used_definitions_contains,
         used_definitions_insert,
@@ -1339,6 +1343,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         used_definitions_snapshot
     );
     pmatch_ctx_string_set!(
+        Symbol,
         function_names,
         function_names_contains,
         function_names_insert,
@@ -1348,6 +1353,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         function_names_snapshot
     );
     pmatch_ctx_string_set!(
+        Symbol,
         capture_names,
         capture_names_contains,
         capture_names_insert,
@@ -1356,7 +1362,10 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         capture_names_is_empty,
         capture_names_snapshot
     );
+    // `lst_overlap_warned` keys are synthetic "<line>\t<symbol>" dedup strings
+    // (general text, not symbol-shaped), so this set stays `String`.
     pmatch_ctx_string_set!(
+        String,
         lst_overlap_warned,
         lst_overlap_warned_contains,
         lst_overlap_warned_insert,
@@ -2109,7 +2118,7 @@ pub fn make_with_tag_entry<B: AlgebraBackend + 'static>(key: String, value: Stri
         name: String::new(),
         weight: 0.0,
         line_defined: 0,
-        string: format!("@P.PMATCH_GLOBAL_{}.{}@", key, value),
+        string: Symbol::from(format!("@P.PMATCH_GLOBAL_{}.{}@", key, value)),
         multichar: false,
         _marker: std::marker::PhantomData,
     };
@@ -2122,7 +2131,7 @@ pub fn make_with_tag_exit<B: AlgebraBackend + 'static>(key: String) -> ObjRef<B>
         name: String::new(),
         weight: 0.0,
         line_defined: 0,
-        string: format!("@C.PMATCH_GLOBAL_{}@", key),
+        string: Symbol::from(format!("@C.PMATCH_GLOBAL_{}@", key)),
         multichar: false,
         _marker: std::marker::PhantomData,
     };
@@ -3815,13 +3824,13 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
                 .collect_strings_into(ctx, strings);
             ctx.used_definitions_insert(self.sym.clone());
         } else {
-            strings.push(Symbol::from(self.sym.clone()));
+            strings.push(self.sym.clone());
         }
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.as-string-fn]
     fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> String {
-        self.sym.clone()
+        self.sym.to_string()
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.evaluate-fn]
@@ -3862,7 +3871,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchString<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.collect-strings-into-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.collect-strings-into-fn]
     fn collect_strings_into(&self, ctx: &mut PmatchEvalContext<B>, strings: &mut StringVector) {
-        strings.push(Symbol::from(self.string.clone()));
+        strings.push(self.string.clone());
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.evaluate-as-arg-fn]
@@ -3881,15 +3890,12 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchString<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.as-string-fn]
     fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> String {
-        self.string.clone()
+        self.string.to_string()
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.as-string-pair-fn]
     fn as_string_pair(&self, ctx: &mut PmatchEvalContext<B>) -> StringPair {
-        (
-            Symbol::from(self.string.clone()),
-            Symbol::from(self.string.clone()),
-        )
+        (self.string.clone(), self.string.clone())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.is-unweighted-disjunction-of-strings-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.is-unweighted-disjunction-of-strings-fn]
@@ -4065,7 +4071,9 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchFunction<B> {
             local_env = ctx.call_stack_last_clone();
         }
         for i in 0..self.args.len() {
-            local_env.insert(self.args[i].clone(), funargs[i].clone());
+            // `local_env`/`call_stack` is a String-keyed frame map (out of this
+            // node's scope); the formal arg name bridges Symbol -> String here.
+            local_env.insert(self.args[i].to_string(), funargs[i].clone());
         }
         ctx.call_stack_push(local_env);
         if self.name != "" {
@@ -4362,7 +4370,7 @@ pub fn compile_like_arc<B: AlgebraBackend + 'static>(
                 name: String::new(),
                 weight: 0.0,
                 line_defined: 0,
-                string: word1,
+                string: Symbol::from(word1),
                 multichar: true,
                 _marker: std::marker::PhantomData,
             });
@@ -4370,7 +4378,7 @@ pub fn compile_like_arc<B: AlgebraBackend + 'static>(
                 name: String::new(),
                 weight: 0.0,
                 line_defined: 0,
-                string: word2,
+                string: Symbol::from(word2),
                 multichar: true,
                 _marker: std::marker::PhantomData,
             });
@@ -4551,7 +4559,7 @@ pub fn compile_like_arc_word<B: AlgebraBackend + 'static>(
                 name: String::new(),
                 weight: 0.0,
                 line_defined: 0,
-                string: word,
+                string: Symbol::from(word),
                 multichar: true,
                 _marker: std::marker::PhantomData,
             });
@@ -5391,7 +5399,7 @@ fn map_caseop(op: nfst_pmatch::CaseOp, side: Option<nfst_pmatch::CaseSide>) -> P
 fn as_obj<B: AlgebraBackend + 'static, T: PmatchObject<B> + 'static>(p: Rc<T>) -> ObjRef<B> {
     p
 }
-fn pmb_symbol<B: AlgebraBackend + 'static>(sym: String) -> ObjRef<B> {
+fn pmb_symbol<B: AlgebraBackend + 'static>(sym: Symbol) -> ObjRef<B> {
     Rc::new(PmatchSymbol {
         name: String::new(),
         weight: 0.0,
@@ -5400,7 +5408,7 @@ fn pmb_symbol<B: AlgebraBackend + 'static>(sym: String) -> ObjRef<B> {
         _marker: std::marker::PhantomData,
     })
 }
-fn pmb_string<B: AlgebraBackend + 'static>(string: String, multichar: bool) -> ObjRef<B> {
+fn pmb_string<B: AlgebraBackend + 'static>(string: Symbol, multichar: bool) -> ObjRef<B> {
     Rc::new(PmatchString {
         name: String::new(),
         weight: 0.0,
@@ -5536,9 +5544,9 @@ fn build_stringlike<B: AlgebraBackend + FromAnyTransducer + 'static>(
 ) -> crate::error::Result<ObjRef<B>> {
     use nfst_pmatch::PmatchExpr as PE;
     Ok(match &e.value {
-        PE::QuotedLiteral(s) => pmb_string(s.to_string(), false),
-        PE::CurlyLiteral(s) => pmb_string(s.to_string(), true),
-        PE::Symbol(s) => pmb_symbol(s.to_string()),
+        PE::QuotedLiteral(s) => pmb_string(s.clone(), false),
+        PE::CurlyLiteral(s) => pmb_string(s.clone(), true),
+        PE::Symbol(s) => pmb_symbol(s.clone()),
         PE::Literal(_)
         | PE::Epsilon
         | PE::Any
@@ -5677,7 +5685,7 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
     Ok(match &e.value {
         // ---- atoms ---------------------------------------------------------
         PE::Symbol(s) => {
-            let sym = s.to_string();
+            let sym = s.clone();
             if sym.is_empty() {
                 pmb_empty()
             } else {
@@ -5685,11 +5693,14 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 pmb_symbol(sym)
             }
         }
-        PE::Literal(s) => pmb_string(s.to_string(), false),
-        PE::QuotedLiteral(s) => pmb_string(s.to_string(), false),
-        PE::CurlyLiteral(s) => pmb_string(s.to_string(), true),
-        PE::Epsilon => pmb_string(crate::hfst_symbol_defs::internal_epsilon.to_string(), false),
-        PE::BoundaryMarker => pmb_string("@BOUNDARY@".to_string(), false),
+        PE::Literal(s) => pmb_string(s.clone(), false),
+        PE::QuotedLiteral(s) => pmb_string(s.clone(), false),
+        PE::CurlyLiteral(s) => pmb_string(s.clone(), true),
+        PE::Epsilon => pmb_string(
+            Symbol::from(crate::hfst_symbol_defs::internal_epsilon),
+            false,
+        ),
+        PE::BoundaryMarker => pmb_string(Symbol::from("@BOUNDARY@"), false),
         PE::Any => pmb_question_mark(),
         PE::Acceptor(a) => pmb_acceptor(map_acceptor(*a)),
         PE::CharacterRange { from, to } => {
@@ -5944,11 +5955,11 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
         PE::Ins(name) => {
             if !ctx.flatten {
                 if !ctx.definitions_contains(name) {
-                    ctx.unsatisfied_insertions_insert(name.to_string());
+                    ctx.unsatisfied_insertions_insert(name.clone());
                 }
-                let retval = pmb_string(ins_transition(name), false);
-                ctx.inserted_names_insert(name.to_string());
-                ctx.used_definitions_insert(name.to_string());
+                let retval = pmb_string(Symbol::from(ins_transition(name)), false);
+                ctx.inserted_names_insert(name.clone());
+                ctx.used_definitions_insert(name.clone());
                 retval
             } else if ctx.definitions_contains(name) {
                 ctx.definitions_get(name).unwrap()
@@ -6063,10 +6074,10 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
             let left = build_stringlike(ctx, a)?;
             let middle = build_stringlike(ctx, b)?;
             let right = build_stringlike(ctx, c)?;
-            let middle_str = middle.as_string(ctx);
+            let middle_str = Symbol::from(middle.as_string(ctx));
             ctx.uncomposed_insert(middle_str.clone());
             ctx.used_definitions_insert(middle_str);
-            let right_str = right.as_string(ctx);
+            let right_str = Symbol::from(right.as_string(ctx));
             ctx.uncomposed_insert(right_str.clone());
             ctx.used_definitions_insert(right_str);
             pmb_ternary(PmatchTernaryOp::Uncompose, left, middle, right)
@@ -6123,13 +6134,12 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
 
         // ---- function call -------------------------------------------------
         PE::Call { name, args } => {
-            let sym = name.to_string();
+            let sym = name.clone();
             let result = if !ctx.function_names_contains(name) {
                 error!("Function {} hasn't been defined", sym);
-                pmb_string(String::new(), false)
+                pmb_string(Symbol::default(), false)
             } else {
-                let sym_lookup = sym.clone();
-                let fun = symbol_from_global_context(ctx, &sym_lookup).unwrap();
+                let fun = symbol_from_global_context(ctx, &sym).unwrap();
                 let argvec: Vec<ObjRef<B>> = args
                     .iter()
                     .rev()
@@ -6225,13 +6235,13 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
                     name: String::new(),
                     weight: 0.0,
                     line_defined: 0,
-                    args: args.iter().rev().map(|a| a.to_string()).collect(),
+                    args: args.iter().rev().cloned().collect(),
                     root,
                 });
                 Rc::get_mut(&mut fun)
                     .expect("freshly built node is uniquely owned")
                     .name = name.to_string();
-                ctx.function_names_insert(name.to_string());
+                ctx.function_names_insert(name.clone());
                 report_defined(ctx, name);
                 insert_definition(ctx, name.to_string(), as_obj(fun));
             }
@@ -6242,7 +6252,7 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 .expect("freshly built node is uniquely owned")
                 .set_name(name.to_string());
             ctx.def_insed_expressions_insert(name.to_string(), body_obj);
-            let def_value = pmb_string(ins_transition(name), false);
+            let def_value = pmb_string(Symbol::from(ins_transition(name)), false);
             report_defined(ctx, name);
             insert_definition(ctx, name.to_string(), def_value);
         }

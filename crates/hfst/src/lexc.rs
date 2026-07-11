@@ -53,11 +53,11 @@ pub struct LexcCompiler<B: AlgebraBackend> {
     pub(crate) initialLexiconName_: String,
     pub(crate) currentLexiconName_: String,
     pub(crate) stringsTrie_: HfstBasicTransducer,
-    pub(crate) regexps: BTreeMap<String, HfstTransducer<B>>, // owning HfstTransducer* -> owned
-    pub(crate) lexiconNames_: BTreeSet<String>,
-    pub(crate) noFlags_: BTreeSet<String>,
-    pub(crate) continuations: BTreeSet<String>,
-    pub(crate) alphabets: BTreeSet<String>,
+    pub(crate) regexps: BTreeMap<Symbol, HfstTransducer<B>>, // owning HfstTransducer* -> owned
+    pub(crate) lexiconNames_: BTreeSet<Symbol>,
+    pub(crate) noFlags_: BTreeSet<Symbol>,
+    pub(crate) continuations: BTreeSet<Symbol>,
+    pub(crate) alphabets: BTreeSet<Symbol>,
     pub(crate) totalEntries_: usize,
     pub(crate) currentEntries_: usize,
     pub(crate) align_strings: bool,
@@ -373,7 +373,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             .tokenizer
             .add_multichar_symbol("@@ANOTHER_EPSILON@@");
         let hash = "#".to_string();
-        compiler.lexiconNames_.insert(hash.clone());
+        compiler.lexiconNames_.insert(Symbol::from(hash.clone()));
         let enc = joiner_encode(&hash);
         compiler.tokenizer.add_multichar_symbol(&enc);
         compiler.xre.set_expand_definitions(true);
@@ -413,7 +413,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         self.continuations.clear();
         self.alphabets.clear();
         self.currentLexiconName_ = String::new(); // ?
-        self.lexiconNames_.insert("#".to_string());
+        self.lexiconNames_.insert(Symbol::new("#"));
         self.stringsTrie_ = HfstBasicTransducer::new(); // ?
         // The owned regexps transducers are dropped by clear() (C++ delete'd
         // the raw pointers here). The C++ 'static bool firstLexicon' was a
@@ -757,12 +757,12 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     // ----- incremental registration API -----
 
     pub fn add_no_flag(&mut self, lexname: &str) -> &mut Self {
-        self.noFlags_.insert(lexname.to_string());
+        self.noFlags_.insert(Symbol::new(lexname));
         self
     }
 
     pub fn add_alphabet(&mut self, alpha: &str) -> &mut Self {
-        self.alphabets.insert(alpha.to_string());
+        self.alphabets.insert(Symbol::new(alpha));
         self.tokenizer.add_multichar_symbol(alpha);
         if !self.quiet && self.verbose {
             // warn about undefined multichars
@@ -776,7 +776,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         self.currentEntries_ += 1;
         self.totalEntries_ += 1;
         self.unicode_check(data);
-        self.continuations.insert(continuation.to_string());
+        self.continuations.insert(Symbol::new(continuation));
         let encoded_cont = if self.with_flags {
             if !self.noFlags_.contains(continuation) {
                 flag_joiner_encode(continuation, false)
@@ -791,7 +791,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         // build string pair vector map
         let cur = self.currentLexiconName_.clone();
         let joiner_enc = if self.with_flags {
-            if !self.noFlags_.contains(&cur) {
+            if !self.noFlags_.contains(cur.as_str()) {
                 flag_joiner_encode(&cur, true)
             } else {
                 joiner_encode(&cur)
@@ -901,7 +901,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         self.totalEntries_ += 1;
         self.unicode_check(upper);
         self.unicode_check(lower);
-        self.continuations.insert(continuation.to_string());
+        self.continuations.insert(Symbol::new(continuation));
         let encoded_cont = if self.with_flags {
             if !self.noFlags_.contains(continuation) {
                 flag_joiner_encode(continuation, false)
@@ -916,7 +916,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         // build string pair vector map
         let cur = self.currentLexiconName_.clone();
         let joiner_enc = if self.with_flags {
-            if !self.noFlags_.contains(&cur) {
+            if !self.noFlags_.contains(cur.as_str()) {
                 flag_joiner_encode(&cur, true)
             } else {
                 joiner_encode(&cur)
@@ -1074,7 +1074,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     ) -> crate::error::Result<&mut Self> {
         self.currentEntries_ += 1;
         self.totalEntries_ += 1;
-        self.continuations.insert(continuation.to_string());
+        self.continuations.insert(Symbol::new(continuation));
         let encoded_cont = if self.with_flags {
             if !self.noFlags_.contains(continuation) {
                 flag_joiner_encode(continuation, false)
@@ -1124,7 +1124,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         regex_key = reg_expresion_encode(&regex_key);
         self.tokenizer.add_multichar_symbol(&regex_key);
 
-        let entry = match self.regexps.entry(regex_key.clone()) {
+        let entry = match self.regexps.entry(Symbol::from(regex_key.clone())) {
             std::collections::btree_map::Entry::Occupied(e) => e.into_mut(),
             std::collections::btree_map::Entry::Vacant(e) => e.insert(HfstTransducer::new()),
         };
@@ -1137,7 +1137,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         // add key to trie
         let cur = self.currentLexiconName_.clone();
         let joiner_enc = if self.with_flags {
-            if !self.noFlags_.contains(&cur) {
+            if !self.noFlags_.contains(cur.as_str()) {
                 flag_joiner_encode(&cur, true)
             } else {
                 joiner_encode(&cur)
@@ -1183,7 +1183,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             }
         }
 
-        self.lexiconNames_.insert(lexicon_name.to_string());
+        self.lexiconNames_.insert(Symbol::new(lexicon_name));
         if !self.noFlags_.contains(lexicon_name) {
             // [spec:hfst:def:lexc-compiler.hfst.lexc.encoded-name-fn]
             // [spec:hfst:sem:lexc-compiler.hfst.lexc.encoded-name-fn]
@@ -1233,9 +1233,9 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
 
     pub fn set_initial_lexicon_name(&mut self, lexicon_name: &str) -> &mut Self {
         self.initialLexiconName_ = lexicon_name.to_string();
-        self.lexiconNames_.insert(lexicon_name.to_string());
+        self.lexiconNames_.insert(Symbol::new(lexicon_name));
         // for connectedness calculation:
-        self.continuations.insert(lexicon_name.to_string());
+        self.continuations.insert(Symbol::new(lexicon_name));
         self
     }
 
@@ -1552,7 +1552,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             if key.starts_with('$') {
                 // TODO: do this only for strings that look like $.....$
                 let alph = key.replace('$', "@");
-                fake_regexpr_to_real.insert(Symbol::new(key), Symbol::from(alph));
+                fake_regexpr_to_real.insert(key.clone(), Symbol::from(alph));
             }
         }
         lexicons
@@ -1567,7 +1567,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 // TODO: do this only for strings that look like $.....$
                 key.replace('$', "@")
             } else {
-                key.clone()
+                key.to_string()
             };
             let btr = HfstBasicTransducer::from_transducer(tr);
             reg_mark_to_tr.insert(Symbol::from(alph), btr);
@@ -1650,9 +1650,9 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     // 'tracing' subscriber owns formatting), and 'flush(err)' is dropped.
     pub fn print_connectedness(&self, warnings_generated: &mut bool) -> &Self {
         if self.lexiconNames_ != self.continuations {
-            let lex_minus_cont: Vec<&String> =
+            let lex_minus_cont: Vec<&Symbol> =
                 self.lexiconNames_.difference(&self.continuations).collect();
-            let cont_minus_lex: Vec<&String> =
+            let cont_minus_lex: Vec<&Symbol> =
                 self.continuations.difference(&self.lexiconNames_).collect();
             if !cont_minus_lex.is_empty() {
                 for s in &cont_minus_lex {
@@ -1677,7 +1677,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 if !self.quiet && self.warn_unused_lexicons {
                     let mut line = String::new();
                     for s in &lex_minus_cont {
-                        line.push_str(s);
+                        line.push_str(s.as_str());
                         line.push(' ');
                     }
                     if self.treat_warnings_as_errors {

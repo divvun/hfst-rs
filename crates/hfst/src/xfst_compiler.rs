@@ -130,18 +130,18 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     pub xre: XreCompiler<B>,
     /* The lexc compiler. */
     pub lexc: LexcCompiler<B>,
-    pub original_definitions: BTreeMap<String, String>,
-    pub definitions: BTreeMap<String, NetId>,
-    pub original_function_definitions: BTreeMap<String, String>,
-    pub function_definitions: BTreeMap<String, String>,
-    pub function_arguments: BTreeMap<String, u32>,
+    pub original_definitions: BTreeMap<Symbol, String>,
+    pub definitions: BTreeMap<Symbol, NetId>,
+    pub original_function_definitions: BTreeMap<Symbol, String>,
+    pub function_definitions: BTreeMap<Symbol, String>,
+    pub function_arguments: BTreeMap<Symbol, u32>,
     // std::stack mirror: top = last element; pop = pop_back, push = push_back.
     pub stack: Vec<NetId>,
-    pub names: BTreeMap<String, NetId>,
-    pub aliases: BTreeMap<String, String>,
+    pub names: BTreeMap<Symbol, NetId>,
+    pub aliases: BTreeMap<Symbol, String>,
     pub variables: BTreeMap<String, String>,
     pub properties: BTreeMap<String, String>,
-    pub lists: BTreeMap<String, BTreeSet<Symbol>>,
+    pub lists: BTreeMap<Symbol, BTreeSet<Symbol>>,
     pub verbose: bool,
     pub verbose_prompt: bool,
     /* The latest regex that has been compiled when 'compile_regex' has been
@@ -788,15 +788,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             warn!("loaded transducer definition has no name, skipping it");
             return self;
         }
-        if self.definitions.contains_key(&def_name) {
+        if self.definitions.contains_key(def_name.as_str()) {
             warn!(
                 "a definition named '{}' already exists, overwriting it",
                 def_name
             );
             // the previous net stays in the arena; the map entry is replaced.
-            self.definitions.remove(&def_name);
+            self.definitions.remove(def_name.as_str());
         }
-        self.definitions.insert(def_name, t);
+        self.definitions.insert(Symbol::from(def_name), t);
         return self;
     }
 
@@ -1995,7 +1995,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let aliases: Vec<(String, String)> = self
             .aliases
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|(k, v)| (k.to_string(), v.clone()))
             .collect();
         for (first, second) in aliases.iter() {
             let _ = write!(oss, "{:>10}", "alias ");
@@ -2012,7 +2012,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let defs: Vec<(String, String)> = self
             .original_definitions
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|(k, v)| (k.to_string(), v.clone()))
             .collect();
         for (first, second) in defs.iter() {
             definitions = true;
@@ -2027,7 +2027,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let funcs: Vec<(String, String)> = self
             .original_function_definitions
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|(k, v)| (k.to_string(), v.clone()))
             .collect();
         for (first, second) in funcs.iter() {
             definitions = true;
@@ -2194,7 +2194,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let lists: Vec<(String, BTreeSet<Symbol>)> = self
             .lists
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|(k, v)| (k.to_string(), v.clone()))
             .collect();
         for (first, second) in lists.iter() {
             // HERE
@@ -2436,8 +2436,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return self;
         };
 
-        let entries: Vec<(String, NetId)> =
-            self.names.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        let entries: Vec<(String, NetId)> = self
+            .names
+            .iter()
+            .map(|(k, v)| (k.to_string(), *v))
+            .collect();
         for (first, second) in entries.iter() {
             if tmp == *second {
                 let _ = write!(oss, "Name {}\n", first);
@@ -2648,7 +2651,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         let t = *self.stack.last().unwrap();
         self.net_mut(t).set_name(name);
-        self.names.insert(name.to_string(), t);
+        self.names.insert(Symbol::new(name), t);
         self.print_transducer_info();
         self.prompt();
         return self;
@@ -3625,7 +3628,7 @@ fn string_found(str: &str, text: &str) -> bool {
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Define alias for command sequence
     pub fn define_alias(&mut self, name: &str, commands: &str) -> &mut Self {
-        self.aliases.insert(name.to_string(), commands.to_string());
+        self.aliases.insert(Symbol::new(name), commands.to_string());
         self.prompt();
         self
     }
@@ -3646,7 +3649,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             l.insert(Symbol::from(s));
             c += 1;
         }
-        self.lists.insert(name.to_string(), l);
+        self.lists.insert(Symbol::new(name), l);
         self
     }
 
@@ -3674,7 +3677,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
             l.insert(Symbol::new(token));
         }
-        self.lists.insert(name.to_string(), l.clone());
+        self.lists.insert(Symbol::new(name), l.clone());
         self.xre.define_list(name, &l); // XRE
         self.prompt();
         self
@@ -3708,7 +3711,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 Some(compiled) => {
                     self.define_transducer(name, compiled);
                     self.original_definitions
-                        .insert(name.to_string(), xre.to_string());
+                        .insert(Symbol::new(name), xre.to_string());
                 }
                 None => {
                     error!("Could not define variable '{}'", name);
@@ -3734,7 +3737,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.define_transducer(name, top);
 
         self.original_definitions
-            .insert(name.to_string(), "<net taken from stack>".to_string());
+            .insert(Symbol::new(name), "<net taken from stack>".to_string());
         self.prompt();
         self
     }
@@ -3753,7 +3756,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         // the net stays in the arena; the map entry is simply overwritten.
         self.definitions.remove(name);
-        self.definitions.insert(name.to_string(), transducer);
+        self.definitions.insert(Symbol::new(name), transducer);
 
         if self.verbose {
             if was_defined {
@@ -3821,13 +3824,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         self.function_arguments.insert(
-            name.clone(),
+            Symbol::from(name.clone()),
             u32::try_from(arguments.len()).expect("value out of u32 range"),
         );
         let fdef = Self::convert_argument_symbols(&arguments, xre, "", &mut self.xre, true);
-        self.function_definitions.insert(name.clone(), fdef);
+        self.function_definitions
+            .insert(Symbol::from(name.clone()), fdef);
         self.original_function_definitions
-            .insert(prototype.to_string(), xre.to_string());
+            .insert(Symbol::new(prototype), xre.to_string());
 
         self.prompt();
         self
@@ -5500,7 +5504,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let defs: Vec<(String, NetId)> = self
             .definitions
             .iter()
-            .map(|(k, v)| (k.clone(), *v))
+            .map(|(k, v)| (k.to_string(), *v))
             .collect();
         for (name, def) in defs.iter() {
             let mut tmp = HfstTransducer::new_copy(self.net(*def))?;
