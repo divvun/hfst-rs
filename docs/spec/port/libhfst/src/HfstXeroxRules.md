@@ -233,7 +233,28 @@
 
 > [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.replace-fn]
 > Top-level replace for a vector of (possibly parallel) rules. If `ruleVector.size() == 1`, set `retval = bracketedReplace(ruleVector[0], optional)`; otherwise `retval = parallelBracketedReplace(ruleVector, optional)`.
-> Then apply post-processing in order: `retval = noRepetitionConstraint(retval)` (no more than one epsilon repetition in a row, for epenthesis rules); `retval = applyBoundaryMark(retval)` (handles the `.#.` boundary symbol; must run before mostBracketsStarConstraint). If `!optional`, `retval = mostBracketsStarConstraint(retval)`. Then `retval = removeB2Constraint(retval)`, then `retval = removeMarkers(retval)`. Return `retval`.
+> Then apply post-processing in order: `retval = noRepetitionConstraint(retval)` (no more than one epsilon repetition in a row, for epenthesis rules); `retval = applyBoundaryMark(retval)` (handles the `.#.` boundary symbol; must run before mostBracketsStarConstraint). If `!optional` — **and, per the divergence below, unless every rule in the vector is an epsilon-LHS + empty-context epenthesis** — `retval = mostBracketsStarConstraint(retval)`. Then `retval = removeB2Constraint(retval)`, then `retval = removeMarkers(retval)`. Return `retval`. (The single-rule `replace(rule, optional)` overload behaves identically, guarding its lone `mostBracketsStarConstraint` call the same way.)
+
+> DIVERGENCE from upstream C++ (hfst/hfst#571): an OBLIGATORY epenthesis rule
+> whose left-hand side is epsilon and whose context is empty — `[] -> a`,
+> `0 -> a`, `[..] -> a`, `[. .] -> a`, all of which parse to an `@0@:a` center —
+> must NOT force exactly one insertion at every position while DROPPING the
+> identity string. Upstream `mostBracketsStarConstraint` (applied here whenever
+> `!optional`) does exactly that: `[] -> a` compiles to a 2-state machine where
+> `xy -> axaya` ONLY (and `"" -> a`, dropping the empty string). This is the
+> still-open upstream bug. The CORRECT semantics — free insertion at every
+> position WITH the identity preserved — are the ones the OPTIONAL arrow already
+> produces (`xy -> {xy, axy, xay, xya, axay, axya, xaya, axaya}`). So this port
+> detects the epsilon-LHS + empty-context shape (via `is_epsilon_lhs_empty_context`,
+> evaluated AFTER `encode_flags()` so a flag diacritic encoded into a context is
+> not misread as an empty context) and, for that shape only, SKIPS
+> `mostBracketsStarConstraint` even when `!optional`, routing it to the optional
+> path. A context-full epenthesis (`0 -> p || m _ k`) is unaffected: its context
+> is not empty, so the obligatory constraint still applies (`mk -> mpk`). SCOPE:
+> this fix does NOT differentiate the Xerox `[..]` single-insertion semantics from
+> `[]`/`0` free-insertion; that refinement is DEFERRED. The leftmost/rightmost
+> longest/shortest-match replace variants do not call `mostBracketsStarConstraint`
+> and are therefore untouched by this divergence.
 
 > [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.replace-left-fn]
 > HfstTransducer replace_left( const std::vector<Rule> &ruleVector, bool optional)

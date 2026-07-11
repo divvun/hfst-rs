@@ -2552,6 +2552,13 @@ children (
                                 kind @note
                                 text "INVESTIGATED (opus, 2026-07-11): NOT-REPRODUCIBLE as filed — upstream fixed #341 in 8121be60/31cd16c3 and our port carries the fixed shape (Q | [~[Q.u] .o. R], hfst_transducer.rs:2687-2713); weighted right-hand material survives in all variants (priority-disjunct tool + xfst .P.). SECONDARY FINDING — flag-diacritic LEAK (opposite direction, shared with C++, not a port regression): when Q contains flag diacritics (real spellers always do), input_project keeps the flag as a literal arc, negate treats it as ordinary, so the flagless string is \"not in Q\" and R's lower-priority mapping LEAKS THROUGH (lea appears twice, w3 from Q + w15 from R). Verified mechanism: ~[[qbig].u] .o. rbig yields both biila (correct) and lea (leak); eliminate-flags on Q first removes the leak. Fix would be M (eliminate/resolve flags on t1upper before negate in priority_union only), a deliberate divergence from C++; blast radius: lenient_composition (hfst_transducer.rs:2480), xre .P. (xre.rs:1096,1105), pmatch (pmatch_compiler.rs:2999,3004). NO Rust test currently covers priority_union at all. ACTION: regression test locking the fixed #341 behavior (S); flag-leak = separate decision."
                             }
+
+                            {
+                                at 2026-07-10T23:39:22.021811Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
                         )
                     }
 
@@ -2580,6 +2587,13 @@ children (
                                 kind @note
                                 text "INVESTIGATED (opus, 2026-07-11): PARTIAL — COMPILATION does not hang (0.27s even on an 11169-state analyser); the hang is at pmatch RUNTIME, faithfully ported from the still-open upstream bug. Minimal hanging core: 0:?* (epsilon-input arc with UNKNOWN output under Kleene star) — hangs in LC/RC contexts AND at top level; ?*, 0:?, 0:x* all terminate. Mechanism: pmatch.rs take_epsilons (:2521) recurses get_analyses WITHOUT advancing input_pos or decrementing any bound (:2604 normal, :2562 context); the ? output fans out over sigma at every iteration (get_analyses :2907-2917) → exponential width. try_recurse depth guard (:2226) is restored on return → bounds one path, not sibling count (proven: --max-recursion 20 ineffective); max_context_length_remaining (:2760-2783) only decrements on symbol-consuming arcs (proven: --max-context 3 ineffective); only --time-cutoff escapes. C++ identical (pmatch.cc:2238/:2281-2284). FIX (M): per-search visited set of (transition_index, input_pos) for epsilon-only moves in take_epsilons — behavior-preserving, keyed on plain epsilon-input arcs only (must NOT prune flag/RTN-Ins traversal :2552-2559/:2616-2622, nor break NLC/NRC pending_passthrough via check_context :2631). Deliberate divergence: terminates where C++ loops. Repro grammars preserved in scratchpad/i399 (A/D/G hang; work/C/F oracles). Blast radius: every Giella tokeniser (hfst tokenize all modes)."
                             }
+
+                            {
+                                at 2026-07-10T23:39:13.579253Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
                         )
                     }
 
@@ -2593,6 +2607,13 @@ children (
                                 author "brendan@necessary.nu"
                                 kind @note
                                 text "INVESTIGATED (opus, 2026-07-11): REPRODUCES — two distinct defects. (1) PRIMARY (shared with C++): weighted determinization of a non-twins cyclic FST never terminates — upstream's minimal reduction (two epsilon branches into a-self-loops weighted 1 vs 11) hangs our hfst minimize/determinize standalone (no lexc involved); sampled stack: TropicalWeightTransducer::minimize (:1691) -> Determinize as WEIGHTED determinization because encode_weights=false uses EncodeLabels only (:1709/1743) -> rustfst DeterminizeFsaOp splits states forever, 6.1GB and growing. determinize -E passes in 0s. (2) SECONDARY — PORT REGRESSION: the -E escape hatch is BROKEN in our lexc: C++ -E sets the process-global set_encode_weights(true) read inside every tropical minimize (TropicalWeightTransducer.cc:263/1770/2001/2024); our de-globalization made it per-EngineConfig, and lexc_compiler.rs:218 sets options.encode_weights=true but NEVER FORWARDS IT — LexcCompiler has no set_encode_weights and never touches self.xre.encode_weights (setter exists, xre.rs:532; opt_cfg reads it, xre.rs:540-548). So upstream's documented workaround hangs in our port too. LATENT: xre.rs :1743/:1749/:1755/:1812/:1825/:1862/:1879/:1883 call plain .minimize() which hardcodes EngineConfig::default() — same bug class off this path. FIX: S = add LexcCompiler::set_encode_weights forwarding to xre + call from lexc_compiler.rs (~:503); restores C++ -E contract. Policy decision needed for the DEFAULT (upstream hangs by default too — match, or guard?). Oracle: timeout 15 hfst lexc -E on scratchpad/i435/x.lexc exits 0; min.att through minimize(encode=true) terminates; lang-sma regression."
+                            }
+
+                            {
+                                at 2026-07-10T23:39:33.928313Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
                             }
                         )
                     }
@@ -2649,6 +2670,20 @@ children (
                                 author "brendan@necessary.nu"
                                 kind @note
                                 text "INVESTIGATED (opus, 2026-07-11): REPRODUCES — byte-identical to upstream's buggy output; genuine still-open upstream defect faithfully ported. '[] -> a || _' builds a 2-state machine forcing exactly one 'a' insertion at EVERY position mandatorily and DROPS identity (xy -> axaya only; '' -> a). '[]', '0', '[..]', '[. .]' all parse to XreExpr::Epsilon (xre.rs:2252-2260, :329/:757) so the center is @0@:a; then replace_rule (hfst_xerox_rules.rs:2305-2340) applies most_brackets_star_constraint (:2331, only when !optional) making insertion obligatory everywhere — 1:1 mirror of HfstXeroxRules.cc:706-717/:2402-2437. CORRECT semantics (established via the optional arrow, which WORKS): '[] (->) a || _' gives free insertion at all positions WITH identity preserved (xy -> {xy, axy, xay, xya, axay, axya, xaya, axaya}) per Beesley-Karttunen p.175-176; context-full '[] -> a || b _ c' also already correct. FIX (M): epsilon-LHS + empty/universal-context detection in replace_rule (+siblings :2345/:2398/:2465) forcing the optional path (skip most_brackets_star_constraint); guard must evaluate AFTER Rule::encode_flags() so encoded flags in a context aren't misread as empty (flag-complement audit deferral interaction). CAUTION: test7h (test_xerox_rules.rs:2371, '[..] @-> a') asserts the BUGGY golden FST and must be migrated; test6a (:1830, '0 -> p || m _ k') is the boundary guardrail that must NOT change. Deliberate divergence -> spec bump in the xerox-rules doc. DEFER: distinguishing Xerox [..] single-insertion semantics from []/0 (parser-side, wider blast radius) — scope to obligatory-vs-optional only."
+                            }
+
+                            {
+                                at 2026-07-10T23:39:04.856572Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-11T10:50:13.10867Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
                             }
                         )
                     }
@@ -2854,6 +2889,12 @@ children (
                     {
                         id upstream-bugs.t4.i357
                         title "hfst#357: hfst-compose-intersect memory/time blowup on large rule sets — compose_intersect_lexicon perf; benchmark the port (rustfst backend + native foma may already mitigate); fix or document improvement"
+                        priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.rtn-pmc-panic
+                        title "PORT-FOUND (during i399, no upstream number): RTN index-out-of-bounds panic in pmatch.rs with_rtn when a grammar with Ins/RTN arcs runs via the serialized .pmc + new_from_stream path (pmatch2fst -> hfst pmatch CLI route) — the in-memory to_basic()/new_from_hfst_transducers harness path works, so the divergence is in .pmc (de)serialization of RTN indices; repro: the i399 F-variant grammar ('Whitespace | [0:{x}*]' with the ja morphology) panics via CLI where the harness terminates; fix + a CLI-path test (the epsilon-loop suite deliberately avoided pinning this)"
                         priority 4
                     }
                 )

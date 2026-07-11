@@ -2301,6 +2301,61 @@ pub fn create_mapping_for_mark_up_replace<B: AlgebraBackend>(
     Ok(retval)
 }
 
+// DIVERGENCE from upstream C++ (fixes hfst/hfst#571):
+//
+// An obligatory epenthesis rule whose left-hand side is epsilon and whose
+// context is empty — e.g. `[] -> a`, `0 -> a`, `[..] -> a`, all of which parse
+// to an @0@:a center — must NOT force one insertion at every position while
+// dropping the identity string. Upstream's most_brackets_star_constraint
+// (HfstXeroxRules.cc:2402-2437, applied at :706-717 when !optional) does exactly
+// that, yielding a 2-state machine where `xy -> axaya` ONLY. The intended
+// (and already-correct) semantics are the ones the optional arrow produces:
+// free insertion at every position WITH identity preserved.
+//
+// So for an epsilon-LHS + empty-context rule we route the non-optional path to
+// the optional one: we skip most_brackets_star_constraint. A context-full
+// epenthesis rule (e.g. `0 -> p || m _ k`) is unaffected — its context is not
+// empty, so this returns false and the obligatory constraint still applies.
+//
+// The check MUST run on a flag-encoded rule so that flag diacritics encoded
+// into a context are not misread as an empty context (mirrors bracketed_replace,
+// which encode_flags() before inspecting the context; see the flag-complement
+// audit deferral in test_flag_complement.rs:402-415).
+fn is_epsilon_lhs_empty_context<B: AlgebraBackend>(rule: &Rule<B>) -> crate::error::Result<bool> {
+    let mut TOK = HfstTokenizer::new();
+    TOK.add_multichar_symbol("@_EPSILON_SYMBOL_@");
+    let epsilon: HfstTransducer<B> = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &TOK)?;
+
+    // Evaluate AFTER encode_flags() so encoded flags in a context are not
+    // mistaken for an empty context.
+    let mut ruletmp = rule.clone();
+    ruletmp.encode_flags()?;
+
+    let mapping = ruletmp.get_mapping();
+    let context = ruletmp.get_context();
+
+    // Empty (universal) context: exactly one epsilon:epsilon pair, matching the
+    // empty-context short circuit in bracketed_replace (:821-825/:1021-1024).
+    if context.len() != 1 {
+        return Ok(false);
+    }
+    if !(context[0].0.compare(&epsilon, true)? && context[0].1.compare(&epsilon, true)?) {
+        return Ok(false);
+    }
+
+    // Epsilon left-hand side: every mapping pair maps epsilon on its left.
+    if mapping.is_empty() {
+        return Ok(false);
+    }
+    for pair in mapping.iter() {
+        if !pair.0.compare(&epsilon, true)? {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
 // replace up, left, right, down
 pub fn replace_rule<B: AlgebraBackend>(
     rule: &Rule<B>,
@@ -2324,7 +2379,10 @@ pub fn replace_rule<B: AlgebraBackend>(
 
     //printf("----after apply_boundary_mark: ----\n");
     //retval.write_in_att_format(stdout, 1);
-    if !optional {
+    // hfst/hfst#571: an epsilon-LHS + empty-context rule must not be forced to
+    // insert at every position (see is_epsilon_lhs_empty_context above); treat
+    // it as optional and skip most_brackets_star_constraint.
+    if !optional && !is_epsilon_lhs_empty_context(rule)? {
         //printf(" ----------  most_brackets_star_constraint --------------\n");
         // Epenthesis rules behave differently if used most_brackets_plus_constraint
         //retval = most_brackets_plus_constraint(retval);
@@ -2373,7 +2431,18 @@ pub fn replace_rule_vector<B: AlgebraBackend>(
     //printf("----after apply_boundary_mark: ----\n");
     //retval.write_in_att_format(stdout, 1);
 
-    if !optional {
+    // hfst/hfst#571: skip the obligatory constraint when every rule in the
+    // vector is an epsilon-LHS + empty-context epenthesis (see
+    // is_epsilon_lhs_empty_context). If any rule has a real context or a
+    // non-epsilon LHS the constraint still applies.
+    let mut all_epsilon_empty = !ruleVector.is_empty();
+    for rule in ruleVector.iter() {
+        if !is_epsilon_lhs_empty_context(rule)? {
+            all_epsilon_empty = false;
+            break;
+        }
+    }
+    if !optional && !all_epsilon_empty {
         // Epenthesis rules behave differently if used most_brackets_plus_constraint
         // retval = most_brackets_plus_constraint(retval);
         retval = most_brackets_star_constraint(&retval)?;

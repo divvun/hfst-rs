@@ -107,4 +107,8 @@ assertions (
     {id thfst.oracle, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:32:07.099264Z}
     {id flag-complement.fix, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:58:29.947351Z}
     {id flag-complement.audit, kind @complete, author "brendan@necessary.nu", at 2026-07-10T22:09:10.825079Z}
+    {id upstream-bugs.t1.i571, kind @complete, author "brendan@necessary.nu", at 2026-07-11T10:50:13.10867Z}
+    {id upstream-bugs.t1.i399, kind @doing, author "brendan@necessary.nu", at 2026-07-10T23:39:13.579253Z}
+    {id upstream-bugs.t1.i341, kind @doing, author "brendan@necessary.nu", at 2026-07-10T23:39:22.021811Z}
+    {id upstream-bugs.t1.i435, kind @doing, author "brendan@necessary.nu", at 2026-07-10T23:39:33.928313Z}
 )
