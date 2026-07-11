@@ -319,18 +319,18 @@ use crate::hfst_xerox_rules::{after, before};
 // on each side of a Pair; 'None' from the classifier means "bracketed
 // expression — evaluate it".
 enum XrePairSide {
-    Half(String),
-    Curly(String),
+    Half(Symbol),
+    Curly(Symbol),
 }
 
 fn xre_pair_side_kind(e: &SpannedXre) -> Option<XrePairSide> {
     match &e.value {
         XreExpr::Symbol(s) => Some(XrePairSide::Half(s.clone())),
-        XreExpr::Epsilon => Some(XrePairSide::Half(internal_epsilon.to_string())),
-        XreExpr::Any => Some(XrePairSide::Half(internal_unknown.to_string())),
+        XreExpr::Epsilon => Some(XrePairSide::Half(Symbol::new(internal_epsilon))),
+        XreExpr::Any => Some(XrePairSide::Half(Symbol::new(internal_unknown))),
         // nfst-xre actually emits '.#.' as Symbol(".#."); this arm is here for
         // completeness. Per the porting spec the boundary symbol is ".#.".
-        XreExpr::BoundaryMarker => Some(XrePairSide::Half(".#.".to_string())),
+        XreExpr::BoundaryMarker => Some(XrePairSide::Half(Symbol::new(".#."))),
         XreExpr::Curly(s) => Some(XrePairSide::Curly(s.clone())),
         XreExpr::Pair { .. }
         | XreExpr::Weighted { .. }
@@ -1266,7 +1266,7 @@ fn has_non_identity_pairs<B: crate::backend::Backend>(t: &HfstTransducer<B>) -> 
 // (xre_parse.yy SYMBOL_LIST). An empty list yields the empty transducer
 // (the 'SUB3: RIGHT_BRACKET' alternative).
 fn build_symbol_list_transducer<B: AlgebraBackend>(
-    symbols: &Vec<String>,
+    symbols: &[Symbol],
     cfg: &crate::hfst_transducer::EngineConfig,
 ) -> crate::error::Result<HfstTransducer<B>> {
     if symbols.is_empty() {
@@ -2416,7 +2416,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             } => {
                 let hay_alpha = hay.get_alphabet()?;
 
-                if self.definitions.contains_key(needle) {
+                if self.definitions.contains_key(needle.as_str()) {
                     if self.verbose {
                         self.diag_warning(
                             "using definition as an ordinary label, cannot substitute",

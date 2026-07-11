@@ -5536,9 +5536,9 @@ fn build_stringlike<B: AlgebraBackend + FromAnyTransducer + 'static>(
 ) -> crate::error::Result<ObjRef<B>> {
     use nfst_pmatch::PmatchExpr as PE;
     Ok(match &e.value {
-        PE::QuotedLiteral(s) => pmb_string(s.clone(), false),
-        PE::CurlyLiteral(s) => pmb_string(s.clone(), true),
-        PE::Symbol(s) => pmb_symbol(s.clone()),
+        PE::QuotedLiteral(s) => pmb_string(s.to_string(), false),
+        PE::CurlyLiteral(s) => pmb_string(s.to_string(), true),
+        PE::Symbol(s) => pmb_symbol(s.to_string()),
         PE::Literal(_)
         | PE::Epsilon
         | PE::Any
@@ -5677,17 +5677,17 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
     Ok(match &e.value {
         // ---- atoms ---------------------------------------------------------
         PE::Symbol(s) => {
-            let sym = s.clone();
-            if sym.len() == 0 {
+            let sym = s.to_string();
+            if sym.is_empty() {
                 pmb_empty()
             } else {
                 ctx.used_definitions_insert(sym.clone());
                 pmb_symbol(sym)
             }
         }
-        PE::Literal(s) => pmb_string(s.clone(), false),
-        PE::QuotedLiteral(s) => pmb_string(s.clone(), false),
-        PE::CurlyLiteral(s) => pmb_string(s.clone(), true),
+        PE::Literal(s) => pmb_string(s.to_string(), false),
+        PE::QuotedLiteral(s) => pmb_string(s.to_string(), false),
+        PE::CurlyLiteral(s) => pmb_string(s.to_string(), true),
         PE::Epsilon => pmb_string(crate::hfst_symbol_defs::internal_epsilon.to_string(), false),
         PE::BoundaryMarker => pmb_string("@BOUNDARY@".to_string(), false),
         PE::Any => pmb_question_mark(),
@@ -5944,11 +5944,11 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
         PE::Ins(name) => {
             if !ctx.flatten {
                 if !ctx.definitions_contains(name) {
-                    ctx.unsatisfied_insertions_insert(name.clone());
+                    ctx.unsatisfied_insertions_insert(name.to_string());
                 }
                 let retval = pmb_string(ins_transition(name), false);
-                ctx.inserted_names_insert(name.clone());
-                ctx.used_definitions_insert(name.clone());
+                ctx.inserted_names_insert(name.to_string());
+                ctx.used_definitions_insert(name.to_string());
                 retval
             } else if ctx.definitions_contains(name) {
                 ctx.definitions_get(name).unwrap()
@@ -5961,20 +5961,20 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
             }
         }
         PE::EndTag(name) => {
-            let retval = as_obj(make_end_tag(ctx, name.clone())?);
+            let retval = as_obj(make_end_tag(ctx, name.to_string())?);
             ctx.need_delimiters = true;
             retval
         }
         PE::Capture(name) => {
-            let retval = as_obj(make_capture_tag(ctx, name.clone())?);
-            let captured = make_captured_tag(ctx, name.clone())?;
+            let retval = as_obj(make_capture_tag(ctx, name.to_string())?);
+            let captured = make_captured_tag(ctx, name.to_string())?;
             if ctx.definitions_contains(name) {
                 warn(format!(
                     "definition of {} on line {} shadows earlier definition\n",
                     name, 0
                 ));
             }
-            ctx.definitions_insert(name.clone(), as_obj(captured));
+            ctx.definitions_insert(name.to_string(), as_obj(captured));
             ctx.need_delimiters = true;
             retval
         }
@@ -5983,18 +5983,18 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
             let cat = pmb_binary(
                 PmatchBinaryOp::Concatenate,
                 build_object(ctx, body)?,
-                as_obj(make_end_tag(ctx, name.clone())?),
+                as_obj(make_end_tag(ctx, name.to_string())?),
             );
             pmb_unary(PmatchUnaryOp::AddDelimiters, cat)
         }
         PE::With { body, name, value } => {
             // Concatenate(Concatenate(entry, body), exit)
-            let entry = make_with_tag_entry(name.clone(), value.clone());
-            let exit = make_with_tag_exit(name.clone());
+            let entry = make_with_tag_entry(name.to_string(), value.to_string());
+            let exit = make_with_tag_exit(name.to_string());
             let inner = pmb_binary(PmatchBinaryOp::Concatenate, entry, build_object(ctx, body)?);
             pmb_binary(PmatchBinaryOp::Concatenate, inner, exit)
         }
-        PE::Counter(name) => as_obj(make_counter(ctx, name.clone())?),
+        PE::Counter(name) => as_obj(make_counter(ctx, name.to_string())?),
         PE::CaseOp { op, side, body } => {
             pmb_unary(map_caseop(*op, *side), build_object(ctx, body)?)
         }
@@ -6015,7 +6015,7 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
             unlike,
         } => {
             // The C++ ARGLIST is in reverse source order; replicate.
-            let rargs: Vec<String> = args.iter().rev().cloned().collect();
+            let rargs: Vec<String> = args.iter().rev().map(|a| a.to_string()).collect();
             let nwords = threshold.unwrap_or(10);
             if *unlike {
                 if rargs.len() < 2 {
@@ -6123,7 +6123,7 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
 
         // ---- function call -------------------------------------------------
         PE::Call { name, args } => {
-            let sym = name.clone();
+            let sym = name.to_string();
             let result = if !ctx.function_names_contains(name) {
                 error!("Function {} hasn't been defined", sym);
                 pmb_string(String::new(), false)
@@ -6214,9 +6214,9 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 let mut obj = build_expression1(ctx, body)?;
                 Rc::get_mut(&mut obj)
                     .expect("freshly built node is uniquely owned")
-                    .set_name(name.clone());
+                    .set_name(name.to_string());
                 report_defined(ctx, name);
-                insert_definition(ctx, name.clone(), obj);
+                insert_definition(ctx, name.to_string(), obj);
             }
             Some(args) => {
                 let root = build_expression1(ctx, body)?;
@@ -6225,26 +6225,26 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
                     name: String::new(),
                     weight: 0.0,
                     line_defined: 0,
-                    args: args.iter().rev().cloned().collect(),
+                    args: args.iter().rev().map(|a| a.to_string()).collect(),
                     root,
                 });
                 Rc::get_mut(&mut fun)
                     .expect("freshly built node is uniquely owned")
-                    .name = name.clone();
-                ctx.function_names_insert(name.clone());
+                    .name = name.to_string();
+                ctx.function_names_insert(name.to_string());
                 report_defined(ctx, name);
-                insert_definition(ctx, name.clone(), as_obj(fun));
+                insert_definition(ctx, name.to_string(), as_obj(fun));
             }
         },
         PS::DefIns { name, body } => {
             let mut body_obj = build_expression1(ctx, body)?;
             Rc::get_mut(&mut body_obj)
                 .expect("freshly built node is uniquely owned")
-                .set_name(name.clone());
-            ctx.def_insed_expressions_insert(name.clone(), body_obj);
+                .set_name(name.to_string());
+            ctx.def_insed_expressions_insert(name.to_string(), body_obj);
             let def_value = pmb_string(ins_transition(name), false);
             report_defined(ctx, name);
-            insert_definition(ctx, name.clone(), def_value);
+            insert_definition(ctx, name.to_string(), def_value);
         }
         PS::RegexTop { body } => {
             let mut obj = build_expression1(ctx, body)?;
@@ -6256,10 +6256,10 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
         }
         PS::SetVariable { name, value } => {
             let v = match value {
-                VariableValue::Symbol(s) => s.clone(),
+                VariableValue::Symbol(s) => s.to_string(),
                 VariableValue::Epsilon => "0".to_string(),
             };
-            ctx.variables_insert(name.clone(), v);
+            ctx.variables_insert(name.to_string(), v);
         }
         PS::ListDefinition { name, body } => {
             // DEFINED_LIST: the name lands on the inner body, the stored value
@@ -6267,10 +6267,10 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
             let mut inner = build_expression1(ctx, body)?;
             Rc::get_mut(&mut inner)
                 .expect("freshly built node is uniquely owned")
-                .set_name(name.clone());
+                .set_name(name.to_string());
             let value = pmb_unary(PmatchUnaryOp::MakeSigma, inner);
             report_defined(ctx, name);
-            insert_definition(ctx, name.clone(), value);
+            insert_definition(ctx, name.to_string(), value);
         }
         PS::ReadVec { path } => {
             let filepath = path_of(ctx, path);

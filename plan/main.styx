@@ -2951,5 +2951,13 @@ children (
         id smolstr-symbols
         title "SmolStr everywhere symbols flow (the deferred 'task #27' from [dec:hfst:monomorphic-backends], operator-directed 2026-07-11): core Symbol + OL SymbolTable are already SmolStr — sweep the rest to match divvunspell: thfst_io key_table Vec<String> -> Vec<SmolStr> (enable smol_str/serde like divvunspell's TransducerAlphabet), twolc.rs symbols fields, xre.rs symbol params, and every symbol-shaped String surface in the parser/compiler layers (audit: grep String against symbol/alphabet/key contexts incl. the nfst-* parser crates' hand-back types); oracle = zero behavior change (SmolStr Ord == str Ord, so symbol numbering and output bytes are invariant — the hfst_data_types.rs:52 comment is the contract), suite + lang-sma byte-identity green"
         priority 6
+        log (
+            {
+                at 2026-07-11T15:49:44.79698Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+        )
     }
 )

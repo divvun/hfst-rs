@@ -308,8 +308,8 @@ pub struct TwolcCompiler<B: AlgebraBackend> {
     pub(crate) verbose: bool,
     pub(crate) resolve_left_conflicts: bool,
     pub(crate) resolve_right_conflicts: bool,
-    pub(crate) sets: BTreeMap<String, SymbolRange>,
-    pub(crate) definitions: BTreeMap<String, OtherSymbolTransducer<B>>,
+    pub(crate) sets: BTreeMap<Symbol, SymbolRange>,
+    pub(crate) definitions: BTreeMap<Symbol, OtherSymbolTransducer<B>>,
     /// The twolc source currently being compiled, retained so source-level
     /// diagnostics can render the offending snippet (ariadne). Empty until
     /// `compile`/`build_grammar` runs.
@@ -3395,7 +3395,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     pub fn register_diacritics(
         &mut self,
         cfg: &mut OstConfig,
-        diacritics: &[Spanned<String>],
+        diacritics: &[Spanned<Symbol>],
         grammar: &mut TwolCGrammar<B>,
     ) {
         let list: SymbolRange = diacritics
