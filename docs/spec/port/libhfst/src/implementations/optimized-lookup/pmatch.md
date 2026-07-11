@@ -1392,6 +1392,31 @@
 > After the branch: ++i and container->set_weight(old_weight), continue the loop.
 > No return value.
 
+> PORT NOTE (upstream-bugs.i399, DIVERGENCE from hfst/hfst#399): the C++
+> `take_epsilons`/`get_analyses` recursion above has no guard against
+> epsilon-input cycles. When the compiled net contains an epsilon-INPUT arc
+> whose output is UNKNOWN (`?`) under Kleene star — e.g. a tokenizer `blank`
+> defined as `Whitespace | [ 0:?* ]`, whether inside a context (`LC`/`RC`) or at
+> top level — branch (2) re-enters `get_analyses(input_pos, tape_pos + 1,
+> target)` WITHOUT advancing `input_pos` and without decrementing any bound,
+> while the UNKNOWN output fans out over the whole sigma at each step. The
+> search tree grows exponentially in WIDTH and the walk never terminates (100%
+> CPU); upstream hfst#399 is still open, and neither the `try_recurse` depth
+> guard (it bounds one path, not sibling count) nor
+> `max_context_length_remaining` (decrements only on symbol-consuming arcs)
+> escapes it — only `--time-cutoff` does. The Rust port DELIBERATELY DIVERGES BY
+> TERMINATING: `PmatchContainer` carries a per-search `epsilon_visited` memo of
+> already-explored PLAIN-epsilon configurations, keyed on `(transducer symbol,
+> target index, input_pos, context mode, tape direction)`, cleared at each
+> top-level `do_match`. Branches (2)'s plain-epsilon recursion and (1)'s
+> context-mode plain-epsilon recursion consult the memo and skip a re-entered
+> key. The guard is scoped STRICTLY to plain, non-flag, non-Ins/RTN,
+> non-entry/exit/capture epsilon arcs, so flag-diacritic traversal (which
+> carries `FdState`), RTN/`Ins` calls (which carry their own tape/stack), and
+> entry/exit/capture bookkeeping (which mutate `entry_stack`/`captures`) are
+> NEVER pruned and remain 1:1 with upstream. Grammars that already terminated
+> (no `0:?*`) produce byte-identical output.
+
 > [spec:hfst:def:pmatch.hfst-ol.pmatch-transducer.take-flag-fn]
 > void
 

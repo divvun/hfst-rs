@@ -250,7 +250,22 @@ pub struct PmatchContainer {
     // Where in the input the best candidate so far has gotten to
     pub(crate) best_input_pos: u32,
     pub(crate) best_weight: Weight,
+    // [PORT NOTE / DIVERGENCE hfst/hfst#399]
+    // Per-search memo of plain-epsilon-input configurations already fully
+    // explored during the current top-level match attempt. Keyed on
+    // (transducer symbol, target transition index, input_pos, context mode,
+    // tape direction). Re-entering the same key is pruned. This TERMINATES
+    // grammars whose compiled net contains an epsilon-input / unknown-output
+    // arc under Kleene star (e.g. `0:?*`), which the C++ engine loops on
+    // forever (still-open upstream bug hfst/hfst#399). Guarded strictly to
+    // plain (non-flag, non-Ins/RTN) epsilon arcs so flag-diacritic traversal
+    // and RTN calls keep their own state and are never pruned by this memo.
+    pub(crate) epsilon_visited: std::collections::BTreeSet<EpsilonVisitKey>,
 }
+
+// [spec:hfst:def:pmatch.hfst-ol.pmatch-container.epsilon-visit-key]
+// Identifies a plain-epsilon configuration for the #399 cycle guard.
+pub(crate) type EpsilonVisitKey = (SymbolNumber, TransitionTableIndex, u32, u8, i8);
 
 // [spec:hfst:def:pmatch.hfst-ol.pmatch-transducer]
 pub struct PmatchTransducer {
@@ -1431,6 +1446,7 @@ impl PmatchContainer {
             stack_depth: 0,
             best_input_pos: 0,
             best_weight: 0.0,
+            epsilon_visited: std::collections::BTreeSet::new(),
         }
     }
 
@@ -2435,6 +2451,36 @@ impl PmatchTransducer {
         }
     }
 
+    // [PORT NOTE / DIVERGENCE hfst/hfst#399]
+    // Try to enter a plain-epsilon configuration during the current top-level
+    // search. Returns true if this exact (transducer, target, input_pos,
+    // context, tape_step) config has not been explored yet this attempt (and
+    // records it); returns false if it is a re-entry that must be pruned.
+    // Only PLAIN epsilon-input arcs (never flag diacritics, never Ins/RTN
+    // arcs, which carry their own FdState/tape state) reach this helper, so the
+    // memo cannot swallow legitimate flag or RTN traversal.
+    fn epsilon_visit(
+        &self,
+        input_pos: u32,
+        target: TransitionTableIndex,
+        container: &mut PmatchContainer,
+    ) -> bool {
+        let frame = self
+            .local_stack
+            .last()
+            .expect("local_stack is non-empty during a match walk");
+        let context = frame.context as u8;
+        let tape_step = frame.tape_step;
+        let key: EpsilonVisitKey = (
+            self.self_symbol(container),
+            target,
+            input_pos,
+            context,
+            tape_step,
+        );
+        container.epsilon_visited.insert(key)
+    }
+
     // Helper: take the callee RTN box out of its owning slot (either the
     // container's toplevel for NO_SYMBOL_NUMBER, or alphabet.rtns[sym]),
     // run 'f' with it and 'container', then put the box back. This implements
@@ -2559,7 +2605,10 @@ impl PmatchTransducer {
                     });
                 } else {
                     // Don't alter tapes when checking context
-                    self.get_analyses(input_pos, tape_pos, target, container);
+                    // [DIVERGENCE hfst/hfst#399] prune re-entered epsilon config
+                    if self.epsilon_visit(input_pos, target, container) {
+                        self.get_analyses(input_pos, tape_pos, target, container);
+                    }
                 }
             } else if input == 0 {
                 if container.profile_mode {
@@ -2568,6 +2617,16 @@ impl PmatchTransducer {
                 if !self.try_entering_context(output, container) {
                     // no context to enter, regular input epsilon
                     container.tape.write_pair(tape_pos, 0, output);
+
+                    // [DIVERGENCE hfst/hfst#399] An entry/exit/capture arc
+                    // mutates entry_stack/captures — state the memo key does
+                    // not capture — so it is NOT a "plain" epsilon and is never
+                    // pruned; only truly plain epsilon-input arcs are memoized.
+                    let plain_epsilon = output
+                        != container.alphabet.get_special(SpecialSymbol::entry)
+                        && output != container.alphabet.get_special(SpecialSymbol::exit)
+                        && !container.alphabet.is_capture_tag_sym(output)
+                        && !container.alphabet.is_captured_tag_sym(output);
 
                     let mut orig_entry_stack_back: u32 = 0;
                     // if it's an entry or exit arc, adjust entry stack
@@ -2601,7 +2660,9 @@ impl PmatchTransducer {
                         continue;
                     }
 
-                    self.get_analyses(input_pos, tape_pos + 1, target, container);
+                    if !plain_epsilon || self.epsilon_visit(input_pos, target, container) {
+                        self.get_analyses(input_pos, tape_pos + 1, target, container);
+                    }
 
                     if output == container.alphabet.get_special(SpecialSymbol::entry) {
                         container.entry_stack.pop();
@@ -3041,6 +3102,9 @@ impl PmatchTransducer {
             top.context_placeholder = 0;
             top.default_symbol_trap = false;
         }
+        // [DIVERGENCE hfst/hfst#399] Fresh epsilon-cycle memo per top-level
+        // match attempt (see PmatchContainer::epsilon_visited).
+        container.epsilon_visited.clear();
         self.get_analyses(input_pos, tape_pos, 0, container);
     }
 
