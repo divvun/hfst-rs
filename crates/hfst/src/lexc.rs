@@ -495,6 +495,15 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         self
     }
 
+    /// Set whether minimization encodes weights into labels first (was the
+    /// 'hfst::set_encode_weights' process-global that C++ minimize read; the
+    /// '-E' / '--encode-weights' option of hfst-lexc toggles it). Forwarded to
+    /// the embedded [`XreCompiler`] so regex compilation inside lexc obeys it.
+    pub fn set_encode_weights(&mut self, value: bool) -> &mut Self {
+        self.xre.set_encode_weights(value);
+        self
+    }
+
     /// The [`EngineConfig`](crate::hfst_transducer::EngineConfig) the composes in
     /// 'compile_lexical' run with: C++ defaults except 'flag_is_epsilon_in_composition'
     /// and 'xerox_composition'.

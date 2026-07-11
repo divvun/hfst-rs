@@ -501,6 +501,7 @@ fn run_typed<B: hfst::backend::AlgebraBackend>(
     lexc.set_rename_flags(options.rename_flags);
     lexc.set_flag_is_epsilon(options.flag_is_epsilon);
     lexc.set_xerox_composition(options.xerox_composition);
+    lexc.set_encode_weights(options.encode_weights);
     // lexc.with_flags = with_flags;
     if common.silent {
         lexc.set_verbosity(0);

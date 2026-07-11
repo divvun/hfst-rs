@@ -110,5 +110,5 @@ assertions (
     {id upstream-bugs.t1.i571, kind @complete, author "brendan@necessary.nu", at 2026-07-11T10:50:13.10867Z}
     {id upstream-bugs.t1.i399, kind @complete, author "brendan@necessary.nu", at 2026-07-11T10:51:57.226943Z}
     {id upstream-bugs.t1.i341, kind @complete, author "brendan@necessary.nu", at 2026-07-11T15:45:51.055464Z}
-    {id upstream-bugs.t1.i435, kind @doing, author "brendan@necessary.nu", at 2026-07-10T23:39:33.928313Z}
+    {id upstream-bugs.t1.i435, kind @complete, author "brendan@necessary.nu", at 2026-07-11T15:48:34.394935Z}
 )

@@ -186,6 +186,30 @@ where
     propagate_symbols(ifst, ofst);
 }
 
+// [fst::Determinize] with a state budget — ofst := det(ifst), but abort with an
+// `Err` (instead of running away) once the on-demand expansion produces more
+// than `max_states` states. Weighted determinization of a non-twins cyclic FST
+// splits states forever; the caller uses this to detect that and retry with an
+// exact strategy (weight encoding). A `max_states` of `None` is unbounded and
+// behaves exactly like `Determinize`.
+pub fn DeterminizeBounded<W, F1, F2>(
+    ifst: &F1,
+    ofst: &mut F2,
+    max_states: Option<usize>,
+) -> Result<(), String>
+where
+    W: WeaklyDivisibleSemiring + WeightQuantize,
+    F1: ExpandedFst<W>,
+    F2: MutableFst<W> + AllocableFst<W>,
+{
+    let config =
+        rustfst::algorithms::determinize::DeterminizeConfig::default().with_max_states(max_states);
+    *ofst = rustfst::algorithms::determinize::determinize_with_config(ifst, config)
+        .map_err(|e| e.to_string())?;
+    propagate_symbols(ifst, ofst);
+    Ok(())
+}
+
 // [fst::Reverse] — ofst := reverse(ifst)
 pub fn Reverse<W, F1, F2>(ifst: &F1, ofst: &mut F2)
 where

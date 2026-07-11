@@ -625,6 +625,7 @@ dependencies = [
  "flate2",
  "nfst-lexc",
  "nfst-xre",
+ "smol_str",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1487,6 +1488,7 @@ dependencies = [
  "logos",
  "nfst-syntax",
  "nfst-xre",
+ "smol_str",
 ]
 
 [[package]]
@@ -1495,6 +1497,7 @@ version = "0.1.0"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",
+ "smol_str",
 ]
 
 [[package]]
@@ -1507,6 +1510,7 @@ version = "0.1.0"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",
+ "smol_str",
 ]
 
 [[package]]
@@ -1525,6 +1529,7 @@ dependencies = [
  "chumsky",
  "logos",
  "nfst-syntax",
+ "smol_str",
 ]
 
 [[package]]

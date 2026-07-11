@@ -1703,15 +1703,15 @@ mod operations {
                 TropicalWeightTransducer::add_to_weights(&mut t, -w);
             }
 
-            let encode_type = if encode_weights {
-                algorithms::EncodeType::EncodeWeightsAndLabels
-            } else {
-                algorithms::EncodeType::EncodeLabels
-            };
-            let encode_mapper = algorithms::Encode(&mut t, encode_type);
+            let input_states = t.num_states();
             let mut det = StdVectorFst::new();
-
-            algorithms::Determinize(&t, &mut det);
+            let encode_mapper = Self::determinize_adaptive(
+                &mut t,
+                encode_weights,
+                input_states,
+                "minimize",
+                &mut det,
+            );
             algorithms::Minimize(&mut det);
             algorithms::Decode(&mut det, encode_mapper);
 
@@ -1720,6 +1720,70 @@ mod operations {
             }
 
             det
+        }
+
+        // Determinization budget heuristic for the label-only (encode_weights ==
+        // false) path. Weighted determinization of a non-twins cyclic FST never
+        // terminates (upstream hfst/hfst#435): the subset construction splits
+        // states forever. We cap it at a generous budget and, on overrun,
+        // transparently retry with weight encoding (EncodeWeightsAndLabels),
+        // which is exact and always terminates (the result may be less minimal
+        // than the true weighted-minimal FST, but that beats never returning).
+        //
+        // The budget must be large enough that every input which terminates
+        // under today's unbounded weighted determinization stays byte-identical
+        // (the budget only ever trips where the algorithm would otherwise loop
+        // forever). max(1024, 256 * input_states) is deliberately generous: the
+        // constant 256 lets each input state fan out into a large but bounded
+        // subset population, and the 1024 floor covers tiny inputs.
+        fn determinize_budget(input_states: usize) -> usize {
+            const K: usize = 256;
+            (K.saturating_mul(input_states)).max(1024)
+        }
+
+        // Runs Encode + Determinize with the adaptive budget/fallback and writes
+        // the determinized machine into `det`, returning the EncodeTable the
+        // caller must Decode with. `t` is encoded in place; on the encoded-weight
+        // fallback `t` is re-encoded with weights, so the returned table matches
+        // whatever `det` was produced from.
+        fn determinize_adaptive(
+            t: &mut StdVectorFst,
+            encode_weights: bool,
+            input_states: usize,
+            caller: &str,
+            det: &mut StdVectorFst,
+        ) -> algorithms::EncodeTable<TropicalWeight> {
+            if encode_weights {
+                let encode_mapper =
+                    algorithms::Encode(t, algorithms::EncodeType::EncodeWeightsAndLabels);
+                algorithms::Determinize(t, det);
+                return encode_mapper;
+            }
+
+            // Label-only path: bound the determinization and fall back to weight
+            // encoding if the budget is exceeded.
+            let budget = Self::determinize_budget(input_states);
+            let mut labels_only = t.clone();
+            let encode_mapper =
+                algorithms::Encode(&mut labels_only, algorithms::EncodeType::EncodeLabels);
+            match algorithms::DeterminizeBounded(&labels_only, det, Some(budget)) {
+                Ok(()) => {
+                    *t = labels_only;
+                    encode_mapper
+                }
+                Err(_) => {
+                    tracing::info!(
+                        caller,
+                        budget,
+                        "label-only determinization exceeded state budget; \
+                         retrying with weight encoding (hfst/hfst#435)"
+                    );
+                    let encode_mapper =
+                        algorithms::Encode(t, algorithms::EncodeType::EncodeWeightsAndLabels);
+                    algorithms::Determinize(t, det);
+                    encode_mapper
+                }
+            }
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.determinize-fn]
@@ -1737,14 +1801,15 @@ mod operations {
                 TropicalWeightTransducer::add_to_weights(&mut t, -w);
             }
 
-            let encode_type = if encode_weights {
-                algorithms::EncodeType::EncodeWeightsAndLabels
-            } else {
-                algorithms::EncodeType::EncodeLabels
-            };
-            let encode_mapper = algorithms::Encode(&mut t, encode_type);
+            let input_states = t.num_states();
             let mut det = StdVectorFst::new();
-            algorithms::Determinize(&t, &mut det);
+            let encode_mapper = Self::determinize_adaptive(
+                &mut t,
+                encode_weights,
+                input_states,
+                "determinize",
+                &mut det,
+            );
             algorithms::Decode(&mut det, encode_mapper);
 
             if w < 0.0 {

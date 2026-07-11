@@ -1740,19 +1740,25 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 crate::hfst_symbol_defs::internal_identity,
                 crate::hfst_symbol_defs::internal_identity,
             )?;
-            retval.disjunct(&id, true)?.minimize()?;
+            retval
+                .disjunct(&id, true)?
+                .minimize_with_config(&self.opt_cfg())?;
             retval
         } else if input_is_unknown {
             let mut retval =
                 HfstTransducer::new_symbol_pair(crate::hfst_symbol_defs::internal_unknown, output)?;
             let output_tr = HfstTransducer::new_symbol_pair(output, output)?;
-            retval.disjunct(&output_tr, true)?.minimize()?;
+            retval
+                .disjunct(&output_tr, true)?
+                .minimize_with_config(&self.opt_cfg())?;
             retval
         } else if output_is_unknown {
             let mut retval =
                 HfstTransducer::new_symbol_pair(input, crate::hfst_symbol_defs::internal_unknown)?;
             let input_tr = HfstTransducer::new_symbol_pair(input, input)?;
-            retval.disjunct(&input_tr, true)?.minimize()?;
+            retval
+                .disjunct(&input_tr, true)?
+                .minimize_with_config(&self.opt_cfg())?;
             retval
         } else {
             HfstTransducer::new_symbol_pair(input, output)?
@@ -1809,7 +1815,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             retval = HfstTransducer::new_tokenized_pair(input, output, &tok)?;
         }
 
-        retval.minimize()?; // it should be safe to minimize
+        retval.minimize_with_config(&self.opt_cfg())?; // it should be safe to minimize
         Ok(retval)
     }
 
@@ -1822,7 +1828,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     // xre_utils.cc:1082 — [?*] t [?*]
     fn contains(&self, t: &HfstTransducer<B>) -> crate::error::Result<HfstTransducer<B>> {
         let mut any = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
-        any.repeat_star()?.minimize()?;
+        any.repeat_star()?.minimize_with_config(&self.opt_cfg())?;
         let mut retval = any.clone();
         retval.concatenate(t, true)?.concatenate(&any, true)?;
         retval.optimize_with_config(&self.opt_cfg())?;
@@ -1859,7 +1865,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 
         // noT = ?* - $[t]
         let mut no_t = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
-        no_t.repeat_star()?.minimize()?;
+        no_t.repeat_star()?.minimize_with_config(&self.opt_cfg())?;
         let one_or_more_t = self.contains(t)?;
         no_t.subtract(&one_or_more_t, true)?;
         no_t.optimize_with_config(&self.opt_cfg())?;
@@ -1876,11 +1882,15 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     pub fn contains_once(&self, c: &HfstTransducer<B>) -> crate::error::Result<HfstTransducer<B>> {
         // any_star = [?*]
         let mut any_star = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
-        any_star.repeat_star()?.minimize()?;
+        any_star
+            .repeat_star()?
+            .minimize_with_config(&self.opt_cfg())?;
 
         // any_plus = [?+]
         let mut any_plus = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
-        any_plus.repeat_plus()?.minimize()?;
+        any_plus
+            .repeat_plus()?
+            .minimize_with_config(&self.opt_cfg())?;
 
         // t1 = [?+ c ?*]
         let mut t1 = any_plus.clone();
