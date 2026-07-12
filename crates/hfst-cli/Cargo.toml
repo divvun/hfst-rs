@@ -11,9 +11,7 @@ repository.workspace = true
 # under src/tools/, and the single 'hfst' multiplexer binary dispatches to
 # them by invoked basename (symlink named hfst-<verb>) or subcommand.
 [features]
-# HAVE_FOMA: compile the native foma backend into the CLI. The FOMA_TYPE arms
-# in the tools are always present but runtime-guarded by
-# is_implementation_type_available(FOMA_TYPE), which this feature flips on.
+default = ["foma"]
 foma = ["hfst/foma"]
 
 [dependencies]

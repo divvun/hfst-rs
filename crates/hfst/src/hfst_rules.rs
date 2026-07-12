@@ -388,7 +388,7 @@ pub fn replace_in_context<B: AlgebraBackend>(
     rct.optimize()?;
 
     // unconditional replace transducer
-    let mut rt = HfstTransducer::new();
+    let mut rt;
     if repl_type == ReplaceType::REPL_UP
         || repl_type == ReplaceType::REPL_RIGHT
         || repl_type == ReplaceType::REPL_LEFT
@@ -712,7 +712,7 @@ pub fn restriction<B: AlgebraBackend>(
     l1.concatenate(&mt, true)?;
     l1.concatenate(&pi_star, true)?;
 
-    let mut tmp = HfstTransducer::new();
+    let mut tmp;
     if direction == 0 {
         tmp = pi_star.clone();
     } else if direction == 1 {

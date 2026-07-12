@@ -194,6 +194,10 @@ fn process_stream(
                 hfst::hfst_transducer::AnyTransducer::OlW(_)
                 | hfst::hfst_transducer::AnyTransducer::OlU(_)
                 | hfst::hfst_transducer::AnyTransducer::Thfst(_) => None,
+                // The first-input-symbols query is tropical-only; a
+                // compile-time absence for foma, like the OL backends.
+                #[cfg(feature = "foma")]
+                hfst::hfst_transducer::AnyTransducer::Foma(_) => None,
             }
         } else {
             None

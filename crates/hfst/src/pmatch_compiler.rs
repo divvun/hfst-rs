@@ -2860,11 +2860,9 @@ pub fn fix_list_overlap<B: AlgebraBackend + 'static>(
             }
             ctx.lst_overlap_warned_insert(warn_key);
             let mut newlist = String::from("@L.");
-            let mut first = true;
             for s in retained_chars.iter() {
                 newlist.push_str(s);
                 newlist.push('_');
-                first = false;
             }
             newlist.push('@');
             let newsym: StringPair = (Symbol::from(newlist.clone()), Symbol::from(newlist.clone()));
@@ -4640,8 +4638,8 @@ pub fn read_vec<B: AlgebraBackend + 'static>(ctx: &mut PmatchEvalContext<B>, fil
         .unwrap_or(all_bytes.len());
     let header_line: String = String::from_utf8_lossy(&all_bytes[..header_end]).into_owned();
     let mut cursor: usize = (header_end + 1).min(all_bytes.len());
-    let mut lexicon_size: usize = 0;
-    let mut dimension: usize = 0;
+    let lexicon_size: usize;
+    let dimension: usize;
     {
         // ss >> lexicon_size; ss.ignore(1); ss >> dimension;
         let bytes = header_line.as_bytes();
@@ -5226,11 +5224,9 @@ pub fn read_text<B: AlgebraBackend>(
             error!("Pmatch: could not open text file {} for reading", filename);
         }
         Ok(contents) => {
-            let mut n: usize = 0;
             for line in contents.lines() {
                 let line = line.to_string();
                 if !line.is_empty() {
-                    n += 1;
                     if spaced_text {
                         let _spv = HfstTokenizer::tokenize_space_separated(&line);
                     } else {
@@ -5273,7 +5269,7 @@ pub fn print_unicode_codepoints(os: &mut dyn std::io::Write, s: &str) {
     let mut i: usize = 0;
     while i < bytes.len() {
         let c: u8 = bytes[i];
-        let mut codepoint: u32 = 0;
+        let codepoint: u32;
         let clen: usize;
         if (c & 0x80) == 0 {
             codepoint = c as u32;

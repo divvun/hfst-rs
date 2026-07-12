@@ -2298,6 +2298,26 @@ children (
                     }
                 )
             }
+
+            {
+                id foma-backend.wave9-api
+                title "Switch the foma dep to the published crates.io foma 0.1.1 (was a path dep to the sibling checkout — ends the external-WIP-breaks-our-feature-build class) and update backend_foma.rs to its API (Fsm.sigma is Vec<Sigma> — invalid states unrepresentable, no more Option as_deref/is_none; C-int flags are real bools; 12 errors + whatever the published API adds); oracle = cargo nextest -p hfst --features foma green, default suite unchanged (mirrors the wave8-api catch-up 870c76e2)"
+                log (
+                    {
+                        at 2026-07-12T17:00:21.366497Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-12T19:25:14.878192Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
         )
     }
 
@@ -2992,6 +3012,37 @@ children (
                 author "brendan@necessary.nu"
                 kind @status
                 text "Doing → Done (nplan_complete)"
+            }
+        )
+    }
+
+    {
+        id idiom-ratchet
+        title "Idiom ratchet — convert one-time idiomatisation sweeps into enforced lint gates + burn down the debt accrued since idiom6/8/9 closed. Empirical finding (2026-07-12): the invariants backed by a workspace lint held at exactly zero across 8 subsequent feature waves (unsafe_code=forbid, clippy::wildcard_enum_match_arm=deny, rust_2018_idioms=deny → 0/0/0); the hand-swept conventions with NO lint decayed — .unwrap() 0→390 (non-test hfst lib), camelCase locals reappeared (240). Method per dimension: burn the debt to zero, THEN add the workspace lint that keeps it there. Deliberately NOT gating clippy::expect_used — .expect(\\\"reason\\\") is the sanctioned idiom (229 compliant sites carry real invariant reasons); gating it would fight the correct pattern."
+        priority 0
+        children (
+            {
+                id idiom-ratchet.unwrap
+                title "Burn down the 390 non-test .unwrap() in the hfst lib + install the deny gate. Distribution: tropical_weight_transducer 202 (rustfst VectorFst construction — set_start/set_final/add_tr all return Result, every call unwrapped; only 2 of 135 fns even return Result, so the backend was given an infallible surface that swallows rustfst fallibility), pmatch 51, pmatch_compiler 33, xfst_compiler 25, ospell 24, hfst_xerox_rules 13, transducer 9, hfst_ol_transducer 8, convert_tropical_weight_transducer 7, hfst_basic_transducer 6, xre 3, rest ≤2. Convert: .expect(\\\"invariant reason\\\") where infallible-by-construction (op on a state/fst just created — copy the 229 existing good expects), ?/Result where genuinely fallible (I/O, conversion, parse). Add clippy.toml allow-unwrap-in-tests=true + allow-expect-in-tests=true so the gate never fires on test fixtures. GATE: add clippy::unwrap_used=\\\"deny\\\" to [workspace.lints.clippy]; cargo build --workspace --all-targets clean under it. Restores the no-unwrap-rule idiom6 hand-swept to zero and 8 waves regressed — now lint-enforced so it can't recur."
+                priority 0
+            }
+
+            {
+                id idiom-ratchet.snake-case
+                title "snake_case the 240 camelCase locals (idiom8's rename sweep never reached hfst_xerox_rules.rs — leftMarker/rightMarker/leftBracket/rightBracket/identityPair/identityPairMinusBrackets/transducerAlphabet/… all 240 there + 1 stray in pmatch_compiler); fix the frozen C++ typo uncondidtionalTr → unconditional_tr. Then strip the literal-port scaffolding #![allow(non_snake_case)] (present per-module across most of crates/hfst/src per port-translation-conventions) from every file that doesn't genuinely need it, narrowing to a per-ITEM #[allow(non_snake_case)] only where C++ verbatim identifiers require it (enum variants like SFST_TYPE, consts like internal_epsilon). GATE: rustc's default non_snake_case lint then catches any new camelCase local/param/fn; no blanket module-wide allow survives to silently permit it (the exact ratchet-gap that let this regress)."
+                priority 0
+            }
+
+            {
+                id idiom-ratchet.control-flow
+                title "Audit the 34 panic_any/catch_unwind sites and convert the accidental creep. Confirm only the sanctioned non-error control-flow throws remain in the hfst lib — transducer.rs find_loop (throw bool), tropical random_path (throw &str), plus error.rs's throw/catch machinery (3) and the xre.rs cluster (8, verify each is the documented parser control-flow). Convert the CLI creep that crept in post-idiom6 to Result propagation: hfst-cli tools/txt2fst ×4, tools/substitute ×2, binary_ops ×2, tools/format, hfst_tool_metadata. Review-based — no clean lint exists for throw-as-goto — so this is a confirm-the-invariant-still-holds pass, not a new gate. Guards idiom6/idiom9's control-flow invariant against rot in the new tool code."
+                priority 0
+            }
+
+            {
+                id idiom-ratchet.new-code-cshape
+                title "de-C-shape sweep of the post-idiom9 feature waves (THFST, foma-backend, smolstr-symbols, upstream-bugs t1) — the code written after the idiom9 audit closed, never subjected to it. Index-loop review in the new/heavily-touched modules (thfst_io 4, convert_ol_transducer 4, backend_foma 6, hfst_input_stream 4): convert incidental `for i in 0..` to iterator combinators where not essential-index. C-name grep over the new modules (thfst_io, backend_foma, ol paths) for surviving C idioms. Verify the smolstr sweep left no String symbol surfaces behind. Review-based. Explicitly leaves the residual essential-index in the big literal-port files (hfst_basic_transducer 29, transducer 17, pmatch_compiler 9) alone — idiom9 documented those as legitimate index use (DP tables, state-id-as-identity, split-borrow), not debt."
+                priority 0
             }
         )
     }

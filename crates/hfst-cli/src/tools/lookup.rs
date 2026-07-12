@@ -1128,6 +1128,10 @@ fn process_stream(
                 cascade.push(OlTransducer::W(t.into_olw()))
             }
             hfst::hfst_transducer::AnyTransducer::Tropical(_) => {}
+            // Foma is an algebra backend, already flattened into the basic
+            // cascade above, like Tropical.
+            #[cfg(feature = "foma")]
+            hfst::hfst_transducer::AnyTransducer::Foma(_) => {}
         }
         id_or_unk_seen = false;
     }

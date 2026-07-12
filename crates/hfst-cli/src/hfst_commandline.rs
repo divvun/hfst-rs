@@ -309,6 +309,13 @@ pub fn convert_any_with_options(
                     let x: HfstTransducer<hfst_openfst::StdVectorFst> = other.into_typed()?;
                     AnyTransducer::OlW(x.to_ol(weighted, options)?)
                 }
+                // Foma routes through the tropical algebra into weighted OL
+                // tables, exactly as the OlU arm does.
+                #[cfg(feature = "foma")]
+                other @ AnyTransducer::Foma(_) => {
+                    let x: HfstTransducer<hfst_openfst::StdVectorFst> = other.into_typed()?;
+                    AnyTransducer::OlW(x.to_ol(weighted, options)?)
+                }
                 // THFST -> OLW: O(1) table move back to the weighted engine,
                 // then the same weightedness retag as the OLW/OlU arms (through
                 // the tropical algebra, as the C++ went through basic).

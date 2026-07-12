@@ -123,6 +123,10 @@ impl CommandLine {
     //
     // The C++ error paths call 'exit(1)' directly; here they return
     // Err(1) and 'run' propagates the exit code.
+    // The two leading standalone 'if's for "tropical-weight"/"tropical" set
+    // `form` and then fall into the terminal error arm (bug-for-bug from the C,
+    // see the -f handler below), so those writes are intentionally never read.
+    #[allow(unused_assignments)]
     fn parse_options(&mut self, args: &mut Vec<String>) -> Result<(), i32> {
         let mut resolve_left = false;
         let mut resolve_right = true;

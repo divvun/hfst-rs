@@ -48,7 +48,7 @@ pub struct FomaTransducer {
 /// Map a foma sigma number to its HFST symbol string. The three reserved
 /// numbers map to their HFST special strings; every other number is resolved
 /// through the sigma alphabet.
-fn sym(n: i32, sigma: Option<&Sigma>) -> SymbolType {
+fn sym(n: i32, sigma: &[Sigma]) -> SymbolType {
     match n {
         foma::types::EPSILON => SymbolType::from(EPSILON_SYMBOL),
         foma::types::UNKNOWN => SymbolType::from(UNKNOWN_SYMBOL),
@@ -80,7 +80,7 @@ impl Backend for FomaTransducer {
     // [spec:hfst:sem:foma-backend.to-basic-fn]
     fn to_basic(&self) -> crate::error::Result<HfstBasicTransducer> {
         let mut net = HfstBasicTransducer::new();
-        let sigma = self.net.sigma.as_deref();
+        let sigma = &self.net.sigma;
 
         // Walk the line table in order, stopping at the sentinel row.
         for line in &self.net.states {
@@ -113,20 +113,13 @@ impl Backend for FomaTransducer {
         // Every non-reserved sigma symbol joins the alphabet. Reserved numbers
         // 0/1/2 are represented by their HFST special strings, never added as
         // ordinary alphabet members.
-        let mut node = self.net.sigma.as_deref();
-        while let Some(n) = node {
-            if n.number == -1 {
-                break;
-            }
+        for n in &self.net.sigma {
             if n.number > foma::types::IDENTITY {
-                if let Some(s) = n.symbol.as_deref() {
-                    net.add_symbol_to_alphabet(&SymbolType::from(s));
-                }
+                net.add_symbol_to_alphabet(&SymbolType::from(n.symbol.as_str()));
             }
-            node = n.next.as_deref();
         }
 
-        net.name = self.net.name.clone();
+        net.name = self.net.name.to_string();
         Ok(net)
     }
 
@@ -166,17 +159,10 @@ impl Backend for FomaTransducer {
     fn get_alphabet(&self) -> StringSet {
         // The sigma's non-reserved symbols (numbers > IDENTITY).
         let mut out = StringSet::new();
-        let mut node = self.net.sigma.as_deref();
-        while let Some(n) = node {
-            if n.number == -1 {
-                break;
-            }
+        for n in &self.net.sigma {
             if n.number > foma::types::IDENTITY {
-                if let Some(s) = n.symbol.as_deref() {
-                    out.insert(SymbolType::from(s));
-                }
+                out.insert(SymbolType::from(n.symbol.as_str()));
             }
-            node = n.next.as_deref();
         }
         out
     }
@@ -189,10 +175,9 @@ impl Backend for FomaTransducer {
     }
 
     fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
-        if self.net.sigma.is_none() {
-            self.net.sigma = Some(foma::sigma::sigma_create());
-        }
-        foma::sigma::sigma_add(symbol, self.net.sigma.as_deref_mut().unwrap());
+        // `Fsm.sigma` is a plain `Vec<Sigma>` (empty ↔ absent), so there is no
+        // lazy-create guard — append straight into the alphabet.
+        foma::sigma::sigma_add(symbol, &mut self.net.sigma);
         Ok(())
     }
 
@@ -307,7 +292,7 @@ impl FomaTransducer {
     /// is always state 0). Backs both `get_initial_input_symbols` and
     /// `get_first_input_symbols` (foma draws no distinction between them).
     fn initial_input_symbols(&self) -> StringSet {
-        let sigma = self.net.sigma.as_deref();
+        let sigma = &self.net.sigma;
         let mut out = StringSet::new();
         for line in &self.net.states {
             if line.state_no == -1 {
@@ -525,7 +510,7 @@ impl AlgebraBackend for FomaTransducer {
         // foma is unweighted, so this is a cheap boolean minimization).
         let lhs = foma::minimize::fsm_minimize(&self.opts, self.boxed());
         let rhs = foma::minimize::fsm_minimize(&another.opts, another.boxed());
-        foma::constructions::fsm_equivalent(&self.opts, lhs, rhs) != 0
+        foma::constructions::fsm_equivalent(&self.opts, lhs, rhs)
     }
     fn is_automaton(&self) -> bool {
         // An acceptor: every arc has input == output. IDENTITY/UNKNOWN arcs have

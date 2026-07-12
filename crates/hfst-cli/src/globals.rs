@@ -12,6 +12,7 @@ use std::io::{BufRead, BufReader, Write};
 
 // colour tristate (hfst-commandline.h enum colour_tristate). Variant names kept
 // SCREAMING bug-for-bug (matches the crate's ImplementationType style).
+#[allow(non_camel_case_types)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ColourTristate {
     COLOUR_NEVER,

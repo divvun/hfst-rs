@@ -495,6 +495,16 @@ fn setup(options: &Options, path: &str) -> i32 {
                 return 1;
             }
         },
+        // Foma converts through the tropical algebra into the weighted OL
+        // tables the lookup engine runs on, like Tropical.
+        #[cfg(feature = "foma")]
+        other @ hfst::hfst_transducer::AnyTransducer::Foma(_) => match other.into_typed() {
+            Ok(t) => OlInner::W(t),
+            Err(e) => {
+                print_err(&format!("{e}\n"));
+                return 1;
+            }
+        },
     };
     let unique = options.display_unique_flag;
     let variant = match (weighted, unique) {
