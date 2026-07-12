@@ -1463,9 +1463,15 @@ fn add_percents(s: &str) -> String {
 // xre_utils.cc:408. Returns the substring between the first and last '"'.
 fn get_quoted(s: &str) -> String {
     let b = s.as_bytes();
-    let first = b.iter().position(|&c| c == b'"').unwrap();
+    let first = b
+        .iter()
+        .position(|&c| c == b'"')
+        .expect("quoted token contains an opening quote");
     let qstart = first + 1;
-    let qend = b.iter().rposition(|&c| c == b'"').unwrap();
+    let qend = b
+        .iter()
+        .rposition(|&c| c == b'"')
+        .expect("quoted token contains a closing quote");
     let len = qend - qstart;
     String::from_utf8_lossy(&b[qstart..qstart + len]).into_owned()
 }
@@ -2024,7 +2030,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             return false;
         }
 
-        let number_of_args = *name2args.unwrap();
+        let number_of_args = *name2args.expect("name2args is Some, checked above");
 
         if number_of_args as usize != args.len() {
             self.diag_error(&format!(

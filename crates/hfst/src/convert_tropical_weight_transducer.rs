@@ -163,11 +163,16 @@ impl ConversionFunctions {
                 origin = initial_state;
             }
 
-            let number_of_arcs: u32 = t.num_trs(s).unwrap() as u32;
+            let number_of_arcs: u32 = t.num_trs(s).expect("s is a valid state of this fst") as u32;
             net.initialize_transition_vector(s, number_of_arcs);
 
             /* Go through all transitions in a state */
-            for arc in t.get_trs(s).unwrap().trs().iter() {
+            for arc in t
+                .get_trs(s)
+                .expect("s is a valid state of this fst")
+                .trs()
+                .iter()
+            {
                 let mut target: u32 = arc.nextstate;
                 if target == initial_state {
                     target = 0;
@@ -205,9 +210,13 @@ impl ConversionFunctions {
                 ); // do not insert symbols to alphabet
             }
 
-            if t.is_final(s).unwrap() {
+            if t.is_final(s).expect("s is a valid state of this fst") {
                 // Set the state as final
-                let fw = *t.final_weight(s).unwrap().unwrap().value();
+                let fw = *t
+                    .final_weight(s)
+                    .expect("s is a valid state of this fst")
+                    .expect("state is final so weight is present")
+                    .value();
                 net.set_final_weight(origin, &fw);
             }
         }
@@ -231,7 +240,8 @@ impl ConversionFunctions {
     pub fn hfst_basic_transducer_to_tropical_ofst(net: &HfstBasicTransducer) -> StdVectorFst {
         let mut t = StdVectorFst::new();
         let start_state = t.add_state(); // always zero
-        t.set_start(start_state).unwrap();
+        t.set_start(start_state)
+            .expect("start state just created by add_state");
 
         // How state numbers are recoded
         let mut state_vector: Vec<u32> = Vec::new();
@@ -279,7 +289,7 @@ impl ConversionFunctions {
                         state_vector[tr_it.get_target_state() as usize],
                     ),
                 )
-                .unwrap();
+                .expect("transition added to a state created above from state_vector");
             } // ... set of transitions gone through
         } // ... all states gone through
 

@@ -75,7 +75,10 @@ impl MultiCharSymbolTrie {
     // [spec:hfst:sem:hfst-tokenizer.hfst.multi-char-symbol-trie.add-symbol-rest-fn]
     fn add_symbol_rest(&mut self, p: &[u8], pos: usize) {
         let idx = byte_at(p, pos) as usize;
-        self.symbol_rests[idx].as_mut().unwrap().add(p, pos + 1);
+        self.symbol_rests[idx]
+            .as_mut()
+            .expect("symbol_rests[idx] was initialized before add_symbol_rest")
+            .add(p, pos + 1);
     }
 
     // [spec:hfst:def:hfst-tokenizer.hfst.multi-char-symbol-trie.get-symbol-rest-trie-fn]
@@ -189,7 +192,11 @@ impl HfstTokenizer {
         }
         /* split_characters => take next UTF-8 only */
         else {
-            symbol.chars().next().unwrap().len_utf8() as i32
+            symbol
+                .chars()
+                .next()
+                .expect("symbol is non-empty")
+                .len_utf8() as i32
         }
     }
 

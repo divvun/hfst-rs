@@ -709,7 +709,12 @@ mod tests {
                 let states2 = t.to_basic().unwrap().states().len();
                 assert_eq!(states1, states2, "state count survives facade round-trip");
             }
-            other => panic!("expected AnyTransducer::Foma, got {:?}", other.get_type()),
+            other @ (AnyTransducer::Tropical(_)
+            | AnyTransducer::OlW(_)
+            | AnyTransducer::OlU(_)
+            | AnyTransducer::Thfst(_)) => {
+                panic!("expected AnyTransducer::Foma, got {:?}", other.get_type())
+            }
         }
     }
 

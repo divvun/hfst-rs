@@ -165,4 +165,8 @@ assertions (
     {id upstream-bugs.t1.i467, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:19:03.72794Z}
     {id upstream-bugs.t1.i426, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:19:11.501316Z}
     {id foma-backend.wave9-api, kind @complete, author "brendan@necessary.nu", at 2026-07-12T19:25:14.878192Z}
+    {id idiom-ratchet.unwrap, kind @complete, author "brendan@necessary.nu", at 2026-07-12T20:46:50.356785Z}
+    {id idiom-ratchet.snake-case, kind @complete, author "brendan@necessary.nu", at 2026-07-12T20:47:24.116096Z}
+    {id idiom-ratchet.control-flow, kind @complete, author "brendan@necessary.nu", at 2026-07-12T20:47:25.507632Z}
+    {id idiom-ratchet.new-code-cshape, kind @complete, author "brendan@necessary.nu", at 2026-07-12T20:47:26.877751Z}
 )

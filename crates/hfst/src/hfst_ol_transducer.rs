@@ -540,14 +540,21 @@ mod ol_lookup_ops {
             if let Some(stack) = fd_state_stack.as_deref_mut() {
                 if stack
                     .last()
-                    .unwrap()
+                    .expect("fd state stack always holds the current state")
                     .get_table()
                     .get_operation(input)
                     .is_some()
                 {
-                    let top = stack.last().unwrap().clone();
+                    let top = stack
+                        .last()
+                        .expect("fd state stack always holds the current state")
+                        .clone();
                     stack.push(top);
-                    if stack.last_mut().unwrap().apply_operation_symbol(input) {
+                    if stack
+                        .last_mut()
+                        .expect("fd state stack always holds the current state")
+                        .apply_operation_symbol(input)
+                    {
                         added_fd_state = true;
                     } else {
                         stack.pop();
@@ -566,9 +573,9 @@ mod ol_lookup_ops {
             if !filter_fd
                 || fd_state_stack
                     .as_deref()
-                    .unwrap()
+                    .expect("fd state stack is Some whenever filter_fd is set")
                     .last()
-                    .unwrap()
+                    .expect("fd state stack always holds the current state")
                     .get_table()
                     .get_operation(input)
                     .is_none()
@@ -579,9 +586,9 @@ mod ol_lookup_ops {
             if !filter_fd
                 || fd_state_stack
                     .as_deref()
-                    .unwrap()
+                    .expect("fd state stack is Some whenever filter_fd is set")
                     .last()
-                    .unwrap()
+                    .expect("fd state stack always holds the current state")
                     .get_table()
                     .get_operation(output)
                     .is_none()
@@ -613,7 +620,10 @@ mod ol_lookup_ops {
             spv.pop();
 
             if added_fd_state {
-                fd_state_stack.as_deref_mut().unwrap().pop();
+                fd_state_stack
+                    .as_deref_mut()
+                    .expect("fd state stack is Some when a state was pushed")
+                    .pop();
             }
             i += 1;
         }

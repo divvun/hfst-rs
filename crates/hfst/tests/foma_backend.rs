@@ -257,7 +257,10 @@ fn foma_stream_round_trip_through_hfst_input_stream() {
 
     let basic2 = match any {
         AnyTransducer::Foma(t) => t.to_basic().expect("to_basic round-tripped"),
-        other => panic!(
+        other @ (AnyTransducer::Tropical(_)
+        | AnyTransducer::OlW(_)
+        | AnyTransducer::OlU(_)
+        | AnyTransducer::Thfst(_)) => panic!(
             "stream yielded the wrong variant, expected Foma, got type {:?}",
             other.get_type()
         ),
@@ -314,7 +317,10 @@ fn foma_stream_reads_every_transducer_in_a_multi_stream() {
             .expect("read foma transducer from multi stream");
         let basic = match any {
             AnyTransducer::Foma(t) => t.to_basic().expect("to_basic"),
-            other => panic!("expected Foma, got {:?}", other.get_type()),
+            other @ (AnyTransducer::Tropical(_)
+            | AnyTransducer::OlW(_)
+            | AnyTransducer::OlU(_)
+            | AnyTransducer::Thfst(_)) => panic!("expected Foma, got {:?}", other.get_type()),
         };
         let t = FomaTransducer::from_basic(&basic).expect("from_basic");
         got.push(accepted_pairs(&t));

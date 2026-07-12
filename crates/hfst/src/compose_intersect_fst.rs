@@ -206,7 +206,7 @@ impl ComposeIntersectFst {
                     let tr = Transition::new_from_basic(jt, this.t.coder_mut());
                     this.transition_map_vector
                         .last_mut()
-                        .unwrap()
+                        .expect("transition_map_vector has a current row")
                         .entry(key)
                         .or_insert_with(TransitionSet::new)
                         .insert(&tr);
@@ -262,7 +262,7 @@ impl ComposeIntersectFst {
                 self.transition_map_vector[s as usize].insert(symbol, TransitionSet::new());
                 self.transition_map_vector[s as usize]
                     .get_mut(&symbol)
-                    .unwrap()
+                    .expect("symbol was just inserted above")
                     .insert(&Transition::new(
                         identity_transition.target,
                         symbol,

@@ -210,7 +210,10 @@ impl StatePlaceholder {
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.get-largest-index-fn]
     // [spec:hfst:sem:convert.hfst-ol.state-placeholder.get-largest-index-fn]
     pub fn get_largest_index(&self) -> SymbolNumber {
-        let back = *self.symbol_to_transition_placeholder_v.last().unwrap();
+        let back = *self
+            .symbol_to_transition_placeholder_v
+            .last()
+            .expect("symbol_to_transition_placeholder_v is non-empty");
         self.transition_placeholders[back as usize][0].input
     }
 

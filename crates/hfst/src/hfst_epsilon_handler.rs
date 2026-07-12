@@ -33,7 +33,12 @@ impl HfstEpsilonHandler {
     // [spec:hfst:sem:hfst-epsilon-handler.hfst.hfst-epsilon-handler.push-back-fn]
     pub fn push_back(&mut self, s: HfstState) {
         if !self.epsilon_path.is_empty() {
-            if *self.epsilon_path.last().unwrap() != s {
+            if *self
+                .epsilon_path
+                .last()
+                .expect("epsilon_path is non-empty in this branch")
+                != s
+            {
                 self.epsilon_path.push(s);
             }
         } else {

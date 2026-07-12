@@ -223,7 +223,10 @@ impl ComposeIntersectLexicon {
         rules: &mut ComposeIntersectRuleComponent,
     ) -> crate::error::Result<&HfstBasicTransducer> {
         while !self.agenda.is_empty() {
-            let s = *self.agenda.front().unwrap();
+            let s = *self
+                .agenda
+                .front()
+                .expect("agenda is non-empty in the loop");
             self.agenda.pop_front();
 
             let allow = self.can_have_lexicon_epsilons(s);

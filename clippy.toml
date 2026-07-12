@@ -1,0 +1,7 @@
+# Library code bans bare `.unwrap()` — enforced by `#![deny(clippy::unwrap_used)]`
+# in crates/hfst/src/lib.rs. A genuine invariant is asserted with
+# `.expect("why it holds")`; a real error is propagated with `?`. `.expect` is
+# NOT denied — a reasoned expect is the sanctioned idiom. Test code may unwrap
+# and expect freely (fixtures are allowed to be terse).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

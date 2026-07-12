@@ -840,8 +840,8 @@ impl TransducerAlphabet {
     // [spec:hfst:sem:transducer.hfst-ol.transducer-alphabet.display-fn]
     pub fn display(&self) {
         println!("Transducer alphabet:");
-        for i in 0..self.symbol_table.len() {
-            println!(" Symbol {}: {}", i, self.symbol_table[i]);
+        for (i, sym) in self.symbol_table.iter().enumerate() {
+            println!(" Symbol {}: {}", i, sym);
         }
     }
 
@@ -1520,10 +1520,10 @@ impl<T: IndexEntry> TransducerTable<T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer-table.display-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-table.display-fn]
     pub fn display_index(&self) {
-        for i in 0..self.table.len() {
+        for (i, entry) in self.table.iter().enumerate() {
             print!("{}", i);
             print!(": ");
-            self.table[i].display();
+            entry.display();
         }
     }
 }
@@ -1796,7 +1796,7 @@ impl OlLetterTrie {
         let idx = p[0] as usize;
         self.letters[idx]
             .as_mut()
-            .unwrap()
+            .expect("letters entry was set to Some just above")
             .add_string(&p[1..], symbol_key);
     }
 
@@ -2159,14 +2159,20 @@ pub struct Transducer<T: TransducerTablesInterface = WeightedTables> {
 impl<T: TransducerTablesInterface> Transducer<T> {
     // ---- small accessors mirroring the C++ member dereferences ----
     fn hdr(&self) -> &TransducerHeader {
-        self.header.as_deref().unwrap()
+        self.header
+            .as_deref()
+            .expect("header is initialized during container load")
     }
     fn alph(&self) -> &TransducerAlphabet {
-        self.alphabet.as_deref().unwrap()
+        self.alphabet
+            .as_deref()
+            .expect("alphabet is initialized during container load")
     }
     #[inline]
     fn tbl(&self) -> &T {
-        self.tables.as_ref().unwrap()
+        self.tables
+            .as_ref()
+            .expect("tables are initialized during container load")
     }
 
     pub fn new() -> Self {
@@ -2305,7 +2311,9 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         self.alph()
     }
     pub fn get_encoder(&self) -> &Encoder {
-        self.encoder.as_deref().unwrap()
+        self.encoder
+            .as_deref()
+            .expect("encoder is initialized during container load")
     }
     pub fn get_fd_table(&self) -> &FdTable<SymbolNumber> {
         self.alph().get_fd_table()
@@ -2770,10 +2778,13 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         }
         let key = u32::try_from(self.alph().get_symbol_table().len())
             .expect("value out of u32 range") as SymbolNumber;
-        self.alphabet.as_mut().unwrap().add_symbol_str(sym);
+        self.alphabet
+            .as_mut()
+            .expect("alphabet is initialized during container load")
+            .add_symbol_str(sym);
         self.encoder
             .as_mut()
-            .unwrap()
+            .expect("encoder is initialized during container load")
             .read_input_symbol(sym, key as i32);
     }
 
@@ -2881,7 +2892,11 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                 i += 1;
             } else if self.alph().is_flag_diacritic(input) {
                 let flags = self.flag_state.get_values().clone();
-                let op = self.alph().get_operation(input).unwrap().clone();
+                let op = self
+                    .alph()
+                    .get_operation(input)
+                    .expect("flag diacritic symbol has an operation")
+                    .clone();
                 if self.flag_state.apply_operation(&op) {
                     // flag diacritic allowed
                     let flag_reachable = TraversalState::new(target, flags.clone());
@@ -3146,7 +3161,11 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                 found_transition = true;
                 i += 1;
             } else if self.alph().is_flag_diacritic(tin) {
-                let op = self.alph().get_operation(tin).unwrap().clone();
+                let op = self
+                    .alph()
+                    .get_operation(tin)
+                    .expect("flag diacritic symbol has an operation")
+                    .clone();
                 if self.flag_state.apply_operation(&op) {
                     // flag diacritic allowed
                     if self.traversal_states.contains(&epsilon_reachable) {

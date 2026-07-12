@@ -19,6 +19,11 @@
 // The hfst library contains no `unsafe`; `forbid` keeps it that way (a module
 // cannot opt back in with a local `#[allow]`).
 #![forbid(unsafe_code)]
+// Bare `.unwrap()` is banned in library code: assert a genuine invariant with
+// `.expect("why it holds")`, propagate a real error with `?`. A `deny` lint —
+// not a hand-swept convention — is what keeps it at zero across feature waves.
+// Tests may unwrap freely (see `allow-unwrap-in-tests` in clippy.toml).
+#![deny(clippy::unwrap_used)]
 
 pub mod alphabet;
 pub mod backend;

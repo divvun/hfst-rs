@@ -954,11 +954,15 @@ impl PmatchAlphabet {
     // the box out of the slot for the duration of the call (see notes). This
     // convenience accessor unwraps the Option.
     pub fn get_rtn(&mut self, symbol: SymbolNumber) -> &mut Box<PmatchTransducer> {
-        self.rtns[symbol as usize].as_mut().unwrap()
+        self.rtns[symbol as usize]
+            .as_mut()
+            .expect("RTN slot occupied for this symbol")
     }
     pub fn get_rtn_by_name(&mut self, name: String) -> &mut Box<PmatchTransducer> {
         let symbol = self.rtn_names[&name];
-        self.rtns[symbol as usize].as_mut().unwrap()
+        self.rtns[symbol as usize]
+            .as_mut()
+            .expect("RTN slot occupied for this symbol")
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-alphabet.get-counter-name-fn]
@@ -1031,7 +1035,9 @@ impl PmatchAlphabet {
                     if !pattern_counts.contains_key(&key) {
                         pattern_counts.insert(key, 1);
                     } else {
-                        *pattern_counts.get_mut(&key).unwrap() += 1;
+                        *pattern_counts
+                            .get_mut(&key)
+                            .expect("key present in else branch") += 1;
                     }
                 }
                 let pos: u32;
@@ -1039,7 +1045,9 @@ impl PmatchAlphabet {
                     warn!("end tag without start tag");
                     pos = 0;
                 } else {
-                    pos = *start_tag_pos.last().unwrap();
+                    pos = *start_tag_pos
+                        .last()
+                        .expect("stack non-empty in else branch");
                 }
                 if delete_patterns {
                     let how_much_to_delete = retval.len() - pos as usize;
@@ -1089,7 +1097,9 @@ impl PmatchAlphabet {
                     if !pattern_counts.contains_key(&key) {
                         pattern_counts.insert(key, 1);
                     } else {
-                        *pattern_counts.get_mut(&key).unwrap() += 1;
+                        *pattern_counts
+                            .get_mut(&key)
+                            .expect("key present in else branch") += 1;
                     }
                 }
                 retval.tag = self.start_tag(output);
@@ -1728,7 +1738,10 @@ impl PmatchContainer {
             let tape_pos: u32 = 0;
             let old_input_pos = input_pos;
             // toplevel->match(input_pos, tape_pos);
-            let mut top = self.toplevel.take().unwrap();
+            let mut top = self
+                .toplevel
+                .take()
+                .expect("toplevel present outside its match call");
             top.do_match(input_pos, tape_pos, self);
             self.toplevel = Some(top);
             if self.candidate_found() {
@@ -2198,7 +2211,9 @@ impl PmatchContainer {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.rtn-stack-top-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.rtn-stack-top-fn]
     pub fn rtn_stack_top(&self) -> RtnStackFrame {
-        let frame = self.rtn_stacks[self.stack_depth as usize].last().unwrap();
+        let frame = self.rtn_stacks[self.stack_depth as usize]
+            .last()
+            .expect("rtn stack at this depth is non-empty");
         RtnStackFrame {
             caller: frame.caller,
             caller_index: frame.caller_index,
@@ -2211,7 +2226,7 @@ impl PmatchContainer {
     pub fn get_latest_rtn_caller(&self) -> SymbolNumber {
         self.rtn_stacks[(self.stack_depth - 1) as usize]
             .last()
-            .unwrap()
+            .expect("rtn stack at this depth is non-empty")
             .caller
     }
 
@@ -2276,7 +2291,7 @@ impl PmatchContainer {
         let middle_left = self
             .uncompose_left
             .as_mut()
-            .unwrap()
+            .expect("uncompose_left set when uncomposable")
             .lookup_fd_str(&loc.input, -1, 0.0);
         if middle_left.is_empty() {
             if verbose {
@@ -2299,7 +2314,7 @@ impl PmatchContainer {
             let middle_right = self
                 .uncompose_right
                 .as_mut()
-                .unwrap()
+                .expect("uncompose_right set when uncomposable")
                 .lookup_fd_str(&mids, -1, 0.0);
             if middle_right.is_empty() {
                 if verbose {
@@ -2491,11 +2506,16 @@ impl PmatchTransducer {
         f: F,
     ) {
         if sym == NO_SYMBOL_NUMBER {
-            let mut callee = container.toplevel.take().unwrap();
+            let mut callee = container
+                .toplevel
+                .take()
+                .expect("toplevel present outside its own call");
             f(&mut callee, container);
             container.toplevel = Some(callee);
         } else {
-            let mut callee = container.alphabet.rtns[sym as usize].take().unwrap();
+            let mut callee = container.alphabet.rtns[sym as usize]
+                .take()
+                .expect("RTN slot occupied outside its own call");
             f(&mut callee, container);
             container.alphabet.rtns[sym as usize] = Some(callee);
         }
@@ -2589,17 +2609,30 @@ impl PmatchTransducer {
             if self.checking_context() {
                 if self.try_exiting_context(output, container) {
                     // We've successfully completed a context check
-                    let cp = self.local_stack.last().unwrap().context_placeholder;
+                    let cp = self
+                        .local_stack
+                        .last()
+                        .expect("local_stack is non-empty during a match walk")
+                        .context_placeholder;
                     self.get_analyses(cp, tape_pos, target, container);
                     self.local_stack.pop();
-                } else if self.local_stack.last().unwrap().negative_context_success {
+                } else if self
+                    .local_stack
+                    .last()
+                    .expect("local_stack is non-empty during a match walk")
+                    .negative_context_success
+                {
                     // We've succeeded in a negative context, just back out
                     return;
                 } else if container.alphabet.is_flag_diacritic(input) {
                     self.take_flag(input, input_pos, tape_pos, i, container);
                 } else if container.alphabet.has_rtn_sym(input) {
                     let caller = self.self_symbol(container);
-                    let locals = self.local_stack.last().unwrap().clone();
+                    let locals = self
+                        .local_stack
+                        .last()
+                        .expect("local_stack is non-empty during a match walk")
+                        .clone();
                     Self::with_rtn(container, input, |rtn, cont| {
                         rtn.rtn_call_in_context(input_pos, tape_pos, caller, target, locals, cont);
                     });
@@ -2633,12 +2666,18 @@ impl PmatchTransducer {
                     if output == container.alphabet.get_special(SpecialSymbol::entry) {
                         container.entry_stack.push(input_pos);
                     } else if output == container.alphabet.get_special(SpecialSymbol::exit) {
-                        orig_entry_stack_back = *container.entry_stack.last().unwrap();
+                        orig_entry_stack_back = *container
+                            .entry_stack
+                            .last()
+                            .expect("exit arc has a matching entry on the stack");
                         container.entry_stack.pop();
                     } else if container.alphabet.is_capture_tag_sym(output) {
                         // if it's a capture tag, remember where we were
                         let capture = Capture {
-                            begin: *container.entry_stack.last().unwrap(),
+                            begin: *container
+                                .entry_stack
+                                .last()
+                                .expect("capture tag has a matching entry on the stack"),
                             end: input_pos,
                             name: output,
                         };
@@ -2699,12 +2738,23 @@ impl PmatchTransducer {
         // The context placeholder remembers the position in the input before
         // a context check. If the context check is successful, the placeholder
         // will be used as the input position going forwards.
-        self.local_stack.last_mut().unwrap().context_placeholder = input_pos;
+        self.local_stack
+            .last_mut()
+            .expect("local_stack is non-empty during a match walk")
+            .context_placeholder = input_pos;
         let mut input_pos = input_pos;
-        let ctx = self.local_stack.last().unwrap().context;
+        let ctx = self
+            .local_stack
+            .last()
+            .expect("local_stack is non-empty during a match walk")
+            .context;
         if ctx == ContextChecking::LC || ctx == ContextChecking::NLC {
             // Jump to the left-hand side of the input
-            input_pos = container.entry_stack.last().unwrap().wrapping_sub(1);
+            input_pos = container
+                .entry_stack
+                .last()
+                .expect("entry_stack populated during a left-context check")
+                .wrapping_sub(1);
         }
         let target = self.transition_table[i as usize].get_target();
         self.get_analyses(input_pos, tape_pos, target, container);
@@ -2713,16 +2763,28 @@ impl PmatchTransducer {
         // matched. If it didn't, we schedule a passthrough arc after we've
         // processed epsilons.
         let mut schedule_passthrough = false;
-        let ctx = self.local_stack.last().unwrap().context;
+        let ctx = self
+            .local_stack
+            .last()
+            .expect("local_stack is non-empty during a match walk")
+            .context;
         if ctx == ContextChecking::NLC || ctx == ContextChecking::NRC {
-            if !self.local_stack.last().unwrap().negative_context_success {
+            if !self
+                .local_stack
+                .last()
+                .expect("local_stack is non-empty during a match walk")
+                .negative_context_success
+            {
                 schedule_passthrough = true;
             }
         }
         // Pop the local stack that got pushed by entering the context
         self.local_stack.pop();
         if schedule_passthrough {
-            self.local_stack.last_mut().unwrap().pending_passthrough = true;
+            self.local_stack
+                .last_mut()
+                .expect("local_stack is non-empty during a match walk")
+                .pending_passthrough = true;
         }
     }
 
@@ -2739,7 +2801,11 @@ impl PmatchTransducer {
         let mut old_global_values: Vec<i16> = Vec::new();
         if container.alphabet.is_global_flag_sym(input) {
             old_global_values = container.global_flag_state.get_values().clone();
-            let op = container.alphabet.get_operation(input).unwrap().clone();
+            let op = container
+                .alphabet
+                .get_operation(input)
+                .expect("flag diacritic has an operation")
+                .clone();
             if !container.global_flag_state.apply_operation(&op) {
                 return;
             }
@@ -2747,15 +2813,19 @@ impl PmatchTransducer {
         let old_values = self
             .local_stack
             .last()
-            .unwrap()
+            .expect("local_stack is non-empty during a match walk")
             .flag_state
             .get_values()
             .clone();
-        let op = container.alphabet.get_operation(input).unwrap().clone();
+        let op = container
+            .alphabet
+            .get_operation(input)
+            .expect("flag diacritic has an operation")
+            .clone();
         if self
             .local_stack
             .last_mut()
-            .unwrap()
+            .expect("local_stack is non-empty during a match walk")
             .flag_state
             .apply_operation(&op)
         {
@@ -2772,7 +2842,7 @@ impl PmatchTransducer {
         }
         self.local_stack
             .last_mut()
-            .unwrap()
+            .expect("local_stack is non-empty during a match walk")
             .flag_state
             .assign_values(&old_values);
     }
@@ -2823,29 +2893,43 @@ impl PmatchTransducer {
                     if self
                         .local_stack
                         .last()
-                        .unwrap()
+                        .expect("local_stack is non-empty during a match walk")
                         .max_context_length_remaining
                         > 0
                     {
-                        if (self.local_stack.last().unwrap().tape_step < 0) && (input_pos == 0) {
+                        if (self
+                            .local_stack
+                            .last()
+                            .expect("local_stack is non-empty during a match walk")
+                            .tape_step
+                            < 0)
+                            && (input_pos == 0)
+                        {
                             // (C++ marks FIXME here) prevents segfault but
                             self.get_analyses(input_pos, tape_pos, target, container); // awkward
                         } else {
                             self.local_stack
                                 .last_mut()
-                                .unwrap()
+                                .expect("local_stack is non-empty during a match walk")
                                 .max_context_length_remaining -= 1;
-                            let step = self.local_stack.last().unwrap().tape_step;
+                            let step = self
+                                .local_stack
+                                .last()
+                                .expect("local_stack is non-empty during a match walk")
+                                .tape_step;
                             let new_input_pos = (input_pos as i64 + step as i64) as u32;
                             self.get_analyses(new_input_pos, tape_pos, target, container);
                             self.local_stack
                                 .last_mut()
-                                .unwrap()
+                                .expect("local_stack is non-empty during a match walk")
                                 .max_context_length_remaining += 1;
                         }
                     }
                 }
-                self.local_stack.last_mut().unwrap().default_symbol_trap = false;
+                self.local_stack
+                    .last_mut()
+                    .expect("local_stack is non-empty during a match walk")
+                    .default_symbol_trap = false;
                 container.set_weight(old_weight);
             } else {
                 return;
@@ -2874,7 +2958,11 @@ impl PmatchTransducer {
                 || (container.call_counter % 1000000 == 0
                     && (container.candidate_found()
                         // if we have at least something, stop doing more work
-                        && container.start_clock.unwrap().elapsed().as_secs_f64()
+                        && container
+                            .start_clock
+                            .expect("start_clock set when max_time is enabled")
+                            .elapsed()
+                            .as_secs_f64()
                             > container.max_time))
             {
                 container.limit_reached = true;
@@ -2887,10 +2975,21 @@ impl PmatchTransducer {
             }
             return;
         }
-        self.local_stack.last_mut().unwrap().default_symbol_trap = true;
+        self.local_stack
+            .last_mut()
+            .expect("local_stack is non-empty during a match walk")
+            .default_symbol_trap = true;
         self.take_epsilons(input_pos, tape_pos, i + 1, container);
-        if self.local_stack.last().unwrap().pending_passthrough {
-            self.local_stack.last_mut().unwrap().pending_passthrough = false;
+        if self
+            .local_stack
+            .last()
+            .expect("local_stack is non-empty during a match walk")
+            .pending_passthrough
+        {
+            self.local_stack
+                .last_mut()
+                .expect("local_stack is non-empty during a match walk")
+                .pending_passthrough = false;
             // A negative context failed (successfully)
             let passthrough = container
                 .alphabet
@@ -2978,7 +3077,11 @@ impl PmatchTransducer {
             }
         }
         if container.alphabet.get_default_symbol() != NO_SYMBOL_NUMBER
-            && self.local_stack.last().unwrap().default_symbol_trap
+            && self
+                .local_stack
+                .last()
+                .expect("local_stack is non-empty during a match walk")
+                .default_symbol_trap
         {
             let s = container.alphabet.get_default_symbol();
             self.take_transitions(s, input_pos, tape_pos, i + 1, container);
@@ -2989,7 +3092,11 @@ impl PmatchTransducer {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-transducer.checking-context-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.checking-context-fn]
     pub fn checking_context(&self) -> bool {
-        self.local_stack.last().unwrap().context != ContextChecking::none
+        self.local_stack
+            .last()
+            .expect("local_stack is non-empty during a match walk")
+            .context
+            != ContextChecking::none
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-transducer.try-entering-context-fn]
@@ -3001,19 +3108,35 @@ impl PmatchTransducer {
     ) -> bool {
         let mut new_top: LocalVariables;
         if symbol == container.alphabet.get_special(SpecialSymbol::LC_entry) {
-            new_top = self.local_stack.last().unwrap().clone();
+            new_top = self
+                .local_stack
+                .last()
+                .expect("local_stack is non-empty during a match walk")
+                .clone();
             new_top.context = ContextChecking::LC;
             new_top.tape_step = -1;
         } else if symbol == container.alphabet.get_special(SpecialSymbol::RC_entry) {
-            new_top = self.local_stack.last().unwrap().clone();
+            new_top = self
+                .local_stack
+                .last()
+                .expect("local_stack is non-empty during a match walk")
+                .clone();
             new_top.context = ContextChecking::RC;
             new_top.tape_step = 1;
         } else if symbol == container.alphabet.get_special(SpecialSymbol::NLC_entry) {
-            new_top = self.local_stack.last().unwrap().clone();
+            new_top = self
+                .local_stack
+                .last()
+                .expect("local_stack is non-empty during a match walk")
+                .clone();
             new_top.context = ContextChecking::NLC;
             new_top.tape_step = -1;
         } else if symbol == container.alphabet.get_special(SpecialSymbol::NRC_entry) {
-            new_top = self.local_stack.last().unwrap().clone();
+            new_top = self
+                .local_stack
+                .last()
+                .expect("local_stack is non-empty during a match walk")
+                .clone();
             new_top.context = ContextChecking::NRC;
             new_top.tape_step = 1;
         } else {
@@ -3031,7 +3154,12 @@ impl PmatchTransducer {
         symbol: SymbolNumber,
         container: &PmatchContainer,
     ) -> bool {
-        match self.local_stack.last().unwrap().context {
+        match self
+            .local_stack
+            .last()
+            .expect("local_stack is non-empty during a match walk")
+            .context
+        {
             ContextChecking::LC => {
                 if symbol == container.alphabet.get_special(SpecialSymbol::LC_exit) {
                     self.exit_context();
@@ -3055,14 +3183,14 @@ impl PmatchTransducer {
                 if symbol == container.alphabet.get_special(SpecialSymbol::NRC_exit) {
                     self.local_stack
                         .last_mut()
-                        .unwrap()
+                        .expect("local_stack is non-empty during a match walk")
                         .negative_context_success = true;
                     return false;
                 }
                 if symbol == container.alphabet.get_special(SpecialSymbol::NLC_exit) {
                     self.local_stack
                         .last_mut()
-                        .unwrap()
+                        .expect("local_stack is non-empty during a match walk")
                         .negative_context_success = true;
                     return false;
                 }
@@ -3072,7 +3200,7 @@ impl PmatchTransducer {
                 if symbol == container.alphabet.get_special(SpecialSymbol::NLC_exit) {
                     self.local_stack
                         .last_mut()
-                        .unwrap()
+                        .expect("local_stack is non-empty during a match walk")
                         .negative_context_success = true;
                     return false;
                 }
@@ -3085,7 +3213,11 @@ impl PmatchTransducer {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-transducer.exit-context-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.exit-context-fn]
     pub fn exit_context(&mut self) {
-        let mut new_top = self.local_stack.last().unwrap().clone();
+        let mut new_top = self
+            .local_stack
+            .last()
+            .expect("local_stack is non-empty during a match walk")
+            .clone();
         new_top.context = ContextChecking::none;
         new_top.negative_context_success = false;
         new_top.tape_step = 1;
@@ -3096,7 +3228,10 @@ impl PmatchTransducer {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.match-fn]
     pub fn do_match(&mut self, input_pos: u32, tape_pos: u32, container: &mut PmatchContainer) {
         {
-            let top = self.local_stack.last_mut().unwrap();
+            let top = self
+                .local_stack
+                .last_mut()
+                .expect("local_stack is non-empty during a match walk");
             top.context = ContextChecking::none;
             top.tape_step = 1;
             top.context_placeholder = 0;
@@ -3120,7 +3255,11 @@ impl PmatchTransducer {
     ) {
         container.push_rtn_call(caller_index, caller);
         container.increase_stack_depth();
-        let mut new_top = self.local_stack.last().unwrap().clone();
+        let mut new_top = self
+            .local_stack
+            .last()
+            .expect("local_stack is non-empty during a match walk")
+            .clone();
         new_top.flag_state = FdState::new(container.alphabet.get_fd_table());
         new_top.tape_step = 1;
         new_top.context = ContextChecking::none;

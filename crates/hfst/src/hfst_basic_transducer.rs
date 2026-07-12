@@ -868,12 +868,16 @@ impl HfstBasicTransducer {
                 }
                 input_ambiguity.entry(in_sym.clone()).or_insert(0);
                 output_ambiguity.entry(out_sym.clone()).or_insert(0);
-                let in_amb = input_ambiguity.get_mut(&in_sym).unwrap();
+                let in_amb = input_ambiguity
+                    .get_mut(&in_sym)
+                    .expect("entry was inserted just above");
                 *in_amb += 1;
                 if *in_amb > 1 {
                     input_deterministic = false;
                 }
-                let out_amb = output_ambiguity.get_mut(&out_sym).unwrap();
+                let out_amb = output_ambiguity
+                    .get_mut(&out_sym)
+                    .expect("entry was inserted just above");
                 *out_amb += 1;
                 if *out_amb > 1 {
                     output_deterministic = false;
@@ -1358,7 +1362,8 @@ impl HfstBasicTransducer {
                 escaped_symbol.push(pos);
             }
         }
-        *symbol = String::from_utf8(escaped_symbol).unwrap();
+        *symbol = String::from_utf8(escaped_symbol)
+            .expect("escaped bytes are valid UTF-8 by construction");
     }
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.xfstize-symbol-fn]
@@ -2729,7 +2734,10 @@ impl HfstBasicTransducer {
                     let weight = self.state_vector[s][i].get_weight();
 
                     // change the transition to the first substituting pair
-                    let first = new_sps.iter().next().unwrap();
+                    let first = new_sps
+                        .iter()
+                        .next()
+                        .expect("new_sps is non-empty; the empty case returned early");
                     let first_in = self.coder.get_number(&first.0);
                     let first_out = self.coder.get_number(&first.1);
                     let tr =
@@ -2787,7 +2795,9 @@ impl HfstBasicTransducer {
                     let weight = self.state_vector[s][i].get_weight();
 
                     let (fi, fo) = {
-                        let first = substituting_transitions.iter().next().unwrap();
+                        let first = substituting_transitions.iter().next().expect(
+                            "callback populates substituting_transitions when it returns true",
+                        );
                         (first.0.clone(), first.1.clone())
                     };
                     if !HfstTropicalTransducerTransitionData::is_valid_symbol(&fi)
@@ -4042,7 +4052,11 @@ impl HfstBasicTransducer {
         fds_so_far: Option<&mut StringVector>,
     ) {
         if let Some(fds) = fds_so_far {
-            let sp = path.second.last().unwrap().clone();
+            let sp = path
+                .second
+                .last()
+                .expect("pop_back is only called on a non-empty path")
+                .clone();
             if FdOperation::is_diacritic(&sp.0) {
                 fds.pop();
             }

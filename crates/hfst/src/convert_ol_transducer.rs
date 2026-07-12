@@ -188,7 +188,7 @@ pub fn get_states_and_symbols(
             }
         }
     } else {
-        let harmonizer = harmonizer.unwrap();
+        let harmonizer = harmonizer.expect("harmonizer is Some in the else branch");
         *symbol_table = harmonizer.get_symbol_table().clone();
         string_symbol_map = harmonizer.get_alphabet().build_string_symbol_map();
         *seen_input_symbols = harmonizer.get_header().input_symbol_count();

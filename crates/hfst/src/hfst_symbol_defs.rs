@@ -271,7 +271,12 @@ pub mod symbols {
             return -1;
         }
         if equally_long {
-            return paths.iter().next().unwrap().second.len() as i32;
+            return paths
+                .iter()
+                .next()
+                .expect("paths is non-empty; the empty case returned above")
+                .second
+                .len() as i32;
         }
 
         let mut max_path_length: u32 = 0;

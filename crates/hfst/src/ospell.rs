@@ -404,7 +404,11 @@ impl<'a> Speller<'a> {
     // [spec:hfst:def:transducer.hfst-ol.speller.lexicon-epsilons-fn]
     // [spec:hfst:sem:transducer.hfst-ol.speller.lexicon-epsilons-fn]
     pub fn lexicon_epsilons(&mut self) {
-        let front_lex = self.queue.front().unwrap().lexicon_state;
+        let front_lex = self
+            .queue
+            .front()
+            .expect("queue is non-empty inside the search loop")
+            .lexicon_state;
         if !self.lexicon.has_epsilons_or_flags(front_lex + 1) {
             return;
         }
@@ -416,11 +420,15 @@ impl<'a> Speller<'a> {
                 let nn = self
                     .queue
                     .front()
-                    .unwrap()
+                    .expect("queue is non-empty inside the search loop")
                     .update_lexicon(i_s.symbol, i_s.index, i_s.weight);
                 self.queue.push_back(nn);
             } else {
-                let mut front = self.queue.front().unwrap().clone();
+                let mut front = self
+                    .queue
+                    .front()
+                    .expect("queue is non-empty inside the search loop")
+                    .clone();
                 let sym = self.lexicon.get_transition_input(next);
                 if front.flag_state.apply_operation_symbol(sym) {
                     let nn = front.update_lexicon(i_s.symbol, i_s.index, i_s.weight);
@@ -437,8 +445,16 @@ impl<'a> Speller<'a> {
     // [spec:hfst:def:transducer.hfst-ol.speller.lexicon-consume-fn]
     // [spec:hfst:sem:transducer.hfst-ol.speller.lexicon-consume-fn]
     pub fn lexicon_consume(&mut self) {
-        let input_state = self.queue.front().unwrap().input_state;
-        let front_lex = self.queue.front().unwrap().lexicon_state;
+        let input_state = self
+            .queue
+            .front()
+            .expect("queue is non-empty inside the search loop")
+            .input_state;
+        let front_lex = self
+            .queue
+            .front()
+            .expect("queue is non-empty inside the search loop")
+            .lexicon_state;
         if input_state >= self.input.len()
             || !self
                 .lexicon
@@ -453,14 +469,22 @@ impl<'a> Speller<'a> {
             .take_non_epsilons(next, self.input.at(input_state));
 
         while i_s.symbol != NO_SYMBOL_NUMBER {
-            let front_mut = self.queue.front().unwrap().mutator_state;
-            let nn = self.queue.front().unwrap().update_input(
-                i_s.symbol,
-                input_state + 1,
-                front_mut,
-                i_s.index,
-                i_s.weight,
-            );
+            let front_mut = self
+                .queue
+                .front()
+                .expect("queue is non-empty inside the search loop")
+                .mutator_state;
+            let nn = self
+                .queue
+                .front()
+                .expect("queue is non-empty inside the search loop")
+                .update_input(
+                    i_s.symbol,
+                    input_state + 1,
+                    front_mut,
+                    i_s.index,
+                    i_s.weight,
+                );
             self.queue.push_back(nn);
 
             next += 1;
@@ -475,7 +499,11 @@ impl<'a> Speller<'a> {
     // [spec:hfst:def:transducer.hfst-ol.speller.mutator-epsilons-fn]
     // [spec:hfst:sem:transducer.hfst-ol.speller.mutator-epsilons-fn]
     pub fn mutator_epsilons(&mut self) {
-        let front_mut = self.queue.front().unwrap().mutator_state;
+        let front_mut = self
+            .queue
+            .front()
+            .expect("queue is non-empty inside the search loop")
+            .mutator_state;
         if !self.mutator.has_transitions(front_mut + 1, 0) {
             return;
         }
@@ -484,14 +512,18 @@ impl<'a> Speller<'a> {
 
         while mutator_i_s.symbol != NO_SYMBOL_NUMBER {
             if mutator_i_s.symbol == 0 {
-                let nn = self.queue.front().unwrap().update_mutator(
-                    mutator_i_s.symbol,
-                    mutator_i_s.index,
-                    mutator_i_s.weight,
-                );
+                let nn = self
+                    .queue
+                    .front()
+                    .expect("queue is non-empty inside the search loop")
+                    .update_mutator(mutator_i_s.symbol, mutator_i_s.index, mutator_i_s.weight);
                 self.queue.push_back(nn);
             } else {
-                let front_lex = self.queue.front().unwrap().lexicon_state;
+                let front_lex = self
+                    .queue
+                    .front()
+                    .expect("queue is non-empty inside the search loop")
+                    .lexicon_state;
                 let translated = self.alphabet_translator[mutator_i_s.symbol as usize];
                 if !self.lexicon.has_transitions(front_lex + 1, translated) {
                     next_m += 1;
@@ -502,12 +534,16 @@ impl<'a> Speller<'a> {
                 let mut lexicon_i_s = self.lexicon.take_non_epsilons(next_l, translated);
 
                 while lexicon_i_s.symbol != NO_SYMBOL_NUMBER {
-                    let nn = self.queue.front().unwrap().update(
-                        lexicon_i_s.symbol,
-                        mutator_i_s.index,
-                        lexicon_i_s.index,
-                        lexicon_i_s.weight + mutator_i_s.weight,
-                    );
+                    let nn = self
+                        .queue
+                        .front()
+                        .expect("queue is non-empty inside the search loop")
+                        .update(
+                            lexicon_i_s.symbol,
+                            mutator_i_s.index,
+                            lexicon_i_s.index,
+                            lexicon_i_s.weight + mutator_i_s.weight,
+                        );
                     self.queue.push_back(nn);
                     next_l += 1;
                     lexicon_i_s = self.lexicon.take_non_epsilons(next_l, translated);
@@ -523,8 +559,16 @@ impl<'a> Speller<'a> {
     // [spec:hfst:def:transducer.hfst-ol.speller.consume-input-fn]
     // [spec:hfst:sem:transducer.hfst-ol.speller.consume-input-fn]
     pub fn consume_input(&mut self) {
-        let input_state = self.queue.front().unwrap().input_state;
-        let front_mut = self.queue.front().unwrap().mutator_state;
+        let input_state = self
+            .queue
+            .front()
+            .expect("queue is non-empty inside the search loop")
+            .input_state;
+        let front_mut = self
+            .queue
+            .front()
+            .expect("queue is non-empty inside the search loop")
+            .mutator_state;
         if input_state >= self.input.len()
             || !self
                 .mutator
@@ -540,17 +584,29 @@ impl<'a> Speller<'a> {
 
         while mutator_i_s.symbol != NO_SYMBOL_NUMBER {
             if mutator_i_s.symbol == 0 {
-                let front_lex = self.queue.front().unwrap().lexicon_state;
-                let nn = self.queue.front().unwrap().update_input(
-                    0,
-                    input_state + 1,
-                    mutator_i_s.index,
-                    front_lex,
-                    mutator_i_s.weight,
-                );
+                let front_lex = self
+                    .queue
+                    .front()
+                    .expect("queue is non-empty inside the search loop")
+                    .lexicon_state;
+                let nn = self
+                    .queue
+                    .front()
+                    .expect("queue is non-empty inside the search loop")
+                    .update_input(
+                        0,
+                        input_state + 1,
+                        mutator_i_s.index,
+                        front_lex,
+                        mutator_i_s.weight,
+                    );
                 self.queue.push_back(nn);
             } else {
-                let front_lex = self.queue.front().unwrap().lexicon_state;
+                let front_lex = self
+                    .queue
+                    .front()
+                    .expect("queue is non-empty inside the search loop")
+                    .lexicon_state;
                 let translated = self.alphabet_translator[mutator_i_s.symbol as usize];
                 if !self.lexicon.has_transitions(front_lex + 1, translated) {
                     next_m += 1;
@@ -563,13 +619,17 @@ impl<'a> Speller<'a> {
                 let mut lexicon_i_s = self.lexicon.take_non_epsilons(next_l, translated);
 
                 while lexicon_i_s.symbol != NO_SYMBOL_NUMBER {
-                    let nn = self.queue.front().unwrap().update_input(
-                        lexicon_i_s.symbol,
-                        input_state + 1,
-                        mutator_i_s.index,
-                        lexicon_i_s.index,
-                        lexicon_i_s.weight + mutator_i_s.weight,
-                    );
+                    let nn = self
+                        .queue
+                        .front()
+                        .expect("queue is non-empty inside the search loop")
+                        .update_input(
+                            lexicon_i_s.symbol,
+                            input_state + 1,
+                            mutator_i_s.index,
+                            lexicon_i_s.index,
+                            lexicon_i_s.weight + mutator_i_s.weight,
+                        );
                     self.queue.push_back(nn);
                     next_l += 1;
                     lexicon_i_s = self.lexicon.take_non_epsilons(next_l, translated);
@@ -601,16 +661,38 @@ impl<'a> Speller<'a> {
         while self.queue.len() > 0 {
             self.lexicon_epsilons();
             self.mutator_epsilons();
-            let input_state = self.queue.front().unwrap().input_state;
+            let input_state = self
+                .queue
+                .front()
+                .expect("queue is non-empty inside the search loop")
+                .input_state;
             if input_state == self.input.len() {
                 // if our transducers are in final states we generate the correction
-                let mutator_state = self.queue.front().unwrap().mutator_state;
-                let lexicon_state = self.queue.front().unwrap().lexicon_state;
+                let mutator_state = self
+                    .queue
+                    .front()
+                    .expect("queue is non-empty inside the search loop")
+                    .mutator_state;
+                let lexicon_state = self
+                    .queue
+                    .front()
+                    .expect("queue is non-empty inside the search loop")
+                    .lexicon_state;
                 if self.mutator.final_index(mutator_state)
                     && self.lexicon.final_index(lexicon_state)
                 {
-                    let string = self.stringify(self.queue.front().unwrap().string.clone());
-                    let weight = self.queue.front().unwrap().weight
+                    let string = self.stringify(
+                        self.queue
+                            .front()
+                            .expect("queue is non-empty inside the search loop")
+                            .string
+                            .clone(),
+                    );
+                    let weight = self
+                        .queue
+                        .front()
+                        .expect("queue is non-empty inside the search loop")
+                        .weight
                         + self.lexicon.final_weight(lexicon_state)
                         + self.mutator.final_weight(mutator_state);
                     // if the correction is novel or better than before, insert it
@@ -644,8 +726,16 @@ impl<'a> Speller<'a> {
         self.queue.push_back(start_node);
 
         while self.queue.len() > 0 {
-            let input_state = self.queue.front().unwrap().input_state;
-            let lexicon_state = self.queue.front().unwrap().lexicon_state;
+            let input_state = self
+                .queue
+                .front()
+                .expect("queue is non-empty inside the search loop")
+                .input_state;
+            let lexicon_state = self
+                .queue
+                .front()
+                .expect("queue is non-empty inside the search loop")
+                .lexicon_state;
             if input_state == self.input.len() && self.lexicon.final_index(lexicon_state) {
                 return true;
             }

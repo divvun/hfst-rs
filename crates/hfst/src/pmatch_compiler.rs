@@ -1275,7 +1275,10 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         self.call_stack.last().and_then(|f| f.get(k).cloned())
     }
     fn call_stack_last_clone(&self) -> BTreeMap<String, ObjRef<B>> {
-        self.call_stack.last().unwrap().clone()
+        self.call_stack
+            .last()
+            .expect("call_stack has a frame during evaluation")
+            .clone()
     }
     fn call_stack_push(&mut self, frame: BTreeMap<String, ObjRef<B>>) {
         self.call_stack.push(frame);
@@ -1423,7 +1426,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         if self.utils.is_none() {
             self.utils = Some(PmatchUtilityTransducers::new()?);
         }
-        f(self.utils.as_mut().unwrap())
+        f(self.utils.as_mut().expect("utils set just above"))
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.zero-minimization-guard-fn]
@@ -2328,7 +2331,10 @@ pub fn parse_range<B: AlgebraBackend + 'static>(
             *i += width;
             u32::from_str_radix(hex, 16).unwrap_or(0)
         } else {
-            let ch = quoted[*i..].chars().next().unwrap();
+            let ch = quoted[*i..]
+                .chars()
+                .next()
+                .expect("index within bounds of the quoted string");
             *i += ch.len_utf8();
             ch as u32
         }
@@ -2591,7 +2597,8 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchUnaryOperation<B> {
                 write_compilation_stack_indentation_to_err(ctx);
                 debug!(
                     "** Warning: ignoring nested context condition when compiling {}",
-                    ctx.eval_stack_last().unwrap()
+                    ctx.eval_stack_last()
+                        .expect("eval_stack has an entry during evaluation")
                 );
             }
         } else if self.op == PmatchUnaryOp::NLC {
@@ -2617,7 +2624,8 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchUnaryOperation<B> {
                 write_compilation_stack_indentation_to_err(ctx);
                 debug!(
                     "** Warning: ignoring nested context condition when compiling {}",
-                    ctx.eval_stack_last().unwrap()
+                    ctx.eval_stack_last()
+                        .expect("eval_stack has an entry during evaluation")
                 );
             }
         } else if self.op == PmatchUnaryOp::RC {
@@ -2637,7 +2645,8 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchUnaryOperation<B> {
                 write_compilation_stack_indentation_to_err(ctx);
                 debug!(
                     "** Warning: ignoring nested context condition when compiling {}",
-                    ctx.eval_stack_last().unwrap()
+                    ctx.eval_stack_last()
+                        .expect("eval_stack has an entry during evaluation")
                 );
             }
         } else if self.op == PmatchUnaryOp::NRC {
@@ -2662,7 +2671,8 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchUnaryOperation<B> {
                 write_compilation_stack_indentation_to_err(ctx);
                 debug!(
                     "** Warning: ignoring nested context condition when compiling {}",
-                    ctx.eval_stack_last().unwrap()
+                    ctx.eval_stack_last()
+                        .expect("eval_stack has an entry during evaluation")
                 );
             }
         }
@@ -3495,17 +3505,17 @@ impl<B: AlgebraBackend + 'static> PmatchObjectPairBase<B> for PmatchMarkupContai
         let loa = self.left_of_arrow.evaluate(ctx)?;
         let lom = self.left.evaluate(ctx)?;
         let rom = self.right.evaluate(ctx)?;
-        let tmpMappingPair: HfstTransducerPair<B> =
+        let tmp_mapping_pair: HfstTransducerPair<B> =
             (HfstTransducer::new_copy(&loa)?, HfstTransducer::new());
         let marks: HfstTransducerPair<B> = (
             HfstTransducer::new_copy(&lom)?,
             HfstTransducer::new_copy(&rom)?,
         );
-        let MappingPair: HfstTransducerPair<B> =
-            create_mapping_for_mark_up_replace(&tmpMappingPair, &marks)?;
+        let mapping_pair: HfstTransducerPair<B> =
+            create_mapping_for_mark_up_replace(&tmp_mapping_pair, &marks)?;
         Ok((
-            HfstTransducer::new_copy(&MappingPair.0)?,
-            HfstTransducer::new_copy(&MappingPair.1)?,
+            HfstTransducer::new_copy(&mapping_pair.0)?,
+            HfstTransducer::new_copy(&mapping_pair.1)?,
         ))
     }
 }
@@ -3604,11 +3614,11 @@ pub fn PmatchObject_expand_Ins_arcs<B: AlgebraBackend + 'static>(
                             let mut disallowed: StringSet = StringSet::new();
                             if ctx.def_insed_expressions_contains(&ins_name) {
                                 ctx.def_insed_expressions_get(&ins_name)
-                                    .unwrap()
+                                    .expect("checked with contains just above")
                                     .collect_initial_symbols_into(&mut allowed, &mut disallowed)?;
                             } else {
                                 ctx.definitions_get(&ins_name)
-                                    .unwrap()
+                                    .expect("definitions_contains verified above")
                                     .collect_initial_symbols_into(&mut allowed, &mut disallowed)?;
                             }
                             if allowed.len() != 0 {
@@ -3737,17 +3747,17 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
         let mut retval: HfstTransducer<B>;
         if symbol_in_local_context(ctx, &self.sym) {
             retval = symbol_from_local_context(ctx, &self.sym)
-                .unwrap()
+                .expect("symbol_in_local_context verified above")
                 .evaluate(ctx)?;
         } else if symbol_in_global_context(ctx, &self.sym) {
             if ctx.flatten && ctx.def_insed_expressions_contains(&self.sym) {
                 retval = ctx
                     .def_insed_expressions_get(&self.sym)
-                    .unwrap()
+                    .expect("checked with contains just above")
                     .evaluate(ctx)?;
             } else {
                 retval = symbol_from_global_context(ctx, &self.sym)
-                    .unwrap()
+                    .expect("symbol_in_global_context verified above")
                     .evaluate(ctx)?;
             }
             ctx.used_definitions_insert(self.sym.clone());
@@ -3776,18 +3786,18 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
     fn evaluate_as_arg(&self, ctx: &mut PmatchEvalContext<B>) -> ObjRef<B> {
         if symbol_in_local_context(ctx, &self.sym) {
             return symbol_from_local_context(ctx, &self.sym)
-                .unwrap()
+                .expect("symbol_in_local_context verified above")
                 .evaluate_as_arg(ctx);
         } else if symbol_in_global_context(ctx, &self.sym) {
             ctx.used_definitions_insert(self.sym.clone());
             if ctx.flatten && ctx.def_insed_expressions_contains(&self.sym) {
                 return ctx
                     .def_insed_expressions_get(&self.sym)
-                    .unwrap()
+                    .expect("checked with contains just above")
                     .evaluate_as_arg(ctx);
             } else {
                 return symbol_from_global_context(ctx, &self.sym)
-                    .unwrap()
+                    .expect("symbol_in_global_context verified above")
                     .evaluate_as_arg(ctx);
             }
         } else {
@@ -3814,11 +3824,11 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
     fn collect_strings_into(&self, ctx: &mut PmatchEvalContext<B>, strings: &mut StringVector) {
         if symbol_in_local_context(ctx, &self.sym) {
             symbol_from_local_context(ctx, &self.sym)
-                .unwrap()
+                .expect("symbol_in_local_context verified above")
                 .collect_strings_into(ctx, strings);
         } else if symbol_in_global_context(ctx, &self.sym) {
             symbol_from_global_context(ctx, &self.sym)
-                .unwrap()
+                .expect("symbol_in_global_context verified above")
                 .collect_strings_into(ctx, strings);
             ctx.used_definitions_insert(self.sym.clone());
         } else {
@@ -4997,15 +5007,19 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 || ctx.uncomposed_contains(first)
             {
                 if ctx.verbose {
-                    let second = ctx.definitions_get(first).unwrap();
+                    let second = ctx
+                        .definitions_get(first)
+                        .expect("first is a definitions key");
                     debug!("definition...{}={}", first, second.get_name().to_string());
                 }
                 let mut tmp: HfstTransducer<B> = if ctx.def_insed_expressions_contains(first) {
                     ctx.def_insed_expressions_get(first)
-                        .unwrap()
+                        .expect("checked with contains just above")
                         .evaluate(ctx)?
                 } else {
-                    ctx.definitions_get(first).unwrap().evaluate(ctx)?
+                    ctx.definitions_get(first)
+                        .expect("first is a definitions key")
+                        .evaluate(ctx)?
                 };
                 tmp.minimize()?;
                 dummy.harmonize(&mut tmp, true)?;
@@ -5045,17 +5059,27 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
             warn!("pmatch compilation had an empty result");
             retval.insert("TOP".to_string(), HfstTransducer::new());
         } else if !ctx.definitions_contains("TOP") {
-            let first_key = ctx.definitions_keys().into_iter().next().unwrap();
+            let first_key = ctx
+                .definitions_keys()
+                .into_iter()
+                .next()
+                .expect("definitions non-empty in this branch");
             warn!(
                 "Pmatch compilation: regex or TOP was undefined, using {} as root",
                 first_key
             );
-            let mut tmp = ctx.definitions_get(&first_key).unwrap().evaluate(ctx)?;
+            let mut tmp = ctx
+                .definitions_get(&first_key)
+                .expect("first_key is a definitions key")
+                .evaluate(ctx)?;
             tmp.minimize()?;
             tmp.set_name("TOP");
             retval.insert("TOP".to_string(), tmp);
         } else {
-            let mut tmp = ctx.definitions_get("TOP").unwrap().evaluate(ctx)?;
+            let mut tmp = ctx
+                .definitions_get("TOP")
+                .expect("TOP present in this branch")
+                .evaluate(ctx)?;
             tmp.minimize()?;
             tmp.set_name("TOP");
             retval.insert("TOP".to_string(), tmp);
@@ -5071,7 +5095,7 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
     let mut allowed_initial_symbols: StringSet = StringSet::new();
     let mut disallowed_initial_symbols: StringSet = StringSet::new();
     ctx.definitions_get("TOP")
-        .unwrap()
+        .expect("TOP defined by this point")
         .collect_initial_symbols_into(
             &mut allowed_initial_symbols,
             &mut disallowed_initial_symbols,
@@ -5184,7 +5208,9 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
         }
     }
     let vars: Vec<(String, String)> = ctx.variables_snapshot();
-    let top = retval.get_mut("TOP").unwrap();
+    let top = retval
+        .get_mut("TOP")
+        .expect("TOP present in result by this point");
     for (key, value) in vars.iter() {
         top.set_property(key, value);
     }
@@ -5958,7 +5984,8 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 ctx.used_definitions_insert(name.clone());
                 retval
             } else if ctx.definitions_contains(name) {
-                ctx.definitions_get(name).unwrap()
+                ctx.definitions_get(name)
+                    .expect("definitions_contains verified above")
             } else {
                 error!(
                     "Insertion of {} is undefined and --ctx.flatten is in use",
@@ -6135,7 +6162,8 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 error!("Function {} hasn't been defined", sym);
                 pmb_string(Symbol::default(), false)
             } else {
-                let fun = symbol_from_global_context(ctx, &sym).unwrap();
+                let fun = symbol_from_global_context(ctx, &sym)
+                    .expect("a defined function name is bound in global definitions");
                 let argvec: Vec<ObjRef<B>> = args
                     .iter()
                     .rev()
@@ -6335,7 +6363,9 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
         self.compile(pmatch)?;
         let ctx = &mut self.eval_ctx;
         if ctx.definitions_contains(name) {
-            let obj = ctx.definitions_get(name).unwrap();
+            let obj = ctx
+                .definitions_get(name)
+                .expect("definitions_contains verified above");
             let evaluated = obj.evaluate(ctx)?;
             self.definitions.insert(name.to_string(), evaluated);
         }
@@ -6420,9 +6450,10 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                         || ctx.uncomposed_contains(key)
                     {
                         let obj_ptr: ObjRef<B> = if ctx.def_insed_expressions_contains(key) {
-                            ctx.def_insed_expressions_get(key).unwrap()
+                            ctx.def_insed_expressions_get(key)
+                                .expect("checked with contains just above")
                         } else {
-                            ctx.definitions_get(key).unwrap()
+                            ctx.definitions_get(key).expect("key is a definitions key")
                         };
                         let mut tmp: HfstTransducer<B> = obj_ptr.evaluate(ctx)?;
                         tmp.minimize()?;
@@ -6457,7 +6488,7 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                 let (first_key, first_obj) = {
                     let snap = ctx.definitions_snapshot();
                     let mut it = snap.iter();
-                    let (k, v) = it.next().unwrap();
+                    let (k, v) = it.next().expect("definitions non-empty in this branch");
                     (k.clone(), v.clone())
                 };
                 warn!(
@@ -6469,7 +6500,9 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                 tmp.set_name("TOP");
                 retval.insert("TOP".to_string(), tmp);
             } else {
-                let top_obj = ctx.definitions_get("TOP").unwrap();
+                let top_obj = ctx
+                    .definitions_get("TOP")
+                    .expect("TOP present in this branch");
                 let mut tmp: HfstTransducer<B> = top_obj.evaluate(ctx)?;
                 tmp.minimize()?;
                 tmp.set_name("TOP");
@@ -6614,7 +6647,9 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
             }
 
             let vars: Vec<(String, String)> = ctx.variables_snapshot();
-            let top = retval.get_mut("TOP").unwrap();
+            let top = retval
+                .get_mut("TOP")
+                .expect("TOP present in result by this point");
             for (k, v) in &vars {
                 top.set_property(k, v);
             }

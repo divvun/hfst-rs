@@ -173,7 +173,7 @@ mod construction_io {
         zero_print: StateId,
     ) {
         let origin = att_origin(s, initial_state, zero_print);
-        for arc in t.get_trs(s).unwrap().trs() {
+        for arc in t.get_trs(s).expect("s is a valid state of this fst").trs() {
             let target = att_origin(arc.nextstate, initial_state, zero_print);
             let w = *arc.weight.value();
             if number {
@@ -187,7 +187,9 @@ mod construction_io {
                     fmt_w(w, fixed_decimals)
                 );
             } else {
-                let st = t.input_symbols().unwrap();
+                let st = t
+                    .input_symbols()
+                    .expect("input symbols present: asserted before symbolic write");
                 let isym = st.get_symbol(arc.ilabel).unwrap_or("");
                 let osym = st.get_symbol(arc.olabel).unwrap_or("");
                 let _ = write!(
@@ -201,8 +203,12 @@ mod construction_io {
                 );
             }
         }
-        if t.is_final(s).unwrap() {
-            let fw = *t.final_weight(s).unwrap().unwrap().value();
+        if t.is_final(s).expect("s is a valid state of this fst") {
+            let fw = *t
+                .final_weight(s)
+                .expect("s is a valid state of this fst")
+                .expect("state is final so weight is present")
+                .value();
             let _ = write!(os, "{}\t{}\n", origin, fmt_w(fw, fixed_decimals));
         }
     }
@@ -258,11 +264,15 @@ mod construction_io {
             t.start().map(|s| s as i64).unwrap_or(-1)
         );
         for s in t.states_iter() {
-            if t.is_final(s).unwrap() {
-                let fw = *t.final_weight(s).unwrap().unwrap().value();
+            if t.is_final(s).expect("s is a valid state of this fst") {
+                let fw = *t
+                    .final_weight(s)
+                    .expect("s is a valid state of this fst")
+                    .expect("state is final so weight is present")
+                    .value();
                 let _ = write!(os, "{}\t{:.6}\n", s, fw);
             }
-            for arc in t.get_trs(s).unwrap().trs() {
+            for arc in t.get_trs(s).expect("s is a valid state of this fst").trs() {
                 let _ = write!(
                     os,
                     "{}\t{}\t{}\t{}\t{:.6}\n",
@@ -590,7 +600,8 @@ mod construction_io {
             let mut t = StdVectorFst::new();
             Self::initialize_symbol_tables(&mut t);
             let s = t.add_state();
-            t.set_start(s).unwrap();
+            t.set_start(s)
+                .expect("start state just created by add_state");
             t
         }
 
@@ -600,8 +611,10 @@ mod construction_io {
             let mut t = StdVectorFst::new();
             Self::initialize_symbol_tables(&mut t);
             let s = t.add_state();
-            t.set_start(s).unwrap();
-            t.set_final(s, 0.0f32).unwrap();
+            t.set_start(s)
+                .expect("start state just created by add_state");
+            t.set_final(s, 0.0f32)
+                .expect("state just created by add_state");
             t
         }
 
@@ -613,12 +626,14 @@ mod construction_io {
             let mut st = Self::create_symbol_table(String::new());
             let s1 = t.add_state();
             let s2 = t.add_state();
-            t.set_start(s1).unwrap();
-            t.set_final(s2, 0.0f32).unwrap();
+            t.set_start(s1)
+                .expect("start state just created by add_state");
+            t.set_final(s2, 0.0f32)
+                .expect("state just created by add_state");
             let il = st.add_symbol(symbol);
             let ol = st.add_symbol(symbol);
             t.add_tr(s1, StdTransition::new(il, ol, 0.0f32, s2))
-                .unwrap();
+                .expect("transition added between states created above");
             t.set_input_symbols(Arc::new(st));
             t
         }
@@ -630,12 +645,14 @@ mod construction_io {
             let mut st = Self::create_symbol_table(String::new());
             let s1 = t.add_state();
             let s2 = t.add_state();
-            t.set_start(s1).unwrap();
-            t.set_final(s2, 0.0f32).unwrap();
+            t.set_start(s1)
+                .expect("start state just created by add_state");
+            t.set_final(s2, 0.0f32)
+                .expect("state just created by add_state");
             let il = st.add_symbol(isymbol);
             let ol = st.add_symbol(osymbol);
             t.add_tr(s1, StdTransition::new(il, ol, 0.0f32, s2))
-                .unwrap();
+                .expect("transition added between states created above");
             t.set_input_symbols(Arc::new(st));
             t
         }
@@ -644,7 +661,8 @@ mod construction_io {
             let mut t = StdVectorFst::new();
             let mut st = Self::create_symbol_table(String::new());
             let mut s1 = t.add_state();
-            t.set_start(s1).unwrap();
+            t.set_start(s1)
+                .expect("start state just created by add_state");
             for it in spv {
                 let s2 = t.add_state();
                 assert!(!it.0.is_empty());
@@ -652,10 +670,11 @@ mod construction_io {
                 let il = st.add_symbol(it.0.as_str());
                 let ol = st.add_symbol(it.1.as_str());
                 t.add_tr(s1, StdTransition::new(il, ol, 0.0f32, s2))
-                    .unwrap();
+                    .expect("transition added between states created above");
                 s1 = s2;
             }
-            t.set_final(s1, 0.0f32).unwrap();
+            t.set_final(s1, 0.0f32)
+                .expect("state just created by add_state");
             t.set_input_symbols(Arc::new(st));
             t
         }
@@ -666,7 +685,8 @@ mod construction_io {
             let mut t = StdVectorFst::new();
             let mut st = Self::create_symbol_table(String::new());
             let s1 = t.add_state(); // start state
-            t.set_start(s1).unwrap();
+            t.set_start(s1)
+                .expect("start state just created by add_state");
             let mut s2 = s1; // final state
             if !sps.is_empty() {
                 if !cyclic {
@@ -678,10 +698,11 @@ mod construction_io {
                     let il = st.add_symbol(it.0.as_str());
                     let ol = st.add_symbol(it.1.as_str());
                     t.add_tr(s1, StdTransition::new(il, ol, 0.0f32, s2))
-                        .unwrap();
+                        .expect("transition added between states created above");
                 }
             }
-            t.set_final(s2, 0.0f32).unwrap();
+            t.set_final(s2, 0.0f32)
+                .expect("state just created by add_state");
             t.set_input_symbols(Arc::new(st));
             t
         }
@@ -690,7 +711,8 @@ mod construction_io {
             let mut t = StdVectorFst::new();
             let mut st = Self::create_symbol_table(String::new());
             let mut s1 = t.add_state();
-            t.set_start(s1).unwrap();
+            t.set_start(s1)
+                .expect("start state just created by add_state");
             for spset in spsv {
                 let s2 = t.add_state();
                 for it2 in spset {
@@ -699,11 +721,12 @@ mod construction_io {
                     let il = st.add_symbol(it2.0.as_str());
                     let ol = st.add_symbol(it2.1.as_str());
                     t.add_tr(s1, StdTransition::new(il, ol, 0.0f32, s2))
-                        .unwrap();
+                        .expect("transition added between states created above");
                 }
                 s1 = s2;
             }
-            t.set_final(s1, 0.0f32).unwrap();
+            t.set_final(s1, 0.0f32)
+                .expect("state just created by add_state");
             t.set_input_symbols(Arc::new(st));
             t
         }
@@ -715,10 +738,12 @@ mod construction_io {
             Self::initialize_symbol_tables(&mut t);
             let s1 = t.add_state();
             let s2 = t.add_state();
-            t.set_start(s1).unwrap();
-            t.set_final(s2, 0.0f32).unwrap();
+            t.set_start(s1)
+                .expect("start state just created by add_state");
+            t.set_final(s2, 0.0f32)
+                .expect("state just created by add_state");
             t.add_tr(s1, StdTransition::new(number, number, 0.0f32, s2))
-                .unwrap();
+                .expect("transition added between states created above");
             t
         }
 
@@ -727,31 +752,36 @@ mod construction_io {
             Self::initialize_symbol_tables(&mut t);
             let s1 = t.add_state();
             let s2 = t.add_state();
-            t.set_start(s1).unwrap();
-            t.set_final(s2, 0.0f32).unwrap();
+            t.set_start(s1)
+                .expect("start state just created by add_state");
+            t.set_final(s2, 0.0f32)
+                .expect("state just created by add_state");
             t.add_tr(s1, StdTransition::new(inumber, onumber, 0.0f32, s2))
-                .unwrap();
+                .expect("transition added between states created above");
             t
         }
 
         pub fn define_transducer_npv(npv: &NumberPairVector) -> StdVectorFst {
             let mut t = StdVectorFst::new();
             let mut s1 = t.add_state();
-            t.set_start(s1).unwrap();
+            t.set_start(s1)
+                .expect("start state just created by add_state");
             for it in npv {
                 let s2 = t.add_state();
                 t.add_tr(s1, StdTransition::new(it.0, it.1, 0.0f32, s2))
-                    .unwrap();
+                    .expect("transition added between states created above");
                 s1 = s2;
             }
-            t.set_final(s1, 0.0f32).unwrap();
+            t.set_final(s1, 0.0f32)
+                .expect("state just created by add_state");
             t
         }
 
         pub fn define_transducer_nps(nps: &NumberPairSet, cyclic: bool) -> StdVectorFst {
             let mut t = StdVectorFst::new();
             let s1 = t.add_state(); // start state
-            t.set_start(s1).unwrap();
+            t.set_start(s1)
+                .expect("start state just created by add_state");
             let mut s2 = s1; // final state
             if !nps.is_empty() {
                 if !cyclic {
@@ -759,26 +789,29 @@ mod construction_io {
                 }
                 for it in nps {
                     t.add_tr(s1, StdTransition::new(it.0, it.1, 0.0f32, s2))
-                        .unwrap();
+                        .expect("transition added between states created above");
                 }
             }
-            t.set_final(s2, 0.0f32).unwrap();
+            t.set_final(s2, 0.0f32)
+                .expect("state just created by add_state");
             t
         }
 
         pub fn define_transducer_npsv(npsv: &[NumberPairSet]) -> StdVectorFst {
             let mut t = StdVectorFst::new();
             let mut s1 = t.add_state();
-            t.set_start(s1).unwrap();
+            t.set_start(s1)
+                .expect("start state just created by add_state");
             for npset in npsv {
                 let s2 = t.add_state();
                 for it2 in npset {
                     t.add_tr(s1, StdTransition::new(it2.0, it2.1, 0.0f32, s2))
-                        .unwrap();
+                        .expect("transition added between states created above");
                 }
                 s1 = s2;
             }
-            t.set_final(s1, 0.0f32).unwrap();
+            t.set_final(s1, 0.0f32)
+                .expect("state just created by add_state");
             t
         }
 
@@ -796,18 +829,23 @@ mod construction_io {
             let states: Vec<StateId> = t.states_iter().collect();
             for s in states {
                 // (no in-place arc mutator in rustfst — pop & re-add, order preserved)
-                let trs = t.pop_trs(s).unwrap();
+                let trs = t.pop_trs(s).expect("s is a valid state of this fst");
                 for arc in trs {
                     let nw = *arc.weight.value() + w;
                     t.add_tr(
                         s,
                         StdTransition::new(arc.ilabel, arc.olabel, nw, arc.nextstate),
                     )
-                    .unwrap();
+                    .expect("transition re-added to a state of this fst");
                 }
-                if t.is_final(s).unwrap() {
-                    let old_weight = *t.final_weight(s).unwrap().unwrap().value();
-                    t.set_final(s, old_weight + w).unwrap();
+                if t.is_final(s).expect("s is a valid state of this fst") {
+                    let old_weight = *t
+                        .final_weight(s)
+                        .expect("s is a valid state of this fst")
+                        .expect("state confirmed final via is_final")
+                        .value();
+                    t.set_final(s, old_weight + w)
+                        .expect("s is a valid state of this fst");
                 }
             }
         }
@@ -817,14 +855,18 @@ mod construction_io {
         pub fn get_smallest_weight(t: &StdVectorFst) -> f32 {
             let mut retval = f32::INFINITY;
             for s in t.states_iter() {
-                for arc in t.get_trs(s).unwrap().trs() {
+                for arc in t.get_trs(s).expect("s is a valid state of this fst").trs() {
                     let w = *arc.weight.value();
                     if w < retval {
                         retval = w;
                     }
                 }
-                if t.is_final(s).unwrap() {
-                    let w = *t.final_weight(s).unwrap().unwrap().value();
+                if t.is_final(s).expect("s is a valid state of this fst") {
+                    let w = *t
+                        .final_weight(s)
+                        .expect("s is a valid state of this fst")
+                        .expect("state confirmed final via is_final")
+                        .value();
                     if w < retval {
                         retval = w;
                     }
@@ -837,12 +879,19 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.has-weights-fn]
         pub fn has_weights(t: &StdVectorFst) -> bool {
             for s in t.states_iter() {
-                for arc in t.get_trs(s).unwrap().trs() {
+                for arc in t.get_trs(s).expect("s is a valid state of this fst").trs() {
                     if *arc.weight.value() != 0.0 {
                         return true;
                     }
                 }
-                if t.is_final(s).unwrap() && *t.final_weight(s).unwrap().unwrap().value() != 0.0 {
+                if t.is_final(s).expect("s is a valid state of this fst")
+                    && *t
+                        .final_weight(s)
+                        .expect("s is a valid state of this fst")
+                        .expect("state confirmed final via is_final")
+                        .value()
+                        != 0.0
+                {
                     return true;
                 }
             }
@@ -855,12 +904,18 @@ mod construction_io {
             let mut t = t.clone();
             let states: Vec<StateId> = t.states_iter().collect();
             for s in states {
-                if t.is_final(s).unwrap() {
+                if t.is_final(s).expect("s is a valid state of this fst") {
                     if increment {
-                        let old_weight = *t.final_weight(s).unwrap().unwrap().value();
-                        t.set_final(s, weight + old_weight).unwrap();
+                        let old_weight = *t
+                            .final_weight(s)
+                            .expect("s is a valid state of this fst")
+                            .expect("state confirmed final via is_final")
+                            .value();
+                        t.set_final(s, weight + old_weight)
+                            .expect("s is a valid state of this fst");
                     } else {
-                        t.set_final(s, weight).unwrap();
+                        t.set_final(s, weight)
+                            .expect("s is a valid state of this fst");
                     }
                 }
             }
@@ -873,18 +928,23 @@ mod construction_io {
             let mut t = t.clone();
             let states: Vec<StateId> = t.states_iter().collect();
             for s in states {
-                if t.is_final(s).unwrap() {
-                    let v = *t.final_weight(s).unwrap().unwrap().value();
-                    t.set_final(s, func(v)).unwrap();
+                if t.is_final(s).expect("s is a valid state of this fst") {
+                    let v = *t
+                        .final_weight(s)
+                        .expect("s is a valid state of this fst")
+                        .expect("state confirmed final via is_final")
+                        .value();
+                    t.set_final(s, func(v))
+                        .expect("s is a valid state of this fst");
                 }
-                let trs = t.pop_trs(s).unwrap();
+                let trs = t.pop_trs(s).expect("s is a valid state of this fst");
                 for arc in trs {
                     let nw = func(*arc.weight.value());
                     t.add_tr(
                         s,
                         StdTransition::new(arc.ilabel, arc.olabel, nw, arc.nextstate),
                     )
-                    .unwrap();
+                    .expect("transition re-added to a state of this fst");
                 }
             }
             t
@@ -896,8 +956,10 @@ mod construction_io {
             let mut t_copy = t.clone();
             let states: Vec<StateId> = t_copy.states_iter().collect();
             for s in states {
-                if t_copy.is_final(s).unwrap() {
-                    t_copy.set_final(s, f).unwrap();
+                if t_copy.is_final(s).expect("s is a valid state of this fst") {
+                    t_copy
+                        .set_final(s, f)
+                        .expect("s is a valid state of this fst");
                 }
             }
             t_copy
@@ -950,7 +1012,8 @@ mod construction_io {
 
             // Add initial state that is numbered as zero.
             let initial_state = Self::add_and_map_state(&mut t, 0, &mut state_map);
-            t.set_start(initial_state).unwrap();
+            t.set_start(initial_state)
+                .expect("state just created by add_and_map_state");
 
             loop {
                 let line_str = match crate::io_utils::read_line_lossy(ifile) {
@@ -981,7 +1044,8 @@ mod construction_io {
                     // final state line
                     let final_number = parse_att_int(toks[0]);
                     let final_state = Self::add_and_map_state(&mut t, final_number, &mut state_map);
-                    t.set_final(final_state, weight).unwrap();
+                    t.set_final(final_state, weight)
+                        .expect("state just created by add_and_map_state");
                 } else if n == 4 || n == 5 {
                     // transition line
                     let origin_number = parse_att_int(toks[0]);
@@ -998,7 +1062,7 @@ mod construction_io {
                         origin_state,
                         StdTransition::new(input_number, output_number, weight, target_state),
                     )
-                    .unwrap();
+                    .expect("transition added between states mapped by add_and_map_state");
                 } else {
                     // line could not be parsed
                     let message = line_str.to_string();
@@ -1016,7 +1080,11 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.insert-to-alphabet-fn]
         pub fn insert_to_alphabet(t: &mut StdVectorFst, symbol: &str) {
             assert!(t.input_symbols().is_some());
-            let mut st = t.input_symbols().unwrap().as_ref().clone();
+            let mut st = t
+                .input_symbols()
+                .expect("input symbols present: asserted above")
+                .as_ref()
+                .clone();
             st.add_symbol(symbol);
             t.set_input_symbols(Arc::new(st));
         }
@@ -1025,7 +1093,11 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.remove-from-alphabet-fn]
         pub fn remove_from_alphabet(t: &mut StdVectorFst, symbol: &str) {
             assert!(t.input_symbols().is_some());
-            let old = t.input_symbols().unwrap().as_ref().clone();
+            let old = t
+                .input_symbols()
+                .expect("input symbols present: asserted above")
+                .as_ref()
+                .clone();
             let mut st = SymbolTable::empty();
             for (_label, sym) in old.iter() {
                 if sym != symbol {
@@ -1043,7 +1115,9 @@ mod construction_io {
         pub fn get_alphabet(t: &StdVectorFst) -> StringSet {
             assert!(t.input_symbols().is_some());
             let mut s = StringSet::new();
-            let st = t.input_symbols().unwrap();
+            let st = t
+                .input_symbols()
+                .expect("input symbols present: asserted above");
             for (_l, sym) in st.iter() {
                 s.insert(crate::hfst_data_types::Symbol::new(sym));
             }
@@ -1059,12 +1133,16 @@ mod construction_io {
             symbols: &mut StringSet,
         ) {
             visited_states.insert(s);
-            let trs: Vec<StdTransition> = t.get_trs(s).unwrap().trs().to_vec();
+            let trs: Vec<StdTransition> = t
+                .get_trs(s)
+                .expect("s is a valid state of this fst")
+                .trs()
+                .to_vec();
             for arc in &trs {
                 assert!(t.input_symbols().is_some());
                 let sym = t
                     .input_symbols()
-                    .unwrap()
+                    .expect("input symbols present: asserted above")
                     .get_symbol(arc.ilabel)
                     .unwrap_or("")
                     .to_string();
@@ -1100,12 +1178,16 @@ mod construction_io {
             symbols: &mut StringSet,
         ) {
             visited_states.insert(s);
-            let trs: Vec<StdTransition> = t.get_trs(s).unwrap().trs().to_vec();
+            let trs: Vec<StdTransition> = t
+                .get_trs(s)
+                .expect("s is a valid state of this fst")
+                .trs()
+                .to_vec();
             for arc in &trs {
                 assert!(t.input_symbols().is_some());
                 let sym = t
                     .input_symbols()
-                    .unwrap()
+                    .expect("input symbols present: asserted above")
                     .get_symbol(arc.ilabel)
                     .unwrap_or("")
                     .to_string();
@@ -1114,7 +1196,7 @@ mod construction_io {
                 if !FdOperation::is_diacritic(&sym) && arc.ilabel != 0 {
                     symbols.insert(crate::hfst_data_types::Symbol::new(
                         t.input_symbols()
-                            .unwrap()
+                            .expect("input symbols present: asserted above")
                             .get_symbol(arc.ilabel)
                             .unwrap_or(""),
                     ));
@@ -1131,7 +1213,9 @@ mod construction_io {
             if t.num_states() == 0 {
                 return symbols;
             }
-            let s = t.start().unwrap();
+            let s = t
+                .start()
+                .expect("start state present: num_states checked nonzero above");
             let mut visited_states: BTreeSet<StateId> = BTreeSet::new();
             Self::get_first_input_symbols_rec(t, s, &mut visited_states, &mut symbols);
             symbols
@@ -1141,7 +1225,11 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-symbol-number-fn]
         pub fn get_symbol_number(t: &StdVectorFst, symbol: &str) -> crate::error::Result<u32> {
             assert!(t.input_symbols().is_some());
-            match t.input_symbols().unwrap().get_label(symbol) {
+            match t
+                .input_symbols()
+                .expect("input symbols present: asserted above")
+                .get_label(symbol)
+            {
                 None => crate::bail!(SymbolNotFound),
                 Some(i) => Ok(i),
             }
@@ -1151,7 +1239,11 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-biggest-symbol-number-fn]
         pub fn get_biggest_symbol_number(t: &StdVectorFst) -> u32 {
             let mut biggest_number = 0u32;
-            for (label, _sym) in t.input_symbols().unwrap().iter() {
+            for (label, _sym) in t
+                .input_symbols()
+                .expect("transducer has an input symbol table")
+                .iter()
+            {
                 if label > biggest_number {
                     biggest_number = label;
                 }
@@ -1182,10 +1274,12 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.create-mapping-fn]
         pub fn create_mapping(t1: &StdVectorFst, t2: &StdVectorFst) -> NumberNumberMap {
             let mut km = NumberNumberMap::new();
-            let st1 = t1.input_symbols().unwrap();
-            let st2 = t2.input_symbols().unwrap();
+            let st1 = t1.input_symbols().expect("t1 has an input symbol table");
+            let st2 = t2.input_symbols().expect("t2 has an input symbol table");
             for (label, sym) in st1.iter() {
-                let mapped = st2.get_label(sym).unwrap();
+                let mapped = st2
+                    .get_label(sym)
+                    .expect("symbol of t1 is also present in t2's symbol table");
                 km.insert(label, mapped);
             }
             km
@@ -1196,13 +1290,13 @@ mod construction_io {
         pub fn recode_symbol_numbers(t: &mut StdVectorFst, km: &mut NumberNumberMap) {
             let states: Vec<StateId> = t.states_iter().collect();
             for s in states {
-                let trs = t.pop_trs(s).unwrap();
+                let trs = t.pop_trs(s).expect("s is a valid state of this fst");
                 for arc in trs {
                     // C++ 'km[label]' inserts 0 for a missing key.
                     let il = *km.entry(arc.ilabel).or_insert(0);
                     let ol = *km.entry(arc.olabel).or_insert(0);
                     t.add_tr(s, StdTransition::new(il, ol, arc.weight, arc.nextstate))
-                        .unwrap();
+                        .expect("transition re-added to a state of this fst");
                 }
             }
         }
@@ -1225,7 +1319,7 @@ mod construction_io {
         pub fn print_alphabet(t: &StdVectorFst) {
             let line: String = t
                 .input_symbols()
-                .unwrap()
+                .expect("transducer has an input symbol table")
                 .iter()
                 .map(|(_l, sym)| format!("'{}', ", sym))
                 .collect();
@@ -1236,7 +1330,9 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-flag-diacritics-fn]
         pub fn get_flag_diacritics(t: &StdVectorFst) -> FdTable<i64> {
             let mut table: FdTable<i64> = FdTable::new();
-            let symbols = t.input_symbols().unwrap();
+            let symbols = t
+                .input_symbols()
+                .expect("transducer has an input symbol table");
             for (label, sym) in symbols.iter() {
                 if FdOperation::is_diacritic(sym) {
                     table.define_diacritic(label as i64, sym);
@@ -1262,19 +1358,33 @@ mod construction_io {
                 let result_s = s;
 
                 if t.start() == Some(s) {
-                    result.set_start(result_s).unwrap();
+                    result
+                        .set_start(result_s)
+                        .expect("result_s is a state created above in result");
                 }
-                if t.is_final(s).unwrap() {
-                    let fw = *t.final_weight(s).unwrap().unwrap().value();
-                    result.set_final(result_s, fw).unwrap();
+                if t.is_final(s).expect("s is a valid state of this fst") {
+                    let fw = *t
+                        .final_weight(s)
+                        .expect("s is a valid state of this fst")
+                        .expect("state confirmed final via is_final")
+                        .value();
+                    result
+                        .set_final(result_s, fw)
+                        .expect("result_s is a state created above in result");
                 }
 
-                let trs: Vec<StdTransition> = t.get_trs(s).unwrap().trs().to_vec();
+                let trs: Vec<StdTransition> = t
+                    .get_trs(s)
+                    .expect("s is a valid state of this fst")
+                    .trs()
+                    .to_vec();
                 for arc in &trs {
                     let result_nextstate = arc.nextstate;
 
                     if unknown_symbols_in_use {
-                        let is = t.input_symbols().unwrap();
+                        let is = t
+                            .input_symbols()
+                            .expect("transducer has an input symbol table");
 
                         if arc.ilabel == 1 && arc.olabel == 1 {
                             // cross-product "?:?"
@@ -1299,7 +1409,7 @@ mod construction_io {
                                                             result_nextstate,
                                                         ),
                                                     )
-                                                    .unwrap();
+                                                    .expect("transition added to result_s created above in result");
                                             }
                                         }
                                     }
@@ -1313,7 +1423,9 @@ mod construction_io {
                                                 result_nextstate,
                                             ),
                                         )
-                                        .unwrap();
+                                        .expect(
+                                            "transition added to result_s created above in result",
+                                        );
                                     result
                                         .add_tr(
                                             result_s,
@@ -1324,7 +1436,9 @@ mod construction_io {
                                                 result_nextstate,
                                             ),
                                         )
-                                        .unwrap();
+                                        .expect(
+                                            "transition added to result_s created above in result",
+                                        );
                                 }
                             }
                         } else if arc.ilabel == 2 || arc.olabel == 2 {
@@ -1344,7 +1458,9 @@ mod construction_io {
                                                 result_nextstate,
                                             ),
                                         )
-                                        .unwrap();
+                                        .expect(
+                                            "transition added to result_s created above in result",
+                                        );
                                 }
                             }
                         } else if arc.ilabel == 1 {
@@ -1364,7 +1480,9 @@ mod construction_io {
                                                 result_nextstate,
                                             ),
                                         )
-                                        .unwrap();
+                                        .expect(
+                                            "transition added to result_s created above in result",
+                                        );
                                 }
                             }
                         } else if arc.olabel == 1 {
@@ -1384,7 +1502,9 @@ mod construction_io {
                                                 result_nextstate,
                                             ),
                                         )
-                                        .unwrap();
+                                        .expect(
+                                            "transition added to result_s created above in result",
+                                        );
                                 }
                             }
                         }
@@ -1401,7 +1521,7 @@ mod construction_io {
                                 result_nextstate,
                             ),
                         )
-                        .unwrap();
+                        .expect("transition added to result_s created above in result");
                 }
             }
 
@@ -1437,7 +1557,11 @@ mod construction_io {
             }
 
             // 2. add new symbols from t1 to t2's symbol table...
-            let mut st2 = t2.input_symbols().unwrap().as_ref().clone();
+            let mut st2 = t2
+                .input_symbols()
+                .expect("t2 has an input symbol table")
+                .as_ref()
+                .clone();
             for it in unknown_t2.iter() {
                 if st2.add_symbol(it.as_str()) < 3 {
                     tracing::error!("string {} got strange number", it);
@@ -1461,7 +1585,9 @@ mod construction_io {
                 t1
             } else {
                 let mut h = Self::expand_arcs(&t1, &mut unknown_t1, unknown_symbols_in_use);
-                h.set_input_symbols(Arc::clone(t1.input_symbols().unwrap()));
+                h.set_input_symbols(Arc::clone(
+                    t1.input_symbols().expect("t1 symbol table set above"),
+                ));
                 h
             };
 
@@ -1469,7 +1595,9 @@ mod construction_io {
                 t2
             } else {
                 let mut h = Self::expand_arcs(&t2, &mut unknown_t2, unknown_symbols_in_use);
-                h.set_input_symbols(Arc::clone(t2.input_symbols().unwrap()));
+                h.set_input_symbols(Arc::clone(
+                    t2.input_symbols().expect("t2 symbol table set above"),
+                ));
                 h
             };
 
@@ -1482,7 +1610,7 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.is-automaton-fn]
         pub fn is_automaton(t: &StdVectorFst) -> bool {
             for s in t.states_iter() {
-                for arc in t.get_trs(s).unwrap().trs() {
+                for arc in t.get_trs(s).expect("s is a valid state of this fst").trs() {
                     if arc.ilabel != arc.olabel {
                         return false;
                     }
@@ -1510,7 +1638,7 @@ mod construction_io {
         pub fn number_of_arcs(t: &StdVectorFst) -> u32 {
             let mut retval = 0u32;
             for s in t.states_iter() {
-                retval += t.num_trs(s).unwrap() as u32;
+                retval += t.num_trs(s).expect("s is a valid state of this fst") as u32;
             }
             retval
         }
@@ -1522,7 +1650,8 @@ mod construction_io {
         pub fn add_state(t: &mut StdVectorFst) -> StateId {
             let s = t.add_state();
             if s == 0 {
-                t.set_start(s).unwrap();
+                t.set_start(s)
+                    .expect("start state just created by add_state");
             }
             s
         }
@@ -1530,7 +1659,8 @@ mod construction_io {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.set-final-weight-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.set-final-weight-fn]
         pub fn set_final_weight(t: &mut StdVectorFst, s: StateId, w: f32) {
-            t.set_final(s, w).unwrap();
+            t.set_final(s, w)
+                .expect("s is a valid state obtained from add_state");
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.add-transition-fn]
@@ -1543,11 +1673,15 @@ mod construction_io {
             w: f32,
             target: StateId,
         ) {
-            let mut st = t.input_symbols().unwrap().as_ref().clone();
+            let mut st = t
+                .input_symbols()
+                .expect("transducer has an input symbol table")
+                .as_ref()
+                .clone();
             let ilabel = st.add_symbol(isymbol);
             let olabel = st.add_symbol(osymbol);
             t.add_tr(source, StdTransition::new(ilabel, olabel, w, target))
-                .unwrap();
+                .expect("source is a valid state of this fst");
             t.set_input_symbols(Arc::new(st));
         }
 
@@ -1556,7 +1690,7 @@ mod construction_io {
         pub fn get_final_weight(t: &StdVectorFst, s: StateId) -> f32 {
             // C++ 't->Final(s).Value()' — Zero().Value() is +inf for a non-final state.
             t.final_weight(s)
-                .unwrap()
+                .expect("s is a valid state of this fst")
                 .map(|w| *w.value())
                 .unwrap_or(f32::INFINITY)
         }
@@ -2037,9 +2171,12 @@ mod operations {
             t: &'a mut StdVectorFst,
             spv: &StringPairVector,
         ) -> &'a mut StdVectorFst {
-            let mut st: SymbolTable = (**t.input_symbols().unwrap()).clone();
+            let mut st: SymbolTable = (**t
+                .input_symbols()
+                .expect("transducer has an input symbol table"))
+            .clone();
 
-            let mut s = t.start().unwrap();
+            let mut s = t.start().expect("input transducer has a start state");
 
             for it in spv {
                 let inumber = st.add_symbol(it.0.as_str());
@@ -2047,7 +2184,7 @@ mod operations {
 
                 let mut transition_found = false;
                 let mut next: StateId = 0;
-                for a in t.get_trs(s).unwrap().trs() {
+                for a in t.get_trs(s).expect("s is a valid state of this fst").trs() {
                     if a.ilabel == inumber && a.olabel == onumber {
                         transition_found = true;
                         next = a.nextstate;
@@ -2063,12 +2200,13 @@ mod operations {
                         s,
                         StdTransition::new(inumber, onumber, TropicalWeight::new(0.0), new_state),
                     )
-                    .unwrap();
+                    .expect("transition added to a valid state of this fst");
                     s = new_state;
                 }
             }
 
-            t.set_final(s, TropicalWeight::new(0.0)).unwrap();
+            t.set_final(s, TropicalWeight::new(0.0))
+                .expect("s is a valid state of this fst");
 
             t.set_input_symbols(std::sync::Arc::new(st));
             t
@@ -2078,7 +2216,7 @@ mod operations {
             t: &'a mut StdVectorFst,
             npv: &NumberPairVector,
         ) -> &'a mut StdVectorFst {
-            let mut s = t.start().unwrap();
+            let mut s = t.start().expect("input transducer has a start state");
 
             for it in npv {
                 let inumber = it.0;
@@ -2086,7 +2224,7 @@ mod operations {
 
                 let mut transition_found = false;
                 let mut next: StateId = 0;
-                for a in t.get_trs(s).unwrap().trs() {
+                for a in t.get_trs(s).expect("s is a valid state of this fst").trs() {
                     if a.ilabel == inumber && a.olabel == onumber {
                         transition_found = true;
                         next = a.nextstate;
@@ -2102,12 +2240,13 @@ mod operations {
                         s,
                         StdTransition::new(inumber, onumber, TropicalWeight::new(0.0), new_state),
                     )
-                    .unwrap();
+                    .expect("transition added to a valid state of this fst");
                     s = new_state;
                 }
             }
 
-            t.set_final(s, TropicalWeight::new(0.0)).unwrap();
+            t.set_final(s, TropicalWeight::new(0.0))
+                .expect("s is a valid state of this fst");
             t
         }
 
@@ -2117,8 +2256,8 @@ mod operations {
             t1: &'a mut StdVectorFst,
             t2: &StdVectorFst,
         ) -> &'a mut StdVectorFst {
-            let t1_state = t1.start().unwrap();
-            let t2_state = t2.start().unwrap();
+            let t1_state = t1.start().expect("t1 has a start state");
+            let t2_state = t2.start().expect("t2 has a start state");
             TropicalWeightTransducer::disjunct_as_tries(t1, t1_state, t2, t2_state);
             t1
         }
@@ -2195,15 +2334,25 @@ mod operations {
             let mut t2_copy = TropicalWeightTransducer::copy(&t2);
 
             for s in 0..t2_copy.num_states() as StateId {
-                let ntrs = t2_copy.get_trs(s).unwrap().trs().len();
+                let ntrs = t2_copy
+                    .get_trs(s)
+                    .expect("s is a valid state of this fst")
+                    .trs()
+                    .len();
                 {
-                    let mut aiter = t2_copy.tr_iter_mut(s).unwrap();
+                    let mut aiter = t2_copy
+                        .tr_iter_mut(s)
+                        .expect("s is a valid state of this fst");
                     for i in 0..ntrs {
-                        aiter.set_weight(i, TropicalWeight::new(0.0)).unwrap();
+                        aiter
+                            .set_weight(i, TropicalWeight::new(0.0))
+                            .expect("i is within the transition count of this state");
                     }
                 }
-                if t2_copy.is_final(s).unwrap() {
-                    t2_copy.set_final(s, TropicalWeight::new(0.0)).unwrap();
+                if t2_copy.is_final(s).expect("s is a valid state of this fst") {
+                    t2_copy
+                        .set_final(s, TropicalWeight::new(0.0))
+                        .expect("s is a valid state of this fst");
                 }
             }
 
@@ -2276,7 +2425,7 @@ mod operations {
             olabel: u32,
         ) -> Option<usize> {
             t.get_trs(sourcestate)
-                .unwrap()
+                .expect("sourcestate is a valid state of this fst")
                 .trs()
                 .iter()
                 .position(|a| a.ilabel == ilabel && a.olabel == olabel)
@@ -2290,16 +2439,29 @@ mod operations {
             t2: &StdVectorFst,
             t2_state: StateId,
         ) {
-            if t2.is_final(t2_state).unwrap() {
+            if t2
+                .is_final(t2_state)
+                .expect("t2_state is a valid state of t2")
+            {
                 let t1_final = t1
                     .final_weight(t1_state)
-                    .unwrap()
+                    .expect("t1_state is a valid state of t1")
                     .unwrap_or_else(TropicalWeight::zero);
-                let t2_final = t2.final_weight(t2_state).unwrap().unwrap();
-                t1.set_final(t1_state, t1_final.plus(&t2_final).unwrap())
-                    .unwrap();
+                let t2_final = t2
+                    .final_weight(t2_state)
+                    .expect("t2_state is a valid state of t2")
+                    .expect("t2_state confirmed final via is_final");
+                t1.set_final(
+                    t1_state,
+                    t1_final.plus(&t2_final).expect("tropical plus is total"),
+                )
+                .expect("t1_state is a valid state of t1");
             }
-            let trs = t2.get_trs(t2_state).unwrap().trs().to_vec();
+            let trs = t2
+                .get_trs(t2_state)
+                .expect("t2_state is a valid state of t2")
+                .trs()
+                .to_vec();
             for arc in &trs {
                 match TropicalWeightTransducer::has_arc(t1, t1_state, arc.ilabel, arc.olabel) {
                     None => {
@@ -2337,23 +2499,36 @@ mod operations {
             t2: &StdVectorFst,
             t2_state: StateId,
         ) {
-            if t2.is_final(t2_state).unwrap() {
+            if t2
+                .is_final(t2_state)
+                .expect("t2_state is a valid state of t2")
+            {
                 let t1_final = t1
                     .final_weight(t1_state)
-                    .unwrap()
+                    .expect("t1_state is a valid state of t1")
                     .unwrap_or_else(TropicalWeight::zero);
-                let t2_final = t2.final_weight(t2_state).unwrap().unwrap();
-                t1.set_final(t1_state, t1_final.plus(&t2_final).unwrap())
-                    .unwrap();
+                let t2_final = t2
+                    .final_weight(t2_state)
+                    .expect("t2_state is a valid state of t2")
+                    .expect("t2_state confirmed final via is_final");
+                t1.set_final(
+                    t1_state,
+                    t1_final.plus(&t2_final).expect("tropical plus is total"),
+                )
+                .expect("t1_state is a valid state of t1");
             }
-            let trs = t2.get_trs(t2_state).unwrap().trs().to_vec();
+            let trs = t2
+                .get_trs(t2_state)
+                .expect("t2_state is a valid state of t2")
+                .trs()
+                .to_vec();
             for arc in &trs {
                 let new_state = t1.add_state();
                 t1.add_tr(
                     t1_state,
                     StdTransition::new(arc.ilabel, arc.olabel, arc.weight.clone(), new_state),
                 )
-                .unwrap();
+                .expect("transition added to t1_state targeting the state just added");
                 TropicalWeightTransducer::add_sub_trie(t1, new_state, t2, arc.nextstate);
             }
         }
@@ -2418,9 +2593,12 @@ mod lookup_extract_misc {
         *path_visitations.entry(s).or_insert(0) += 1;
 
         if !spv.is_empty() {
-            let is_final = t.is_final(s).unwrap();
+            let is_final = t.is_final(s).expect("s is a valid state of this fst");
             let fw = if is_final {
-                *t.final_weight(s).unwrap().unwrap().value()
+                *t.final_weight(s)
+                    .expect("s is a valid state of this fst")
+                    .expect("state confirmed final via is_final")
+                    .value()
             } else {
                 0.0
             };
@@ -2437,7 +2615,7 @@ mod lookup_extract_misc {
 
         // sort arcs by number of visitations (stable insertion sort, ascending)
         let mut arcs: Vec<StdTransition> = Vec::new();
-        for a in t.get_trs(s).unwrap().trs() {
+        for a in t.get_trs(s).expect("s is a valid state of this fst").trs() {
             let mut i = 0usize;
             while i < arcs.len() {
                 let av_a = *all_visitations.get(&a.nextstate).unwrap_or(&0);
@@ -2459,16 +2637,16 @@ mod lookup_extract_misc {
             if let Some(stack) = fd_state_stack.as_deref_mut() {
                 if stack
                     .last()
-                    .unwrap()
+                    .expect("fd state stack is non-empty")
                     .get_table()
                     .get_operation(arc.ilabel as i64)
                     .is_some()
                 {
-                    let top = stack.last().unwrap().clone();
+                    let top = stack.last().expect("fd state stack is non-empty").clone();
                     stack.push(top);
                     if stack
                         .last_mut()
-                        .unwrap()
+                        .expect("fd state stack is non-empty")
                         .apply_operation_symbol(arc.ilabel as i64)
                     {
                         added_fd_state = true;
@@ -2488,16 +2666,16 @@ mod lookup_extract_misc {
             if !filter_fd
                 || fd_state_stack
                     .as_deref()
-                    .unwrap()
+                    .expect("fd_state_stack present when filter_fd is set")
                     .last()
-                    .unwrap()
+                    .expect("fd state stack is non-empty")
                     .get_table()
                     .get_operation(arc.ilabel as i64)
                     .is_none()
             {
                 istring = crate::hfst_data_types::Symbol::new(
                     t.input_symbols()
-                        .unwrap()
+                        .expect("transducer has an input symbol table")
                         .get_symbol(arc.ilabel)
                         .unwrap_or(""),
                 );
@@ -2506,16 +2684,16 @@ mod lookup_extract_misc {
             if !filter_fd
                 || fd_state_stack
                     .as_deref()
-                    .unwrap()
+                    .expect("fd_state_stack present when filter_fd is set")
                     .last()
-                    .unwrap()
+                    .expect("fd state stack is non-empty")
                     .get_table()
                     .get_operation(arc.olabel as i64)
                     .is_none()
             {
                 ostring = crate::hfst_data_types::Symbol::new(
                     t.input_symbols()
-                        .unwrap()
+                        .expect("transducer has an input symbol table")
                         .get_symbol(arc.olabel)
                         .unwrap_or(""),
                 );
@@ -2539,7 +2717,10 @@ mod lookup_extract_misc {
             spv.pop();
 
             if added_fd_state {
-                fd_state_stack.as_deref_mut().unwrap().pop();
+                fd_state_stack
+                    .as_deref_mut()
+                    .expect("added_fd_state implies fd_state_stack is present")
+                    .pop();
             }
             idx += 1;
         }
@@ -2555,7 +2736,10 @@ mod lookup_extract_misc {
             None => return true, // C++: start_state < 0
             Some(s) => s,
         };
-        t.get_trs(start_state).unwrap().trs().is_empty()
+        t.get_trs(start_state)
+            .expect("start_state is a valid state of this fst")
+            .trs()
+            .is_empty()
     }
 
     // Tiny op-local xorshift PRNG replacing the C 'rand()'/'srand()' that the
@@ -2601,9 +2785,13 @@ mod lookup_extract_misc {
             first: 0.0,
             second: StringPairVector::new(),
         };
-        let mut current_state = t.start().unwrap();
+        let mut current_state = t
+            .start()
+            .expect("start state present: non-empty checked above");
 
-        let is_epsilon_path_accepted = t.is_final(t.start().unwrap()).unwrap();
+        let is_epsilon_path_accepted = t
+            .is_final(current_state)
+            .expect("start state is a valid state of this fst");
 
         let mut last_index: i32 = 0;
 
@@ -2614,8 +2802,11 @@ mod lookup_extract_misc {
         loop {
             visited[current_state as usize] = 1;
 
-            let mut t_transitions: Vec<StdTransition> =
-                t.get_trs(current_state).unwrap().trs().to_vec();
+            let mut t_transitions: Vec<StdTransition> = t
+                .get_trs(current_state)
+                .expect("current_state is a valid state of this fst")
+                .trs()
+                .to_vec();
 
             /* If we cannot proceed, return the longest path so far. */
             if t_transitions.is_empty() || broken[current_state as usize] != 0 {
@@ -2643,13 +2834,13 @@ mod lookup_extract_misc {
                 path.second.push((
                     crate::hfst_data_types::Symbol::new(
                         t.input_symbols()
-                            .unwrap()
+                            .expect("tropical transducer has an input symbol table")
                             .get_symbol(arc.ilabel)
                             .unwrap_or(""),
                     ),
                     crate::hfst_data_types::Symbol::new(
                         t.input_symbols()
-                            .unwrap()
+                            .expect("tropical transducer has an input symbol table")
                             .get_symbol(arc.olabel)
                             .unwrap_or(""),
                     ),
@@ -2657,10 +2848,16 @@ mod lookup_extract_misc {
                 path.first += *arc.weight.value();
 
                 /* If the target state is final, */
-                if t.is_final(t_target).unwrap() {
+                if t.is_final(t_target)
+                    .expect("t_target is a valid state of this fst")
+                {
                     if (rng.next() % 4) == 0 {
                         // randomly return the path so far,
-                        path.first += *t.final_weight(t_target).unwrap().unwrap().value();
+                        path.first += *t
+                            .final_weight(t_target)
+                            .expect("t_target is a valid state of this fst")
+                            .expect("t_target confirmed final via is_final")
+                            .value();
                         if !is_epsilon_path_accepted && path.second.is_empty() {
                             return Err(RandomPathError::NoPath);
                         }
@@ -2732,7 +2929,9 @@ mod lookup_extract_misc {
             let path_visitations: BTreeMap<StateId, u16> = BTreeMap::new();
             let mut fd_state_stack: Option<Vec<FdState<i64>>> = fd.map(|fd| vec![FdState::new(fd)]);
 
-            let start = t.start().unwrap();
+            let start = t
+                .start()
+                .expect("start state present: is_none checked above");
             let mut spv = StringPairVector::new();
             extract_paths(
                 t,
@@ -2748,9 +2947,16 @@ mod lookup_extract_misc {
             );
 
             // add epsilon path, if needed
-            if t.start().is_some() && t.is_final(start).unwrap() {
+            if t.start().is_some()
+                && t.is_final(start)
+                    .expect("start is a valid state of this fst")
+            {
                 let mut epsilon_path = HfstTwoLevelPath {
-                    first: *t.final_weight(start).unwrap().unwrap().value(),
+                    first: *t
+                        .final_weight(start)
+                        .expect("start is a valid state of this fst")
+                        .expect("start confirmed final via is_final")
+                        .value(),
                     second: StringPairVector::new(),
                 };
                 callback.operator_call(&mut epsilon_path, true /* final */);
@@ -2851,7 +3057,7 @@ mod lookup_extract_misc {
             let mut result = t.clone();
             let states: Vec<StateId> = result.states_iter().collect();
             for s in states {
-                let trs = result.pop_trs(s).unwrap();
+                let trs = result.pop_trs(s).expect("s is a valid state of this fst");
                 let mut nt: Vec<StdTransition> = Vec::with_capacity(trs.len());
                 for mut a in trs {
                     if a.ilabel == old_number {
@@ -2863,7 +3069,9 @@ mod lookup_extract_misc {
                     nt.push(a);
                 }
                 for a in nt {
-                    result.add_tr(s, a).unwrap();
+                    result
+                        .add_tr(s, a)
+                        .expect("transition re-added to a state of this fst");
                 }
             }
             result
@@ -2881,7 +3089,7 @@ mod lookup_extract_misc {
             let mut result = t.clone();
             let states: Vec<StateId> = result.states_iter().collect();
             for s in states {
-                let trs = result.pop_trs(s).unwrap();
+                let trs = result.pop_trs(s).expect("s is a valid state of this fst");
                 let mut nt: Vec<StdTransition> = Vec::with_capacity(trs.len());
                 for mut a in trs {
                     if a.ilabel == old_number_pair.0 && a.olabel == old_number_pair.1 {
@@ -2891,7 +3099,9 @@ mod lookup_extract_misc {
                     nt.push(a);
                 }
                 for a in nt {
-                    result.add_tr(s, a).unwrap();
+                    result
+                        .add_tr(s, a)
+                        .expect("transition re-added to a state of this fst");
                 }
             }
             result
@@ -2904,7 +3114,10 @@ mod lookup_extract_misc {
             new_symbol: String,
         ) -> StdVectorFst {
             // assert(t->InputSymbols() != NULL);
-            let mut st = (**t.input_symbols().unwrap()).clone();
+            let mut st = (**t
+                .input_symbols()
+                .expect("transducer has an input symbol table"))
+            .clone();
             let old_l = st.add_symbol(old_symbol.as_str());
             let new_l = st.add_symbol(new_symbol.as_str());
             let mut retval = Self::substitute_number(t, old_l, new_l);
@@ -2919,7 +3132,10 @@ mod lookup_extract_misc {
             new_symbol_pair: StringPair,
         ) -> StdVectorFst {
             // assert(t->InputSymbols() != NULL);
-            let mut st = (**t.input_symbols().unwrap()).clone();
+            let mut st = (**t
+                .input_symbols()
+                .expect("transducer has an input symbol table"))
+            .clone();
             let old_pair: NumberPair = (
                 st.add_symbol(old_symbol_pair.0.as_str()),
                 st.add_symbol(old_symbol_pair.1.as_str()),
@@ -2940,11 +3156,14 @@ mod lookup_extract_misc {
             new_symbol_pair_set: StringPairSet,
         ) -> StdVectorFst {
             let mut tc = t.clone();
-            let mut st = (**tc.input_symbols().unwrap()).clone();
+            let mut st = (**tc
+                .input_symbols()
+                .expect("transducer has an input symbol table"))
+            .clone();
             // assert(st != NULL);
             let states: Vec<StateId> = tc.states_iter().collect();
             for s in states {
-                let trs = tc.pop_trs(s).unwrap();
+                let trs = tc.pop_trs(s).expect("s is a valid state of this fst");
                 let mut nt: Vec<StdTransition> = Vec::new();
                 for arc in trs {
                     let isym = st.get_symbol(arc.ilabel).unwrap_or("").to_string();
@@ -2972,7 +3191,8 @@ mod lookup_extract_misc {
                     }
                 }
                 for a in nt {
-                    tc.add_tr(s, a).unwrap();
+                    tc.add_tr(s, a)
+                        .expect("transition re-added to a state of this fst");
                 }
             }
             tc.set_input_symbols(Arc::new(st));
@@ -2989,13 +3209,16 @@ mod lookup_extract_misc {
         ) -> StdVectorFst {
             // assert(t->InputSymbols() != NULL);
             let mut result = t.clone();
-            let mut st = (**result.input_symbols().unwrap()).clone();
+            let mut st = (**result
+                .input_symbols()
+                .expect("transducer has an input symbol table"))
+            .clone();
             let old_il = st.add_symbol(old_symbol_pair.0.as_str());
             let old_ol = st.add_symbol(old_symbol_pair.1.as_str());
 
             let states = result.num_states() as u32;
             for i in 0..states {
-                let trs = result.pop_trs(i).unwrap();
+                let trs = result.pop_trs(i).expect("i is a valid state of this fst");
                 let mut kept: Vec<StdTransition> = Vec::with_capacity(trs.len());
                 for mut arc in trs {
                     // find arcs that must be replaced
@@ -3021,17 +3244,27 @@ mod lookup_extract_misc {
                             // final states in tr correspond in t to a non-final
                             // state which has an epsilon transition to original
                             // destination state of arc that is being replaced
-                            if transducer.is_final(tr_state_id).unwrap() {
-                                let fw = transducer.final_weight(tr_state_id).unwrap().unwrap();
+                            if transducer
+                                .is_final(tr_state_id)
+                                .expect("tr_state_id is a valid state of transducer")
+                            {
+                                let fw = transducer
+                                    .final_weight(tr_state_id)
+                                    .expect("tr_state_id is a valid state of transducer")
+                                    .expect("tr_state_id confirmed final via is_final");
                                 result
                                     .add_tr(
                                         tr_state_id + start_state,
                                         StdTransition::new(0, 0, fw, destination_state),
                                     )
-                                    .unwrap();
+                                    .expect("transition added to a state created above in result");
                             }
 
-                            for tr_arc in transducer.get_trs(tr_state_id).unwrap().trs() {
+                            for tr_arc in transducer
+                                .get_trs(tr_state_id)
+                                .expect("tr_state_id is a valid state of transducer")
+                                .trs()
+                            {
                                 result
                                     .add_tr(
                                         tr_state_id + start_state,
@@ -3042,7 +3275,7 @@ mod lookup_extract_misc {
                                             tr_arc.nextstate + start_state,
                                         ),
                                     )
-                                    .unwrap();
+                                    .expect("transition added to a state created above in result");
                             }
                         }
                     } else {
@@ -3050,7 +3283,9 @@ mod lookup_extract_misc {
                     }
                 }
                 for a in kept {
-                    result.add_tr(i, a).unwrap();
+                    result
+                        .add_tr(i, a)
+                        .expect("transition re-added to a state of this fst");
                 }
             }
 
@@ -3068,7 +3303,7 @@ mod lookup_extract_misc {
 
             let states = result.num_states() as u32;
             for i in 0..states {
-                let trs = result.pop_trs(i).unwrap();
+                let trs = result.pop_trs(i).expect("i is a valid state of this fst");
                 let mut kept: Vec<StdTransition> = Vec::with_capacity(trs.len());
                 for mut arc in trs {
                     // find arcs that must be replaced
@@ -3087,17 +3322,27 @@ mod lookup_extract_misc {
                         }
 
                         for tr_state_id in transducer.states_iter() {
-                            if transducer.is_final(tr_state_id).unwrap() {
-                                let fw = transducer.final_weight(tr_state_id).unwrap().unwrap();
+                            if transducer
+                                .is_final(tr_state_id)
+                                .expect("tr_state_id is a valid state of transducer")
+                            {
+                                let fw = transducer
+                                    .final_weight(tr_state_id)
+                                    .expect("tr_state_id is a valid state of transducer")
+                                    .expect("tr_state_id confirmed final via is_final");
                                 result
                                     .add_tr(
                                         tr_state_id + start_state,
                                         StdTransition::new(0, 0, fw, destination_state),
                                     )
-                                    .unwrap();
+                                    .expect("transition added to a state created above in result");
                             }
 
-                            for tr_arc in transducer.get_trs(tr_state_id).unwrap().trs() {
+                            for tr_arc in transducer
+                                .get_trs(tr_state_id)
+                                .expect("tr_state_id is a valid state of transducer")
+                                .trs()
+                            {
                                 result
                                     .add_tr(
                                         tr_state_id + start_state,
@@ -3108,7 +3353,7 @@ mod lookup_extract_misc {
                                             tr_arc.nextstate + start_state,
                                         ),
                                     )
-                                    .unwrap();
+                                    .expect("transition added to a state created above in result");
                             }
                         }
                     } else {
@@ -3116,7 +3361,9 @@ mod lookup_extract_misc {
                     }
                 }
                 for a in kept {
-                    result.add_tr(i, a).unwrap();
+                    result
+                        .add_tr(i, a)
+                        .expect("transition re-added to a state of this fst");
                 }
             }
 
@@ -3130,7 +3377,10 @@ mod lookup_extract_misc {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.insert-freely-fn]
         pub fn insert_freely_string(t: &StdVectorFst, symbol_pair: &StringPair) -> StdVectorFst {
             let mut result = t.clone();
-            let mut st = (**result.input_symbols().unwrap()).clone();
+            let mut st = (**result
+                .input_symbols()
+                .expect("transducer has an input symbol table"))
+            .clone();
             // assert(st != NULL);
             let states: Vec<StateId> = result.states_iter().collect();
             for state_id in states {
@@ -3141,7 +3391,7 @@ mod lookup_extract_misc {
                         state_id,
                         StdTransition::new(il, ol, TropicalWeight::new(0.0), state_id),
                     )
-                    .unwrap();
+                    .expect("self-loop added to a valid state of this fst");
             }
             result.set_input_symbols(Arc::new(st));
             result

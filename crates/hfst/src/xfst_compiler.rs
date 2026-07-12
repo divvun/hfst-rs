@@ -914,7 +914,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return None;
         }
-        let retval = *self.stack.last().unwrap();
+        let retval = *self.stack.last().expect("stack non-empty, checked above");
         {
             let t = self.net(retval);
             if t.get_type() == ImplementationType::HFST_OL_TYPE
@@ -998,7 +998,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     fn print_transducer_info(&mut self) -> &mut Self {
         if self.verbose && !self.stack.is_empty() {
-            let top = *self.stack.last().unwrap();
+            let top = *self.stack.last().expect("stack non-empty, checked above");
             {
                 let t = self.net(top);
                 if t.get_type() != B::TYPE {
@@ -1114,7 +1114,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 // 'list NAME a-b' becomes a range; 'list NAME s1 s2 ...' a list.
                 if members.len() == 1 && members[0].contains('-') {
                     let m = &members[0];
-                    let idx = m.find('-').unwrap();
+                    let idx = m.find('-').expect("contains '-', checked above");
                     let start = &m[..idx];
                     let end = &m[idx + 1..];
                     self.define_list_by_range(name, start, end);
@@ -2263,7 +2263,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let _ = write!(
                 oss,
                 "{}\n",
-                paths.iter().next().unwrap().second.len() as i32
+                paths
+                    .iter()
+                    .next()
+                    .expect("paths non-empty, checked above")
+                    .second
+                    .len() as i32
             );
         }
         self.flush();
@@ -2649,7 +2654,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return self;
         }
-        let t = *self.stack.last().unwrap();
+        let t = *self.stack.last().expect("stack non-empty, checked above");
         self.net_mut(t).set_name(name);
         self.names.insert(Symbol::new(name), t);
         self.print_transducer_info();
@@ -2975,7 +2980,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let _ = write!(
                 oss,
                 "{}\n",
-                paths.iter().next().unwrap().second.len() as i32
+                paths
+                    .iter()
+                    .next()
+                    .expect("caller only invokes this for a non-cyclic, non-empty level")
+                    .second
+                    .len() as i32
             );
         } else {
             self.print_paths_two(paths, oss, 1);
@@ -3560,7 +3570,7 @@ fn to_filename(file: Option<&str>) -> &str {
     if file.is_none() {
         return "<stdin>";
     } else {
-        return file.unwrap();
+        return file.expect("file is Some, checked above");
     }
 }
 
@@ -4140,9 +4150,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         }
-        let result = *self.stack.last().unwrap();
+        let result = *self.stack.last().expect("stack has >= 2, checked above");
         self.stack.pop();
-        let another = *self.stack.last().unwrap();
+        let another = *self
+            .stack
+            .last()
+            .expect("stack still non-empty after one pop");
         self.stack.pop();
         let another_inner = self.net(another).clone();
 
@@ -4206,11 +4219,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         }
-        let result = *self.stack.last().unwrap();
+        let result = *self.stack.last().expect("stack has >= 2, checked above");
 
         self.stack.pop();
         while !self.stack.is_empty() {
-            let t = *self.stack.last().unwrap();
+            let t = *self.stack.last().expect("stack non-empty in this loop");
 
             let t_type = self.net(t).get_type();
             let result_type = self.net(result).get_type();
@@ -4457,7 +4470,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let t = *self.stack.last().unwrap();
+        let t = *self.stack.last().expect("stack non-empty, checked above");
         let t_op = t;
 
         let negated = self.net_mut(t_op).negate().map(|_| ());
@@ -4623,7 +4636,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 .index(*whole_path.last().expect("path is non-empty"))?
                 .clone();
             self.print_level(&whole_path, &shortest_path);
-            if net.is_final_state(*whole_path.last().unwrap()) {
+            if net.is_final_state(*whole_path.last().expect("path is non-empty")) {
                 print!(" (final)");
             }
             println!();
@@ -4856,7 +4869,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         whole_path.truncate(level as usize);
-        let state = *whole_path.last().unwrap();
+        let state = *whole_path
+            .last()
+            .expect("truncated to level >= 1, so non-empty");
         let mut idx: Option<usize> = None;
         for (i, it) in shortest_path.iter().enumerate() {
             if *it == state {
@@ -4881,14 +4896,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.contains-regexps-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.contains-regexps-fn]
     fn contains_regexps(xre: &mut XreCompiler<B>) -> HfstTransducer<B> {
-        let not_bracket_star = xre.compile("[? - \"^[\" - \"^]\"]* ;").unwrap(); // XRE
+        let not_bracket_star = xre
+            .compile("[? - \"^[\" - \"^]\"]* ;")
+            .expect("constant XRE literal compiles"); // XRE
         xre.define_transducer("TempNotBracketStar", &not_bracket_star); // XRE
         // all paths that contain one or more well-formed ^[ ^] expressions
         let well_formed = xre
             .compile(
                 "TempNotBracketStar \"^[\" TempNotBracketStar  [ \"^]\" TempNotBracketStar \"^[\"  TempNotBracketStar ]*  \"^]\" TempNotBracketStar ;",
             )
-            .unwrap();
+            .expect("constant XRE literal compiles");
         xre.undefine("TempNotBracketStar");
         well_formed
     }
@@ -4906,7 +4923,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             // output side
             xre.compile("[?:?|0:?|?:0]* [?:\"^[\" | ?:\"^]\" | 0:\"^[\" | 0:\"^]\"] [?:?|0:?|?:0]*")
         }
-        .unwrap()
+        .expect("constant XRE literal compiles")
     }
 
     // @pre \a t must be an automaton  XRE
@@ -4921,7 +4938,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let mut tc = HfstTransducer::new_copy(t)?;
         tc.subtract(&well_formed, true)?;
         // all paths that contain one or more ^[ or ^]
-        let brackets = xre.compile("$[ \"^[\" | \"^]\" ] ;").unwrap();
+        let brackets = xre
+            .compile("$[ \"^[\" | \"^]\" ] ;")
+            .expect("constant XRE literal compiles");
 
         // test if the result is empty
         tc.intersect(&brackets, true)?;
@@ -5026,7 +5045,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let t = *self.stack.last().unwrap();
+        let t = *self.stack.last().expect("stack non-empty, checked above");
         let t_type = self.net(t).get_type();
 
         let to_format: ImplementationType;
@@ -5065,7 +5084,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return Ok(self);
         }
-        let t = *self.stack.last().unwrap();
+        let t = *self.stack.last().expect("stack non-empty, checked above");
         let t_type = self.net(t).get_type();
 
         if t_type != ImplementationType::HFST_OL_TYPE
@@ -5134,7 +5153,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return Ok(self);
         }
-        let top = *self.stack.last().unwrap();
+        let top = *self.stack.last().expect("stack non-empty, checked above");
         // number of cycles needs to be limited for an infinitely ambiguous ol
         // transducer because it doesn't support
         // is_lookup_infinitely_ambiguous(const string &)
@@ -5329,7 +5348,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return Ok(self);
         }
-        let t = *self.stack.last().unwrap();
+        let t = *self.stack.last().expect("stack non-empty, checked above");
         // The OL fast-lookup tail is unreachable under a monomorphically
         // typed stack ([dec:hfst:monomorphic-backends]): 'B: AlgebraBackend'
         // excludes the OL backends, so this non-OL branch is always taken.
@@ -5528,7 +5547,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let top_type = self.net(*self.stack.last().unwrap()).get_type();
+        let top_type = self
+            .net(*self.stack.last().expect("stack non-empty, checked above"))
+            .get_type();
         let mut outstream = if !outfilename.is_empty() {
             HfstOutputStream::new_filename(outfilename, top_type, true)?
         } else {
@@ -6017,9 +6038,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         }
-        let first = *self.stack.last().unwrap();
+        let first = *self.stack.last().expect("stack has >= 2, checked above");
         self.stack.pop();
-        let second = *self.stack.last().unwrap();
+        let second = *self
+            .stack
+            .last()
+            .expect("stack still non-empty after one pop");
         self.stack.pop();
         let result = self.net(first).compare(self.net(second), false)?;
         self.print_bool(result);
