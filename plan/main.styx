@@ -2128,6 +2128,27 @@ children (
                         kind @note
                         text "Round-2 profile + rayon assessment: remaining top = dfs_visit ~12% (SccVisitor for ACYCLIC/connect/epsilon-cycle checks; C++ pays the same DFS — further cuts are beyond-parity algorithm consolidation), determinize compute_trs ~7% (subset arithmetic), set_trs_unchecked ~4%. Rayon: no dominant parallel target on the compile side (all loop-carried sequential graph algorithms; parallelizable scraps ≤2-3% each). The rayon-shaped win is per-line-parallel hfst lookup on a read-only transducer (divvunspell pattern); requires per-thread transducer state (OL lookup mutates internal scratch via the SAFETY-ISLAND const-cast) + order-preserving collect. Proposed, not implemented."
                     }
+
+                    {
+                        at 2026-07-16T12:48:44.024589Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-16T12:58:40.601801Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "2026-07-16: VERIFIED DONE in the current dependency pin. The named P0 deliverable — eliminate the O(n^2) rm_epsilon full distance-vector clone (was ~69%/two-thirds of the sma pmatch2fst profile) — is landed in the pinned rustfst fork commit 09011adf (necessary-nu/rustfst, branch fix/determinize-subset-canonicalization), via commit b24dcecd \"perf(rm_epsilon): stop cloning the full distance vector per expanded state\". Evidence: rm_epsilon/rm_epsilon_state.rs::expand now calls sd_state.shortest_distance_in_place() + distance_ref() (returns &W) instead of copying the distance vector out per state; shortest_distance.rs::shortest_distance_in_place reuses the retained self.distance buffer via .clear() (only individual O(1) weight clones remain); the in-code comment documents the fix. Sibling perf work also already landed in the pin: FxHash for order-insensitive hot tables (90046f89, ff3ea07a), determinize single-storage O(1) tuple lookup (7f94bcff). NB rustfst is now a git-dep fork, NOT a submodule (memory rustfst-now-editable is stale on the mechanism). Confirmed no pathological blowup on synthetic heavy pmatch2fst grammars (124-def grammar compiles in ~1.7s). Not re-profiled cleanly: this macOS host's samply run is wall-clock/kernel-dominated (50% libsystem_kernel = process spawn/teardown across iterations) and `sample`/dtrace symbolication is unreliable here. Any further hotspot-driven perf (e.g. the remaining per-arc `tr.clone()` at rm_epsilon_state.rs:72, marked TODO) should be a NEW node with a clean CPU profile as justification."
+                    }
+
+                    {
+                        at 2026-07-16T12:58:47.77958Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
         )
