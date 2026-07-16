@@ -3019,6 +3019,27 @@ children (
                             }
                         )
                     }
+
+                    {
+                        id upstream-bugs.t4.pmatch2fst-robustness
+                        title "PORT-FOUND (during rtn-pmc-panic, no upstream number): two pmatch2fst robustness defects surfaced by the RTN work — (A) `pmatch2fst --flatten` PANICS at build_statement's `Rc::get_mut(...).expect(\"freshly built node is uniquely owned\")` when an `Ins(X)` target is inlined as the entire body of another `Define` (the flatten branch of PE::Ins returns X's SHARED definition Rc, strong-count>1); fix = get_mut-or-skip the rename (aliased inline keeps its source name, only an eval-stack label). (B) `nfst_pmatch::parse` errors are SWALLOWED (`Err(_e) =>` in both PmatchCompiler::compile and the free compile()), so a reserved predefined-acceptor name (`Alpha`/`Whitespace`/...) used as a `Define` target — a real syntax error — surfaces only as the misleading downstream \"Empty ruleset, nothing to write\"; fix = format+emit the parser diagnostics. Both fixed + CLI regression tests."
+                        priority 4
+                        log (
+                            {
+                                at 2026-07-16T12:22:31.976986Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-16T12:22:35.890166Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
+                    }
                 )
             }
 

@@ -4911,6 +4911,22 @@ pub fn expand_includes<B: AlgebraBackend + 'static>(
     }
     retval
 }
+// Render a parser failure as human-readable text. The bison port used to
+// swallow 'nfst_pmatch::parse' errors and let compilation fall through to the
+// downstream "Empty ruleset, nothing to write" message, which hides the real
+// cause — e.g. a reserved predefined acceptor name (`Alpha`, `Whitespace`, ...)
+// used as a `Define` target ("expected definition name after `Define`").
+fn format_pmatch_parse_error(e: &nfst_pmatch::ParseError) -> String {
+    if e.diagnostics.is_empty() {
+        return "pmatch: syntax error".to_string();
+    }
+    e.diagnostics
+        .iter()
+        .map(|d| format!("pmatch: syntax error: {}", d.message))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-fn]
 pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
@@ -4958,7 +4974,8 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 }
             }
         }
-        Err(_) => {
+        Err(e) => {
+            error!("{}", format_pmatch_parse_error(&e));
             ctx.pmatchnerrs = ctx.pmatchnerrs + 1;
         }
     }
@@ -6246,9 +6263,16 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
         PS::Define { name, params, body } => match params {
             None => {
                 let mut obj = build_expression1(ctx, body)?;
-                Rc::get_mut(&mut obj)
-                    .expect("freshly built node is uniquely owned")
-                    .set_name(name.to_string());
+                // Under --flatten, `Ins(X)` inlines by returning X's shared
+                // definition node (see PE::Ins), so a `Define A Ins(X)` body can
+                // hand us an object that already aliases an existing definition
+                // (Rc strong count > 1). Only rename when we uniquely own it;
+                // an aliased inline keeps its source name — used solely for
+                // eval-stack labels — instead of panicking in Rc::get_mut or
+                // mutating the shared node out from under the other definition.
+                if let Some(node) = Rc::get_mut(&mut obj) {
+                    node.set_name(name.to_string());
+                }
                 report_defined(ctx, name);
                 insert_definition(ctx, name.to_string(), obj);
             }
@@ -6406,7 +6430,8 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                         }
                     }
                 }
-                Err(_e) => {
+                Err(e) => {
+                    error!("{}", format_pmatch_parse_error(&e));
                     ctx.data = String::new();
                     ctx.len = 0;
                     return Ok(HashMap::new());

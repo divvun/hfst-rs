@@ -173,4 +173,5 @@ assertions (
     {id upstream-bugs.t3.i287, kind @complete, author "brendan@necessary.nu", at 2026-07-16T10:53:06.424918Z}
     {id upstream-bugs.limits.i458, kind @complete, author "brendan@necessary.nu", at 2026-07-16T10:53:08.193724Z}
     {id upstream-bugs.t4.rtn-pmc-panic, kind @complete, author "brendan@necessary.nu", at 2026-07-16T12:01:39.065461Z}
+    {id upstream-bugs.t4.pmatch2fst-robustness, kind @complete, author "brendan@necessary.nu", at 2026-07-16T12:22:35.890166Z}
 )

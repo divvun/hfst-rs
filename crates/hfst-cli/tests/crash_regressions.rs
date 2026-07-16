@@ -34,6 +34,29 @@ fn run(args: &[&str], stdin: &[u8]) -> (bool, String) {
     )
 }
 
+/// Like `run`, but also captures stderr (for diagnostics that go to the log).
+fn run_captured(args: &[&str], stdin: &[u8]) -> (bool, String, String) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_hfst"))
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn hfst");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(stdin)
+        .expect("write stdin");
+    let out = child.wait_with_output().expect("wait for hfst");
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
 /// Compile `regex` to a weighted optimized-lookup file at `out`.
 fn build_ol(regex: &str, out: &Path) {
     let hfst = out.with_extension("hfst");
@@ -145,5 +168,70 @@ fn regexp2fst_deep_nesting_does_not_overflow_stack() {
     assert!(
         ok,
         "deeply-nested regexp2fst should compile, not overflow the stack"
+    );
+}
+
+/// Port-found (during the #354/RTN work): `pmatch2fst --flatten` on a grammar
+/// whose `Ins(X)` target is inlined as the entire body of another definition
+/// used to panic in `Rc::get_mut` ("freshly built node is uniquely owned") —
+/// the inlined node is a *shared* definition Rc. It must compile and still match.
+#[test]
+fn pmatch2fst_flatten_shared_ins_does_not_panic() {
+    let dir = scratch("flatten_ins");
+    let src = dir.join("g.pmatch");
+    let out = dir.join("g.pmhfst");
+    // A and B both inline C; TOP inserts both. Under --flatten this shares C's
+    // node across A, B, and TOP.
+    std::fs::write(
+        &src,
+        "Define C [{red}] ;\nDefine A Ins(C) ;\nDefine B Ins(C) ;\nDefine TOP Ins(A) Ins(B) EndTag(w) ;\n",
+    )
+    .expect("write grammar");
+    let (ok, _) = run(
+        &[
+            "pmatch2fst",
+            "--flatten",
+            "-i",
+            src.to_str().expect("utf8 path"),
+            "-o",
+            out.to_str().expect("utf8 path"),
+        ],
+        b"",
+    );
+    assert!(ok, "pmatch2fst --flatten panicked on a shared inlined Ins");
+    let (ok, o) = run(&["pmatch", out.to_str().expect("utf8 path")], b"redred\n");
+    assert!(ok, "hfst pmatch failed on the flattened archive");
+    assert!(
+        o.contains("<w>redred</w>"),
+        "flattened shared-Ins grammar did not match:\n{o}"
+    );
+}
+
+/// Port-found (during the #354/RTN work): using a reserved predefined-acceptor
+/// name (`Alpha`, `Whitespace`, ...) as a `Define` target is a parse error. The
+/// compiler used to swallow it and emit only "Empty ruleset, nothing to write";
+/// the real cause must now reach the user.
+#[test]
+fn pmatch2fst_reserved_name_redefinition_reports_parse_error() {
+    let dir = scratch("reserved_redef");
+    let src = dir.join("g.pmatch");
+    std::fs::write(
+        &src,
+        "Define Alpha [a|b|c] ;\nDefine TOP Ins(Alpha) EndTag(w) ;\n",
+    )
+    .expect("write grammar");
+    let (_ok, _out, err) = run_captured(
+        &[
+            "pmatch2fst",
+            "-i",
+            src.to_str().expect("utf8 path"),
+            "-o",
+            dir.join("g.pmhfst").to_str().expect("utf8 path"),
+        ],
+        b"",
+    );
+    assert!(
+        err.contains("syntax error") && err.contains("Define"),
+        "reserved-name redefinition should surface a parse error, got stderr:\n{err}"
     );
 }
