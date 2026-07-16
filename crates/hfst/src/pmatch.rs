@@ -2517,34 +2517,54 @@ impl PmatchTransducer {
         }
     }
 
-    // [PORT NOTE / DIVERGENCE hfst/hfst#399]
-    // Try to enter a plain-epsilon configuration during the current top-level
-    // search. Returns true if this exact (transducer, target, input_pos,
-    // context, tape_step) config has not been explored yet this attempt (and
-    // records it); returns false if it is a re-entry that must be pruned.
-    // Only PLAIN epsilon-input arcs (never flag diacritics, never Ins/RTN
-    // arcs, which carry their own FdState/tape state) reach this helper, so the
-    // memo cannot swallow legitimate flag or RTN traversal.
-    fn epsilon_visit(
+    // [PORT NOTE / DIVERGENCE hfst/hfst#399, #354]
+    // Try to enter a plain-epsilon configuration on the CURRENT DFS PATH. Returns
+    // Some(key) if this exact (transducer, target, input_pos, context, tape_step)
+    // config is not already an ANCESTOR on the path being explored — the caller
+    // must remove the key (via 'epsilon_leave') once it returns from recursing
+    // into 'target'. Returns None when re-entering an ancestor: that is a genuine
+    // epsilon cycle (e.g. the '0:?*' loop of hfst#399) and must be pruned to
+    // terminate.
+    //
+    // The visited set is PATH-scoped (insert on descent, remove on backtrack),
+    // not a global per-attempt memo. A global memo also prunes CONVERGENT paths —
+    // two distinct plain-epsilon branches that meet at the same state (e.g. the
+    // 'cat+N' and 'cat+V' analyses of an ambiguous tokeniser converge on a shared
+    // final state) — silently dropping every analysis but the first (hfst#354's
+    // "missing wordforms"). Path-scoping keeps only true cycles pruned.
+    //
+    // Only PLAIN epsilon-input arcs (never flag diacritics, never Ins/RTN arcs,
+    // which carry their own FdState/tape state) reach this helper, so it cannot
+    // swallow legitimate flag or RTN traversal.
+    fn epsilon_enter(
         &self,
         input_pos: u32,
         target: TransitionTableIndex,
         container: &mut PmatchContainer,
-    ) -> bool {
+    ) -> Option<EpsilonVisitKey> {
         let frame = self
             .local_stack
             .last()
             .expect("local_stack is non-empty during a match walk");
-        let context = frame.context as u8;
-        let tape_step = frame.tape_step;
         let key: EpsilonVisitKey = (
             self.self_symbol(container),
             target,
             input_pos,
-            context,
-            tape_step,
+            frame.context as u8,
+            frame.tape_step,
         );
-        container.epsilon_visited.insert(key)
+        if container.epsilon_visited.insert(key) {
+            Some(key)
+        } else {
+            None
+        }
+    }
+
+    // Leave a plain-epsilon configuration entered via 'epsilon_enter', so a
+    // sibling branch that later reaches the same state is not mistaken for a
+    // cycle. [hfst#399, #354]
+    fn epsilon_leave(container: &mut PmatchContainer, key: EpsilonVisitKey) {
+        container.epsilon_visited.remove(&key);
     }
 
     // Helper: run 'f' with the callee RTN (the container's toplevel for
@@ -2693,9 +2713,11 @@ impl PmatchTransducer {
                     });
                 } else {
                     // Don't alter tapes when checking context
-                    // [DIVERGENCE hfst/hfst#399] prune re-entered epsilon config
-                    if self.epsilon_visit(input_pos, target, container) {
+                    // [DIVERGENCE hfst/hfst#399, #354] prune re-entered epsilon
+                    // cycles (path-scoped), but keep convergent analyses.
+                    if let Some(k) = self.epsilon_enter(input_pos, target, container) {
                         self.get_analyses(input_pos, tape_pos, target, container);
+                        Self::epsilon_leave(container, k);
                     }
                 }
             } else if input == 0 {
@@ -2754,8 +2776,11 @@ impl PmatchTransducer {
                         continue;
                     }
 
-                    if !plain_epsilon || self.epsilon_visit(input_pos, target, container) {
+                    if !plain_epsilon {
                         self.get_analyses(input_pos, tape_pos + 1, target, container);
+                    } else if let Some(k) = self.epsilon_enter(input_pos, target, container) {
+                        self.get_analyses(input_pos, tape_pos + 1, target, container);
+                        Self::epsilon_leave(container, k);
                     }
 
                     if output == container.alphabet.get_special(SpecialSymbol::entry) {

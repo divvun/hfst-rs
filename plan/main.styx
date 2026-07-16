@@ -2819,6 +2819,20 @@ children (
                                 kind @note
                                 text "2026-07-16: root cause fixed under upstream-bugs.t4.rtn-pmc-panic. #354's \"missing wordforms with Ins\" is the same Ins/RTN pmatch defect: three layered bugs — (1) the shared pmatch-archive alphabet's input_symbol_count collapsed to 1 (harmonizer has no transitions), under-padding every member's index table (OOB panic at pmatch.rs make_transition_table_index); (2) name_from_insertion left a trailing '@' (sizeof-1 → len-1 off-by-one) so RTN members were filed under the wrong name and never matched; (3) RTN return was architecturally broken — the caller was take()n out of its slot while running, so with_rtn(NO_SYMBOL_NUMBER) panicked. Fix: harmonizer_alphabet option numbers every symbol as a potential input; name_from_insertion strips the trailing '@'; tables are Rc-shared and callers re-entered from shared tables + a stashed frame. Validated: hfst pmatch (Ins == inline across 4 variants) and hfst tokenise -g both produce correct CG output on Ins/RTN grammars. REVALIDATE against the exact lang-sma unknown-wordform-generation scenario before closing i354."
                             }
+
+                            {
+                                at 2026-07-16T13:51:08.870634Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-16T14:03:46.475834Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
                         )
                     }
 

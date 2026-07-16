@@ -1,6 +1,7 @@
-//! Regression locks for crashes found during the upstream-bugs validation
-//! (2026-07). Each test drives the real `hfst` binary over an input that used
-//! to abort the process, and asserts a clean, correct result instead.
+//! Regression locks for crashes and correctness defects found during the
+//! upstream-bugs validation (2026-07). Each test drives the real `hfst` binary
+//! over an input that used to abort the process or produce wrong output, and
+//! asserts a clean, correct result instead.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -150,6 +151,45 @@ fn pmatch_ins_rtn_matches_and_returns_to_caller() {
     assert!(
         o.contains("<np>the cat</np>"),
         "RTN insertion did not match/return correctly:\n{o}"
+    );
+}
+
+/// hfst/hfst#354 (root): an ambiguous token whose analyses converge on a shared
+/// state must yield ALL readings in `tokenise -g`, not just the first. The i399
+/// epsilon-cycle guard was a *global* per-attempt visited-set, which also pruned
+/// convergent-but-distinct plain-epsilon branches (e.g. `cat+N` and `cat+V`
+/// meeting at the same final state) — dropping every reading but one ("missing
+/// wordforms"). The guard is now DFS-path-scoped, so cycles still terminate while
+/// convergent analyses survive. Verified against `hfst lookup` (both readings).
+#[test]
+fn tokenise_emits_all_convergent_analyses() {
+    let dir = scratch("ambig");
+    let src = dir.join("g.pmatch");
+    let out = dir.join("g.pmhfst");
+    std::fs::write(
+        &src,
+        "Define TOP [ {cat}:{cat+N} | {cat}:{cat+V} | {dog}:{dog+N} ] EndTag(w) ;\n",
+    )
+    .expect("write grammar");
+    let (ok, _) = run(
+        &[
+            "pmatch2fst",
+            "-i",
+            src.to_str().expect("utf8 path"),
+            "-o",
+            out.to_str().expect("utf8 path"),
+        ],
+        b"",
+    );
+    assert!(ok, "pmatch2fst failed to compile the ambiguous grammar");
+    let (ok, o) = run(
+        &["tokenise", "-g", out.to_str().expect("utf8 path")],
+        b"cat\n",
+    );
+    assert!(ok, "hfst tokenise failed on the ambiguous archive");
+    assert!(
+        o.contains("cat+N") && o.contains("cat+V"),
+        "tokenise -g dropped a convergent analysis (missing wordforms):\n{o}"
     );
 }
 
