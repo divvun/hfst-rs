@@ -92,6 +92,44 @@ fn lookup_multi_transducer_ol_archive_unions_without_panic() {
     assert!(out.contains("DOG"), "second member not matched:\n{out}");
 }
 
+/// hfst/hfst#354: a pmatch grammar that inserts an RTN sub-transducer via
+/// `Ins(...)` must match — recursing into the RTN and returning to its caller —
+/// rather than crashing or silently failing. Exercises three formerly-broken
+/// layers at once: the shared archive alphabet's `input_symbol_count` (was
+/// under-padded, an out-of-bounds index lookup), `name_from_insertion` (kept a
+/// stray trailing `@` so the RTN was filed under the wrong name), and RTN
+/// re-entrancy (the caller is suspended on the Rust stack when the RTN returns).
+/// The `{the } ... EndTag` wrapping means the caller has a non-initial frame at
+/// the insertion point, so the return must restore the caller's own state.
+#[test]
+fn pmatch_ins_rtn_matches_and_returns_to_caller() {
+    let dir = scratch("insrtn");
+    let src = dir.join("g.pmatch");
+    let out = dir.join("g.pmhfst");
+    std::fs::write(
+        &src,
+        "Define Animal [{cat} | {dog}] ;\nDefine TOP {the } Ins(Animal) EndTag(np) ;\n",
+    )
+    .expect("write grammar");
+    let (ok, _) = run(
+        &[
+            "pmatch2fst",
+            "-i",
+            src.to_str().expect("utf8 path"),
+            "-o",
+            out.to_str().expect("utf8 path"),
+        ],
+        b"",
+    );
+    assert!(ok, "pmatch2fst failed to compile the Ins/RTN grammar");
+    let (ok, o) = run(&["pmatch", out.to_str().expect("utf8 path")], b"the cat\n");
+    assert!(ok, "hfst pmatch crashed on an Ins/RTN archive");
+    assert!(
+        o.contains("<np>the cat</np>"),
+        "RTN insertion did not match/return correctly:\n{o}"
+    );
+}
+
 /// hfst/hfst#287: a deeply-nested regular expression must compile, not overflow
 /// the stack. ~2000 nested brackets is far past the ~250 that aborted the
 /// default 8 MiB main-thread stack before the big-stack worker thread.

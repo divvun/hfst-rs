@@ -96,6 +96,7 @@ pub fn get_states_and_symbols(
     seen_input_symbols: &mut SymbolNumber,
     flag_symbols: &mut FlagSymbolSet,
     harmonizer: Option<&Transducer>,
+    harmonizer_alphabet: bool,
 ) -> crate::error::Result<()> {
     // Symbols must be in the following order in an optimized-lookup transducer:
     // 1) epsilon  2) other input symbols  3) symbols not used as input symbols.
@@ -145,10 +146,28 @@ pub fn get_states_and_symbols(
     }
 
     // Finally add symbols from the source alphabet that don't appear in any
-    // transitions to "other symbols".
+    // transitions. Normally such symbols are output-only and go to "other
+    // symbols". But when we're building the *shared* alphabet for a pmatch
+    // archive ('harmonizer_alphabet'), the harmonizer carries no transitions of
+    // its own, so every symbol reaches us here — yet each is a potential *input*
+    // symbol for some archive member. Classify them as inputs (or flag
+    // diacritics / insertions) so the shared header's input_symbol_count covers
+    // them; otherwise every harmonized member's index table is under-padded and
+    // the runtime encoder never tokenises the symbols, so matching either
+    // crashes on an out-of-bounds index lookup or silently finds nothing.
+    // [upstream hfst/hfst#354]
     let source_alphabet = t.get_alphabet().clone();
     for it in source_alphabet.iter() {
-        if !input_symbols.contains(it) && !flag_diacritics.contains(it) {
+        if input_symbols.contains(it) || flag_diacritics.contains(it) {
+            continue;
+        }
+        if harmonizer_alphabet && !is_epsilon(it) {
+            if FdOperation::is_diacritic(it) || PmatchAlphabet::is_insertion(it) {
+                flag_diacritics.insert(it.clone());
+            } else {
+                input_symbols.insert(it.clone());
+            }
+        } else {
             other_symbols.insert(it.clone());
         }
     }
@@ -347,6 +366,9 @@ impl ConversionFunctions {
         let floor_jump_threshold: i32 = 4; // a packing aggression parameter
 
         let empty_alphabet = options.contains("empty_alphabet");
+        // The shared pmatch-archive alphabet: treat every alphabet symbol as a
+        // potential input so input_symbol_count covers the whole numbering.
+        let harmonizer_alphabet = options.contains("harmonizer_alphabet");
 
         // The transition array is indexed starting from this constant
         const TA_OFFSET: u32 = 2147483648u32;
@@ -362,6 +384,7 @@ impl ConversionFunctions {
             &mut seen_input_symbols,
             &mut flag_symbols,
             harmonizer_ol,
+            harmonizer_alphabet,
         )?;
 
         let mut used_indices = IndexPlaceholders::new();

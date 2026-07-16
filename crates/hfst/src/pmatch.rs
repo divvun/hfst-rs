@@ -9,6 +9,7 @@
 //! through it.
 
 use std::collections::BTreeMap;
+use std::rc::Rc;
 use std::time::Instant;
 
 use icu::segmenter::GraphemeClusterSegmenter;
@@ -118,12 +119,18 @@ pub struct PmatchAlphabet {
 }
 
 // [spec:hfst:def:pmatch.hfst-ol.rtn-stack-frame]
+#[derive(Clone)]
 pub struct RtnStackFrame {
     // C++ stores a raw 'PmatchTransducer * caller'. Since the RTNs are owned by
     // the container's alphabet, this stores the owning symbol of the caller so
     // the engine can look the caller back up. See notes.
     pub caller: SymbolNumber,
     pub caller_index: TransitionTableIndex,
+    // The caller's local frame at the moment it made this RTN call. When the RTN
+    // returns, the caller is suspended higher on the Rust stack and cannot be
+    // borrowed again, so it is rebuilt from its (shared) tables plus this frame.
+    // [hfst/hfst#354]
+    pub caller_frame: LocalVariables,
 }
 
 // [spec:hfst:def:pmatch.hfst-ol.capture]
@@ -268,11 +275,18 @@ pub struct PmatchContainer {
 pub(crate) type EpsilonVisitKey = (SymbolNumber, TransitionTableIndex, u32, u8, i8);
 
 // [spec:hfst:def:pmatch.hfst-ol.pmatch-transducer]
+// The tables (transition_table / index_table) are static once the transducer is
+// loaded; only 'local_stack' changes during a walk. They live behind 'Rc' so a
+// transducer can be cloned cheaply for a (re-)entrant walk: an RTN returning to
+// its caller must run the caller again while the live caller is suspended higher
+// on the Rust call stack and cannot be borrowed a second time. Cloning shares
+// the tables and gives the re-entrant walk its own 'local_stack'. [hfst/hfst#354]
+#[derive(Clone)]
 pub struct PmatchTransducer {
     pub(crate) name: String,
     pub(crate) local_stack: Vec<LocalVariables>,
-    pub(crate) transition_table: Vec<TransitionW>,
-    pub(crate) index_table: Vec<TransitionWIndex>,
+    pub(crate) transition_table: Rc<Vec<TransitionW>>,
+    pub(crate) index_table: Rc<Vec<TransitionWIndex>>,
     pub(crate) orig_symbol_count: SymbolNumber,
     // NOTE: no 'alphabet' and no 'container' back-references; the engine methods
     // receive '&mut PmatchContainer' (which owns the alphabet) as a parameter.
@@ -607,9 +621,13 @@ impl PmatchAlphabet {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-alphabet.name-from-insertion-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-alphabet.name-from-insertion-fn]
     pub fn name_from_insertion(symbol: &str) -> String {
-        // symbol.substr(sizeof("@I.") - 1, symbol.size() - (sizeof("@I.@") - 1))
-        // i.e. start at 3, take len - 4 characters
-        symbol[("@I.".len())..(symbol.len() - ("@I.@".len() - 1) + ("@I.".len()))].to_string()
+        // C++ symbol.substr(sizeof("@I.") - 1, symbol.size() - (sizeof("@I.@") - 1)):
+        // drop the leading "@I." (3 bytes) and the trailing "@", so "@I.Animal@"
+        // yields "Animal". 'sizeof("@I.@")' is 5 in C (counts the NUL), so the
+        // count is 'len - 4'; the earlier port mistranslated it as '"@I.@".len()
+        // - 1' (== 3) and left the trailing "@" on the name, so RTN members never
+        // matched their insertion symbol. [upstream hfst/hfst#354]
+        symbol[("@I.".len())..(symbol.len() - 1)].to_string()
     }
 
     // ---- SymbolNumber predicates (member, non-static) ----
@@ -1738,12 +1756,16 @@ impl PmatchContainer {
             let tape_pos: u32 = 0;
             let old_input_pos = input_pos;
             // toplevel->match(input_pos, tape_pos);
+            // Clone (sharing tables via Rc) instead of taking the box out, so the
+            // slot stays populated: an RTN that returns to the toplevel rebuilds
+            // it from this slot while the outer walk is still suspended here.
+            // [hfst/hfst#354]
             let mut top = self
                 .toplevel
-                .take()
-                .expect("toplevel present outside its match call");
+                .as_ref()
+                .expect("toplevel present for match")
+                .clone();
             top.do_match(input_pos, tape_pos, self);
-            self.toplevel = Some(top);
             if self.candidate_found() {
                 // We got some output
                 if self.locate_mode {
@@ -2195,11 +2217,18 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.push-rtn-call-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.push-rtn-call-fn]
-    // C++ takes 'PmatchTransducer * caller'; we take the caller's owning symbol.
-    pub fn push_rtn_call(&mut self, return_index: u32, caller: SymbolNumber) {
+    // C++ takes 'PmatchTransducer * caller'; we take the caller's owning symbol
+    // plus a copy of the caller's frame (needed to resume it, see RtnStackFrame).
+    pub fn push_rtn_call(
+        &mut self,
+        return_index: u32,
+        caller: SymbolNumber,
+        caller_frame: LocalVariables,
+    ) {
         let new_top = RtnStackFrame {
             caller,
             caller_index: return_index,
+            caller_frame,
         };
         if self.rtn_stacks.len() <= self.stack_depth as usize {
             self.rtn_stacks.push(vec![new_top]);
@@ -2211,13 +2240,10 @@ impl PmatchContainer {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.rtn-stack-top-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.rtn-stack-top-fn]
     pub fn rtn_stack_top(&self) -> RtnStackFrame {
-        let frame = self.rtn_stacks[self.stack_depth as usize]
+        self.rtn_stacks[self.stack_depth as usize]
             .last()
-            .expect("rtn stack at this depth is non-empty");
-        RtnStackFrame {
-            caller: frame.caller,
-            caller_index: frame.caller_index,
-        }
+            .expect("rtn stack at this depth is non-empty")
+            .clone()
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.get-latest-rtn-caller-fn]
@@ -2228,6 +2254,16 @@ impl PmatchContainer {
             .last()
             .expect("rtn stack at this depth is non-empty")
             .caller
+    }
+
+    // The caller's frame stored alongside get_latest_rtn_caller's symbol; used to
+    // rebuild the suspended caller when an RTN returns to it. [hfst/hfst#354]
+    pub fn get_latest_caller_frame(&self) -> LocalVariables {
+        self.rtn_stacks[(self.stack_depth - 1) as usize]
+            .last()
+            .expect("rtn stack at this depth is non-empty")
+            .caller_frame
+            .clone()
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.rtn-stack-pop-fn]
@@ -2414,8 +2450,8 @@ impl PmatchTransducer {
         PmatchTransducer {
             name,
             local_stack,
-            transition_table,
-            index_table,
+            transition_table: Rc::new(transition_table),
+            index_table: Rc::new(index_table),
             orig_symbol_count,
         }
     }
@@ -2446,9 +2482,24 @@ impl PmatchTransducer {
         PmatchTransducer {
             name,
             local_stack,
-            transition_table: transition_vector,
-            index_table: index_vector,
+            transition_table: Rc::new(transition_vector),
+            index_table: Rc::new(index_vector),
             orig_symbol_count,
+        }
+    }
+
+    // Clone this transducer for a fresh (re-)entrant walk, replacing its stack
+    // with a single 'frame'. Used when an RTN returns to a caller that is
+    // suspended higher on the Rust stack (so the live object cannot be borrowed
+    // again): the tables are shared via 'Rc', and the caller resumes with the
+    // frame it held when it made the RTN call. [hfst/hfst#354]
+    fn clone_with_frame(&self, frame: LocalVariables) -> PmatchTransducer {
+        PmatchTransducer {
+            name: self.name.clone(),
+            local_stack: vec![frame],
+            transition_table: Rc::clone(&self.transition_table),
+            index_table: Rc::clone(&self.index_table),
+            orig_symbol_count: self.orig_symbol_count,
         }
     }
 
@@ -2496,10 +2547,14 @@ impl PmatchTransducer {
         container.epsilon_visited.insert(key)
     }
 
-    // Helper: take the callee RTN box out of its owning slot (either the
-    // container's toplevel for NO_SYMBOL_NUMBER, or alphabet.rtns[sym]),
-    // run 'f' with it and 'container', then put the box back. This implements
-    // the "std::mem::take / put-back" dance documented in the skeleton notes.
+    // Helper: run 'f' with the callee RTN (the container's toplevel for
+    // NO_SYMBOL_NUMBER, or alphabet.rtns[sym]) and 'container'. The callee is
+    // *cloned* from its slot rather than taken out: cloning shares the tables via
+    // 'Rc' (cheap) and leaves the original in place, so a re-entrant call — an
+    // RTN that recurses into itself, or returns to a caller that is itself an
+    // active ancestor — always finds a slot to clone from. The callee's frame is
+    // scratch (it pushes its own on entry and the result is recorded on the
+    // container), so the clone is simply dropped when 'f' returns. [hfst/hfst#354]
     fn with_rtn<F: FnOnce(&mut PmatchTransducer, &mut PmatchContainer)>(
         container: &mut PmatchContainer,
         sym: SymbolNumber,
@@ -2508,16 +2563,16 @@ impl PmatchTransducer {
         if sym == NO_SYMBOL_NUMBER {
             let mut callee = container
                 .toplevel
-                .take()
-                .expect("toplevel present outside its own call");
+                .as_ref()
+                .expect("toplevel present for RTN call")
+                .clone();
             f(&mut callee, container);
-            container.toplevel = Some(callee);
         } else {
             let mut callee = container.alphabet.rtns[sym as usize]
-                .take()
-                .expect("RTN slot occupied outside its own call");
+                .as_ref()
+                .expect("RTN slot occupied for RTN call")
+                .clone();
             f(&mut callee, container);
-            container.alphabet.rtns[sym as usize] = Some(callee);
         }
     }
 
@@ -2717,8 +2772,13 @@ impl PmatchTransducer {
                 self.take_flag(input, input_pos, tape_pos, i, container);
             } else if container.alphabet.has_rtn_sym(input) {
                 let caller = self.self_symbol(container);
+                let caller_frame = self
+                    .local_stack
+                    .last()
+                    .expect("local_stack is non-empty during a match walk")
+                    .clone();
                 Self::with_rtn(container, input, |rtn, cont| {
-                    rtn.rtn_call(input_pos, tape_pos, caller, target, cont);
+                    rtn.rtn_call(input_pos, tape_pos, caller, target, caller_frame, cont);
                 });
             }
             i += 1;
@@ -3251,9 +3311,10 @@ impl PmatchTransducer {
         tape_pos: u32,
         caller: SymbolNumber,
         caller_index: TransitionTableIndex,
+        caller_frame: LocalVariables,
         container: &mut PmatchContainer,
     ) {
-        container.push_rtn_call(caller_index, caller);
+        container.push_rtn_call(caller_index, caller, caller_frame);
         container.increase_stack_depth();
         let mut new_top = self
             .local_stack
@@ -3285,7 +3346,9 @@ impl PmatchTransducer {
         locals: LocalVariables,
         container: &mut PmatchContainer,
     ) {
-        container.push_rtn_call(caller_index, caller);
+        // 'locals' is the caller's frame at the call site; stash a copy for the
+        // eventual return before it is repurposed as the callee's own frame.
+        container.push_rtn_call(caller_index, caller, locals.clone());
         container.increase_stack_depth();
         let mut new_top = locals;
         new_top.flag_state = FdState::new(container.alphabet.get_fd_table());
@@ -3318,11 +3381,25 @@ impl PmatchTransducer {
         container: &mut PmatchContainer,
     ) {
         if container.get_stack_depth() > 0 {
-            // We're not the toplevel, return to caller
+            // We're not the toplevel, return to caller. The caller is suspended
+            // higher on the Rust call stack, so rebuild it from its shared tables
+            // and the frame it held at the RTN call (both immutable / stashed)
+            // rather than borrowing the live object again. [hfst/hfst#354]
             let rtn_target = container.get_latest_rtn_caller();
-            Self::with_rtn(container, rtn_target, |rtn, cont| {
-                rtn.rtn_return(input_pos, tape_pos, cont);
-            });
+            let caller_frame = container.get_latest_caller_frame();
+            let mut caller = if rtn_target == NO_SYMBOL_NUMBER {
+                container
+                    .toplevel
+                    .as_ref()
+                    .expect("toplevel present for RTN return")
+                    .clone_with_frame(caller_frame)
+            } else {
+                container.alphabet.rtns[rtn_target as usize]
+                    .as_ref()
+                    .expect("RTN slot occupied for RTN return")
+                    .clone_with_frame(caller_frame)
+            };
+            caller.rtn_return(input_pos, tape_pos, container);
         } else if container.is_in_locate_mode() {
             container.grab_location(input_pos, tape_pos);
         } else {

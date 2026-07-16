@@ -6736,7 +6736,20 @@ pub fn write_archive<B: AlgebraBackend>(
     // C passed 'HfstTransducer* harmonizer' to the conversion functions,
     // which read its hfst_ol backend; the Rust conversion builds and returns
     // that weighted-OL backend as an owned value, so borrow it below.
-    let harmonizer_ol = ConversionFunctions::hfst_transducer_to_hfst_ol(&harmonizer)?;
+    // The harmonizer holds only an alphabet (no transitions), so it is
+    // converted with the 'harmonizer_alphabet' option: every symbol is numbered
+    // as a potential input symbol, giving the shared header a correct
+    // input_symbol_count. Without it each harmonized member's index table is
+    // under-padded and the runtime crashes on an out-of-bounds lookup.
+    // [upstream hfst/hfst#354]
+    let harmonizer_basic =
+        ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&harmonizer)?;
+    let harmonizer_ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
+        &harmonizer_basic,
+        true, // weighted
+        "harmonizer_alphabet",
+        None,
+    )?;
 
     if verbose {
         let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
