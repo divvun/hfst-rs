@@ -177,4 +177,5 @@ assertions (
     {id rustfst-perf, kind @complete, author "brendan@necessary.nu", at 2026-07-16T12:58:47.77958Z}
     {id upstream-bugs.t2.i354, kind @complete, author "brendan@necessary.nu", at 2026-07-16T14:03:46.475834Z}
     {id upstream-bugs.t2.i367, kind @complete, author "brendan@necessary.nu", at 2026-07-16T14:54:29.37002Z}
+    {id upstream-bugs.t2.i439, kind @complete, author "brendan@necessary.nu", at 2026-07-16T16:04:39.495798Z}
 )

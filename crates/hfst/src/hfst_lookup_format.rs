@@ -499,7 +499,12 @@ pub fn parse_lookup_line(
     match input_format {
         LookupInputFormat::SpaceSeparatedTokenInput => {
             let escaped = escape_special_characters(s);
-            let spv: StringPairVector = tok.tokenize_string_pair(&escaped, true)?;
+            // [#439] Grapheme cluster is the port's logical tokenization unit
+            // everywhere; split by grapheme (false), not by bare codepoint, so a
+            // base + combining diacritic (e.g. Cyrillic и + U+0300) stays one unit
+            // and matches the same transducer symbol hfst-lookup's default
+            // (Utf8TokenInput) already produces.
+            let spv: StringPairVector = tok.tokenize_string_pair(&escaped, false)?;
             for it in spv.iter() {
                 rv.second.push(it.0.clone());
             }

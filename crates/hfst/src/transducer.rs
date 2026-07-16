@@ -1881,6 +1881,24 @@ impl Encoder {
     // [spec:hfst:def:transducer.hfst-ol.encoder.read-input-symbol-fn]
     // [spec:hfst:sem:transducer.hfst-ol.encoder.read-input-symbol-fn]
     pub fn read_input_symbol(&mut self, s: &str, s_num: i32) {
+        self.read_input_symbol_form(s, s_num);
+        // [#439] Grapheme cluster is the port's logical tokenization unit, so a
+        // base + combining diacritic and its precomposed form are the SAME unit
+        // and must match the same symbol. Index the symbol under its NFC and NFD
+        // forms too (when they differ), all mapping to the same symbol number, so
+        // input in either normalization tokenizes to this symbol. Output is
+        // unaffected — the number still maps back to the original surface.
+        let nfc = icu::normalizer::ComposingNormalizerBorrowed::new_nfc().normalize(s);
+        if nfc.as_ref() != s {
+            self.read_input_symbol_form(&nfc, s_num);
+        }
+        let nfd = icu::normalizer::DecomposingNormalizerBorrowed::new_nfd().normalize(s);
+        if nfd.as_ref() != s && nfd != nfc {
+            self.read_input_symbol_form(&nfd, s_num);
+        }
+    }
+
+    fn read_input_symbol_form(&mut self, s: &str, s_num: i32) {
         let bytes = s.as_bytes();
         let strlen = bytes.len();
         if strlen == 1

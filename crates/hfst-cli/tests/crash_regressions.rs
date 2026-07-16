@@ -154,6 +154,89 @@ fn pmatch_ins_rtn_matches_and_returns_to_caller() {
     );
 }
 
+/// hfst/hfst#439: grapheme cluster is the port's logical unit, so the SAME
+/// grapheme cluster in different Unicode normal forms must match. An analyser
+/// whose arc is precomposed Cyrillic `ѝ` (U+045D) must accept decomposed input
+/// (и U+0438 + combining grave U+0300) in both `tokenise` and (OL) `lookup`.
+/// Fix: the encoder indexes each symbol under its NFC and NFD forms. (Basic/slow
+/// lookup on an uncompiled tropical transducer is a separate fallback path.)
+#[test]
+fn lookup_and_tokenise_match_across_unicode_normalization() {
+    let dir = scratch("normeq");
+    let att = dir.join("n.att");
+    let hfst = dir.join("n.hfst");
+    let ol = dir.join("n.ol");
+    let src = dir.join("n.pmatch");
+    let pmhfst = dir.join("n.pmhfst");
+    // Analyser: precomposed ѝ (U+045D) -> ѝ+N.
+    std::fs::write(
+        &att,
+        "0\t1\t\u{045D}\t\u{045D}\t0.0\n1\t2\t@0@\t+N\t0.0\n2\t0.0\n",
+    )
+    .expect("write att");
+    let (ok, _) = run(
+        &[
+            "txt2fst",
+            att.to_str().expect("p"),
+            "-o",
+            hfst.to_str().expect("p"),
+        ],
+        b"",
+    );
+    assert!(ok, "txt2fst failed");
+    // OL lookup on DECOMPOSED input must match the precomposed arc.
+    let (ok, _) = run(
+        &[
+            "fst2fst",
+            "-w",
+            "-i",
+            hfst.to_str().expect("p"),
+            "-o",
+            ol.to_str().expect("p"),
+        ],
+        b"",
+    );
+    assert!(ok, "fst2fst -w failed");
+    let (ok, o) = run(
+        &["lookup", ol.to_str().expect("p")],
+        "\u{0438}\u{0300}\n".as_bytes(),
+    );
+    assert!(ok, "OL lookup failed");
+    assert!(
+        o.contains("\u{045D}+N") || o.contains("+N"),
+        "OL lookup did not match decomposed input against precomposed arc:\n{o}"
+    );
+    // tokenise on DECOMPOSED input must match too.
+    std::fs::write(
+        &src,
+        format!(
+            "Define TOP @bin\"{}\" EndTag(w) ;\n",
+            hfst.to_str().expect("p")
+        ),
+    )
+    .expect("write grammar");
+    let (ok, _) = run(
+        &[
+            "pmatch2fst",
+            "-i",
+            src.to_str().expect("p"),
+            "-o",
+            pmhfst.to_str().expect("p"),
+        ],
+        b"",
+    );
+    assert!(ok, "pmatch2fst failed");
+    let (ok, o) = run(
+        &["tokenise", "-g", pmhfst.to_str().expect("p")],
+        "\u{0438}\u{0300}\n".as_bytes(),
+    );
+    assert!(ok, "tokenise failed");
+    assert!(
+        o.contains("+N"),
+        "tokenise did not match decomposed input against precomposed arc:\n{o}"
+    );
+}
+
 /// hfst/hfst#367: a multichar symbol (a text symbol spanning more than one
 /// grapheme, e.g. `dz`) that `hfst lookup` matches must also match in
 /// `hfst tokenise` WITHOUT needing `-m`. Default tokenise segments one grapheme

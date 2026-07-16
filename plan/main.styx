@@ -2815,6 +2815,35 @@ children (
                         id upstream-bugs.t2.i439
                         title "hfst#439: hfst-lookup analyses Cyrillic + U+0300 combining diacritics but hfst-tokenise does not — same family as #367 (combining vs composed normalization in the tokeniser input path)"
                         priority 2
+                        log (
+                            {
+                                at 2026-07-16T14:57:13.431128Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "2026-07-16 partial finding (claim released, back to Todo): the tokeniser side of this #367/#439 family is ALREADY handled — `hfst tokenise -g` on an analyser with Cyrillic base и (U+0438) + combining grave (U+0300) as two decomposed input arcs MATCHES (`\"ѝ\"+N`). Surprisingly the port behaves OPPOSITE to the upstream report here: `hfst lookup` on the SAME analyser + same decomposed input does NOT match — it returns `ѝ+?` (inf, unknown/identity). So the residual gap for #439 in the port is on the LOOKUP input-tokenization side, not tokenise: lookup's decomposed-combining input tokenization fails to walk the base+combining arc path where tokenise's does. Next: diagnose lookup's tokenizer (Encoder/find_key over combining sequences; possibly grapheme vs codepoint handling in the lookup path, `crates/hfst-cli/src/tools/lookup.rs` + the OL/basic lookup tokenization). Repro files under scratch: cyr.att → cyr.hfst (txt2fst) → cyr.pmatch (@bin embed) → cyr.pmhfst. #367 (multichar-symbol auto-tokenization) already committed f1ba30b."
+                            }
+
+                            {
+                                at 2026-07-16T15:45:28.060955Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-16T15:45:28.060955Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "claim stolen: resuming #439 lookup-side fix after checkpoint; operator directed grapheme-cluster tokenization"
+                            }
+
+                            {
+                                at 2026-07-16T16:04:39.495798Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
