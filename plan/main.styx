@@ -2794,6 +2794,21 @@ children (
                         id upstream-bugs.t2.i367
                         title "hfst#367: composed characters on single arcs work in hfst-lookup but NOT hfst-tokenise — tokeniser input segmentation vs the transducer's multichar/composed-char arcs (pmatch runtime tokenization)"
                         priority 2
+                        log (
+                            {
+                                at 2026-07-16T14:05:17.060037Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-16T14:54:29.37002Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {

@@ -340,7 +340,16 @@ pub fn run(mut args: Vec<String>) -> i32 {
             }
         };
         container.set_verbose(common.verbose);
-        container.set_single_codepoint_tokenization(!options.settings.tokenize_multichar);
+        // [#367] Auto-enable multichar (longest-match) tokenization when the
+        // transducer carries multichar text symbols, so tokenise matches lookup
+        // without -m; -m still forces it, single-grapheme alphabets stay
+        // single-codepoint.
+        let single_codepoint = if options.settings.tokenize_multichar {
+            false
+        } else {
+            !container.has_multichar_input_symbols()
+        };
+        container.set_single_codepoint_tokenization(single_codepoint);
         process_input_stream(
             &mut container,
             &mut *input,
@@ -363,7 +372,16 @@ pub fn run(mut args: Vec<String>) -> i32 {
             }
         };
         container.set_verbose(common.verbose);
-        container.set_single_codepoint_tokenization(!options.settings.tokenize_multichar);
+        // [#367] Auto-enable multichar (longest-match) tokenization when the
+        // transducer carries multichar text symbols, so tokenise matches lookup
+        // without -m; -m still forces it, single-grapheme alphabets stay
+        // single-codepoint.
+        let single_codepoint = if options.settings.tokenize_multichar {
+            false
+        } else {
+            !container.has_multichar_input_symbols()
+        };
+        container.set_single_codepoint_tokenization(single_codepoint);
         process_input_stream(
             &mut container,
             &mut *input,

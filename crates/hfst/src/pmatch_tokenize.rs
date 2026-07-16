@@ -1286,7 +1286,15 @@ pub fn process_input(
     outstream: &mut dyn Write,
     s: &TokenizeSettings,
 ) {
-    container.set_single_codepoint_tokenization(!s.tokenize_multichar);
+    // [#367] Auto-enable multichar (longest-match) tokenization when the
+    // transducer carries multichar text symbols, so tokenise matches lookup
+    // without --tokenize-multichar; -m still forces it.
+    let single_codepoint = if s.tokenize_multichar {
+        false
+    } else {
+        !container.has_multichar_input_symbols()
+    };
+    container.set_single_codepoint_tokenization(single_codepoint);
     // C++ reads fixed-size lines (bufsize 4096) via std::istream::getline as the
     // loop condition; the IStream wrapper read_until reads up to the delimiter and
     // sets the fail flag on an immediate EOF with no bytes read.

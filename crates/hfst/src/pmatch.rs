@@ -2150,6 +2150,38 @@ impl PmatchContainer {
     pub fn set_single_codepoint_tokenization(&mut self, b: bool) {
         self.single_codepoint_tokenization = b;
     }
+
+    // [DIVERGENCE hfst/hfst#367] Does the transducer's alphabet carry any real
+    // *text* symbol whose surface spans more than one grapheme cluster (e.g. a
+    // multichar symbol like "dz")? Such symbols only match under longest-match
+    // ('multichar') tokenization; single-codepoint tokenization segments one
+    // grapheme at a time and never sees them, so `tokenise` would drop words
+    // that `lookup` accepts. Composed characters — precomposed OR decomposed,
+    // both a single grapheme cluster — do NOT count and stay fine under either
+    // mode. Epsilon / flag / `@...@` special symbols are not input text.
+    // The tokeniser uses this to pick the default mode when the user did not
+    // force `--tokenize-multichar`.
+    pub fn has_multichar_input_symbols(&self) -> bool {
+        let symbol_table = self.alphabet.get_symbol_table();
+        for (i, s) in symbol_table.iter().enumerate() {
+            if s.is_empty() || crate::hfst_symbol_defs::is_epsilon(s) {
+                continue;
+            }
+            // @...@ specials (flags, insertions, ENDTAG, IDENTITY/UNKNOWN, ...)
+            // are never plain input text.
+            if s.starts_with('@') && s.ends_with('@') {
+                continue;
+            }
+            if self.alphabet.is_flag_diacritic(i as SymbolNumber) {
+                continue;
+            }
+            let first = nByte_grapheme(s);
+            if first > 0 && (first as usize) < s.len() {
+                return true;
+            }
+        }
+        false
+    }
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.set-count-patterns-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.set-count-patterns-fn]
     pub fn set_count_patterns(&mut self, b: bool) {

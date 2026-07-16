@@ -154,6 +154,62 @@ fn pmatch_ins_rtn_matches_and_returns_to_caller() {
     );
 }
 
+/// hfst/hfst#367: a multichar symbol (a text symbol spanning more than one
+/// grapheme, e.g. `dz`) that `hfst lookup` matches must also match in
+/// `hfst tokenise` WITHOUT needing `-m`. Default tokenise segments one grapheme
+/// at a time, so it used to miss such symbols; the tokeniser now auto-enables
+/// longest-match tokenization when the transducer carries multichar text symbols
+/// (successor divergence). Single-grapheme/composed alphabets stay single-codepoint.
+#[test]
+fn tokenise_auto_matches_multichar_symbols() {
+    let dir = scratch("multichar");
+    let att = dir.join("mc.att");
+    let hfst = dir.join("mc.hfst");
+    let src = dir.join("mc.pmatch");
+    let pmhfst = dir.join("mc.pmhfst");
+    // Analyser: multichar symbol "dz" on input -> dz+N.
+    std::fs::write(&att, "0\t1\tdz\tdz\t0.0\n1\t2\t@0@\t+N\t0.0\n2\t0.0\n").expect("write att");
+    let (ok, _) = run(
+        &[
+            "txt2fst",
+            att.to_str().expect("utf8 path"),
+            "-o",
+            hfst.to_str().expect("utf8 path"),
+        ],
+        b"",
+    );
+    assert!(ok, "txt2fst failed to build the multichar analyser");
+    std::fs::write(
+        &src,
+        format!(
+            "Define TOP @bin\"{}\" EndTag(w) ;\n",
+            hfst.to_str().expect("utf8 path")
+        ),
+    )
+    .expect("write grammar");
+    let (ok, _) = run(
+        &[
+            "pmatch2fst",
+            "-i",
+            src.to_str().expect("utf8 path"),
+            "-o",
+            pmhfst.to_str().expect("utf8 path"),
+        ],
+        b"",
+    );
+    assert!(ok, "pmatch2fst failed to embed the multichar analyser");
+    // No -m: must still match the multichar symbol.
+    let (ok, o) = run(
+        &["tokenise", "-g", pmhfst.to_str().expect("utf8 path")],
+        b"dz\n",
+    );
+    assert!(ok, "hfst tokenise failed on the multichar archive");
+    assert!(
+        o.contains("dz+N"),
+        "tokenise dropped a multichar-symbol match without -m:\n{o}"
+    );
+}
+
 /// hfst/hfst#354 (root): an ambiguous token whose analyses converge on a shared
 /// state must yield ALL readings in `tokenise -g`, not just the first. The i399
 /// epsilon-cycle guard was a *global* per-attempt visited-set, which also pruned
