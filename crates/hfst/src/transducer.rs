@@ -3242,7 +3242,13 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         input_pos: u32,
         i: TransitionTableIndex,
     ) -> ControlFlow<(), bool> {
-        if self.tbl().get_index_input(i + input as u32) == input {
+        // A symbol beyond this transducer's input alphabet (e.g. one that only
+        // exists in another cascade member) has no index transition: the index
+        // table is padded only up to input_symbol_count, so gate the lookup on
+        // it rather than indexing out of bounds.
+        if input < self.hdr().input_symbol_count()
+            && self.tbl().get_index_input(i + input as u32) == input
+        {
             let target =
                 self.tbl().get_index_target(i + input as u32) - TRANSITION_TARGET_TABLE_START;
             self.find_loop_transitions(input, input_pos, target)?;

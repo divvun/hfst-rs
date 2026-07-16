@@ -73,6 +73,19 @@ pub fn hfst_ol_to_hfst_basic_add_state<T: crate::transducer::TransducerTablesInt
 // [spec:hfst:def:convert-ol-transducer.hfst.implementations.string-set]
 pub type StringSet = BTreeSet<crate::hfst_data_types::Symbol>;
 
+// The optimized-lookup on-disk format numbers symbols with a u16, so a
+// transducer with more than 65535 symbols cannot be represented; report that
+// as a clean error instead of panicking.
+#[inline]
+fn ol_symbol_number(symbol_table_len: usize) -> crate::error::Result<SymbolNumber> {
+    u16::try_from(symbol_table_len).map_err(|_| {
+        crate::err!(
+            Hfst,
+            "optimized-lookup format: transducer has more than 65535 symbols (u16 symbol-table limit)"
+        )
+    })
+}
+
 // [spec:hfst:def:convert-ol-transducer.hfst.implementations.get-states-and-symbols-fn]
 // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.get-states-and-symbols-fn]
 #[allow(clippy::too_many_arguments)]
@@ -83,7 +96,7 @@ pub fn get_states_and_symbols(
     seen_input_symbols: &mut SymbolNumber,
     flag_symbols: &mut FlagSymbolSet,
     harmonizer: Option<&Transducer>,
-) {
+) -> crate::error::Result<()> {
     // Symbols must be in the following order in an optimized-lookup transducer:
     // 1) epsilon  2) other input symbols  3) symbols not used as input symbols.
     // Flag diacritics are indexed as if they were symbol #0 (epsilon) but
@@ -148,17 +161,14 @@ pub fn get_states_and_symbols(
         // 1) epsilon
         string_symbol_map.insert(
             crate::hfst_data_types::Symbol::new_static(internal_epsilon),
-            u16::try_from(symbol_table.len()).expect("value out of u16 range"),
+            ol_symbol_number(symbol_table.len())?,
         );
         symbol_table.push(crate::hfst_data_types::Symbol::new_static(internal_epsilon));
 
         // 2) input symbols
         for it in input_symbols.iter() {
             if !is_epsilon(it) {
-                string_symbol_map.insert(
-                    it.clone(),
-                    u16::try_from(symbol_table.len()).expect("value out of u16 range"),
-                );
+                string_symbol_map.insert(it.clone(), ol_symbol_number(symbol_table.len())?);
                 symbol_table.push(it.clone());
                 *seen_input_symbols += 1;
             }
@@ -167,10 +177,7 @@ pub fn get_states_and_symbols(
         // 3) Flag diacritics
         for it in flag_diacritics.iter() {
             if !is_epsilon(it) {
-                string_symbol_map.insert(
-                    it.clone(),
-                    u16::try_from(symbol_table.len()).expect("value out of u16 range"),
-                );
+                string_symbol_map.insert(it.clone(), ol_symbol_number(symbol_table.len())?);
                 flag_symbols.insert(symbol_table.len() as u16);
                 symbol_table.push(it.clone());
                 // don't increment seen_input_symbols - we use it for indexing
@@ -180,10 +187,7 @@ pub fn get_states_and_symbols(
         // 4) non-input symbols
         for it in other_symbols.iter() {
             if !is_epsilon(it) && !input_symbols.contains(it) && !flag_diacritics.contains(it) {
-                string_symbol_map.insert(
-                    it.clone(),
-                    u16::try_from(symbol_table.len()).expect("value out of u16 range"),
-                );
+                string_symbol_map.insert(it.clone(), ol_symbol_number(symbol_table.len())?);
                 symbol_table.push(it.clone());
             }
         }
@@ -229,6 +233,7 @@ pub fn get_states_and_symbols(
         }
         state_number += 1;
     }
+    Ok(())
 }
 
 impl ConversionFunctions {
@@ -357,7 +362,7 @@ impl ConversionFunctions {
             &mut seen_input_symbols,
             &mut flag_symbols,
             harmonizer_ol,
-        );
+        )?;
 
         let mut used_indices = IndexPlaceholders::new();
 
@@ -485,7 +490,7 @@ impl ConversionFunctions {
         let alphabet = TransducerAlphabet::new_symboltable(&symbol_table);
         let header = TransducerHeader::new_sizes(
             seen_input_symbols,
-            u16::try_from(symbol_table.len()).expect("value out of u16 range"),
+            ol_symbol_number(symbol_table.len())?,
             windex_table.size(),
             wtransition_table.size(),
             weighted,

@@ -345,6 +345,23 @@ fn build_cli() -> Command {
 }
 
 fn main() {
+    // XRE/xfst/lexc/twolc compilation recurses over the parse tree (the nfst-*
+    // parsers and the evaluators each descend per node), so a large real-world
+    // grammar — an omorfi-scale regex, a deeply nested lexicon — can exhaust the
+    // default 8 MiB main-thread stack and abort. Run the whole tool on a worker
+    // thread with a generous stack so valid input compiles (hfst/hfst#287).
+    const STACK_SIZE: usize = 512 * 1024 * 1024;
+    let worker = std::thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(run_main)
+        .expect("spawn hfst worker thread");
+    if worker.join().is_err() {
+        // A tool panicked; its message was already printed by the panic hook.
+        std::process::exit(101);
+    }
+}
+
+fn run_main() {
     let argv: Vec<String> = std::env::args().collect();
 
     // Basename dispatch: symlink/hardlink/copy invocation as an original

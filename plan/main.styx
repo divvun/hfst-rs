@@ -2,7 +2,7 @@ name hfst
 
 source {
     url "git@github.com:hfst/hfst"
-    ref master
+    ref main
 }
 
 children (
@@ -2851,6 +2851,14 @@ children (
                         id upstream-bugs.t3.i287
                         title "hfst#287: hfst-regexp2fst stack-smashing on omorfi regex input — the C++ overflow is void in Rust, but the port must PARSE the same input correctly (or error cleanly): run upstream's reproduction through nfst-xre; lock behavior"
                         priority 3
+                        log (
+                            {
+                                at 2026-07-16T10:53:06.424918Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
@@ -2959,12 +2967,34 @@ children (
                         id upstream-bugs.t4.i357
                         title "hfst#357: hfst-compose-intersect memory/time blowup on large rule sets — compose_intersect_lexicon perf; benchmark the port (rustfst backend + native foma may already mitigate); fix or document improvement"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-15T21:53:36.989171Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "2026-07-15: UPGRADED from document to INVESTIGATE (successor reframe). Validation: the port scales reasonably (500K result states in 15s / 677MB) and adds no wasteful states, but compose_intersect_lexicon is a straight C++ transcription of the agenda-driven lazy product with no pruning beyond state_pair_map, so a large enough rule intersection still OOMs (inherent O(|lex|·∏|rules|)). Investigate real algorithmic wins (rule pre-intersection+minimization, tighter agenda pruning, the native foma backend path) rather than documenting as won't-fix."
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.rtn-pmc-panic
                         title "PORT-FOUND (during i399, no upstream number): RTN index-out-of-bounds panic in pmatch.rs with_rtn when a grammar with Ins/RTN arcs runs via the serialized .pmc + new_from_stream path (pmatch2fst -> hfst pmatch CLI route) — the in-memory to_basic()/new_from_hfst_transducers harness path works, so the divergence is in .pmc (de)serialization of RTN indices; repro: the i399 F-variant grammar ('Whitespace | [0:{x}*]' with the ja morphology) panics via CLI where the harness terminates; fix + a CLI-path test (the epsilon-loop suite deliberately avoided pinning this)"
                         priority 4
+                    }
+
+                    {
+                        id upstream-bugs.t4.ol-union-panic
+                        title "PORT-FOUND (2026-07-15 validation, no upstream number): `hfst lookup` on a multi-transducer OL archive (two OL transducers concatenated into one stream) PANICS at transducer.rs:1494 (Transducer::at index-out-of-bounds) while unioning them — `lookup a.ol` on a single OL file works, so the crash is specifically the union of two OL transducers read from one stream. Companion to #395 (the optimized-lookup tool's multi-fst read path); a #395 fix for `hfst lookup` will reuse this union path. Fix + a CLI-path regression test."
+                        priority 4
+                        log (
+                            {
+                                at 2026-07-16T10:53:05.049264Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Done (nplan_complete)"
+                            }
+                        )
                     }
                 )
             }
@@ -2977,6 +3007,14 @@ children (
                         id upstream-bugs.limits.i458
                         title "hfst#458: OL format u16 symbol-count ceiling (USHRT_MAX) — large lexicons overflow SymbolNumber; inherited by THFST (same u16 records); decide: hard-error with a clear diagnostic at conversion time (minimum) or format extension (spec'd divergence)"
                         priority 5
+                        log (
+                            {
+                                at 2026-07-16T10:53:08.193724Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
@@ -2991,6 +3029,14 @@ children (
                         priority 5
                     }
                 )
+            }
+        )
+        log (
+            {
+                at 2026-07-15T21:53:35.204893Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "2026-07-15 REFRAME (operator): the port is now a SUCCESSOR project — divergence from C++ HFST is EXPECTED AND ENCOURAGED. This node's \"reproduce -> fix OR document\" contract is now just \"reproduce -> fix\". All ex-\"by design / matches upstream\" leaves (#335, #357, #328, #123) are bugs to FIX, not document. Full validation of all 35 remaining leaves done (parallel repro agents): 21 of 35 ALREADY FIXED by the port (t2 #500/#367/#439/#562/#483; t3 #281/#274/#211/#255/#189/#570/#253; t4 #327/#490/#170/#222/#444/#225/#445/#409/#460 — most need only a regression lock to close); 13 real bugs to fix + 1 new port bug (ol-union-panic). Diagnosed fix locations recorded in the [[upstream-bugs-validation-successor]] memory. Highest priority: #354/rtn-pmc-panic (Ins/RTN pmatch grammars panic — breaks Giella tokenisers)."
             }
         )
     }
