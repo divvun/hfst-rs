@@ -360,10 +360,10 @@ impl AlgebraBackend for FomaTransducer {
     fn remove_epsilons(&self) -> Self {
         self.wrap_with(foma::determinize::fsm_epsilon_remove(self.net.clone()))
     }
-    fn determinize(&self, _encode_weights: bool) -> Self {
+    fn determinize(self, _encode_weights: bool) -> Self {
         self.wrap_with(foma::determinize::fsm_determinize(self.net.clone()))
     }
-    fn minimize(&self, _encode_weights: bool) -> Self {
+    fn minimize(self, _encode_weights: bool) -> Self {
         self.wrap_with(foma::minimize::fsm_minimize(&self.opts, self.net.clone()))
     }
     fn repeat_star(&self) -> Self {

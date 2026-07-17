@@ -146,8 +146,11 @@ pub trait Backend: Sized {
 pub trait AlgebraBackend: Backend {
     // ----- unary (apply) -----
     fn remove_epsilons(&self) -> Self;
-    fn determinize(&self, encode_weights: bool) -> Self;
-    fn minimize(&self, encode_weights: bool) -> Self;
+    // determinize/minimize consume the input: the facade always overwrites its
+    // stored fst with the result and drops the old one, so cloning it (a full
+    // O(states) copy on the ~1M-state lang-sma intermediate) is pure waste.
+    fn determinize(self, encode_weights: bool) -> Self;
+    fn minimize(self, encode_weights: bool) -> Self;
     fn repeat_star(&self) -> Self;
     fn repeat_plus(&self) -> Self;
     fn repeat_n(&self, n: u32) -> Self;
@@ -264,10 +267,10 @@ impl AlgebraBackend for StdVectorFst {
     fn remove_epsilons(&self) -> Self {
         TropicalWeightTransducer::remove_epsilons(self)
     }
-    fn determinize(&self, encode_weights: bool) -> Self {
+    fn determinize(self, encode_weights: bool) -> Self {
         TropicalWeightTransducer::determinize(self, encode_weights)
     }
-    fn minimize(&self, encode_weights: bool) -> Self {
+    fn minimize(self, encode_weights: bool) -> Self {
         TropicalWeightTransducer::minimize(self, encode_weights)
     }
     fn repeat_star(&self) -> Self {

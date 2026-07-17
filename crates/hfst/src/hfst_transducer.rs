@@ -1641,7 +1641,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         config: &EngineConfig,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false;
-        self.fst = self.fst.determinize(config.encode_weights);
+        let fst = std::mem::replace(&mut self.fst, B::empty());
+        self.fst = fst.determinize(config.encode_weights);
         Ok(self)
     }
 
@@ -1656,7 +1657,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         config: &EngineConfig,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false;
-        self.fst = self.fst.minimize(config.encode_weights);
+        let fst = std::mem::replace(&mut self.fst, B::empty());
+        self.fst = fst.minimize(config.encode_weights);
         Ok(self)
     }
 

@@ -4012,6 +4012,28 @@ children (
             {
                 id minimize-consume-input
                 title "(C2) Let minimize/determinize consume their input instead of cloning it. After determinize-intermediate removed the second (labels_only) clone, the FIRST clone remains: TropicalWeightTransducer::minimize/determinize start with `let mut t = t.clone()` because the AlgebraBackend trait methods take &self, yet the facade always does self.fst = self.fst.minimize(...) and drops the old fst immediately. On the profiled lang-sma compile that clone is a full ~1M-state (999,594) copy live at peak alongside det + the determinize subset table. Change AlgebraBackend::minimize/determinize (and the facade call sites) to hand over ownership — take self by value, or &mut self + std::mem::take — so no input clone is made. Ripples to all backends (tropical/foma/OL) implementing the trait. Byte-identity preserved (same algorithm, just no copy); measure peak. Would cut peak further than the ~907MB determinize-intermediate reached. Do alongside/after benchmarking lever B (rustfst-trsvec-csr), which attacks the same per-state Arc clone cost from the other side."
+                log (
+                    {
+                        at 2026-07-17T23:23:18.095066Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-17T23:29:30.63385Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DONE. AlgebraBackend::determinize/minimize now consume `self` (was `&self`); the tropical free fns TropicalWeightTransducer::{determinize,minimize} take `t: StdVectorFst` by value and drop the opening `let mut t = t.clone()`. Facade (determinize_with_config/minimize_with_config) hands over ownership via `std::mem::replace(&mut self.fst, B::empty())` — no input clone. Foma impl adjusted to the consuming receiver (still clones its own net internally, unweighted no-op path unchanged). Only two AlgebraBackend impls exist (tropical + foma); OL is read-only and does not implement it. RESULT on the profiled lang-sma lexc compile (/usr/bin/time -l, release): peak RSS 907MB -> 750MB (786,546,688 bytes, ~17% cut), byte-identical output (sha256 34f2debe...), 226 hfst tests pass, fmt+clippy clean. This is the ~1M-state (999,594) input copy that was live at peak alongside the determinize subset table, now eliminated."
+                    }
+
+                    {
+                        at 2026-07-17T23:29:34.552998Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
         )
     }

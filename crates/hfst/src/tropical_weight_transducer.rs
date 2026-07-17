@@ -1838,11 +1838,7 @@ mod operations {
         // yields a 'File too big' error.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.minimize-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.minimize-fn]
-        pub fn minimize(t: &StdVectorFst, encode_weights: bool) -> StdVectorFst {
-            // C++ mutates 't' in place; the skeleton hands us '&StdVectorFst', so we
-            // operate on a local clone (the caller-side mutation side effect is lost).
-            let mut t = t.clone();
-
+        pub fn minimize(mut t: StdVectorFst, encode_weights: bool) -> StdVectorFst {
             check_epsilon_cycles(&t, "minimize");
 
             // (USE_FOMA_EPSILON_REMOVAL && HAVE_FOMA) path is not configured here.
@@ -1941,10 +1937,7 @@ mod operations {
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.determinize-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.determinize-fn]
-        pub fn determinize(t: &StdVectorFst, encode_weights: bool) -> StdVectorFst {
-            // C++ mutates 't' in place; operate on a local clone.
-            let mut t = t.clone();
-
+        pub fn determinize(mut t: StdVectorFst, encode_weights: bool) -> StdVectorFst {
             check_epsilon_cycles(&t, "determinize");
 
             algorithms::RmEpsilon(&mut t);
