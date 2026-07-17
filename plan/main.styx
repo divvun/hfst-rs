@@ -2884,6 +2884,21 @@ children (
                         id upstream-bugs.t2.i483
                         title "hfst#483: hfst-tokenize hangs on large input sentences in the interactive REPL — input buffering/chunking logic (possibly adjacent to the 565MB OL-load hang already fixed in the port; verify)"
                         priority 2
+                        log (
+                            {
+                                at 2026-07-17T13:51:02.052197Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T13:52:18.645292Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
                 )
             }

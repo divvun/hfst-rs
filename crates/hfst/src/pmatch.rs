@@ -83,6 +83,40 @@ pub fn nByte_grapheme(u8_str: &str) -> i32 {
     }
 }
 
+// Byte length of the first grapheme cluster at the front of a raw (possibly
+// invalid) UTF-8 byte slice; 0 if there is no complete cluster.
+//
+// 'initialize_input' calls this once per input position while walking the whole
+// input, so validating/segmenting the entire remaining tail on every call is
+// O(n^2) (the source of the large-sentence tokenise hang, hfst/hfst#483). Since
+// the first grapheme is bounded by its own length, we only look at a small
+// prefix: we validate a geometrically growing window and accept the boundary as
+// soon as the segmenter reports one strictly inside the validated bytes (so no
+// longer cluster could extend past it). This keeps the whole walk O(n).
+pub fn nByte_grapheme_bytes(bytes: &[u8]) -> i32 {
+    if bytes.is_empty() {
+        return 0;
+    }
+    let mut window = 8usize;
+    loop {
+        let cap = window.min(bytes.len());
+        // Trim to the last complete UTF-8 codepoint so from_utf8 sees a valid
+        // prefix even when the window splits a multibyte sequence.
+        let valid = match std::str::from_utf8(&bytes[..cap]) {
+            Ok(_) => cap,
+            Err(e) => e.valid_up_to(),
+        };
+        let n = nByte_grapheme(std::str::from_utf8(&bytes[..valid]).unwrap_or(""));
+        // A boundary strictly inside the validated prefix is final: no cluster
+        // can reach past bytes we have already segmented. Otherwise the cluster
+        // may continue beyond the window, so widen and retry.
+        if (n > 0 && (n as usize) < valid) || cap == bytes.len() {
+            return n;
+        }
+        window *= 2;
+    }
+}
+
 // [spec:hfst:def:pmatch.hfst-ol.counter-comp-fn]
 // [spec:hfst:sem:pmatch.hfst-ol.counter-comp-fn]
 pub fn counter_comp(l: (String, u64), r: (String, u64)) -> bool {
@@ -1617,8 +1651,7 @@ impl PmatchContainer {
         while buf[p] != 0 {
             let original_input_loc = p;
             if self.single_codepoint_tokenization {
-                let bytes_to_tokenize =
-                    nByte_grapheme(std::str::from_utf8(&buf[p..buf.len() - 1]).unwrap_or(""));
+                let bytes_to_tokenize = nByte_grapheme_bytes(&buf[p..buf.len() - 1]);
                 if bytes_to_tokenize > 0 {
                     // memcpy the first bytes_to_tokenize bytes, NUL terminate,
                     // then find_key on that scratch buffer.
@@ -1646,8 +1679,7 @@ impl PmatchContainer {
                 None => {
                     // Regular tokenization failed
                     p = original_input_loc;
-                    let mut bytes_to_tokenize =
-                        nByte_grapheme(std::str::from_utf8(&buf[p..buf.len() - 1]).unwrap_or(""));
+                    let mut bytes_to_tokenize = nByte_grapheme_bytes(&buf[p..buf.len() - 1]);
                     if bytes_to_tokenize == 0 {
                         // if utf-8 tokenization fails too, just grab a byte
                         bytes_to_tokenize = 1;

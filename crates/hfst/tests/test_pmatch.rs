@@ -165,3 +165,96 @@ fn giellacg_input_preserves_multibyte_utf8() -> Result<(), hfst::error::Error> {
     );
     Ok(())
 }
+
+// [hfst/hfst#483] hfst-tokenize hung / went O(n^2) on large single input
+// sentences. Root cause: PmatchContainer::initialize_input segments the FIRST
+// grapheme once per input position, but did so by validating the WHOLE
+// remaining tail (`std::str::from_utf8(&buf[p..])`) on every position — O(n)
+// work per position, O(n^2) over the line. nByte_grapheme_bytes must depend
+// only on the leading grapheme, not on the tail.
+//
+// The tail-independence is asserted deterministically (no timing): the fix
+// only ever inspects a bounded prefix, so a leading grapheme followed by
+// arbitrary — even invalid-UTF-8 — bytes still yields that grapheme's length.
+// The old whole-tail version passed the entire slice through
+// `from_utf8(..).unwrap_or("")`, so a single invalid byte anywhere in the tail
+// collapsed the answer to 0 (and it scanned the whole tail besides). That makes
+// the invalid-tail cases below fail loudly on the quadratic code without relying
+// on wall-clock, and they double as a correctness lock: the walk must not be
+// derailed by later bytes.
+#[test]
+fn n_byte_grapheme_bytes_reads_only_leading_cluster() {
+    use hfst::pmatch::nByte_grapheme_bytes;
+
+    // Empty slice: no complete cluster.
+    assert_eq!(nByte_grapheme_bytes(b""), 0);
+
+    // Leading grapheme, then a long VALID tail that must not change the answer.
+    let valid: &[(&str, i32)] = &[
+        ("a", 1),
+        ("é", 2),                  // NFC single codepoint (2 bytes)
+        ("e\u{0301}", 3),          // e + combining acute = one 3-byte cluster
+        ("\u{1F1F3}\u{1F1F4}", 8), // 🇳🇴 regional-indicator pair = one 8-byte cluster
+        (" ", 1),
+    ];
+    for &(head, expected) in valid {
+        let mut whole = String::from(head);
+        whole.push_str(&"z".repeat(4096));
+        assert_eq!(
+            nByte_grapheme_bytes(whole.as_bytes()),
+            expected,
+            "valid leading {head:?} with a 4 KiB tail must stay {expected}"
+        );
+    }
+
+    // Leading grapheme, then INVALID UTF-8 bytes. The bounded prefix is still
+    // valid, so the leading grapheme is returned; the old whole-tail impl
+    // returned 0 here (whole-slice from_utf8 failed).
+    for &(head_bytes, expected) in &[
+        (b"a" as &[u8], 1),
+        (&[0xC3, 0xA5], 2), // 'é'
+    ] {
+        let mut buf = head_bytes.to_vec();
+        buf.extend(std::iter::repeat_n(0xFFu8, 4096)); // invalid tail
+        assert_eq!(
+            nByte_grapheme_bytes(&buf),
+            expected,
+            "leading grapheme must be read past an invalid-UTF-8 tail"
+        );
+    }
+}
+
+// [hfst/hfst#483] End-to-end: a large single line (no newlines) must tokenize
+// correctly — the whole line goes through initialize_input in one locate() call,
+// the exact shape that used to hang. We assert the output is right (every
+// matching token appears the expected number of times), which also exercises
+// that the fixed bounded-prefix segmentation preserves matching behaviour at
+// scale. Sized to stay quick with the O(n) walk.
+#[test]
+fn locate_large_single_line_tokenizes_correctly() -> Result<(), hfst::error::Error> {
+    let mut compiler = PmatchCompiler::<StdVectorFst>::new();
+    let defs = compiler.compile("Define TOP [{cat} | {dog}] EndTag(w) ;\n")?;
+    let top = defs.get("TOP").expect("no TOP in pmatch result");
+    let top_owned = HfstTransducer::<Transducer<WeightedTables>>::new_from_basic(&top.to_basic()?)?;
+    let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_owned])?;
+
+    let reps = 20_000usize;
+    let line = "cat dog xyz ".repeat(reps); // ~240 KB, no newline
+
+    let locations = container.locate(&line, 0.0, hfst::transducer::INFINITE_WEIGHT);
+
+    let mut cats = 0usize;
+    let mut dogs = 0usize;
+    for lv in &locations {
+        if let Some(loc) = lv.first() {
+            match loc.output.as_str() {
+                "cat" => cats += 1,
+                "dog" => dogs += 1,
+                _ => {}
+            }
+        }
+    }
+    assert_eq!(cats, reps, "every 'cat' token should be located");
+    assert_eq!(dogs, reps, "every 'dog' token should be located");
+    Ok(())
+}
