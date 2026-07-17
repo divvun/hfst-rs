@@ -83,7 +83,7 @@ impl Backend for FomaTransducer {
         let sigma = &self.net.sigma;
 
         // Walk the line table in order, stopping at the sentinel row.
-        for line in &self.net.states {
+        for line in self.net.states.rows().iter() {
             if line.state_no == -1 {
                 break;
             }
@@ -171,7 +171,7 @@ impl Backend for FomaTransducer {
         // fsm_topsort sets is_loop_free (1 acyclic, 0 cyclic) on the net it
         // returns; run it on a copy so this query stays non-destructive.
         let sorted = foma::topsort::fsm_topsort(Box::new(self.net.clone()));
-        sorted.is_loop_free == 0
+        sorted.is_loop_free == foma::types::Tern::No
     }
 
     fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
@@ -294,7 +294,7 @@ impl FomaTransducer {
     fn initial_input_symbols(&self) -> StringSet {
         let sigma = &self.net.sigma;
         let mut out = StringSet::new();
-        for line in &self.net.states {
+        for line in self.net.states.rows().iter() {
             if line.state_no == -1 {
                 break;
             }
@@ -515,7 +515,7 @@ impl AlgebraBackend for FomaTransducer {
     fn is_automaton(&self) -> bool {
         // An acceptor: every arc has input == output. IDENTITY/UNKNOWN arcs have
         // in == out and so are automaton arcs; only a genuine `a:b` breaks it.
-        for line in &self.net.states {
+        for line in self.net.states.rows().iter() {
             if line.state_no == -1 {
                 break;
             }
