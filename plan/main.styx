@@ -2941,42 +2941,147 @@ children (
                         id upstream-bugs.t3.i281
                         title "hfst#281: hfst-lexc fails when a linebreak precedes the semicolon (Xerox accepts it) — nfst-lexc grammar conformance; likely already fixed by the new parser: verify + regression test"
                         priority 3
+                        log (
+                            {
+                                at 2026-07-17T14:17:13.044382Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:17:36.025593Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t3.i274
                         title "hfst#274: hfst-lexc reads unescaped zeros as literal zeros (Xerox: 0 = epsilon unless escaped %0) — nfst-lexc tokenization of 0; verify against Xerox semantics + regression test"
                         priority 3
+                        log (
+                            {
+                                at 2026-07-17T14:17:15.504954Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:17:38.046688Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t3.i211
                         title "hfst#211: lexc multichar symbols containing zeros handled inconsistently with Xerox — nfst-lexc multichar tokenization (companion to #274); verify + regression test"
                         priority 3
+                        log (
+                            {
+                                at 2026-07-17T14:17:18.026317Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:17:40.744873Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t3.i255
                         title "hfst#255: at sign (@) breaks multichar symbols in lexc — @-prefixed non-flag multichars mis-tokenized; nfst-lexc symbol classification (@...@ flag detection vs plain @-containing symbols); verify + test"
                         priority 3
+                        log (
+                            {
+                                at 2026-07-17T14:17:19.945976Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:17:42.40958Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t3.i189
                         title "hfst#189: hfst-twolc confused by pairs whose characters contain spaces — nfst-twolc pair tokenization; verify + regression test"
                         priority 3
+                        log (
+                            {
+                                at 2026-07-17T14:17:22.284745Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:17:45.052128Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t3.i570
                         title "hfst#570: unescaped quotation mark in a twol rule silently produces a bad FST with no error — nfst-twolc lexer strictness; must error, not mis-compile; verify + test"
                         priority 3
+                        log (
+                            {
+                                at 2026-07-17T14:17:24.323507Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:17:47.491277Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t3.i334
                         title "hfst#334: non-existent multichar symbols in twol rules generate nondeterministic garbage instead of an error — nfst-twolc symbol validation against the declared alphabet; verify + test"
                         priority 3
+                        log (
+                            {
+                                at 2026-07-17T14:17:27.45035Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:17:48.979224Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
@@ -2997,6 +3102,21 @@ children (
                         id upstream-bugs.t3.i253
                         title "hfst#253: regexp2fst segfaults on malformed input — Rust must produce a clean diagnostic, never a panic: feed upstream's malformed inputs to nfst-xre + xre.rs; lock with error-path tests"
                         priority 3
+                        log (
+                            {
+                                at 2026-07-17T14:17:30.726632Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:17:51.189438Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
                 )
             }

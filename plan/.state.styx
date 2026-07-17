@@ -181,4 +181,12 @@ assertions (
     {id upstream-bugs.t2.i483, kind @complete, author "brendan@necessary.nu", at 2026-07-17T13:52:18.645292Z}
     {id upstream-bugs.t2.i500, kind @complete, author "brendan@necessary.nu", at 2026-07-17T13:54:46.703475Z}
     {id upstream-bugs.t2.i562, kind @complete, author "brendan@necessary.nu", at 2026-07-17T13:56:57.030148Z}
+    {id upstream-bugs.t3.i281, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:36.025593Z}
+    {id upstream-bugs.t3.i274, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:38.046688Z}
+    {id upstream-bugs.t3.i211, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:40.744873Z}
+    {id upstream-bugs.t3.i255, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:42.40958Z}
+    {id upstream-bugs.t3.i189, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:45.052128Z}
+    {id upstream-bugs.t3.i570, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:47.491277Z}
+    {id upstream-bugs.t3.i334, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:48.979224Z}
+    {id upstream-bugs.t3.i253, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:51.189438Z}
 )

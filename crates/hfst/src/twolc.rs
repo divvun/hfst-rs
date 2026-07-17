@@ -3248,14 +3248,72 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         // anywhere in the grammar (rule centers, contexts, definitions —
         // 'where'-variables expanded first, as htwolcpre1 expanded them before
         // pre2 ran) which are missing from the Alphabet section, plus the
-        // absolute word boundary pair.
-        self.collect_grammar_pairs(twolc_file, &mut symbol_pairs)?;
+        // absolute word boundary pair. Unlike the C++, which auto-declared
+        // EVERY grammar symbol (silently masking typos as nondeterministic
+        // garbage — hfst#334), this successor validates each grammar-pair side
+        // against the declared symbol vocabulary and rejects undeclared ones.
+        let declared = self.collect_declared_symbols(twolc_file);
+        let undeclared = self.collect_grammar_pairs(twolc_file, &declared, &mut symbol_pairs)?;
+        if !undeclared.is_empty() {
+            let mut names: Vec<String> = undeclared
+                .iter()
+                .map(|s| Rule::<B>::get_print_name(s.as_str()))
+                .collect();
+            names.sort();
+            self.diag_error(&format!(
+                "Symbol(s) not declared in the Alphabet: {}.",
+                names.join(", ")
+            ));
+            crate::bail!(UndefinedSymbolPairsFound);
+        }
         symbol_pairs.insert((
             Symbol::new_static("__HFST_TWOLC_.#."),
             Symbol::new_static("__HFST_TWOLC_.#."),
         ));
         OtherSymbolTransducer::<B>::set_symbol_pairs(cfg, &symbol_pairs);
         Ok(())
+    }
+
+    /// The set of symbols the grammar DECLARES: every symbol named on either
+    /// side of an 'Alphabet'-section pair, every diacritic, every 'Sets' member
+    /// and set name, every 'Definitions' name, plus the always-available
+    /// internal / special symbols (the two-level epsilon, the 'Any' wildcard,
+    /// the word boundaries and the diamond). A grammar pair whose side is not in
+    /// this set names an undeclared symbol (hfst#334) and is rejected rather
+    /// than silently auto-declared. Symbols are stored in their internal
+    /// ('normalize_symbol') form so they compare equal to the collected pairs.
+    fn collect_declared_symbols(&self, file: &TwolcFile) -> BTreeSet<Symbol> {
+        let mut declared: BTreeSet<Symbol> = BTreeSet::new();
+        for p in &file.alphabet {
+            declared.insert(normalize_symbol(&p.value.upper));
+            declared.insert(normalize_symbol(&p.value.lower));
+        }
+        for d in &file.diacritics {
+            declared.insert(normalize_symbol(&d.value));
+        }
+        for s in &file.sets {
+            declared.insert(Symbol::new(s.value.name.as_str()));
+            for m in &s.value.members {
+                declared.insert(normalize_symbol(m));
+            }
+        }
+        for d in &file.definitions {
+            declared.insert(Symbol::new(d.value.name.as_str()));
+        }
+        // Always-available internal / special symbols.
+        for special in [
+            TWOLC_EPSILON,
+            HFST_EPSILON,
+            TWOLC_UNKNOWN,
+            HFST_UNKNOWN,
+            TWOLC_IDENTITY,
+            HFST_IDENTITY,
+            TWOLC_DIAMOND,
+            "__HFST_TWOLC_.#.",
+        ] {
+            declared.insert(Symbol::new_static(special));
+        }
+        declared
     }
 
     /// htwolcpre2's 'complete_alphabet()' / 'insert_alphabet_pairs()': collect
@@ -3269,14 +3327,27 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     /// pairs with an internal '__HFST_TWOLC_?' side; pairs with a set-name
     /// side are skipped like the C++ 'is_set_pair' filter skipped the marked
     /// '__HFST_TWOLC_SET_NAME=' pairs everywhere they could be observed.
+    ///
+    /// A pair side that is neither in the declared vocabulary nor a set name is
+    /// an undeclared symbol (hfst#334): it is NOT auto-completed into the
+    /// alphabet but recorded in the returned set so 'register_alphabet' can
+    /// report it and fail, instead of silently building garbage.
     fn collect_grammar_pairs(
         &mut self,
         file: &TwolcFile,
+        declared: &BTreeSet<Symbol>,
         pairs: &mut BTreeSet<SymbolPair>,
-    ) -> crate::error::Result<()> {
+    ) -> crate::error::Result<BTreeSet<Symbol>> {
+        let mut undeclared: BTreeSet<Symbol> = BTreeSet::new();
         let empty_vvm = VariableValueMap::new();
         for def in &file.definitions {
-            self.collect_regex_pairs(&def.value.body, &empty_vvm, pairs);
+            self.collect_regex_pairs(
+                &def.value.body,
+                &empty_vvm,
+                declared,
+                pairs,
+                &mut undeclared,
+            );
         }
         for rule in &file.rules {
             for vvm in self.variable_assignments(&rule.value)? {
@@ -3285,10 +3356,18 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                         for p in ps {
                             let upper = substitute_symbol(&p.upper, &vvm);
                             let lower = substitute_symbol(&p.lower, &vvm);
-                            self.insert_grammar_pair(upper, lower, pairs);
+                            self.insert_grammar_pair(
+                                upper,
+                                lower,
+                                declared,
+                                pairs,
+                                &mut undeclared,
+                            );
                         }
                     }
-                    RuleCenter::Regex(e) => self.collect_regex_pairs(e, &vvm, pairs),
+                    RuleCenter::Regex(e) => {
+                        self.collect_regex_pairs(e, &vvm, declared, pairs, &mut undeclared)
+                    }
                 }
                 for ctx in rule
                     .value
@@ -3296,12 +3375,12 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                     .iter()
                     .chain(rule.value.negative_contexts.iter())
                 {
-                    self.collect_regex_pairs(&ctx.left, &vvm, pairs);
-                    self.collect_regex_pairs(&ctx.right, &vvm, pairs);
+                    self.collect_regex_pairs(&ctx.left, &vvm, declared, pairs, &mut undeclared);
+                    self.collect_regex_pairs(&ctx.right, &vvm, declared, pairs, &mut undeclared);
                 }
             }
         }
-        Ok(())
+        Ok(undeclared)
     }
 
     /// The per-rule variable assignments the ['RuleVariables'] odometer yields
@@ -3332,11 +3411,15 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
 
     /// The regex walk of ['collect_grammar_pairs']: record every 'Pair' node
     /// whose both sides are concrete symbols under the variable assignment.
+    /// Undeclared pair sides (hfst#334) are collected into 'undeclared' instead
+    /// of being auto-completed into 'pairs'.
     fn collect_regex_pairs(
         &self,
         e: &Spanned<TwolcRegex>,
         vvm: &VariableValueMap,
+        declared: &BTreeSet<Symbol>,
         pairs: &mut BTreeSet<SymbolPair>,
+        undeclared: &mut BTreeSet<Symbol>,
     ) {
         match &e.value {
             TwolcRegex::Pair { upper, lower } => {
@@ -3344,32 +3427,51 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                     Self::concrete_symbol(upper, vvm),
                     Self::concrete_symbol(lower, vvm),
                 ) {
-                    self.insert_grammar_pair(u, l, pairs);
+                    self.insert_grammar_pair(u, l, declared, pairs, undeclared);
                 }
             }
             TwolcRegex::Group(inner) | TwolcRegex::Optional(inner) => {
-                self.collect_regex_pairs(inner, vvm, pairs);
+                self.collect_regex_pairs(inner, vvm, declared, pairs, undeclared);
             }
             TwolcRegex::Binary(_, l, r) => {
-                self.collect_regex_pairs(l, vvm, pairs);
-                self.collect_regex_pairs(r, vvm, pairs);
+                self.collect_regex_pairs(l, vvm, declared, pairs, undeclared);
+                self.collect_regex_pairs(r, vvm, declared, pairs, undeclared);
             }
             TwolcRegex::Unary(_, inner)
             | TwolcRegex::RepeatN(inner, _)
             | TwolcRegex::RepeatNToK(inner, _, _) => {
-                self.collect_regex_pairs(inner, vvm, pairs);
+                self.collect_regex_pairs(inner, vvm, declared, pairs, undeclared);
             }
             TwolcRegex::Symbol(_) | TwolcRegex::Epsilon | TwolcRegex::Any => {}
         }
     }
 
     /// Insert one collected pair, skipping pairs with a set-name side (the
-    /// 'is_set_pair' filter).
-    fn insert_grammar_pair(&self, upper: Symbol, lower: Symbol, pairs: &mut BTreeSet<SymbolPair>) {
+    /// 'is_set_pair' filter). A side that is neither declared nor a set name is
+    /// an undeclared symbol (hfst#334): the pair is dropped and the offending
+    /// side recorded in 'undeclared' rather than silently auto-declared.
+    fn insert_grammar_pair(
+        &self,
+        upper: Symbol,
+        lower: Symbol,
+        declared: &BTreeSet<Symbol>,
+        pairs: &mut BTreeSet<SymbolPair>,
+        undeclared: &mut BTreeSet<Symbol>,
+    ) {
         if self.sets.contains_key(upper.as_str()) || self.sets.contains_key(lower.as_str()) {
             return;
         }
-        pairs.insert((upper, lower));
+        let upper_ok = declared.contains(&upper);
+        let lower_ok = declared.contains(&lower);
+        if !upper_ok {
+            undeclared.insert(upper.clone());
+        }
+        if !lower_ok {
+            undeclared.insert(lower.clone());
+        }
+        if upper_ok && lower_ok {
+            pairs.insert((upper, lower));
+        }
     }
 
     /// Resolve a pair side to a concrete internal symbol under the variable
