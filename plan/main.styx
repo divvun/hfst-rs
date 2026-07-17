@@ -3891,4 +3891,24 @@ children (
             }
         )
     }
+
+    {
+        id clippy-deny-gate
+        title "Ratchet the clippy-clean state: add `clippy::all = { level = \"deny\", priority = -1 }` to [workspace.lints.clippy] so the now-zero default clippy set (correctness/suspicious/style/complexity/perf) becomes a hard build error on any regression instead of a warning that rots unnoticed (as unwrap/camelCase did before gating). All three crates already opt in via [lints] workspace=true; verified the workspace still passes clean under the deny, and a throwaway probe (useless_vec) errors the build. Complements the existing todo + wildcard_enum_match_arm denies."
+        log (
+            {
+                at 2026-07-17T19:49:53.906068Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-07-17T19:49:59.63991Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
+        )
+    }
 )

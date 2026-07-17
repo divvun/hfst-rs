@@ -23,6 +23,13 @@ unsafe_code = "forbid"
 rust_2018_idioms = { level = "deny", priority = -1 }
 
 [workspace.lints.clippy]
+# The whole default clippy set (correctness/suspicious/style/complexity/perf) is
+# at zero across the workspace — `cargo clippy --workspace --all-targets` is
+# clean. Deny it so a regression is a hard build error, not a warning that rots
+# unnoticed (as `unwrap`/camelCase did before they were gated). priority -1 so
+# the specific denies below, and any authorised per-site `#[allow(...)]`, still
+# win over the group.
+all = { level = "deny", priority = -1 }
 # No leftover `todo!()` macros (complements the nplan stub gate).
 todo = "deny"
 # No silent `_` arms on enum matches: a match over an ImplementationType (or any
