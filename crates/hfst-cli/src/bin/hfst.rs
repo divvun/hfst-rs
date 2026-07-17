@@ -21,8 +21,15 @@ use hfst_cli::tools::TOOLS;
 
 // The FST algorithms are allocation-heavy; mimalloc beats the system
 // allocator substantially on this workload (house convention for binaries).
+// Under the `dhat-heap` profiling feature this is swapped for dhat's tracking
+// allocator so the build's heap can be attributed to allocation sites.
+#[cfg(not(feature = "dhat-heap"))]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static GLOBAL: dhat::Alloc = dhat::Alloc;
 
 /// One-line about strings for the clap subcommand listing, taken from each
 /// tool's usage summary line (the sentence after "Usage:" in its
@@ -387,7 +394,13 @@ fn run_main() {
             let mut tool_argv = Vec::with_capacity(argv.len() - 1);
             tool_argv.push(format!("hfst {sub}"));
             tool_argv.extend(argv[2..].iter().cloned());
-            std::process::exit(run(tool_argv));
+            #[cfg(feature = "dhat-heap")]
+            let profiler = dhat::Profiler::new_heap();
+            let code = run(tool_argv);
+            // Flush dhat-heap.json before process::exit skips destructors.
+            #[cfg(feature = "dhat-heap")]
+            drop(profiler);
+            std::process::exit(code);
         }
     }
 

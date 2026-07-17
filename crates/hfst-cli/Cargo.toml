@@ -13,12 +13,16 @@ repository.workspace = true
 [features]
 default = ["foma"]
 foma = ["hfst/foma"]
+# Heap-profiling build: swaps mimalloc for dhat's allocator and brackets the
+# tool run with a dhat profiler (writes dhat-heap.json). Not for release use.
+dhat-heap = ["dep:dhat"]
 
 [dependencies]
 clap = "4.6.1"
 hfst = { workspace = true }
 hfst-openfst = { workspace = true }
 mimalloc = { version = "0.1", default-features = false }
+dhat = { version = "0.3", optional = true }
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 
