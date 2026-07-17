@@ -528,7 +528,7 @@ mod input_impl {
                         }
                         AnyTransducer::Foma(HfstTransducer::wrap(
                             crate::backend_foma::FomaTransducer {
-                                net: *fsm,
+                                net: fsm,
                                 opts: foma::options::FomaOptions::default(),
                             },
                         ))

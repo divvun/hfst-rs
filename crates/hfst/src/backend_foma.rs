@@ -75,7 +75,7 @@ impl Backend for FomaTransducer {
 
     fn empty() -> Self {
         // fsm_empty_set returns Box<Fsm>; move the Fsm out of the box.
-        Self::wrap(*foma::structures::fsm_empty_set())
+        Self::wrap(foma::structures::fsm_empty_set())
     }
 
     fn copy(&self) -> crate::error::Result<Self> {
@@ -83,7 +83,7 @@ impl Backend for FomaTransducer {
         // returns a deep Box<Fsm> copy; clone into an owned mutable Fsm first.
         let mut src = self.net.clone();
         let copied = foma::structures::fsm_copy(&mut src);
-        Ok(self.wrap_with(*copied))
+        Ok(self.wrap_with(copied))
     }
 
     // [spec:hfst:def:foma-backend.to-basic-fn]
@@ -163,7 +163,7 @@ impl Backend for FomaTransducer {
         }
 
         let fsm = foma::dynarray::fsm_construct_done(handle);
-        Ok(Self::wrap(*fsm))
+        Ok(Self::wrap(fsm))
     }
 
     fn get_alphabet(&self) -> StringSet {
@@ -180,7 +180,7 @@ impl Backend for FomaTransducer {
     fn is_cyclic(&self) -> bool {
         // fsm_topsort sets is_loop_free (1 acyclic, 0 cyclic) on the net it
         // returns; run it on a copy so this query stays non-destructive.
-        let sorted = foma::topsort::fsm_topsort(Box::new(self.net.clone()));
+        let sorted = foma::topsort::fsm_topsort(self.net.clone());
         sorted.is_loop_free == foma::types::Tern::No
     }
 
@@ -275,14 +275,9 @@ fn path_bound(cycles: i32) -> usize {
 }
 
 impl FomaTransducer {
-    /// Clone the inner net into an owned `Box<Fsm>` for foma's consuming
-    /// construction API (every op takes and returns `Box<Fsm>`).
-    fn boxed(&self) -> Box<foma::types::Fsm> {
-        Box::new(self.net.clone())
-    }
 
     /// Wrap a foma construction result as a `FomaTransducer` running under
-    /// foma's default (C) options. Callers deref foma's returned `Box<Fsm>`.
+    /// foma's default (C) options.
     fn wrap(fsm: foma::types::Fsm) -> Self {
         FomaTransducer {
             net: fsm,
@@ -364,93 +359,93 @@ impl FomaTransducer {
 // Inputs are cloned into owned `Box<Fsm>` (foma's ops consume their arguments).
 impl AlgebraBackend for FomaTransducer {
     fn remove_epsilons(&self) -> Self {
-        self.wrap_with(*foma::determinize::fsm_epsilon_remove(self.boxed()))
+        self.wrap_with(foma::determinize::fsm_epsilon_remove(self.net.clone()))
     }
     fn determinize(&self, _encode_weights: bool) -> Self {
-        self.wrap_with(*foma::determinize::fsm_determinize(self.boxed()))
+        self.wrap_with(foma::determinize::fsm_determinize(self.net.clone()))
     }
     fn minimize(&self, _encode_weights: bool) -> Self {
-        self.wrap_with(*foma::minimize::fsm_minimize(&self.opts, self.boxed()))
+        self.wrap_with(foma::minimize::fsm_minimize(&self.opts, self.net.clone()))
     }
     fn repeat_star(&self) -> Self {
-        self.wrap_with(*foma::constructions::fsm_kleene_star(
+        self.wrap_with(foma::constructions::fsm_kleene_star(
             &self.opts,
-            self.boxed(),
+            self.net.clone(),
         ))
     }
     fn repeat_plus(&self) -> Self {
-        self.wrap_with(*foma::constructions::fsm_kleene_plus(
+        self.wrap_with(foma::constructions::fsm_kleene_plus(
             &self.opts,
-            self.boxed(),
+            self.net.clone(),
         ))
     }
     fn repeat_n(&self, n: u32) -> Self {
-        self.wrap_with(*foma::constructions::fsm_concat_n(
+        self.wrap_with(foma::constructions::fsm_concat_n(
             &self.opts,
-            self.boxed(),
+            self.net.clone(),
             n as i32,
         ))
     }
     fn repeat_le_n(&self, n: u32) -> Self {
-        self.wrap_with(*foma::constructions::fsm_concat_m_n(
+        self.wrap_with(foma::constructions::fsm_concat_m_n(
             &self.opts,
-            self.boxed(),
+            self.net.clone(),
             0,
             n as i32,
         ))
     }
     fn optionalize(&self) -> Self {
-        self.wrap_with(*foma::constructions::fsm_optionality(
+        self.wrap_with(foma::constructions::fsm_optionality(
             &self.opts,
-            self.boxed(),
+            self.net.clone(),
         ))
     }
     fn invert(&self) -> Self {
-        self.wrap_with(*foma::constructions::fsm_invert(self.boxed()))
+        self.wrap_with(foma::constructions::fsm_invert(self.net.clone()))
     }
     fn reverse(&self) -> Self {
-        self.wrap_with(*foma::reverse::fsm_reverse(self.boxed()))
+        self.wrap_with(foma::reverse::fsm_reverse(self.net.clone()))
     }
     fn extract_input_language(&self) -> Self {
-        self.wrap_with(*foma::extract::fsm_upper(self.boxed()))
+        self.wrap_with(foma::extract::fsm_upper(self.net.clone()))
     }
     fn extract_output_language(&self) -> Self {
-        self.wrap_with(*foma::extract::fsm_lower(self.boxed()))
+        self.wrap_with(foma::extract::fsm_lower(self.net.clone()))
     }
 
     fn concatenate(&self, another: &Self) -> Self {
-        self.wrap_with(*foma::constructions::fsm_concat(
+        self.wrap_with(foma::constructions::fsm_concat(
             &self.opts,
-            self.boxed(),
-            another.boxed(),
+            self.net.clone(),
+            another.net.clone(),
         ))
     }
     fn disjunct(&self, another: &Self) -> Self {
-        self.wrap_with(*foma::constructions::fsm_union(
+        self.wrap_with(foma::constructions::fsm_union(
             &self.opts,
-            self.boxed(),
-            another.boxed(),
+            self.net.clone(),
+            another.net.clone(),
         ))
     }
     fn intersect(&self, another: &Self) -> Self {
-        self.wrap_with(*foma::constructions::fsm_intersect(
+        self.wrap_with(foma::constructions::fsm_intersect(
             &self.opts,
-            self.boxed(),
-            another.boxed(),
+            self.net.clone(),
+            another.net.clone(),
         ))
     }
     fn subtract(&self, another: &Self) -> Self {
-        self.wrap_with(*foma::constructions::fsm_minus(
+        self.wrap_with(foma::constructions::fsm_minus(
             &self.opts,
-            self.boxed(),
-            another.boxed(),
+            self.net.clone(),
+            another.net.clone(),
         ))
     }
     fn compose(&self, another: &Self) -> Self {
-        self.wrap_with(*foma::constructions::fsm_compose(
+        self.wrap_with(foma::constructions::fsm_compose(
             &self.opts,
-            self.boxed(),
-            another.boxed(),
+            self.net.clone(),
+            another.net.clone(),
         ))
     }
 
@@ -468,7 +463,7 @@ impl AlgebraBackend for FomaTransducer {
             );
             acc = foma::constructions::fsm_concat(&opts, acc, pair);
         }
-        FomaTransducer { net: *acc, opts }
+        FomaTransducer { net: acc, opts }
     }
     fn define_transducer_sps(sps: &StringPairSet, cyclic: bool) -> Self {
         // Union each pair's cross-product; the empty union is the empty set
@@ -486,7 +481,7 @@ impl AlgebraBackend for FomaTransducer {
         if cyclic {
             acc = foma::constructions::fsm_kleene_star(&opts, acc);
         }
-        FomaTransducer { net: *acc, opts }
+        FomaTransducer { net: acc, opts }
     }
     fn define_transducer_spsv(spsv: &[StringPairSet]) -> Self {
         // Concatenate each set's (acyclic) union.
@@ -494,14 +489,14 @@ impl AlgebraBackend for FomaTransducer {
         let mut acc = foma::structures::fsm_empty_string();
         for sps in spsv {
             let seg = Self::define_transducer_sps(sps, false);
-            acc = foma::constructions::fsm_concat(&opts, acc, seg.boxed());
+            acc = foma::constructions::fsm_concat(&opts, acc, seg.net.clone());
         }
-        FomaTransducer { net: *acc, opts }
+        FomaTransducer { net: acc, opts }
     }
     fn define_transducer_symbol(symbol: &str) -> Self {
         let opts = FomaOptions::default();
         let net = foma::constructions::fsm_symbol(symbol);
-        FomaTransducer { net: *net, opts }
+        FomaTransducer { net, opts }
     }
     fn define_transducer_symbol_pair(isymbol: &str, osymbol: &str) -> Self {
         let opts = FomaOptions::default();
@@ -510,7 +505,7 @@ impl AlgebraBackend for FomaTransducer {
             foma::constructions::fsm_symbol(isymbol),
             foma::constructions::fsm_symbol(osymbol),
         );
-        FomaTransducer { net: *net, opts }
+        FomaTransducer { net, opts }
     }
 
     fn are_equivalent(&self, another: &Self, _encode_weights: bool) -> bool {
@@ -518,8 +513,8 @@ impl AlgebraBackend for FomaTransducer {
         // both inputs are deterministic and trim, so canonicalize each with
         // `fsm_minimize` first (it determinizes + coaccessible-prunes internally;
         // foma is unweighted, so this is a cheap boolean minimization).
-        let lhs = foma::minimize::fsm_minimize(&self.opts, self.boxed());
-        let rhs = foma::minimize::fsm_minimize(&another.opts, another.boxed());
+        let lhs = foma::minimize::fsm_minimize(&self.opts, self.net.clone());
+        let rhs = foma::minimize::fsm_minimize(&another.opts, another.net.clone());
         foma::constructions::fsm_equivalent(&self.opts, lhs, rhs)
     }
     fn is_automaton(&self) -> bool {
@@ -589,8 +584,8 @@ impl AlgebraBackend for FomaTransducer {
     }
 
     fn substitute_symbol_fast(&self, old_symbol: &str, new_symbol: &str) -> Option<Self> {
-        Some(self.wrap_with(*foma::constructions::fsm_substitute_symbol(
-            self.boxed(),
+        Some(self.wrap_with(foma::constructions::fsm_substitute_symbol(
+            self.net.clone(),
             old_symbol,
             new_symbol,
         )))
@@ -610,8 +605,8 @@ impl AlgebraBackend for FomaTransducer {
     fn disjunct_spv(&mut self, spv: &StringPairVector) {
         // self := self ∪ define_transducer_spv(spv).
         let added = Self::define_transducer_spv(spv);
-        let unioned = foma::constructions::fsm_union(&self.opts, self.boxed(), added.boxed());
-        self.net = *unioned;
+        let unioned = foma::constructions::fsm_union(&self.opts, self.net.clone(), added.net.clone());
+        self.net = unioned;
     }
 }
 
@@ -764,7 +759,7 @@ mod tests {
         foma::dynarray::fsm_construct_set_initial(&mut handle, 0);
         foma::dynarray::fsm_construct_add_arc(&mut handle, 0, 1, "a", "b");
         foma::dynarray::fsm_construct_set_final(&mut handle, 1);
-        FomaTransducer::wrap(*foma::dynarray::fsm_construct_done(handle))
+        FomaTransducer::wrap(foma::dynarray::fsm_construct_done(handle))
     }
 
     // [spec:hfst:sem:foma-backend.to-basic-fn/test]
