@@ -258,3 +258,74 @@ fn locate_large_single_line_tokenizes_correctly() -> Result<(), hfst::error::Err
     assert_eq!(dogs, reps, "every 'dog' token should be located");
     Ok(())
 }
+
+// Regression for hfst/hfst#500: `hfst-tokenise --xerox` must lay out each
+// cohort exactly like `hfst-lookup`'s xerox format —
+//   input<TAB>output<TAB><weight, six decimals>
+// for every analysis, `input<TAB>input+?<TAB>inf` for an unanalysable form,
+// and a single blank line after each cohort. The port previously (like the
+// C++) printed no weight column by default (and default float formatting under
+// --print-weight), dropped the weight on the `+?` line, and emitted a second
+// trailing blank line per input.
+#[test]
+fn xerox_output_matches_lookup_layout() -> Result<(), hfst::error::Error> {
+    use hfst::pmatch_tokenize::{
+        OutputFormat, TokenizeSettings, match_and_print, print_nonmatching_sequence,
+    };
+
+    // A tiny analyser embedded in a pmatch TOP: cat -> cat+N / cat+V, dog -> dog+N.
+    let src = "Define TOP [{cat}:{cat+N} | {cat}:{cat+V} | {dog}:{dog+N}] EndTag(w) ;\n";
+    let mut compiler = PmatchCompiler::<StdVectorFst>::new();
+    let defs = compiler.compile(src)?;
+    let top = defs.get("TOP").expect("no TOP in pmatch result");
+    let top_owned = HfstTransducer::<Transducer<WeightedTables>>::new_from_basic(&top.to_basic()?)?;
+    let mut container = PmatchContainer::new_from_hfst_transducers(vec![top_owned])?;
+    container.set_single_codepoint_tokenization(true);
+
+    // print_all mirrors hfst-lookup, which always emits a line for unanalysable
+    // input; the weight column, by contrast, is unconditional in xerox now.
+    let settings = TokenizeSettings {
+        output_format: OutputFormat::xerox,
+        print_all: true,
+        ..TokenizeSettings::default()
+    };
+
+    // A cohort with two equal-weight analyses: both weights printed as six
+    // decimals, exactly one blank line closing the cohort (no double blank).
+    let mut out: Vec<u8> = Vec::new();
+    match_and_print(&mut container, &mut out, "cat", &settings);
+    let out = String::from_utf8_lossy(&out).into_owned();
+    assert!(
+        out.contains("cat\tcat+N\t0.000000\n"),
+        "expected `cat<TAB>cat+N<TAB>0.000000`, got:\n{out:?}"
+    );
+    assert!(
+        out.contains("cat\tcat+V\t0.000000\n"),
+        "expected `cat<TAB>cat+V<TAB>0.000000`, got:\n{out:?}"
+    );
+    // The two analyses, then a single blank line, then EOF: no spurious second
+    // blank line, and no weightless / default-formatted `\t0` field.
+    assert!(
+        !out.contains("\t0\n") && !out.contains("\n\n\n"),
+        "unexpected default-formatted weight or double blank line:\n{out:?}"
+    );
+    assert!(
+        out.ends_with("\n\n") && !out.ends_with("\n\n\n"),
+        "each cohort must close with exactly one blank line:\n{out:?}"
+    );
+
+    // A single-analysis cohort: `dog<TAB>dog+N<TAB>0.000000` then one blank line.
+    let mut out: Vec<u8> = Vec::new();
+    match_and_print(&mut container, &mut out, "dog", &settings);
+    let out = String::from_utf8_lossy(&out).into_owned();
+    assert_eq!(out, "dog\tdog+N\t0.000000\n\n", "single-analysis cohort");
+
+    // An unanalysable form: `input<TAB>input+?<TAB>inf`, matching hfst-lookup's
+    // `%i\t%i+?\t%w` with an infinite weight.
+    let mut out: Vec<u8> = Vec::new();
+    print_nonmatching_sequence("bird", &mut out, &settings);
+    let out = String::from_utf8_lossy(&out).into_owned();
+    assert_eq!(out, "bird\tbird+?\tinf\n", "unanalysable xerox layout");
+
+    Ok(())
+}

@@ -121,7 +121,10 @@ pub fn print_no_output(input: &str, outstream: &mut dyn Write, s: &TokenizeSetti
     {
         let _ = write!(outstream, "{}", input);
     } else if s.output_format == OutputFormat::xerox {
-        let _ = write!(outstream, "{}\t{}+?", input, input);
+        // [#500] hfst-lookup renders an unanalysed form as `%i\t%i+?\t%w` with
+        // an infinite weight, i.e. `input<TAB>input+?<TAB>inf`; match that
+        // three-field layout instead of dropping the weight column.
+        let _ = write!(outstream, "{}\t{}+?\tinf", input, input);
     } else if s.output_format == OutputFormat::cg || s.output_format == OutputFormat::giellacg {
         let _ = write!(outstream, "\"<");
         print_escaping_backslashes(input, outstream);
@@ -160,7 +163,9 @@ pub fn print_nonmatching_sequence(str: &str, outstream: &mut dyn Write, s: &Toke
     {
         let _ = write!(outstream, "{}", str);
     } else if s.output_format == OutputFormat::xerox {
-        let _ = write!(outstream, "{}\t{}+?", str, str);
+        // [#500] Same three-field unanalysed layout as hfst-lookup:
+        // `input<TAB>input+?<TAB>inf`.
+        let _ = write!(outstream, "{}\t{}+?\tinf", str, str);
     } else if s.output_format == OutputFormat::cg {
         let _ = write!(outstream, "\"<");
         print_escaping_backslashes(str, outstream);
@@ -1117,13 +1122,16 @@ pub fn print_location_vector(
                 (loc_it.output != loc_it.input || (is_last && !printed_something))
             {
                 let _ = write!(outstream, "{}\t{}", loc_it.input, loc_it.output);
-                if s.print_weights {
-                    if is_last && !printed_something {
-                        let _ = write!(outstream, "\t{}", best_weight);
-                    } else {
-                        let _ = write!(outstream, "\t{}", loc_it.weight);
-                    }
-                }
+                // [#500] Match hfst-lookup's xerox layout, which always prints
+                // the analysis weight as a fixed six-decimal field (its %w
+                // template renders as `{:.6}`); print it here too rather than
+                // gating on --print-weight and using default float formatting.
+                let weight = if is_last && !printed_something {
+                    best_weight
+                } else {
+                    loc_it.weight
+                };
+                let _ = write!(outstream, "\t{:.6}", weight);
                 let _ = writeln!(outstream);
                 printed_something = true;
             }
@@ -1270,10 +1278,12 @@ pub fn match_and_print(
         );
         token_number += 1;
     }
-    if s.output_format == OutputFormat::finnpos
-        || s.output_format == OutputFormat::tokenize
-        || s.output_format == OutputFormat::xerox
-    {
+    // [#500] xerox is omitted here: unlike tokenize/finnpos (which need this
+    // trailing newline as their between-input separator), print_location_vector
+    // already emits one blank line after each xerox cohort, matching
+    // hfst-lookup's per-record `%n` end template. Emitting it here too produced
+    // a spurious second blank line.
+    if s.output_format == OutputFormat::finnpos || s.output_format == OutputFormat::tokenize {
         let _ = writeln!(outstream);
     }
 }

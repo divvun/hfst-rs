@@ -2788,6 +2788,21 @@ children (
                         id upstream-bugs.t2.i500
                         title "hfst#500: hfst-tokenise --xerox output differs from hfst-lookup on the same transducer — tokenise output-formatting/analysis parity (tokenize.rs vs lookup.rs paths)"
                         priority 2
+                        log (
+                            {
+                                at 2026-07-17T13:54:41.665813Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T13:54:46.703475Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
