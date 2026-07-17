@@ -3946,6 +3946,35 @@ children (
             {
                 id rustfst-trsvec-csr
                 title "(B) Replace rustfst's per-state TrsVec = Arc&lt;Vec&lt;Tr&gt;&gt; transition store with a flat/CSR representation (one arc array + per-state offsets, the OL-format idea). Today every VectorFst state = one Arc allocation for its transitions (555K states -&gt; 555K Arcs = the single biggest dhat category, ~110MB across default+clone sites), and &lt;TrsVec as Clone&gt;::clone does Arc::new (deep copy) so cloning an FST is O(states) allocations. This is the structural fix for the 46M-allocation churn. In the rustfst fork (git dep at necessary-nu/rustfst; editable via a [patch]). Bigger, higher-risk; benchmark against A first."
+                log (
+                    {
+                        at 2026-07-17T22:00:32.880758Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-17T23:06:38.433245Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "CSR REWRITE ATTEMPTED IN FULL AND PROVEN NON-VIABLE. Implemented the complete arena design in the fork clone (../rustfst): VectorFst gets one shared arc arena Arc<Vec<Tr>> + per-state (pos,ntrs) windows; VectorFstState stops owning arcs; get_trs returns a TrsConst window (cheap Arc::clone); mutation via an append/relocate/compact allocator with a `dead` hole counter + amortised maybe_compact; rewrote data_structure/mutable_fst/allocable_fst/iterators/fst/serializable_fst/parse_const/converters/trs_iter_mut + VectorFst PartialEq. It is CORRECT — all 133 rustfst non-openfst unit tests pass (determinize/minimize/optimize proptests incl.).\n\nBUT it is catastrophically slow on real workloads: one lang-sma compile went from ~10s to >3min (>18x, O(n^2)). Root cause (confirmed by /usr/bin/sample): acceptor_minimize -> merge_states holds a get_trs read handle (which Arc::clone's the single arena) WHILE calling add_tr; with one shared arena Arc, every add_tr's Arc::make_mut deep-copies the WHOLE arena (platform_memmove), so a single state merge is O(arena) -> O(n^2) overall. The per-state Arc<Vec<Tr>> is LOAD-BEARING: its make_mut COW is granular (only the mutated state's Vec clones, and only if that state is shared), which is exactly what rustfst's pervasive read-while-write algorithm code relies on. A single arena makes COW all-or-nothing, and cheap owned get_trs REQUIRES Arc sharing, so there is no arena variant that gives both cheap owned get_trs and granular COW. CSR is fundamentally incompatible with VectorFst as a general mutable FST.\n\nREVERTED the arena entirely. The one salvageable rustfst change is the shallow-clone bug-fix (TrsVec::clone: Arc::new(deep) -> Arc::clone(shallow)) — correct, byte-identical, 133 rustfst + 226 hfst tests pass — but NEUTRAL on the lang-sma builder (clones are mutated immediately; see conversion-churn/determinize-intermediate notes). RECOMMEND: retire the CSR node as non-viable; optionally land the shallow-clone bug-fix (fork push + Cargo.lock rev bump). The banked wins are A (conversion-churn) + C (determinize-intermediate): ~40% CPU, ~8% peak, byte-identical, no fork change."
+                    }
+
+                    {
+                        at 2026-07-17T23:19:37.072195Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "RETIRED as non-viable (closing the spike). Recommendation executed: (1) CSR arena fully reverted in the fork — no rustfst structural change lands; per-state Arc<Vec<Tr>> COW stays (load-bearing for read-while-write algorithms). (2) The one salvageable change, the shallow-clone bug-fix (TrsVec::clone: Arc::new deep-copy -> Arc::clone share), was pushed to the fork as c33ef8e8 and landed in hfst via Cargo.lock rev bump in commit 968fe55 — byte-identical on lang-sma (sha256 34f2debe...), 226 hfst + 133 rustfst tests pass. It is NEUTRAL on the lang-sma builder peak/CPU (clones are mutated immediately), kept as a correctness fix, not a perf win. The memory-reduction work continues via the sibling nodes minimize-consume-input (C2, next) and native-alphabet-ops (A2). Banked builder wins remain A (conversion-churn) + C (determinize-intermediate)."
+                    }
+
+                    {
+                        at 2026-07-17T23:19:40.508684Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

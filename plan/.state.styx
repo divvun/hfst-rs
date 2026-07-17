@@ -233,4 +233,5 @@ assertions (
     {id clippy-deny-gate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:49:59.63991Z}
     {id conversion-churn, kind @complete, author "brendan@necessary.nu", at 2026-07-17T21:31:21.739203Z}
     {id determinize-intermediate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T21:52:45.388723Z}
+    {id rustfst-trsvec-csr, kind @complete, author "brendan@necessary.nu", at 2026-07-17T23:19:40.508684Z}
 )
