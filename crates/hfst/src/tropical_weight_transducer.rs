@@ -1743,7 +1743,17 @@ mod operations {
     /// Port of the 'CHECK_EPSILON_CYCLES(x, y)' macro: convert 'x' to an
     /// 'HfstBasicTransducer', and if it has negative-weight epsilon cycles, emit a
     /// 'tracing' warning.
+    ///
+    /// A negative-weight cycle must contain at least one negative-weight arc, so
+    /// when the smallest weight in 'x' is non-negative the diagnostic can never
+    /// fire. The C++ macro built the whole 'HfstBasicTransducer' unconditionally;
+    /// here we first run the cheap O(states+arcs) weight scan (no allocation) and
+    /// only pay for the throwaway deep-copy conversion when a negative weight is
+    /// actually present. Faithful: the warning fires in exactly the same cases.
     fn check_epsilon_cycles(x: &StdVectorFst, y: &str) {
+        if TropicalWeightTransducer::get_smallest_weight(x) >= 0.0 {
+            return;
+        }
         let fsm = crate::convert_transducer_format::ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(x, true)
             .expect("converting a valid transducer to HfstBasicTransducer cannot fail");
         if fsm.has_negative_epsilon_cycles() {

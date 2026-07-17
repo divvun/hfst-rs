@@ -231,4 +231,5 @@ assertions (
     {id idiom-clippy-clean, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:07:42.762516Z}
     {id drop-dead-commandline-def, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:45:16.969208Z}
     {id clippy-deny-gate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:49:59.63991Z}
+    {id conversion-churn, kind @complete, author "brendan@necessary.nu", at 2026-07-17T21:31:21.739203Z}
 )

@@ -3911,4 +3911,52 @@ children (
             }
         )
     }
+
+    {
+        id perf-tropical-builder
+        title "Optimize the tropical (OpenFST/rustfst-backed) FST builder — the main construction path. Profiled on a real lang-sma lexc compile (26 files -> 130,667-state / 222,603-arc lexicon, 5MB output): 7.7s wall (5.5s CPU, single-threaded) and 613MB peak RSS (>100x the output). dhat: 46.3M total allocations / 6.9M live at peak / 518MB at t-gmax, dominated by per-state Arc&lt;Vec&gt; transition storage and deep-copy FST conversions/clones. Children A/B/C are the ranked levers; harness is the cfg-gated dhat-heap CLI feature + /usr/bin/sample."
+        children (
+            {
+                id conversion-churn
+                title "(A) Kill redundant HfstBasicTransducer&lt;-&gt;StdVectorFst deep-copy conversions in the lexc-&gt;optimize pipeline. Each round-trip deep-copies the ~555K-state intermediate (hfst_basic_transducer_to_tropical_ofst + tropical_ofst_to_hfst_basic_transducer showed ~65MB and recur in both the sample and dhat profiles); rustfst TrsVec::clone is a deep Arc::new copy, so every conversion re-allocates all states. FIRST verify the conversion count around determinize AND minimize in optimize()/compile_lexical, then collapse to a single conversion / keep the FST in one representation across the ops. hfst-side, no rustfst change. Highest ranked — clearest win on both the 46M-alloc churn and the peak."
+                log (
+                    {
+                        at 2026-07-17T21:06:58.088519Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-17T21:30:55.030413Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "VERIFIED conversion count on the real lang-sma compile (.generated/lexicon.lexc, 133,744 lines -> 207,189-state / 382,315-arc lexicon). Env-gated counters in the two conversion fns showed 6,835 trop->basic + 5,249 basic->trop conversions per compile. Almost all (6,803) are tiny (<100 states); the COST is in ~25 big conversions (206K-999K states). Attribution via force_capture backtraces on states>=50k:\n - check_epsilon_cycles (the CHECK_EPSILON_CYCLES macro port) did 1,547 throwaway tropical->basic conversions, 7 of them on >=100k-state machines (2.27M states), purely to emit a diagnostic warning. Called from minimize 1523x, determinize 12x, are_equivalent 12x.\n - The remaining 36 big conversions are load-bearing facade round-trips: substitute_symbol_substitutions (6), prune_alphabet (6), new_from_basic (5, explicit in compile_lexical), harmonize_copy (5), harmonize_for_binary_op (4), new_from_transducer (2), compose_with_config (2), substitute_string (2), substitute_with_func (2), encode/decode_flag_diacritics (1 each).\n\nFIX SHIPPED: gate check_epsilon_cycles behind a cheap O(states+arcs) get_smallest_weight scan (no allocation) — a negative-weight epsilon cycle requires a negative-weight arc, so when the smallest weight is >= 0 the diagnostic can never fire and the throwaway deep-copy conversion is skipped. Faithful: warning fires in exactly the same cases (C++ built the basic transducer unconditionally but discarded it).\nRESULT: user CPU ~13.0s -> ~9.2s (~29%), byte-identical output (sha256 34f2debe...), all 1547 diagnostic conversions eliminated, 226 hfst tests pass, clippy-clean. Peak RSS unchanged (~990MB) as expected — the diagnostic conversions were transient.\n\nFINDING (why the rest can't just be collapsed): the remaining conversions feed downstream and their symbol re-canonicalization is load-bearing for byte-exact, C++-faithful output. check_epsilon_cycles was uniquely safe because its result is discarded. Eliminating the facade round-trips (native tropical prune_alphabet/insert/remove/harmonize/substitute operating on the symbol table in place, O(alphabet) not O(states)) is a bigger structural change that would perturb numbering -> must be validated by EQUIVALENCE not byte-identity. Split out as [[native-alphabet-ops]]."
+                    }
+
+                    {
+                        at 2026-07-17T21:31:21.739203Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id rustfst-trsvec-csr
+                title "(B) Replace rustfst's per-state TrsVec = Arc&lt;Vec&lt;Tr&gt;&gt; transition store with a flat/CSR representation (one arc array + per-state offsets, the OL-format idea). Today every VectorFst state = one Arc allocation for its transitions (555K states -&gt; 555K Arcs = the single biggest dhat category, ~110MB across default+clone sites), and &lt;TrsVec as Clone&gt;::clone does Arc::new (deep copy) so cloning an FST is O(states) allocations. This is the structural fix for the 46M-allocation churn. In the rustfst fork (git dep at necessary-nu/rustfst; editable via a [patch]). Bigger, higher-risk; benchmark against A first."
+            }
+
+            {
+                id determinize-intermediate
+                title "(C) Investigate + bound the determinize intermediate blowup: the lexicon determinizes to ~555K states before minimize collapses it to 130K, and determinize's lazy state table (find_id_from_ref -&gt; Arc per subset-state, ~27MB) + compute_trs vecs (~32MB) + the subset hashmap (~35MB single resize) are a large share of peak. Verify whether determinize_adaptive's budget/fallback (tropical_weight_transducer.rs) actually engages here, and whether an encode/minimize-earlier or streaming strategy shrinks the intermediate. Measure stage-by-stage state/arc counts first."
+            }
+
+            {
+                id native-alphabet-ops
+                title "(A2) Eliminate the load-bearing facade round-trips that deep-copy the whole graph to do alphabet-metadata / symbol-remapping work. Profiling (see conversion-churn) attributed the 36 big (206K-999K-state) conversions per lang-sma compile to: prune_alphabet (6), substitute_symbol_substitutions/substitute_string/substitute_with_func (10), harmonize_copy/harmonize_for_binary_op (9), insert/remove_from_alphabet, encode/decode_flag_diacritics. Each calls convert_to_basic_transducer() -> op -> convert_to_hfst_transducer(), i.e. two O(states) deep copies (rustfst TrsVec::clone is a per-state Arc::new). For the tropical backend the alphabet IS the input SymbolTable, so prune_alphabet/insert/remove could be an in-place O(alphabet) symbol-table edit with no graph copy. RISK: the round-trips re-canonicalize symbol numbering, which downstream stages rely on for byte-exact C++-faithful output — so native versions must be validated by EQUIVALENCE (same analyses/generations on lang-sma), not the byte-identical oracle. Successor port allows the divergence (see upstream-bugs-validation-successor). Biggest single event is a 999,594-state basic->trop; killing these also cuts peak (source+dest both live during a round-trip). Do AFTER benchmarking against lever B (rustfst-trsvec-csr), which reduces the per-conversion cost instead."
+            }
+        )
+    }
 )

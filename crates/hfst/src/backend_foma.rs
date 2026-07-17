@@ -275,7 +275,6 @@ fn path_bound(cycles: i32) -> usize {
 }
 
 impl FomaTransducer {
-
     /// Wrap a foma construction result as a `FomaTransducer` running under
     /// foma's default (C) options.
     fn wrap(fsm: foma::types::Fsm) -> Self {
@@ -605,7 +604,8 @@ impl AlgebraBackend for FomaTransducer {
     fn disjunct_spv(&mut self, spv: &StringPairVector) {
         // self := self ∪ define_transducer_spv(spv).
         let added = Self::define_transducer_spv(spv);
-        let unioned = foma::constructions::fsm_union(&self.opts, self.net.clone(), added.net.clone());
+        let unioned =
+            foma::constructions::fsm_union(&self.opts, self.net.clone(), added.net.clone());
         self.net = unioned;
     }
 }
