@@ -1911,16 +1911,18 @@ mod operations {
             }
 
             // Label-only path: bound the determinization and fall back to weight
-            // encoding if the budget is exceeded.
+            // encoding if the budget is exceeded. Encode `t` IN PLACE and
+            // determinize from it directly rather than from a clone: on the common
+            // within-budget path that keeps only one copy of the ~input-sized
+            // machine live alongside the growing output (the profiled lang-sma
+            // compile determinizes ~1M-state machines here, and the extra clone
+            // was a full second copy at peak). On the rare budget overrun the
+            // machine is Decoded back to its original labels/weights before the
+            // weighted retry, so that path's result is unchanged.
             let budget = Self::determinize_budget(input_states);
-            let mut labels_only = t.clone();
-            let encode_mapper =
-                algorithms::Encode(&mut labels_only, algorithms::EncodeType::EncodeLabels);
-            match algorithms::DeterminizeBounded(&labels_only, det, Some(budget)) {
-                Ok(()) => {
-                    *t = labels_only;
-                    encode_mapper
-                }
+            let label_mapper = algorithms::Encode(t, algorithms::EncodeType::EncodeLabels);
+            match algorithms::DeterminizeBounded(&*t, det, Some(budget)) {
+                Ok(()) => label_mapper,
                 Err(_) => {
                     tracing::info!(
                         caller,
@@ -1928,6 +1930,7 @@ mod operations {
                         "label-only determinization exceeded state budget; \
                          retrying with weight encoding (hfst/hfst#435)"
                     );
+                    algorithms::Decode(t, label_mapper);
                     let encode_mapper =
                         algorithms::Encode(t, algorithms::EncodeType::EncodeWeightsAndLabels);
                     algorithms::Determinize(t, det);

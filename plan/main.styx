@@ -3951,6 +3951,28 @@ children (
             {
                 id determinize-intermediate
                 title "(C) Investigate + bound the determinize intermediate blowup: the lexicon determinizes to ~555K states before minimize collapses it to 130K, and determinize's lazy state table (find_id_from_ref -&gt; Arc per subset-state, ~27MB) + compute_trs vecs (~32MB) + the subset hashmap (~35MB single resize) are a large share of peak. Verify whether determinize_adaptive's budget/fallback (tropical_weight_transducer.rs) actually engages here, and whether an encode/minimize-earlier or streaming strategy shrinks the intermediate. Measure stage-by-stage state/arc counts first."
+                log (
+                    {
+                        at 2026-07-17T21:44:59.626432Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-17T21:52:41.702902Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "INVESTIGATION FINDING (overturns the node's premise): there is NO determinize intermediate blowup on the real lang-sma compile. Env-gated stage-size probe (HFST_STAGE_SIZES) over every minimize call showed input(post-rmeps) ~= determinized for ALL stages: 999,594 -> det 999,594; 211,358 -> 211,358; 212,475 -> 212,475; 206,897 -> 206,897; etc. The determinize step preserves state count (these are already-near-deterministic lexicons being re-optimized); it's Minimize that collapses them (999,594 -> 211,357). And determinize_adaptive's budget NEVER trips (0 fallbacks): budget = 256*input_states (e.g. 255M for the 999K machine) >> det_out. So the #435 safety net is correctly dormant here. The '555K->130K blowup' in the node title was from an older corpus/run; not reproduced.\n\nREAL peak driver: the ~1M-state (999,594) machine flowing through minimize. In the label-only path the input was cloned TWICE — once in minimize (let mut t = t.clone(), forced by the fn minimize(&self) trait signature) and again in determinize_adaptive (let mut labels_only = t.clone()) — so ~3 copies of the 1M-state machine were live at once (t + labels_only + growing det + determinize subset table).\n\nFIX SHIPPED: eliminate the second clone. Encode t in place with EncodeLabels and DeterminizeBounded(&*t, det) directly; on the rare budget overrun, Decode(t, label_mapper) restores the original before the weighted retry (result unchanged). RESULT: peak RSS ~990MB -> ~907MB (-83MB, ~8%), user CPU also down ~1s, byte-identical (sha256 34f2debe...), all 4 test_determinize_bounds tests pass (incl. the fallback test issue_435_att_minimize_terminates_and_is_correct), 226 hfst tests pass, clippy-clean.\n\nREMAINING (follow-up, not done here): the minimize-level `t = t.clone()` is still a full ~1M-state copy at peak. Removing it requires the AlgebraBackend::minimize/determinize trait methods to consume `self` (or take &mut) instead of &self, so the facade (self.fst = self.fst.minimize(...)) can hand over ownership via mem::take. That's a trait-signature change rippling to all backends (tropical/foma/OL) — bigger scope; would cut peak further. Same shape helps determinize()."
+                    }
+
+                    {
+                        at 2026-07-17T21:52:45.388723Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
