@@ -329,3 +329,55 @@ fn xerox_output_matches_lookup_layout() -> Result<(), hfst::error::Error> {
 
     Ok(())
 }
+
+// Regression for upstream hfst#562: `keep_n_best_weight` used to count the
+// unknown (" ??") tokenised-but-unanalysed placeholder as a weight class.
+// Because that placeholder sits at the best (lowest) weight, `--weight-classes
+// 1` then kept ONLY the unknown and dropped every genuine analysis whose weight
+// was non-zero, so the tokeniser wrongly reported "unknown". The unknown
+// placeholder must be passed through uncounted (like an empty output), leaving
+// the real, best-weight-class analysis to survive.
+#[test]
+fn keep_n_best_weight_ignores_unknown_reading_562() {
+    use hfst::pmatch::Location;
+    use hfst::pmatch_tokenize::{TokenizeSettings, keep_n_best_weight};
+
+    let loc = |output: &str, weight: f32| Location {
+        input: "cat".to_string(),
+        output: output.to_string(),
+        weight,
+        ..Location::default()
+    };
+    let outputs = |v: &[Location]| -> Vec<String> { v.iter().map(|l| l.output.clone()).collect() };
+
+    // The unknown " ??" reading is the best-weight (0.0) entry (dedupe sorts by
+    // weight when print_weights is on); the sole real analysis has weight 2.5.
+    let locations = vec![loc("cat ??", 0.0), loc("cat+N", 2.5)];
+
+    let s = TokenizeSettings {
+        print_weights: true,
+        max_weight_classes: 1,
+        ..TokenizeSettings::default()
+    };
+    let kept = keep_n_best_weight(&locations, &s);
+    assert!(
+        outputs(&kept).iter().any(|o| o == "cat+N"),
+        "the real non-zero-weight analysis must survive --weight-classes 1, got {:?}",
+        outputs(&kept)
+    );
+
+    // A genuine second weight class must still be trimmed by --weight-classes 1
+    // (the unknown placeholder does not consume the single allowed class).
+    let with_second = vec![loc("cat ??", 0.0), loc("cat+N", 2.5), loc("cat+V", 3.5)];
+    let kept2 = keep_n_best_weight(&with_second, &s);
+    assert!(
+        outputs(&kept2).iter().any(|o| o == "cat+N"),
+        "best real class must survive, got {:?}",
+        outputs(&kept2)
+    );
+    assert!(
+        !outputs(&kept2).iter().any(|o| o == "cat+V"),
+        "the second real weight class must be trimmed by --weight-classes 1, got {:?}",
+        outputs(&kept2)
+    );
+}

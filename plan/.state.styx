@@ -180,4 +180,5 @@ assertions (
     {id upstream-bugs.t2.i439, kind @complete, author "brendan@necessary.nu", at 2026-07-16T16:04:39.495798Z}
     {id upstream-bugs.t2.i483, kind @complete, author "brendan@necessary.nu", at 2026-07-17T13:52:18.645292Z}
     {id upstream-bugs.t2.i500, kind @complete, author "brendan@necessary.nu", at 2026-07-17T13:54:46.703475Z}
+    {id upstream-bugs.t2.i562, kind @complete, author "brendan@necessary.nu", at 2026-07-17T13:56:57.030148Z}
 )

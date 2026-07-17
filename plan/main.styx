@@ -2865,6 +2865,21 @@ children (
                         id upstream-bugs.t2.i562
                         title "hfst#562: hfst-tokenise returns 'unknown' when analysis weight != 0 and --weight-classes=1 — weight-class bucketing logic drops valid analyses (tokenize.rs weight-classes handling)"
                         priority 2
+                        log (
+                            {
+                                at 2026-07-17T13:56:49.999646Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T13:56:57.030148Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {

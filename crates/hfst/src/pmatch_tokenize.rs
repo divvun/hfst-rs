@@ -301,7 +301,15 @@ pub fn keep_n_best_weight(locations: &LocationVector, s: &TokenizeSettings) -> L
     let mut last_weight_class: Weight = 0.0;
     let mut goodweight: LocationVector = Vec::new();
     for it in locations.iter() {
-        if it.output.is_empty() {
+        // Empty and unknown (" ??") readings are tokenised-but-unanalysed
+        // placeholders, not real analyses. They must not count toward the
+        // weight classes: since the unknown reading sits at the best (lowest)
+        // weight, counting it would let `--weight-classes 1` keep only the
+        // unknown and drop every genuine, non-zero-weight analysis (issue
+        // #562). Pass them through uncounted, exactly like empty outputs; the
+        // giellacg printer already suppresses " ??" whenever a real reading
+        // survives.
+        if it.output.is_empty() || it.output.contains(" ??") {
             goodweight.push(it.clone());
             continue;
         }
