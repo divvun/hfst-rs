@@ -3871,4 +3871,24 @@ children (
             }
         )
     }
+
+    {
+        id drop-dead-commandline-def
+        title "Delete the never-called hfst_set_commandline_def{,_unary,_binary} and their private basename helper from hfst_tool_metadata.rs — dead 1:1 C++ ports (the command-line-in-metadata feature was never wired into the new CLI), which carried vestigial argc/argv C-shape and a latent argv[argc] out-of-bounds. Nothing referenced them (pub-so-not-dead-code-flagged); build green, clippy still 0, tests unaffected."
+        log (
+            {
+                at 2026-07-17T19:45:09.939582Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-07-17T19:45:16.969208Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
+        )
+    }
 )
