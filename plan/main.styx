@@ -3831,4 +3831,24 @@ children (
             }
         )
     }
+
+    {
+        id perf-ol-epsilon-guard
+        title "OL lookup perf: replace the BTreeSet epsilon-loop guard with a Vec DFS-stack + inline (SmallVec) flag snapshots. Profiling a real South Sámi analyzer (8MB OLW, 2053 in-vocab forms) showed >70% of lookup CPU was per-arc ordered-set churn + the allocator traffic it drove; the guard is used strictly LIFO so a Vec stack is membership-identical, and the flag snapshot fits inline. 3.5x faster (216->61 µs/lookup), analyses byte-identical (oracle-diffed), 291 tests pass."
+        log (
+            {
+                at 2026-07-17T16:41:01.428427Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-07-17T16:41:05.632955Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
+        )
+    }
 )

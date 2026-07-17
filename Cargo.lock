@@ -781,6 +781,7 @@ dependencies = [
  "nfst-xre",
  "serde",
  "serde_json",
+ "smallvec",
  "smol_str",
  "thiserror 2.0.18",
  "tracing",

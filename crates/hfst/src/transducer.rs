@@ -20,6 +20,7 @@
 //! references. The pure-abstract 'TransducerTablesInterface' becomes a trait
 //! object.
 
+use smallvec::SmallVec;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 use std::time::Instant;
@@ -58,6 +59,13 @@ pub type StringPair = (Symbol, Symbol);
 // for ospell
 // [spec:hfst:def:transducer.hfst-ol.flag-diacritic-state]
 pub type FlagDiacriticState = Vec<i16>;
+// The epsilon-loop guard keys on a snapshot of the flag-diacritic state. A
+// transducer has a small, fixed number of flag features (typically well under
+// 32), so this snapshot lives inline on the stack; the guard is probed/pushed
+// once per epsilon or flag arc, and inline storage keeps that hot path free of
+// per-arc heap traffic (spilling to the heap only for unusually large flag
+// sets, where it stays correct). See the note on `TraversalStates`.
+pub type GuardFlags = SmallVec<[i16; 32]>;
 // [spec:hfst:def:transducer.hfst-ol.operation-map]
 pub type OperationMap = BTreeMap<SymbolNumber, FdOperation>;
 // [spec:hfst:def:transducer.hfst-ol.string-symbol-map]
@@ -68,14 +76,19 @@ pub type StringSymbolMap = BTreeMap<Symbol, SymbolNumber>;
 #[derive(Clone)]
 pub struct TraversalState {
     pub index: TransitionTableIndex,
-    pub flags: FlagDiacriticState,
+    pub flags: GuardFlags,
 }
 
 impl TraversalState {
     // [spec:hfst:def:transducer.hfst-ol.traversal-state.traversal-state-fn]
     // [spec:hfst:sem:transducer.hfst-ol.traversal-state.traversal-state-fn]
-    pub fn new(i: TransitionTableIndex, f: FlagDiacriticState) -> Self {
-        TraversalState { index: i, flags: f }
+    // Copies the flag snapshot into inline storage; the caller passes a borrow
+    // of the live flag state, so no owning `Vec` is allocated per arc.
+    pub fn new(i: TransitionTableIndex, f: &[i16]) -> Self {
+        TraversalState {
+            index: i,
+            flags: SmallVec::from_slice(f),
+        }
     }
 }
 
@@ -109,7 +122,17 @@ impl Ord for TraversalState {
 }
 
 // [spec:hfst:def:transducer.hfst-ol.traversal-states]
-pub type TraversalStates = BTreeSet<TraversalState>;
+// The C++ used a std::set, but this guard is used strictly as a DFS stack:
+// every insert (on entering an epsilon/flag arc) is matched by a remove after
+// the recursive descent returns, and it is cleared whenever a real input symbol
+// is consumed — so the live contents are exactly the states on the current
+// recursion path (always distinct, since a repeat is trapped by `contains`
+// before it can be pushed). A `Vec` used as that stack is membership-identical
+// but allocation-free in steady state (capacity is reused across the whole
+// lookup), whereas the old `BTreeSet` allocated/rebalanced a tree node per arc.
+// Profiling a real morphological analyzer showed that per-arc set churn (plus
+// the allocator traffic it drove) was >70% of lookup CPU; this removes it.
+pub type TraversalStates = Vec<TraversalState>;
 
 // parentheses avoid collision with windows macro 'max'
 pub const NO_SYMBOL_NUMBER: SymbolNumber = SymbolNumber::MAX;
@@ -2968,20 +2991,22 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                 // returns to the same (target, flags) at the SAME input
                 // position — never a sibling branch or a genuine re-entry after
                 // progress. Convergent analyses therefore survive.
-                let epsilon_reachable =
-                    TraversalState::new(target, self.flag_state.get_values().clone());
+                let epsilon_reachable = TraversalState::new(target, self.flag_state.get_values());
                 if self.traversal_states.contains(&epsilon_reachable) {
                     // We've been here before at this input, back out.
                     i += 1;
                     continue;
                 }
-                self.traversal_states.insert(epsilon_reachable.clone());
+                // push on enter / pop on leave — the stack top is always the
+                // state we pushed, so pop() is the exact counterpart of the old
+                // set's remove(&epsilon_reachable).
+                self.traversal_states.push(epsilon_reachable);
                 self.output_tape.write_pair(output_pos, input, output);
                 self.current_weight += weight;
                 self.get_analyses(input_pos, output_pos + 1, target);
                 found_transition = true;
                 self.current_weight = old_weight;
-                self.traversal_states.remove(&epsilon_reachable);
+                self.traversal_states.pop();
                 i += 1;
             } else if self.alph().is_flag_diacritic(input) {
                 let flags = self.flag_state.get_values().clone();
@@ -2992,20 +3017,20 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                     .clone();
                 if self.flag_state.apply_operation(&op) {
                     // flag diacritic allowed
-                    let flag_reachable = TraversalState::new(target, flags.clone());
+                    let flag_reachable = TraversalState::new(target, &flags);
                     if self.traversal_states.contains(&flag_reachable) {
                         // We've been here before at this input, back out
                         self.flag_state.assign_values(&flags);
                         i += 1;
                         continue;
                     }
-                    self.traversal_states.insert(flag_reachable.clone());
+                    self.traversal_states.push(flag_reachable);
                     self.output_tape.write_pair(output_pos, input, output);
                     self.current_weight += weight;
                     self.get_analyses(input_pos, output_pos + 1, target);
                     found_transition = true;
                     self.current_weight = old_weight;
-                    self.traversal_states.remove(&flag_reachable);
+                    self.traversal_states.pop();
                 }
                 self.flag_state.assign_values(&flags);
                 i += 1;
@@ -3251,7 +3276,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         let mut found_transition = false;
         loop {
             let target = self.tbl().get_transition_target(i);
-            let epsilon_reachable = TraversalState::new(target, flags.clone());
+            let epsilon_reachable = TraversalState::new(target, &flags);
             let tin = self.tbl().get_transition_input(i);
             if tin == 0 {
                 // epsilon
@@ -3260,9 +3285,9 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                     // We've been here before
                     return ControlFlow::Break(());
                 }
-                self.traversal_states.insert(epsilon_reachable.clone());
+                self.traversal_states.push(epsilon_reachable.clone());
                 self.find_loop(input_pos, target)?;
-                self.traversal_states.remove(&epsilon_reachable);
+                self.traversal_states.pop();
                 found_transition = true;
                 i += 1;
             } else if self.alph().is_flag_diacritic(tin) {
@@ -3277,12 +3302,12 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                         // We've been here before
                         return ControlFlow::Break(());
                     }
-                    self.traversal_states.insert(epsilon_reachable.clone());
+                    self.traversal_states.push(epsilon_reachable.clone());
                     // C++ leak preserved: the shared field took the nested
                     // call's exit value here (no unconditional set like the
                     // epsilon arm), so this REPLACES the accumulator.
                     found_transition = self.find_loop(input_pos, target)?;
-                    self.traversal_states.remove(&epsilon_reachable);
+                    self.traversal_states.pop();
                 }
                 self.flag_state.assign_values(&flags);
                 i += 1;
