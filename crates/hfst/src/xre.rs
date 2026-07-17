@@ -677,6 +677,12 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             *chars_read = 0;
             return None;
         }
+        // Reject pathologically deep nesting before it can overflow the parser's
+        // recursion; report it as an ordinary parse failure, never an abort.
+        if exceeds_max_nesting_depth(expression) {
+            *chars_read = 0;
+            return None;
+        }
         match parse_all(expression) {
             Ok(exprs) if !exprs.is_empty() => {
                 let first = &exprs[0];
@@ -719,6 +725,11 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             self.contains_only_comments = true;
             return None;
         }
+        // Reject pathologically deep nesting before it can overflow the parser's
+        // recursion; report it as an ordinary parse failure, never an abort.
+        if exceeds_max_nesting_depth(src) {
+            return None;
+        }
         match parse(src) {
             Ok(expr) => {
                 let mut t = self.eval(&expr).ok()?;
@@ -744,6 +755,45 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 fn is_only_whitespace_or_comments(src: &str) -> bool {
     src.lines()
         .all(|line| line.trim_start().is_empty() || line.trim_start().starts_with('!'))
+}
+
+/// Ceiling on grouping-delimiter nesting depth accepted before parsing.
+///
+/// The `nfst-xre` parser is recursive-descent and the AST evaluator recurses
+/// per node, so pathologically deep bracket/paren nesting (`[[[[…`) exhausts
+/// even the worker thread's large stack and aborts the process (SIGABRT), which
+/// no `catch_unwind` can recover. Rejecting over-deep input up front turns that
+/// abort into an ordinary parse failure. The bound sits far below the empirical
+/// overflow point (~12k) yet far above any hand-written grammar's real nesting.
+const MAX_NESTING_DEPTH: usize = 4000;
+
+/// Whether `src`'s grouping-delimiter nesting (`[`, `(`, `[.`) ever runs deeper
+/// than [`MAX_NESTING_DEPTH`]. `%`-escaped characters and `"…"`-quoted literals
+/// are skipped so their brackets never count toward the depth.
+fn exceeds_max_nesting_depth(src: &str) -> bool {
+    let mut depth: usize = 0;
+    let mut in_quote = false;
+    let mut chars = src.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            // A '%' escapes the next character (an ordinary literal, never a
+            // grouping delimiter); consume it so its bracket does not count.
+            '%' => {
+                let _ = chars.next();
+            }
+            '"' => in_quote = !in_quote,
+            _ if in_quote => {}
+            '[' | '(' => {
+                depth += 1;
+                if depth > MAX_NESTING_DEPTH {
+                    return true;
+                }
+            }
+            ']' | ')' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    false
 }
 
 // ====================== core recursive evaluator ===========================
@@ -1984,7 +2034,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     ) -> crate::error::Result<HfstTransducer<B>> {
         let t = self.eval(expr)?;
         if has_non_identity_pairs(&t) {
-            std::panic::panic_any("Containment with weight only works with automata".to_string());
+            crate::bail!(Hfst, "Containment with weight only works with automata");
         }
         self.contains_with_weight(&t, weight as f32)
     }
@@ -2186,9 +2236,11 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 crate::hfst_xerox_rules::replace_leftmost_shortest_match_rule_vector(&rule_vector)?
             }
             // E_REPLACE_RIGHT_MARKUP / no replace left-right arrow in the
-            // xfst grammar: 'xreerror("Unhandled arrow stuff I suppose")'.
+            // xfst grammar: the C++ 'xreerror("Unhandled arrow stuff I
+            // suppose")' aborted the parse; here it is a propagated parse
+            // error so malformed input yields a clean diagnostic, never a panic.
             ReplaceArrow::LeftRight | ReplaceArrow::OptionalLeftRight => {
-                std::panic::panic_any("Unhandled arrow stuff I suppose".to_string())
+                crate::bail!(Hfst, "Unhandled arrow stuff I suppose")
             }
         })
     }
@@ -2290,10 +2342,10 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 let mut t1 = self.eval(&**l)?;
                 let mut t2 = self.eval(&**r)?;
                 if has_non_identity_pairs(&t1) {
-                    std::panic::panic_any("Contexts need to be automata".to_string());
+                    crate::bail!(Hfst, "Contexts need to be automata");
                 }
                 if has_non_identity_pairs(&t2) {
-                    std::panic::panic_any("Contexts need to be automata".to_string());
+                    crate::bail!(Hfst, "Contexts need to be automata");
                 }
                 if weighted {
                     t1.transform_weights(zero_weights)?;
@@ -2310,7 +2362,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             (Some(l), None) => {
                 let mut t1 = self.eval(&**l)?;
                 if has_non_identity_pairs(&t1) {
-                    std::panic::panic_any("Contexts need to be automata".to_string());
+                    crate::bail!(Hfst, "Contexts need to be automata");
                 }
                 if weighted {
                     t1.transform_weights(zero_weights)?;
@@ -2325,7 +2377,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             (None, Some(r)) => {
                 let mut t1 = self.eval(&**r)?;
                 if has_non_identity_pairs(&t1) {
-                    std::panic::panic_any("Contexts need to be automata".to_string());
+                    crate::bail!(Hfst, "Contexts need to be automata");
                 }
                 if weighted {
                     t1.transform_weights(zero_weights)?;
@@ -2558,8 +2610,9 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             // optimize. READ_TEXT uses the multichar tokenizer; READ_SPACED splits
             // on spaces.
             ReadKind::Text | ReadKind::Spaced => {
-                let contents = std::fs::read_to_string(path)
-                    .unwrap_or_else(|_| panic!("File cannot be opened."));
+                let Ok(contents) = std::fs::read_to_string(path) else {
+                    crate::bail!(Hfst, format!("File cannot be opened: '{}'", path));
+                };
                 let mut tmp = HfstBasicTransducer::new();
                 let tok = crate::hfst_tokenizer::HfstTokenizer::new();
                 for raw in contents.lines() {
@@ -2579,7 +2632,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             ReadKind::Prolog => {
                 let f = match std::fs::File::open(path) {
                     Ok(f) => f,
-                    Err(_) => panic!("File cannot be opened."),
+                    Err(_) => crate::bail!(Hfst, format!("File cannot be opened: '{}'", path)),
                 };
                 let mut reader = std::io::BufReader::new(f);
                 let mut linecount: u32 = 0;
@@ -2592,8 +2645,9 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             // READ_RE: read the file content and re-compile it as a regex (the C++
             // spins up a fresh scanner; the ported compiler re-parses the string).
             ReadKind::Regex => {
-                let contents = std::fs::read_to_string(path)
-                    .unwrap_or_else(|_| panic!("File cannot be opened."));
+                let Ok(contents) = std::fs::read_to_string(path) else {
+                    crate::bail!(Hfst, format!("File cannot be opened: '{}'", path));
+                };
                 self.compile(&contents)
                     .ok_or_else(|| crate::err!(Hfst, "read-regex: regex did not compile"))
             }
