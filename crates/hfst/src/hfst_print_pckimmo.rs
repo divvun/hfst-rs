@@ -122,7 +122,7 @@ pub fn print_pckimmo<B: crate::backend::Backend>(
             let second = arc.get_output_symbol(mutt.coder());
             transitions.insert((first, second), arc.get_target_state());
         }
-        for (_k, v) in &transitions {
+        for v in transitions.values() {
             write_state_number(out, numwidth as usize, v.wrapping_add(1) as i32)?;
             write!(out, " ")?;
         }

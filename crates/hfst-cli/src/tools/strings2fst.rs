@@ -155,7 +155,7 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "String and format options:\n  -f, --format=FMT          Write result in FMT format\n  -j, --disjunct-strings    Disjunct all strings instead of transforming\n                            each string into a separate transducer\n      --norm                Divide each weight by sum of all weights\n                            (with option -j)\n      --log                 Take negative natural logarithm of each weight\n      --log10               Take negative 10-based logarithm of each weight\n  -p, --pairstrings         Input is in pairstring format\n  -S, --has-spaces          Input has spaces between symbols/symbol pairs\n  -e, --epsilon=EPS         Interpret string EPS as epsilon.\n  -m, --multichar-symbols=FILE   Strings that must be tokenized as one symbol.\n",
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 
     let _ = write!(
         msg,
@@ -167,7 +167,7 @@ fn print_usage(common: &CommonOptions) {
         "Examples:\n  echo \"cat:dog\" | {}            create cat:dog fst\n  echo \"c:da:ot:g\" | {} -p       same as pairstring\n  echo \"c:d a:o t:g\" | {} -p -S  same as pairstring with spaces\n  echo \"c a t:d o g\" | {} -S     same with spaces\n\n",
         program_name, program_name, program_name, program_name
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-strings2fst.parse-options-fn]
@@ -404,15 +404,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
         let mut weighted = false;
 
         let string_end_idx;
-        if tab_pos.is_none() {
-            // string_end walks to first '\0', '\n' or '\r'
-            let mut se = 0usize;
-            while se < line_bytes.len() && line_bytes[se] != b'\n' && line_bytes[se] != b'\r' {
-                se += 1;
-            }
-            string_end_idx = se;
-        } else {
-            let tab = tab_pos.unwrap();
+        if let Some(tab) = tab_pos {
             // weight string is from tab+1 to the first '\n'/'\r' (the C++
             // inserted a '\0' there).
             let mut we = tab + 1;
@@ -434,6 +426,13 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
                 }
             }
             string_end_idx = tab;
+        } else {
+            // string_end walks to first '\0', '\n' or '\r'
+            let mut se = 0usize;
+            while se < line_bytes.len() && line_bytes[se] != b'\n' && line_bytes[se] != b'\r' {
+                se += 1;
+            }
+            string_end_idx = se;
         }
 
         // Parse the string (C: cstr(line) up to the inserted '\0').

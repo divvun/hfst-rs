@@ -124,7 +124,7 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Test features:\n  -a, --atleast-version=MVER   require at least MVER version of HFST\n  -e, --exact-version=EVER     require exactly EVER version of HFST\n  -m, --max-version=UVER       require at most UVER version of HFST\n  -f, --requirefeature=FEAT    require named FEAT support from HFST\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "MVER, EVER or UVER version vectors must be composed of one to three full stop separated runs of digits.\nFEAT should be name of feature supported by HFST, such as SFST, foma or openfst\n\n"

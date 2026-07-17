@@ -328,7 +328,7 @@ pub trait PmatchObject<B: AlgebraBackend + 'static> {
     fn start_timing(&self, ctx: &mut PmatchEvalContext<B>) -> clock_t {
         if ctx.verbose && self.get_name() != "" {
             let my_timer = clock();
-            ctx.named_object_evaluation_stack_depth = ctx.named_object_evaluation_stack_depth + (1);
+            ctx.named_object_evaluation_stack_depth += 1;
             write_compilation_stack_indentation_to_err(ctx);
             debug!("Compiling {}...", self.get_name());
             my_timer
@@ -348,17 +348,17 @@ pub trait PmatchObject<B: AlgebraBackend + 'static> {
                 duration,
                 extra_info
             );
-            ctx.named_object_evaluation_stack_depth = ctx.named_object_evaluation_stack_depth - (1);
+            ctx.named_object_evaluation_stack_depth -= 1;
         }
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.report-cache-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.report-cache-fn]
     fn report_cache(&self, ctx: &mut PmatchEvalContext<B>, extra_info: String) {
         if ctx.verbose && self.get_name() != "TOP" {
-            ctx.named_object_evaluation_stack_depth = ctx.named_object_evaluation_stack_depth + (1);
+            ctx.named_object_evaluation_stack_depth += 1;
             write_compilation_stack_indentation_to_err(ctx);
             debug!("{} fetched from cache{}", self.get_name(), extra_info);
-            ctx.named_object_evaluation_stack_depth = ctx.named_object_evaluation_stack_depth - (1);
+            ctx.named_object_evaluation_stack_depth -= 1;
         }
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.should-use-cache-fn]
@@ -1469,7 +1469,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         errmsg.push_str(msg);
         errmsg.push_str("\n*** parsing ");
         errmsg.push_str(&parsedata);
-        errmsg.push_str("\n");
+        errmsg.push('\n');
 
         std::panic::panic_any(errmsg);
     }
@@ -1692,12 +1692,11 @@ impl<B: AlgebraBackend> PmatchUtilityTransducers<B> {
         let ss: StringSet = t.get_alphabet()?;
         for it in ss.iter() {
             let us: Vec<char> = it.chars().collect();
-            if us.len() == 1 {
-                if icu::properties::CodePointSetData::new::<icu::properties::props::Lowercase>()
+            if us.len() == 1
+                && icu::properties::CodePointSetData::new::<icu::properties::props::Lowercase>()
                     .contains(us[0])
-                {
-                    lowercase.disjunct(&HfstTransducer::new_symbol(it)?, true)?;
-                }
+            {
+                lowercase.disjunct(&HfstTransducer::new_symbol(it)?, true)?;
             }
         }
         Ok(lowercase)
@@ -1715,12 +1714,11 @@ impl<B: AlgebraBackend> PmatchUtilityTransducers<B> {
         let ss: StringSet = t.get_alphabet()?;
         for it in ss.iter() {
             let us: Vec<char> = it.chars().collect();
-            if us.len() == 1 {
-                if icu::properties::CodePointSetData::new::<icu::properties::props::Uppercase>()
+            if us.len() == 1
+                && icu::properties::CodePointSetData::new::<icu::properties::props::Uppercase>()
                     .contains(us[0])
-                {
-                    uppercase.disjunct(&HfstTransducer::new_symbol(it)?, true)?;
-                }
+            {
+                uppercase.disjunct(&HfstTransducer::new_symbol(it)?, true)?;
             }
         }
         Ok(uppercase)
@@ -1822,7 +1820,7 @@ impl<B: AlgebraBackend> PmatchUtilityTransducers<B> {
             HfstTransducer::new_copy(&anything)?;
         anything_but_whitespace_star.subtract(&self.latin1_whitespace_acceptor, true)?;
         anything_but_whitespace_star.repeat_star()?;
-        if optional == false {
+        if !optional {
             // don't let lowercased first letters through
             anything.subtract(&self.get_lowercase_acceptor_from_transducer(t)?, true)?;
         }
@@ -1910,7 +1908,7 @@ impl<B: AlgebraBackend> PmatchUtilityTransducers<B> {
 
         let mut anything: HfstTransducer<B> =
             HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
-        if optional == false {
+        if !optional {
             anything.subtract(&self.get_uppercase_acceptor_from_transducer(t)?, true)?;
         }
         let mut retval: HfstTransducer<B>;
@@ -1959,7 +1957,7 @@ impl<B: AlgebraBackend> PmatchUtilityTransducers<B> {
 
         let mut anything: HfstTransducer<B> =
             HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
-        if optional == false {
+        if !optional {
             anything.subtract(&self.get_lowercase_acceptor_from_transducer(t)?, true)?;
         }
         let mut retval: HfstTransducer<B>;
@@ -2171,9 +2169,9 @@ pub fn make_list<B: AlgebraBackend>(
     let alphabet = get_non_special_alphabet(t)?;
     for it in alphabet.iter() {
         transition.push_str(it);
-        transition.push_str("_");
+        transition.push('_');
     }
-    transition.push_str("@");
+    transition.push('@');
     HfstTransducer::new_symbol(&transition)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-exc-list-fn]
@@ -2185,9 +2183,9 @@ pub fn make_exc_list<B: AlgebraBackend>(
     let alphabet = get_non_special_alphabet(t)?;
     for it in alphabet.iter() {
         transition.push_str(it);
-        transition.push_str("_");
+        transition.push('_');
     }
-    transition.push_str("@");
+    transition.push('@');
     HfstTransducer::new_symbol(&transition)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.make-sigma-fn]
@@ -2414,13 +2412,13 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchUnaryOperation<B> {
             for it in strings.iter() {
                 whole_string += it;
             }
-            let mut retval = if whole_string.len() > 0 {
+            let mut retval = if !whole_string.is_empty() {
                 HfstTransducer::new_symbol(&whole_string)?
             } else {
                 HfstTransducer::new()
             };
             retval.set_final_weights(self.weight as f32, true)?;
-            if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) == true {
+            if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) {
                 ctx.node_cache_put(key, retval);
                 self.report_time(
                     ctx,
@@ -2440,13 +2438,13 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchUnaryOperation<B> {
                 whole_string += it;
             }
             let tok = crate::hfst_tokenizer::HfstTokenizer::new();
-            let mut retval = if whole_string.len() > 0 {
+            let mut retval = if !whole_string.is_empty() {
                 HfstTransducer::new_tokenized(&whole_string, &tok)?
             } else {
                 HfstTransducer::new()
             };
             retval.set_final_weights(self.weight as f32, true)?;
-            if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) == true {
+            if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) {
                 ctx.node_cache_put(key, retval);
                 return HfstTransducer::new_copy(ctx.node_cache_get(key).expect("just inserted"));
             }
@@ -2454,7 +2452,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchUnaryOperation<B> {
             return Ok(retval);
         }
 
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_push(self.name.clone());
         }
         let mut retval: HfstTransducer<B> = self.root.evaluate(ctx)?;
@@ -2503,70 +2501,70 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchUnaryOperation<B> {
             }
             retval = any;
         } else if self.op == PmatchUnaryOp::Cap {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Both, false))?;
+            retval = ctx.with_utils(|u| u.cap(&retval, Side::Both, false))?;
         } else if self.op == PmatchUnaryOp::OptCap {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Both, true))?;
+            retval = ctx.with_utils(|u| u.cap(&retval, Side::Both, true))?;
         } else if self.op == PmatchUnaryOp::ToLower {
-            retval = ctx.with_utils(|u| u.tolower(&mut retval, Side::Both, false))?;
+            retval = ctx.with_utils(|u| u.tolower(&retval, Side::Both, false))?;
         } else if self.op == PmatchUnaryOp::ToUpper {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Both, false))?;
+            retval = ctx.with_utils(|u| u.toupper(&retval, Side::Both, false))?;
         } else if self.op == PmatchUnaryOp::OptToLower {
-            let mut tmp = ctx.with_utils(|u| u.tolower(&mut retval, Side::Both, true))?;
+            let mut tmp = ctx.with_utils(|u| u.tolower(&retval, Side::Both, true))?;
             tmp.disjunct(&retval, true)?;
             retval = tmp;
         } else if self.op == PmatchUnaryOp::OptToUpper {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Both, true))?;
+            retval = ctx.with_utils(|u| u.toupper(&retval, Side::Both, true))?;
         } else if self.op == PmatchUnaryOp::AnyCase {
             let (toupper, tolower) = ctx.with_utils(|u| {
                 Ok((
-                    u.toupper(&mut retval, Side::Both, true)?,
-                    u.tolower(&mut retval, Side::Both, true)?,
+                    u.toupper(&retval, Side::Both, true)?,
+                    u.tolower(&retval, Side::Both, true)?,
                 ))
             })?;
             retval.disjunct(&toupper, true)?;
             retval.disjunct(&tolower, true)?;
         } else if self.op == PmatchUnaryOp::CapUpper {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Upper, false))?;
+            retval = ctx.with_utils(|u| u.cap(&retval, Side::Upper, false))?;
         } else if self.op == PmatchUnaryOp::OptCapUpper {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Upper, true))?;
+            retval = ctx.with_utils(|u| u.cap(&retval, Side::Upper, true))?;
         } else if self.op == PmatchUnaryOp::ToLowerUpper {
-            retval = ctx.with_utils(|u| u.tolower(&mut retval, Side::Upper, false))?;
+            retval = ctx.with_utils(|u| u.tolower(&retval, Side::Upper, false))?;
         } else if self.op == PmatchUnaryOp::ToUpperUpper {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Upper, false))?;
+            retval = ctx.with_utils(|u| u.toupper(&retval, Side::Upper, false))?;
         } else if self.op == PmatchUnaryOp::OptToLowerUpper {
-            let mut tmp = ctx.with_utils(|u| u.tolower(&mut retval, Side::Upper, true))?;
+            let mut tmp = ctx.with_utils(|u| u.tolower(&retval, Side::Upper, true))?;
             tmp.disjunct(&retval, true)?;
             retval = tmp;
         } else if self.op == PmatchUnaryOp::OptToUpperUpper {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Upper, true))?;
+            retval = ctx.with_utils(|u| u.toupper(&retval, Side::Upper, true))?;
         } else if self.op == PmatchUnaryOp::AnyCaseUpper {
             let (toupper, tolower) = ctx.with_utils(|u| {
                 Ok((
-                    u.toupper(&mut retval, Side::Upper, true)?,
-                    u.tolower(&mut retval, Side::Upper, true)?,
+                    u.toupper(&retval, Side::Upper, true)?,
+                    u.tolower(&retval, Side::Upper, true)?,
                 ))
             })?;
             retval.disjunct(&toupper, true)?;
             retval.disjunct(&tolower, true)?;
         } else if self.op == PmatchUnaryOp::CapLower {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Lower, false))?;
+            retval = ctx.with_utils(|u| u.cap(&retval, Side::Lower, false))?;
         } else if self.op == PmatchUnaryOp::OptCapLower {
-            retval = ctx.with_utils(|u| u.cap(&mut retval, Side::Lower, true))?;
+            retval = ctx.with_utils(|u| u.cap(&retval, Side::Lower, true))?;
         } else if self.op == PmatchUnaryOp::ToLowerLower {
-            retval = ctx.with_utils(|u| u.tolower(&mut retval, Side::Lower, false))?;
+            retval = ctx.with_utils(|u| u.tolower(&retval, Side::Lower, false))?;
         } else if self.op == PmatchUnaryOp::ToUpperLower {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Lower, false))?;
+            retval = ctx.with_utils(|u| u.toupper(&retval, Side::Lower, false))?;
         } else if self.op == PmatchUnaryOp::OptToLowerLower {
-            let mut tmp = ctx.with_utils(|u| u.tolower(&mut retval, Side::Lower, true))?;
+            let mut tmp = ctx.with_utils(|u| u.tolower(&retval, Side::Lower, true))?;
             tmp.disjunct(&retval, true)?;
             retval = tmp;
         } else if self.op == PmatchUnaryOp::OptToUpperLower {
-            retval = ctx.with_utils(|u| u.toupper(&mut retval, Side::Lower, true))?;
+            retval = ctx.with_utils(|u| u.toupper(&retval, Side::Lower, true))?;
         } else if self.op == PmatchUnaryOp::AnyCaseLower {
             let (toupper, tolower) = ctx.with_utils(|u| {
                 Ok((
-                    u.toupper(&mut retval, Side::Lower, true)?,
-                    u.tolower(&mut retval, Side::Lower, true)?,
+                    u.toupper(&retval, Side::Lower, true)?,
+                    u.tolower(&retval, Side::Lower, true)?,
                 ))
             })?;
             retval.disjunct(&toupper, true)?;
@@ -2678,10 +2676,10 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchUnaryOperation<B> {
         }
         retval.set_final_weights(self.weight as f32, true)?;
 
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_pop();
         }
-        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) == true {
+        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) {
             ctx.node_cache_put(key, retval);
             ctx.node_cache_get_mut(key)
                 .expect("cache populated above")
@@ -2695,7 +2693,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchUnaryOperation<B> {
             return HfstTransducer::new_copy(ctx.node_cache_get(key).expect("just inserted"));
         }
         self.report_time(ctx, my_timer, String::new());
-        return Ok(retval);
+        Ok(retval)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-unary-operation.get-initial-symbols-from-unary-root-fn]
@@ -2776,7 +2774,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchNumericOperation<B> 
             return HfstTransducer::new_copy(ctx.node_cache_get(key).expect("just checked"));
         }
         let my_timer = self.start_timing(ctx);
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_push(self.name.clone());
         }
         let mut tmp: HfstTransducer<B> = self.root.evaluate(ctx)?;
@@ -2790,10 +2788,10 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchNumericOperation<B> 
             tmp.repeat_n_to_k(self.values[0] as u32, self.values[1] as u32)?;
         }
         tmp.set_final_weights(self.weight as f32, true)?;
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_pop();
         }
-        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) == true {
+        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) {
             ctx.node_cache_put(key, tmp);
             ctx.node_cache_get_mut(key)
                 .expect("cache populated above")
@@ -2802,7 +2800,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchNumericOperation<B> 
             return HfstTransducer::new_copy(ctx.node_cache_get(key).expect("just inserted"));
         }
         self.report_time(ctx, my_timer, String::new());
-        return Ok(tmp);
+        Ok(tmp)
     }
 }
 // Pass a map from Lst() symbol to line number. Emits one warning per Lst()
@@ -2856,15 +2854,14 @@ pub fn fix_list_overlap<B: AlgebraBackend + 'static>(
             }
 
             // Ensure each Lst() only triggers a single warning per compilation.
-            let warn_key: String;
-            if lst_line >= 0 {
+            let warn_key: String = if lst_line >= 0 {
                 let mut wk = lst_line.to_string();
                 wk.push('\t');
                 wk.push_str(sym);
-                warn_key = wk;
+                wk
             } else {
-                warn_key = sym.to_string();
-            }
+                sym.to_string()
+            };
             if ctx.lst_overlap_warned_contains(&warn_key) {
                 continue;
             }
@@ -2889,15 +2886,15 @@ pub fn fix_list_overlap<B: AlgebraBackend + 'static>(
                     }
                 ));
             }
-            for i in 0..overlapping_chars.len() {
+            for overlapping_char in overlapping_chars.iter() {
                 let overlapsym: StringPair = (
-                    Symbol::from(overlapping_chars[i].clone()),
-                    Symbol::from(overlapping_chars[i].clone()),
+                    Symbol::from(overlapping_char.clone()),
+                    Symbol::from(overlapping_char.clone()),
                 );
                 if ctx.verbose {
-                    optimise_msg.push_str(&format!("\n  '{}' (", overlapping_chars[i]));
+                    optimise_msg.push_str(&format!("\n  '{}' (", overlapping_char));
                     let mut buf: Vec<u8> = Vec::new();
-                    print_unicode_codepoints(&mut buf, &overlapping_chars[i]);
+                    print_unicode_codepoints(&mut buf, overlapping_char);
                     optimise_msg.push_str(&String::from_utf8_lossy(&buf));
                     optimise_msg.push(')');
                 }
@@ -2933,41 +2930,38 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBinaryOperation<B> {
         let my_timer = self.start_timing(ctx);
 
         // Special optimization cases
-        if self.op == PmatchBinaryOp::Disjunct {
-            if self.left.is_unweighted_disjunction_of_strings()
-                && self.right.is_unweighted_disjunction_of_strings()
-            {
-                let mut strings: StringVector = StringVector::new();
-                self.left.collect_strings_into(ctx, &mut strings);
-                self.right.collect_strings_into(ctx, &mut strings);
-                let tok = crate::hfst_tokenizer::HfstTokenizer::new();
-                let mut retval = HfstTransducer::new();
-                for it in strings.iter() {
-                    let spv = tok.tokenize(it, false); // XXX
-                    retval.disjunct_spv(&spv)?;
-                }
-                retval.set_final_weights(self.weight as f32, true)?;
-                if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) == true {
-                    ctx.node_cache_put(key, retval);
-                    // No minimization because we did it the clever way!
-                    self.report_time(
-                        ctx,
-                        my_timer,
-                        format!(
-                            " with {}",
-                            get_size_info(ctx.node_cache_get(key).expect("just inserted"))
-                        ),
-                    );
-                    return HfstTransducer::new_copy(
-                        ctx.node_cache_get(key).expect("just inserted"),
-                    );
-                }
-                self.report_time(ctx, my_timer, String::new());
-                return Ok(retval);
+        if self.op == PmatchBinaryOp::Disjunct
+            && self.left.is_unweighted_disjunction_of_strings()
+            && self.right.is_unweighted_disjunction_of_strings()
+        {
+            let mut strings: StringVector = StringVector::new();
+            self.left.collect_strings_into(ctx, &mut strings);
+            self.right.collect_strings_into(ctx, &mut strings);
+            let tok = crate::hfst_tokenizer::HfstTokenizer::new();
+            let mut retval = HfstTransducer::new();
+            for it in strings.iter() {
+                let spv = tok.tokenize(it, false); // XXX
+                retval.disjunct_spv(&spv)?;
             }
+            retval.set_final_weights(self.weight as f32, true)?;
+            if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) {
+                ctx.node_cache_put(key, retval);
+                // No minimization because we did it the clever way!
+                self.report_time(
+                    ctx,
+                    my_timer,
+                    format!(
+                        " with {}",
+                        get_size_info(ctx.node_cache_get(key).expect("just inserted"))
+                    ),
+                );
+                return HfstTransducer::new_copy(ctx.node_cache_get(key).expect("just inserted"));
+            }
+            self.report_time(ctx, my_timer, String::new());
+            return Ok(retval);
         }
 
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_push(self.name.clone());
         }
         // General cases
@@ -3066,7 +3060,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBinaryOperation<B> {
                 match __res {
                     Ok(()) => {
                         // NB: mirrors the C++ aliasing (lhs now becomes rhs).
-                        lhs = std::mem::replace(&mut rhs, HfstTransducer::new());
+                        lhs = std::mem::take(&mut rhs);
                     }
                     Err(e) => {
                         if matches!(e.kind, crate::error::ErrorKind::TransducersAreNotAutomata) {
@@ -3083,10 +3077,10 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBinaryOperation<B> {
         }
         drop(rhs);
         lhs.set_final_weights(self.weight as f32, true)?;
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_pop();
         }
-        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) == true {
+        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) {
             ctx.node_cache_put(key, lhs);
             ctx.node_cache_get_mut(key)
                 .expect("cache populated above")
@@ -3102,7 +3096,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBinaryOperation<B> {
             return HfstTransducer::new_copy(ctx.node_cache_get(key).expect("just inserted"));
         }
         self.report_time(ctx, my_timer, String::new());
-        return Ok(lhs);
+        Ok(lhs)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-binary-operation.get-real-initial-symbols-from-right-fn]
@@ -3217,14 +3211,14 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchTernaryOperation<B> 
             return HfstTransducer::new_copy(ctx.node_cache_get(key).expect("just checked"));
         }
         let my_timer = self.start_timing(ctx);
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_push(self.name.clone());
         }
         let mut retval: HfstTransducer<B> = self.left.evaluate(ctx)?;
         if self.op == PmatchTernaryOp::Substitute {
             let middle_pair: StringPair = self.middle.as_string_pair(ctx);
             let right_pair: StringPair = self.right.as_string_pair(ctx);
-            if right_pair.0 != "" || right_pair.1 != "" {
+            if !right_pair.0.is_empty() || !right_pair.1.is_empty() {
                 retval.substitute_pair_with_pair(&middle_pair, &right_pair)?;
             } else {
                 let mut tmp: HfstTransducer<B> = self.right.evaluate(ctx)?;
@@ -3235,7 +3229,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchTernaryOperation<B> 
             let _unc_right: HfstTransducer<B> = self.right.evaluate(ctx)?;
         }
         retval.set_final_weights(self.weight as f32, true)?;
-        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) == true {
+        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) {
             ctx.node_cache_put(key, retval);
             ctx.node_cache_get_mut(key)
                 .expect("cache populated above")
@@ -3244,10 +3238,10 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchTernaryOperation<B> 
             return HfstTransducer::new_copy(ctx.node_cache_get(key).expect("just inserted"));
         }
         self.report_time(ctx, my_timer, String::new());
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_pop();
         }
-        return Ok(retval);
+        Ok(retval)
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.transducer-has-context-symbol-fn]
@@ -3328,7 +3322,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchParallelRulesContain
         };
         retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, my_timer, String::new());
-        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) == true {
+        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) {
             ctx.node_cache_put(key, retval);
             ctx.node_cache_get_mut(key)
                 .expect("cache populated above")
@@ -3390,7 +3384,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchReplaceRuleContainer
         };
         retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, my_timer, String::new());
-        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) == true {
+        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) {
             ctx.node_cache_put(key, retval);
             ctx.node_cache_get_mut(key)
                 .expect("cache populated above")
@@ -3415,7 +3409,7 @@ impl<B: AlgebraBackend + 'static> PmatchReplaceRuleContainer<B> {
             );
             pair_vector.push(p);
         }
-        if self.context.len() == 0 {
+        if self.context.is_empty() {
             return Rule::new_mapping(&pair_vector);
         }
         let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
@@ -3457,7 +3451,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchRestrictionContainer
         let mut retval: HfstTransducer<B> = restriction(&l, &pair_vector)?;
         retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, my_timer, String::new());
-        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) == true {
+        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) {
             ctx.node_cache_put(key, retval);
             ctx.node_cache_get_mut(key)
                 .expect("cache populated above")
@@ -3556,7 +3550,7 @@ pub fn PmatchObject_evaluate_args<B: AlgebraBackend + 'static>(
     this: &dyn PmatchObject<B>,
     args: Vec<ObjRef<B>>,
 ) -> crate::error::Result<HfstTransducer<B>> {
-    if args.len() == 0 {
+    if args.is_empty() {
         let key = this.cache_key();
         if this.should_use_cache(ctx) {
             if ctx.node_cache_get(key).is_none() {
@@ -3565,13 +3559,13 @@ pub fn PmatchObject_evaluate_args<B: AlgebraBackend + 'static>(
                 ctx.node_cache_put(key, c);
                 this.report_time(ctx, my_timer, String::new());
             }
-            return HfstTransducer::new_copy(ctx.node_cache_get(key).expect("just inserted"));
+            HfstTransducer::new_copy(ctx.node_cache_get(key).expect("just inserted"))
         } else {
             let my_timer = this.start_timing(ctx);
             let mut retval = this.evaluate(ctx)?;
             retval.minimize()?;
             this.report_time(ctx, my_timer, String::new());
-            return Ok(retval);
+            Ok(retval)
         }
     } else {
         let errstring = format!(
@@ -3594,10 +3588,10 @@ pub fn PmatchObject_expand_Ins_arcs<B: AlgebraBackend + 'static>(
         let mut expansions_done: StringSet = StringSet::new();
         let mut expanded_symbols: StringSet = StringSet::new();
         let this_name = this.get_name().to_string();
-        if this_name.len() != 0 {
+        if !this_name.is_empty() {
             let mut this_name_insed = String::from("@I.");
             this_name_insed.push_str(&this_name);
-            this_name_insed.push_str("@");
+            this_name_insed.push('@');
             expansions_done.insert(Symbol::from(this_name_insed));
         }
         while !did_no_expansions {
@@ -3605,7 +3599,7 @@ pub fn PmatchObject_expand_Ins_arcs<B: AlgebraBackend + 'static>(
             for it in ss.iter() {
                 if it.find("@I.") == Some(0) && it.rfind('@') == Some(it.len() - 1) {
                     // it's an Ins
-                    if expansions_done.get(it).is_none() {
+                    if !expansions_done.contains(it) {
                         let ins_name = it[3..it.len() - 1].to_string();
                         did_no_expansions = false;
                         expansions_done.insert(it.clone());
@@ -3621,7 +3615,7 @@ pub fn PmatchObject_expand_Ins_arcs<B: AlgebraBackend + 'static>(
                                     .expect("definitions_contains verified above")
                                     .collect_initial_symbols_into(&mut allowed, &mut disallowed)?;
                             }
-                            if allowed.len() != 0 {
+                            if !allowed.is_empty() {
                                 for s in allowed.iter() {
                                     expanded_symbols.insert(s.clone());
                                 }
@@ -3683,23 +3677,23 @@ pub fn PmatchObject_collect_initial_symbols_into<B: AlgebraBackend + 'static>(
         PmatchObject_expand_Ins_arcs(ctx, this, &mut required)?;
         PmatchObject_expand_Ins_arcs(ctx, this, &mut disallowed)?;
 
-        if allowed.len() == 0 {
+        if allowed.is_empty() {
             // Probably something went wrong, we'll just not make no judgement
             return Ok(());
         }
 
         if string_set_has_meta_arc(&mut allowed) {
-            if required.len() != 0 && !string_set_has_meta_arc(&mut required) {
+            if !required.is_empty() && !string_set_has_meta_arc(&mut required) {
                 // RC sets a constraint
                 for it in required.iter() {
-                    if disallowed.get(it).is_none() {
+                    if !disallowed.contains(it) {
                         allowed_initial_symbols.insert(it.clone());
                     }
                 }
                 return Ok(());
             } else {
                 // Anything goes except what is disallowed
-                if disallowed.len() == 0 || string_set_has_meta_arc(&mut disallowed) {
+                if disallowed.is_empty() || string_set_has_meta_arc(&mut disallowed) {
                     return Ok(());
                 } else {
                     for s in disallowed.iter() {
@@ -3712,10 +3706,10 @@ pub fn PmatchObject_collect_initial_symbols_into<B: AlgebraBackend + 'static>(
 
         // Now we can assume that "allowed" is nonempty and non-meta.
 
-        if required.len() == 0 || string_set_has_meta_arc(&mut required) {
+        if required.is_empty() || string_set_has_meta_arc(&mut required) {
             // RC poses no constraint
             for it in allowed.iter() {
-                if disallowed.get(it).is_none() {
+                if !disallowed.contains(it) {
                     allowed_initial_symbols.insert(it.clone());
                 }
             }
@@ -3725,7 +3719,7 @@ pub fn PmatchObject_collect_initial_symbols_into<B: AlgebraBackend + 'static>(
         // Now we can assume that there is a genuine RC constraint.
 
         for it in required.iter() {
-            if allowed.get(it).is_some() && disallowed.get(it).is_none() {
+            if allowed.contains(it) && !disallowed.contains(it) {
                 allowed_initial_symbols.insert(it.clone());
             }
         }
@@ -3740,7 +3734,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
     pmatch_object_base_accessors!();
 
     fn evaluate(&self, ctx: &mut PmatchEvalContext<B>) -> crate::error::Result<HfstTransducer<B>> {
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_push(self.name.clone());
         }
         let my_timer = self.start_timing(ctx);
@@ -3773,7 +3767,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
         retval.set_final_weights(self.weight as f32, true)?;
         retval.minimize()?;
         self.report_time(ctx, my_timer, String::new());
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_pop();
         }
         Ok(retval)
@@ -3807,14 +3801,14 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
                     self.sym, self.line_defined
                 );
             }
-            return Rc::new(PmatchString {
+            Rc::new(PmatchString {
                 name: String::new(),
                 weight: 0.0,
                 line_defined: 0,
                 string: self.sym.clone(),
                 multichar: false,
                 _marker: std::marker::PhantomData,
-            });
+            })
         }
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-symbol.collect-strings-into-fn]
@@ -3862,7 +3856,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchString<B> {
             HfstTransducer::new_symbol(&self.string)?
         };
         tmp.set_final_weights(self.weight as f32, true)?;
-        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) == true {
+        if ctx.node_cache_get(key).is_none() && self.should_use_cache(ctx) {
             ctx.node_cache_put(key, tmp);
             ctx.node_cache_get_mut(key)
                 .expect("cache populated above")
@@ -3871,7 +3865,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchString<B> {
             return HfstTransducer::new_copy(ctx.node_cache_get(key).expect("just inserted"));
         }
         self.report_time(ctx, my_timer, String::new());
-        return Ok(tmp);
+        Ok(tmp)
     }
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.collect-strings-into-fn]
@@ -4038,7 +4032,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchTransducerContainer<
     fn evaluate(&self, ctx: &mut PmatchEvalContext<B>) -> crate::error::Result<HfstTransducer<B>> {
         let mut retval = HfstTransducer::new_copy(&self.t)?;
         retval.set_final_weights(self.weight as f32, true)?;
-        if self.name != "" {
+        if !self.name.is_empty() {
             retval.set_name(&self.name);
         }
         Ok(retval)
@@ -4058,7 +4052,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchFunction<B> {
     ) -> crate::error::Result<HfstTransducer<B>> {
         let my_timer: clock_t = if ctx.verbose {
             let my_timer = clock();
-            ctx.named_object_evaluation_stack_depth = ctx.named_object_evaluation_stack_depth + (1);
+            ctx.named_object_evaluation_stack_depth += 1;
             write_compilation_stack_indentation_to_err(ctx);
             debug!("Evaluating call to {}...", self.name);
             my_timer
@@ -4078,17 +4072,17 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchFunction<B> {
         if ctx.call_stack_len() != 0 {
             local_env = ctx.call_stack_last_clone();
         }
-        for i in 0..self.args.len() {
+        for (i, arg) in self.args.iter().enumerate() {
             // `local_env`/`call_stack` is a String-keyed frame map (out of this
             // node's scope); the formal arg name bridges Symbol -> String here.
-            local_env.insert(self.args[i].to_string(), funargs[i].clone());
+            local_env.insert(arg.to_string(), funargs[i].clone());
         }
         ctx.call_stack_push(local_env);
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_push(self.name.clone());
         }
         let mut retval: HfstTransducer<B> = self.root.evaluate(ctx)?;
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_pop();
         }
         retval.set_final_weights(self.weight as f32, true)?;
@@ -4097,7 +4091,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchFunction<B> {
             let duration = (clock() - my_timer) as f64 / CLOCKS_PER_SEC as f64;
             write_compilation_stack_indentation_to_err(ctx);
             debug!("Call to {} evaluated in {} seconds", self.name, duration);
-            ctx.named_object_evaluation_stack_depth = ctx.named_object_evaluation_stack_depth - (1);
+            ctx.named_object_evaluation_stack_depth -= 1;
         }
         Ok(retval)
     }
@@ -4115,13 +4109,13 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchFuncall<B> {
     pmatch_object_base_accessors!();
 
     fn evaluate(&self, ctx: &mut PmatchEvalContext<B>) -> crate::error::Result<HfstTransducer<B>> {
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_push(self.name.clone());
         }
         let evaluated_args: Vec<ObjRef<B>> =
             self.args.iter().map(|it| it.evaluate_as_arg(ctx)).collect();
         let retval = self.fun.evaluate_args(ctx, evaluated_args.clone());
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_pop();
         }
         retval
@@ -4135,7 +4129,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBuiltinFunction<B> {
     pmatch_object_base_accessors!();
 
     fn evaluate(&self, ctx: &mut PmatchEvalContext<B>) -> crate::error::Result<HfstTransducer<B>> {
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_push(self.name.clone());
         }
         let my_timer = self.start_timing(ctx);
@@ -4160,7 +4154,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBuiltinFunction<B> {
         }
         retval.set_final_weights(self.weight as f32, true)?;
         self.report_time(ctx, my_timer, String::new());
-        if self.name != "" {
+        if !self.name.is_empty() {
             ctx.eval_stack_pop();
         }
         Ok(retval)
@@ -4173,7 +4167,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBuiltinFunction<B> {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-top-n-fn]
 pub fn get_top_n(
     n: usize,
-    vecs: &Vec<WordVector>,
+    vecs: &[WordVector],
     comparison_point: &mut WordVector,
 ) -> Vec<(WordVector, WordVecFloat)> {
     let mut retval: Vec<(WordVector, WordVecFloat)> = Vec::new();
@@ -4211,7 +4205,7 @@ pub fn get_top_n(
 pub fn get_top_n_transformed<B: AlgebraBackend + 'static>(
     ctx: &mut PmatchEvalContext<B>,
     n: usize,
-    vecs: &Vec<WordVector>,
+    vecs: &[WordVector],
     plane_vec: Vec<WordVecFloat>,
     comparison_point: Vec<WordVecFloat>,
     translation_term: WordVecFloat,
@@ -4314,8 +4308,8 @@ pub fn dot_product(l: Vec<WordVecFloat>, r: Vec<WordVecFloat>) -> WordVecFloat {
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.square-sum-fn]
 pub fn square_sum(v: Vec<WordVecFloat>) -> WordVecFloat {
     let mut ret: WordVecFloat = 0 as WordVecFloat;
-    for i in 0..v.len() {
-        ret += v[i] * v[i];
+    for x in v.iter() {
+        ret += x * x;
     }
     ret
 }
@@ -4424,14 +4418,14 @@ using nearest neighbours",
                 debug!("Inserting into Like({}):", this_word.word);
             }
 
-            for i in 0..top_n.len() {
+            for entry in top_n.iter() {
                 if ctx.verbose {
-                    debug!("  {}", top_n[i].0.word);
+                    debug!("  {}", entry.0.word);
                 }
                 let mut tmp: HfstTransducer<B> =
-                    HfstTransducer::new_tokenized(&top_n[i].0.word, &tok)?;
+                    HfstTransducer::new_tokenized(&entry.0.word, &tok)?;
                 if ctx.include_cosine_distances {
-                    tmp.set_final_weights(top_n[i].1, false)?;
+                    tmp.set_final_weights(entry.1, false)?;
                 }
                 retval.disjunct(&tmp, true)?;
             }
@@ -4472,8 +4466,7 @@ using nearest neighbours",
             dot_product(B_minus_A.clone(), this_word1.vector.clone())
                 - square_sum(B_minus_A.clone()) * 0.5;
 
-        let comparison_point: Vec<WordVecFloat>;
-        if is_negative == true {
+        let comparison_point: Vec<WordVecFloat> = if is_negative {
             if ctx.verbose {
                 debug!(
                     "Inserting into Unlike({}, {}):",
@@ -4484,10 +4477,10 @@ using nearest neighbours",
                 - dot_product(this_word1.vector.clone(), B_minus_A.clone()))
                 / square_sum(B_minus_A.clone());
             comparison_scaler *= ctx.vector_similarity_projection_factor;
-            comparison_point = pointwise_minus(
+            pointwise_minus(
                 this_word1.vector.clone(),
                 pointwise_multiplication(comparison_scaler, B_minus_A.clone()),
-            );
+            )
         } else {
             if ctx.verbose {
                 debug!(
@@ -4495,11 +4488,11 @@ using nearest neighbours",
                     this_word1.word, this_word2.word
                 );
             }
-            comparison_point = pointwise_plus(
+            pointwise_plus(
                 this_word2.vector.clone(),
                 pointwise_multiplication(0.5 as WordVecFloat, B_minus_A.clone()),
-            );
-        }
+            )
+        };
 
         let top_n: Vec<(WordVector, WordVecFloat)> = get_top_n_transformed(
             ctx,
@@ -4586,13 +4579,13 @@ pub fn compile_like_arc_word<B: AlgebraBackend + 'static>(
         if ctx.verbose {
             debug!("Inserting into Like({}):", word);
         }
-        for i in 0..top_n.len() {
+        for entry in top_n.iter() {
             if ctx.verbose {
-                debug!("  {}", top_n[i].0.word);
+                debug!("  {}", entry.0.word);
             }
-            let mut tmp: HfstTransducer<B> = HfstTransducer::new_tokenized(&top_n[i].0.word, &tok)?;
+            let mut tmp: HfstTransducer<B> = HfstTransducer::new_tokenized(&entry.0.word, &tok)?;
             if ctx.include_cosine_distances {
-                tmp.set_final_weights(top_n[i].1, false)?;
+                tmp.set_final_weights(entry.1, false)?;
             }
             retval.disjunct(&tmp, true)?;
         }
@@ -4696,8 +4689,6 @@ pub fn read_vec<B: AlgebraBackend + 'static>(ctx: &mut PmatchEvalContext<B>, fil
             if cursor < all_bytes.len() {
                 cursor += 1;
             }
-            let mut wv = WordVector::default();
-            wv.word = line;
             // This will not compile is WordVectorFloat is not float,
             // in which case a conversion needs to happen, but
             // we can reasonably expect it to be a float for the
@@ -4714,8 +4705,11 @@ pub fn read_vec<B: AlgebraBackend + 'static>(ctx: &mut PmatchEvalContext<B>, fil
                 comps.push(f as WordVecFloat);
                 k += 4;
             }
-            wv.vector = comps;
-            wv.norm = norm(wv.vector.clone());
+            let wv = WordVector {
+                word: line,
+                norm: norm(comps.clone()),
+                vector: comps,
+            };
             ctx.word_vectors_push(wv);
             words_read += 1;
         }
@@ -4790,10 +4784,11 @@ space-separated\n  (reading line {})",
                 );
                 continue;
             }
-            let mut wv = WordVector::default();
-            wv.word = word;
-            wv.vector = components.clone();
-            wv.norm = norm(components);
+            let wv = WordVector {
+                word,
+                vector: components.clone(),
+                norm: norm(components),
+            };
             ctx.word_vectors_push(wv);
         }
     }
@@ -4970,13 +4965,13 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
             for statement in &parsed.value.statements {
                 if let Err(e) = build_statement(ctx, statement) {
                     error!("{}", e);
-                    ctx.pmatchnerrs = ctx.pmatchnerrs + 1;
+                    ctx.pmatchnerrs += 1;
                 }
             }
         }
         Err(e) => {
             error!("{}", format_pmatch_parse_error(&e));
-            ctx.pmatchnerrs = ctx.pmatchnerrs + 1;
+            ctx.pmatchnerrs += 1;
         }
     }
     // === END SEAM =========================================================
@@ -5163,10 +5158,10 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
         }
         initial_symbols_ok = false;
     }
-    if initial_symbols_ok && initial_symbols_list.len() != 0 {
+    if initial_symbols_ok && !initial_symbols_list.is_empty() {
         ctx.variables_insert("initial-symbols".to_string(), initial_symbols_list);
     }
-    if initial_symbols_ok && disallowed_initial_symbols_list.len() != 0 {
+    if initial_symbols_ok && !disallowed_initial_symbols_list.is_empty() {
         ctx.variables_insert(
             "disallowed-initial-symbols".to_string(),
             disallowed_initial_symbols_list,
@@ -5188,8 +5183,8 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
         let mut is_single_non_whitespace = HfstTransducer::new_copy(&not_whitespace)?;
         is_single_non_whitespace.compose(retval.get("TOP").expect("TOP defined above"), true)?;
         let empty = HfstTransducer::new();
-        if begins_and_ends_with_non_whitespace.compare(&empty, true)? == false
-            || is_single_non_whitespace.compare(&empty, true)? == false
+        if !begins_and_ends_with_non_whitespace.compare(&empty, true)?
+            || !is_single_non_whitespace.compare(&empty, true)?
         {
             let mut whitespace_punct_context = HfstTransducer::new_copy(&whitespace_acc)?;
             whitespace_punct_context.disjunct(&punct_acc, true)?;
@@ -5296,7 +5291,7 @@ pub fn path_from_filename<B: AlgebraBackend + 'static>(
     filename: &str,
 ) -> String {
     let mut retval = filename.to_string();
-    if ctx.includedir.len() > 0 && retval.len() > 0 {
+    if !ctx.includedir.is_empty() && !retval.is_empty() {
         // includedir won't be > 0 under Windows until this mechanism is ported
         if retval.as_bytes()[0] != b'/' {
             // not an absolute dir
@@ -5706,10 +5701,7 @@ fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 error!("Failed to read regex from {}.", filepath);
             }
             let mut xre_compiler = crate::xre::XreCompiler::new();
-            let compiled = match xre_compiler.compile(&regex) {
-                Some(t) => t,
-                None => HfstTransducer::new(),
-            };
+            let compiled = xre_compiler.compile(&regex).unwrap_or_default();
             Ok(as_obj(pmb_tc(compiled)))
         }
     }
@@ -6779,7 +6771,7 @@ pub fn write_archive<B: AlgebraBackend>(
     if verbose {
         let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
         timer = clock();
-        let _ = write!(msg, "built in {:.2} seconds\n", duration);
+        let _ = writeln!(msg, "built in {:.2} seconds", duration);
         let _ = write!(msg, "Converting TOP... ");
     }
 
@@ -6807,7 +6799,7 @@ pub fn write_archive<B: AlgebraBackend>(
     if verbose {
         let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
         timer = clock();
-        let _ = write!(msg, "converted in {:.2} seconds\n", duration);
+        let _ = writeln!(msg, "converted in {:.2} seconds", duration);
     }
 
     let mut rest_keys: Vec<String> = definitions.keys().cloned().collect();
@@ -6815,7 +6807,7 @@ pub fn write_archive<B: AlgebraBackend>(
     for key in &rest_keys {
         let t = &definitions[key];
         if verbose {
-            let _ = write!(msg, "Converting {}... \n", key);
+            let _ = writeln!(msg, "Converting {}... ", key);
             timer = clock();
         }
         let intermediate_tmp = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)?;
@@ -6840,7 +6832,7 @@ pub fn write_archive<B: AlgebraBackend>(
         outstream.redirect(&mut output_tmp)?;
         if verbose {
             let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
-            let _ = write!(msg, "converted in {:.2} seconds\n", duration);
+            let _ = writeln!(msg, "converted in {:.2} seconds", duration);
         }
     }
     Ok(true)

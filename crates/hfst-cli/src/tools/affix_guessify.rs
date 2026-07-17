@@ -60,13 +60,13 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Guesser parameters:\n  -D, --direction=DIR   set direction of guessing\n  -w, --weight=WEIGHT   set weight difference of affix lengths\n\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(
         msg,
         "DIR is either suffix or prefix, or suffix if omitted.\nWEIGHT is a weight of each arc not in the known suffix or prefix being guessed, as parsed with strtod(3), or 1.0 if omitted.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-affix-guessify.parse-options-fn]
@@ -169,7 +169,6 @@ fn process_stream(
         };
         // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
         crate::for_algebra!(any, trans => {
-            let trans = trans;
             // C: inputname = trans->get_name(); if empty, use inputfilename.
             let inputname = if !trans.get_name().is_empty() {
                 trans.get_name()
@@ -195,9 +194,9 @@ fn process_stream(
         }, else => {
             // Unreachable: the optimized-lookup stream rejection already
             // returned before the loop; keep its text for safety.
-            let _ = write!(
+            let _ = writeln!(
                 std::io::stderr(),
-                "Error: hfst-affix-guessify cannot process transducers that are in optimized lookup format.\n"
+                "Error: hfst-affix-guessify cannot process transducers that are in optimized lookup format."
             );
             return 1;
         });

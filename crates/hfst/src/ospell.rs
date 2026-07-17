@@ -378,23 +378,23 @@ impl<'a> Speller<'a> {
         let from_keys = from.get_symbol_table();
         let to_symbols = to.build_string_symbol_map();
         self.alphabet_translator.push(0); // zeroth element is always epsilon
-        for i in 1..from_keys.len() {
+        for (i, key) in from_keys.iter().enumerate().skip(1) {
             let i_sym = i as SymbolNumber;
             if from.is_flag_diacritic(i_sym) || i_sym == from.get_unknown_symbol() {
                 // if it's a flag or the OTHER symbol
                 self.alphabet_translator.push(NO_SYMBOL_NUMBER);
                 continue; // no translation
             }
-            if !to_symbols.contains_key(&from_keys[i]) {
-                let name = from_keys[i].clone();
-                if name != "" {
-                    crate::bail!(AlphabetTranslation, from_keys[i].clone())
+            if !to_symbols.contains_key(key) {
+                let name = key.clone();
+                if !name.is_empty() {
+                    crate::bail!(AlphabetTranslation, key.clone())
                 }
             }
             // translator at i points to lexicon's symbol for mutator's string
             // for mutator's symbol number i
             self.alphabet_translator
-                .push(to_symbols.get(&from_keys[i]).copied().unwrap_or(0));
+                .push(to_symbols.get(key).copied().unwrap_or(0));
         }
         Ok(())
     }
@@ -658,7 +658,7 @@ impl<'a> Speller<'a> {
         self.queue.clear();
         self.queue.push_back(start_node);
 
-        while self.queue.len() > 0 {
+        while !self.queue.is_empty() {
             self.lexicon_epsilons();
             self.mutator_epsilons();
             let input_state = self
@@ -725,7 +725,7 @@ impl<'a> Speller<'a> {
         self.queue.clear();
         self.queue.push_back(start_node);
 
-        while self.queue.len() > 0 {
+        while !self.queue.is_empty() {
             let input_state = self
                 .queue
                 .front()

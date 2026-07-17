@@ -33,9 +33,9 @@ fn print_usage(common: &CommonOptions) {
     );
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-strip-header.parse-options-fn]

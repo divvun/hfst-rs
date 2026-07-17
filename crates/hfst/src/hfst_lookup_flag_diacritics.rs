@@ -136,10 +136,12 @@ impl FlagDiacriticTable {
             b'U' => {}
             _ => return false,
         }
-        if diacritic_string.rfind('.') == Some(2) {
-            if bytes[1] != b'R' && bytes[1] != b'D' && bytes[1] != b'C' {
-                return false;
-            }
+        if diacritic_string.rfind('.') == Some(2)
+            && bytes[1] != b'R'
+            && bytes[1] != b'D'
+            && bytes[1] != b'C'
+        {
+            return false;
         }
         true
     }
@@ -208,10 +210,9 @@ impl FlagDiacriticTable {
     // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.require-fn]
     // [spec:hfst:sem:hfst-lookup-flag-diacritics.flag-diacritic-table.require-fn]
     fn require(&mut self, feature: &str, value: &str) {
-        if !self.feature_values.contains_key(feature) {
-            self.error_flag = true;
-            return;
-        } else if self.feature_values[feature].as_str() != value {
+        if !self.feature_values.contains_key(feature)
+            || self.feature_values[feature].as_str() != value
+        {
             self.error_flag = true;
         } else {
             let pol = *self

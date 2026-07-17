@@ -20,6 +20,7 @@
 //! - methods that take a 'StdVectorFst*' and mutate it in place (state/arc
 //!   builders, 'add_to_weights', symbol-table setters, ...) -> '&mut StdVectorFst'.
 //! - 'delete_transducer(StdVectorFst*)' -> dropping the owned 'StdVectorFst'.
+//!
 //! The C++ 'int64' typedef is 'i64' here.
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.delete-transducer-fn]
 // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.delete-transducer-fn]
@@ -121,9 +122,9 @@ mod construction_io {
     use std::io::{BufRead, Read, Write};
     use std::sync::Arc;
 
-    use crate::hfst_flag_diacritics::FdOperation;
     // 'HfstFatalException' is referenced by the (deferred) read_transducer path.
     #[allow(unused_imports)]
+    use crate::hfst_flag_diacritics::FdOperation;
     // ---------------------------------------------------------------------------
     // File-static globals from the .cc
     // ---------------------------------------------------------------------------
@@ -177,9 +178,9 @@ mod construction_io {
             let target = att_origin(arc.nextstate, initial_state, zero_print);
             let w = *arc.weight.value();
             if number {
-                let _ = write!(
+                let _ = writeln!(
                     os,
-                    "{}\t{}\t\\{}\t\\{}\t{}\n",
+                    "{}\t{}\t\\{}\t\\{}\t{}",
                     origin,
                     target,
                     arc.ilabel,
@@ -192,9 +193,9 @@ mod construction_io {
                     .expect("input symbols present: asserted before symbolic write");
                 let isym = st.get_symbol(arc.ilabel).unwrap_or("");
                 let osym = st.get_symbol(arc.olabel).unwrap_or("");
-                let _ = write!(
+                let _ = writeln!(
                     os,
-                    "{}\t{}\t{}\t{}\t{}\n",
+                    "{}\t{}\t{}\t{}\t{}",
                     origin,
                     target,
                     isym,
@@ -209,7 +210,7 @@ mod construction_io {
                 .expect("s is a valid state of this fst")
                 .expect("state is final so weight is present")
                 .value();
-            let _ = write!(os, "{}\t{}\n", origin, fmt_w(fw, fixed_decimals));
+            let _ = writeln!(os, "{}\t{}", origin, fmt_w(fw, fixed_decimals));
         }
     }
 
@@ -258,9 +259,9 @@ mod construction_io {
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.print-att-number-fn]
     #[allow(dead_code)]
     pub fn print_att_number(t: &StdVectorFst, os: &mut dyn std::io::Write) {
-        let _ = write!(
+        let _ = writeln!(
             os,
-            "initial state: {}\n",
+            "initial state: {}",
             t.start().map(|s| s as i64).unwrap_or(-1)
         );
         for s in t.states_iter() {
@@ -270,12 +271,12 @@ mod construction_io {
                     .expect("s is a valid state of this fst")
                     .expect("state is final so weight is present")
                     .value();
-                let _ = write!(os, "{}\t{:.6}\n", s, fw);
+                let _ = writeln!(os, "{}\t{:.6}", s, fw);
             }
             for arc in t.get_trs(s).expect("s is a valid state of this fst").trs() {
-                let _ = write!(
+                let _ = writeln!(
                     os,
-                    "{}\t{}\t{}\t{}\t{:.6}\n",
+                    "{}\t{}\t{}\t{}\t{:.6}",
                     s,
                     arc.nextstate,
                     arc.ilabel,
@@ -289,6 +290,12 @@ mod construction_io {
     // ===========================================================================
     // TropicalWeightInputStream
     // ===========================================================================
+
+    impl<'a> Default for TropicalWeightInputStream<'a> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
 
     #[allow(dead_code)]
     impl<'a> TropicalWeightInputStream<'a> {
@@ -1564,8 +1571,7 @@ mod construction_io {
                 .clone();
             for it in unknown_t2.iter() {
                 if st2.add_symbol(it.as_str()) < 3 {
-                    tracing::error!("string {} got strange number", it);
-                    assert!(false);
+                    panic!("string {it} got an unexpected symbol number below 3");
                 }
             }
             let st2_arc = Arc::new(st2);
@@ -1752,7 +1758,7 @@ mod operations {
     /// (as a shared 'Arc') onto 'dst'. No-op when 'src' has no input symbols.
     #[allow(dead_code)]
     fn copy_input_symbol_table(src: &StdVectorFst, dst: &mut StdVectorFst) {
-        if let Some(symt) = src.input_symbols().map(|s| std::sync::Arc::clone(s)) {
+        if let Some(symt) = src.input_symbols().map(std::sync::Arc::clone) {
             dst.set_input_symbols(symt);
         }
     }
@@ -2060,10 +2066,10 @@ mod operations {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.optionalize-fn]
         pub fn optionalize(t: &StdVectorFst) -> StdVectorFst {
             let mut eps = TropicalWeightTransducer::create_epsilon_transducer();
-            if let Some(symt) = t.input_symbols().map(|s| std::sync::Arc::clone(s)) {
+            if let Some(symt) = t.input_symbols().map(std::sync::Arc::clone) {
                 eps.set_input_symbols(symt);
             }
-            if let Some(symt) = t.output_symbols().map(|s| std::sync::Arc::clone(s)) {
+            if let Some(symt) = t.output_symbols().map(std::sync::Arc::clone) {
                 eps.set_output_symbols(symt);
             }
             algorithms::Union(&mut eps, t);
@@ -2116,22 +2122,22 @@ mod operations {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.compose-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.compose-fn]
         pub fn compose(t1: &StdVectorFst, t2: &StdVectorFst) -> StdVectorFst {
-            let mut foo: StringSet = StringSet::new();
+            let mut symbol_set: StringSet = StringSet::new();
             // a copy of t2 is created so that its symbol table check sum
             // is the same as t1's
             // (else OpenFst complains about non-matching check sums... )
-            let mut t2_copy = TropicalWeightTransducer::expand_arcs(t2, &mut foo, false);
+            let mut t2_copy = TropicalWeightTransducer::expand_arcs(t2, &mut symbol_set, false);
 
             // C++ mutates t1 (sets/sorts/unsets); operate on a local clone.
             let mut t1_copy = t1.clone();
 
             // t1->SetOutputSymbols(t1->InputSymbols());
-            let in_syms = t1_copy.input_symbols().map(|s| std::sync::Arc::clone(s));
+            let in_syms = t1_copy.input_symbols().map(std::sync::Arc::clone);
             if let Some(a) = in_syms {
                 t1_copy.set_output_symbols(a);
             }
             // t2_->SetInputSymbols(t1->OutputSymbols());
-            let out_syms = t1_copy.output_symbols().map(|s| std::sync::Arc::clone(s));
+            let out_syms = t1_copy.output_symbols().map(std::sync::Arc::clone);
             if let Some(a) = out_syms {
                 t2_copy.set_input_symbols(a);
             }
@@ -2287,13 +2293,13 @@ mod operations {
             algorithms::ArcSortOutput(&mut t1);
             algorithms::ArcSortInput(&mut t2);
 
-            // IntersectFst<StdArc> intersect(*t1, *t2); foo = new StdVectorFst(intersect);
-            let mut foo = StdVectorFst::new();
-            algorithms::Intersect(&t1, &t2, &mut foo);
+            // IntersectFst<StdArc> intersect(*t1, *t2); result = new StdVectorFst(intersect);
+            let mut intersect_fst = StdVectorFst::new();
+            algorithms::Intersect(&t1, &t2, &mut intersect_fst);
 
-            // DecodeFst<StdArc> decode(*foo, encoder); result = new StdVectorFst(decode);
-            algorithms::Decode(&mut foo, encoder);
-            let result = foo;
+            // DecodeFst<StdArc> decode(intersect, encoder); result = new StdVectorFst(decode);
+            algorithms::Decode(&mut intersect_fst, encoder);
+            let result = intersect_fst;
 
             // t1->SetOutputSymbols(NULL); t2->SetOutputSymbols(NULL); (caller-side only)
             result
@@ -2309,13 +2315,13 @@ mod operations {
             let mut t2 = t2.clone();
 
             if t1.output_symbols().is_none() {
-                let a = t1.input_symbols().map(|s| std::sync::Arc::clone(s));
+                let a = t1.input_symbols().map(std::sync::Arc::clone);
                 if let Some(a) = a {
                     t1.set_output_symbols(a);
                 }
             }
             if t2.output_symbols().is_none() {
-                let a = t2.input_symbols().map(|s| std::sync::Arc::clone(s));
+                let a = t2.input_symbols().map(std::sync::Arc::clone);
                 if let Some(a) = a {
                     t2.set_output_symbols(a);
                 }
@@ -2453,7 +2459,7 @@ mod operations {
                     .expect("t2_state confirmed final via is_final");
                 t1.set_final(
                     t1_state,
-                    t1_final.plus(&t2_final).expect("tropical plus is total"),
+                    t1_final.plus(t2_final).expect("tropical plus is total"),
                 )
                 .expect("t1_state is a valid state of t1");
             }
@@ -2468,12 +2474,7 @@ mod operations {
                         let new_state = t1.add_state();
                         t1.add_tr(
                             t1_state,
-                            StdTransition::new(
-                                arc.ilabel,
-                                arc.olabel,
-                                arc.weight.clone(),
-                                new_state,
-                            ),
+                            StdTransition::new(arc.ilabel, arc.olabel, arc.weight, new_state),
                         )
                         .expect("target state was just added");
                         TropicalWeightTransducer::add_sub_trie(t1, new_state, t2, arc.nextstate);
@@ -2513,7 +2514,7 @@ mod operations {
                     .expect("t2_state confirmed final via is_final");
                 t1.set_final(
                     t1_state,
-                    t1_final.plus(&t2_final).expect("tropical plus is total"),
+                    t1_final.plus(t2_final).expect("tropical plus is total"),
                 )
                 .expect("t1_state is a valid state of t1");
             }
@@ -2526,7 +2527,7 @@ mod operations {
                 let new_state = t1.add_state();
                 t1.add_tr(
                     t1_state,
-                    StdTransition::new(arc.ilabel, arc.olabel, arc.weight.clone(), new_state),
+                    StdTransition::new(arc.ilabel, arc.olabel, arc.weight, new_state),
                 )
                 .expect("transition added to t1_state targeting the state just added");
                 TropicalWeightTransducer::add_sub_trie(t1, new_state, t2, arc.nextstate);
@@ -2634,27 +2635,26 @@ mod lookup_extract_misc {
             let arc = arcs[idx].clone();
             let mut added_fd_state = false;
 
-            if let Some(stack) = fd_state_stack.as_deref_mut() {
-                if stack
+            if let Some(stack) = fd_state_stack.as_deref_mut()
+                && stack
                     .last()
                     .expect("fd state stack is non-empty")
                     .get_table()
                     .get_operation(arc.ilabel as i64)
                     .is_some()
+            {
+                let top = stack.last().expect("fd state stack is non-empty").clone();
+                stack.push(top);
+                if stack
+                    .last_mut()
+                    .expect("fd state stack is non-empty")
+                    .apply_operation_symbol(arc.ilabel as i64)
                 {
-                    let top = stack.last().expect("fd state stack is non-empty").clone();
-                    stack.push(top);
-                    if stack
-                        .last_mut()
-                        .expect("fd state stack is non-empty")
-                        .apply_operation_symbol(arc.ilabel as i64)
-                    {
-                        added_fd_state = true;
-                    } else {
-                        stack.pop();
-                        idx += 1;
-                        continue; // don't follow the transition
-                    }
+                    added_fd_state = true;
+                } else {
+                    stack.pop();
+                    idx += 1;
+                    continue; // don't follow the transition
                 }
             }
 
@@ -3002,18 +3002,15 @@ mod lookup_extract_misc {
                 }
 
                 /* Give more probability for shorter paths. */
-                if broken[t_target as usize] == 0 {
-                    if visited[t_target as usize] == 1 {
-                        if (rng.next() % 4) == 0 {
-                            broken[t_target as usize] = 1;
-                        }
-                    }
+                if broken[t_target as usize] == 0
+                    && visited[t_target as usize] == 1
+                    && (rng.next() % 4) == 0
+                {
+                    broken[t_target as usize] = 1;
                 }
 
-                if visited[t_target as usize] == 1 {
-                    if (rng.next() % 4) == 0 {
-                        broken[t_target as usize] = 1;
-                    }
+                if visited[t_target as usize] == 1 && (rng.next() % 4) == 0 {
+                    broken[t_target as usize] = 1;
                 }
 
                 /* Proceed to the target state. */
@@ -3321,12 +3318,7 @@ mod lookup_extract_misc {
                             for it in new_symbol_pair_set.iter() {
                                 let il = st.add_symbol(it.0.as_str());
                                 let ol = st.add_symbol(it.1.as_str());
-                                nt.push(StdTransition::new(
-                                    il,
-                                    ol,
-                                    arc.weight.clone(),
-                                    arc.nextstate,
-                                ));
+                                nt.push(StdTransition::new(il, ol, arc.weight, arc.nextstate));
                             }
                         }
                     } else {
@@ -3414,7 +3406,7 @@ mod lookup_extract_misc {
                                         StdTransition::new(
                                             tr_arc.ilabel,
                                             tr_arc.olabel,
-                                            tr_arc.weight.clone(),
+                                            tr_arc.weight,
                                             tr_arc.nextstate + start_state,
                                         ),
                                     )
@@ -3492,7 +3484,7 @@ mod lookup_extract_misc {
                                         StdTransition::new(
                                             tr_arc.ilabel,
                                             tr_arc.olabel,
-                                            tr_arc.weight.clone(),
+                                            tr_arc.weight,
                                             tr_arc.nextstate + start_state,
                                         ),
                                     )

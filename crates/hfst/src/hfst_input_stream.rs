@@ -39,6 +39,7 @@
 //!     'SerializableFst::load'.
 //!   * HFST_OL / HFST_OLW: built through the implemented
 //!     'HfstOlInputStream::read_transducer' / 'Transducer::new_istream'.
+//!
 //! SFST/FOMA/XFSM stay deferred (no backend).
 
 #![allow(non_snake_case)]
@@ -618,8 +619,8 @@ mod input_impl {
                 0xd6 => {
                     // OpenFst
                     let mut chars_read = [0 as char; 26];
-                    for i in 0..26usize {
-                        chars_read[i] = self.stream_get();
+                    for slot in chars_read.iter_mut() {
+                        *slot = self.stream_get();
                         if self.stream_eof() {
                             crate::bail!(EndOfStream);
                         }
@@ -716,7 +717,7 @@ mod input_impl {
         // symbols; String-typed to match 'get_header_data'.
         fn process_header_data(
             &mut self,
-            header_data: &mut Vec<(String, String)>,
+            header_data: &mut [(String, String)],
             _warnings: bool,
         ) -> crate::error::Result<()> {
             if header_data.len() < 2 {
@@ -734,7 +735,7 @@ mod input_impl {
             }
 
             // (2) second pair "type", (valid type field)
-            if !("type" == header_data[1].0.as_str()) {
+            if "type" != header_data[1].0.as_str() {
                 crate::bail!(TransducerHeader, "Hfst header: transducer type not given");
             }
 

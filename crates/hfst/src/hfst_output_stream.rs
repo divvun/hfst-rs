@@ -196,9 +196,9 @@ impl HfstOutputStream {
         }
     }
 
-    fn write_char_vector(&mut self, s: &Vec<char>) {
-        for i in 0..s.len() {
-            self.write_char(s[i]);
+    fn write_char_vector(&mut self, s: &[char]) {
+        for &c in s {
+            self.write_char(c);
         }
     }
 
@@ -244,8 +244,7 @@ impl HfstOutputStream {
             ImplementationType::HFST2_TYPE
             | ImplementationType::UNSPECIFIED_TYPE
             | ImplementationType::ERROR_TYPE => {
-                assert!(false);
-                String::new()
+                unreachable!("no hfst3 header format string for this implementation type")
             }
         };
 

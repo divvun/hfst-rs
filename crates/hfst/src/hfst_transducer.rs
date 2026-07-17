@@ -537,10 +537,8 @@ impl<B: Backend> HfstTransducer<B> {
         let mut missing_flags: StringSet = StringSet::new();
 
         for it in another_alphabet.iter() {
-            if this_alphabet.get(it).is_none() {
-                if FdOperation::is_diacritic(it) {
-                    missing_flags.insert(it.clone());
-                }
+            if !this_alphabet.contains(it) && FdOperation::is_diacritic(it) {
+                missing_flags.insert(it.clone());
             }
         }
         self.insert_to_alphabet_set(&missing_flags)?;
@@ -559,7 +557,7 @@ impl<B: Backend> HfstTransducer<B> {
         let mut missing_symbols: StringSet = StringSet::new();
 
         for it in another_alphabet.iter() {
-            if this_alphabet.get(it).is_none() {
+            if !this_alphabet.contains(it) {
                 if !only_special_symbols {
                     missing_symbols.insert(it.clone());
                 } else {
@@ -597,7 +595,7 @@ impl<B: Backend> HfstTransducer<B> {
             .expect("get_alphabet on a valid transducer cannot fail");
 
         for it in another_alphabet.iter() {
-            if FdOperation::is_diacritic(it) && (this_alphabet.get(it).is_none()) {
+            if FdOperation::is_diacritic(it) && (!this_alphabet.contains(it)) {
                 missing_flags.insert(it.clone());
                 retval = true;
                 if return_on_first_miss {
@@ -620,7 +618,7 @@ impl<B: Backend> HfstTransducer<B> {
             let mut basic: HfstBasicTransducer = HfstBasicTransducer::from_transducer(self);
 
             let mut s: u32 = 0;
-            while s <= (basic.get_max_state() as u32) {
+            while s <= basic.get_max_state() {
                 for missing_flag in missing_flags.iter() {
                     let tr = HfstBasicTransition::new_symbols(
                         s,
@@ -651,9 +649,8 @@ impl<B: Backend> HfstTransducer<B> {
         let mut basic_fst_copy: HfstBasicTransducer = HfstBasicTransducer::new();
         let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
 
-        let mut s: HfstState = 0;
-
-        for states in basic_fst.state_vector.iter() {
+        for (s, states) in basic_fst.state_vector.iter().enumerate() {
+            let s = s as HfstState;
             for transition in states.iter() {
                 let istr = transition.get_input_symbol(basic_fst.coder());
                 let ostr = transition.get_output_symbol(basic_fst.coder());
@@ -719,8 +716,6 @@ impl<B: Backend> HfstTransducer<B> {
                         .expect("state was confirmed final via is_final_state"),
                 );
             }
-
-            s += 1;
         }
         *self = HfstTransducer::new_from_basic(&basic_fst_copy)?;
         Ok(())
@@ -729,9 +724,11 @@ impl<B: Backend> HfstTransducer<B> {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.check-for-missing-flags-in-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.check-for-missing-flags-in-fn]
     pub fn check_for_missing_flags_in(&self, another: &HfstTransducer<B>) -> bool {
-        let mut foo: StringSet = StringSet::new(); /* An obligatory argument that is not used. */
+        let mut unused_missing_flags: StringSet = StringSet::new(); /* An obligatory argument that is not used. */
         self.check_for_missing_flags_in_into(
-            another, &mut foo, true, /* return on first miss */
+            another,
+            &mut unused_missing_flags,
+            true, /* return on first miss */
         )
     }
 
@@ -949,16 +946,16 @@ impl<B: Backend> HfstTransducer<B> {
     ) -> crate::error::Result<HfstTransducer<B>> {
         HfstTokenizer::check_utf8_correctness(epsilon_symbol);
 
-        let mut foo: u32 = 0;
+        let mut linecount: u32 = 0;
         let net = HfstBasicTransducer::read_in_att_format_file(
             ifile,
             epsilon_symbol,
-            &mut foo,
+            &mut linecount,
             warn_negs,
         )?;
         // C++ 'new HfstTransducer(net, type)' returned a heap pointer the caller
         // owned; the owned value is the idiomatic equivalent.
-        let _ = foo;
+        let _ = linecount;
         HfstTransducer::new_from_basic(&net)
     }
 
@@ -1000,9 +997,7 @@ impl<B: Backend> HfstTransducer<B> {
         bt.add_transition(0, &tr, true);
         bt.set_final_weight(1, &0.0);
 
-        let Retval = HfstTransducer::new_from_basic_transducer(&bt);
-
-        Retval
+        HfstTransducer::new_from_basic_transducer(&bt)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.identity-pair-fn]
@@ -1019,9 +1014,7 @@ impl<B: Backend> HfstTransducer<B> {
         bt.add_transition(0, &tr, true);
         bt.set_final_weight(1, &0.0);
 
-        let Retval = HfstTransducer::new_from_basic_transducer(&bt);
-
-        Retval
+        HfstTransducer::new_from_basic_transducer(&bt)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.create-tokenizer-fn]
@@ -1122,6 +1115,12 @@ impl<B: Backend> HfstTransducer<B> {
     }
     pub fn remove_from_alphabet_set(&mut self, symbols: &StringSet) -> crate::error::Result<()> {
         self.remove_from_alphabet_string_set(symbols)
+    }
+}
+
+impl<B: Backend> Default for HfstTransducer<B> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1833,7 +1832,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
         let net = HfstBasicTransducer::new_from_transducer(self);
         let path_lengths = net.path_sizes();
-        if path_lengths.len() == 0 {
+        if path_lengths.is_empty() {
             return Ok(false);
         }
 
@@ -1861,7 +1860,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             }
 
             // if paths were found
-            if results.len() > 0 {
+            if !results.is_empty() {
                 return Ok(true);
             }
         } // lengths of accepted paths gone through
@@ -1974,11 +1973,12 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // if there are implementations available, use them: the per-backend
         // both-sides fast path (dead code for tropical — 'if (false && ...)') is
         // 'AlgebraBackend::substitute_symbol_fast'.
-        if input_side && output_side {
-            if let Some(tmp) = self.fst.substitute_symbol_fast(old_symbol, new_symbol) {
-                self.fst = tmp;
-                return Ok(self);
-            }
+        if input_side
+            && output_side
+            && let Some(tmp) = self.fst.substitute_symbol_fast(old_symbol, new_symbol)
+        {
+            self.fst = tmp;
+            return Ok(self);
         }
 
         // use the default HfstBasicTransducer function
@@ -2840,11 +2840,12 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             lexicon_basic.reindex_into(&mut canonical);
             rule_basic.reindex_into(&mut canonical);
 
-            let mut rule = crate::compose_intersect_rule_pair::ComposeIntersectRuleComponent::Rule(
-                crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
-                    &rule_basic,
-                ),
-            );
+            let mut rule =
+                crate::compose_intersect_rule_pair::ComposeIntersectRuleComponent::Rule(Box::new(
+                    crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
+                        &rule_basic,
+                    ),
+                ));
 
             // Create a ComposeIntersectLexicon from *harmonized_lexicon.
             let mut lexicon =
@@ -2945,16 +2946,16 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             use crate::compose_intersect_rule_pair::{
                 ComposeIntersectRuleComponent, ComposeIntersectRulePair,
             };
-            let first_rule = ComposeIntersectRuleComponent::Rule(
+            let first_rule = ComposeIntersectRuleComponent::Rule(Box::new(
                 crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
                     &first_rule_basic,
                 ),
-            );
-            let second_rule = ComposeIntersectRuleComponent::Rule(
+            ));
+            let second_rule = ComposeIntersectRuleComponent::Rule(Box::new(
                 crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
                     &second_rule_basic,
                 ),
-            );
+            ));
             let mut rules = ComposeIntersectRuleComponent::Pair(Box::new(
                 ComposeIntersectRulePair::new(first_rule, second_rule),
             ));
@@ -2962,11 +2963,11 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             for rule_basic in extra_rule_basics.iter() {
                 // rules = new ComposeIntersectRulePair(
                 //     new ComposeIntersectRule(rule_fst), rules);
-                let new_rule = ComposeIntersectRuleComponent::Rule(
+                let new_rule = ComposeIntersectRuleComponent::Rule(Box::new(
                     crate::compose_intersect_rule::ComposeIntersectRule::new_from_transducer(
                         rule_basic,
                     ),
-                );
+                ));
                 rules = ComposeIntersectRuleComponent::Pair(Box::new(
                     ComposeIntersectRulePair::new(new_rule, rules),
                 ));
@@ -3486,7 +3487,6 @@ fn get_flag_filter<B: AlgebraBackend>(
                         true,
                     )?;
                     flag_found = true;
-                } else {
                 }
             }
         }
@@ -3711,9 +3711,7 @@ pub fn get_flag_path_restriction<B: Backend>(
         basic_restriction.add_transition(seen_2_state, &tr, true);
     }
 
-    let restriction = HfstTransducer::from_basic(&basic_restriction);
-
-    restriction
+    HfstTransducer::from_basic(&basic_restriction)
 }
 
 //
@@ -4040,9 +4038,8 @@ fn rename_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>, suffix: &str)
     let mut basic_fst_copy = HfstBasicTransducer::new();
     let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
 
-    let mut s: HfstState = 0;
-
-    for states in basic_fst.state_vector.iter() {
+    for (s, states) in basic_fst.state_vector.iter().enumerate() {
+        let s = s as HfstState;
         for transition in states.iter() {
             let input_symbol = transition.get_input_symbol(basic_fst.coder());
             let output_symbol = transition.get_output_symbol(basic_fst.coder());
@@ -4074,8 +4071,6 @@ fn rename_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>, suffix: &str)
                     .expect("state was confirmed final via is_final_state"),
             );
         }
-
-        s += 1;
     }
     *fst = HfstTransducer::from_basic(&basic_fst_copy);
 }
@@ -4087,9 +4082,8 @@ fn encode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
     let mut basic_fst_copy = HfstBasicTransducer::new();
     let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
 
-    let mut s: HfstState = 0;
-
-    for states in basic_fst.state_vector.iter() {
+    for (s, states) in basic_fst.state_vector.iter().enumerate() {
+        let s = s as HfstState;
         for transition in states.iter() {
             let input_symbol = transition.get_input_symbol(basic_fst.coder());
             let output_symbol = transition.get_output_symbol(basic_fst.coder());
@@ -4121,8 +4115,6 @@ fn encode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
                     .expect("state was confirmed final via is_final_state"),
             );
         }
-
-        s += 1;
     }
 
     // copy alphabet, encode all flags
@@ -4160,9 +4152,8 @@ fn decode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
     let mut basic_fst_copy = HfstBasicTransducer::new();
     let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
 
-    let mut s: HfstState = 0;
-
-    for states in basic_fst.state_vector.iter() {
+    for (s, states) in basic_fst.state_vector.iter().enumerate() {
+        let s = s as HfstState;
         for transition in states.iter() {
             let input_symbol = transition.get_input_symbol(basic_fst.coder());
             let output_symbol = transition.get_output_symbol(basic_fst.coder());
@@ -4195,8 +4186,6 @@ fn decode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
                     .expect("state was confirmed final via is_final_state"),
             );
         }
-
-        s += 1;
     }
 
     // copy alphabet, decode all flags

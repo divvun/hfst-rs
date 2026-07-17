@@ -95,13 +95,13 @@ fn print_usage(common: &CommonOptions) {
          \x20 -I, --input-strings=SFILE        Read pair test strings from\n\
          \x20                                  SFILE\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "If SFILE is missing, the test pair strings are read from STDIN.\n\
          If OUTFILE is missing, test output is written to STDOUT.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "The rule file is tested using correspondences given as\n\
@@ -110,14 +110,14 @@ fn print_usage(common: &CommonOptions) {
          about correspondences that are incorrectly allowed or\n\
          disallowed.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "The test pair string files contain one pair string/line. Lines\n\
          where the first non-white-space character is \"!\" are\n\
          considered comment lines and skipped.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "There are three test modes positive, negative and Xerox mode. In\n\
@@ -126,7 +126,7 @@ fn print_usage(common: &CommonOptions) {
          are read from a twolc source file and both positive and negative\n\
          cases can occur.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "Ordinarily, positive test mode is in use. Option -N switches to\n\
@@ -135,7 +135,7 @@ fn print_usage(common: &CommonOptions) {
          \"Test passed\". A failing test prints \"Test failed\" and\n\
          information about pair strings that are handled incorrectly.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "In positive test mode (i.e. without option -N), if a pair\n\
@@ -144,7 +144,7 @@ fn print_usage(common: &CommonOptions) {
          rules run out of possible transitions. In negative mode, only\n\
          the strings that are allowed are printed.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "In Xerox mode, the input should be a twolc file. Tests consist of\n\
@@ -158,13 +158,13 @@ fn print_usage(common: &CommonOptions) {
          !!$ earlYer\n\
          !!$ earlyer\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "In silent mode (-s), the program won't print anything. Only the\n\
          exit code tells whether the test was successful or not.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-pair-test.parse-options-fn]
@@ -381,7 +381,7 @@ fn print_recognized_prefix(
         return;
     }
 
-    let _ = write!(outfile, "Rule {} fails:\n", name);
+    let _ = writeln!(outfile, "Rule {} fails:", name);
 
     let mut s: HfstState = 0;
     let mut idx = 0;
@@ -456,30 +456,34 @@ fn print_failure_info(
     );
 }
 
+/// The compiled pair-test grammar: rule transducers, their names, and the
+/// known-symbol set — bundled so `test` takes one grammar reference.
+struct Grammar<'a> {
+    transducers: &'a BasicTransducerVector,
+    names: &'a StringVector,
+    known_symbols: &'a SymbolSet,
+}
+
 // [spec:hfst:def:hfst-pair-test.test-fn]
 // [spec:hfst:sem:hfst-pair-test.test-fn]
 fn test(
     common: &CommonOptions,
     tokenized_pair_string: &StringPairVector,
     pair_string: &str,
-    grammar: &BasicTransducerVector,
-    names: &StringVector,
+    grammar: &Grammar<'_>,
     positive: bool,
     outfile: &mut dyn std::io::Write,
-    known_symbols: &SymbolSet,
 ) -> i32 {
     let mut positive_exit_code: i32 = 0;
     let mut negative_exit_code: i32 = 1;
 
-    let mut ind: usize = 0;
-
-    for it in grammar.iter() {
+    for (ind, it) in grammar.transducers.iter().enumerate() {
         let new_exit_code = test_rule(
             tokenized_pair_string,
             it,
             positive,
             &mut *outfile,
-            known_symbols,
+            grammar.known_symbols,
         );
 
         if positive && new_exit_code == 1 {
@@ -487,9 +491,9 @@ fn test(
                 common,
                 tokenized_pair_string,
                 it,
-                &names[ind],
+                &grammar.names[ind],
                 &mut *outfile,
-                known_symbols,
+                grammar.known_symbols,
             );
         }
 
@@ -500,8 +504,6 @@ fn test(
         if !positive && negative_exit_code == 1 {
             negative_exit_code = new_exit_code;
         }
-
-        ind += 1;
     }
 
     if positive {
@@ -578,8 +580,7 @@ fn strip_space(line: &str) -> String {
 fn is_positive_test_line(line: &str) -> bool {
     let stripped = strip_space(line);
     let marker = "!!\u{20ac}";
-    stripped.as_bytes().len() >= marker.len()
-        && &stripped.as_bytes()[..marker.len()] == marker.as_bytes()
+    stripped.len() >= marker.len() && &stripped.as_bytes()[..marker.len()] == marker.as_bytes()
 }
 
 // [spec:hfst:def:hfst-pair-test.is-negative-test-line-fn]
@@ -587,8 +588,7 @@ fn is_positive_test_line(line: &str) -> bool {
 fn is_negative_test_line(line: &str) -> bool {
     let stripped = strip_space(line);
     let marker = "!!$";
-    stripped.as_bytes().len() >= marker.len()
-        && &stripped.as_bytes()[..marker.len()] == marker.as_bytes()
+    stripped.len() >= marker.len() && &stripped.as_bytes()[..marker.len()] == marker.as_bytes()
 }
 
 // substr from a byte offset, matching C++ std::string::substr semantics.
@@ -708,15 +708,18 @@ fn process_stream(
                         Symbol::new_static(internal_epsilon),
                     ));
 
+                    let grammar_ctx = Grammar {
+                        transducers: &grammar,
+                        names: &rule_names,
+                        known_symbols: &known_symbols,
+                    };
                     let new_exit_code = test(
                         common,
                         &tokenized_pair_string,
                         &line_for_panic,
-                        &grammar,
-                        &rule_names,
+                        &grammar_ctx,
                         options.positive_test,
                         &mut *outstream,
-                        &known_symbols,
                     );
 
                     if exit_code == 0 {
@@ -797,7 +800,7 @@ fn process_stream(
                 continue;
             }
         } // while lines in input
-        if positive_test_cases.len() % 2 != 0 {
+        if !positive_test_cases.len().is_multiple_of(2) {
             error(
                 common,
                 1,
@@ -807,7 +810,7 @@ fn process_stream(
             );
         }
 
-        if negative_test_cases.len() % 2 != 0 {
+        if !negative_test_cases.len().is_multiple_of(2) {
             error(
                 common,
                 1,
@@ -863,15 +866,18 @@ fn process_stream(
                 Symbol::new_static(internal_epsilon),
             ));
 
+            let grammar_ctx = Grammar {
+                transducers: &grammar,
+                names: &rule_names,
+                known_symbols: &known_symbols,
+            };
             let new_exit_code = test(
                 common,
                 &test_case,
                 &format!("{} : {}", input_case, output_case),
-                &grammar,
-                &rule_names,
+                &grammar_ctx,
                 true,
                 &mut *outstream,
-                &known_symbols,
             );
 
             if exit_code == 0 {
@@ -926,15 +932,18 @@ fn process_stream(
                 Symbol::new_static(internal_epsilon),
             ));
 
+            let grammar_ctx = Grammar {
+                transducers: &grammar,
+                names: &rule_names,
+                known_symbols: &known_symbols,
+            };
             let new_exit_code = test(
                 common,
                 &test_case,
                 &format!("{} : {}", input_case, output_case),
-                &grammar,
-                &rule_names,
+                &grammar_ctx,
                 false,
                 &mut *outstream,
-                &known_symbols,
             );
 
             if exit_code == 0 {
@@ -996,9 +1005,9 @@ pub fn run(mut args: Vec<String>) -> i32 {
 
     if !common.silent {
         if exit_code == 0 {
-            let _ = write!(out, "Test passed.\n");
+            let _ = writeln!(out, "Test passed.");
         } else {
-            let _ = write!(out, "Test failed.\n");
+            let _ = writeln!(out, "Test failed.");
         }
     }
 

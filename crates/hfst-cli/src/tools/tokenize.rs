@@ -99,7 +99,7 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Use standard streams for input and output (for now).\n\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-tokenize.parse-options-fn]
@@ -166,7 +166,7 @@ fn parse_options(
         } else if c == b't' as i32 {
             options.settings.time_cutoff = opt.optarg().trim().parse::<f64>().unwrap_or(0.0);
             if options.settings.time_cutoff < 0.0 {
-                eprint!("Invalid argument for --time-cutoff\n");
+                eprintln!("Invalid argument for --time-cutoff");
                 return Err(1);
             }
         } else if c == b'u' as i32 {
@@ -174,13 +174,13 @@ fn parse_options(
         } else if c == b'b' as i32 {
             options.settings.beam = opt.optarg().trim().parse::<f64>().unwrap_or(0.0) as f32;
             if options.settings.beam < 0.0 {
-                eprint!("Invalid argument for --beam\n");
+                eprintln!("Invalid argument for --beam");
                 return Err(1);
             }
         } else if c == b'l' as i32 {
             options.settings.max_weight_classes = opt.optarg().trim().parse::<i32>().unwrap_or(0);
             if options.settings.max_weight_classes < 1 {
-                eprint!("Invalid or no argument --weight-classes count\n");
+                eprintln!("Invalid or no argument --weight-classes count");
                 return Err(1);
             }
         } else if c == b'z' as i32 {
@@ -225,13 +225,13 @@ fn parse_options(
     // no more options, we should now be at the input filename
     let argc = args.len();
     if (opt.optind + 1) < argc {
-        eprint!("More than one input file given\n");
+        eprintln!("More than one input file given");
         Err(1)
     } else if (opt.optind + 1) == argc {
         options.tokenizer_filename = args[opt.optind].clone();
         Ok((common, options))
     } else {
-        eprint!("No input file given\n");
+        eprintln!("No input file given");
         Err(1)
     }
 }

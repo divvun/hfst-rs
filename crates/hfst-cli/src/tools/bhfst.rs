@@ -158,7 +158,7 @@ fn print_usage(common: &CommonOptions) {
          \n\
          Pack mode needs -a, -e and -o. Info mode needs only -I.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 /// Parse argv into the shared + tool options; `Err(code)` is an exit code the
@@ -540,11 +540,11 @@ fn pack(
 
     // BoxWriter::create_with_alignment refuses an existing file (create_new);
     // the rest of the hfst suite overwrites its outputs, so match that.
-    if Path::new(output).is_file() {
-        if let Err(e) = std::fs::remove_file(output) {
-            error(common, 1, 0, &format!("cannot overwrite {output}: {e}"));
-            return 1;
-        }
+    if Path::new(output).is_file()
+        && let Err(e) = std::fs::remove_file(output)
+    {
+        error(common, 1, 0, &format!("cannot overwrite {output}: {e}"));
+        return 1;
     }
     let mut boxfile = match BoxWriter::create_with_alignment(output, ALIGNMENT) {
         Ok(v) => v,

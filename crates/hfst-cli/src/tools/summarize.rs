@@ -49,23 +49,23 @@ fn print_usage(common: &CommonOptions) {
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
     // (tool-specific options and short descriptions)
-    let _ = write!(msg, "Summarize options:\n");
-    let _ = write!(
+    let _ = writeln!(msg, "Summarize options:");
+    let _ = writeln!(
         msg,
-        "  -S, --print-symbol-pair-statistics=N  Print info about symbol pairs that occur\n",
+        "  -S, --print-symbol-pair-statistics=N  Print info about symbol pairs that occur",
     );
-    let _ = write!(
+    let _ = writeln!(
         msg,
-        "                                        at most N times (default is infinity)\n",
+        "                                        at most N times (default is infinity)",
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "The parameter --verbose gives more extensive information on\nthe properties of a transducer.\n",
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-summarize.parse-options-fn]
@@ -290,7 +290,7 @@ fn process_stream(
             if transducer_n > 1 {
                 let _ = write!(out, "-- \nTransducer #{}:\n", transducer_n);
             }
-            let _ = write!(out, "name: \"{}\"\n", trans.get_name());
+            let _ = writeln!(out, "name: \"{}\"", trans.get_name());
             // next is printed as in OpenFST's fstinfo
             // do not modify for compatibility
             match trans.get_type() {
@@ -397,7 +397,7 @@ fn process_stream(
                     }
                 );
                 // alphabets
-                let _ = write!(out, "sigma set:\n");
+                let _ = writeln!(out, "sigma set:");
                 if transducer_knows_alphabet {
                     let mut first = true;
                     for s in transducer_alphabet.iter() {
@@ -407,11 +407,11 @@ fn process_stream(
                         let _ = write!(out, "{}", s);
                         first = false;
                     }
-                    let _ = write!(out, "\n");
+                    let _ = writeln!(out);
                 } else {
-                    let _ = write!(out, "<Unknown in used transducer format>\n");
+                    let _ = writeln!(out, "<Unknown in used transducer format>");
                 }
-                let _ = write!(out, "arc symbols actually seen in transducer:\n");
+                let _ = writeln!(out, "arc symbols actually seen in transducer:");
                 let mut first = true;
                 for s in found_alphabet.iter() {
                     if !first {
@@ -420,8 +420,8 @@ fn process_stream(
                     let _ = write!(out, "{}", s);
                     first = false;
                 }
-                let _ = write!(out, "\n");
-                let _ = write!(out, "sigma symbols missing from transducer:\n");
+                let _ = writeln!(out);
+                let _ = writeln!(out, "sigma symbols missing from transducer:");
                 if transducer_knows_alphabet {
                     let transducer_minus_set: StringSet = transducer_alphabet
                         .difference(&found_alphabet)
@@ -436,13 +436,13 @@ fn process_stream(
                         let _ = write!(out, "{}", s);
                         first = false;
                     }
-                    let _ = write!(out, "\n");
+                    let _ = writeln!(out);
                 } else {
-                    let _ = write!(out, "<Unknown in used transducer format>\n");
+                    let _ = writeln!(out, "<Unknown in used transducer format>");
                 }
                 // ADDED
                 if let Some(ss) = &first_input_symbols {
-                    let _ = write!(out, "first input symbols:\n");
+                    let _ = writeln!(out, "first input symbols:");
                     first = true;
                     for s in ss.iter() {
                         if !first {
@@ -451,20 +451,20 @@ fn process_stream(
                         let _ = write!(out, "{}", s);
                         first = false;
                     }
-                    let _ = write!(out, "\n");
+                    let _ = writeln!(out);
                 }
             } // if verbose
 
             // ADDED
             if options.print_symbol_pair_statistics {
                 if options.symbol_pair_threshold > -1 {
-                    let _ = write!(
+                    let _ = writeln!(
                         out,
-                        "symbol pairs that occur at most {} times:\n",
+                        "symbol pairs that occur at most {} times:",
                         options.symbol_pair_threshold as u32
                     );
                 } else {
-                    let _ = write!(out, "symbol pairs:\n");
+                    let _ = writeln!(out, "symbol pairs:");
                 }
                 for (key, value) in symbol_pairs.iter() {
                     // C: 'it->second <= symbol_pair_threshold' compares unsigned
@@ -472,10 +472,10 @@ fn process_stream(
                     // wraps to UINT_MAX so every pair passes. Mirror with the same
                     // unsigned comparison.
                     if *value <= (options.symbol_pair_threshold as u32) {
-                        let _ = write!(out, "{}:{}\t{}\n", key.0, key.1, value);
+                        let _ = writeln!(out, "{}:{}\t{}", key.0, key.1, value);
                     }
                 }
-                let _ = write!(out, "\n");
+                let _ = writeln!(out);
             }
         });
     }

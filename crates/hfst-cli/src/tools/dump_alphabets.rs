@@ -50,11 +50,7 @@ impl Default for Options {
 // [spec:hfst:sem:hfst-dump-alphabets.is-multichar-fn]
 fn is_multichar(s: &str) -> bool {
     if s.len() > 2 {
-        if s.starts_with('+') || s.starts_with(' ') || s.starts_with('@') {
-            return true;
-        } else {
-            return false;
-        }
+        return s.starts_with('+') || s.starts_with(' ') || s.starts_with('@');
     }
     false
 }
@@ -73,22 +69,19 @@ fn print_usage(common: &CommonOptions) {
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
     // fprintf(message_out, (tool-specific options and short descriptions)
-    let _ = write!(msg, "Alphabet dump options:\n");
-    let _ = write!(
+    let _ = writeln!(msg, "Alphabet dump options:");
+    let _ = writeln!(msg, "  -f, --format=AFORMAT     Print alphabet in AFORAMT");
+    let _ = writeln!(
         msg,
-        "  -f, --format=AFORMAT     Print alphabet in AFORAMT\n"
+        "  -1, --exclude-seen       Ignore alphabets seen in automaton"
     );
-    let _ = write!(
+    let _ = writeln!(
         msg,
-        "  -1, --exclude-seen       Ignore alphabets seen in automaton\n"
+        "  -2, --exclude-metadata   Ignore alphabets from headers"
     );
-    let _ = write!(
-        msg,
-        "  -2, --exclude-metadata   Ignore alphabets from headers\n"
-    );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-dump-alphabets.parse-options-fn]

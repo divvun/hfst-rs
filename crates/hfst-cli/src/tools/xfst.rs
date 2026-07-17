@@ -70,8 +70,8 @@ fn print_usage(common: &CommonOptions) {
     );
 
     print_common_program_options(&mut *msg);
-    let _ = write!(msg, "\n");
-    let _ = write!(msg, "Xfst-specific options:\n");
+    let _ = writeln!(msg);
+    let _ = writeln!(msg, "Xfst-specific options:");
     let _ = write!(
         msg,
         "\x20 -e, --execute=CMD          Execute command CMD on startup\n\
@@ -96,7 +96,7 @@ fn print_usage(common: &CommonOptions) {
          line from the user. If you redirect input from a file, use --pipe-mode=input.\n\
          --pipe-mode=output is ignored on non-windows platforms.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 //

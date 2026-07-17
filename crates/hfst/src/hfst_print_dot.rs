@@ -48,14 +48,12 @@ fn trim_to_valid_utf8(inp: &mut Vec<u8>) {
     // occur in practice); using 'len > i' avoids the C 'len==0' underflow OOB.
     let mut i: usize = 1;
     while i < 4 && len > i {
-        if i < 2 && (inp[len - i] & 0xc0) == 0xc0 {
-            // 'inp[len-i] = '\0'' truncates the C string at that byte.
-            inp.truncate(len - i);
-            return;
-        } else if i < 3 && (inp[len - i] & 0xe0) == 0xe0 {
-            inp.truncate(len - i);
-            return;
-        } else if i < 4 && (inp[len - i] & 0xf0) == 0xf0 {
+        // Each condition detects a UTF-8 lead byte at offset i from the end;
+        // all truncate at the same point (mirrors the C '\0'-write truncation).
+        if (i < 2 && (inp[len - i] & 0xc0) == 0xc0)
+            || (i < 3 && (inp[len - i] & 0xe0) == 0xe0)
+            || (i < 4 && (inp[len - i] & 0xf0) == 0xf0)
+        {
             inp.truncate(len - i);
             return;
         }

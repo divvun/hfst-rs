@@ -743,13 +743,13 @@ fn function_binary_operations<B: AlgebraBackend>() -> Result<(), hfst::error::Er
     // held, so an identical copy is used as the argument; the tested semantics
     // (concatenating a transducer with an identical one) are preserved.
     {
-        let mut foo = HfstTransducer::<B>::new_symbol("foo")?;
-        let foo_arg = HfstTransducer::new_copy(&foo)?;
-        foo.concatenate(&foo_arg, true)?;
+        let mut single = HfstTransducer::<B>::new_symbol("foo")?;
+        let single_arg = HfstTransducer::new_copy(&single)?;
+        single.concatenate(&single_arg, true)?;
         let mut foofoo = HfstTransducer::<B>::new_symbol("foo")?;
         let foo2 = HfstTransducer::<B>::new_symbol("foo")?;
         foofoo.concatenate(&foo2, true)?;
-        assert!(foo.compare_default(&foofoo)?);
+        assert!(single.compare_default(&foofoo)?);
     }
     Ok(())
 }

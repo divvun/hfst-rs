@@ -49,13 +49,13 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Archive options:\n  -n, --n-last=[+]K   Print the last K transducers;\n                      use +K to print transducers starting from the Kth\n",
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(
         msg,
         "K must be an integer, as parsed by strtoul base 10, and not 0.\nif K is omitted, it defaults to +1 (all except the first)\n",
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-tail.parse-options-fn]

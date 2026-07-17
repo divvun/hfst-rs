@@ -107,7 +107,7 @@ fn print_usage(common: &CommonOptions) {
   -T, --tsv-file=TFILE       read reweighting rules from TFILE\n\
 \n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(
         msg,
@@ -135,7 +135,7 @@ Comment lines starting with # and empty lines are ignored.\n\n\
 Weights are by default modified for all arcs and end states,\n\
 unless option --end-states-only or --arcs-only is used.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-reweight.parse-options-fn]
@@ -324,11 +324,12 @@ fn reweight(options: &Options, w: f32, i: Option<&str>, o: Option<&str>) -> f32 
         if options.ends_only {
             return w;
         }
-        if let Some(symbol) = options.symbol.clone() {
-            if i != symbol && o != symbol {
-                // symbol doesn't match, don't apply
-                return w;
-            }
+        if let Some(symbol) = options.symbol.clone()
+            && i != symbol
+            && o != symbol
+        {
+            // symbol doesn't match, don't apply
+            return w;
         }
         if let (Some(isym), Some(osym)) =
             (options.input_symbol.clone(), options.output_symbol.clone())
@@ -342,11 +343,11 @@ fn reweight(options: &Options, w: f32, i: Option<&str>, o: Option<&str>) -> f32 
                 // input doesn't match, don't apply
                 return w;
             }
-        } else if let Some(osym) = options.output_symbol.clone() {
-            if o != osym {
-                // output doesn't match, don't apply
-                return w;
-            }
+        } else if let Some(osym) = options.output_symbol.clone()
+            && o != osym
+        {
+            // output doesn't match, don't apply
+            return w;
         }
     }
     options.multiplier * (options.func)(w) + options.addition
@@ -424,8 +425,7 @@ fn process_stream(
                 // `options.tsv_file` while the loop mutates other `options`
                 // fields, so we snapshot the lines instead). Each line keeps its
                 // trailing newline, matching hfst_getline.
-                let lines: Vec<String> = {
-                    let tsv_file = options.tsv_file.as_mut().unwrap();
+                let lines: Vec<String> = if let Some(tsv_file) = options.tsv_file.as_mut() {
                     let _ = tsv_file.seek(SeekFrom::Start(0));
                     let mut reader = BufReader::new(tsv_file);
                     let mut acc: Vec<String> = Vec::new();
@@ -439,6 +439,8 @@ fn process_stream(
                         acc.push(line.clone());
                     }
                     acc
+                } else {
+                    Vec::new()
                 };
                 for line in &lines {
                     linen += 1;
@@ -511,9 +513,9 @@ fn process_stream(
         }, else => {
             // Unreachable: the optimized-lookup stream rejection already
             // returned before the loop; keep its text for safety.
-            let _ = write!(
+            let _ = writeln!(
                 std::io::stderr(),
-                "Error: hfst-reweight cannot process transducers that are in optimized lookup format.\n"
+                "Error: hfst-reweight cannot process transducers that are in optimized lookup format."
             );
             return 1;
         });

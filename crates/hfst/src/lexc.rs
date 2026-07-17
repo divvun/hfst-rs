@@ -874,7 +874,6 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                     self.warning_at_current_token(&errm);
                 }
             }
-            return;
         } else if crate::hfst_flag_diacritics::FdOperation::is_diacritic(&symbol_pair.1) {
             let errm = format!(
                 "one-sided flag diacritic {}:{} [-Wone-sided-flags]",
@@ -992,8 +991,8 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
 
         // The C++ passed 'warn_about_one_sided_flags' as the tokenize callback;
         // the re-entrant port tokenizes plainly then applies it to each pair.
-        for idx in 0..new_vector.len() {
-            let sp = new_vector[idx].clone();
+        for sp in new_vector.iter() {
+            let sp = sp.clone();
             self.warn_about_one_sided_flags(&sp);
         }
 
@@ -1130,7 +1129,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         };
         entry.disjunct(&new_paths, true)?.optimize()?;
 
-        if !self.quiet && (self.currentEntries_ % 10000) == 0 {
+        if !self.quiet && self.currentEntries_.is_multiple_of(10000) {
             info!("{}...", self.currentEntries_);
         }
 
@@ -1345,6 +1344,12 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             }
         }
         Ok(())
+    }
+}
+
+impl<B: AlgebraBackend> Default for LexcCompiler<B> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -61,9 +61,9 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Harmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -e, --eliminate-flags  Eliminate flag diacritics.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_binary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "\nExamples:\n  $ {0} cat.hfst dog.hfst\n  cat.hfst[1] != dog.hfst[1]\n  $ {0} cat.hfst cat.hfst\n  cat.hfst[1] == cat.hfst[1]\n\n",
@@ -222,24 +222,24 @@ fn compare_streams(
                 if equal {
                     if transducer_n_first == 1 {
                         if !common.silent {
-                            let _ = write!(out, "{} == {}\n", firstname, secondname);
+                            let _ = writeln!(out, "{} == {}", firstname, secondname);
                         }
                     } else if !common.silent {
-                        let _ = write!(
+                        let _ = writeln!(
                             out,
-                            "{}[{}] == {}[{}]\n",
+                            "{}[{}] == {}[{}]",
                             firstname, transducer_n_first, secondname, transducer_n_second
                         );
                     }
                 } else {
                     if transducer_n_first == 1 {
                         if !common.silent {
-                            let _ = write!(out, "{} != {}\n", firstname, secondname);
+                            let _ = writeln!(out, "{} != {}", firstname, secondname);
                         }
                     } else if !common.silent {
-                        let _ = write!(
+                        let _ = writeln!(
                             out,
-                            "{}[{}] != {}[{}]\n",
+                            "{}[{}] != {}[{}]",
                             firstname, transducer_n_first, secondname, transducer_n_second
                         );
                     }
@@ -274,7 +274,7 @@ fn compare_streams(
         // delete the transducer of second stream, unless we continue reading
         // the first stream and there is only one transducer in the second
         // stream
-        if (continue_reading && secondstream.is_good()) || !continue_reading {
+        if secondstream.is_good() || !continue_reading {
             second = None;
         }
     }

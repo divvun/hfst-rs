@@ -85,7 +85,7 @@ fn print_usage(common: &CommonOptions) {
          \u{20}\u{20}-Q  --quick                       When converting to optimized-lookup, don't try hard to compress\n\
          \u{20}\u{20}    --format=thfst                Write output as a divvunspell .thfst directory (use -f thfst -o OUT.thfst)\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(
         msg,
@@ -95,7 +95,7 @@ fn print_usage(common: &CommonOptions) {
          Note that xfsm format is always written in native format without HFST wrappers,\n\
          and thfst is a directory format written without HFST wrappers (use -o OUT.thfst).\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-fst2fst.parse-options-fn]
@@ -255,17 +255,18 @@ fn process_stream(
     instream: &mut HfstInputStream<'_>,
     outstream: &mut HfstOutputStream,
 ) -> i32 {
-    if instream.get_type() == ImplementationType::FOMA_TYPE && !instream.is_hfst_header_included() {
-        if !common.silent {
-            warning(
-                common,
-                0,
-                0,
-                "converting native foma transducer: \
+    if instream.get_type() == ImplementationType::FOMA_TYPE
+        && !instream.is_hfst_header_included()
+        && !common.silent
+    {
+        warning(
+            common,
+            0,
+            0,
+            "converting native foma transducer: \
                  inversion may be needed for hfst-lookup to work as expected \
                  (hfst-flookup works as foma's flookup)\n",
-            );
-        }
+        );
     }
 
     let mut transducer_n: usize = 0;
@@ -368,32 +369,30 @@ pub fn run(mut args: Vec<String>) -> i32 {
         );
     }
 
-    if options.output_type == ImplementationType::XFSM_TYPE {
-        if common.output_filename == "<stdout>" {
-            error(
-                &common,
-                1,
-                0,
-                "Writing to standard output not supported for xfsm transducers,\n\
+    if options.output_type == ImplementationType::XFSM_TYPE && common.output_filename == "<stdout>"
+    {
+        error(
+            &common,
+            1,
+            0,
+            "Writing to standard output not supported for xfsm transducers,\n\
                  use 'hfst-fst2fst [--output|-o] OUTFILE' instead",
-            );
-            return 1;
-        }
+        );
+        return 1;
     }
 
     // THFST is a directory format with no byte-stream encoding, so it can never
     // be written to standard output [spec:hfst:sem:thfst-backend.stream-io].
-    if options.output_type == ImplementationType::THFST_TYPE {
-        if common.output_filename == "<stdout>" {
-            error(
-                &common,
-                1,
-                0,
-                "Writing to standard output not supported for thfst transducers,\n\
+    if options.output_type == ImplementationType::THFST_TYPE && common.output_filename == "<stdout>"
+    {
+        error(
+            &common,
+            1,
+            0,
+            "Writing to standard output not supported for thfst transducers,\n\
                  use 'hfst-fst2fst [--output|-o] OUT.thfst' instead",
-            );
-            return 1;
-        }
+        );
+        return 1;
     }
 
     // here starts the buffer handling part

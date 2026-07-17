@@ -26,10 +26,10 @@ use std::io::Write;
 // [spec:hfst:def:hfst-fst2txt.fst-text-format]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum FstTextFormat {
-    AttText,     // AT&T / OpenFst compatible TSV
-    DotText,     // Graphviz / dotty
-    PckimmoText, // PCKIMMO format
-    PrologText,  // prolog format
+    Att,     // AT&T / OpenFst compatible TSV
+    Dot,     // Graphviz / dotty
+    Pckimmo, // PCKIMMO format
+    Prolog,  // prolog format
 }
 
 /// hfst-fst2txt's own options (the former tool-specific `static mut`s).
@@ -46,7 +46,7 @@ impl Default for Options {
             use_numbers: false,
             print_weights: false,
             do_not_print_weights: false,
-            format: FstTextFormat::AttText,
+            format: FstTextFormat::Att,
         }
     }
 }
@@ -67,12 +67,12 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Text format options:\n  -w, --print-weights          If weights are printed in all cases\n  -D, --do-not-print-weights   If weights are not printed in any case\n  -f, --format=TFMT            Print output in TFMT format [default=att]\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "If OUTFILE or INFILE is missing or -, standard streams will be used.\nUnless explicitly requested with option -w or -D, weights are printed\nif and only if the transducer is in weighted format.\nTFMT is one of {{att, dot, prolog, pckimmo}}.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-fst2txt.parse-options-fn]
@@ -146,13 +146,13 @@ fn parse_options(
                 let optarg = opt.optarg();
                 if optarg == "att" || optarg == "AT&T" || optarg == "openfst" || optarg == "OpenFst"
                 {
-                    options.format = FstTextFormat::AttText;
+                    options.format = FstTextFormat::Att;
                 } else if optarg == "dot" || optarg == "graphviz" || optarg == "GraphViz" {
-                    options.format = FstTextFormat::DotText;
+                    options.format = FstTextFormat::Dot;
                 } else if optarg == "pckimmo" {
-                    options.format = FstTextFormat::PckimmoText;
+                    options.format = FstTextFormat::Pckimmo;
                 } else if optarg == "prolog" || optarg == "Prolog" {
-                    options.format = FstTextFormat::PrologText;
+                    options.format = FstTextFormat::Prolog;
                 } else {
                     error(
                         &common,
@@ -244,29 +244,20 @@ fn process_one<B: hfst::backend::Backend>(
             let _ = outf.write_all(b"--\n");
         }
 
-        let printw: bool; // whether weights are printed
         let ty = t.get_type();
-        if options.print_weights {
-            printw = true;
-        } else if options.do_not_print_weights {
-            printw = false;
-        } else if ty == ImplementationType::SFST_TYPE
-            || ty == ImplementationType::FOMA_TYPE
-            || ty == ImplementationType::XFSM_TYPE
-        {
-            printw = false;
-        } else if ty.is_weighted() {
-            // tropical OpenFST and weighted optimized-lookup; the prior
-            // SFST/foma/xfsm arm already returned false, and the else arm
-            // below also yields true, so this branch is equivalent to the
-            // original weighted-format check.
-            printw = true;
+        // Weights are printed unless explicitly suppressed or the format is a
+        // non-weighted one (SFST/foma/xfsm). Weighted formats — and the
+        // "should not happen" fallthrough — both print, so they share the else.
+        let printw: bool = if options.print_weights {
+            true
         } else {
-            // this should not happen
-            printw = true;
-        }
+            !(options.do_not_print_weights
+                || ty == ImplementationType::SFST_TYPE
+                || ty == ImplementationType::FOMA_TYPE
+                || ty == ImplementationType::XFSM_TYPE)
+        };
         let write_result = match options.format {
-            FstTextFormat::AttText => {
+            FstTextFormat::Att => {
                 if options.use_numbers {
                     // xfsm case checked earlier
                     t.write_in_att_format_number(outf, printw)
@@ -275,16 +266,16 @@ fn process_one<B: hfst::backend::Backend>(
                     t.write_in_att_format_file(outf, printw)
                 }
             }
-            FstTextFormat::DotText => {
+            FstTextFormat::Dot => {
                 // xfsm case checked earlier
                 outf.write_all(b"// This graph generated with hfst-fst2txt\n")
                     .and_then(|()| print_dot_file(outf, &mut t))
             }
-            FstTextFormat::PckimmoText => {
+            FstTextFormat::Pckimmo => {
                 // xfsm case checked earlier
                 print_pckimmo(outf, &t)
             }
-            FstTextFormat::PrologText => {
+            FstTextFormat::Prolog => {
                 // C: catches HfstException -> error "Error encountered when
                 // writing in prolog format". The Rust impl panics; the catch
                 // arm is not reproduced here.
@@ -298,15 +289,15 @@ fn process_one<B: hfst::backend::Backend>(
                     let alt_namestr = format!("NO_NAME_{}", transducer_n);
                     let namestr = if namestr.is_empty() {
                         if !common.silent {
-                            eprint!(
-                                "Transducer has no name, giving it a name '{}'...\n",
+                            eprintln!(
+                                "Transducer has no name, giving it a name '{}'...",
                                 alt_namestr
                             );
                         }
                         alt_namestr
                     } else {
                         if !common.silent {
-                            eprint!("Renaming transducer into '{}'...\n", alt_namestr);
+                            eprintln!("Renaming transducer into '{}'...", alt_namestr);
                         }
                         alt_namestr
                     };
@@ -375,7 +366,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
     };
 
     if instream.get_type() == ImplementationType::XFSM_TYPE {
-        if options.format == FstTextFormat::DotText {
+        if options.format == FstTextFormat::Dot {
             error(
                 &common,
                 1,
@@ -384,7 +375,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
             );
             return 1;
         }
-        if options.format == FstTextFormat::PckimmoText {
+        if options.format == FstTextFormat::Pckimmo {
             error(
                 &common,
                 1,
@@ -393,7 +384,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
             );
             return 1;
         }
-        if options.format == FstTextFormat::AttText {
+        if options.format == FstTextFormat::Att {
             error(
                 &common,
                 1,

@@ -52,13 +52,13 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Reweighting options:\n  -S, --symbol=SYM           remove arcs with input or output symbol SYM or both\n  -T, --tsv-file=TFILE       read kill rules from TFILE\n\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(
+    let _ = writeln!(
         msg,
-        "TFILE should contain lines with tab-separated pairs of SYM and Comment lines starting with # and empty lines are ignored.\n"
+        "TFILE should contain lines with tab-separated pairs of SYM and Comment lines starting with # and empty lines are ignored."
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-kill-paths.parse-options-fn]
@@ -180,40 +180,42 @@ fn process_stream(
                 hfst_set_formula_unary(&mut trans, &src, "PK");
             } else {
                 // C: rewind(tsv_file) — seek the std file back to the start.
-                let tsv_file = options.tsv_file.as_mut().unwrap();
-                let _ = tsv_file.seek(SeekFrom::Start(0));
+                if let Some(tsv_file) = options.tsv_file.as_mut() {
+                    let _ = tsv_file.seek(SeekFrom::Start(0));
+                }
                 options.symbol = None;
                 let mut _linen: usize = 0;
                 verbose_print(common, &format!(
                     "Reading reweights from {}\n",
                     options.tsv_file_name.clone().unwrap_or_default()
                 ));
-                let tsv_file = options.tsv_file.as_mut().unwrap();
-                let mut reader = BufReader::new(tsv_file);
-                let mut line = String::new();
-                loop {
-                    line.clear();
-                    // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
-                    if reader.read_line(&mut line).unwrap_or(0) == 0 {
-                        break;
-                    }
-                    _linen += 1;
-                    let bytes = line.as_bytes();
-                    if bytes.first() == Some(&b'\n') {
-                        continue;
-                    }
-                    if bytes.first() == Some(&b'#') {
-                        continue;
-                    }
-                    // const char *endptr = line; advance to '\0' or '\n'
-                    let mut endptr = 0usize;
-                    while endptr < bytes.len() && bytes[endptr] != b'\n' {
-                        endptr += 1;
-                    }
-                    let sym = String::from_utf8_lossy(&bytes[..endptr]).into_owned();
-                    verbose_print(common, &format!("Killing patsh with symbol {}\n", sym));
-                    do_killing(Some(&sym), &mut trans);
-                } // getline
+                if let Some(tsv_file) = options.tsv_file.as_mut() {
+                    let mut reader = BufReader::new(tsv_file);
+                    let mut line = String::new();
+                    loop {
+                        line.clear();
+                        // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
+                        if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                            break;
+                        }
+                        _linen += 1;
+                        let bytes = line.as_bytes();
+                        if bytes.first() == Some(&b'\n') {
+                            continue;
+                        }
+                        if bytes.first() == Some(&b'#') {
+                            continue;
+                        }
+                        // const char *endptr = line; advance to '\0' or '\n'
+                        let mut endptr = 0usize;
+                        while endptr < bytes.len() && bytes[endptr] != b'\n' {
+                            endptr += 1;
+                        }
+                        let sym = String::from_utf8_lossy(&bytes[..endptr]).into_owned();
+                        verbose_print(common, &format!("Killing patsh with symbol {}\n", sym));
+                        do_killing(Some(&sym), &mut trans);
+                    } // getline
+                }
                 let src = trans.clone();
                 hfst_set_name_unary(&mut trans, &src, "pathkill");
                 hfst_set_formula_unary(&mut trans, &src, "PK");
@@ -232,9 +234,9 @@ fn process_stream(
         }, else => {
             // Unreachable: the optimized-lookup stream rejection already
             // returned before the loop; keep its text for safety.
-            let _ = write!(
+            let _ = writeln!(
                 std::io::stderr(),
-                "Error: hfst-kill-paths cannot process transducers that are in optimized lookup format.\n"
+                "Error: hfst-kill-paths cannot process transducers that are in optimized lookup format."
             );
             return 1;
         });

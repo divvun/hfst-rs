@@ -692,8 +692,7 @@ pub struct TransducerAlphabet {
 
 impl TransducerAlphabet {
     pub fn new() -> Self {
-        let mut symbol_table = SymbolTable::new();
-        symbol_table.push(Symbol::new_static("@_EPSILON_SYMBOL_@"));
+        let symbol_table = vec![Symbol::new_static("@_EPSILON_SYMBOL_@")];
         TransducerAlphabet {
             symbol_table,
             fd_table: FdTable::new(),
@@ -2055,12 +2054,12 @@ impl DoubleTape {
         self.inner[pos as usize] = SymbolPair::new_values(input, out);
     }
 
-    pub fn write_vec(&mut self, pos: u32, vec: &Vec<SymbolNumber>) {
+    pub fn write_vec(&mut self, pos: u32, vec: &[SymbolNumber]) {
         while pos as usize + vec.len() >= self.inner.len() {
             self.inner.push(SymbolPair::new());
         }
-        for i in 0..vec.len() {
-            self.inner[pos as usize + i] = SymbolPair::new_values(vec[i], vec[i]);
+        for (i, &v) in vec.iter().enumerate() {
+            self.inner[pos as usize + i] = SymbolPair::new_values(v, v);
         }
     }
 
@@ -2072,8 +2071,8 @@ impl DoubleTape {
         while pos as usize + size >= self.inner.len() {
             self.inner.push(SymbolPair::new());
         }
-        for i in 0..size {
-            self.inner[pos as usize + i] = SymbolPair::new_values(slice[i], slice[i]);
+        for (i, &v) in slice.iter().enumerate() {
+            self.inner[pos as usize + i] = SymbolPair::new_values(v, v);
         }
     }
 
@@ -3139,27 +3138,27 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         }
         if self.max_time > 0.0 {
             // quit if we've overspent our time
-            if let Some(sc) = self.start_clock {
-                if sc.elapsed().as_secs_f64() > self.max_time {
-                    return;
-                }
+            if let Some(sc) = self.start_clock
+                && sc.elapsed().as_secs_f64() > self.max_time
+            {
+                return;
             }
         }
         self.recursion_depth_left -= 1;
         if indexes_transition_table(i) {
             i -= TRANSITION_TARGET_TABLE_START;
             // First we check for finality and collect the result
-            if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
-                if self.max_lookups < 0 || (self.lookup_paths.len() as isize) < self.max_lookups {
-                    self.output_tape
-                        .write_pair(output_pos, NO_SYMBOL_NUMBER, NO_SYMBOL_NUMBER);
-                    if self.tbl().get_transition_finality(i) {
-                        let old_weight = self.current_weight;
-                        let w = self.tbl().get_weight(i);
-                        self.current_weight += w;
-                        self.note_analysis();
-                        self.current_weight = old_weight;
-                    }
+            if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER
+                && (self.max_lookups < 0 || (self.lookup_paths.len() as isize) < self.max_lookups)
+            {
+                self.output_tape
+                    .write_pair(output_pos, NO_SYMBOL_NUMBER, NO_SYMBOL_NUMBER);
+                if self.tbl().get_transition_finality(i) {
+                    let old_weight = self.current_weight;
+                    let w = self.tbl().get_weight(i);
+                    self.current_weight += w;
+                    self.note_analysis();
+                    self.current_weight = old_weight;
                 }
             }
 
@@ -3193,17 +3192,17 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                 self.find_transitions(def, input_pos, output_pos, i + 1);
             }
         } else {
-            if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER {
-                if self.max_lookups < 0 || (self.lookup_paths.len() as isize) < self.max_lookups {
-                    self.output_tape
-                        .write_pair(output_pos, NO_SYMBOL_NUMBER, NO_SYMBOL_NUMBER);
-                    if self.tbl().get_index_finality(i) {
-                        let old_weight = self.current_weight;
-                        let w = self.tbl().get_final_weight(i);
-                        self.current_weight += w;
-                        self.note_analysis();
-                        self.current_weight = old_weight;
-                    }
+            if self.input_tape.at(input_pos) == NO_SYMBOL_NUMBER
+                && (self.max_lookups < 0 || (self.lookup_paths.len() as isize) < self.max_lookups)
+            {
+                self.output_tape
+                    .write_pair(output_pos, NO_SYMBOL_NUMBER, NO_SYMBOL_NUMBER);
+                if self.tbl().get_index_finality(i) {
+                    let old_weight = self.current_weight;
+                    let w = self.tbl().get_final_weight(i);
+                    self.current_weight += w;
+                    self.note_analysis();
+                    self.current_weight = old_weight;
                 }
             }
 

@@ -223,7 +223,7 @@ fn print_usage(common: &CommonOptions) {
          \x20 -C, --cascade=CASCADE            How multiple transducers in input are handled\n\
          \x20 -P, --progress                   Show neat progress bar if possible\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = msg.write_all(
         "OFORMAT is one of {xerox,cg,apertium}, xerox being default\n\
@@ -239,14 +239,14 @@ fn print_usage(common: &CommonOptions) {
          results from all transducers is printed for each input string.\n"
             .as_bytes(),
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 
     let _ = msg.write_all(
         "CASCADE must be one of { union, priority-union, composition }.\n\
          If not specified, defaults to {union}.\n"
             .as_bytes(),
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 
     let _ = msg.write_all(
         "STREAM can be { input, output, both }. If not given, defaults to {both}.\n\
@@ -255,7 +255,7 @@ fn print_usage(common: &CommonOptions) {
          --pipe-mode=output is ignored on non-windows platforms.\n"
             .as_bytes(),
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 
     let _ = write!(
         msg,
@@ -271,7 +271,7 @@ fn print_usage(common: &CommonOptions) {
          \x20 'quote-special' quotes spaces that come from 'print-space'\n"
     );
 
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-lookup.parse-options-fn]
@@ -389,14 +389,14 @@ fn parse_options(
             b'b' => {
                 options.beam = optarg.parse::<f32>().unwrap_or(0.0);
                 if options.beam < 0.0 {
-                    eprint!("Invalid argument for --beam\n");
+                    eprintln!("Invalid argument for --beam");
                     return Err(1);
                 }
             }
             b't' => {
                 options.time_cutoff = optarg.parse::<f64>().unwrap_or(0.0);
                 if options.time_cutoff < 0.0 {
-                    eprint!("Invalid argument for --time-cutoff\n");
+                    eprintln!("Invalid argument for --time-cutoff");
                     return Err(1);
                 }
             }
@@ -431,10 +431,7 @@ fn parse_options(
                 options.max_number = optarg.parse::<i32>().unwrap_or(0) as isize;
             }
             b'p' => {
-                if opt.optarg_opt().is_none() {
-                    options.pipe_input = true;
-                    options.pipe_output = true;
-                } else if optarg == "both" || optarg == "BOTH" {
+                if opt.optarg_opt().is_none() || optarg == "both" || optarg == "BOTH" {
                     options.pipe_input = true;
                     options.pipe_output = true;
                 } else if optarg == "input" || optarg == "INPUT" || optarg == "in" || optarg == "IN"
@@ -953,9 +950,14 @@ fn lookup_cascading_basic(
     }
 }
 
+/// The common/tool options threaded together through the lookup helpers.
+struct LookupCtx<'a> {
+    common: &'a CommonOptions,
+    options: &'a Options,
+}
+
 fn perform_lookups_ol(
-    common: &CommonOptions,
-    options: &Options,
+    ctx: &LookupCtx<'_>,
     state: &LookupState,
     origin: &HfstOneLevelPath,
     cascade: &mut [OlTransducer],
@@ -966,8 +968,8 @@ fn perform_lookups_ol(
     if !unknown {
         if cascade.len() == 1 {
             lookup_simple_ol(
-                common,
-                options,
+                ctx.common,
+                ctx.options,
                 state,
                 origin,
                 &mut cascade[0],
@@ -979,7 +981,15 @@ fn perform_lookups_ol(
                 &mut *out,
             )
         } else {
-            lookup_cascading_ol(common, options, state, origin, cascade, infinite, &mut *out)
+            lookup_cascading_ol(
+                ctx.common,
+                ctx.options,
+                state,
+                origin,
+                cascade,
+                infinite,
+                &mut *out,
+            )
         }
     } else {
         HfstOneLevelPaths::new()
@@ -989,8 +999,7 @@ fn perform_lookups_ol(
 // [spec:hfst:def:hfst-lookup.perform-lookups-fn]
 // [spec:hfst:sem:hfst-lookup.perform-lookups-fn]
 fn perform_lookups_basic(
-    common: &CommonOptions,
-    options: &Options,
+    ctx: &LookupCtx<'_>,
     state: &mut LookupState,
     origin: &HfstOneLevelPath,
     cascade: &[HfstBasicTransducer],
@@ -1001,8 +1010,8 @@ fn perform_lookups_basic(
     if !unknown {
         if cascade.len() == 1 {
             lookup_simple_basic(
-                common,
-                options,
+                ctx.common,
+                ctx.options,
                 state,
                 origin,
                 &cascade[0],
@@ -1014,7 +1023,15 @@ fn perform_lookups_basic(
                 &mut *out,
             )
         } else {
-            lookup_cascading_basic(common, options, state, origin, cascade, infinite, &mut *out)
+            lookup_cascading_basic(
+                ctx.common,
+                ctx.options,
+                state,
+                origin,
+                cascade,
+                infinite,
+                &mut *out,
+            )
         }
     } else {
         HfstOneLevelPaths::new()
@@ -1179,7 +1196,7 @@ fn process_stream(
 
     let mut filesize: i64 = -1;
     if options.show_progress_bar {
-        eprint!("Counting file size...\n");
+        eprintln!("Counting file size...");
         // C: fseek(END)/ftell to measure, then rewind. The std reader is read
         // from the start, so the file's metadata length is the equivalent size
         // and no rewind is needed.
@@ -1189,7 +1206,7 @@ fn process_stream(
                 filesize = md.len() as i64;
             }
         }
-        eprint!("{}... rewinding\n", filesize);
+        eprintln!("{}... rewinding", filesize);
     }
     print_prompt(common, options);
     // C tracked the read position with ftell(LOOKUP_FILE); the std reader has no
@@ -1265,10 +1282,10 @@ fn process_stream(
             verbose_print(common, "\n");
         }
 
+        let lctx = LookupCtx { common, options };
         let kvs = if only_optimized_lookup {
             perform_lookups_ol(
-                common,
-                options,
+                &lctx,
                 &state,
                 &kv,
                 &mut cascade,
@@ -1278,8 +1295,7 @@ fn process_stream(
             )
         } else {
             perform_lookups_basic(
-                common,
-                options,
+                &lctx,
                 &mut state,
                 &kv,
                 &cascade_mut,
@@ -1317,14 +1333,14 @@ fn process_stream(
     } // while lines in input
 
     if options.show_progress_bar {
-        eprint!("{}/{}... Done\n", filepos, filesize);
+        eprintln!("{}/{}... Done", filepos, filesize);
     }
 
-    if options.print_statistics {
-        if let Err(e) = stats.write_statistics(&mut *outstream) {
-            hfst_error(common, 1, 0, &format!("{e}"));
-            return 1;
-        }
+    if options.print_statistics
+        && let Err(e) = stats.write_statistics(&mut *outstream)
+    {
+        hfst_error(common, 1, 0, &format!("{e}"));
+        return 1;
     }
     0
 }

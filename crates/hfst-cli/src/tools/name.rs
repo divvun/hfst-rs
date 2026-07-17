@@ -54,9 +54,9 @@ fn print_usage(common: &CommonOptions) {
     );
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-name.parse-options-fn]
@@ -151,7 +151,7 @@ fn process_stream(
         transducer_n += 1;
 
         if transducer_n > 1 && options.print_name {
-            eprint!("---\n");
+            eprintln!("---");
         }
 
         if transducer_n == 1 {
@@ -188,7 +188,7 @@ fn process_stream(
                     return 1;
                 }
             } else {
-                eprint!("\"{}\"\n", trans.get_name());
+                eprintln!("\"{}\"", trans.get_name());
             }
         });
     }
@@ -209,11 +209,11 @@ pub fn run(mut args: Vec<String>) -> i32 {
     };
 
     if !options.print_name && !options.name_option_given {
-        eprint!("Error: hfst-name: use either option --print-name  or --name\n");
+        eprintln!("Error: hfst-name: use either option --print-name  or --name");
         return 1;
     }
     if options.print_name && options.name_option_given {
-        eprint!("Warning: option --print-name overrides option --name\n");
+        eprintln!("Warning: option --print-name overrides option --name");
     }
 
     // close buffers, we use streams

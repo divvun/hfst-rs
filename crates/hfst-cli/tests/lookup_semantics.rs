@@ -242,6 +242,7 @@ fn ol_lookup_identity_arc_matches_unknown_input() {
 ///   * a KNOWN symbol `a` takes BOTH the explicit `a:b` arc and the
 ///     identity-expanded `a:a` arc;
 ///   * an UNKNOWN symbol takes the identity arc, echoed unchanged.
+///
 /// Verify-and-lock against the port's (correct) unknown-symbol semantics.
 #[test]
 fn ol_lookup_question_mark_unknown_and_identity_semantics() {

@@ -108,7 +108,7 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Lexc options:\n  -A, --alignStrings      align characters in input and output strings\n  -E, --encode-weights    encode weights when minimizing (default is false)\n  -F, --withFlags         use flags to hyperminimize result\n  -M, --minimizeFlags     if --withFlags is used, minimize the number of flags\n  -R, --renameFlags       if --withFlags and --minimizeFlags are used, rename\n                          flags (for testing)\n  -x,\n  --xerox-composition=BOOL   Whether flag diacritics are treated as ordinary\n                             symbols in composition (default is true).\n  -X, --xfst=VARIABLE     toggle xfst compatibility option VARIABLE.\n   --split-characters     disable unicode character parsing for multichars\n   -Wall                  enable all warnings:\n   -Wone-sided-flags      warn about one sided flag diacritics\n   -Wrepeated-lexicons    warn about repeat lexicon names\n   -Wmissing-lexicons     warn about lexicons used but missing\n   -Wunused-lexicons      warn about lexicons defined but unused\n   -Wmissing-alphabets    warn about implicit alphabets\n   -Wunnecessary-escapes  warn about unneeded %-escapes\n   -Werror                treat warnings as errors\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = msg.write_all(
         "If INFILE or OUTFILE are omitted or -, standard streams will be used\nThe possible values for FORMAT are { sfst, openfst-tropical,\nfoma, optimized-lookup-unweighted, optimized-lookup-weighted }.\nBOOL is one of {true,ON,yes} or {false,OFF,no}.\nXfst variables are {flag-is-epsilon (default OFF)}.\n"
             .as_bytes(),
@@ -370,16 +370,16 @@ fn lexc_streams<B: hfst::backend::AlgebraBackend>(
     outstream: &mut HfstOutputStream,
 ) -> i32 {
     let lexcfilenames = &options.lexcfilenames;
-    for i in 0..(options.lexccount as usize) {
-        verbose_print(common, &format!("Parsing lexc file {}\n", lexcfilenames[i]));
-        if lexcfilenames[i] == "<stdin>" {
+    for name in &lexcfilenames[..options.lexccount as usize] {
+        verbose_print(common, &format!("Parsing lexc file {}\n", name));
+        if name == "<stdin>" {
             // The new Rust LexcCompiler::parse takes the source text, so we
             // read the whole of standard input into a string (mirroring the
             // C++ 'lexc.parse(stdin)').
             let mut source = String::new();
             use std::io::Read;
             let _ = std::io::stdin().read_to_string(&mut source);
-            lexc.set_source_name(&lexcfilenames[i]);
+            lexc.set_source_name(name);
             if let Err(e) = lexc.parse(&source) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
@@ -387,8 +387,8 @@ fn lexc_streams<B: hfst::backend::AlgebraBackend>(
         } else {
             // Read the named file's contents into a string (mirroring the
             // C++ 'lexc.parse(filename)').
-            let source = std::fs::read_to_string(&lexcfilenames[i]).unwrap_or_default();
-            lexc.set_source_name(&lexcfilenames[i]);
+            let source = std::fs::read_to_string(name).unwrap_or_default();
+            lexc.set_source_name(name);
             if let Err(e) = lexc.parse(&source) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;

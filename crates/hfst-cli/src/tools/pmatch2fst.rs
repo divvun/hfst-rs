@@ -50,7 +50,7 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "String and format options:\n  -e, --epsilon=EPS         Map EPS as zero\n      --flatten             Compile in all RTNs\n      --cosine-distances    When compiling Like() operations, include cosine distance info\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 
     let _ = write!(
         msg,
@@ -62,7 +62,7 @@ fn print_usage(common: &CommonOptions) {
         "Examples:\n  echo \"Define TOP  UppercaseAlpha Alpha* LC({{professor}}) EndTag(ProfName);\" | {} \n  create matcher that tags \"professor Chomsky\" as \"professor <ProfName>Chomsky</ProfName>\"\n\n",
         common.program_name
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-pmatch2fst.parse-options-fn]

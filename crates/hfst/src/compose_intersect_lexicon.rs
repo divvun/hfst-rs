@@ -140,14 +140,14 @@ impl ComposeIntersectLexicon {
         allow_lexicon_epsilons: bool,
     ) -> HfstState {
         let _ = allow_lexicon_epsilons;
-        let s: HfstState;
 
         // ComposeIntersectRule::START is the inherited ComposeIntersectFst::START (== 0).
-        if p.0 == ComposeIntersectFst::START && p.1 == ComposeIntersectFst::START {
-            s = 0;
+        let s: HfstState = if p.0 == ComposeIntersectFst::START && p.1 == ComposeIntersectFst::START
+        {
+            0
         } else {
-            s = self.result.add_state_new();
-        }
+            self.result.add_state_new()
+        };
 
         // Sanity check...
         assert!(s as usize == self.state_pair_map.len());

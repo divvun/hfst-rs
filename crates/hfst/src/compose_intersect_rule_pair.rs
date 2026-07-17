@@ -99,7 +99,7 @@ pub type StateTransitionVector = Vec<SymbolTransitionMap>;
 /// ([dec:hfst:monomorphic-backends]); the former 'dyn' trait dispatch becomes
 /// a two-arm match.
 pub enum ComposeIntersectRuleComponent {
-    Rule(ComposeIntersectRule),
+    Rule(Box<ComposeIntersectRule>),
     Pair(Box<ComposeIntersectRulePair>),
 }
 
@@ -194,11 +194,9 @@ impl ComposeIntersectRulePair {
             Self::START,
         );
 
-        let mut state_pair_vector = StatePairVector::new();
-        state_pair_vector.push((ComposeIntersectFst::START, ComposeIntersectFst::START));
+        let state_pair_vector = vec![(ComposeIntersectFst::START, ComposeIntersectFst::START)];
 
-        let mut state_transition_vector = StateTransitionVector::new();
-        state_transition_vector.push(SymbolTransitionMap::new());
+        let state_transition_vector = vec![SymbolTransitionMap::new()];
 
         ComposeIntersectRulePair {
             symbol_set,
@@ -395,7 +393,7 @@ impl ComposeIntersectRulePair {
         // (void)state_transition_vector[state][symbol];  -- default-insert the key.
         self.state_transition_vector[state as usize]
             .entry(symbol)
-            .or_insert_with(TransitionSet::new);
+            .or_default();
 
         let mut transitions = TransitionSet::new();
         let mut it = 0usize;

@@ -367,12 +367,12 @@ fn run_main() {
     // Basename dispatch: symlink/hardlink/copy invocation as an original
     // binary name. argv passes through completely unchanged.
     let basename = invoked_basename(argv.first().map(String::as_str).unwrap_or_default());
-    if basename != "hfst" {
-        if let Some(run) = find_tool(&basename) {
-            std::process::exit(run(argv));
-        }
-        // Unknown basename: fall through to the subcommand interface.
+    if basename != "hfst"
+        && let Some(run) = find_tool(&basename)
+    {
+        std::process::exit(run(argv));
     }
+    // Unknown basename: fall through to the subcommand interface.
 
     // Subcommand dispatch: argv[1] = tool name minus "hfst-". The tool's args
     // are forwarded raw (clap never sees them), so the old getopt flags pass
@@ -381,13 +381,13 @@ fn run_main() {
         if sub == "install-symlinks" {
             std::process::exit(install_symlinks(&argv[2..]));
         }
-        if !sub.starts_with('-') {
-            if let Some(run) = find_tool(&format!("hfst-{sub}")) {
-                let mut tool_argv = Vec::with_capacity(argv.len() - 1);
-                tool_argv.push(format!("hfst {sub}"));
-                tool_argv.extend(argv[2..].iter().cloned());
-                std::process::exit(run(tool_argv));
-            }
+        if !sub.starts_with('-')
+            && let Some(run) = find_tool(&format!("hfst-{sub}"))
+        {
+            let mut tool_argv = Vec::with_capacity(argv.len() - 1);
+            tool_argv.push(format!("hfst {sub}"));
+            tool_argv.extend(argv[2..].iter().cloned());
+            std::process::exit(run(tool_argv));
         }
     }
 

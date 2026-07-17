@@ -522,14 +522,12 @@ pub fn add_transitions_with(
     for it in transitions.iter() {
         // before writing each transition, find out whether its target is simple
         // (ie. should point directly to TA entry)
-        let target: u32;
-        if state_placeholders[it.target as usize].is_simple() {
-            target = state_placeholders[it.target as usize].first_transition
-                + TRANSITION_TARGET_TABLE_START
-                - 1;
+        let target: u32 = if state_placeholders[it.target as usize].is_simple() {
+            state_placeholders[it.target as usize].first_transition + TRANSITION_TARGET_TABLE_START
+                - 1
         } else {
-            target = state_placeholders[it.target as usize].start_index;
-        }
+            state_placeholders[it.target as usize].start_index
+        };
         transition_table.append(TransitionW::new_values(
             symbol, it.output, target, it.weight,
         ));

@@ -113,6 +113,12 @@ pub struct HfstTransition<C: TransitionData> {
     transition_data: C,
 }
 
+impl<C: TransitionData> Default for HfstTransition<C> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<C: TransitionData> HfstTransition<C> {
     /* Get the number that represents the symbol in the transition data. */
     // [spec:hfst:def:hfst-transition.hfst.implementations.hfst-transition.get-symbol-number-fn]

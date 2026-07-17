@@ -3851,4 +3851,24 @@ children (
             }
         )
     }
+
+    {
+        id idiom-clippy-clean
+        title "Make the whole workspace clippy-clean (0 warnings/errors, --all-targets) via real fixes, not allows: idiom rewrites (needless_range_loop→iterators, ptr_arg &Vec→&[T], vec_init_then_push→vec![], explicit_counter_loop→enumerate/zip, if_same_then_else→merged conditions, unnecessary_get_then_check→contains_key, map_entry, needless_late_init, nonminimal_bool, redundant_locals); assert!(false)→unreachable!/panic! (dead tails removed); box the large ComposeIntersectRuleComponent::Rule variant; foma wrap/wrap_with take Fsm by value (deref Box at the FFI boundary); WeightedPath inherent to_string→Display impl; rename placeholder foo vars + drop the FstTextFormat Text-suffix; and param-struct grouping for every too_many_arguments fn — LookupParams+LookupAcc (lookup_recursive), IntersectSearch (find_matches), MergeContext (handle_list_match/find_matches_for_merge), LookupCtx (perform_lookups_ol/basic), Grammar (pair_test). 291 tests pass, OL lookup byte-identical (oracle sha 2afa19d8), fmt clean."
+        log (
+            {
+                at 2026-07-17T19:07:36.203696Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-07-17T19:07:42.762516Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
+        )
+    }
 )

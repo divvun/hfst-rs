@@ -67,11 +67,14 @@ pub mod twolc;
 pub mod txt2fst;
 pub mod xfst;
 
+/// A tool's `run` entry point: argv in, process exit code out.
+pub type ToolRun = fn(Vec<String>) -> i32;
+
 /// Dispatch table mapping the original standalone binary names to the
 /// tools' run entry points. Alias names (the C++ suite installed several
 /// of these, plus the British spellings Giella builds use) map to the same
 /// entry points.
-pub const TOOLS: &[(&str, fn(Vec<String>) -> i32)] = &[
+pub const TOOLS: &[(&str, ToolRun)] = &[
     ("hfst-affix-guessify", affix_guessify::run),
     // aliases
     ("hfst-lexc", lexc_compiler::run),

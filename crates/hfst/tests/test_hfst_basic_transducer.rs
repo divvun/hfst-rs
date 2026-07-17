@@ -493,8 +493,7 @@ fn iterating_through() -> Result<(), hfst::error::Error> {
 
     let (t, _s1, _s2) = build_abcd();
 
-    let mut source_state: u32 = 0;
-    for it in t.iter() {
+    for (source_state, it) in (0_u32..).zip(t.iter()) {
         for tr_it in it.iter() {
             eprintln!(
                 "{}\t{}\t{}\t{}\t{}",
@@ -508,7 +507,6 @@ fn iterating_through() -> Result<(), hfst::error::Error> {
         if t.is_final_state(source_state) {
             eprintln!("{}\t{}", source_state, t.get_final_weight(source_state)?);
         }
-        source_state += 1;
     }
     Ok(())
 }

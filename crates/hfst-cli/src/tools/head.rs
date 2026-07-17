@@ -55,13 +55,13 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Archive options:\n  -n, --n-first=[-]K   print the first K transducers;\n                       with the leading `-', print all but last K transducers\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(
         msg,
         "K must be an integer, as parsed by strtoul base 10, and not 0.\nIf K is omitted default is 1."
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-head.parse-options-fn]

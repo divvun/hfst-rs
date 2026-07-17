@@ -84,7 +84,7 @@ fn string_net(syms: &[&str]) -> HfstTransducer<StdVectorFst> {
 // two-level paths. `obey_flags` runs the flag-diacritic constraints.
 fn lookup(t: &HfstTransducer<StdVectorFst>, input: &[&str], obey_flags: bool) -> HfstTwoLevelPaths {
     let basic = t.to_basic().expect("to_basic");
-    let path: StringVector = input.iter().map(|s| Symbol::new(s)).collect();
+    let path: StringVector = input.iter().map(Symbol::new).collect();
     let mut results: HfstTwoLevelPaths = BTreeSet::new();
     // Some(0) forbids epsilon cycles (the fixtures are acyclic); -1 = all paths.
     basic.lookup(&path, &mut results, Some(0), None, -1, obey_flags);

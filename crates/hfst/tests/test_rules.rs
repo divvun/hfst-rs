@@ -75,7 +75,7 @@ fn run_two_level_rules<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
 
     let leftc = HfstTransducer::<B>::new_symbol("c")?;
     let rightc = HfstTransducer::<B>::new_symbol("c")?;
-    let mut context: HfstTransducerPair<B> = (leftc, rightc);
+    let context: HfstTransducerPair<B> = (leftc, rightc);
 
     let mut mappings: StringPairSet = StringPairSet::new();
     mappings.insert(sp("a", "b"));
@@ -86,11 +86,9 @@ fn run_two_level_rules<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     alphabet.insert(sp("b", "b"));
     alphabet.insert(sp("c", "c"));
 
-    let _rule_transducer1 = hfst_rules::two_level_if(&mut context, &mut mappings, &mut alphabet)?;
-    let _rule_transducer2 =
-        hfst_rules::two_level_only_if(&mut context, &mut mappings, &mut alphabet)?;
-    let _rule_transducer3 =
-        hfst_rules::two_level_if_and_only_if(&mut context, &mut mappings, &mut alphabet)?;
+    let _rule_transducer1 = hfst_rules::two_level_if(&context, &mappings, &alphabet)?;
+    let _rule_transducer2 = hfst_rules::two_level_only_if(&context, &mappings, &alphabet)?;
+    let _rule_transducer3 = hfst_rules::two_level_if_and_only_if(&context, &mappings, &alphabet)?;
 
     // compare_and_delete in C++ converts the SFST (index 0) and FOMA (index 2)
     // rule transducers to TROPICAL and asserts each compares equal to the
@@ -117,7 +115,7 @@ fn run_replace_down_karttunen<B: AlgebraBackend>() -> Result<(), hfst::error::Er
     let mut mapping = HfstTransducer::<B>::new_tokenized_pair("ab", "x", &tok)?;
     let left_context = HfstTransducer::<B>::new_tokenized_pair("ab", "ab", &tok)?;
     let right_context = HfstTransducer::<B>::new_symbol("a")?;
-    let mut context: HfstTransducerPair<B> = (left_context, right_context);
+    let context: HfstTransducerPair<B> = (left_context, right_context);
     let mut alphabet: StringPairSet = StringPairSet::new();
     alphabet.insert(sp("a", "a"));
     alphabet.insert(sp("b", "b"));
@@ -125,7 +123,7 @@ fn run_replace_down_karttunen<B: AlgebraBackend>() -> Result<(), hfst::error::Er
     let optional = false;
 
     let replace_down_transducer =
-        hfst_rules::replace_down_karttunen(&mut context, &mut mapping, optional, &mut alphabet)?;
+        hfst_rules::replace_down_karttunen(&context, &mut mapping, optional, &mut alphabet)?;
 
     let mut test_abababa = HfstTransducer::<B>::new_tokenized("abababa", &tok)?;
     test_abababa.compose(&replace_down_transducer, true)?;

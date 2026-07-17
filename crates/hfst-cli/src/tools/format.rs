@@ -67,9 +67,9 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "  -t, --test-format FMT  Whether the format FMT is available,\n                         exits with 0 if it is, else with 1\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-format.parse-options-fn]

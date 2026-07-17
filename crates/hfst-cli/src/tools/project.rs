@@ -35,7 +35,7 @@ fn first_char_matches(optarg: &Option<String>, prefix: &str) -> bool {
     match optarg.as_ref().and_then(|s| s.bytes().next()) {
         Some(first) => {
             let want = prefix.as_bytes()[0];
-            first.to_ascii_lowercase() == want.to_ascii_lowercase()
+            first.eq_ignore_ascii_case(&want)
         }
         None => false,
     }
@@ -57,13 +57,13 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Projection options:\n  -p, --project=LEVEL   project extracting tape LEVEL\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(
+    let _ = writeln!(
         msg,
-        "LEVEL must be one of upper, input, first, analysis or lower, output, second, generation\n"
+        "LEVEL must be one of upper, input, first, analysis or lower, output, second, generation"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-project.parse-options-fn]
@@ -209,9 +209,9 @@ fn process_stream(
         }, else => {
             // Unreachable: the optimized-lookup stream rejection already
             // returned before the loop; keep its text for safety.
-            let _ = write!(
+            let _ = writeln!(
                 std::io::stderr(),
-                "Error: hfst-project cannot process transducers that are in optimized lookup format.\n"
+                "Error: hfst-project cannot process transducers that are in optimized lookup format."
             );
             return 1;
         });

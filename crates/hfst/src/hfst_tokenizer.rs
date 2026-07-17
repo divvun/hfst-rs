@@ -283,7 +283,6 @@ impl HfstTokenizer {
             // next symbol found
             else if bytes[pos] != b' ' && symbol_pos == NPOS {
                 symbol_pos = pos;
-            } else {
             }
             pos += 1;
         }
@@ -317,11 +316,8 @@ impl HfstTokenizer {
                 spv.push((it.0.clone(), output_spv[jt].0.clone()));
                 jt += 1;
             }
-            for k in jt..output_spv.len() {
-                spv.push((
-                    Symbol::new_static(internal_epsilon),
-                    output_spv[k].0.clone(),
-                ));
+            for out in &output_spv[jt..] {
+                spv.push((Symbol::new_static(internal_epsilon), out.0.clone()));
             }
         } else {
             let mut it = 0;
@@ -329,8 +325,8 @@ impl HfstTokenizer {
                 spv.push((input_spv[it].0.clone(), jt.0.clone()));
                 it += 1;
             }
-            for k in it..input_spv.len() {
-                spv.push((input_spv[k].0.clone(), Symbol::new_static(internal_epsilon)));
+            for inp in &input_spv[it..] {
+                spv.push((inp.0.clone(), Symbol::new_static(internal_epsilon)));
             }
         }
         spv
@@ -361,11 +357,8 @@ impl HfstTokenizer {
                 spv.push(sp);
                 jt += 1;
             }
-            for k in jt..output_spv.len() {
-                let sp = (
-                    Symbol::new_static(internal_epsilon),
-                    output_spv[k].0.clone(),
-                );
+            for out in &output_spv[jt..] {
+                let sp = (Symbol::new_static(internal_epsilon), out.0.clone());
                 warn_about_pair(&sp);
                 spv.push(sp);
             }
@@ -377,8 +370,8 @@ impl HfstTokenizer {
                 spv.push(sp);
                 it += 1;
             }
-            for k in it..input_spv.len() {
-                let sp = (input_spv[k].0.clone(), Symbol::new_static(internal_epsilon));
+            for inp in &input_spv[it..] {
+                let sp = (inp.0.clone(), Symbol::new_static(internal_epsilon));
                 warn_about_pair(&sp);
                 spv.push(sp);
             }
@@ -403,7 +396,7 @@ impl HfstTokenizer {
         let input_spv = self.tokenize(input_string, split_characters);
         let output_spv = self.tokenize(output_string, split_characters);
 
-        assert!(input_spv.len() > 0 && output_spv.len() > 0);
+        assert!(!input_spv.is_empty() && !output_spv.is_empty());
         let mut it = 0;
         let mut jt = 0;
 
@@ -459,7 +452,7 @@ impl HfstTokenizer {
             }
 
             spv.push(sp);
-            if sp_cont.0.len() != 0 && sp_cont.1.len() != 0 {
+            if !sp_cont.0.is_empty() && !sp_cont.1.is_empty() {
                 spv.push(sp_cont);
             }
         }

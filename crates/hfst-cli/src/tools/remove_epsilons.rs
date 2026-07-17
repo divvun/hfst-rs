@@ -37,9 +37,9 @@ fn print_usage(common: &CommonOptions) {
     );
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-remove-epsilons.parse-options-fn]
@@ -132,9 +132,9 @@ fn process_stream(
         }, else => {
             // Unreachable: the optimized-lookup stream rejection already
             // returned before the loop; keep its text for safety.
-            let _ = write!(
+            let _ = writeln!(
                 std::io::stderr(),
-                "Error: hfst-remove-epsilons cannot process transducers that are in optimized lookup format.\n"
+                "Error: hfst-remove-epsilons cannot process transducers that are in optimized lookup format."
             );
             return 1;
         });

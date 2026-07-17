@@ -72,10 +72,10 @@ fn print_usage(common: &CommonOptions) {
     );
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "If PNAME is omitted, all values are printed\n");
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg, "If PNAME is omitted, all values are printed");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-edit-metadata.parse-options-fn]
@@ -189,7 +189,7 @@ fn process_stream(
         transducer_n += 1;
 
         if transducer_n > 1 && (options.print_all_properties || options.print_property.is_some()) {
-            eprint!("--- \n");
+            eprintln!("--- ");
         }
 
         if transducer_n == 1 {
@@ -257,11 +257,11 @@ fn process_stream(
                 let props = trans.get_properties();
                 if options.print_all_properties {
                     for (key, val) in props.iter() {
-                        let _ = write!(out, "{}: {}\n", key, val);
+                        let _ = writeln!(out, "{}: {}", key, val);
                     }
                 } else {
                     let pp = options.print_property.clone().unwrap_or_default();
-                    let _ = write!(out, "{}\n", props.get(&pp).unwrap());
+                    let _ = writeln!(out, "{}", props.get(&pp).unwrap());
                 }
             }
         });

@@ -64,18 +64,15 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Composition options:\n  -x, --xerox-composition=VALUE Whether flag diacritics are treated as ordinary\n                                symbols in composition (default is false).\n  -X, --xfst=VARIABLE    Toggle xfst compatibility option VARIABLE.\nHarmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_binary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
-    let _ = write!(
+    let _ = writeln!(msg);
+    let _ = writeln!(msg, "Xfst variables are {{flag-is-epsilon (default OFF)}}.");
+    let _ = writeln!(
         msg,
-        "Xfst variables are {{flag-is-epsilon (default OFF)}}.\n"
+        "VALUE can be one of the following: [true|false], [yes|no] or [ON|OFF],"
     );
-    let _ = write!(
-        msg,
-        "VALUE can be one of the following: [true|false], [yes|no] or [ON|OFF],\n"
-    );
-    let _ = write!(msg, "false being the default.\n");
+    let _ = writeln!(msg, "false being the default.");
     let _ = write!(
         msg,
         "\nExamples:\n  {} -o cat2dog.hfst cat2mouse.hfst mouse2dog.hfst  composes two automata\n\n",
@@ -151,9 +148,9 @@ fn parse_options(
             } else if argument == "no" || argument == "false" || argument == "OFF" {
                 options.xerox_composition = false;
             } else {
-                let _ = write!(
+                let _ = writeln!(
                     std::io::stderr(),
-                    "Error: unknown option to --xerox-composition: '{}'\n",
+                    "Error: unknown option to --xerox-composition: '{}'",
                     opt.optarg()
                 );
                 return Err(1);
@@ -164,9 +161,9 @@ fn parse_options(
             if argument == "flag-is-epsilon" {
                 options.flag_is_epsilon = true;
             } else {
-                let _ = write!(
+                let _ = writeln!(
                     std::io::stderr(),
-                    "Error: unknown option to --xfst: '{}'\n",
+                    "Error: unknown option to --xfst: '{}'",
                     opt.optarg()
                 );
                 return Err(1);

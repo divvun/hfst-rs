@@ -739,10 +739,10 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             Err(_) => {
                 // Distinguish comments-only (parse_all yields []) from a real
                 // parse error.
-                if let Ok(exprs) = parse_all(src) {
-                    if exprs.is_empty() {
-                        self.contains_only_comments = true;
-                    }
+                if let Ok(exprs) = parse_all(src)
+                    && exprs.is_empty()
+                {
+                    self.contains_only_comments = true;
                 }
                 None
             }
@@ -1379,9 +1379,9 @@ fn get_n_to_k(s: &str) -> [i32; 2] {
 // xre_utils.cc:268. Replaces every '\n'/'\r' byte with a nul, in place.
 fn strip_newline(s: &str) -> String {
     let mut b = s.as_bytes().to_vec();
-    for pos in 0..b.len() {
-        if b[pos] == b'\n' || b[pos] == b'\r' {
-            b[pos] = 0;
+    for byte in b.iter_mut() {
+        if *byte == b'\n' || *byte == b'\r' {
+            *byte = 0;
         }
     }
     String::from_utf8_lossy(&b).into_owned()
@@ -1701,11 +1701,7 @@ fn get_weight(s: &str) -> f64 {
 // xre_utils.cc:95. 'isatty(1)' -> stdout is a terminal.
 fn should_colourise() -> bool {
     use std::io::IsTerminal;
-    if std::io::stdout().is_terminal() {
-        true
-    } else {
-        false
-    }
+    std::io::stdout().is_terminal()
 }
 
 impl<B: AlgebraBackend> XreCompiler<B> {
@@ -1907,12 +1903,12 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         let epsilon = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?;
 
         // mapping: 0::weight -> 0
-        let mut mapping_pair_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> = Vec::new();
-        mapping_pair_vector.push((weighted_epsilon, epsilon.clone()));
+        let mapping_pair_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> =
+            vec![(weighted_epsilon, epsilon.clone())];
 
         // context: 0 _ [t]
-        let mut context_pair_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> = Vec::new();
-        context_pair_vector.push((epsilon, t.clone()));
+        let context_pair_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> =
+            vec![(epsilon, t.clone())];
 
         let rule = crate::hfst_xerox_rules::Rule::new_mapping_context_repl_type(
             &mapping_pair_vector,
@@ -2071,7 +2067,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 
     // [spec:hfst:def:xre-utils.hfst.xre.is-valid-function-call-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.is-valid-function-call-fn]
-    fn is_valid_function_call(&self, name: &str, args: &Vec<HfstTransducer<B>>) -> bool {
+    fn is_valid_function_call(&self, name: &str, args: &[HfstTransducer<B>]) -> bool {
         let name2xre = self.function_definitions.get(name);
         let name2args = self.function_arguments.get(name);
 
@@ -2102,15 +2098,14 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 
     // [spec:hfst:def:xre-utils.hfst.xre.define-function-args-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.define-function-args-fn]
-    fn define_function_args(&mut self, name: &str, args: &Vec<HfstTransducer<B>>) -> bool {
+    fn define_function_args(&mut self, name: &str, args: &[HfstTransducer<B>]) -> bool {
         if !self.is_valid_function_call(name, args) {
             return false;
         }
-        let mut arg_number: u32 = 1;
-        for it in args.iter() {
+        for (i, it) in args.iter().enumerate() {
+            let arg_number: u32 = i as u32 + 1;
             let function_arg = Symbol::from(format!("@{}{}@", name, arg_number));
             self.definitions.insert(function_arg, it.clone());
-            arg_number += 1;
         }
         true
     }
@@ -2202,7 +2197,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     fn eval_replace(
         &mut self,
         arrow: ReplaceArrow,
-        rules: &Vec<ReplaceRule>,
+        rules: &[ReplaceRule],
     ) -> crate::error::Result<HfstTransducer<B>> {
         let mut rule_vector: Vec<crate::hfst_xerox_rules::Rule<B>> = Vec::new();
         for rule in rules.iter() {
@@ -2321,11 +2316,11 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     // A mapping side: bare expr, '[. E .]', or '[..]' (-> epsilon).
     fn eval_mapping_side(&mut self, side: &MappingSide) -> crate::error::Result<HfstTransducer<B>> {
         Ok(match side {
-            MappingSide::Expr(e) => self.eval(&**e)?,
+            MappingSide::Expr(e) => self.eval(e)?,
             MappingSide::Dotted(None) => {
                 HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?
             }
-            MappingSide::Dotted(Some(e)) => self.eval(&**e)?,
+            MappingSide::Dotted(Some(e)) => self.eval(e)?,
         })
     }
 
@@ -2339,8 +2334,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 
         Ok(match (&c.left, &c.right) {
             (Some(l), Some(r)) => {
-                let mut t1 = self.eval(&**l)?;
-                let mut t2 = self.eval(&**r)?;
+                let mut t1 = self.eval(l)?;
+                let mut t2 = self.eval(r)?;
                 if has_non_identity_pairs(&t1) {
                     crate::bail!(Hfst, "Contexts need to be automata");
                 }
@@ -2360,7 +2355,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 (t1, t2)
             }
             (Some(l), None) => {
-                let mut t1 = self.eval(&**l)?;
+                let mut t1 = self.eval(l)?;
                 if has_non_identity_pairs(&t1) {
                     crate::bail!(Hfst, "Contexts need to be automata");
                 }
@@ -2375,7 +2370,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 )
             }
             (None, Some(r)) => {
-                let mut t1 = self.eval(&**r)?;
+                let mut t1 = self.eval(r)?;
                 if has_non_identity_pairs(&t1) {
                     crate::bail!(Hfst, "Contexts need to be automata");
                 }
@@ -2405,7 +2400,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     fn eval_restriction(
         &mut self,
         body: &SpannedXre,
-        contexts: &Vec<RestrContext>,
+        contexts: &[RestrContext],
     ) -> crate::error::Result<HfstTransducer<B>> {
         let center = self.eval(body)?;
         let mut context_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> = Vec::new();
@@ -2413,10 +2408,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             let pair = self.build_restr_context(c)?;
             context_vector.push(pair);
         }
-        Ok(crate::hfst_xerox_rules::restriction(
-            &center,
-            &context_vector,
-        )?)
+        crate::hfst_xerox_rules::restriction(&center, &context_vector)
     }
 
     // xre_parse.yy RESTR_CONTEXT alternatives. One missing side -> 0 (epsilon),
@@ -2426,16 +2418,16 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         c: &RestrContext,
     ) -> crate::error::Result<(HfstTransducer<B>, HfstTransducer<B>)> {
         Ok(match (&c.left, &c.right) {
-            (Some(l), Some(r)) => (self.eval(&**l)?, self.eval(&**r)?),
+            (Some(l), Some(r)) => (self.eval(l)?, self.eval(r)?),
             (Some(l), None) => {
-                let t1 = self.eval(&**l)?;
+                let t1 = self.eval(l)?;
                 (
                     t1,
                     HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?,
                 )
             }
             (None, Some(r)) => {
-                let t1 = self.eval(&**r)?;
+                let t1 = self.eval(r)?;
                 (
                     HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?,
                     t1,
@@ -2525,9 +2517,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                         HfstTransducer::new_symbol_pair(needle, needle)?,
                         repl_tr.clone(),
                     );
-                    let mut mapping_pair_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> =
-                        Vec::new();
-                    mapping_pair_vector.push(mapping_pair);
+                    let mapping_pair_vector: Vec<(HfstTransducer<B>, HfstTransducer<B>)> =
+                        vec![mapping_pair];
                     let rule = crate::hfst_xerox_rules::Rule::new_mapping(&mapping_pair_vector)?;
                     let mut replace_tr = crate::hfst_xerox_rules::replace_rule(&rule, false)?;
 

@@ -307,16 +307,13 @@ pub fn get_guesses(
 
     let paths = guesser.lookup_fd_string_vector(&tokenized_line, -1, 0.0)?;
 
-    let mut num: usize = 1;
-
     let mut results: StringVectorVector = StringVectorVector::new();
 
-    for path in &paths {
-        if num > number_of_guesses {
+    for (num, path) in paths.iter().enumerate() {
+        if num >= number_of_guesses {
             break;
         }
         results.push(path.second.clone());
-        num += 1;
     }
 
     Ok(results)

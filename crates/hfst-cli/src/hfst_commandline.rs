@@ -204,8 +204,7 @@ pub fn hfst_warning(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
 // [spec:hfst:def:hfst-commandline.get-compatible-fst-format-fn]
 // [spec:hfst:sem:hfst-commandline.get-compatible-fst-format-fn]
 pub fn get_compatible_fst_format() -> i32 {
-    assert!(false);
-    -1
+    unreachable!("get_compatible_fst_format is deprecated; all formats are compatible")
 }
 
 // ---------------------------------------------------------------------------
@@ -452,9 +451,9 @@ pub fn is_input_stream_in_ol_format(is: &HfstInputStream<'_>, program: &str) -> 
         || is.get_type() == ImplementationType::HFST_OLW_TYPE
         || is.get_type() == ImplementationType::THFST_TYPE
     {
-        let _ = write!(
+        let _ = writeln!(
             std::io::stderr(),
-            "Error: {} cannot process transducers that are in optimized lookup format.\n",
+            "Error: {} cannot process transducers that are in optimized lookup format.",
             program
         );
         return true;
@@ -735,9 +734,9 @@ pub fn hfst_set_program_name(argv0: &str, version_vector: &str, wikiname: &str) 
 // [spec:hfst:sem:hfst-commandline.print-short-help-fn]
 pub fn print_short_help(opts: &CommonOptions) {
     let mut mw = opts.message_writer();
-    let _ = write!(
+    let _ = writeln!(
         mw,
-        "Try ``{} --help'' for more information.\n",
+        "Try ``{} --help'' for more information.",
         opts.program_name
     );
 }
@@ -747,9 +746,9 @@ pub fn print_short_help(opts: &CommonOptions) {
 // [spec:hfst:sem:hfst-commandline.print-version-fn]
 pub fn print_version(opts: &CommonOptions) {
     let mut mw = opts.message_writer();
-    let _ = write!(
+    let _ = writeln!(
         mw,
-        "{} {} ({})\n",
+        "{} {} ({})",
         opts.program_name, opts.hfst_tool_version, PACKAGE_STRING
     );
     let _ = write!(
@@ -791,8 +790,7 @@ pub fn should_colourise(opts: &CommonOptions) -> bool {
     } else if colour == ColourTristate::COLOUR_NEVER {
         false
     } else {
-        assert!(false);
-        false
+        unreachable!("colour tristate has no value beyond AUTO/ALWAYS/NEVER")
     }
 }
 

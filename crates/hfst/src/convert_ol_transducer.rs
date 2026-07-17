@@ -176,7 +176,18 @@ pub fn get_states_and_symbols(
         BTreeMap::new();
 
     // Collect symbols if we need to
-    if harmonizer.is_none() {
+    if let Some(harmonizer) = harmonizer {
+        *symbol_table = harmonizer.get_symbol_table().clone();
+        string_symbol_map = harmonizer.get_alphabet().build_string_symbol_map();
+        *seen_input_symbols = harmonizer.get_header().input_symbol_count();
+        for (i, symbol) in symbol_table.iter().enumerate() {
+            if harmonizer.get_alphabet().is_flag_diacritic(i as u16)
+                || PmatchAlphabet::is_insertion(symbol)
+            {
+                flag_symbols.insert(i as u16);
+            }
+        }
+    } else {
         // 1) epsilon
         string_symbol_map.insert(
             crate::hfst_data_types::Symbol::new_static(internal_epsilon),
@@ -208,18 +219,6 @@ pub fn get_states_and_symbols(
             if !is_epsilon(it) && !input_symbols.contains(it) && !flag_diacritics.contains(it) {
                 string_symbol_map.insert(it.clone(), ol_symbol_number(symbol_table.len())?);
                 symbol_table.push(it.clone());
-            }
-        }
-    } else {
-        let harmonizer = harmonizer.expect("harmonizer is Some in the else branch");
-        *symbol_table = harmonizer.get_symbol_table().clone();
-        string_symbol_map = harmonizer.get_alphabet().build_string_symbol_map();
-        *seen_input_symbols = harmonizer.get_header().input_symbol_count();
-        for i in 0..symbol_table.len() {
-            if harmonizer.get_alphabet().is_flag_diacritic(i as u16)
-                || PmatchAlphabet::is_insertion(&symbol_table[i])
-            {
-                flag_symbols.insert(i as u16);
             }
         }
     }
@@ -398,31 +397,29 @@ impl ConversionFunctions {
         // The flag-resolved index offsets of the state under placement; they
         // don't depend on the probed position, so compute them once per state.
         let mut state_offsets: Vec<SymbolNumber> = Vec::new();
-        for idx in 0..state_placeholders.len() {
-            if state_placeholders[idx].is_simple() {
+        for placeholder in state_placeholders.iter_mut() {
+            if placeholder.is_simple() {
                 continue;
             }
             state_offsets.clear();
-            state_offsets.extend(state_placeholders[idx].transition_placeholders.iter().map(
-                |group| {
-                    let input = group[0].input;
-                    if flag_symbols.contains(input) {
-                        0
-                    } else {
-                        input
-                    }
-                },
-            ));
+            state_offsets.extend(placeholder.transition_placeholders.iter().map(|group| {
+                let input = group[0].input;
+                if flag_symbols.contains(input) {
+                    0
+                } else {
+                    input
+                }
+            }));
             let mut i = first_available_index;
 
             // While this index is not suitable for a starting index, keep going
             while !used_indices.fits(&state_offsets, i) {
                 i += 1;
             }
-            state_placeholders[idx].start_index = i;
+            placeholder.start_index = i;
             previous_successful_index = i;
             // Insert a finality marker and mark all the used indices
-            let state_number = state_placeholders[idx].state_number;
+            let state_number = placeholder.state_number;
             used_indices.assign(i, state_number, NO_SYMBOL_NUMBER);
             for &index_offset in state_offsets.iter() {
                 used_indices.assign(i + index_offset as u32 + 1, state_number, index_offset);

@@ -220,21 +220,16 @@ impl CommandLine {
                     if optarg == "tropical" {
                         form = ImplementationType::TROPICAL_OPENFST_TYPE;
                     }
-                    if optarg == "tropical-openfst" {
-                        form = ImplementationType::TROPICAL_OPENFST_TYPE;
-                    } else if optarg == "openfst-tropical" {
-                        form = ImplementationType::TROPICAL_OPENFST_TYPE;
-                    } else if optarg == "openfst" {
-                        form = ImplementationType::TROPICAL_OPENFST_TYPE;
-                    } else if optarg == "weighted" {
-                        form = ImplementationType::TROPICAL_OPENFST_TYPE;
-                    } else if optarg == "weight" {
+                    if optarg == "tropical-openfst"
+                        || optarg == "openfst-tropical"
+                        || optarg == "openfst"
+                        || optarg == "weighted"
+                        || optarg == "weight"
+                    {
                         form = ImplementationType::TROPICAL_OPENFST_TYPE;
                     } else if optarg == "sfst" {
                         form = ImplementationType::SFST_TYPE;
-                    } else if optarg == "foma" {
-                        form = ImplementationType::FOMA_TYPE;
-                    } else if optarg == "unweighted" {
+                    } else if optarg == "foma" || optarg == "unweighted" {
                         form = ImplementationType::FOMA_TYPE;
                     } else {
                         eprintln!(

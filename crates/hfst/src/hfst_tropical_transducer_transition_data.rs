@@ -116,7 +116,7 @@ impl SymbolCoder {
                     tracing::error!("The empty symbol corresdponds to number {}", second);
                 }
             }
-            assert!(false);
+            panic!("get_number called with the empty symbol");
         }
         if let Some(second) = self.symbol2number.get(symbol) {
             return *second;
@@ -132,7 +132,7 @@ impl SymbolCoder {
     pub fn get_harmonization_vector(&mut self, symbols: &[SymbolType]) -> Vec<u32> {
         let mut harmv: Vec<u32> = vec![0; symbols.len()];
         for i in 0..symbols.len() {
-            if symbols[i] != "" {
+            if !symbols[i].is_empty() {
                 harmv[i] = self.get_number(&symbols[i]);
             }
         }
@@ -144,12 +144,12 @@ impl SymbolCoder {
         symbols: &BTreeMap<SymbolType, u32>,
     ) -> Vec<u32> {
         let mut harmv: Vec<u32> = vec![0; (self.max_number + 1) as usize];
-        for i in 0..harmv.len() {
+        for (i, slot) in harmv.iter_mut().enumerate() {
             let sym = self
                 .get_symbol(i as u32)
                 .expect("i ranges over 0..=max_number, always a valid coder index");
             if let Some(second) = symbols.get(&sym) {
-                harmv[i] = *second;
+                *slot = *second;
             }
         }
         harmv

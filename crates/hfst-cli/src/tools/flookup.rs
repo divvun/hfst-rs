@@ -182,7 +182,7 @@ fn print_usage(common: &CommonOptions) {
          \x20 -P, --progress                   Show neat progress bar if possible\n\
          \x20 -f, --force-ol                   Force lookup of optimized lookup transducers (slow)\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(
         msg,
@@ -198,7 +198,7 @@ fn print_usage(common: &CommonOptions) {
          If the input contains several transducers, a set containing\n\
          results from all transducers is printed for each input string.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 
     let _ = write!(
         msg,
@@ -207,7 +207,7 @@ fn print_usage(common: &CommonOptions) {
          line from the user. If you redirect input from a file, use --pipe-mode=input.\n\
          --pipe-mode=output is ignored on non-windows platforms.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 
     let _ = write!(
         msg,
@@ -217,7 +217,7 @@ fn print_usage(common: &CommonOptions) {
          \x20   --force-ol forces inversion but is slow\n"
     );
 
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-flookup.parse-options-fn]
@@ -338,14 +338,14 @@ fn parse_options(
             b'b' => {
                 options.beam = optarg.parse::<f32>().unwrap_or(0.0);
                 if options.beam < 0.0 {
-                    eprint!("Invalid argument for --beam\n");
+                    eprintln!("Invalid argument for --beam");
                     return Err(1);
                 }
             }
             b't' => {
                 options.time_cutoff = optarg.parse::<f64>().unwrap_or(0.0);
                 if options.time_cutoff < 0.0 {
-                    eprint!("Invalid argument for --time-cutoff\n");
+                    eprintln!("Invalid argument for --time-cutoff");
                     return Err(1);
                 }
             }
@@ -379,10 +379,7 @@ fn parse_options(
                 options.infinite_cutoff = optarg.parse::<i32>().unwrap_or(0) as usize;
             }
             b'p' => {
-                if opt.optarg_opt().is_none() {
-                    options.pipe_input = true;
-                    options.pipe_output = true;
-                } else if optarg == "both" || optarg == "BOTH" {
+                if opt.optarg_opt().is_none() || optarg == "both" || optarg == "BOTH" {
                     options.pipe_input = true;
                     options.pipe_output = true;
                 } else if optarg == "input" || optarg == "INPUT" || optarg == "in" || optarg == "IN"
@@ -533,7 +530,7 @@ fn lookup_fd_and_print(
                             get_print_format(options, &it2.1)
                         );
                     }
-                    let _ = write!(out, "\t{:.6}\n", it.first);
+                    let _ = writeln!(out, "\t{:.6}", it.first);
                 }
             }
             let _ = out.write_all(b"\n");
@@ -766,7 +763,7 @@ fn perform_lookups_ol(
     common: &CommonOptions,
     options: &Options,
     origin: &HfstOneLevelPath,
-    cascade: &mut Vec<OlTransducer>,
+    cascade: &mut [OlTransducer],
     unknown: bool,
     infinite: &mut bool,
 ) -> HfstOneLevelPaths {
@@ -887,11 +884,11 @@ fn process_stream(
                         return 1;
                     }
                 };
-                if let hfst::hfst_transducer::AnyTransducer::Tropical(t) = &mut trans {
-                    if let Err(e) = t.invert() {
-                        hfst_error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
+                if let hfst::hfst_transducer::AnyTransducer::Tropical(t) = &mut trans
+                    && let Err(e) = t.invert()
+                {
+                    hfst_error(common, 1, 0, &format!("{e}"));
+                    return 1;
                 }
                 trans = match convert_any(trans, ty) {
                     Ok(v) => v,
@@ -1002,16 +999,16 @@ fn process_stream(
 
     let mut filesize: i64 = -1;
     if options.show_progress_bar {
-        eprint!("Counting file size...\n");
+        eprintln!("Counting file size...");
         // C: fseek(END)/ftell to measure, then rewind. The std reader is read
         // from the start, so the file's metadata length is the equivalent size
         // and no rewind is needed.
-        if options.lookup_given {
-            if let Ok(md) = std::fs::metadata(&options.lookup_file_name.clone()) {
-                filesize = md.len() as i64;
-            }
+        if options.lookup_given
+            && let Ok(md) = std::fs::metadata(options.lookup_file_name.clone())
+        {
+            filesize = md.len() as i64;
         }
-        eprint!("{}... rewinding\n", filesize);
+        eprintln!("{}... rewinding", filesize);
     }
     print_prompt(common, options);
     // C tracked the read position with ftell(LOOKUP_FILE); the std reader has no
@@ -1131,14 +1128,14 @@ fn process_stream(
     } // while lines in input
 
     if options.show_progress_bar {
-        eprint!("{}/{}... Done\n", filepos, filesize);
+        eprintln!("{}/{}... Done", filepos, filesize);
     }
 
-    if options.print_statistics {
-        if let Err(e) = options.stats.write_statistics(&mut *outstream) {
-            hfst_error(common, 1, 0, &format!("{e}"));
-            return 1;
-        }
+    if options.print_statistics
+        && let Err(e) = options.stats.write_statistics(&mut *outstream)
+    {
+        hfst_error(common, 1, 0, &format!("{e}"));
+        return 1;
     }
     0
 }

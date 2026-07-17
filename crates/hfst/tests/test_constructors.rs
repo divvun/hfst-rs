@@ -125,7 +125,7 @@ fn conversion_from_basic<B: AlgebraBackend>() -> Result<(), hfst::error::Error> 
 // --- Construction by tokenization.
 fn construction_by_tokenization<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     verbose_print("Construction by tokenization", B::TYPE);
-    let foo = HfstTransducer::<B>::new_symbol("foo")?;
+    let single = HfstTransducer::<B>::new_symbol("foo")?;
     let foobar = HfstTransducer::<B>::new_symbol_pair("foo", "bar")?;
 
     let mut tok = HfstTokenizer::new();
@@ -135,7 +135,7 @@ fn construction_by_tokenization<B: AlgebraBackend>() -> Result<(), hfst::error::
 
     let foo_tok = HfstTransducer::<B>::new_tokenized("bazfoobaz", &tok)?;
     let foobar_tok = HfstTransducer::<B>::new_tokenized_pair("bazfoo", "barbaz", &tok)?;
-    assert!(foo.compare_default(&foo_tok)?);
+    assert!(single.compare_default(&foo_tok)?);
     assert!(foobar.compare_default(&foobar_tok)?);
     Ok(())
 }

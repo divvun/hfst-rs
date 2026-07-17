@@ -447,9 +447,9 @@ where
     };
 
     match (s1, s2) {
-        (None, None) => return true,
-        (None, Some(b)) => return lang_empty_2(b),
-        (Some(a), None) => return lang_empty_1(a),
+        (None, None) => true,
+        (None, Some(b)) => lang_empty_2(b),
+        (Some(a), None) => lang_empty_1(a),
         (Some(a), Some(b)) => {
             let mut visited: HashSet<(StateId, StateId)> = HashSet::new();
             let mut queue: VecDeque<(StateId, StateId)> = VecDeque::new();

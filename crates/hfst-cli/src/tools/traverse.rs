@@ -59,9 +59,9 @@ fn print_usage(common: &CommonOptions) {
     // options, grouped
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-traverse.parse-options-fn]
@@ -117,7 +117,7 @@ fn parse_options(
 // [spec:hfst:sem:hfst-traverse.main-loop-fn]
 fn main_loop(common: &CommonOptions, trans: &HfstBasicTransducer) -> i32 {
     let mut msg = common.message_writer();
-    let _ = write!(msg, "Enter labels to seek all paths\n");
+    let _ = writeln!(msg, "Enter labels to seek all paths");
     // record current paths with their end states. The C++ uses a
     // multimap<string, HfstState>; a BTreeMap<(String, usize), HfstState>
     // (keyed on an insertion counter to permit duplicate path strings)
@@ -131,7 +131,7 @@ fn main_loop(common: &CommonOptions, trans: &HfstBasicTransducer) -> i32 {
     loop {
         // print available paths
         for ((path_str, _), state) in paths.iter() {
-            let _ = write!(msg, "On path `{}' are continuations:\n", path_str);
+            let _ = writeln!(msg, "On path `{}' are continuations:", path_str);
             let transitions = match trans.index(*state) {
                 Ok(v) => v,
                 Err(e) => {
@@ -140,12 +140,12 @@ fn main_loop(common: &CommonOptions, trans: &HfstBasicTransducer) -> i32 {
                 }
             };
             if transitions.is_empty() {
-                let _ = write!(msg, "<Nothing, you've hit a dead end here>\n");
+                let _ = writeln!(msg, "<Nothing, you've hit a dead end here>");
             }
             for arc in transitions.iter() {
-                let _ = write!(
+                let _ = writeln!(
                     msg,
-                    "{}\t{}\n",
+                    "{}\t{}",
                     arc.get_input_symbol(trans.coder()),
                     arc.get_output_symbol(trans.coder())
                 );
@@ -179,11 +179,11 @@ fn main_loop(common: &CommonOptions, trans: &HfstBasicTransducer) -> i32 {
         }
         if new_paths.is_empty() {
             if label == "quit" || label.is_empty() {
-                let _ = write!(msg, "Use EOF (Ctrl-D or similar) to quit\n");
+                let _ = writeln!(msg, "Use EOF (Ctrl-D or similar) to quit");
             } else if label == "XYZZY" {
-                let _ = write!(msg, "Nothing happens\n");
+                let _ = writeln!(msg, "Nothing happens");
             }
-            let _ = write!(msg, "could not advance with {}\n", label);
+            let _ = writeln!(msg, "could not advance with {}", label);
         } else {
             paths = new_paths;
         }
@@ -262,7 +262,7 @@ fn process_stream(
                 let _ = write!(msg, "Traversing automaton {}\n\n", trans_name);
             }
             if walkable.state_vector.is_empty() {
-                let _ = write!(msg, "Nowhere to go\n");
+                let _ = writeln!(msg, "Nowhere to go");
                 return 0;
             }
             return main_loop(common, &walkable);

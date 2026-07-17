@@ -548,24 +548,14 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.check-pair-fn]
     pub fn check_pair(&mut self, cfg: &OstConfig, input_symbol: &str, output_symbol: &str) {
         {
-            // id:id is a valid pair.
-            if input_symbol == TWOLC_IDENTITY {
-                self.is_broken = false;
-            }
-            // other:other is a valid pair.
-            else if input_symbol == HFST_UNKNOWN && output_symbol == HFST_UNKNOWN {
-                self.is_broken = false;
-            }
-            // eps:eps is valid
-            else if input_symbol == TWOLC_EPSILON && output_symbol == TWOLC_EPSILON {
-                self.is_broken = false;
-            }
-            // 0:0 is a valid pair.
-            else if input_symbol == HFST_EPSILON && output_symbol == HFST_EPSILON {
-                self.is_broken = false;
-            }
-            // diamond:diamond is a valid pair.
-            else if input_symbol == TWOLC_DIAMOND {
+            // Always-valid pairs, each set 'is_broken = false':
+            //   id:id, other:other, eps:eps, 0:0, diamond:diamond.
+            if input_symbol == TWOLC_IDENTITY
+                || (input_symbol == HFST_UNKNOWN && output_symbol == HFST_UNKNOWN)
+                || (input_symbol == TWOLC_EPSILON && output_symbol == TWOLC_EPSILON)
+                || (input_symbol == HFST_EPSILON && output_symbol == HFST_EPSILON)
+                || input_symbol == TWOLC_DIAMOND
+            {
                 self.is_broken = false;
             }
             // other:X is valid, iff X is an output symbol or 0.
@@ -3085,6 +3075,12 @@ pub struct ConcreteRule<B: AlgebraBackend> {
 }
 
 // [spec:hfst:def:twolc-compiler.hfst.twolc.twolc-compiler]
+impl<B: AlgebraBackend> Default for TwolcCompiler<B> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<B: AlgebraBackend> TwolcCompiler<B> {
     /// Construct with the C++ default flags: 'silent = false',
     /// 'verbose = false', 'resolve_left_conflicts = false',
@@ -4120,6 +4116,12 @@ pub fn unescape_name(name: &str) -> String {
         "__HFST_TWOLC_SPACE",
         " ",
     )
+}
+
+impl Default for RuleVariables {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RuleVariables {

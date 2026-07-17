@@ -293,9 +293,7 @@ fn process_pair<B: AlgebraBackend>(
     ctx: &PairContext<'_>,
     outstream: &mut HfstOutputStream,
 ) -> Result<(HfstTransducer<B>, HfstTransducer<B>), i32> {
-    if let Err(code) = op.pre_apply(common, &mut first, &mut second, ctx) {
-        return Err(code);
-    }
+    op.pre_apply(common, &mut first, &mut second, ctx)?;
 
     // The C caught the op's TransducerTypeMismatch here and converted-and-
     // retried; same-backend operands are now a compile-time property (the
@@ -470,9 +468,9 @@ fn binary_op_streams(
                 // Unreachable: OL streams were rejected before the loop
                 // and the mismatch arm above unified the algebra types;
                 // keep the OL rejection text for safety.
-                let _ = write!(
+                let _ = writeln!(
                     std::io::stderr(),
-                    "Error: {} cannot process transducers that are in optimized lookup format.\n",
+                    "Error: {} cannot process transducers that are in optimized lookup format.",
                     spec.tool_name
                 );
                 return 1;
@@ -495,7 +493,7 @@ fn binary_op_streams(
                 // delete the transducer of second stream, unless we
                 // continue reading the first stream and there is only one
                 // transducer in the second stream
-                if (continue_reading && secondstream.is_good()) || !continue_reading {
+                if secondstream.is_good() || !continue_reading {
                     second = None;
                 }
             }
@@ -518,11 +516,11 @@ fn binary_op_streams(
             }
         }
 
-        if spec.flush_each_round {
-            if let Err(e) = outstream.flush() {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
+        if spec.flush_each_round
+            && let Err(e) = outstream.flush()
+        {
+            error(common, 1, 0, &format!("{e}"));
+            return 1;
         }
     }
 
@@ -567,11 +565,11 @@ fn binary_op_streams(
 
     firststream.close();
     secondstream.close();
-    if spec.flush_at_end {
-        if let Err(e) = outstream.flush() {
-            error(common, 1, 0, &format!("{e}"));
-            return 1;
-        }
+    if spec.flush_at_end
+        && let Err(e) = outstream.flush()
+    {
+        error(common, 1, 0, &format!("{e}"));
+        return 1;
     }
     outstream.close();
     0

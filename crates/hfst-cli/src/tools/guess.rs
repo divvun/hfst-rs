@@ -118,7 +118,7 @@ fn print_usage(common: &CommonOptions) {
          \u{0020}                                 of the best form plus this threshold.\n\
          \u{0020}                                 (50 by default)."
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "The guesser and generator should be constructed using the tool\n\
@@ -126,20 +126,20 @@ fn print_usage(common: &CommonOptions) {
          morphological analyzer. hfst-guessify packages the guesser and\n\
          generator in the same fst-file.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "If option -f is used, but a generator has not been compiled\n\
          with the guesser, a generator will be compiled, which will\n\
          increase load time.\n"
     );
-    let _ = write!(msg, "\n");
-    let _ = write!(msg, "\n");
-    let _ = write!(
+    let _ = writeln!(msg);
+    let _ = writeln!(msg);
+    let _ = writeln!(
         msg,
-        "If OUTFILE or INFILE is missing or -, standard streams will be used.\n"
+        "If OUTFILE or INFILE is missing or -, standard streams will be used."
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-guess.parse-options-fn]
@@ -448,16 +448,16 @@ pub fn run(mut args: Vec<String>) -> i32 {
             };
 
             for it in &paradigms {
-                let _ = write!(out, "{}\n", string_vector_to_string(it));
+                let _ = writeln!(out, "{}", string_vector_to_string(it));
             }
         } else {
             for it in guesses.iter_mut() {
                 it.reverse();
 
-                let _ = write!(out, "{}\t{}\n", line, string_vector_to_string(it));
+                let _ = writeln!(out, "{}\t{}", line, string_vector_to_string(it));
             }
         }
-        let _ = write!(out, "\n");
+        let _ = writeln!(out);
     }
 
     // The C deletes/flushes the output ofstream when it is a file; flush the

@@ -542,30 +542,29 @@ mod ol_lookup_ops {
 
             let mut added_fd_state = false;
 
-            if let Some(stack) = fd_state_stack.as_deref_mut() {
-                if stack
+            if let Some(stack) = fd_state_stack.as_deref_mut()
+                && stack
                     .last()
                     .expect("fd state stack always holds the current state")
                     .get_table()
                     .get_operation(input)
                     .is_some()
+            {
+                let top = stack
+                    .last()
+                    .expect("fd state stack always holds the current state")
+                    .clone();
+                stack.push(top);
+                if stack
+                    .last_mut()
+                    .expect("fd state stack always holds the current state")
+                    .apply_operation_symbol(input)
                 {
-                    let top = stack
-                        .last()
-                        .expect("fd state stack always holds the current state")
-                        .clone();
-                    stack.push(top);
-                    if stack
-                        .last_mut()
-                        .expect("fd state stack always holds the current state")
-                        .apply_operation_symbol(input)
-                    {
-                        added_fd_state = true;
-                    } else {
-                        stack.pop();
-                        i += 1;
-                        continue; // don't follow the transition
-                    }
+                    added_fd_state = true;
+                } else {
+                    stack.pop();
+                    i += 1;
+                    continue; // don't follow the transition
                 }
             }
 

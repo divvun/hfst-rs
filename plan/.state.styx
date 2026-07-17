@@ -228,4 +228,5 @@ assertions (
     {id parsers.xfst, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:38.213645Z}
     {id parsers.att, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:39.941618Z}
     {id perf-ol-epsilon-guard, kind @complete, author "brendan@necessary.nu", at 2026-07-17T16:41:05.632955Z}
+    {id idiom-clippy-clean, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:07:42.762516Z}
 )

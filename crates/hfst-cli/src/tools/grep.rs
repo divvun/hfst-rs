@@ -149,11 +149,11 @@ fn print_usage(common: &CommonOptions) {
 
     // options, grouped
     print_common_program_options(&mut *msg);
-    let _ = write!(
+    let _ = writeln!(
         msg,
-        "  -9, --format=TYPE       compile expressions to TYPE automata\n"
+        "  -9, --format=TYPE       compile expressions to TYPE automata"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "Regexp selection and interpretation:\n\
@@ -221,7 +221,7 @@ fn print_usage(common: &CommonOptions) {
     );
 
     // parameter details
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     // bug report address
     // external docs
 }
@@ -368,9 +368,7 @@ fn parse_options(
             error(&common, 1, 0, "No binary handling implemented");
         } else if c == b'a' as i32 {
             warning(&common, 0, 0, "All files are always handled as text");
-        } else if c == b'D' as i32 {
-            error(&common, 1, 0, "No directory handling implemented");
-        } else if c == b'r' as i32 {
+        } else if c == b'D' as i32 || c == b'r' as i32 {
             error(&common, 1, 0, "No directory handling implemented");
         } else if c == INCLUDE_OPT
             || c == EXCLUDE_OPT

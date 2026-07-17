@@ -83,12 +83,6 @@ impl<W: Clone + PartialEq + PartialOrd + std::ops::Add<Output = W> + std::fmt::D
         self.weight < another.weight
     }
 
-    // [spec:hfst:def:hfst-extract-strings.hfst.weighted-path.to-string-fn]
-    // [spec:hfst:sem:hfst-extract-strings.hfst.weighted-path.to-string-fn]
-    pub fn to_string(&self) -> String {
-        format!("{}:{}\t{}", self.istring, self.ostring, self.weight)
-    }
-
     pub fn reverse(&mut self) -> &mut Self {
         let mut ib: Vec<u8> = self.istring.clone().into_bytes();
         let n = ib.len();
@@ -120,6 +114,16 @@ impl<W: Clone + PartialEq + PartialOrd + std::ops::Add<Output = W> + std::fmt::D
     }
 }
 
+// [spec:hfst:def:hfst-extract-strings.hfst.weighted-path.to-string-fn]
+// [spec:hfst:sem:hfst-extract-strings.hfst.weighted-path.to-string-fn]
+// The C++ inherent 'to_string' is modelled as Display; its blanket ToString
+// gives byte-identical text at every call site.
+impl<W: std::fmt::Display> std::fmt::Display for WeightedPath<W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}\t{}", self.istring, self.ostring, self.weight)
+    }
+}
+
 // [spec:hfst:def:hfst-extract-strings.hfst.weighted-paths]
 #[allow(dead_code)]
 pub struct WeightedPaths<W> {
@@ -138,13 +142,13 @@ impl<W: Clone + PartialEq + PartialOrd + std::ops::Add<Output = W> + std::fmt::D
 
     // [spec:hfst:def:hfst-extract-strings.hfst.weighted-paths.add-fn]
     // [spec:hfst:sem:hfst-extract-strings.hfst.weighted-paths.add-fn]
-    pub fn add_vector_path(v: &mut Vec<WeightedPath<W>>, s: &WeightedPath<W>) {
+    pub fn add_vector_path(v: &mut [WeightedPath<W>], s: &WeightedPath<W>) {
         for it in v.iter_mut() {
             it.add(s, false);
         }
     }
 
-    pub fn add_path_vector(s: &WeightedPath<W>, v: &mut Vec<WeightedPath<W>>) {
+    pub fn add_path_vector(s: &WeightedPath<W>, v: &mut [WeightedPath<W>]) {
         for it in v.iter_mut() {
             it.add(s, true);
         }
@@ -152,13 +156,13 @@ impl<W: Clone + PartialEq + PartialOrd + std::ops::Add<Output = W> + std::fmt::D
 
     // [spec:hfst:def:hfst-extract-strings.hfst.weighted-paths.cat-fn]
     // [spec:hfst:sem:hfst-extract-strings.hfst.weighted-paths.cat-fn]
-    pub fn cat(v: &mut Vec<WeightedPath<W>>, another_v: &Vec<WeightedPath<W>>) {
+    pub fn cat(v: &mut Vec<WeightedPath<W>>, another_v: &[WeightedPath<W>]) {
         v.extend(another_v.iter().cloned());
     }
 
     // [spec:hfst:def:hfst-extract-strings.hfst.weighted-paths.reverse-strings-fn]
     // [spec:hfst:sem:hfst-extract-strings.hfst.weighted-paths.reverse-strings-fn]
-    pub fn reverse_strings(v: &mut Vec<WeightedPath<W>>) {
+    pub fn reverse_strings(v: &mut [WeightedPath<W>]) {
         for it in v.iter_mut() {
             it.reverse();
         }

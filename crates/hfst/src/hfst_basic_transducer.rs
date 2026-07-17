@@ -304,6 +304,42 @@ pub struct SummaryStats {
     pub cyclic_at_initial_state: bool,
 }
 
+/// Read-only parameters threaded unchanged through the recursive
+/// [`HfstBasicTransducer::lookup_recursive`] walk, grouped so the recursion
+/// passes a single reference instead of re-threading five arguments.
+pub struct LookupParams<'a> {
+    lookup_path: &'a StringVector,
+    alphabet: &'a StringSet,
+    max_epsilon_cycles: usize,
+    max_weight: Option<&'a f32>,
+    max_number: i32,
+}
+
+/// Mutable accumulators threaded through the recursive lookup walk: the result
+/// set being built, the current path, and the optional flag-diacritic trail.
+pub struct LookupAcc<'a> {
+    results: &'a mut HfstTwoLevelPaths,
+    path_so_far: &'a mut HfstTwoLevelPath,
+    flag_diacritic_path: Option<&'a mut StringVector>,
+}
+
+/// Shared mutable bookkeeping threaded through the intersecting compose walk
+/// (`find_matches`): the product-state map and the visited-state agenda.
+pub struct IntersectSearch<'a> {
+    state_map: &'a mut StateMap,
+    agenda: &'a mut BTreeSet<HfstState>,
+}
+
+/// Shared context threaded through the list-merge walk (`find_matches_for_merge`
+/// / `handle_list_match`): the product-state map, the visited-state agenda, the
+/// set of markers already added, and the read-only list-symbol table.
+pub struct MergeContext<'a> {
+    state_map: &'a mut StateMap,
+    agenda: &'a mut BTreeSet<HfstState>,
+    markers_added: &'a mut BTreeSet<HfstSymbol>,
+    list_symbols: &'a BTreeMap<HfstSymbol, BTreeSet<HfstSymbol>>,
+}
+
 // Ported in batches; several protected helpers (check_alphabet,
 // swap_state_numbers, the initialize_* reservers, …) are only called by methods
 // in not-yet-ported batches (AT&T I/O, substitution). Allowed until complete.
@@ -493,7 +529,7 @@ impl HfstBasicTransducer {
     // [spec:hfst:def:hfst-transition-graph.hfst.implementations.hfst-transition-graph.prune-alphabet-after-substitution-fn]
     // [spec:hfst:sem:hfst-transition-graph.hfst.implementations.hfst-transition-graph.prune-alphabet-after-substitution-fn]
     pub fn prune_alphabet_after_substitution(&mut self, symbols: &BTreeSet<u32>) {
-        if symbols.len() == 0 {
+        if symbols.is_empty() {
             return;
         }
 
@@ -608,7 +644,7 @@ impl HfstBasicTransducer {
         rebuilt.insert(0, 0);
         for (source_state, state) in self.iter().enumerate() {
             let source_state = source_state as HfstState;
-            if !rebuilt.contains_key(&source_state) {
+            if let std::collections::btree_map::Entry::Vacant(e) = rebuilt.entry(source_state) {
                 replication.add_state(state_count);
                 if self.is_final_state(source_state) {
                     replication.set_final_weight(
@@ -618,11 +654,13 @@ impl HfstBasicTransducer {
                             .expect("state was confirmed final via is_final_state"),
                     );
                 }
-                rebuilt.insert(source_state, state_count);
+                e.insert(state_count);
                 state_count += 1;
             }
             for arc in state.iter() {
-                if !rebuilt.contains_key(&arc.get_target_state()) {
+                if let std::collections::btree_map::Entry::Vacant(e) =
+                    rebuilt.entry(arc.get_target_state())
+                {
                     replication.add_state(state_count);
                     if self.is_final_state(arc.get_target_state()) {
                         replication.set_final_weight(
@@ -632,7 +670,7 @@ impl HfstBasicTransducer {
                                 .expect("state was confirmed final via is_final_state"),
                         );
                     }
-                    rebuilt.insert(arc.get_target_state(), state_count);
+                    e.insert(state_count);
                     state_count += 1;
                 }
                 let isym = arc.get_input_symbol(&self.coder);
@@ -672,7 +710,7 @@ impl HfstBasicTransducer {
         }
         for (source_state, state) in self.iter().enumerate() {
             let source_state = source_state as HfstState;
-            if !rebuilt.contains_key(&source_state) {
+            if let std::collections::btree_map::Entry::Vacant(e) = rebuilt.entry(source_state) {
                 replication.add_state(state_count);
                 if self.is_final_state(source_state) {
                     replication.set_final_weight(
@@ -682,7 +720,7 @@ impl HfstBasicTransducer {
                             .expect("state was confirmed final via is_final_state"),
                     );
                 }
-                rebuilt.insert(source_state, state_count);
+                e.insert(state_count);
                 state_count += 1;
             }
             for arc in state.iter() {
@@ -692,7 +730,9 @@ impl HfstBasicTransducer {
                     // killed arc: do not replicate
                     continue;
                 }
-                if !rebuilt.contains_key(&arc.get_target_state()) {
+                if let std::collections::btree_map::Entry::Vacant(e) =
+                    rebuilt.entry(arc.get_target_state())
+                {
                     replication.add_state(state_count);
                     if self.is_final_state(arc.get_target_state()) {
                         replication.set_final_weight(
@@ -702,7 +742,7 @@ impl HfstBasicTransducer {
                                 .expect("state was confirmed final via is_final_state"),
                         );
                     }
-                    rebuilt.insert(arc.get_target_state(), state_count);
+                    e.insert(state_count);
                     state_count += 1;
                 }
                 let isym = arc.get_input_symbol(&self.coder);
@@ -749,7 +789,7 @@ impl HfstBasicTransducer {
         }
         for (source_state, state) in self.iter().enumerate() {
             let source_state = source_state as HfstState;
-            if !rebuilt.contains_key(&source_state) {
+            if let std::collections::btree_map::Entry::Vacant(e) = rebuilt.entry(source_state) {
                 replication.add_state(state_count);
                 if self.is_final_state(source_state) {
                     replication.set_final_weight(
@@ -762,12 +802,12 @@ impl HfstBasicTransducer {
                         ),
                     );
                 }
-                rebuilt.insert(source_state, state_count);
+                e.insert(state_count);
                 state_count += 1;
             }
             for arc in state.iter() {
                 let target = arc.get_target_state();
-                if !rebuilt.contains_key(&target) {
+                if let std::collections::btree_map::Entry::Vacant(e) = rebuilt.entry(target) {
                     replication.add_state(state_count);
                     if self.is_final_state(target) {
                         replication.set_final_weight(
@@ -780,7 +820,7 @@ impl HfstBasicTransducer {
                             ),
                         );
                     }
-                    rebuilt.insert(target, state_count);
+                    e.insert(state_count);
                     state_count += 1;
                 }
                 let isym = arc.get_input_symbol(&self.coder);
@@ -1018,17 +1058,12 @@ impl HfstBasicTransducer {
         // translator[old_number] = number of the same symbol in the shared coding.
         let translator = canonical.create_translator_from(&self.coder);
         for transitions in self.state_vector.iter_mut() {
-            for i in 0..transitions.len() {
-                let tr = &transitions[i];
+            for tr in transitions.iter_mut() {
                 let new_in = translator[tr.get_input_number() as usize];
                 let new_out = translator[tr.get_output_number() as usize];
-                transitions[i] = HfstBasicTransition::new_numbers(
-                    tr.get_target_state(),
-                    new_in,
-                    new_out,
-                    tr.get_weight(),
-                    false,
-                );
+                let target = tr.get_target_state();
+                let weight = tr.get_weight();
+                *tr = HfstBasicTransition::new_numbers(target, new_in, new_out, weight, false);
             }
         }
         self.coder = canonical.clone();
@@ -1137,7 +1172,7 @@ impl HfstBasicTransducer {
         transition: &HfstBasicTransition,
         remove_symbols_from_alphabet: bool,
     ) {
-        if !(self.state_vector.len() > s as usize) {
+        if self.state_vector.len() <= s as usize {
             return;
         }
 
@@ -1281,8 +1316,8 @@ impl HfstBasicTransducer {
         } = self;
         for it in state_vector.iter_mut() {
             // Go through all transitions
-            for i in 0..it.len() {
-                let target = it[i].get_target_state();
+            for tr in it.iter_mut() {
+                let target = tr.get_target_state();
                 let mut new_target = target;
                 if target == s1 {
                     new_target = s2;
@@ -1292,11 +1327,10 @@ impl HfstBasicTransducer {
                 }
 
                 if new_target != target {
-                    let isym = it[i].get_input_symbol(coder);
-                    let osym = it[i].get_output_symbol(coder);
-                    let w = it[i].get_weight();
-                    let tr = HfstBasicTransition::new_symbols(new_target, isym, osym, w, coder);
-                    it[i] = tr;
+                    let isym = tr.get_input_symbol(coder);
+                    let osym = tr.get_output_symbol(coder);
+                    let w = tr.get_weight();
+                    *tr = HfstBasicTransition::new_symbols(new_target, isym, osym, w, coder);
                 }
             }
         }
@@ -2144,7 +2178,7 @@ impl HfstBasicTransducer {
                     let _ = write!(os, "\t");
                     Self::write_weight_os(os, data.get_weight());
                 }
-                let _ = write!(os, "\n");
+                let _ = writeln!(os);
             }
             if self.is_final_state(source_state) {
                 let _ = write!(os, "{}", source_state);
@@ -2156,7 +2190,7 @@ impl HfstBasicTransducer {
                             .expect("state was confirmed final via is_final_state"),
                     );
                 }
-                let _ = write!(os, "\n");
+                let _ = writeln!(os);
             }
         }
     }
@@ -2344,8 +2378,7 @@ impl HfstBasicTransducer {
     pub fn new_from_file(file: &mut dyn BufRead) -> crate::error::Result<Self> {
         let mut alphabet = HfstAlphabet::new();
         Self::initialize_alphabet(&mut alphabet);
-        let mut state_vector = HfstBasicStates::new();
-        state_vector.push(HfstBasicTransitions::new());
+        let state_vector = vec![HfstBasicTransitions::new()];
         let mut retval = HfstBasicTransducer {
             state_vector,
             final_weight_map: FinalWeightMap::new(),
@@ -2399,7 +2432,7 @@ impl HfstBasicTransducer {
                 None => crate::bail!(NotValidPrologFormat),
             }
 
-            if linestr.len() != 0 && linestr.as_bytes()[0] == b'#' {
+            if !linestr.is_empty() && linestr.as_bytes()[0] == b'#' {
                 continue; // comment line
             } else {
                 break; // first non-comment line
@@ -2871,10 +2904,13 @@ impl HfstBasicTransducer {
         }
 
         // Remove the substituted symbol from the alphabet if both sides.
-        if input_side && output_side {
-            if !is_epsilon(old_symbol) && !is_unknown(old_symbol) && !is_identity(old_symbol) {
-                self.alphabet.remove(old_symbol);
-            }
+        if input_side
+            && output_side
+            && !is_epsilon(old_symbol)
+            && !is_unknown(old_symbol)
+            && !is_identity(old_symbol)
+        {
+            self.alphabet.remove(old_symbol);
         }
         self.alphabet.insert(new_symbol.clone());
 
@@ -3465,7 +3501,6 @@ impl HfstBasicTransducer {
     /** @brief Make the graph complete (add a failure state). */
     pub fn complete(&mut self) -> crate::error::Result<&mut Self> {
         let failure_state = self.add_state_new();
-        let mut current_state: HfstState = 0;
 
         for s in 0..self.state_vector.len() {
             let mut symbols_present: BTreeSet<HfstSymbol> = BTreeSet::new();
@@ -3490,10 +3525,9 @@ impl HfstBasicTransducer {
                         0.0,
                         self.coder_mut(),
                     );
-                    self.add_transition(current_state, &tr, true);
+                    self.add_transition(s as HfstState, &tr, true);
                 }
             }
-            current_state += 1;
         }
         Ok(self)
     }
@@ -3520,9 +3554,7 @@ impl HfstBasicTransducer {
         if !FdOperation::is_diacritic(symbol) {
             return false;
         }
-        if flag.is_empty() {
-            return true;
-        } else if FdOperation::get_feature(symbol) == flag {
+        if flag.is_empty() || FdOperation::get_feature(symbol) == flag {
             return true;
         }
         false
@@ -3949,10 +3981,9 @@ impl HfstBasicTransducer {
             // CASE 2: other input symbols consume a path symbol.
             else if !only_epsilons {
                 let mut continu = false;
-                if in_sym == s.second[*index as usize] {
-                    continu = true;
-                } else if (in_sym == "@_UNKNOWN_SYMBOL_@" || in_sym == "@_IDENTITY_SYMBOL_@")
-                    && !self.alphabet.contains(&s.second[*index as usize])
+                if in_sym == s.second[*index as usize]
+                    || ((in_sym == "@_UNKNOWN_SYMBOL_@" || in_sym == "@_IDENTITY_SYMBOL_@")
+                        && !self.alphabet.contains(&s.second[*index as usize]))
                 {
                     continu = true;
                 }
@@ -4035,10 +4066,10 @@ impl HfstBasicTransducer {
     ) {
         path.second.push(sp.clone());
         path.first += weight;
-        if let Some(fds) = fds_so_far {
-            if FdOperation::is_diacritic(&sp.0) {
-                fds.push(sp.0.clone());
-            }
+        if let Some(fds) = fds_so_far
+            && FdOperation::is_diacritic(&sp.0)
+        {
+            fds.push(sp.0.clone());
         }
     }
 
@@ -4082,7 +4113,13 @@ impl HfstBasicTransducer {
                 results.insert(path_so_far.clone());
             }
             Some(mw) => {
-                if !(path_so_far.first > *mw) {
+                // Include unless the weight strictly exceeds the max. partial_cmp
+                // keeps the C++ beam semantics for a NaN weight (not `Greater`,
+                // so kept), which a plain `<=` would invert.
+                if !matches!(
+                    path_so_far.first.partial_cmp(mw),
+                    Some(std::cmp::Ordering::Greater)
+                ) {
                     results.insert(path_so_far.clone());
                 }
             }
@@ -4106,14 +4143,13 @@ impl HfstBasicTransducer {
         let isymbol = transition.get_input_symbol(coder);
 
         // If we are not at the end of lookup_path,
-        if !(lookup_index == lookup_path.len() as u32) {
-            if isymbol == lookup_path[lookup_index as usize]
+        if (lookup_index != lookup_path.len() as u32)
+            && (isymbol == lookup_path[lookup_index as usize]
                 || ((is_identity(&isymbol) || is_unknown(&isymbol))
-                    && !alphabet.contains(&lookup_path[lookup_index as usize]))
-            {
-                *input_symbol_consumed = true;
-                return true;
-            }
+                    && !alphabet.contains(&lookup_path[lookup_index as usize])))
+        {
+            *input_symbol_consumed = true;
+            return true;
         }
         // Epsilons and flag diacritics can always be taken.
         if is_epsilon(&isymbol) {
@@ -4145,39 +4181,33 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.lookup-fn]
     pub fn lookup_recursive(
         &self,
-        lookup_path: &StringVector,
-        results: &mut HfstTwoLevelPaths,
+        params: &LookupParams<'_>,
+        acc: &mut LookupAcc<'_>,
         state: HfstState,
         mut lookup_index: u32,
-        path_so_far: &mut HfstTwoLevelPath,
-        alphabet: &StringSet,
         mut eh: HfstEpsilonHandler,
-        max_epsilon_cycles: usize,
-        max_weight: Option<&f32>,
-        max_number: i32,
-        mut flag_diacritic_path: Option<&mut StringVector>,
     ) {
         // Check the input-epsilon-cycle, weight and result-count limits.
         if !eh.can_continue(state) {
             return;
         }
-        if let Some(mw) = max_weight {
-            if path_so_far.first > *mw {
-                return;
-            }
+        if let Some(mw) = params.max_weight
+            && acc.path_so_far.first > *mw
+        {
+            return;
         }
-        if max_number >= 0 && (max_number as usize) <= results.len() {
+        if params.max_number >= 0 && (params.max_number as usize) <= acc.results.len() {
             return;
         }
 
         // At the end of lookup_path and in a final state -> a valid result.
-        if lookup_index == lookup_path.len() as u32 && self.is_final_state(state) {
+        if lookup_index == params.lookup_path.len() as u32 && self.is_final_state(state) {
             Self::add_to_results(
-                results,
-                path_so_far,
+                acc.results,
+                acc.path_so_far,
                 self.get_final_weight(state)
                     .expect("state was confirmed final via is_final_state"),
-                max_weight,
+                params.max_weight,
             );
         }
 
@@ -4188,11 +4218,11 @@ impl HfstBasicTransducer {
             let mut input_symbol_consumed = false;
             if Self::is_possible_transition(
                 transition,
-                lookup_path,
+                params.lookup_path,
                 lookup_index,
-                alphabet,
+                params.alphabet,
                 &mut input_symbol_consumed,
-                flag_diacritic_path.as_mut().map(|r| &mut **r),
+                acc.flag_diacritic_path.as_deref_mut(),
                 &self.coder,
             ) {
                 let istr;
@@ -4200,11 +4230,11 @@ impl HfstBasicTransducer {
                 let tr_isym = transition.get_input_symbol(&self.coder);
                 // identity symbol is replaced with the lookup symbol
                 if is_identity(&tr_isym) {
-                    istr = lookup_path[lookup_index as usize].clone();
+                    istr = params.lookup_path[lookup_index as usize].clone();
                     ostr = istr.clone();
                 } else {
                     if is_unknown(&tr_isym) {
-                        istr = lookup_path[lookup_index as usize].clone();
+                        istr = params.lookup_path[lookup_index as usize].clone();
                     } else {
                         istr = tr_isym;
                     }
@@ -4212,50 +4242,38 @@ impl HfstBasicTransducer {
                 }
 
                 Self::push_back_to_two_level_path(
-                    path_so_far,
+                    acc.path_so_far,
                     &(istr, ostr),
                     transition.get_weight(),
-                    flag_diacritic_path.as_mut().map(|r| &mut **r),
+                    acc.flag_diacritic_path.as_deref_mut(),
                 );
 
                 if input_symbol_consumed {
                     lookup_index += 1;
-                    let ehp = HfstEpsilonHandler::new(max_epsilon_cycles);
+                    let ehp = HfstEpsilonHandler::new(params.max_epsilon_cycles);
                     self.lookup_recursive(
-                        lookup_path,
-                        results,
+                        params,
+                        acc,
                         transition.get_target_state(),
                         lookup_index,
-                        path_so_far,
-                        alphabet,
                         ehp,
-                        max_epsilon_cycles,
-                        max_weight,
-                        max_number,
-                        flag_diacritic_path.as_mut().map(|r| &mut **r),
                     );
                     lookup_index -= 1;
                 } else {
                     eh.push_back(state);
                     self.lookup_recursive(
-                        lookup_path,
-                        results,
+                        params,
+                        acc,
                         transition.get_target_state(),
                         lookup_index,
-                        path_so_far,
-                        alphabet,
                         eh.clone(),
-                        max_epsilon_cycles,
-                        max_weight,
-                        max_number,
-                        flag_diacritic_path.as_mut().map(|r| &mut **r),
                     );
                 }
 
                 Self::pop_back_from_two_level_path(
-                    path_so_far,
+                    acc.path_so_far,
                     transition.get_weight(),
-                    flag_diacritic_path.as_mut().map(|r| &mut **r),
+                    acc.flag_diacritic_path.as_deref_mut(),
                 );
             }
         }
@@ -4293,8 +4311,7 @@ impl HfstBasicTransducer {
         let istr = tr.get_input_symbol(coder);
         let ostr = tr.get_output_symbol(coder);
 
-        if input_side && is_epsilon(&istr) {
-        } else if !input_side && is_epsilon(&ostr) {
+        if (input_side && is_epsilon(&istr)) || (!input_side && is_epsilon(&ostr)) {
         } else if (input_side && Self::is_special_symbol(&istr))
             || (!input_side && Self::is_special_symbol(&ostr))
         {
@@ -4302,7 +4319,6 @@ impl HfstBasicTransducer {
                 Hfst,
                 "error: special symbol detected in compile-replace regular expression"
             );
-        } else {
         }
 
         if (input_side && istr == "^[") || (!input_side && ostr == "^[") {
@@ -4407,7 +4423,7 @@ impl HfstBasicTransducer {
             let state = state as u32;
             let mut full_paths: HfstReplacements = Vec::new();
             self.find_regexp_paths_driver(state, &mut full_paths, input_side)?;
-            if full_paths.len() > 0 {
+            if !full_paths.is_empty() {
                 replacements.insert(state, full_paths);
             }
         }
@@ -4500,35 +4516,35 @@ impl HfstBasicTransducer {
         match max_epsilon_cycles {
             Some(mec) => {
                 let eh = HfstEpsilonHandler::new(mec);
-                self.lookup_recursive(
+                let params = LookupParams {
                     lookup_path,
-                    results,
-                    state,
-                    lookup_index,
-                    &mut path_so_far,
-                    &alphabet,
-                    eh,
-                    mec,
+                    alphabet: &alphabet,
+                    max_epsilon_cycles: mec,
                     max_weight,
                     max_number,
-                    flag_diacritic_path.as_mut(),
-                );
+                };
+                let mut acc = LookupAcc {
+                    results,
+                    path_so_far: &mut path_so_far,
+                    flag_diacritic_path: flag_diacritic_path.as_mut(),
+                };
+                self.lookup_recursive(&params, &mut acc, state, lookup_index, eh);
             }
             None => {
                 let eh = HfstEpsilonHandler::new(100000);
-                self.lookup_recursive(
+                let params = LookupParams {
                     lookup_path,
-                    results,
-                    state,
-                    lookup_index,
-                    &mut path_so_far,
-                    &alphabet,
-                    eh,
-                    100000,
+                    alphabet: &alphabet,
+                    max_epsilon_cycles: 100000,
                     max_weight,
                     max_number,
-                    flag_diacritic_path.as_mut(),
-                );
+                };
+                let mut acc = LookupAcc {
+                    results,
+                    path_so_far: &mut path_so_far,
+                    flag_diacritic_path: flag_diacritic_path.as_mut(),
+                };
+                self.lookup_recursive(&params, &mut acc, state, lookup_index, eh);
             }
         }
     }
@@ -4616,14 +4632,13 @@ impl HfstBasicTransducer {
         state2: HfstState,
         intersection: &mut HfstBasicTransducer,
         state: HfstState,
-        state_map: &mut StateMap,
-        agenda: &mut BTreeSet<HfstState>,
+        search: &mut IntersectSearch<'_>,
     ) {
-        agenda.insert(state); // do not handle 'state' twice
+        search.agenda.insert(state); // do not handle 'state' twice
         let tr1 = &graph1.state_vector[state1 as usize];
         let tr2 = &graph2.state_vector[state2 as usize];
 
-        if tr1.len() == 0 || tr2.len() == 0 {
+        if tr1.is_empty() || tr2.is_empty() {
             return; // no matches possible
         }
         let mut start_search_from: u32 = 0;
@@ -4648,9 +4663,9 @@ impl HfstBasicTransducer {
                         transition2,
                         intersection,
                         state,
-                        state_map,
+                        search.state_map,
                     );
-                    if !agenda.contains(&target) {
+                    if !search.agenda.contains(&target) {
                         Self::find_matches(
                             graph1,
                             transition1.get_target_state(),
@@ -4658,8 +4673,7 @@ impl HfstBasicTransducer {
                             transition2.get_target_state(),
                             intersection,
                             target,
-                            state_map,
-                            agenda,
+                            search,
                         );
                     }
                     start_search_from = j + 1;
@@ -4694,16 +4708,11 @@ impl HfstBasicTransducer {
             retval.set_final_weight(0, &final_weight);
         }
 
-        Self::find_matches(
-            graph1,
-            0,
-            graph2,
-            0,
-            &mut retval,
-            0,
-            &mut state_map,
-            &mut agenda,
-        );
+        let mut search = IntersectSearch {
+            state_map: &mut state_map,
+            agenda: &mut agenda,
+        };
+        Self::find_matches(graph1, 0, graph2, 0, &mut retval, 0, &mut search);
 
         retval
     }
@@ -4758,6 +4767,8 @@ impl HfstBasicTransducer {
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.handle-list-match-fn]
     // [spec:hfst:def:hfst-transition-graph.handle-list-match-fn]
     // [spec:hfst:sem:hfst-transition-graph.handle-list-match-fn]
+    // Compile-replace list-match helper ported 1:1 from the C++; parameter list
+    // mirrors that signature.
     pub fn handle_list_match(
         graph: &HfstBasicTransducer,
         graph_transition: &HfstBasicTransition,
@@ -4765,8 +4776,7 @@ impl HfstBasicTransducer {
         merger_transition: &HfstBasicTransition,
         result: &mut HfstBasicTransducer,
         result_state: HfstState,
-        state_map: &mut StateMap,
-        markers_added: &mut BTreeSet<HfstSymbol>,
+        ctx: &mut MergeContext<'_>,
     ) -> HfstState {
         let graph_target = graph_transition.get_target_state();
         let merger_target = merger_transition.get_target_state();
@@ -4774,7 +4784,7 @@ impl HfstBasicTransducer {
         let retval = Self::find_target_state(
             graph_target,
             merger_target,
-            state_map,
+            ctx.state_map,
             result,
             &mut was_new_state,
         );
@@ -4792,7 +4802,8 @@ impl HfstBasicTransducer {
             result.coder_mut(),
         );
         result.add_transition(result_state, &marker_tr, true);
-        markers_added.insert(HfstSymbol::from(format!("@{}@", graph_isym)));
+        ctx.markers_added
+            .insert(HfstSymbol::from(format!("@{}@", graph_isym)));
 
         let merger_isym = merger_transition.get_input_symbol(merger.coder());
         let merger_osym = merger_transition.get_output_symbol(merger.coder());
@@ -4841,7 +4852,6 @@ impl HfstBasicTransducer {
 
     // [spec:hfst:def:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-matches-for-merge-fn]
     // [spec:hfst:sem:hfst-basic-transducer.hfst.implementations.hfst-basic-transducer.find-matches-for-merge-fn]
-    #[allow(clippy::too_many_arguments)]
     // [spec:hfst:def:hfst-transition-graph.find-matches-for-merge-fn]
     // [spec:hfst:sem:hfst-transition-graph.find-matches-for-merge-fn]
     pub fn find_matches_for_merge(
@@ -4851,16 +4861,13 @@ impl HfstBasicTransducer {
         merger_state: HfstState,
         result: &mut HfstBasicTransducer,
         result_state: HfstState,
-        state_map: &mut StateMap,
-        agenda: &mut BTreeSet<HfstState>,
-        list_symbols: &BTreeMap<HfstSymbol, BTreeSet<HfstSymbol>>,
-        markers_added: &mut BTreeSet<HfstSymbol>,
+        ctx: &mut MergeContext<'_>,
     ) -> crate::error::Result<()> {
-        agenda.insert(result_state); // do not handle 'result_state' twice
+        ctx.agenda.insert(result_state); // do not handle 'result_state' twice
         let graph_transitions = &graph.state_vector[graph_state as usize];
         let merger_transitions = &merger.state_vector[merger_state as usize];
 
-        if graph_transitions.len() == 0 {
+        if graph_transitions.is_empty() {
             return Ok(()); // no matches possible
         }
 
@@ -4868,9 +4875,12 @@ impl HfstBasicTransducer {
             let graph_transition_data = graph_transition.get_transition_data();
 
             // List symbols must be checked separately.
-            if Self::is_list_symbol(graph_transition_data, list_symbols, graph.coder())? {
-                let symbol_list =
-                    &list_symbols[&graph_transition_data.get_input_symbol(graph.coder())];
+            if Self::is_list_symbol(graph_transition_data, ctx.list_symbols, graph.coder())? {
+                // Clone the (small) symbol set so the read borrow of `ctx` ends
+                // before the `&mut ctx` calls below.
+                let symbol_list = ctx.list_symbols
+                    [&graph_transition_data.get_input_symbol(graph.coder())]
+                    .clone();
                 let mut list_match_found = false;
                 for merger_transition in merger_transitions.iter() {
                     let merger_transition_data = merger_transition.get_transition_data();
@@ -4893,10 +4903,9 @@ impl HfstBasicTransducer {
                             merger_transition,
                             result,
                             result_state,
-                            state_map,
-                            markers_added,
+                            ctx,
                         );
-                        if !agenda.contains(&target) {
+                        if !ctx.agenda.contains(&target) {
                             Self::find_matches_for_merge(
                                 graph,
                                 graph_transition.get_target_state(),
@@ -4904,10 +4913,7 @@ impl HfstBasicTransducer {
                                 merger_transition.get_target_state(),
                                 result,
                                 target,
-                                state_map,
-                                agenda,
-                                list_symbols,
-                                markers_added,
+                                ctx,
                             )?;
                         }
                     }
@@ -4925,9 +4931,9 @@ impl HfstBasicTransducer {
                 merger_state,
                 result,
                 result_state,
-                state_map,
+                ctx.state_map,
             );
-            if !agenda.contains(&target) {
+            if !ctx.agenda.contains(&target) {
                 Self::find_matches_for_merge(
                     graph,
                     graph_transition.get_target_state(),
@@ -4935,10 +4941,7 @@ impl HfstBasicTransducer {
                     merger_state,
                     result,
                     target,
-                    state_map,
-                    agenda,
-                    list_symbols,
-                    markers_added,
+                    ctx,
                 )?;
             }
         }
@@ -4970,18 +4973,13 @@ impl HfstBasicTransducer {
         // The C++ caught the const char* throws here and rethrew them as
         // TransducersAreNotAutomataException; the helpers now carry that
         // kind in their Error directly.
-        Self::find_matches_for_merge(
-            graph,
-            0,
-            merger,
-            0,
-            &mut result,
-            0,
-            &mut state_map,
-            &mut agenda,
-            list_symbols,
+        let mut ctx = MergeContext {
+            state_map: &mut state_map,
+            agenda: &mut agenda,
             markers_added,
-        )?;
+            list_symbols,
+        };
+        Self::find_matches_for_merge(graph, 0, merger, 0, &mut result, 0, &mut ctx)?;
 
         Ok(result)
     }

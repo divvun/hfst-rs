@@ -61,8 +61,8 @@ impl Transition {
             weight: t.get_weight(),
             target: t.get_target_state(),
         };
-        assert!(isym != "");
-        assert!(osym != "");
+        assert!(!isym.is_empty());
+        assert!(!osym.is_empty());
         transition
     }
 
@@ -173,11 +173,11 @@ impl ComposeIntersectFst {
             this.symbol_set.insert(n);
         }
 
-        let mut source_state: u32 = 0;
         // for (HfstBasicTransducer::const_iterator it = this->t.begin(); ...)
         let states: Vec<crate::hfst_basic_transducer::HfstBasicTransitions> =
             this.t.iter().cloned().collect();
-        for it in states.iter() {
+        for (source_state, it) in states.iter().enumerate() {
+            let source_state = source_state as u32;
             this.transition_map_vector.push(SymbolTransitionMap::new());
             if this.t.is_final_state(source_state) {
                 this.finality_vector.push(
@@ -188,7 +188,6 @@ impl ComposeIntersectFst {
             } else {
                 this.finality_vector.push(f32::INFINITY);
             }
-            source_state += 1;
             let mut identity_found = false;
             for jt in it.iter() {
                 let jt_isym = jt.get_input_symbol(this.t.coder());
@@ -208,7 +207,7 @@ impl ComposeIntersectFst {
                         .last_mut()
                         .expect("transition_map_vector has a current row")
                         .entry(key)
-                        .or_insert_with(TransitionSet::new)
+                        .or_default()
                         .insert(&tr);
                 }
             }
@@ -249,10 +248,7 @@ impl ComposeIntersectFst {
         }
         // if (transition_map_vector.at(s).find(symbol) ==
         //     transition_map_vector.at(s).end())
-        if self.transition_map_vector[s as usize]
-            .get(&symbol)
-            .is_none()
-        {
+        if !self.transition_map_vector[s as usize].contains_key(&symbol) {
             if self.is_known_symbol(symbol) || !self.has_identity_transition(s)? {
                 // return transition_map_vector.at(s)[symbol] = TransitionSet();
                 self.transition_map_vector[s as usize].insert(symbol, TransitionSet::new());

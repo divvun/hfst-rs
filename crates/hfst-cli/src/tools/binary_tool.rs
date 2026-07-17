@@ -36,9 +36,9 @@ fn print_usage(common: &CommonOptions) {
     );
     print_common_program_options(&mut *msg);
     print_common_binary_program_options(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_binary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "\nExamples:\n  {} -o catdog.hfst cat.hfst dog.hfst  does things\n\n",

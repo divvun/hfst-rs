@@ -59,10 +59,7 @@ fn get_float(str: &str) -> f32 {
             best = Some(f);
         }
     }
-    match best {
-        Some(f) => f,
-        None => -1.0,
-    }
+    best.unwrap_or(-1.0)
 }
 
 // [spec:hfst:def:hfst-guessify.print-usage-fn]
@@ -81,23 +78,23 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Guesser options:\n  -p, --default-penalty           Give penalty for skipping one\n                                  symbol of input (1.0 by default).\n  -G, --do-not-compile-generator  When compiling the guesser, do\n                                  not compile a model form\n                                  generator.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "All analyses in the morphological analyzer should have the form:\nw o r d f o r m POS {0}CLASS] X Y Z ...\nwhere POS is the part-of-speech tag, {0}CLASS]\nis an inflectional category marker and X, Y and Z are inflectional\nmarkers. The form of the inflectional category marker is fixed.\nCLASS can be any string, which doesn't contain \"]\".\n",
         CATEGORY_SYMBOL_PREFIX
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "Using the option -d will reduce the size of the guesser file by\napproximately half, but may substantially increase the load time of\nthe guesser when generating model forms. If you only need to guess\nanalyses of unknown word forms, -d has no effect on load time.\n"
     );
-    let _ = write!(msg, "\n");
-    let _ = write!(
+    let _ = writeln!(msg);
+    let _ = writeln!(
         msg,
-        "If OUTFILE or INFILE is missing or -, standard streams will be used.\n"
+        "If OUTFILE or INFILE is missing or -, standard streams will be used."
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-guessify.parse-options-fn]

@@ -104,7 +104,7 @@ fn print_usage(common: &CommonOptions) {
          \x20 -E, --encode-weights      Encode weights when minimizing (default is false).\n\
          \x20 -M, --do-not-minimize     Determinize result instead of minimizing it.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 
     let _ = write!(
         msg,
@@ -129,7 +129,7 @@ fn print_usage(common: &CommonOptions) {
          \n",
         common.program_name
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-regexp2fst.parse-options-fn]

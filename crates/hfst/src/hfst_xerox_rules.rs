@@ -113,8 +113,7 @@ impl<B: AlgebraBackend> Rule<B> {
             HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
             HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         );
-        let mut epsilon_context: HfstTransducerPairVector<B> = Vec::new();
-        epsilon_context.push(context_pair);
+        let epsilon_context: HfstTransducerPairVector<B> = vec![context_pair];
 
         let mapping = mapping_pair_vector.clone();
 
@@ -180,8 +179,7 @@ impl<B: AlgebraBackend> Rule<B> {
             HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
             HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         );
-        let mut epsilon_context: HfstTransducerPairVector<B> = Vec::new();
-        epsilon_context.push(context_pair);
+        let epsilon_context: HfstTransducerPairVector<B> = vec![context_pair];
         let context = epsilon_context;
         let repl_type = ReplaceType::REPL_UP;
         // 'mapping' is left default-constructed (an empty vector), as in C++.
@@ -614,7 +612,7 @@ pub fn expand_contexts_with_mapping<B: AlgebraBackend>(
             }
         }
 
-        if has_boundary == false {
+        if !has_boundary {
             first_context.insert_to_alphabet_symbol(&boundary_marker)?;
             let mut tmp = boundary.clone();
             tmp.concatenate(&identity_star, true)?.optimize()?;
@@ -631,7 +629,7 @@ pub fn expand_contexts_with_mapping<B: AlgebraBackend>(
             }
         }
 
-        if has_boundary == false {
+        if !has_boundary {
             second_context.insert_to_alphabet_symbol(&boundary_marker)?;
             second_context
                 .concatenate(&identity_star, true)?
@@ -771,7 +769,7 @@ pub fn bracketed_replace<B: AlgebraBackend>(
 
     // Identity pair
     // for non-optional replacements
-    if optional != true {
+    if !optional {
         // non - optional
         // mapping = <a:b> u <2a:a>2
 
@@ -808,7 +806,7 @@ pub fn bracketed_replace<B: AlgebraBackend>(
     identity_expanded.insert_to_alphabet_symbol(&right_marker)?;
     identity_expanded.insert_to_alphabet_symbol(&tmp_marker)?;
 
-    if optional != true {
+    if !optional {
         identity_expanded.insert_to_alphabet_symbol(&left_marker2)?;
         identity_expanded.insert_to_alphabet_symbol(&right_marker2)?;
     }
@@ -908,7 +906,7 @@ fn get_marker_number(str: &str) -> u32 {
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.parallel-bracketed-replace-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.parallel-bracketed-replace-fn]
 pub fn parallel_bracketed_replace<B: AlgebraBackend>(
-    rule_vector: &Vec<Rule<B>>,
+    rule_vector: &[Rule<B>],
     optional: bool,
 ) -> crate::error::Result<HfstTransducer<B>> {
     // For each parallel rule, we need to concatenate a special marker symbol
@@ -986,22 +984,22 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
     let mut no_contexts = true;
 
     // go through vector and do everything for each rule
-    for i in 0..rule_vector.len() {
-        let mut ruletmp = rule_vector[i].clone();
+    for (i, rule) in rule_vector.iter().enumerate() {
+        let mut ruletmp = rule.clone();
         ruletmp.encode_flags()?;
 
         let mapping_pair_vector = ruletmp.get_mapping();
         let mut mapping = HfstTransducer::new();
-        for j in 0..mapping_pair_vector.len() {
+        for (j, mapping_pair) in mapping_pair_vector.iter().enumerate() {
             // i+1 because @0@ is epsilon..
             let marker_string = get_marker_string((i + 1) as u32);
             let marker = HfstTransducer::new_symbol(&marker_string)?;
-            let mut one_mapping_pair = mapping_pair_vector[j].0.clone();
+            let mut one_mapping_pair = mapping_pair.0.clone();
             // unknowns/identities must not be expanded to marker symbols
             one_mapping_pair.insert_to_alphabet_set(&marker_symbols)?;
-            let mut foo = mapping_pair_vector[j].1.clone();
-            foo.insert_to_alphabet_set(&marker_symbols)?;
-            one_mapping_pair.cross_product(foo.concatenate(&marker, true)?, true)?;
+            let mut mapping_output = mapping_pair.1.clone();
+            mapping_output.insert_to_alphabet_set(&marker_symbols)?;
+            one_mapping_pair.cross_product(mapping_output.concatenate(&marker, true)?, true)?;
 
             if j == 0 {
                 // remove .#. from the center
@@ -1059,7 +1057,7 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
 
         // non - optional
         // mapping = <a:b> u <2a:a>2
-        if optional != true {
+        if !optional {
             // needed in case of ? -> x replacement
             mapping.insert_to_alphabet_symbol(&left_marker2)?;
             mapping.insert_to_alphabet_symbol(&right_marker2)?;
@@ -2426,7 +2424,7 @@ pub fn replace_rule<B: AlgebraBackend>(
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.replace-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.replace-fn]
 pub fn replace_rule_vector<B: AlgebraBackend>(
-    rule_vector: &Vec<Rule<B>>,
+    rule_vector: &[Rule<B>],
     optional: bool,
 ) -> crate::error::Result<HfstTransducer<B>> {
     // std::cerr << "replace"<< std::endl;
@@ -2497,11 +2495,11 @@ pub fn replace_left_rule<B: AlgebraBackend>(
     //newMapping.invert().optimize();
 
     let mut new_mapping_pair_vector: HfstTransducerPairVector<B> = HfstTransducerPairVector::new();
-    for i in 0..mapping_pair_vector.len() {
+    for pair in &mapping_pair_vector {
         // in every mapping pair invert first and second
         //HfstTransducer newMapping = rule.get_mapping();
-        let first: HfstTransducer<B> = mapping_pair_vector[i].0.clone();
-        let second: HfstTransducer<B> = mapping_pair_vector[i].1.clone();
+        let first: HfstTransducer<B> = pair.0.clone();
+        let second: HfstTransducer<B> = pair.1.clone();
         new_mapping_pair_vector.push((second, first));
     }
 
@@ -2520,30 +2518,30 @@ pub fn replace_left_rule<B: AlgebraBackend>(
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.replace-left-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.replace-left-fn]
 pub fn replace_left_rule_vector<B: AlgebraBackend>(
-    rule_vector: &Vec<Rule<B>>,
+    rule_vector: &[Rule<B>],
     optional: bool,
 ) -> crate::error::Result<HfstTransducer<B>> {
     let mut left_rule_vector: Vec<Rule<B>> = Vec::new();
 
-    for i in 0..rule_vector.len() {
-        let mapping_pair_vector: HfstTransducerPairVector<B> = rule_vector[i].get_mapping();
+    for rule in rule_vector {
+        let mapping_pair_vector: HfstTransducerPairVector<B> = rule.get_mapping();
         //HfstTransducer newMapping = rule.get_mapping();
         //newMapping.invert().optimize();
 
         let mut new_mapping_pair_vector: HfstTransducerPairVector<B> =
             HfstTransducerPairVector::new();
-        for j in 0..mapping_pair_vector.len() {
+        for pair in &mapping_pair_vector {
             // in every mapping pair invert first and second
             //HfstTransducer newMapping = rule.get_mapping();
-            let first: HfstTransducer<B> = mapping_pair_vector[j].0.clone();
-            let second: HfstTransducer<B> = mapping_pair_vector[j].1.clone();
+            let first: HfstTransducer<B> = pair.0.clone();
+            let second: HfstTransducer<B> = pair.1.clone();
             new_mapping_pair_vector.push((second, first));
         }
 
         let new_rule: Rule<B> = Rule::new_mapping_context_repl_type(
             &new_mapping_pair_vector,
-            &rule_vector[i].get_context(),
-            rule_vector[i].get_repl_type(),
+            &rule.get_context(),
+            rule.get_repl_type(),
         )?;
 
         left_rule_vector.push(new_rule);
@@ -2595,7 +2593,7 @@ pub fn replace_leftmost_longest_match_rule<B: AlgebraBackend>(
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.replace-leftmost-longest-match-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.replace-leftmost-longest-match-fn]
 pub fn replace_leftmost_longest_match_rule_vector<B: AlgebraBackend>(
-    rule_vector: &Vec<Rule<B>>,
+    rule_vector: &[Rule<B>],
 ) -> crate::error::Result<HfstTransducer<B>> {
     //printf("\n replace_leftmost_longest_match \n");
 
@@ -2680,7 +2678,7 @@ pub fn replace_rightmost_longest_match_rule<B: AlgebraBackend>(
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.replace-rightmost-longest-match-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.replace-rightmost-longest-match-fn]
 pub fn replace_rightmost_longest_match_rule_vector<B: AlgebraBackend>(
-    rule_vector: &Vec<Rule<B>>,
+    rule_vector: &[Rule<B>],
 ) -> crate::error::Result<HfstTransducer<B>> {
     let unconditional_tr: HfstTransducer<B> = if rule_vector.len() == 1 {
         bracketed_replace(&rule_vector[0], true)?
@@ -2747,7 +2745,7 @@ pub fn replace_leftmost_shortest_match_rule<B: AlgebraBackend>(
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.replace-leftmost-shortest-match-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.replace-leftmost-shortest-match-fn]
 pub fn replace_leftmost_shortest_match_rule_vector<B: AlgebraBackend>(
-    rule_vector: &Vec<Rule<B>>,
+    rule_vector: &[Rule<B>],
 ) -> crate::error::Result<HfstTransducer<B>> {
     let mut unconditional_tr: HfstTransducer<B> = if rule_vector.len() == 1 {
         bracketed_replace(&rule_vector[0], true)?
@@ -2810,7 +2808,7 @@ pub fn replace_rightmost_shortest_match_rule<B: AlgebraBackend>(
 // [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.replace-rightmost-shortest-match-fn]
 // [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.replace-rightmost-shortest-match-fn]
 pub fn replace_rightmost_shortest_match_rule_vector<B: AlgebraBackend>(
-    rule_vector: &Vec<Rule<B>>,
+    rule_vector: &[Rule<B>],
 ) -> crate::error::Result<HfstTransducer<B>> {
     let unconditional_tr: HfstTransducer<B> = if rule_vector.len() == 1 {
         bracketed_replace(&rule_vector[0], true)?
@@ -2845,15 +2843,15 @@ pub fn replace_epenthesis_rule<B: AlgebraBackend>(
     rule: &Rule<B>,
     optional: bool,
 ) -> crate::error::Result<HfstTransducer<B>> {
-    Ok(replace_rule(rule, optional)?)
+    replace_rule(rule, optional)
 }
 
 // replace up, left, right, down
 pub fn replace_epenthesis_rule_vector<B: AlgebraBackend>(
-    rule_vector: &Vec<Rule<B>>,
+    rule_vector: &[Rule<B>],
     optional: bool,
 ) -> crate::error::Result<HfstTransducer<B>> {
-    Ok(replace_rule_vector(rule_vector, optional)?)
+    replace_rule_vector(rule_vector, optional)
 }
 
 //---------------------------------
@@ -2956,11 +2954,11 @@ pub fn restriction<B: AlgebraBackend>(
     // 2. Put mark in context
     // [ U* L1 %<D%> U* %<D%> R1 U* ]
     let mut context_marked: HfstTransducer<B> = HfstTransducer::new();
-    for i in 0..context.len() {
-        let mut lef_context: HfstTransducer<B> = context[i].0.clone();
+    for (i, context_pair) in context.iter().enumerate() {
+        let mut lef_context: HfstTransducer<B> = context_pair.0.clone();
         lef_context.insert_to_alphabet_string(&restriction_mark)?;
 
-        let mut right_context: HfstTransducer<B> = context[i].1.clone();
+        let mut right_context: HfstTransducer<B> = context_pair.1.clone();
         right_context.insert_to_alphabet_string(&restriction_mark)?;
 
         let mut res: HfstTransducer<B> = universal_without_d_star.clone();

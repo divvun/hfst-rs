@@ -75,7 +75,7 @@ fn print_usage(common: &CommonOptions) {
          \x20 -T, --tsv=TSVFILE   read extensions in tsv format from TSVFILE\n\
          \x20 -l, --level=LEVEL   perform extensions on LEVEL of fsa\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "Either ACXFILE, TSVFILE or both ISYM and OSYM must be specified.\n\
@@ -255,8 +255,6 @@ fn process_stream(
         };
         // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
         crate::for_algebra!(any, trans => {
-            let trans = trans;
-
             // Collect the (from, to) extension pairs from whichever source the
             // options selected. The TSV parser and the extension/compose loop now
             // live in hfst::expand_equivalences; the per-extension "extending X by
@@ -313,9 +311,9 @@ fn process_stream(
         }, else => {
             // Unreachable: the optimized-lookup stream rejection already
             // returned before the loop; keep its text for safety.
-            let _ = write!(
+            let _ = writeln!(
                 std::io::stderr(),
-                "Error: hfst-expand-equivalences cannot process transducers that are in optimized lookup format.\n"
+                "Error: hfst-expand-equivalences cannot process transducers that are in optimized lookup format."
             );
             return;
         });

@@ -271,16 +271,14 @@ impl Transducer {
                     print_out(&format!("{}\t{}\t+?\n\n", prepend, prepend));
                     return;
                 }
-                let mut i = 0;
-                for it in self.display_vector.iter() {
-                    if i >= max_analyses {
+                for (i, it) in self.display_vector.iter().enumerate() {
+                    if i as i32 >= max_analyses {
                         break;
                     }
                     if output_type == Xerox {
                         print_out(&format!("{}\t", prepend));
                     }
                     print_out(&format!("{}\n", it));
-                    i += 1;
                 }
                 self.display_vector.clear(); // purge the display vector
                 print_out("\n");
@@ -291,16 +289,14 @@ impl Transducer {
                     print_out(&format!("{}\t{}\t+?\n\n", prepend, prepend));
                     return;
                 }
-                let mut i = 0;
-                for it in self.display_set.iter() {
-                    if i >= max_analyses {
+                for (i, it) in self.display_set.iter().enumerate() {
+                    if i as i32 >= max_analyses {
                         break;
                     }
                     if output_type == Xerox {
                         print_out(&format!("{}\t", prepend));
                     }
                     print_out(&format!("{}\n", it));
-                    i += 1;
                 }
                 self.display_set.clear(); // purge the display set
                 print_out("\n");
@@ -314,11 +310,10 @@ impl Transducer {
                 // C++ iterates a std::multimap<Weight,string>, ascending by key.
                 let mut sorted = self.display_multimap.clone();
                 sorted.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-                let mut i = 0;
                 let mut lowest_weight: f32 = -1.0;
                 let mut first = true;
-                for (weight, value) in sorted.iter() {
-                    if i >= max_analyses {
+                for (i, (weight, value)) in sorted.iter().enumerate() {
+                    if i as i32 >= max_analyses {
                         break;
                     }
                     if first {
@@ -336,7 +331,6 @@ impl Transducer {
                         }
                         print_out("\n");
                     }
-                    i += 1;
                 }
                 self.display_multimap.clear();
                 print_out("\n");
@@ -365,9 +359,8 @@ impl Transducer {
                 }
                 weight_sorted
                     .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-                let mut i = 0;
-                for (weight, value) in weight_sorted.iter() {
-                    if i >= max_analyses {
+                for (i, (weight, value)) in weight_sorted.iter().enumerate() {
+                    if i as i32 >= max_analyses {
                         break;
                     }
                     if output_type == Xerox {
@@ -378,7 +371,6 @@ impl Transducer {
                         print_out(&format!("\t{}", fmt_weight(*weight)));
                     }
                     print_out("\n");
-                    i += 1;
                 }
                 self.display_map.clear();
                 print_out("\n");
@@ -391,11 +383,10 @@ impl Transducer {
                 }
                 let mut sorted = self.display_multimap.clone();
                 sorted.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-                let mut i = 0;
                 let mut lowest_weight: f32 = -1.0;
                 let mut first = true;
-                for (weight, value) in sorted.iter() {
-                    if i >= max_analyses {
+                for (i, (weight, value)) in sorted.iter().enumerate() {
+                    if i as i32 >= max_analyses {
                         break;
                     }
                     if first {
@@ -412,7 +403,6 @@ impl Transducer {
                         }
                         print_out("\n");
                     }
-                    i += 1;
                 }
                 self.display_multimap.clear();
                 print_out("\n");

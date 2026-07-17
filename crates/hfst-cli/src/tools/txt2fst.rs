@@ -90,12 +90,12 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Other options:\n  -C, --check-negative-epsilon-cycles  Issue a warning if there are epsilon cycles\n                                       with a negative weight in the transducer\n  -j, --disjunct                       Disjunct transducers\n",
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "If OUTFILE or INFILE is missing or -, standard streams will be used.\nIf FMT is not given, OpenFst's tropical format will be used.\nThe possible values for FMT are {{ foma, openfst-tropical,\nsfst, optimized-lookup-weighted, optimized-lookup-unweighted }}.\nIf EPS is not given, @0@ will be used.\n\nSpace in transition symbols must be escaped as '@_SPACE_@' when using\natt format.\n",
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-txt2fst.parse-options-fn]
@@ -536,7 +536,6 @@ pub fn run(mut args: Vec<String>) -> i32 {
                 "Reading prolog format from standard input not supported for xfsm transducers,\nuse 'hfst-txt2fst [--input|-i] INFILE' instead",
             );
             return 1;
-        } else {
         }
     }
 

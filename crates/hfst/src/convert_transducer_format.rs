@@ -90,10 +90,9 @@ impl FormatCoder {
     }
 
     pub fn get_harmonization_vector(&mut self, coding_vector: &StringVector) -> NumberVector {
-        let mut retval = NumberVector::new();
-        retval.reserve(coding_vector.len());
+        let mut retval = NumberVector::with_capacity(coding_vector.len());
         for it in coding_vector.iter() {
-            if *it != "" {
+            if !it.is_empty() {
                 retval.push(self.get_number(it));
             } else {
                 // a gap in indexing

@@ -104,7 +104,7 @@ fn print_usage(common: &CommonOptions) {
          Transient optimisation schemes:\n\
          \x20 -9, --compose                compose substitutions when possible\n",
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(
         msg,
@@ -741,11 +741,11 @@ fn process_loop<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             hfst_error(common, 1, 0, &format!("{e}"));
             return 1;
         }
-        if options.delayed {
-            if let Err(e) = perform_delayed(common, &mut trans, &state) {
-                hfst_error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
+        if options.delayed
+            && let Err(e) = perform_delayed(common, &mut trans, &state)
+        {
+            hfst_error(common, 1, 0, &format!("{e}"));
+            return 1;
         }
         if options.from_file.is_some() {
             let from_file_name = options.from_file_name.clone().unwrap();

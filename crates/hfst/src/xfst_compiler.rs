@@ -340,7 +340,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         warn!("cannot collect epsilon loops");
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print arc count for @a level
@@ -349,20 +349,20 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         level: &str,
         oss: &mut dyn std::io::Write,
     ) -> &mut Self {
-        let _ = write!(oss, "missing {} arc count\n", level);
+        let _ = writeln!(oss, "missing {} arc count", level);
         self.flush();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print arc count
     pub fn print_arc_count(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = write!(oss, "missing arc count\n");
+        let _ = writeln!(oss, "missing arc count");
         self.flush();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print file info
@@ -370,32 +370,32 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         warn!("file info not implemented (cf. summarize)");
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print flag diacritics
     pub fn print_flags(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = write!(oss, "missing print flags\n");
+        let _ = writeln!(oss, "missing print flags");
         self.flush();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print label mappings
     pub fn print_labelmaps(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = write!(oss, "missing label-maps\n");
+        let _ = writeln!(oss, "missing label-maps");
         self.flush();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print properties of top network
     pub fn print_properties(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = write!(oss, "missing print properties\n");
+        let _ = writeln!(oss, "missing print properties");
         self.flush();
-        return self;
+        self
     }
 
     // @brief Print properties of network named @a name
@@ -403,16 +403,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         warn!("missing print properties");
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print nnumber of symbols in network
     pub fn print_sigma_count(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = write!(oss, "missing print sigma count\n");
+        let _ = writeln!(oss, "missing print sigma count");
         self.flush();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print number of paths with all symbols on @a level
@@ -421,39 +421,39 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         level: &str,
         oss: &mut dyn std::io::Write,
     ) -> &mut Self {
-        let _ = write!(oss, "missing {} sigma word count\n", level);
+        let _ = writeln!(oss, "missing {} sigma word count", level);
         self.flush();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print number of paths with all symbols
     pub fn print_sigma_word_count(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = write!(oss, "missing sigma word count\n");
+        let _ = writeln!(oss, "missing sigma word count");
         self.flush();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print size of network named @a name
     pub fn print_size_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
         let _ = write!(oss, "{:>10}", name);
-        let _ = write!(oss, ": ? bytes. ? states, ? arcs, ? paths.\n");
+        let _ = writeln!(oss, ": ? bytes. ? states, ? arcs, ? paths.");
         self.flush();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print size of top network
     pub fn print_size(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = write!(oss, "? bytes. ? states, ? arcs, ? paths.\n");
+        let _ = writeln!(oss, "? bytes. ? states, ? arcs, ? paths.");
         self.flush();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Read lexicons from @a indata
@@ -461,7 +461,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // The C++ declares read_lexc(const char* indata) but provides no
         // definition (it is never invoked; the parser uses read_lexc_from_file).
         // Mirror that by doing nothing and returning self.
-        return self;
+        self
     }
 
     // @brief Sort top network of the stack
@@ -471,7 +471,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // PRINT_INFO_PROMPT_AND_RETURN_THIS
         self.print_transducer_info();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Substring top network of stack
@@ -481,7 +481,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // PRINT_INFO_PROMPT_AND_RETURN_THIS
         self.print_transducer_info();
         self.prompt();
-        return self;
+        self
     }
 
     /* Compile a regex string starting from \a indata, store the resulting
@@ -534,8 +534,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     pub fn parse_line(&mut self, line: String) -> i32 {
         // The C++ drove the bison line parser (hxfst_scan_string + hxfstparse);
         // here we route the line through the nfst-xfst-backed parse() instead.
-        let rv = self.parse(&line);
-        return rv;
+
+        self.parse(&line)
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.set-error-stream-fn]
@@ -559,7 +559,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.flush();
             self.xfst_fail();
         }
-        return retval;
+        retval
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fopen-fn]
@@ -609,7 +609,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         {
             return "?".to_string();
         }
-        return symbol.to_string();
+        symbol.to_string()
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.convert-to-common-format-fn]
@@ -797,7 +797,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.definitions.remove(def_name.as_str());
         }
         self.definitions.insert(Symbol::from(def_name), t);
-        return self;
+        self
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fail-fn]
@@ -822,7 +822,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.print-level-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.print-level-fn]
-    fn print_level(&mut self, whole_path: &Vec<u32>, shortest_path: &Vec<u32>) {
+    fn print_level(&mut self, whole_path: &[u32], shortest_path: &[u32]) {
         print!("Level {}", whole_path.len() as i32);
         if shortest_path.len() < whole_path.len() {
             print!(" (= {})", shortest_path.len() as i32);
@@ -846,7 +846,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.flush();
             return false;
         }
-        return true;
+        true
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.can-arc-be-followed-fn]
@@ -866,7 +866,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.flush();
             return false;
         }
-        return true;
+        true
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.print-arcs-fn]
@@ -899,7 +899,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         println!();
         self.flush();
-        return arc_number - 1;
+        arc_number - 1
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.top-fn]
@@ -956,7 +956,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     fn remove_newline(&mut self, str: String) -> String {
         // The C++ replaces every '\n'/'\r' with '\0' in place; read back as a
         // C-string the result is everything up to the first newline/return.
-        match str.find(|c| c == '\n' || c == '\r') {
+        match str.find(['\n', '\r']) {
             Some(idx) => str[..idx].to_string(),
             None => str,
         }
@@ -967,7 +967,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Get current readline history index.
     fn current_history_index(&mut self) -> i32 {
         // HAVE_READLINE is not in use; mirror the #else branch.
-        return -1;
+        -1
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.ignore-history-after-index-fn]
@@ -993,7 +993,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     fn error_message(&self, message: &str) -> &Self {
         error!("{}", message);
-        return self;
+        self
     }
 
     fn print_transducer_info(&mut self) -> &mut Self {
@@ -1046,14 +1046,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         let value = line[q..].to_string();
         self.properties.insert(name, value);
-        return self;
+        self
     }
 
     fn print_bool(&mut self, value: bool) -> &mut Self {
         let printval = if value { 1 } else { 0 };
-        print!("{}, (1 = TRUE, 0 = FALSE)\n", printval);
+        println!("{}, (1 = TRUE, 0 = FALSE)", printval);
         self.flush();
-        return self;
+        self
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-stream-fn]
@@ -1712,41 +1712,41 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 self.write_definition(p, "")?;
             }
             S::Prolog(p) => {
-                if self.check_filename(p) {
-                    if let Ok(mut f) = std::fs::File::create(p) {
-                        self.write_prolog(&mut f)?;
-                    }
+                if self.check_filename(p)
+                    && let Ok(mut f) = std::fs::File::create(p)
+                {
+                    self.write_prolog(&mut f)?;
                 }
             }
             S::Spaced(p) => {
-                if self.check_filename(p) {
-                    if let Ok(mut f) = std::fs::File::create(p) {
-                        self.write_spaced(&mut f);
-                    }
+                if self.check_filename(p)
+                    && let Ok(mut f) = std::fs::File::create(p)
+                {
+                    self.write_spaced(&mut f);
                 }
             }
             S::Text(p) => {
-                if self.check_filename(p) {
-                    if let Ok(mut f) = std::fs::File::create(p) {
-                        self.write_text(&mut f);
-                    }
+                if self.check_filename(p)
+                    && let Ok(mut f) = std::fs::File::create(p)
+                {
+                    self.write_text(&mut f);
                 }
             }
             S::Dot(p) => {
-                if self.check_filename(p) {
-                    if let Ok(mut f) = std::fs::File::create(p) {
-                        self.write_dot(&mut f);
-                    }
+                if self.check_filename(p)
+                    && let Ok(mut f) = std::fs::File::create(p)
+                {
+                    self.write_dot(&mut f);
                 }
             }
             S::Att(p) => {
                 if p.is_empty() {
                     let mut out = std::io::stdout();
                     self.write_att(&mut out);
-                } else if self.check_filename(p) {
-                    if let Ok(mut f) = std::fs::File::create(p) {
-                        self.write_att(&mut f);
-                    }
+                } else if self.check_filename(p)
+                    && let Ok(mut f) = std::fs::File::create(p)
+                {
+                    self.write_att(&mut f);
                 }
             }
         }
@@ -1819,22 +1819,22 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Print @a text to stdout
     pub fn echo(&mut self, text: &str) -> &mut Self {
-        print!("{}\n", text);
+        println!("{}", text);
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Stop parser, print quit message
     pub fn quit(&mut self, message: &str) -> &mut Self {
         if self.verbose && (message == "dodongo") {
-            print!("dislikes smoke.\n");
+            println!("dislikes smoke.");
         } else if self.verbose {
-            print!("{}.\n", message);
+            println!("{}.", message);
         } else {
             // ;
         }
         self.quit_requested = true;
-        return self;
+        self
     }
 
     // @brief Execute @c system()
@@ -1850,7 +1850,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             warn!("system {} returned {}", command, rv);
         }
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Set variable @c name = @c text
@@ -1861,7 +1861,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 self.variables
                     .insert("flag-is-epsilon".to_string(), text.to_string());
                 if self.verbose {
-                    print!("variable flag-is-epsilon = {}\n", text);
+                    println!("variable flag-is-epsilon = {}", text);
                 }
                 self.prompt();
                 return self;
@@ -1929,11 +1929,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         if self.verbose {
-            print!("variable {} = {}\n", name, text);
+            println!("variable {} = {}", name, text);
         }
 
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Set variable @c name = @c number
@@ -1946,7 +1946,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let num = format!("{}", number);
         self.variables.insert(name.to_string(), num);
         self.prompt();
-        return self;
+        self
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-fn]
@@ -1956,7 +1956,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         if !self.variables.contains_key(name) {
             return String::new();
         }
-        return self.variables[name].clone();
+        self.variables[name].clone()
     }
 
     // @brief Show named variable
@@ -1966,9 +1966,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
             return self;
         }
-        print!("variable {} = {}\n", name, self.variables[name]);
+        println!("variable {} = {}", name, self.variables[name]);
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Show all variables
@@ -1980,14 +1980,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             .collect();
         for (first, second) in vars.iter() {
             if first == "copyright-owner" {
-                print!("{:>20}: {}\n", first, second);
+                println!("{:>20}: {}", first, second);
             } else {
                 let explanation = variable_explanations_get(first);
-                print!("{:>20}: {:>6}: {}\n", first, second, explanation);
+                println!("{:>20}: {:>6}: {}", first, second, explanation);
             }
         }
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print aliases
@@ -2003,7 +2003,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         self.flush();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print definition
@@ -2017,10 +2017,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         for (first, second) in defs.iter() {
             definitions = true;
             let _ = write!(oss, "{:>10}", first);
-            let _ = write!(oss, " {}\n", second);
+            let _ = writeln!(oss, " {}", second);
         }
         if !definitions {
-            let _ = write!(oss, "No defined symbols.\n");
+            let _ = writeln!(oss, "No defined symbols.");
         }
 
         definitions = false;
@@ -2032,15 +2032,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         for (first, second) in funcs.iter() {
             definitions = true;
             let _ = write!(oss, "{:>10}", first);
-            let _ = write!(oss, " {}\n", second);
+            let _ = writeln!(oss, " {}", second);
         }
         if !definitions {
-            let _ = write!(oss, "No function definitions.\n");
+            let _ = writeln!(oss, "No function definitions.");
         }
 
         self.flush();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print directory contents
@@ -2048,15 +2048,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         match glob::glob(glob) {
             Ok(paths) => {
                 for entry in paths.flatten() {
-                    let _ = write!(oss, "{}\n", entry.display());
+                    let _ = writeln!(oss, "{}", entry.display());
                 }
             }
             Err(e) => {
-                let _ = write!(oss, "glob({}) = {}\n", glob, e);
+                let _ = writeln!(oss, "glob({}) = {}", glob, e);
             }
         }
         self.prompt();
-        return self;
+        self
     }
 
     pub fn print_labels_tr(
@@ -2087,19 +2087,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 let _ = write!(oss, ":{}", it.1);
             }
         }
-        let _ = write!(oss, "\n");
-        let _ = write!(oss, "Size: {}\n", label_set.len() as i32);
+        let _ = writeln!(oss);
+        let _ = writeln!(oss, "Size: {}", label_set.len() as i32);
 
         self.flush();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print labels in network @a name
     pub fn print_labels_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
         match self.definitions.get(name).copied() {
             None => {
-                let _ = write!(oss, "no such definition '{}'\n", name);
+                let _ = writeln!(oss, "no such definition '{}'", name);
             }
             Some(tr) => {
                 let net = self.net(tr).clone();
@@ -2108,7 +2108,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         self.flush();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print labels
@@ -2118,7 +2118,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return self;
         };
         let net = self.net(topmost).clone();
-        return self.print_labels_tr(oss, &net);
+        self.print_labels_tr(oss, &net)
     }
 
     // @brief Print label count
@@ -2142,10 +2142,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
 
-        let mut index: u32 = 1;
-        let first_key = label_map.keys().next().cloned();
-        for (key, value) in label_map.iter() {
-            if Some(key) != first_key.as_ref() {
+        for (i, (key, value)) in label_map.iter().enumerate() {
+            let index = (i as u32) + 1;
+            if i != 0 {
                 let _ = write!(oss, "   ");
             }
             let _ = write!(oss, "{}. ", index);
@@ -2154,19 +2153,18 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 let _ = write!(oss, ":{}", key.1);
             }
             let _ = write!(oss, " {}", value);
-            index += 1;
         }
-        let _ = write!(oss, "\n");
+        let _ = writeln!(oss);
 
         self.flush();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print list named @a name
     pub fn print_list_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
         if !self.lists.contains_key(name) {
-            let _ = write!(oss, "No such list defined: {}\n", name);
+            let _ = writeln!(oss, "No such list defined: {}", name);
             self.flush();
             self.prompt();
             return self;
@@ -2177,16 +2175,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         for s in l.iter() {
             let _ = write!(oss, "{} ", s);
         }
-        let _ = write!(oss, "\n");
+        let _ = writeln!(oss);
         self.flush();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print all lists
     pub fn print_list(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        if self.lists.len() == 0 {
-            let _ = write!(oss, "No lists defined.\n");
+        if self.lists.is_empty() {
+            let _ = writeln!(oss, "No lists defined.");
             self.flush();
             self.prompt();
             return self;
@@ -2203,11 +2201,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             for s in second.iter() {
                 let _ = write!(oss, "{} ", s);
             }
-            let _ = write!(oss, "\n");
+            let _ = writeln!(oss);
         }
         self.flush();
         self.prompt();
-        return self;
+        self
     }
 
     pub fn shortest_string(
@@ -2233,14 +2231,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let net = self.net(topmost).clone();
         self.shortest_string(&net, &mut paths)?;
 
-        if paths.len() == 0 {
-            print!("transducer is empty\n");
+        if paths.is_empty() {
+            println!("transducer is empty");
         } else {
             self.print_paths_two(&paths, oss, -1);
         }
         self.flush();
         self.prompt();
-        return Ok(self);
+        Ok(self)
     }
 
     // @brief Print length of shortest string
@@ -2257,12 +2255,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let net = self.net(topmost).clone();
         self.shortest_string(&net, &mut paths)?;
 
-        if paths.len() == 0 {
-            print!("transducer is empty\n");
+        if paths.is_empty() {
+            println!("transducer is empty");
         } else {
-            let _ = write!(
+            let _ = writeln!(
                 oss,
-                "{}\n",
+                "{}",
                 paths
                     .iter()
                     .next()
@@ -2273,7 +2271,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         self.flush();
         self.prompt();
-        return Ok(self);
+        Ok(self)
     }
 
     // @brief Print longest string in network
@@ -2281,7 +2279,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         &mut self,
         oss: &mut dyn std::io::Write,
     ) -> crate::error::Result<&mut Self> {
-        return self.print_longest_string_or_its_size(oss, false);
+        self.print_longest_string_or_its_size(oss, false)
     }
 
     // @brief Print length of longest string
@@ -2289,7 +2287,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         &mut self,
         oss: &mut dyn std::io::Write,
     ) -> crate::error::Result<&mut Self> {
-        return self.print_longest_string_or_its_size(oss, true);
+        self.print_longest_string_or_its_size(oss, true)
     }
 
     // @brief Print strings of lower language
@@ -2299,7 +2297,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         number: u32,
         oss: &mut dyn std::io::Write,
     ) -> crate::error::Result<&mut Self> {
-        return self.print_words_level(name, number, oss, Level::LOWER_LEVEL);
+        self.print_words_level(name, number, oss, Level::LOWER_LEVEL)
     }
 
     // @brief Print random strings of lower language
@@ -2322,7 +2320,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         } else {
             match self.definitions.get(name).copied() {
                 None => {
-                    let _ = write!(oss, "no such definition '{}'\n", name);
+                    let _ = writeln!(oss, "no such definition '{}'", name);
                     self.flush();
                     self.prompt();
                     return Ok(self);
@@ -2338,7 +2336,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.print_paths_two(&paths, oss, -1);
         self.flush();
         self.prompt();
-        return Ok(self);
+        Ok(self)
     }
 
     // @brief Print astrings of upper language
@@ -2348,7 +2346,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         number: u32,
         oss: &mut dyn std::io::Write,
     ) -> crate::error::Result<&mut Self> {
-        return self.print_words_level(name, number, oss, Level::UPPER_LEVEL);
+        self.print_words_level(name, number, oss, Level::UPPER_LEVEL)
     }
 
     // @brief Print random strings of upper language
@@ -2369,7 +2367,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         } else {
             match self.definitions.get(name).copied() {
                 None => {
-                    let _ = write!(oss, "no such definition '{}\n", name);
+                    let _ = writeln!(oss, "no such definition '{}", name);
                     self.flush();
                     self.prompt();
                     return Ok(self);
@@ -2385,7 +2383,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.print_paths_two(&paths, oss, -1);
         self.flush();
         self.prompt();
-        return Ok(self);
+        Ok(self)
     }
 
     // @brief Print pair strings of language
@@ -2395,7 +2393,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         number: u32,
         oss: &mut dyn std::io::Write,
     ) -> crate::error::Result<&mut Self> {
-        return self.print_words_level(name, number, oss, Level::BOTH_LEVELS);
+        self.print_words_level(name, number, oss, Level::BOTH_LEVELS)
     }
 
     // @brief Print random pair strings of language
@@ -2414,7 +2412,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         } else {
             match self.definitions.get(name).copied() {
                 None => {
-                    let _ = write!(oss, "no such definition '{}'\n", name);
+                    let _ = writeln!(oss, "no such definition '{}'", name);
                     self.flush();
                     self.prompt();
                     return Ok(self);
@@ -2431,7 +2429,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.print_paths_two(&paths, oss, -1);
         self.flush();
         self.prompt();
-        return Ok(self);
+        Ok(self)
     }
 
     // @brief Print name of top network
@@ -2448,17 +2446,17 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             .collect();
         for (first, second) in entries.iter() {
             if tmp == *second {
-                let _ = write!(oss, "Name {}\n", first);
+                let _ = writeln!(oss, "Name {}", first);
                 self.flush();
                 self.prompt();
                 return self;
             }
         }
 
-        let _ = write!(oss, "No name.\n");
+        let _ = writeln!(oss, "No name.");
         self.flush();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief View top network
@@ -2477,7 +2475,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             std::env::temp_dir().to_string_lossy(),
             std::process::id()
         );
-        if false || self.verbose {
+        if self.verbose {
             debug!(
                 "Writing net in dot format to temporary file '{}'.",
                 dotfilename
@@ -2493,7 +2491,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             };
             crate::hfst_print_dot::print_dot_os(&mut dotfile, self.net_mut(tmp));
         }
-        if false || self.verbose {
+        if self.verbose {
             debug!("Wrote net, closing file and converting into png format.");
         }
         let cmd1 = format!("dot -Tpng {} > {} 2> /dev/null", dotfilename, pngfilename);
@@ -2501,7 +2499,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             error!("Converting failed.");
             self.xfst_lesser_fail();
         }
-        if false || self.verbose {
+        if self.verbose {
             debug!("Converted to png format, viewing the graph.");
         }
         let cmd2 = format!("/usr/bin/xdg-open {} 2> /dev/null &", pngfilename);
@@ -2510,7 +2508,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
         }
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print network
@@ -2526,7 +2524,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
         self.flush();
         self.prompt();
-        return Ok(self);
+        Ok(self)
     }
 
     // @brief Print network named @a name
@@ -2539,7 +2537,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             None => {
                 error!("no such defined network: '{}'", name);
                 self.prompt();
-                return Ok(self);
+                Ok(self)
             }
             Some(it) => {
                 if self.variables["print-sigma"] == "ON" {
@@ -2551,7 +2549,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
                 self.flush();
                 self.prompt();
-                return Ok(self);
+                Ok(self)
             }
         }
     }
@@ -2576,15 +2574,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
         }
         self.flush();
-        return Ok(self);
+        Ok(self)
     }
 
     // @brief Print all symbols of network named @a name
     pub fn print_sigma_name(&mut self, _name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = write!(oss, "missing print sigma\n");
+        let _ = writeln!(oss, "missing print sigma");
         self.flush();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print all networks in stack
@@ -2595,11 +2593,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 "{:>10}",
                 format!("{}: ? bytes. ? states, ? arcs, ? paths.", i)
             );
-            let _ = write!(oss, "\n");
+            let _ = writeln!(oss);
         }
         self.flush();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Write top transducer in att format to @a outfile
@@ -2612,7 +2610,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         fsm.write_in_att_format_os(oss, self.variables["print-weight"] == "ON");
         self.flush();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Search help directory
@@ -2620,36 +2618,36 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     pub fn apropos(&mut self, text: &str) -> &mut Self {
         let mut message = String::new();
         if !get_help_message(text, &mut message, HELP_MODE_APROPOS) {
-            print!("nothing found for '{}'\n", text);
+            println!("nothing found for '{}'", text);
         } else {
             print!("{}", message);
         }
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Print help topics
     // @todo helps have not been written or copied
     pub fn describe(&mut self, text: &str) -> &mut Self {
-        let help_mode = if text == "" {
+        let help_mode = if text.is_empty() {
             HELP_MODE_ALL_COMMANDS
         } else {
             HELP_MODE_ONE_COMMAND
         };
         let mut message = String::new();
         if !get_help_message(text, &mut message, help_mode) {
-            print!("no help found for '{}'\n", text);
+            println!("no help found for '{}'", text);
         } else {
             print!("{}", message);
         }
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Name top of stack
     // @todo HFST automata do not remember their names
     pub fn name_net(&mut self, name: &str) -> &mut Self {
-        if self.stack.len() < 1 {
+        if self.stack.is_empty() {
             warn!("Empty stack.");
             self.xfst_lesser_fail();
             return self;
@@ -2659,59 +2657,59 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.names.insert(Symbol::new(name), t);
         self.print_transducer_info();
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Sekrit HFST raw command mode!
     pub fn hfst(&mut self, data: &str) -> &mut Self {
         info!("HFST: {}", data);
         self.prompt();
-        return self;
+        self
     }
 
     // @brief Get current stack of compiler
     pub fn get_stack(&self) -> &Vec<NetId> {
-        return &self.stack;
+        &self.stack
     }
 
     // @brief Define whether readline library is used to read input in apply up etc.
     pub fn set_readline(&mut self, readline: bool) -> &mut Self {
         self.use_readline = readline;
-        return self;
+        self
     }
 
     // @brief Define whether input is read from stdin in apply up etc.
     pub fn set_read_interactive_text_from_stdin(&mut self, value: bool) -> &mut Self {
         self.read_interactive_text_from_stdin = value;
-        return self;
+        self
     }
 
     // @brief Define whether output is printed directly to windows console.
     pub fn set_output_to_console(&mut self, value: bool) -> &mut Self {
         self.output_to_console = value;
         // hfst::print_output_to_console(output_to_console);
-        return self;
+        self
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-readline-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.get-readline-fn]
     // @brief Whether readline is used to read input in apply up etc.
     pub fn get_readline(&mut self) -> bool {
-        return self.use_readline;
+        self.use_readline
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-read-interactive-text-from-stdin-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.get-read-interactive-text-from-stdin-fn]
     // @brief Whether stdin is used to read input in apply up etc.
     pub fn get_read_interactive_text_from_stdin(&mut self) -> bool {
-        return self.read_interactive_text_from_stdin;
+        self.read_interactive_text_from_stdin
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-output-to-console-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.get-output-to-console-fn]
     // @brief Whether output is printed directly to windows console.
     pub fn get_output_to_console(&mut self) -> bool {
-        return self.output_to_console;
+        self.output_to_console
     }
 
     // @brief Define wheter prompts and XFST outputs are printed.
@@ -2719,13 +2717,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.verbose = verbosity;
         self.xre.set_verbosity(verbosity);
         self.lexc.set_verbosity(if self.verbose { 2 } else { 0 });
-        return self;
+        self
     }
 
     // @brief Define wheter prompts are printed.
     pub fn set_prompt_verbosity(&mut self, verbosity: bool) -> &mut Self {
         self.verbose_prompt = verbosity;
-        return self;
+        self
     }
 
     // @brief Explicitly print the prompt to stdout.
@@ -2735,34 +2733,34 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             // this has no effect.
             print!("hfst[{}]: ", self.stack.len());
         }
-        return self;
+        self
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-prompt-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.get-prompt-fn]
     // @brief Get the prompt string.
     pub fn get_prompt(&self) -> String {
-        return format!("hfst[{}]: ", self.stack.len());
+        format!("hfst[{}]: ", self.stack.len())
     }
 
     // @brief Allow read and write operations only in current directory, do not allow system calls.
     pub fn set_restricted_mode(&mut self, value: bool) -> &mut Self {
         self.restricted_mode = value;
-        return self;
+        self
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-restricted-mode-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.get-restricted-mode-fn]
     // @brief Whether restricted mode is on.
     pub fn get_restricted_mode(&self) -> bool {
-        return self.restricted_mode;
+        self.restricted_mode
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.quit-requested-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.quit-requested-fn]
     // @brief Whether it has been requested to quit the program.
     pub fn quit_requested(&self) -> bool {
-        return self.quit_requested;
+        self.quit_requested
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.unknown-command-fn]
@@ -2780,14 +2778,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         error!("Command {} is not recognised.", s);
         // fprintf(stderr, "Command %s is not recognised.\n", s);
         self.prompt();
-        return 0;
+        0
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-fail-flag-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.get-fail-flag-fn]
     // For xfst parser.
     pub fn get_fail_flag(&self) -> bool {
-        return self.fail_flag;
+        self.fail_flag
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.set-error-stream-fn]
@@ -2876,7 +2874,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 // see if symbol separator (space) is needed
                 if self.variables["print-space"] == "ON" // print space required
                     && something_printed                  // not first symbol shown
-                    && print_symbol != ""
+                    && !print_symbol.is_empty()
                 // something to show
                 {
                     let _ = write!(oss, " ");
@@ -2884,14 +2882,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
                 let _ = write!(oss, "{}", print_symbol);
 
-                if print_symbol != "" {
+                if !print_symbol.is_empty() {
                     something_printed = true;
                 }
 
                 let print_symbol = self.get_print_symbol(&p.1);
 
                 // see if output symbol is needed
-                if print_symbol != "" // something to show
+                if !print_symbol.is_empty() // something to show
                     && p.0 != p.1
                 // input and output symbols differ
                 {
@@ -2904,12 +2902,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 let _ = write!(oss, "\t{}", it.first);
             }
 
-            let _ = write!(oss, "\n");
+            let _ = writeln!(oss);
             n -= 1;
         } // at most n paths gone through
 
         self.flush();
-        return retval;
+        retval
     }
 
     // @brief Print \a n first paths (or all, if n is negative)
@@ -2941,7 +2939,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 // see if symbol separator (space) is needed
                 if self.variables["print-space"] == "ON" // print space required
                     && something_printed                  // not first symbol shown
-                    && print_symbol != ""
+                    && !print_symbol.is_empty()
                 // something to show
                 {
                     let _ = write!(oss, " ");
@@ -2949,7 +2947,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
                 let _ = write!(oss, "{}", print_symbol);
 
-                if print_symbol != "" {
+                if !print_symbol.is_empty() {
                     something_printed = true;
                 }
             } // path gone through
@@ -2959,12 +2957,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 let _ = write!(oss, "\t{}", it.first);
             }
 
-            let _ = write!(oss, "\n");
+            let _ = writeln!(oss);
             n -= 1;
         } // at most n paths gone through
 
         self.flush();
-        return retval;
+        retval
     }
 
     // A method used by function print_longest_string_or_its_size.
@@ -2977,9 +2975,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     ) -> &mut Self {
         let _ = write!(oss, "{}: ", level);
         if print_size {
-            let _ = write!(
+            let _ = writeln!(
                 oss,
-                "{}\n",
+                "{}",
                 paths
                     .iter()
                     .next()
@@ -2991,7 +2989,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.print_paths_two(paths, oss, 1);
         }
         self.flush();
-        return self;
+        self
     }
 
     // @brief Print the longest string of topmost transducer in the stack
@@ -3052,9 +3050,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // Print the results:
         // first, the special cases,
         if upper_is_cyclic && lower_is_cyclic {
-            print!("transducer is cyclic\n");
+            println!("transducer is cyclic");
         } else if transducer_is_empty {
-            print!("transducer is empty\n");
+            println!("transducer is empty");
         }
         // then the usual:
         else {
@@ -3069,14 +3067,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
             // print one longest string of the upper level, if not cyclic
             if upper_is_cyclic {
-                let _ = write!(oss, "Upper level is cyclic.\n");
+                let _ = writeln!(oss, "Upper level is cyclic.");
             } else {
                 self.print_one_string_or_its_size(oss, &paths_upper, "Upper", print_size);
             }
 
             // print one longest string of the lower level, if not cyclic
             if lower_is_cyclic {
-                let _ = write!(oss, "Lower level is cyclic.\n");
+                let _ = writeln!(oss, "Lower level is cyclic.");
             } else {
                 self.print_one_string_or_its_size(oss, &paths_lower, "Lower", print_size);
             }
@@ -3084,7 +3082,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         self.flush();
         self.prompt();
-        return Ok(self);
+        Ok(self)
     }
 
     // @brief Try to extract a maximum of \a number paths from topmost
@@ -3108,7 +3106,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         } else {
             match self.definitions.get(name).copied() {
                 None => {
-                    let _ = write!(oss, "no such definition '{}'\n", name);
+                    let _ = writeln!(oss, "no such definition '{}'", name);
                     self.flush();
                     self.prompt();
                     return Ok(self);
@@ -3158,7 +3156,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.print_paths_two(&results, oss, -1);
 
         self.prompt();
-        return Ok(self);
+        Ok(self)
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.print-alphabet-fn]
@@ -3210,8 +3208,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 first_symbol = false;
             }
         }
-        let _ = write!(oss, "\n");
-        let _ = write!(oss, "Size: {}.\n", sigma_count);
+        let _ = writeln!(oss);
+        let _ = writeln!(oss, "Size: {}.", sigma_count);
         self.flush();
     }
 }
@@ -3239,7 +3237,7 @@ fn is_special_symbol(s: &str) -> bool {
     {
         return true;
     }
-    return false;
+    false
 }
 
 // [spec:hfst:def:xfst-compiler.hfst.xfst.is-unknown-or-identity-used-in-transducer-fn]
@@ -3323,7 +3321,7 @@ fn is_valid_string(sv: &crate::hfst_symbol_defs::StringVector) -> bool {
                     let current = values.get(&feat).cloned().unwrap_or_default();
                     if val.is_empty() {
                         // empty disallow
-                        if current != "" {
+                        if !current.is_empty() {
                             return false;
                         }
                     } else {
@@ -3357,7 +3355,7 @@ fn is_valid_string(sv: &crate::hfst_symbol_defs::StringVector) -> bool {
             }
         }
     }
-    return true;
+    true
 }
 
 // [spec:hfst:def:xfst-compiler.hfst.xfst.string-to-size-t-fn]
@@ -3567,10 +3565,9 @@ fn extract_output_paths(paths: &HfstTwoLevelPaths) -> HfstOneLevelPaths {
 // [spec:hfst:def:xfst-compiler.hfst.xfst.to-filename-fn]
 // [spec:hfst:sem:xfst-compiler.hfst.xfst.to-filename-fn]
 fn to_filename(file: Option<&str>) -> &str {
-    if file.is_none() {
-        return "<stdin>";
-    } else {
-        return file.expect("file is Some, checked above");
+    match file {
+        None => "<stdin>",
+        Some(f) => f,
     }
 }
 
@@ -3587,14 +3584,14 @@ fn to_filename(file: Option<&str>) -> &str {
 fn to_upper_case(str: &str) -> String {
     let str_bytes = str.as_bytes();
     let mut retval = String::new();
-    for i in 0..str_bytes.len() {
-        if str_bytes[i] >= 97 && str_bytes[i] <= 122 {
-            retval.push((str_bytes[i] - 32) as char);
+    for &b in str_bytes {
+        if (97..=122).contains(&b) {
+            retval.push((b - 32) as char);
         } else {
-            retval.push(str_bytes[i] as char);
+            retval.push(b as char);
         }
     }
-    return retval;
+    retval
 }
 
 // Whether 'c' is allowed before or after a word when
@@ -3604,12 +3601,12 @@ fn to_upper_case(str: &str) -> String {
 #[allow(dead_code)]
 fn allow_char(c: u8) -> bool {
     let allowed_chars = b" \n\t.,;:?!-/'\"<>()|";
-    for i in 0..allowed_chars.len() {
-        if allowed_chars[i] == c {
+    for &allowed in allowed_chars {
+        if allowed == c {
             return true;
         }
     }
-    return false;
+    false
 }
 
 // Whether word 'str' is found in text 'text'.
@@ -3627,12 +3624,12 @@ fn string_found(str: &str, text: &str) -> bool {
         }
         Some(p) => p,
     };
-    if pos == 0 || allow_char(text_bytes[pos - 1]) {
-        if pos + str.len() == text.len() || allow_char(text_bytes[pos + str.len()]) {
-            return true;
-        }
+    if (pos == 0 || allow_char(text_bytes[pos - 1]))
+        && (pos + str.len() == text.len() || allow_char(text_bytes[pos + str.len()]))
+    {
+        return true;
     }
-    return false;
+    false
 }
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
@@ -4043,9 +4040,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         user_friendly_argument_names: bool,
     ) -> String {
         let mut retval: String = xre.to_string();
-        let mut arg_number: u32 = 1;
 
-        for argument in arguments.iter() {
+        for (arg_index, argument) in arguments.iter().enumerate() {
+            let arg_number: u32 = (arg_index as u32) + 1;
             let mut arg_positions: BTreeSet<u32> = BTreeSet::new();
             if !xre_compiler.get_positions_of_symbol_in_xre(
                 argument.as_str(),
@@ -4089,7 +4086,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
 
             retval = new_retval;
-            arg_number += 1;
         }
 
         retval
@@ -4374,7 +4370,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @todo HFST automata cannot push labels
     pub fn cleanup_net(&mut self) -> &mut Self {
         warn!("cannot cleanup net");
-        if self.stack.len() < 1 {
+        if self.stack.is_empty() {
             warn!("Empty stack.");
             self.xfst_lesser_fail();
             return self;
@@ -4464,7 +4460,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // @brief Negate top of stack
     pub fn negate_net(&mut self) -> crate::error::Result<&mut Self> {
-        if self.stack.len() < 1 {
+        if self.stack.is_empty() {
             warn!("Empty stack.");
             self.xfst_lesser_fail();
             return Ok(self);
@@ -4570,11 +4566,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let ind = self.current_history_index();
 
         // the while loop begins, keep on reading from user
-        loop {
-            let line = match self.read_prompted_line("") {
-                Some(l) => l,
-                None => break,
-            };
+        while let Some(line) = self.read_prompted_line("") {
             // case (1): back to previous state
             if line == "<\n" || line == "<" {
                 if whole_path.len() < 2 {
@@ -4951,17 +4943,17 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.to-literal-regexp-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.to-literal-regexp-fn]
-    fn to_literal_regexp(path: &Vec<(Symbol, Symbol)>, input_side: bool) -> String {
+    fn to_literal_regexp(path: &[(Symbol, Symbol)], input_side: bool) -> String {
         let mut pathstr = String::from("[");
         for it in path.iter() {
             let symbol = if input_side { &it.0 } else { &it.1 };
             if symbol.as_str() != crate::hfst_symbol_defs::internal_epsilon {
-                pathstr.push_str("\"");
+                pathstr.push('"');
                 pathstr.push_str(symbol);
                 pathstr.push_str("\" ");
             }
         }
-        pathstr.push_str("]");
+        pathstr.push(']');
         if pathstr == "[]" {
             pathstr = String::from("[0]");
         }
@@ -4970,7 +4962,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.to-regexp-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.to-regexp-fn]
-    fn to_regexp(path: &Vec<(Symbol, Symbol)>, input_side: bool, retokenize: bool) -> String {
+    fn to_regexp(path: &[(Symbol, Symbol)], input_side: bool, retokenize: bool) -> String {
         let mut pathstr = String::from("[");
         for it in path.iter() {
             let symbol = if input_side { &it.0 } else { &it.1 };
@@ -4979,18 +4971,18 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 if symbol.as_str() != crate::hfst_symbol_defs::internal_epsilon {
                     pathstr.push_str(symbol);
                     if !retokenize {
-                        pathstr.push_str(" ");
+                        pathstr.push(' ');
                     }
                 }
             } else {
                 // For better alignment
                 pathstr.push_str("\"@EPSILON_MARKER@\"");
                 if !retokenize {
-                    pathstr.push_str(" ");
+                    pathstr.push(' ');
                 }
             }
         }
-        pathstr.push_str("]");
+        pathstr.push(']');
         if pathstr == "[]" {
             pathstr = String::from("[0]");
         }
@@ -5037,7 +5029,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     pub fn lookup_optimize(&mut self) -> crate::error::Result<&mut Self> {
-        if self.stack.len() < 1 {
+        if self.stack.is_empty() {
             // EMPTY_STACK
             warn!("Empty stack.");
             self.xfst_lesser_fail();
@@ -5077,7 +5069,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     pub fn remove_optimization(&mut self) -> crate::error::Result<&mut Self> {
-        if self.stack.len() < 1 {
+        if self.stack.is_empty() {
             // EMPTY_STACK
             warn!("Empty stack.");
             self.xfst_lesser_fail();
@@ -5146,7 +5138,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // via 'read_prompted_line' so the 'indata' source is unused.
         let _ = indata;
 
-        if self.stack.len() < 1 {
+        if self.stack.is_empty() {
             // EMPTY_STACK
             warn!("Empty stack.");
             self.xfst_lesser_fail();
@@ -5341,7 +5333,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // apply_up_line -> apply_down_line
     fn apply_down_line(&mut self, line: &str) -> crate::error::Result<&mut Self> {
-        if self.stack.len() < 1 {
+        if self.stack.is_empty() {
             // EMPTY_STACK
             warn!("Empty stack.");
             self.xfst_lesser_fail();
@@ -5377,7 +5369,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Save @a name network in dot form in @a outfile
     pub fn write_dot_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
         let _ = oss;
-        if self.stack.len() < 1 {
+        if self.stack.is_empty() {
             warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
@@ -5403,7 +5395,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // @brief Save top networks dot form in @a outfile
     pub fn write_dot(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        if self.stack.len() < 1 {
+        if self.stack.is_empty() {
             warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
@@ -5424,7 +5416,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         &mut self,
         oss: &mut dyn std::io::Write,
     ) -> crate::error::Result<&mut Self> {
-        if self.stack.len() < 1 {
+        if self.stack.is_empty() {
             warn!("Empty stack.");
             self.xfst_lesser_fail();
             self.prompt();
@@ -5537,7 +5529,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // @brief Save all transducers in stack to @a outfile
     pub fn write_stack(&mut self, outfilename: &str) -> crate::error::Result<&mut Self> {
-        if self.stack.len() < 1 {
+        if self.stack.is_empty() {
             warn!("Empty stack.");
             self.xfst_lesser_fail();
             return Ok(self);

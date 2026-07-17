@@ -39,10 +39,10 @@ fn print_usage(common: &CommonOptions) {
     print_common_program_options(&mut *msg);
     print_common_binary_program_options(&mut *msg);
     // (tool-specific options and short descriptions)
-    let _ = write!(msg, "Check alpha options:\n");
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg, "Check alpha options:");
+    let _ = writeln!(msg);
     print_common_binary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-check-alpha.fprint-stringset-fn]
@@ -178,7 +178,7 @@ fn process_stream(
         });
         let second_found_alphabet: StringSet = secondmutt.symbols_used();
         // match
-        let _ = write!(out, "Actual alphabet differences:\n");
+        let _ = writeln!(out, "Actual alphabet differences:");
         let first_minus_second: StringSet = first_found_alphabet
             .difference(&second_found_alphabet)
             .cloned()
@@ -200,7 +200,7 @@ fn process_stream(
                 second.get_name()
             );
         }
-        let _ = write!(out, "\n");
+        let _ = writeln!(out);
         let second_minus_first: StringSet = second_found_alphabet
             .difference(&first_found_alphabet)
             .cloned()
@@ -222,17 +222,17 @@ fn process_stream(
                 second.get_name()
             );
         }
-        let _ = write!(out, "\n");
+        let _ = writeln!(out);
         if common.verbose {
             let _ = write!(out, "{} alphabet:", first.get_name());
             fprint_stringset(&mut *out, &first_found_alphabet);
-            let _ = write!(out, "\n");
+            let _ = writeln!(out);
             let _ = write!(out, "{} alphabet:", second.get_name());
             fprint_stringset(&mut *out, &second_found_alphabet);
-            let _ = write!(out, "\n");
+            let _ = writeln!(out);
         }
         if transducer_knows_alphabet {
-            let _ = write!(out, "sigma set difference:\n");
+            let _ = writeln!(out, "sigma set difference:");
             let first_minus_second: StringSet = first_transducer_alphabet
                 .difference(&second_transducer_alphabet)
                 .cloned()
@@ -258,7 +258,7 @@ fn process_stream(
                     second.get_name()
                 );
             }
-            let _ = write!(out, "\n");
+            let _ = writeln!(out);
             if !second_minus_first.is_empty() {
                 mismatch = 1;
                 let _ = write!(
@@ -276,17 +276,17 @@ fn process_stream(
                     first.get_name()
                 );
             }
-            let _ = write!(out, "\n");
+            let _ = writeln!(out);
             if common.verbose {
                 let _ = write!(out, "First ({}):", first.get_name());
                 fprint_stringset(&mut *out, &first_transducer_alphabet);
-                let _ = write!(out, "\n");
+                let _ = writeln!(out);
                 let _ = write!(out, "Second ({}):", second.get_name());
                 fprint_stringset(&mut *out, &second_transducer_alphabet);
-                let _ = write!(out, "\n");
+                let _ = writeln!(out);
             }
         } else {
-            let _ = write!(out, "No internal alphabets to compare in this format\n");
+            let _ = writeln!(out, "No internal alphabets to compare in this format");
         } // FSTs know their alphas
         continue_reading = firststream.is_good() && secondstream.is_good();
     }

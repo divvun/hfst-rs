@@ -333,7 +333,7 @@ fn compose_streams_typed<
             }
         };
         let rulename = rule.get_name();
-        if rulename.len() > 0 {
+        if !rulename.is_empty() {
             verbose_print(
                 common,
                 &format!("Reading and minimizing rule {}...\n", rulename),
@@ -371,7 +371,7 @@ fn compose_streams_typed<
 
         verbose_print(common, "Computing intersecting composition...\n");
 
-        if rules.len() > 0 {
+        if !rules.is_empty() {
             let symbol = match check_all_symbols(&lexicon, &rules[0]) {
                 Ok(s) => s,
                 Err(e) => {
@@ -379,7 +379,7 @@ fn compose_streams_typed<
                     return 1;
                 }
             };
-            if symbol != "" {
+            if !symbol.is_empty() {
                 warning(
                     common,
                     0,
@@ -400,7 +400,7 @@ fn compose_streams_typed<
                         return 1;
                     }
                 };
-                if symbol != "" {
+                if !symbol.is_empty() {
                     warning(
                         common,
                         0,
@@ -416,11 +416,11 @@ fn compose_streams_typed<
             }
         }
 
-        if options.harmonize {
-            if let Err(e) = harmonize_rules(&mut lexicon, &mut rules) {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
+        if options.harmonize
+            && let Err(e) = harmonize_rules(&mut lexicon, &mut rules)
+        {
+            error(common, 1, 0, &format!("{e}"));
+            return 1;
         }
 
         if options.fast_ci {

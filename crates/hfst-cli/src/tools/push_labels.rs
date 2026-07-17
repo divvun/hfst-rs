@@ -45,13 +45,13 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Push options:\n  -p, --push=DIRECTION   push to DIRECTION\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(
+    let _ = writeln!(
         msg,
-        "DIRECTION must be one of start, initial, begin or end, final\n"
+        "DIRECTION must be one of start, initial, begin or end, final"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-push-labels.parse-options-fn]
@@ -187,9 +187,9 @@ fn process_stream(
         }, else => {
             // Unreachable: the optimized-lookup stream rejection already
             // returned before the loop; keep its text for safety.
-            let _ = write!(
+            let _ = writeln!(
                 std::io::stderr(),
-                "Error: hfst-push-labels cannot process transducers that are in optimized lookup format.\n"
+                "Error: hfst-push-labels cannot process transducers that are in optimized lookup format."
             );
             return 1;
         });

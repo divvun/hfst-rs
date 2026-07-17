@@ -113,7 +113,7 @@ pub fn hfst_set_formula(dest: &mut impl ToolTransducer, src: &str, op: &str) {
 }
 
 pub fn hfst_set_formula_unary(dest: &mut impl ToolTransducer, src: &impl ToolTransducer, op: &str) {
-    if src.get_property("formulaic-definition") != "" {
+    if !src.get_property("formulaic-definition").is_empty() {
         hfst_set_formula_maybe_truncate(
             dest,
             &format!("{} {}", op, src.get_property("formulaic-definition")),
@@ -131,8 +131,8 @@ pub fn hfst_set_formula_binary(
     rhs: &impl ToolTransducer,
     op: &str,
 ) {
-    if (lhs.get_property("formulaic-definition") != "")
-        && (rhs.get_property("formulaic-definition") != "")
+    if (!lhs.get_property("formulaic-definition").is_empty())
+        && (!rhs.get_property("formulaic-definition").is_empty())
     {
         hfst_set_formula_maybe_truncate(
             dest,
@@ -144,13 +144,13 @@ pub fn hfst_set_formula_binary(
             ),
         );
     } else if lhs.get_property("formulaic-definition").is_empty()
-        && (rhs.get_property("formulaic-definition") != "")
+        && (!rhs.get_property("formulaic-definition").is_empty())
     {
         hfst_set_formula_maybe_truncate(
             dest,
             &format!(". {} {}", op, rhs.get_property("formulaic-definition")),
         );
-    } else if (lhs.get_property("formulaic-definition") != "")
+    } else if (!lhs.get_property("formulaic-definition").is_empty())
         && rhs.get_property("formulaic-definition").is_empty()
     {
         hfst_set_formula_maybe_truncate(
@@ -176,13 +176,13 @@ pub fn hfst_set_commandline_def(dest: &mut impl ToolTransducer, argv: &[String])
     let mut cmdline = String::from("");
     let mut o = false;
     cmdline += basename(&argv[0]);
-    for i in 1..=argc {
-        if (argv[i] == "-v") || (argv[i] == "--verbose") {
+    for arg in &argv[1..=argc] {
+        if (arg == "-v") || (arg == "--verbose") {
             continue;
-        } else if (argv[i] == "-o") || (argv[i] == "--output") {
+        } else if (arg == "-o") || (arg == "--output") {
             o = true;
         }
-        cmdline += &argv[i];
+        cmdline += arg;
     }
     if !o {
         cmdline += " > ??? ";
@@ -197,18 +197,18 @@ pub fn hfst_set_commandline_def_unary(
 ) {
     let argc = argv.len();
     let mut cmdline = src.get_property("commandline-definition");
-    if cmdline != "" {
+    if !cmdline.is_empty() {
         cmdline += "; ";
     }
     let mut o = false;
     cmdline += basename(&argv[0]);
-    for i in 1..=argc {
-        if (argv[i] == "-v") || (argv[i] == "--verbose") {
+    for arg in &argv[1..=argc] {
+        if (arg == "-v") || (arg == "--verbose") {
             continue;
-        } else if (argv[i] == "-o") || (argv[i] == "--output") {
+        } else if (arg == "-o") || (arg == "--output") {
             o = true;
         }
-        cmdline += &argv[i];
+        cmdline += arg;
     }
     if !o {
         cmdline += " > ??? ";
@@ -226,24 +226,24 @@ pub fn hfst_set_commandline_def_binary(
 ) {
     let argc = argv.len();
     let mut cmdline = lhs.get_property("commandline-definition");
-    if cmdline != "" {
+    if !cmdline.is_empty() {
         cmdline += "&& ";
     }
-    if rhs.get_property("commandline-definition") != "" {
+    if !rhs.get_property("commandline-definition").is_empty() {
         cmdline += &rhs.get_property("commandline-definition");
     }
-    if cmdline != "" {
+    if !cmdline.is_empty() {
         cmdline += "; ";
     }
     let mut o = false;
     cmdline += basename(&argv[0]);
-    for i in 1..=argc {
-        if (argv[i] == "-v") || (argv[i] == "--verbose") {
+    for arg in &argv[1..=argc] {
+        if (arg == "-v") || (arg == "--verbose") {
             continue;
-        } else if (argv[i] == "-o") || (argv[i] == "--output") {
+        } else if (arg == "-o") || (arg == "--output") {
             o = true;
         }
-        cmdline += &argv[i];
+        cmdline += arg;
     }
     if !o {
         cmdline += " > ??? ";

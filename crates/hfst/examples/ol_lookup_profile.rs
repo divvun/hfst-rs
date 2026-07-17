@@ -77,17 +77,22 @@ fn main() -> hfst::error::Result<()> {
             Err(_) => break,
         };
         let ty = any.get_type();
+        // Tropical (and, with the feature, foma) members convert through the
+        // tropical algebra into the weighted OL tables the lookup engine runs on.
+        let into_weighted = |t: AnyTransducer| match t.into_typed() {
+            Ok(t) => Member::W(t),
+            Err(e) => {
+                eprintln!("cannot convert member ({ty:?}) to OLW: {e}");
+                std::process::exit(1);
+            }
+        };
         let member = match any {
             AnyTransducer::OlW(t) => Member::W(t),
             AnyTransducer::OlU(t) => Member::U(t),
             AnyTransducer::Thfst(t) => Member::W(t.into_olw()),
-            other => match other.into_typed() {
-                Ok(t) => Member::W(t),
-                Err(e) => {
-                    eprintln!("cannot convert member ({ty:?}) to OLW: {e}");
-                    std::process::exit(1);
-                }
-            },
+            other @ AnyTransducer::Tropical(_) => into_weighted(other),
+            #[cfg(feature = "foma")]
+            other @ AnyTransducer::Foma(_) => into_weighted(other),
         };
         members.push(member);
     }

@@ -67,8 +67,7 @@ fn test8<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     left_mapping.subtract(&a, true)?;
 
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, HfstTransducer::<B>::new());
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let rule = Rule::new_mapping(&mapping_pair_vector)?;
 
@@ -164,8 +163,7 @@ fn restriction_test1<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("b", &tok)?,
         HfstTransducer::<B>::new_tokenized("c", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("bac", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("abc", &tok)?;
@@ -202,8 +200,7 @@ fn restriction_test1a<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("bk", &tok)?,
         HfstTransducer::<B>::new_tokenized("c", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("bkac", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("abkc", &tok)?;
@@ -240,8 +237,7 @@ fn restriction_test1b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("bb", &tok)?,
         HfstTransducer::<B>::new_tokenized("bb", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("bbabb", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("abb", &tok)?;
@@ -278,8 +274,7 @@ fn restriction_test2<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("b", &tok)?,
         HfstTransducer::<B>::new_tokenized("c", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("bakc", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("akbc", &tok)?;
@@ -316,8 +311,7 @@ fn restriction_test3<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("b", &tok)?,
         HfstTransducer::<B>::new_tokenized("c", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("c", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("bc", &tok)?;
@@ -352,8 +346,7 @@ fn restriction_test3a<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let epsilon = HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?;
 
     let context: HfstTransducerPair<B> = (HfstTransducer::<B>::new_tokenized("a", &tok)?, epsilon);
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("c", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("aa", &tok)?;
@@ -388,8 +381,7 @@ fn restriction_test3b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let epsilon = HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?;
 
     let context: HfstTransducerPair<B> = (HfstTransducer::<B>::new_tokenized("ab", &tok)?, epsilon);
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("ba", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("ab", &tok)?;
@@ -424,8 +416,7 @@ fn restriction_test3c<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let epsilon = HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?;
 
     let context: HfstTransducerPair<B> = (epsilon, HfstTransducer::<B>::new_tokenized("ab", &tok)?);
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("ba", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("ab", &tok)?;
@@ -466,9 +457,7 @@ fn restriction_test4<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("j", &tok)?,
         HfstTransducer::<B>::new_tokenized("k", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context1);
-    context_vector.push(context2);
+    let context_vector: HfstTransducerPairVector<B> = vec![context1, context2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("bac", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("jak", &tok)?;
@@ -510,9 +499,7 @@ fn restriction_test5<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         epsilon.clone(),
     );
     let context2: HfstTransducerPair<B> = (epsilon, HfstTransducer::<B>::new_tokenized("c", &tok)?);
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context1);
-    context_vector.push(context2);
+    let context_vector: HfstTransducerPairVector<B> = vec![context1, context2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("bac", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("ba", &tok)?;
@@ -554,9 +541,7 @@ fn restriction_test5a<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         epsilon.clone(),
     );
     let context2: HfstTransducerPair<B> = (epsilon, HfstTransducer::<B>::new_tokenized("a", &tok)?);
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context1);
-    context_vector.push(context2);
+    let context_vector: HfstTransducerPairVector<B> = vec![context1, context2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("aa", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("aaa", &tok)?;
@@ -598,9 +583,7 @@ fn restriction_test6<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     );
     let context2: HfstTransducerPair<B> =
         (epsilon, HfstTransducer::<B>::new_tokenized("ab", &tok)?);
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context1);
-    context_vector.push(context2);
+    let context_vector: HfstTransducerPairVector<B> = vec![context1, context2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("abab", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("ab", &tok)?;
@@ -658,8 +641,7 @@ fn restriction_test7<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("b", &tok)?,
         HfstTransducer::<B>::new_tokenized("c", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context1);
+    let context_vector: HfstTransducerPairVector<B> = vec![context1];
 
     let input1 = HfstTransducer::<B>::new_tokenized("bxbzycvc", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("xy", &tok)?;
@@ -702,9 +684,7 @@ fn restriction_test8<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("x", &tok)?,
         HfstTransducer::<B>::new_tokenized("y", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context1);
-    context_vector.push(context2);
+    let context_vector: HfstTransducerPairVector<B> = vec![context1, context2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("axxyyb", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("xxyy", &tok)?;
@@ -740,8 +720,7 @@ fn test10a<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
         HfstTransducer::<B>::new(),
     );
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let rule = Rule::new_mapping(&mapping_pair_vector)?;
 
@@ -774,8 +753,7 @@ fn test10b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new(),
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let rule = Rule::new_mapping(&mapping_pair_vector)?;
 
@@ -807,15 +785,13 @@ fn test9a<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("d@_EPSILON_SYMBOL_@", &tok)?,
         HfstTransducer::<B>::new_tokenized("ca", &tok)?,
     );
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("ca", &tok)?,
         HfstTransducer::<B>::new_tokenized("c", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let rule = Rule::new_mapping_context_repl_type(&mapping_pair_vector, &context_vector, REPL_UP)?;
 
@@ -851,22 +827,18 @@ fn test9b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("b", &tok)?,
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
-    let mut mapping_pair_vector1: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector1.push(mapping_pair1);
+    let mapping_pair_vector1: HfstTransducerPairVector<B> = vec![mapping_pair1];
 
     let mapping_pair2: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
         HfstTransducer::<B>::new_tokenized("b", &tok)?,
     );
-    let mut mapping_pair_vector2: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector2.push(mapping_pair2);
+    let mapping_pair_vector2: HfstTransducerPairVector<B> = vec![mapping_pair2];
 
     let rule1 = Rule::new_mapping(&mapping_pair_vector1)?;
     let rule2 = Rule::new_mapping(&mapping_pair_vector2)?;
 
-    let mut rule_vector: Vec<Rule<B>> = Vec::new();
-    rule_vector.push(rule1);
-    rule_vector.push(rule2);
+    let rule_vector: Vec<Rule<B>> = vec![rule1, rule2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("abba", &tok)?;
     let result1 = HfstTransducer::<B>::new_tokenized_pair("baab", "abba", &tok)?;
@@ -895,15 +867,13 @@ fn test1<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let left_mapping = HfstTransducer::<B>::new_tokenized("ab", &tok)?;
     let right_mapping = HfstTransducer::<B>::new_tokenized("x", &tok)?;
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("ab", &tok)?,
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("abababa", &tok)?;
 
@@ -955,15 +925,13 @@ fn test1b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let left_mapping = HfstTransducer::<B>::new_tokenized("a", &tok)?;
     let right_mapping = HfstTransducer::<B>::new_tokenized("x", &tok)?;
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("aaana", &tok)?;
 
@@ -1034,8 +1002,7 @@ fn test1c<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let left_mapping = HfstTransducer::<B>::new_tokenized("@_IDENTITY_SYMBOL_@", &tok)?;
     let right_mapping = HfstTransducer::<B>::new_tokenized("x", &tok)?;
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let input1 = HfstTransducer::<B>::new_tokenized("s", &tok)?;
     let result1 = HfstTransducer::<B>::new_tokenized_pair("s", "x", &tok)?;
@@ -1066,8 +1033,7 @@ fn test1d<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let left_mapping = HfstTransducer::<B>::new_tokenized("a", &tok)?;
     let right_mapping = HfstTransducer::<B>::new_tokenized("b", &tok)?;
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let input1 = HfstTransducer::<B>::new_tokenized(".#.ac", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("ac", &tok)?;
@@ -1078,8 +1044,7 @@ fn test1d<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized(".#.", &tok)?,
         HfstTransducer::<B>::new_tokenized("c", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let rule = Rule::new_mapping_context_repl_type(&mapping_pair_vector, &context_vector, REPL_UP)?;
 
@@ -1116,15 +1081,13 @@ fn test2a<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let right_mapping = HfstTransducer::<B>::new_tokenized("x", &tok)?;
 
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("aaaa", &tok)?;
     let input2 = HfstTransducer::<B>::new_tokenized("aaaaabaaaa", &tok)?;
@@ -1254,8 +1217,7 @@ fn test2b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let right_mapping = HfstTransducer::<B>::new_tokenized("x", &tok)?;
 
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let input1 = HfstTransducer::<B>::new_tokenized("aabbaa", &tok)?;
 
@@ -1310,8 +1272,7 @@ fn test2b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         HfstTransducer::<B>::new_tokenized("x", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let rule_down =
         Rule::new_mapping_context_repl_type(&mapping_pair_vector, &context_vector, REPL_DOWN)?;
@@ -1345,15 +1306,13 @@ fn test2c<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let right_mapping = HfstTransducer::<B>::new_tokenized("x", &tok)?;
 
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("c", &tok)?,
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("caav", &tok)?;
     let result1 = HfstTransducer::<B>::new_tokenized_pair("caav", "cx@_EPSILON_SYMBOL_@v", &tok)?;
@@ -1386,15 +1345,13 @@ fn test3a<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let right_mapping = HfstTransducer::<B>::new_tokenized("b", &tok)?;
 
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("x", &tok)?,
         HfstTransducer::<B>::new_tokenized("x", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("xaxax", &tok)?;
 
@@ -1437,8 +1394,7 @@ fn test3b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let right_mapping = HfstTransducer::<B>::new_tokenized("b", &tok)?;
 
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("x", &tok)?,
@@ -1448,9 +1404,7 @@ fn test3b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("y", &tok)?,
         HfstTransducer::<B>::new_tokenized("z", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
-    context_vector.push(context2);
+    let context_vector: HfstTransducerPairVector<B> = vec![context, context2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("axayaz", &tok)?;
 
@@ -1493,8 +1447,7 @@ fn test3c<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let right_mapping = HfstTransducer::<B>::new_tokenized("x", &tok)?;
 
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("xx", &tok)?,
@@ -1504,9 +1457,7 @@ fn test3c<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("y", &tok)?,
         HfstTransducer::<B>::new_tokenized("x", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
-    context_vector.push(context2);
+    let context_vector: HfstTransducerPairVector<B> = vec![context, context2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("axxayyax", &tok)?;
 
@@ -1548,15 +1499,13 @@ fn test3d<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let right_mapping = HfstTransducer::<B>::new_tokenized("b", &tok)?;
 
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("xaxax", &tok)?;
 
@@ -1598,15 +1547,13 @@ fn test4a<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let right_mapping = HfstTransducer::<B>::new_tokenized("a", &tok)?;
 
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("bbba", &tok)?;
 
@@ -1676,15 +1623,13 @@ fn test4b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let right_mapping = HfstTransducer::<B>::new_tokenized("a", &tok)?;
 
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let rule_up =
         Rule::new_mapping_context_repl_type(&mapping_pair_vector, &context_vector, REPL_UP)?;
@@ -1752,15 +1697,13 @@ fn test4c<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let right_mapping = HfstTransducer::<B>::new_tokenized("x", &tok)?;
 
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("ab", &tok)?,
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("abababa", &tok)?;
 
@@ -1839,15 +1782,13 @@ fn test6a<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let left_mapping = HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?;
     let right_mapping = HfstTransducer::<B>::new_tokenized("p", &tok)?;
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("m", &tok)?,
         HfstTransducer::<B>::new_tokenized("k", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("mk", &tok)?;
 
@@ -1889,15 +1830,13 @@ fn test6b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
 
     let right_mapping = HfstTransducer::<B>::new_tokenized("p", &tok)?;
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("mak", &tok)?;
 
@@ -1934,15 +1873,13 @@ fn test6c<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let left_mapping = HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?;
     let right_mapping = HfstTransducer::<B>::new_tokenized("b", &tok)?;
     let mapping_pair: HfstTransducerPair<B> = (left_mapping, right_mapping);
-    let mut mapping_pair_vector: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector.push(mapping_pair);
+    let mapping_pair_vector: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         HfstTransducer::<B>::new_tokenized("aa", &tok)?,
     );
-    let mut context_vector: HfstTransducerPairVector<B> = Vec::new();
-    context_vector.push(context);
+    let context_vector: HfstTransducerPairVector<B> = vec![context];
 
     let input1 = HfstTransducer::<B>::new_tokenized("aa", &tok)?;
 
@@ -1979,17 +1916,13 @@ fn test7a<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("c", &tok)?,
     );
 
-    let mut mapping_pair_vector1: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector1.push(mapping_pair1);
-    let mut mapping_pair_vector2: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector2.push(mapping_pair2);
+    let mapping_pair_vector1: HfstTransducerPairVector<B> = vec![mapping_pair1];
+    let mapping_pair_vector2: HfstTransducerPairVector<B> = vec![mapping_pair2];
 
     let rule1 = Rule::new_mapping(&mapping_pair_vector1)?;
     let rule2 = Rule::new_mapping(&mapping_pair_vector2)?;
 
-    let mut rule_vector: Vec<Rule<B>> = Vec::new();
-    rule_vector.push(rule1);
-    rule_vector.push(rule2);
+    let rule_vector: Vec<Rule<B>> = vec![rule1, rule2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("aab", &tok)?;
     let result1 = HfstTransducer::<B>::new_tokenized_pair("aab", "bbc", &tok)?;
@@ -2022,17 +1955,13 @@ fn test7b<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("c", &tok)?,
     );
 
-    let mut mapping_pair_vector1: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector1.push(mapping_pair1);
-    let mut mapping_pair_vector2: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector2.push(mapping_pair2);
+    let mapping_pair_vector1: HfstTransducerPairVector<B> = vec![mapping_pair1];
+    let mapping_pair_vector2: HfstTransducerPairVector<B> = vec![mapping_pair2];
 
     let rule1 = Rule::new_mapping(&mapping_pair_vector1)?;
     let rule2 = Rule::new_mapping(&mapping_pair_vector2)?;
 
-    let mut rule_vector: Vec<Rule<B>> = Vec::new();
-    rule_vector.push(rule1);
-    rule_vector.push(rule2);
+    let rule_vector: Vec<Rule<B>> = vec![rule1, rule2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("a", &tok)?;
     let result1 = HfstTransducer::<B>::new_tokenized_pair(
@@ -2070,17 +1999,13 @@ fn test7c<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let right_mapping2 = HfstTransducer::<B>::new_tokenized("y", &tok)?;
     let mapping_pair2: HfstTransducerPair<B> = (left_mapping2, right_mapping2);
 
-    let mut mapping_pair_vector1: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector1.push(mapping_pair1);
-    let mut mapping_pair_vector2: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector2.push(mapping_pair2);
+    let mapping_pair_vector1: HfstTransducerPairVector<B> = vec![mapping_pair1];
+    let mapping_pair_vector2: HfstTransducerPairVector<B> = vec![mapping_pair2];
 
     let rule1 = Rule::new_mapping(&mapping_pair_vector1)?;
     let rule2 = Rule::new_mapping(&mapping_pair_vector2)?;
 
-    let mut rule_vector: Vec<Rule<B>> = Vec::new();
-    rule_vector.push(rule1);
-    rule_vector.push(rule2);
+    let rule_vector: Vec<Rule<B>> = vec![rule1, rule2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("aaabbb", &tok)?;
     let result1 = HfstTransducer::<B>::new_tokenized_pair(
@@ -2129,10 +2054,8 @@ fn test7c<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("x", &tok)?,
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
     );
-    let mut context_vector1: HfstTransducerPairVector<B> = Vec::new();
-    context_vector1.push(context1);
-    let mut context_vector2: HfstTransducerPairVector<B> = Vec::new();
-    context_vector2.push(context2);
+    let context_vector1: HfstTransducerPairVector<B> = vec![context1];
+    let context_vector2: HfstTransducerPairVector<B> = vec![context2];
 
     // replace up
     let rule2a_up =
@@ -2140,9 +2063,7 @@ fn test7c<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let rule2b_up =
         Rule::new_mapping_context_repl_type(&mapping_pair_vector2, &context_vector2, REPL_UP)?;
 
-    let mut rule_vector2: Vec<Rule<B>> = Vec::new();
-    rule_vector2.push(rule2a_up);
-    rule_vector2.push(rule2b_up);
+    let rule_vector2: Vec<Rule<B>> = vec![rule2a_up, rule2b_up];
 
     let replace_tr = xr::replace_rule_vector(&rule_vector2, false)?;
     assert!(compose_minimize(&input2, &replace_tr)?.compare(&result2, true)?);
@@ -2154,9 +2075,7 @@ fn test7c<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let rule2b_down =
         Rule::new_mapping_context_repl_type(&mapping_pair_vector2, &context_vector2, REPL_DOWN)?;
 
-    let mut rule_vector3: Vec<Rule<B>> = Vec::new();
-    rule_vector3.push(rule2a_down);
-    rule_vector3.push(rule2b_down);
+    let rule_vector3: Vec<Rule<B>> = vec![rule2a_down, rule2b_down];
 
     let replace_tr = xr::replace_rule_vector(&rule_vector3, false)?;
     assert!(compose_minimize(&input2, &replace_tr)?.compare(&result3, true)?);
@@ -2187,10 +2106,8 @@ fn test7d<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("b", &tok)?,
     );
 
-    let mut mapping_pair_vector1: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector1.push(mapping_pair1);
-    let mut mapping_pair_vector2: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector2.push(mapping_pair2);
+    let mapping_pair_vector1: HfstTransducerPairVector<B> = vec![mapping_pair1];
+    let mapping_pair_vector2: HfstTransducerPairVector<B> = vec![mapping_pair2];
 
     let context1a: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
@@ -2200,25 +2117,20 @@ fn test7d<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("ab", &tok)?,
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
     );
-    let mut context_vector1: HfstTransducerPairVector<B> = Vec::new();
-    context_vector1.push(context1a);
-    context_vector1.push(context1b);
+    let context_vector1: HfstTransducerPairVector<B> = vec![context1a, context1b];
 
     let context2: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
-    let mut context_vector2: HfstTransducerPairVector<B> = Vec::new();
-    context_vector2.push(context2);
+    let context_vector2: HfstTransducerPairVector<B> = vec![context2];
 
     let rule1 =
         Rule::new_mapping_context_repl_type(&mapping_pair_vector1, &context_vector1, REPL_DOWN)?;
     let rule2 =
         Rule::new_mapping_context_repl_type(&mapping_pair_vector2, &context_vector2, REPL_DOWN)?;
 
-    let mut rule_vector: Vec<Rule<B>> = Vec::new();
-    rule_vector.push(rule1);
-    rule_vector.push(rule2);
+    let rule_vector: Vec<Rule<B>> = vec![rule1, rule2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?;
 
@@ -2251,17 +2163,13 @@ fn test7e<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("b", &tok)?,
     );
 
-    let mut mapping_pair_vector1: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector1.push(mapping_pair1);
-    let mut mapping_pair_vector2: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector2.push(mapping_pair2);
+    let mapping_pair_vector1: HfstTransducerPairVector<B> = vec![mapping_pair1];
+    let mapping_pair_vector2: HfstTransducerPairVector<B> = vec![mapping_pair2];
 
     let rule1 = Rule::new_mapping(&mapping_pair_vector1)?;
     let rule2 = Rule::new_mapping(&mapping_pair_vector2)?;
 
-    let mut rule_vector: Vec<Rule<B>> = Vec::new();
-    rule_vector.push(rule1);
-    rule_vector.push(rule2);
+    let rule_vector: Vec<Rule<B>> = vec![rule1, rule2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("ak", &tok)?;
     let tmp = HfstTransducer::<B>::new_tokenized_pair("ak", "xx", &tok)?;
@@ -2296,17 +2204,13 @@ fn test7f<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
 
-    let mut mapping_pair_vector1: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector1.push(mapping_pair1);
-    let mut mapping_pair_vector2: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector2.push(mapping_pair2);
+    let mapping_pair_vector1: HfstTransducerPairVector<B> = vec![mapping_pair1];
+    let mapping_pair_vector2: HfstTransducerPairVector<B> = vec![mapping_pair2];
 
     let rule1 = Rule::new_mapping(&mapping_pair_vector1)?;
     let rule2 = Rule::new_mapping(&mapping_pair_vector2)?;
 
-    let mut rule_vector: Vec<Rule<B>> = Vec::new();
-    rule_vector.push(rule1);
-    rule_vector.push(rule2);
+    let rule_vector: Vec<Rule<B>> = vec![rule1, rule2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("aabbaa", &tok)?;
     let result1 = HfstTransducer::<B>::new_tokenized_pair("aabbaa", "bbaabb", &tok)?;
@@ -2339,17 +2243,13 @@ fn test7g<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("b", &tok)?,
     );
 
-    let mut mapping_pair_vector1: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector1.push(mapping_pair1);
-    let mut mapping_pair_vector2: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector2.push(mapping_pair2);
+    let mapping_pair_vector1: HfstTransducerPairVector<B> = vec![mapping_pair1];
+    let mapping_pair_vector2: HfstTransducerPairVector<B> = vec![mapping_pair2];
 
     let rule1 = Rule::new_mapping(&mapping_pair_vector1)?;
     let rule2 = Rule::new_mapping(&mapping_pair_vector2)?;
 
-    let mut rule_vector: Vec<Rule<B>> = Vec::new();
-    rule_vector.push(rule1);
-    rule_vector.push(rule2);
+    let rule_vector: Vec<Rule<B>> = vec![rule1, rule2];
 
     let input1 = HfstTransducer::<B>::new_tokenized("a", &tok)?;
     let mut result1 = HfstTransducer::<B>::new_tokenized_pair("a", "b", &tok)?;
@@ -2391,8 +2291,7 @@ fn test7h<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
-    let mut mapping_pair_vector1: HfstTransducerPairVector<B> = Vec::new();
-    mapping_pair_vector1.push(mapping_pair1);
+    let mapping_pair_vector1: HfstTransducerPairVector<B> = vec![mapping_pair1];
 
     let rule = Rule::new_mapping(&mapping_pair_vector1)?;
 
@@ -2451,7 +2350,7 @@ fn accepts_mapping<B: AlgebraBackend>(
 ) -> Result<bool, hfst::error::Error> {
     let mut missing = pair.clone();
     missing.subtract(relation, true)?.minimize()?;
-    Ok(missing.compare(&HfstTransducer::<B>::new(), true)?)
+    missing.compare(&HfstTransducer::<B>::new(), true)
 }
 
 // [] -> a || _  (no context): obligatory == optional, identity + free insertion.
@@ -2463,8 +2362,7 @@ fn test571_epsilon_lhs_no_context<B: AlgebraBackend>() -> Result<(), hfst::error
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
-    let mut mpv: HfstTransducerPairVector<B> = Vec::new();
-    mpv.push(mapping_pair);
+    let mpv: HfstTransducerPairVector<B> = vec![mapping_pair];
     let rule = Rule::new_mapping(&mpv)?;
 
     let obligatory = xr::replace_rule(&rule, false)?;
@@ -2522,15 +2420,13 @@ fn test571_context_full_unchanged<B: AlgebraBackend>() -> Result<(), hfst::error
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
-    let mut mpv: HfstTransducerPairVector<B> = Vec::new();
-    mpv.push(mapping_pair);
+    let mpv: HfstTransducerPairVector<B> = vec![mapping_pair];
 
     let context: HfstTransducerPair<B> = (
         HfstTransducer::<B>::new_tokenized("b", &tok)?,
         HfstTransducer::<B>::new_tokenized("c", &tok)?,
     );
-    let mut ctxv: HfstTransducerPairVector<B> = Vec::new();
-    ctxv.push(context);
+    let ctxv: HfstTransducerPairVector<B> = vec![context];
 
     let rule = Rule::new_mapping_context_repl_type(&mpv, &ctxv, REPL_UP)?;
     let obligatory = xr::replace_rule(&rule, false)?;
@@ -2564,8 +2460,7 @@ fn test571_optional_unchanged<B: AlgebraBackend>() -> Result<(), hfst::error::Er
         HfstTransducer::<B>::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?,
         HfstTransducer::<B>::new_tokenized("a", &tok)?,
     );
-    let mut mpv: HfstTransducerPairVector<B> = Vec::new();
-    mpv.push(mapping_pair);
+    let mpv: HfstTransducerPairVector<B> = vec![mapping_pair];
     let rule = Rule::new_mapping(&mpv)?;
 
     let optional = xr::replace_rule(&rule, true)?;

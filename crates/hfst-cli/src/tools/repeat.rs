@@ -65,13 +65,13 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Repetition options:\n  -f, --from=FNUM   repeat at least FNUM times\n  -t, --to=TNUM     repeat at most TNUM times\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(
         msg,
         "FNUM and TNUM must be positive integers or infinities as parsed by strtod(3)\nif FNUM is omitted it defaults to 0, if TNUM is omitted it defaults to Inf\nFNUM must be less than TNUM\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-repeat.parse-options-fn]
@@ -258,9 +258,9 @@ fn process_stream(
         }, else => {
             // Unreachable: the optimized-lookup stream rejection already
             // returned before the loop; keep its text for safety.
-            let _ = write!(
+            let _ = writeln!(
                 std::io::stderr(),
-                "Error: hfst-repeat cannot process transducers that are in optimized lookup format.\n"
+                "Error: hfst-repeat cannot process transducers that are in optimized lookup format."
             );
             return 1;
         });

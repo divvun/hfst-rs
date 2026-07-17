@@ -107,7 +107,7 @@ fn print_usage(common: &CommonOptions) {
          \x20 -p  --profile           Produce profiling data\n"
     );
     let _ = write!(msg, "Use standard streams for input and output.\n\n");
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-pmatch.match-and-print-fn]
@@ -128,9 +128,9 @@ fn match_and_print(
             "{}",
             container.do_match(input_text, options.time_cutoff, options.weight_cutoff)
         );
-        let _ = write!(outstream, "\n");
+        let _ = writeln!(outstream);
         if options.blankline_separated {
-            let _ = write!(outstream, "\n");
+            let _ = writeln!(outstream);
         }
     } else {
         let locations = container.locate(input_text, options.time_cutoff, options.weight_cutoff);
@@ -143,7 +143,7 @@ fn match_and_print(
             (options.print_weights as i32) != 0,
         );
         if printed_something {
-            let _ = write!(outstream, "\n");
+            let _ = writeln!(outstream);
         }
     }
 }
@@ -163,11 +163,8 @@ fn process_input(
         // active path reads with hfst_getline from stdin. read_until(b'\n')
         // mirrors getline's byte semantics; cstr did a lossy UTF-8 conversion.
         let mut raw_bytes: Vec<u8> = Vec::new();
-        let read = match input.read_until(b'\n', &mut raw_bytes) {
-            Ok(n) => n,
-            Err(_) => 0,
-        };
-        if !(read > 0) {
+        let read = input.read_until(b'\n', &mut raw_bytes).unwrap_or_default();
+        if read == 0 {
             break;
         }
 
@@ -268,32 +265,32 @@ fn parse_options(
         } else if c == b'b' as i32 {
             options.max_context = opt.optarg().trim().parse::<i32>().unwrap_or(0);
             if options.max_context < 0 {
-                eprint!("Invalid argument for --max-context\n");
+                eprintln!("Invalid argument for --max-context");
                 return Err(1);
             }
         } else if c == b'r' as i32 {
             options.max_recursion = opt.optarg().trim().parse::<i32>().unwrap_or(0);
             if options.max_recursion < 0 {
-                eprint!("Invalid argument for --max-recursion\n");
+                eprintln!("Invalid argument for --max-recursion");
                 return Err(1);
             }
         } else if c == b'W' as i32 {
             options.weight_cutoff = opt.optarg().trim().parse::<f64>().unwrap_or(0.0) as Weight;
             if options.weight_cutoff < 0.0 {
-                eprint!("Invalid argument for --weight-cutoff\n");
+                eprintln!("Invalid argument for --weight-cutoff");
                 return Err(1);
             }
             // NOTE: bug-for-bug — the C 'case W' has no 'break', so it
             // falls through into 'case t' (time-cutoff) below.
             options.time_cutoff = opt.optarg().trim().parse::<f64>().unwrap_or(0.0);
             if options.time_cutoff < 0.0 {
-                eprint!("Invalid argument for --time-cutoff\n");
+                eprintln!("Invalid argument for --time-cutoff");
                 return Err(1);
             }
         } else if c == b't' as i32 {
             options.time_cutoff = opt.optarg().trim().parse::<f64>().unwrap_or(0.0);
             if options.time_cutoff < 0.0 {
-                eprint!("Invalid argument for --time-cutoff\n");
+                eprintln!("Invalid argument for --time-cutoff");
                 return Err(1);
             }
         } else if c == b'p' as i32 {
@@ -304,11 +301,11 @@ fn parse_options(
     }
     // no more options, we should now be at the input filename
     if (opt.optind + 1) < args.len() {
-        eprint!("More than one input file given\n");
+        eprintln!("More than one input file given");
         Err(1)
     } else if (opt.optind + 1) == args.len() {
         if !common.input_filename.is_empty() {
-            eprint!("More than one input file given\n");
+            eprintln!("More than one input file given");
             Err(1)
         } else {
             common.input_filename = args[opt.optind].clone();
@@ -321,7 +318,7 @@ fn parse_options(
             Ok((common, options))
         }
     } else if common.input_filename.is_empty() {
-        eprint!("No input file given\n");
+        eprintln!("No input file given");
         Err(1)
     } else {
         Ok((common, options))

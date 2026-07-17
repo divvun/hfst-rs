@@ -36,9 +36,9 @@ fn print_usage(common: &CommonOptions) {
     );
     print_common_program_options(&mut *msg);
     print_common_unary_program_options(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-preprocess-for-optimized-lookup-format.parse-options-fn]
@@ -154,9 +154,9 @@ fn process_stream(
             // The C++ ran its algebra on whatever type arrived and threw
             // FunctionNotImplemented (uncaught) on optimized-lookup input;
             // report the standard OL rejection instead.
-            let _ = write!(
+            let _ = writeln!(
                 std::io::stderr(),
-                "Error: hfst-preprocess-for-optimized-lookup-format cannot process transducers that are in optimized lookup format.\n"
+                "Error: hfst-preprocess-for-optimized-lookup-format cannot process transducers that are in optimized lookup format."
             );
             return 1;
         });

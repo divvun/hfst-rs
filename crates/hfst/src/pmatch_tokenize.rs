@@ -175,15 +175,13 @@ pub fn print_nonmatching_sequence(str: &str, outstream: &mut dyn Write, s: &Toke
     } else if s.output_format == OutputFormat::giellacg {
         let _ = write!(outstream, ":");
         print_escaping_newlines(str, outstream);
-    } else if s.output_format == OutputFormat::visl {
-        let _ = write!(outstream, "{}", str);
-    } else if s.output_format == OutputFormat::conllu {
+    } else if s.output_format == OutputFormat::visl || s.output_format == OutputFormat::conllu {
         let _ = write!(outstream, "{}", str);
     } else if s.output_format == OutputFormat::finnpos {
         let _ = write!(outstream, "{}\t_\t_\t_\t_", str);
     }
     //    std::cerr << "from print_nonmatching_sequence\n";
-    let _ = write!(outstream, "\n");
+    let _ = writeln!(outstream);
 }
 
 // [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.location-compare-fn]
@@ -265,7 +263,7 @@ pub fn dedupe_locations(locations: &LocationVector, s: &TokenizeSettings) -> Loc
             set_insert(&mut ls, location_compare, loc);
         }
         let mut uniq: LocationVector = Vec::new();
-        uniq.extend(ls.into_iter());
+        uniq.extend(ls);
         uniq
     } else {
         let mut ls: Vec<Location> = Vec::new();
@@ -273,7 +271,7 @@ pub fn dedupe_locations(locations: &LocationVector, s: &TokenizeSettings) -> Loc
             set_insert(&mut ls, location_compare_ignoring_weights, loc);
         }
         let mut uniq: LocationVector = Vec::new();
-        uniq.extend(ls.into_iter());
+        uniq.extend(ls);
         // std::sort with location_compare_using_only_weights; emulate with
         // sort_by mapping the bool-less comparator to Ordering.
         uniq.sort_by(|a, b| {
@@ -617,9 +615,7 @@ pub fn print_reading_giellacg(
     s: &TokenizeSettings,
 ) -> (SplitPoints, usize) {
     let mut bt_its: SplitPoints = BTreeSet::new();
-    if loc.output.is_empty() {
-        return (bt_its, indent);
-    } else if loc.output.contains(" ??") && indent == 1 {
+    if loc.output.is_empty() || (loc.output.contains(" ??") && indent == 1) {
         return (bt_its, indent);
     }
     // The C++ uses iterators over output_symbol_strings/input_symbol_strings;
@@ -1109,9 +1105,9 @@ pub fn print_location_vector(
             let _ = writeln!(outstream);
         }
         let _ = writeln!(outstream);
-    } else if s.output_format == OutputFormat::giellacg && !locations.is_empty() {
-        print_location_vector_giellacg(container, locations, outstream, s);
-    } else if s.output_format == OutputFormat::visl && !locations.is_empty() {
+    } else if (s.output_format == OutputFormat::giellacg || s.output_format == OutputFormat::visl)
+        && !locations.is_empty()
+    {
         print_location_vector_giellacg(container, locations, outstream, s);
     } else if s.output_format == OutputFormat::xerox {
         let mut best_weight: f32 = f32::MAX;
@@ -1189,11 +1185,8 @@ pub fn print_location_vector(
         );
         let _ = write!(
             outstream,
-            "\t{}\t{}\t{}\t{}",
-            empty_to_underscore(fetch_and_kill_feats(&mut best_location.output)),
-            "_", // HEAD
-            "_", // DEPREL
-            "_"  // DEPS
+            "\t{}\t_\t_\t_",
+            empty_to_underscore(fetch_and_kill_feats(&mut best_location.output)) // DEPS
         );
         let _ = write!(
             outstream,
@@ -1507,7 +1500,7 @@ pub fn process_input_visl(
         buf.clear();
         // C: hfst_getline keeps the trailing newline; Ok(0) at EOF == len<=0.
         let n = input.read_until(b'\n', &mut buf).unwrap_or(0);
-        if !(n > 0) {
+        if n == 0 {
             break;
         }
         let mut line = String::from_utf8_lossy(&buf).into_owned();
@@ -1521,7 +1514,7 @@ pub fn process_input_visl(
                 match_and_print(container, outstream, &line, s);
             }
         } else {
-            let _ = write!(outstream, "\n");
+            let _ = writeln!(outstream);
         }
         let _ = outstream.flush();
 
@@ -1558,7 +1551,7 @@ pub fn process_input_0delim(
         buf.clear();
         // C: hfst_getdelim keeps the trailing '\0'; Ok(0) at EOF == len<=0.
         let len = input.read_until(b'\0', &mut buf).unwrap_or(0) as isize;
-        if !(len > 0) {
+        if len <= 0 {
             break;
         }
         let bytes: &[u8] = &buf;
@@ -1658,19 +1651,19 @@ pub fn process_input_stream(
     if s.output_format == OutputFormat::giellacg || is.superblanks {
         if is.superblanks {
             if is.verbose {
-                let _ = write!(msg, "Processign giellacg with superblanks\n");
+                let _ = writeln!(msg, "Processign giellacg with superblanks");
             }
             return process_input_0delim(container, input, outstream, true, s, is.verbose);
         } else {
             if is.verbose {
-                let _ = write!(msg, "Processign giellacg without superblanks\n");
+                let _ = writeln!(msg, "Processign giellacg without superblanks");
             }
             return process_input_0delim(container, input, outstream, false, s, is.verbose);
         }
     }
     if s.output_format == OutputFormat::visl {
         if is.verbose {
-            let _ = write!(msg, "Processign VISL CG 3\n");
+            let _ = writeln!(msg, "Processign VISL CG 3");
         }
         return process_input_visl(container, input, outstream, s);
     }
@@ -1678,7 +1671,7 @@ pub fn process_input_stream(
     let mut line = String::new();
     if is.blankline_separated {
         if is.verbose {
-            let _ = write!(msg, "Processing blankline separated input\n");
+            let _ = writeln!(msg, "Processing blankline separated input");
         }
         loop {
             line.clear();
@@ -1701,7 +1694,7 @@ pub fn process_input_stream(
     } else {
         // newline or non-separated
         if is.verbose {
-            let _ = write!(msg, "Processing non-separated input\n");
+            let _ = writeln!(msg, "Processing non-separated input");
         }
         loop {
             line.clear();

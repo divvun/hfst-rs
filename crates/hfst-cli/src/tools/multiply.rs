@@ -54,13 +54,13 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Archive options:\n  -n, --n-last=NUMBER   Duplicate each transducer NUMBER times\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(
+    let _ = writeln!(
         msg,
-        "NUMBER must be a positive integer as parsed by strtoul base 10\n"
+        "NUMBER must be a positive integer as parsed by strtoul base 10"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-multiply.parse-options-fn]
@@ -155,9 +155,9 @@ fn process_stream(
         }, else => {
             // Unreachable: the optimized-lookup stream rejection already
             // returned before the loop; keep its text for safety.
-            let _ = write!(
+            let _ = writeln!(
                 std::io::stderr(),
-                "Error: hfst-multiply cannot process transducers that are in optimized lookup format.\n"
+                "Error: hfst-multiply cannot process transducers that are in optimized lookup format."
             );
             return 1;
         });

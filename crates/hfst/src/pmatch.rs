@@ -382,6 +382,12 @@ pub struct LocalVariables {
 // ==================== PmatchAlphabet (impl from workflow body agent) ====================
 #[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
+impl Default for PmatchAlphabet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PmatchAlphabet {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-alphabet.pmatch-alphabet-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-alphabet.pmatch-alphabet-fn]
@@ -899,7 +905,7 @@ impl PmatchAlphabet {
             let mut candidate_for_list: SymbolNumber = 1;
             while (candidate_for_list as usize) < self.base.symbol_table.len() {
                 if Self::is_printable(&self.base.symbol_table[candidate_for_list as usize])
-                    && !list_symbols.iter().any(|&x| x == candidate_for_list)
+                    && !list_symbols.contains(&candidate_for_list)
                 {
                     excl_symbols.push(candidate_for_list);
                     if self.symbol2lists[candidate_for_list as usize] == NO_SYMBOL_NUMBER {
@@ -957,7 +963,7 @@ impl PmatchAlphabet {
             let mut candidate_for_list: SymbolNumber = 1;
             while (candidate_for_list as usize) < self.base.symbol_table.len() {
                 if Self::is_printable(&self.base.symbol_table[candidate_for_list as usize])
-                    && !list_symbols.iter().any(|&x| x == candidate_for_list)
+                    && !list_symbols.contains(&candidate_for_list)
                 {
                     excl_symbols.push(candidate_for_list);
                     if self.symbol2lists[candidate_for_list as usize] == NO_SYMBOL_NUMBER {
@@ -1108,23 +1114,16 @@ impl PmatchAlphabet {
             } else if self.is_end_tag_sym(output) {
                 if count_patterns && input_contained_printable_symbol {
                     let key = self.start_tag(output);
-                    if !pattern_counts.contains_key(&key) {
-                        pattern_counts.insert(key, 1);
-                    } else {
-                        *pattern_counts
-                            .get_mut(&key)
-                            .expect("key present in else branch") += 1;
-                    }
+                    *pattern_counts.entry(key).or_insert(0) += 1;
                 }
-                let pos: u32;
-                if start_tag_pos.is_empty() {
+                let pos: u32 = if start_tag_pos.is_empty() {
                     warn!("end tag without start tag");
-                    pos = 0;
+                    0
                 } else {
-                    pos = *start_tag_pos
+                    *start_tag_pos
                         .last()
-                        .expect("stack non-empty in else branch");
-                }
+                        .expect("stack non-empty in else branch")
+                };
                 if delete_patterns {
                     let how_much_to_delete = retval.len() - pos as usize;
                     retval.replace_range(
@@ -1170,13 +1169,7 @@ impl PmatchAlphabet {
             if self.is_end_tag_sym(output) {
                 if count_patterns {
                     let key = self.start_tag(output);
-                    if !pattern_counts.contains_key(&key) {
-                        pattern_counts.insert(key, 1);
-                    } else {
-                        *pattern_counts
-                            .get_mut(&key)
-                            .expect("key present in else branch") += 1;
-                    }
+                    *pattern_counts.entry(key).or_insert(0) += 1;
                 }
                 retval.tag = self.start_tag(output);
                 continue;
@@ -1213,6 +1206,12 @@ impl PmatchAlphabet {
 // ==================== PmatchContainer (impl from workflow body agent) ====================
 #[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
+impl Default for PmatchContainer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PmatchContainer {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
@@ -1252,7 +1251,7 @@ impl PmatchContainer {
             c.alphabet.get_symbol_table(),
             c.orig_symbol_count,
         ));
-        if properties.get("initial-symbols").is_some() {
+        if properties.contains_key("initial-symbols") {
             let initial = properties["initial-symbols"].clone();
             c.collect_first_symbols(&initial);
         }
@@ -1388,8 +1387,8 @@ impl PmatchContainer {
             // The TOP member: the last transducer named "TOP" (NULL == none).
             let mut top_index: Option<usize> = None;
             // We collect all the symbols and also locate the TOP member.
-            for i in 0..transducers.len() {
-                let string_set = transducers[i].get_alphabet()?;
+            for (i, transducer) in transducers.iter().enumerate() {
+                let string_set = transducer.get_alphabet()?;
                 for sym in string_set.iter() {
                     if !symbols_seen.contains(sym) {
                         let ht = crate::hfst_transducer::HfstTransducer::new_symbol(sym)?;
@@ -1397,7 +1396,7 @@ impl PmatchContainer {
                         symbols_seen.insert(sym.clone());
                     }
                 }
-                if transducers[i].get_name() == "TOP" {
+                if transducer.get_name() == "TOP" {
                     top_index = Some(i);
                 }
             }
@@ -1453,12 +1452,12 @@ impl PmatchContainer {
             // alphabets or encoders because those should be identical. Members
             // named "TOP" left a NULL slot in the C++ 'temporaries' vector and
             // are skipped here.
-            for i in 0..transducers.len() {
-                if transducers[i].get_name() == "TOP" {
+            for transducer in &transducers {
+                if transducer.get_name() == "TOP" {
                     // there's a NULL where TOP should be
                     continue;
                 }
-                let temp = transducers[i].clone();
+                let temp = transducer.clone();
                 let intermediate_tmp =
                     ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&temp)?;
                 let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
@@ -1469,7 +1468,7 @@ impl PmatchContainer {
                 )?;
                 let transitions = harmonized_tmp.copy_transitionw_table()?;
                 let indices = harmonized_tmp.copy_windex_table()?;
-                let name = transducers[i].get_name();
+                let name = transducer.get_name();
                 let rtn = PmatchTransducer::new_from_vectors(
                     transitions.get_vector().clone(),
                     indices.get_vector().clone(),
@@ -2516,8 +2515,7 @@ impl PmatchTransducer {
         };
         // (kept to mirror C++ field assignment order; all already set above)
         local_variables.tape_step = 1;
-        let mut local_stack: Vec<LocalVariables> = Vec::new();
-        local_stack.push(local_variables);
+        let local_stack: Vec<LocalVariables> = vec![local_variables];
 
         // Allocate and read tables
         let mut indextab = vec![0u8; TransitionWIndex::SIZE * index_table_size as usize];
@@ -2575,8 +2573,7 @@ impl PmatchTransducer {
             negative_context_success: false,
             pending_passthrough: false,
         };
-        let mut local_stack: Vec<LocalVariables> = Vec::new();
-        local_stack.push(local_variables);
+        let local_stack: Vec<LocalVariables> = vec![local_variables];
 
         PmatchTransducer {
             name,
@@ -2952,15 +2949,14 @@ impl PmatchTransducer {
             .last()
             .expect("local_stack is non-empty during a match walk")
             .context;
-        if ctx == ContextChecking::NLC || ctx == ContextChecking::NRC {
-            if !self
+        if (ctx == ContextChecking::NLC || ctx == ContextChecking::NRC)
+            && !self
                 .local_stack
                 .last()
                 .expect("local_stack is non-empty during a match walk")
                 .negative_context_success
-            {
-                schedule_passthrough = true;
-            }
+        {
+            schedule_passthrough = true;
         }
         // Pop the local stack that got pushed by entering the context
         self.local_stack.pop();
@@ -3139,7 +3135,7 @@ impl PmatchTransducer {
             container.call_counter += 1;
             // Have we spent too much time?
             if container.limit_reached
-                || (container.call_counter % 1000000 == 0
+                || (container.call_counter.is_multiple_of(1000000)
                     && (container.candidate_found()
                         // if we have at least something, stop doing more work
                         && container
@@ -3188,13 +3184,11 @@ impl PmatchTransducer {
             container.set_weight(old_weight);
         }
 
-        let input;
         if !container.has_queued_input(input_pos) {
             container.unrecurse();
             return;
-        } else {
-            input = container.input[input_pos as usize];
         }
+        let input = container.input[input_pos as usize];
 
         if container.alphabet.symbol2lists[input as usize] != NO_SYMBOL_NUMBER {
             // At least one symbol list could allow this symbol
@@ -3204,47 +3198,44 @@ impl PmatchTransducer {
                 self.take_transitions(*it, input_pos, tape_pos, i + 1, container);
             }
         }
-        if container.alphabet.get_special(SpecialSymbol::UnicodeAlpha) != NO_SYMBOL_NUMBER {
-            if container.alphabet.is_unicode_alpha(input) {
-                let s = container.alphabet.get_special(SpecialSymbol::UnicodeAlpha);
-                self.take_transitions(s, input_pos, tape_pos, i + 1, container);
-            }
+        if container.alphabet.get_special(SpecialSymbol::UnicodeAlpha) != NO_SYMBOL_NUMBER
+            && container.alphabet.is_unicode_alpha(input)
+        {
+            let s = container.alphabet.get_special(SpecialSymbol::UnicodeAlpha);
+            self.take_transitions(s, input_pos, tape_pos, i + 1, container);
         }
         if container
             .alphabet
             .get_special(SpecialSymbol::UnicodeUpperAlpha)
             != NO_SYMBOL_NUMBER
+            && container.alphabet.is_unicode_upperalpha(input)
         {
-            if container.alphabet.is_unicode_upperalpha(input) {
-                let s = container
-                    .alphabet
-                    .get_special(SpecialSymbol::UnicodeUpperAlpha);
-                self.take_transitions(s, input_pos, tape_pos, i + 1, container);
-            }
+            let s = container
+                .alphabet
+                .get_special(SpecialSymbol::UnicodeUpperAlpha);
+            self.take_transitions(s, input_pos, tape_pos, i + 1, container);
         }
         if container
             .alphabet
             .get_special(SpecialSymbol::UnicodeLowerAlpha)
             != NO_SYMBOL_NUMBER
+            && container.alphabet.is_unicode_loweralpha(input)
         {
-            if container.alphabet.is_unicode_loweralpha(input) {
-                let s = container
-                    .alphabet
-                    .get_special(SpecialSymbol::UnicodeLowerAlpha);
-                self.take_transitions(s, input_pos, tape_pos, i + 1, container);
-            }
+            let s = container
+                .alphabet
+                .get_special(SpecialSymbol::UnicodeLowerAlpha);
+            self.take_transitions(s, input_pos, tape_pos, i + 1, container);
         }
         if container
             .alphabet
             .get_special(SpecialSymbol::UnicodeWhitespace)
             != NO_SYMBOL_NUMBER
+            && container.alphabet.is_unicode_whitespace(input)
         {
-            if container.alphabet.is_unicode_whitespace(input) {
-                let s = container
-                    .alphabet
-                    .get_special(SpecialSymbol::UnicodeWhitespace);
-                self.take_transitions(s, input_pos, tape_pos, i + 1, container);
-            }
+            let s = container
+                .alphabet
+                .get_special(SpecialSymbol::UnicodeWhitespace);
+            self.take_transitions(s, input_pos, tape_pos, i + 1, container);
         }
 
         // The "normal" case where we have a regular input symbol
@@ -3344,21 +3335,17 @@ impl PmatchTransducer {
             .expect("local_stack is non-empty during a match walk")
             .context
         {
-            ContextChecking::LC => {
-                if symbol == container.alphabet.get_special(SpecialSymbol::LC_exit) {
-                    self.exit_context();
-                    true
-                } else {
-                    false
-                }
+            ContextChecking::LC
+                if symbol == container.alphabet.get_special(SpecialSymbol::LC_exit) =>
+            {
+                self.exit_context();
+                true
             }
-            ContextChecking::RC => {
-                if symbol == container.alphabet.get_special(SpecialSymbol::RC_exit) {
-                    self.exit_context();
-                    true
-                } else {
-                    false
-                }
+            ContextChecking::RC
+                if symbol == container.alphabet.get_special(SpecialSymbol::RC_exit) =>
+            {
+                self.exit_context();
+                true
             }
             // NOTE: faithful to C++: the NRC case has no 'else'/'break', so on a
             // non-matching symbol it falls through to the NLC case (and then to
@@ -3390,7 +3377,8 @@ impl PmatchTransducer {
                 }
                 false
             }
-            _ => false,
+            // `none`, plus `LC`/`RC` whose exit-symbol guards above did not fire.
+            ContextChecking::none | ContextChecking::LC | ContextChecking::RC => false,
         }
     }
 
@@ -3580,7 +3568,7 @@ pub fn print_locate_matches(
             if print_weights {
                 let _ = write!(outstream, "|{}", it[0].weight);
             }
-            let _ = write!(outstream, "\n");
+            let _ = writeln!(outstream);
         }
     }
     printed_something

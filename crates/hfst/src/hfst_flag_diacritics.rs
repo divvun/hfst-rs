@@ -127,10 +127,12 @@ impl FdOperation {
             b'U' => {}
             _ => return false,
         }
-        if diacritic_string.rfind('.') == Some(2) {
-            if bytes[1] != b'R' && bytes[1] != b'D' && bytes[1] != b'C' {
-                return false;
-            }
+        if diacritic_string.rfind('.') == Some(2)
+            && bytes[1] != b'R'
+            && bytes[1] != b'D'
+            && bytes[1] != b'C'
+        {
+            return false;
         }
         true
     }
@@ -325,11 +327,11 @@ impl<T: Ord + Clone> FdTable<T> {
         }
     }
 
-    pub fn is_valid_string_symbols(&self, symbols: &Vec<T>) -> bool {
+    pub fn is_valid_string_symbols(&self, symbols: &[T]) -> bool {
         let mut state: FdState<T> = FdState::new(self);
 
-        for i in 0..symbols.len() {
-            if !state.apply_operation_symbol(symbols[i].clone()) {
+        for symbol in symbols {
+            if !state.apply_operation_symbol(symbol.clone()) {
                 break;
             }
         }
@@ -425,8 +427,8 @@ impl<T: Ord + Clone> FdState<T> {
 
     // [spec:hfst:def:hfst-flag-diacritics.hfst.fd-state.assign-values-fn]
     // [spec:hfst:sem:hfst-flag-diacritics.hfst.fd-state.assign-values-fn]
-    pub fn assign_values(&mut self, vals: &Vec<FdValue>) {
-        self.values = vals.clone();
+    pub fn assign_values(&mut self, vals: &[FdValue]) {
+        self.values = vals.to_vec();
         if self.values.len() != self.num_features as usize {
             self.error_flag = true;
         }
@@ -451,7 +453,7 @@ impl<T: Ord + Clone> FdState<T> {
             }
             FdOperator::Nop => {
                 // negative set (literally, in this implementation)
-                self.values[op.Feature() as usize] = -1 * op.Value();
+                self.values[op.Feature() as usize] = -op.Value();
                 true
             }
             FdOperator::Rop => {
@@ -484,7 +486,7 @@ impl<T: Ord + Clone> FdState<T> {
                 let f = op.Feature() as usize;
                 if self.values[f] == 0 /* if the feature is unset or */
                     || self.values[f] == op.Value() /* at this value already or */
-                    || (self.values[f] < 0 && (self.values[f] * (-1) != op.Value()))
+                    || (self.values[f] < 0 && (-self.values[f] != op.Value()))
                 /* negatively set to something else */
                 {
                     self.values[f] = op.Value();

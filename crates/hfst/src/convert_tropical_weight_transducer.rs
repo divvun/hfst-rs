@@ -52,7 +52,7 @@ fn handle_symbol_tables(
         an input or output symbol table. */
         if let Some(inputsym) = inputsym {
             for (label, sym) in inputsym.iter() {
-                assert!(sym != "");
+                assert!(!sym.is_empty());
 
                 if label != 0 {
                     // epsilon is not inserted
@@ -64,14 +64,12 @@ fn handle_symbol_tables(
         symbol table. If the transducer is an HFST tropical transducer, it
         can have an output symbol table, but it is equivalent to the
         input symbol table. */
-        if !has_hfst_header {
-            if let Some(outputsym) = outputsym {
-                for (label, sym) in outputsym.iter() {
-                    assert!(sym != "");
-                    if label != 0 {
-                        // epsilon is not inserted
-                        net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
-                    }
+        if !has_hfst_header && let Some(outputsym) = outputsym {
+            for (label, sym) in outputsym.iter() {
+                assert!(!sym.is_empty());
+                if label != 0 {
+                    // epsilon is not inserted
+                    net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
                 }
             }
         }
@@ -96,7 +94,7 @@ fn copy_alphabet(t: &StdVectorFst, net: &mut HfstBasicTransducer) {
 
     if let Some(inputsym) = inputsym {
         for (label, sym) in inputsym.iter() {
-            assert!(sym != "");
+            assert!(!sym.is_empty());
             if label != 0 {
                 // epsilon is not inserted
                 net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
@@ -105,7 +103,7 @@ fn copy_alphabet(t: &StdVectorFst, net: &mut HfstBasicTransducer) {
     }
     if let Some(outputsym) = outputsym {
         for (label, sym) in outputsym.iter() {
-            assert!(sym != "");
+            assert!(!sym.is_empty());
             if label != 0 {
                 // epsilon is not inserted
                 net.add_symbol_to_alphabet(&crate::hfst_data_types::Symbol::new(sym));
@@ -149,10 +147,7 @@ impl ConversionFunctions {
         // 'StateId initial_state = t->Start();' — OpenFst's 'kNoStateId' sentinel
         // ('-1') cast to the unsigned 'StateId' becomes 'u32::MAX'; for an empty
         // transducer the state loop below never runs, so the value is unused.
-        let initial_state: u32 = match t.start() {
-            Some(s) => s,
-            None => u32::MAX,
-        };
+        let initial_state: u32 = t.start().unwrap_or(u32::MAX);
 
         /* Go through all states */
         for s in t.states_iter() {

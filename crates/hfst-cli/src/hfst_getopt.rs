@@ -134,7 +134,7 @@ impl Getopt {
                 self.optind += 1;
                 if opt.has_arg == NO_ARGUMENT {
                     if eq_used {
-                        eprint!("warning: argument ignored for option '--{}'\n", opt.name);
+                        eprintln!("warning: argument ignored for option '--{}'", opt.name);
                     }
                     return opt.val;
                 } else if opt.has_arg == REQUIRED_ARGUMENT || opt.has_arg == OPTIONAL_ARGUMENT {

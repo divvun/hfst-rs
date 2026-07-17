@@ -62,9 +62,9 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Harmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_binary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "\nExamples:\n  {} -o catdog.hfst cat.hfst dog.hfst\nconcatenates cat.hfst with dog.hfst and writes results to catdog.hfst\n\n",

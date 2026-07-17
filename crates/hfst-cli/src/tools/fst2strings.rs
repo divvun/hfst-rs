@@ -119,7 +119,7 @@ fn print_usage(common: &CommonOptions) {
          \x20 -U, --out-exclude=OXST     output string must not contain OXSTR\n"
     );
 
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
 
     print_common_unary_program_parameter_instructions(&mut *msg);
     let _ = write!(
@@ -225,7 +225,7 @@ fn parse_options(
             'b' => {
                 options.beam = optarg.trim().parse::<f32>().unwrap_or(0.0);
                 if options.beam < 0.0 {
-                    eprint!("Invalid argument for --beam\n");
+                    eprintln!("Invalid argument for --beam");
                     return Err(1);
                 }
             }
@@ -349,7 +349,7 @@ impl<'a> Callback<'a> {
         Callback {
             count: 0,
             max_num: max,
-            out: out,
+            out,
             options,
         }
     }

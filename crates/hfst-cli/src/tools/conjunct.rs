@@ -55,9 +55,9 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Flag diacritics:\n  -F, --harmonize-flags  Harmonize flag diacritics\n  -H, --do-not-harmonize Do not harmonize\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_binary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     let _ = write!(
         msg,
         "\nExamples:\n  {} -o dog.hfst cat_or_dog.hfst dog_or_mouse.hfst\n\n",

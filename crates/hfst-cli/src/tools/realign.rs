@@ -57,10 +57,10 @@ fn print_usage(common: &CommonOptions) {
         msg,
         "Options:\n  -b, --boundary=SYM   treat SYM as a boundary symbol\n"
     );
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg);
     print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(msg, "SYM must be in the alphabet\n");
-    let _ = write!(msg, "\n");
+    let _ = writeln!(msg, "SYM must be in the alphabet");
+    let _ = writeln!(msg);
 }
 
 // [spec:hfst:def:hfst-realign.parse-options-fn]
@@ -175,9 +175,9 @@ fn process_stream(
         }, else => {
             // Unreachable: the optimized-lookup stream rejection already
             // returned before the loop; keep its text for safety.
-            let _ = write!(
+            let _ = writeln!(
                 std::io::stderr(),
-                "Error: hfst-realign cannot process transducers that are in optimized lookup format.\n"
+                "Error: hfst-realign cannot process transducers that are in optimized lookup format."
             );
             return 1;
         });

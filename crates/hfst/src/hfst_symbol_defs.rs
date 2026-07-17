@@ -192,7 +192,7 @@ pub mod symbols {
         let mut result = String::new();
         for (i, s) in sv.iter().enumerate() {
             if spaces && i != 0 {
-                result.push_str(" ");
+                result.push(' ');
             }
             result.push_str(s);
         }
@@ -207,11 +207,11 @@ pub mod symbols {
         let mut result = String::new();
         for (i, it) in spv.iter().enumerate() {
             if spaces && i != 0 {
-                result.push_str(" ");
+                result.push(' ');
             }
             result.push_str(&it.0);
             if it.0 != it.1 {
-                result.push_str(":");
+                result.push(':');
                 result.push_str(&it.1);
             }
         }
@@ -267,7 +267,7 @@ pub mod symbols {
     //
     // 'longest_path_length(const HfstTwoLevelPaths &, bool equally_long=false)'.
     pub fn longest_path_length(paths: &HfstTwoLevelPaths, equally_long: bool) -> i32 {
-        if paths.len() == 0 {
+        if paths.is_empty() {
             return -1;
         }
         if equally_long {
