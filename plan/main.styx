@@ -39,6 +39,13 @@ children (
                 kind @decision
                 text "Repurposed to Stage 3 (post-idiomatization): the original per-crate breakdown (types/core/openfst/ol/facade/parsers/capi) is now the work of reviewing the monolithic hfst crate and splitting it back into coherent layered crates. Bumped P0/P1/P2 -> P6/P7/P8 and gated `types` on `idiom2` so the decomposition runs after Wave 4 Stage 1 (memory-safety) and Stage 2 (de-C-ism / drop libc). Per nplan_decisions [dec:hfst:idiomatize-staging]."
             }
+
+            {
+                at 2026-07-17T15:39:49.934253Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan_complete)"
+            }
         )
     }
 
@@ -53,6 +60,14 @@ children (
                 title "string-conversions, tokenizer, flag diacritics, epsilon handler, harmonize"
                 priority 6
                 deps (types)
+                log (
+                    {
+                        at 2026-07-17T15:39:56.891521Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -60,6 +75,14 @@ children (
                 title "transition data/graph + HfstBasicTransducer (the interchange format)"
                 priority 6
                 deps (core.util)
+                log (
+                    {
+                        at 2026-07-17T15:39:58.83577Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -67,6 +90,14 @@ children (
                 title "ConvertTransducerFormat (HfstBasicTransducer ↔ backend interchange)"
                 priority 6
                 deps (core.basic)
+                log (
+                    {
+                        at 2026-07-17T15:40:02.153106Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
         )
     }
@@ -82,6 +113,14 @@ children (
                 title "VectorFst, Transition, tropical/log semirings, SymbolTable, state/transition iterators"
                 priority 6
                 deps (types)
+                log (
+                    {
+                        at 2026-07-17T15:40:04.744749Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -103,6 +142,13 @@ children (
                         kind @note
                         text "Blowup probes (2026-07-03, sma tokeniser-disamb pmscript, all measured with /usr/bin/time -l): (1) C++ HFST 3.17.1 (persistent build at ~/git/necessary/hfst-cpp/dist) produces 538M in 86s/11.2GB peak; Rust produces 538M in 143s/11.3GB — near-byte-identical (one 4-byte length field differs by ~3KB out of 46.7MB in the first def), confirming NOT a port bug. (2) Per-def mass (via the now-fixed `hfst summarize` on the archive): the entire 538M is TOP — 553,027 states / 22,756,707 arcs; the only other def is a trivial urlword RTN. (3) encode_weights=true (EncodeWeightsAndLabels, boolean subset construction) in every minimize: 347M (-35%), 111s (-22%), 9.3GB, and `hfst tokenise -g` output on sample text is IDENTICAL to baseline — a real mitigation but no collapse; the disamb weights are too diverse for label-folding to merge much. (4) Skipping the FINAL pmatch archive minimize entirely (env-gated probe, reverted): still 538M/105s — TOP is already ~22.7M arcs coming out of evaluate(); the inflation is distributed across the per-op optimize()/minimize() chain inside pmatch compilation, not one final determinize. Conclusion: inherent to weighted (tropical) subset construction over this pmscript in the openfst family; levers for this node's reimplementation: (a) offer encode-weights minimize as the pmatch default or a pmatch2fst flag (-35% for free, output-equivalent, diverges from C++ bytes), (b) the foma (unweighted) backend port is the real fix, (c) a smarter weighted minimize here."
                     }
+
+                    {
+                        at 2026-07-17T15:40:06.420885Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -111,6 +157,14 @@ children (
                 title "OpenFST binary FST read/write + header"
                 priority 6
                 deps (openfst.containers)
+                log (
+                    {
+                        at 2026-07-17T15:40:09.690693Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
         )
     }
@@ -120,6 +174,14 @@ children (
         title "Port hfst-ol (optimized-lookup + HfstOlTransducer + ConvertOl)"
         priority 7
         deps (types core)
+        log (
+            {
+                at 2026-07-17T15:39:54.297773Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan_complete)"
+            }
+        )
     }
 
     {
@@ -133,6 +195,14 @@ children (
                 title "HfstTransducer class (backend-dispatching facade)"
                 priority 7
                 deps (core openfst)
+                log (
+                    {
+                        at 2026-07-17T15:40:11.943242Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -147,6 +217,13 @@ children (
                         kind @decision
                         text "LOG (LOG_OPENFST) backend REMOVED from the Rust port (2026-07-09), reversing the earlier \"finish LOG properly\" plan. Rationale: LOG was commented out of the C++ HFST types array (upstream-disabled, never shipped live); enabling it hit the log semiring's non-idempotency — common_divisor(One,One)=log-add(0,0)=-ln2!=One, so weighted determinization residuals drift unboundedly around cycles and the rule pipeline (minimize/subtract/intersect) is mathematically non-terminating. A rustfst determinize_unweighted spike fixed the drift but exposed exponential powerset blowup. Intractable and pointless. Deleted: crates/hfst/src/{log_weight_transducer.rs, convert_log_weight_transducer.rs}, examples/log_smoke.rs, LOG_OPENFST_TYPE from ImplementationType, LogFst/LogVectorFst/LogWeight from hfst-openfst, AnyTransducer::Log, all _log tests, openfst-log from every CLI format help+parser; reverted the rustfst determinize_unweighted/UnitCommonDivisor additions. KEPT: TransducerType::OPENFST_LOG_ wire-tag (recognizes+cleanly rejects legacy log .hfst files -> ERROR_TYPE). Spec/AKM effect: LOG is now out-of-scope like SFST/FOMA/XFSM — its spec .md files (Convert)LogWeightTransducer.md are retained as C++ upstream documentation; the rules stay covered by their source-impl (C++) annotations, so nplan_audit is clean (0 orphans / 0 stale / 0 new-uncovered). Left the LOG C++ files IN the source-impl set (not added to the exclude list) because excluding them drops coverage 81%->78% for those 103 C++-documented rules with no offsetting benefit; the current state is audit-clean. Verify: cargo build --workspace = 0 errors; cargo nextest run -p hfst = all pass (133/3-skip). Nextest now caps every test at 10s (.config/nextest.toml)."
                     }
+
+                    {
+                        at 2026-07-17T15:40:14.450576Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -155,6 +232,14 @@ children (
                 title "compose_intersect/* (optimized composition engine over HfstBasicTransducer)"
                 priority 7
                 deps (core)
+                log (
+                    {
+                        at 2026-07-17T15:40:16.772229Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -162,6 +247,14 @@ children (
                 title "HfstInputStream / HfstOutputStream (format detection + binary I/O)"
                 priority 7
                 deps (facade.transducer)
+                log (
+                    {
+                        at 2026-07-17T15:40:18.601781Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -169,6 +262,14 @@ children (
                 title "HfstRules, HfstXeroxRules, HfstApply"
                 priority 7
                 deps (facade.transducer)
+                log (
+                    {
+                        at 2026-07-17T15:40:21.417928Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -176,6 +277,14 @@ children (
                 title "PrintDot, PrintPCKimmo, ExtractStrings, Strings2FstTokenizer"
                 priority 7
                 deps (facade.transducer)
+                log (
+                    {
+                        at 2026-07-17T15:40:23.255662Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
         )
     }
@@ -191,6 +300,14 @@ children (
                 title "XRE evaluator (nfst-xre AST → transducer; xre_utils, XreCompiler semantics)"
                 priority 8
                 deps (facade)
+                log (
+                    {
+                        at 2026-07-17T15:40:25.868324Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -198,6 +315,14 @@ children (
                 title "LEXC evaluator (nfst-lexc AST → transducer; lexc-utils, LexcCompiler semantics)"
                 priority 8
                 deps (facade)
+                log (
+                    {
+                        at 2026-07-17T15:40:27.405204Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -205,6 +330,14 @@ children (
                 title "PMATCH evaluator (nfst-pmatch AST → transducer; pmatch_utils, PmatchCompiler semantics)"
                 priority 8
                 deps (facade)
+                log (
+                    {
+                        at 2026-07-17T15:40:30.060472Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -212,6 +345,14 @@ children (
                 title "TWOLC evaluator (nfst-twolc AST → rules → transducers; rule_src/variable_src semantics)"
                 priority 8
                 deps (facade)
+                log (
+                    {
+                        at 2026-07-17T15:40:35.119766Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -219,6 +360,14 @@ children (
                 title "XFST evaluator (nfst-xfst AST → command/stack dispatch; xfst-utils, XfstCompiler semantics)"
                 priority 8
                 deps (facade)
+                log (
+                    {
+                        at 2026-07-17T15:40:38.213645Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
@@ -226,15 +375,16 @@ children (
                 title "AT&T format reader/writer (not covered by nfst)"
                 priority 8
                 deps (facade)
+                log (
+                    {
+                        at 2026-07-17T15:40:39.941618Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan_complete)"
+                    }
+                )
             }
         )
-    }
-
-    {
-        id capi
-        title "Port hfst-c (C API via cbindgen)"
-        priority 8
-        deps (facade)
     }
 
     {

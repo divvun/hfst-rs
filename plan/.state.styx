@@ -207,4 +207,24 @@ assertions (
     {id upstream-bugs.t4.i357, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:27.590874Z}
     {id upstream-bugs.limits.i123, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:17:06.632051Z}
     {id upstream-bugs.limits.i328, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:17:09.519427Z}
+    {id types, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:49.934253Z}
+    {id ol, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:54.297773Z}
+    {id core.util, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:56.891521Z}
+    {id core.basic, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:58.83577Z}
+    {id core.convert, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:02.153106Z}
+    {id openfst.containers, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:04.744749Z}
+    {id openfst.algo, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:06.420885Z}
+    {id openfst.io, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:09.690693Z}
+    {id facade.transducer, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:11.943242Z}
+    {id facade.weight, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:14.450576Z}
+    {id facade.compose-intersect, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:16.772229Z}
+    {id facade.io, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:18.601781Z}
+    {id facade.rules, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:21.417928Z}
+    {id facade.print, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:23.255662Z}
+    {id parsers.xre, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:25.868324Z}
+    {id parsers.lexc, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:27.405204Z}
+    {id parsers.pmatch, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:30.060472Z}
+    {id parsers.twolc, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:35.119766Z}
+    {id parsers.xfst, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:38.213645Z}
+    {id parsers.att, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:39.941618Z}
 )
