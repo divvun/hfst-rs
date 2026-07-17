@@ -3,11 +3,15 @@
 //! optimized-lookup transducer format and its lookup engine.
 //!
 //! Binary I/O fidelity: the C++ reads/writes raw struct bytes via
-//! 'is.read(reinterpret_cast<char*>(&p), sizeof(T))' (host-endian). That is
-//! mirrored with native-endian 'from_ne_bytes'/'to_ne_bytes'. 'std::istream'
-//! is modelled by ['IStream'], a thin wrapper over '&mut dyn Read' that tracks
-//! a fail flag so the C++ 'if(!is)' checks port directly; 'std::ostream'
-//! becomes '&mut dyn Write'.
+//! 'is.read(reinterpret_cast<char*>(&p), sizeof(T))' (host-endian). This port
+//! diverges deliberately (hfst/hfst#328): the optimized-lookup format is read
+//! and written LITTLE-ENDIAN ('from_le_bytes'/'to_le_bytes') so the on-disk
+//! bytes are portable and deterministic across targets. This is byte-identical
+//! to the old native-endian path on the little-endian hosts everyone actually
+//! ships on (x86-64/aarch64), and matches the sibling THFST format, which is
+//! already explicitly little-endian. 'std::istream' is modelled by ['IStream'],
+//! a thin wrapper over '&mut dyn Read' that tracks a fail flag so the C++
+//! 'if(!is)' checks port directly; 'std::ostream' becomes '&mut dyn Write'.
 //!
 //! C++ value-type inheritance (the concrete base 'TransitionIndex' with a
 //! derived 'TransitionWIndex' overriding 'final_weight', likewise
@@ -346,37 +350,55 @@ impl<'a> IStream<'a> {
     }
 
     // 'is.read(reinterpret_cast<char*>(&p), sizeof(T))' for the integer
-    // properties, native-endian — the typed mirror of the static template
-    // 'read_property<T>' that 'TransducerHeader' uses to read its fields.
+    // properties — the typed mirror of the static template 'read_property<T>'
+    // that 'TransducerHeader' uses to read its fields. Little-endian per
+    // hfst/hfst#328 (see module docs).
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.read-property-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-header.read-property-fn]
     fn read_u16(&mut self) -> u16 {
         let mut b = [0u8; 2];
         self.read(&mut b);
-        u16::from_ne_bytes(b)
+        u16::from_le_bytes(b)
     }
     fn read_u32(&mut self) -> u32 {
         let mut b = [0u8; 4];
         self.read(&mut b);
-        u32::from_ne_bytes(b)
+        u32::from_le_bytes(b)
     }
 }
 
 // 'os.write(reinterpret_cast<const char*>(&prop), sizeof(prop))' for the
-// integer/float properties, native-endian.
+// integer/float properties. Little-endian per hfst/hfst#328 (see module docs).
 // [spec:hfst:def:transducer.hfst-ol.transducer-header.write-property-fn]
 // [spec:hfst:sem:transducer.hfst-ol.transducer-header.write-property-fn]
 fn write_u16(prop: u16, os: &mut dyn std::io::Write) {
-    let _ = os.write_all(&prop.to_ne_bytes());
+    let _ = os.write_all(&prop.to_le_bytes());
 }
 fn write_u32(prop: u32, os: &mut dyn std::io::Write) {
-    let _ = os.write_all(&prop.to_ne_bytes());
+    let _ = os.write_all(&prop.to_le_bytes());
 }
 // [spec:hfst:def:transducer.hfst-ol.transducer-header.write-bool-property-fn]
 // [spec:hfst:sem:transducer.hfst-ol.transducer-header.write-bool-property-fn]
 fn write_bool_property(value: bool, os: &mut dyn std::io::Write) {
     let prop: u32 = if value { 1 } else { 0 };
-    let _ = os.write_all(&prop.to_ne_bytes());
+    let _ = os.write_all(&prop.to_le_bytes());
+}
+
+/// The optimized-lookup on-disk format stores the transition-index and
+/// transition-target table sizes as [`TransitionTableIndex`] (u32), so a table
+/// longer than u32::MAX cannot be represented; report that as a clean error
+/// instead of panicking on the narrowing conversion. This mirrors
+/// `ol_symbol_number` for the u16 symbol ceiling and is effectively unreachable
+/// on real data — the goal is a clear diagnostic in place of a silent wrap or a
+/// panic [hfst/hfst#123].
+#[inline]
+pub fn ol_table_size(table_len: usize) -> crate::error::Result<TransitionTableIndex> {
+    u32::try_from(table_len).map_err(|_| {
+        crate::err!(
+            Hfst,
+            "optimized-lookup format: transducer table has more than 2^32-1 entries (u32 table-size limit)"
+        )
+    })
 }
 
 // [spec:hfst:def:transducer.hfst-ol.transducer-header]
@@ -1081,9 +1103,10 @@ impl Default for TransitionIndex {
 impl TableEntry for TransitionIndex {
     const SIZE: usize = 2 + 4; // sizeof(SymbolNumber) + sizeof(TransitionTableIndex)
     fn from_bytes(p: &[u8]) -> Self {
+        // Little-endian per hfst/hfst#328 (see module docs).
         TransitionIndex {
-            input_symbol: u16::from_ne_bytes([p[0], p[1]]),
-            first_transition_index: u32::from_ne_bytes([p[2], p[3], p[4], p[5]]),
+            input_symbol: u16::from_le_bytes([p[0], p[1]]),
+            first_transition_index: u32::from_le_bytes([p[2], p[3], p[4], p[5]]),
         }
     }
 }
@@ -1315,10 +1338,11 @@ impl Transition {
 impl TableEntry for Transition {
     const SIZE: usize = 2 * 2 + 4;
     fn from_bytes(p: &[u8]) -> Self {
+        // Little-endian per hfst/hfst#328 (see module docs).
         Transition {
-            input_symbol: u16::from_ne_bytes([p[0], p[1]]),
-            output_symbol: u16::from_ne_bytes([p[2], p[3]]),
-            target_index: u32::from_ne_bytes([p[4], p[5], p[6], p[7]]),
+            input_symbol: u16::from_le_bytes([p[0], p[1]]),
+            output_symbol: u16::from_le_bytes([p[2], p[3]]),
+            target_index: u32::from_le_bytes([p[4], p[5], p[6], p[7]]),
         }
     }
 }
@@ -1417,7 +1441,8 @@ impl TransitionW {
     pub fn write(&self, os: &mut dyn std::io::Write, weighted: bool) {
         self.base.write(os, false);
         if weighted {
-            let _ = os.write_all(&self.transition_weight.to_ne_bytes());
+            // Little-endian per hfst/hfst#328 (see module docs).
+            let _ = os.write_all(&self.transition_weight.to_le_bytes());
         }
     }
 }
@@ -1427,9 +1452,10 @@ impl TableEntry for TransitionW {
     // [spec:hfst:def:transducer.hfst-ol.transition-w.transition-w-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transition-w.transition-w-fn]
     fn from_bytes(p: &[u8]) -> Self {
+        // Little-endian per hfst/hfst#328 (see module docs).
         TransitionW {
             base: Transition::from_bytes(p),
-            transition_weight: f32::from_ne_bytes([p[8], p[9], p[10], p[11]]),
+            transition_weight: f32::from_le_bytes([p[8], p[9], p[10], p[11]]),
         }
     }
 }
@@ -1522,8 +1548,13 @@ impl<T: TableEntry + Clone> TransducerTable<T> {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-table.size-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-table.size-fn]
-    pub fn size(&self) -> u32 {
-        u32::try_from(self.table.len()).expect("value out of u32 range")
+    // The on-disk index/target table-size fields are u32 (see the OL header);
+    // a table longer than u32::MAX cannot be represented, so report that as a
+    // clean error instead of panicking on the narrowing conversion. This is
+    // effectively unreachable on real data (such a table would be ~32 GB) but
+    // gives a clear diagnostic in place of a silent wrap [hfst/hfst#123].
+    pub fn size(&self) -> crate::error::Result<u32> {
+        ol_table_size(self.table.len())
     }
 }
 
@@ -2542,19 +2573,12 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         self.hdr().write(os);
         self.alph().write(os);
         let weighted = self.hdr().probe_flag(HeaderFlag::Weighted);
+        // 'i' is already a TransitionTableIndex (u32), so no narrowing occurs.
         for i in 0..self.hdr().index_table_size() {
-            self.tbl().write_index(
-                u32::try_from(i as usize).expect("value out of u32 range"),
-                os,
-                weighted,
-            );
+            self.tbl().write_index(i, os, weighted);
         }
         for i in 0..self.hdr().target_table_size() {
-            self.tbl().write_transition(
-                u32::try_from(i as usize).expect("value out of u32 range"),
-                os,
-                weighted,
-            );
+            self.tbl().write_transition(i, os, weighted);
         }
     }
 

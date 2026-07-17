@@ -3548,12 +3548,42 @@ children (
                         id upstream-bugs.limits.i123
                         title "hfst#123: HFST3 header length field width (u16) + OL u32 table-size ceilings on huge automata — audit every on-disk width in hfst_output_stream/transducer.rs writers; minimum: overflow checks with clean errors instead of silent wraps"
                         priority 5
+                        log (
+                            {
+                                at 2026-07-17T15:16:59.707693Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T15:17:06.632051Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.limits.i328
                         title "hfst#328: endian-neutrality — the port's OL writer is native-endian (faithful to C++); THFST is already explicitly LE. Decide: document LE-only support, or make OL I/O explicitly LE (byte-compat on all current targets, spec'd divergence)"
                         priority 5
+                        log (
+                            {
+                                at 2026-07-17T15:17:01.243451Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T15:17:09.519427Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
                 )
             }

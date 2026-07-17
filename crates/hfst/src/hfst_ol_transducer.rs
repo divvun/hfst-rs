@@ -216,8 +216,10 @@ mod ol_construction_io {
                 }
                 Err(_) => 0,
             };
+            // buffer[20..24] is the OL header's 'weighted' u32 property; read it
+            // little-endian to match the write path (hfst/hfst#328).
             let weighted: u32 =
-                i32::from_ne_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]) as u32;
+                u32::from_le_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]);
             let res: i32 = if num_read != 24 {
                 0
             } else if weighted == 0 {
@@ -250,8 +252,10 @@ mod ol_construction_io {
                 buffer[num_read] = c as u8;
                 num_read += 1;
             }
+            // buffer[20..24] is the OL header's 'weighted' u32 property; read it
+            // little-endian to match the write path (hfst/hfst#328).
             let weighted: u32 =
-                i32::from_ne_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]) as u32;
+                u32::from_le_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]);
             let res: i32 = if num_read != 24 {
                 0
             } else if weighted == 0 {
@@ -287,7 +291,8 @@ mod ol_construction_io {
         pub fn stream_get_short(&mut self) -> i16 {
             let mut b = [0u8; 2];
             self.input_stream.read(&mut b);
-            i16::from_ne_bytes(b)
+            // Little-endian per hfst/hfst#328 — this is an OL-format reader.
+            i16::from_le_bytes(b)
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.stream-unget-fn]

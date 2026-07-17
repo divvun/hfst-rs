@@ -25,7 +25,7 @@ use crate::pmatch::PmatchAlphabet;
 use crate::transducer::{
     HeaderFlag, NO_SYMBOL_NUMBER, SymbolNumber, SymbolTable, Transducer, TransducerAlphabet,
     TransducerHeader, TransducerTable, TransitionTableIndex, TransitionW, TransitionWIndex, Weight,
-    indexes_transition_index_table,
+    indexes_transition_index_table, ol_table_size,
 };
 
 use crate::convert::HfstOlToBasicStateMap;
@@ -463,8 +463,10 @@ impl ConversionFunctions {
 
         let mut greatest_index: u32 = 0;
         if !used_indices.indices.is_empty() {
-            greatest_index =
-                u32::try_from(used_indices.indices.len() - 1).expect("value out of u32 range");
+            // The index-table size is a u32 on-disk field; a table longer than
+            // u32::MAX cannot be represented, so report that as a clean error
+            // rather than panicking on the narrowing [hfst/hfst#123].
+            greatest_index = ol_table_size(used_indices.indices.len())? - 1;
         }
 
         for i in 0..=greatest_index {
@@ -514,8 +516,8 @@ impl ConversionFunctions {
         let header = TransducerHeader::new_sizes(
             seen_input_symbols,
             ol_symbol_number(symbol_table.len())?,
-            windex_table.size(),
-            wtransition_table.size(),
+            windex_table.size()?,
+            wtransition_table.size()?,
             weighted,
         );
         Ok(Transducer::new_from_tables(
