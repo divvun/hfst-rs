@@ -180,7 +180,12 @@ impl OlInner {
 }
 
 struct Transducer {
-    inner: OlInner,
+    // Every transducer in the input archive. hfst-optimized-lookup treats a
+    // multi-transducer stream as the UNION of its members: an input word is
+    // looked up in each member and all analyses are pooled into the one display
+    // sink (matching hfst-lookup's default `union` cascade). Reading only the
+    // first member here was hfst/hfst#395. [upstream hfst/hfst#395]
+    inner: Vec<OlInner>,
     variant: Variant,
     display_vector: DisplayVector,     // Plain
     display_set: DisplaySet,           // Uniq / FdUniq
@@ -191,42 +196,46 @@ struct Transducer {
 impl Transducer {
     // Run the library optimized-lookup engine on the input and route each path
     // into the variant's display sink, mirroring the C++ note_analysis hooks.
+    // The input is looked up in every archive member and the results are unioned
+    // into the shared sink. [upstream hfst/hfst#395]
     fn analyze(&mut self, options: &Options, input: &str) {
         let limit: isize = -1; // no max-lookups cap (preserve current behaviour)
         let time_cutoff: f64 = options.time_cutoff;
-        let paths = match self.inner.lookup_fd_string(input, limit, time_cutoff) {
-            Ok(p) => p,
-            Err(e) => {
-                print_err(&format!("{e}\n"));
-                return;
-            }
-        };
-        for path in &paths {
-            let weight = path.first;
-            let output: String = path
-                .second
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>()
-                .concat();
-            match self.variant {
-                Variant::Plain | Variant::Fd => self.display_vector.push(output),
-                Variant::Uniq | Variant::FdUniq => {
-                    self.display_set.insert(output);
+        for member in self.inner.iter_mut() {
+            let paths = match member.lookup_fd_string(input, limit, time_cutoff) {
+                Ok(p) => p,
+                Err(e) => {
+                    print_err(&format!("{e}\n"));
+                    continue;
                 }
-                Variant::WPlain | Variant::WFd => self.display_multimap.push((weight, output)),
-                Variant::WUniq | Variant::WFdUniq => {
-                    // mirror the original display_map population: keep the lowest
-                    // weight per output. The original guard treats a missing
-                    // entry or a stored weight greater than the current one as
-                    // "lower", then uses entry().or_insert(), which only writes
-                    // when the key is absent.
-                    let lower = match self.display_map.get(&output) {
-                        None => true,
-                        Some(&w) => w > weight,
-                    };
-                    if lower {
-                        self.display_map.entry(output).or_insert(weight);
+            };
+            for path in &paths {
+                let weight = path.first;
+                let output: String = path
+                    .second
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .concat();
+                match self.variant {
+                    Variant::Plain | Variant::Fd => self.display_vector.push(output),
+                    Variant::Uniq | Variant::FdUniq => {
+                        self.display_set.insert(output);
+                    }
+                    Variant::WPlain | Variant::WFd => self.display_multimap.push((weight, output)),
+                    Variant::WUniq | Variant::WFdUniq => {
+                        // mirror the original display_map population: keep the
+                        // lowest weight per output. The original guard treats a
+                        // missing entry or a stored weight greater than the
+                        // current one as "lower", then uses entry().or_insert(),
+                        // which only writes when the key is absent.
+                        let lower = match self.display_map.get(&output) {
+                            None => true,
+                            Some(&w) => w > weight,
+                        };
+                        if lower {
+                            self.display_map.entry(output).or_insert(weight);
+                        }
                     }
                 }
             }
@@ -469,43 +478,61 @@ fn setup(options: &Options, path: &str) -> i32 {
             return 1;
         }
     };
-    let any = match instream.read() {
-        Ok(v) => v,
-        Err(e) => {
-            print_err(&format!("{e}\n"));
-            return 1;
+    // Read EVERY transducer in the archive, not just the first: a
+    // multi-transducer optimized-lookup stream is the UNION of its members.
+    // `while is_good() { read() }` yields exactly the members and stops cleanly
+    // at end-of-stream (the same loop hfst-lookup / hfst-fst2strings use).
+    // [upstream hfst/hfst#395]
+    let mut members: Vec<OlInner> = Vec::new();
+    // The first member's weightedness fixes the display variant; an HFST stream
+    // is type-homogeneous, so all members share it.
+    let mut weighted = false;
+    let mut first = true;
+    while instream.is_good() {
+        let any = match instream.read() {
+            Ok(v) => v,
+            Err(_) => break,
+        };
+        if first {
+            // THFST is a weighted optimized-lookup format, so it is weighted
+            // like OLW.
+            weighted = any.get_type() == hfst::hfst_data_types::ImplementationType::HFST_OLW_TYPE
+                || any.get_type() == hfst::hfst_data_types::ImplementationType::THFST_TYPE;
+            first = false;
         }
-    };
-    // THFST is a weighted optimized-lookup format, so it is weighted like OLW.
-    let weighted = any.get_type() == hfst::hfst_data_types::ImplementationType::HFST_OLW_TYPE
-        || any.get_type() == hfst::hfst_data_types::ImplementationType::THFST_TYPE;
-    // the one dispatch per stream read ([dec:hfst:monomorphic-backends]):
-    // the two OL table shapes move in as-is; anything else converts to the
-    // weighted OL tables the lookup engine runs on.
-    let t = match any {
-        hfst::hfst_transducer::AnyTransducer::OlW(t) => OlInner::W(t),
-        hfst::hfst_transducer::AnyTransducer::OlU(t) => OlInner::U(t),
-        // THFST is the weighted OL engine under a distinct tag; recover it as
-        // the weighted lookup handle (O(1) table move).
-        hfst::hfst_transducer::AnyTransducer::Thfst(t) => OlInner::W(t.into_olw()),
-        other @ hfst::hfst_transducer::AnyTransducer::Tropical(_) => match other.into_typed() {
-            Ok(t) => OlInner::W(t),
-            Err(e) => {
-                print_err(&format!("{e}\n"));
-                return 1;
-            }
-        },
-        // Foma converts through the tropical algebra into the weighted OL
-        // tables the lookup engine runs on, like Tropical.
-        #[cfg(feature = "foma")]
-        other @ hfst::hfst_transducer::AnyTransducer::Foma(_) => match other.into_typed() {
-            Ok(t) => OlInner::W(t),
-            Err(e) => {
-                print_err(&format!("{e}\n"));
-                return 1;
-            }
-        },
-    };
+        // the one dispatch per stream read ([dec:hfst:monomorphic-backends]):
+        // the two OL table shapes move in as-is; anything else converts to the
+        // weighted OL tables the lookup engine runs on.
+        let member = match any {
+            hfst::hfst_transducer::AnyTransducer::OlW(t) => OlInner::W(t),
+            hfst::hfst_transducer::AnyTransducer::OlU(t) => OlInner::U(t),
+            // THFST is the weighted OL engine under a distinct tag; recover it as
+            // the weighted lookup handle (O(1) table move).
+            hfst::hfst_transducer::AnyTransducer::Thfst(t) => OlInner::W(t.into_olw()),
+            other @ hfst::hfst_transducer::AnyTransducer::Tropical(_) => match other.into_typed() {
+                Ok(t) => OlInner::W(t),
+                Err(e) => {
+                    print_err(&format!("{e}\n"));
+                    return 1;
+                }
+            },
+            // Foma converts through the tropical algebra into the weighted OL
+            // tables the lookup engine runs on, like Tropical.
+            #[cfg(feature = "foma")]
+            other @ hfst::hfst_transducer::AnyTransducer::Foma(_) => match other.into_typed() {
+                Ok(t) => OlInner::W(t),
+                Err(e) => {
+                    print_err(&format!("{e}\n"));
+                    return 1;
+                }
+            },
+        };
+        members.push(member);
+    }
+    if members.is_empty() {
+        print_err("Transducer file contains no transducers\n");
+        return 1;
+    }
     let unique = options.display_unique_flag;
     let variant = match (weighted, unique) {
         (false, false) => Variant::Plain,
@@ -514,7 +541,7 @@ fn setup(options: &Options, path: &str) -> i32 {
         (true, true) => Variant::WUniq,
     };
     let mut tr = Transducer {
-        inner: t,
+        inner: members,
         variant,
         display_vector: DisplayVector::new(),
         display_set: DisplaySet::new(),

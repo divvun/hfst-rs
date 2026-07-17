@@ -133,6 +133,23 @@ pub const TRANSITION_TARGET_TABLE_START: TransitionTableIndex = 2147483648u32;
 pub const MAX_IO_LEN: u32 = 10000;
 pub const MAX_RECURSION_DEPTH: u32 = 5000;
 
+// Hard ceiling on the TOTAL number of `get_analyses` node visits per lookup.
+//
+// `recursion_depth_left` (MAX_RECURSION_DEPTH) bounds the DEPTH of a single
+// path — it is restored on backtrack — so on an epsilon cycle the C++ engine
+// (and this 1:1 port) still recurses 5000 levels deep, producing 5000 junk
+// analyses whose weights climb to ~4999 before the depth cap finally trips
+// (hfst/hfst#293's "huge weights before printing infinities") and holding all
+// of that in memory / running the machine flat out even when `--time-cutoff`
+// has bypassed the infinite-ambiguity guard (hfst/hfst#476's "memory hole /
+// time-cutoff ineffective"). This counter, by contrast, is NEVER restored on
+// backtrack, so it bounds total WORK regardless of cycle shape and terminates
+// deterministically on any pathological FST without depending on wall-clock or
+// on the infinite-ambiguity pre-check. The ceiling is high enough that no
+// legitimate lookup reaches it (a well-formed acyclic path visits far fewer
+// nodes than this) but low enough that a runaway cycle stops promptly.
+pub const MAX_NODE_VISITS: u64 = 1_000_000;
+
 // [spec:hfst:def:transducer.hfst-ol.indexes-transition-table-fn]
 // [spec:hfst:sem:transducer.hfst-ol.indexes-transition-table-fn]
 #[inline]
@@ -2169,6 +2186,11 @@ pub struct Transducer<T: TransducerTablesInterface = WeightedTables> {
 
     max_lookups: isize,
     recursion_depth_left: u32,
+    // Global node-visit budget for one lookup (hfst/hfst#293, hfst/hfst#476).
+    // Unlike `recursion_depth_left` this is decremented on every `get_analyses`
+    // entry and NEVER restored on backtrack, so it caps total traversal work on
+    // pathological cyclic FSTs regardless of path depth or wall-clock.
+    visits_left: u64,
     max_time: f64,
     start_clock: Option<Instant>,
 }
@@ -2207,6 +2229,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
+            visits_left: MAX_NODE_VISITS,
             max_time: 0.0,
             start_clock: None,
         }
@@ -2253,6 +2276,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
+            visits_left: MAX_NODE_VISITS,
             max_time: 0.0,
             start_clock: None,
         };
@@ -2285,6 +2309,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
+            visits_left: MAX_NODE_VISITS,
             max_time: 0.0,
             start_clock: None,
         }
@@ -2317,6 +2342,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
+            visits_left: MAX_NODE_VISITS,
             max_time: 0.0,
             start_clock: None,
         }
@@ -2836,6 +2862,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     // [spec:hfst:sem:transducer.hfst-ol.transducer.lookup-fd-fn]
     pub fn lookup_fd_cstr(&mut self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths {
         self.max_lookups = limit;
+        self.visits_left = MAX_NODE_VISITS;
         self.max_time = 0.0;
         if time_cutoff > 0.0 {
             self.max_time = time_cutoff;
@@ -2871,6 +2898,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         time_cutoff: f64,
     ) -> HfstTwoLevelPaths {
         self.max_lookups = limit;
+        self.visits_left = MAX_NODE_VISITS;
         self.max_time = 0.0;
         if time_cutoff > 0.0 {
             self.max_time = time_cutoff;
@@ -2902,11 +2930,34 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             let old_weight = self.current_weight;
             if input == 0 {
                 // epsilon
+                //
+                // Non-progressing-loop trap (hfst/hfst#293, hfst/hfst#476).
+                // The C++ engine only loop-guarded the FLAG branch below; a
+                // plain epsilon cycle was left to recurse `MAX_RECURSION_DEPTH`
+                // (5000) levels deep, emitting 5000 junk analyses whose weights
+                // climbed to ~4999 (the "huge weights before infinity") and
+                // running unbounded on large FSTs. Guard it exactly like the
+                // flag branch: this `traversal_states` set is DFS-path-scoped
+                // (inserted before the recursive call, removed after) and is
+                // cleared by `find_transitions`/`get_analyses` whenever a real
+                // input symbol is consumed, so it only ever traps a cycle that
+                // returns to the same (target, flags) at the SAME input
+                // position — never a sibling branch or a genuine re-entry after
+                // progress. Convergent analyses therefore survive.
+                let epsilon_reachable =
+                    TraversalState::new(target, self.flag_state.get_values().clone());
+                if self.traversal_states.contains(&epsilon_reachable) {
+                    // We've been here before at this input, back out.
+                    i += 1;
+                    continue;
+                }
+                self.traversal_states.insert(epsilon_reachable.clone());
                 self.output_tape.write_pair(output_pos, input, output);
                 self.current_weight += weight;
                 self.get_analyses(input_pos, output_pos + 1, target);
                 found_transition = true;
                 self.current_weight = old_weight;
+                self.traversal_states.remove(&epsilon_reachable);
                 i += 1;
             } else if self.alph().is_flag_diacritic(input) {
                 let flags = self.flag_state.get_values().clone();
@@ -3017,6 +3068,18 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     // [spec:hfst:sem:transducer.hfst-ol.transducer.get-analyses-fn]
     fn get_analyses(&mut self, input_pos: u32, output_pos: u32, mut i: TransitionTableIndex) {
         let mut found_transition = false;
+
+        // Global work budget (hfst/hfst#293, hfst/hfst#476): count every node
+        // visit and stop once the budget is spent. `recursion_depth_left` only
+        // caps a single path's depth (it is restored on backtrack), so on an
+        // epsilon cycle it would otherwise let the traversal run 5000 levels
+        // deep — piling up junk analyses with runaway weights and holding them
+        // in memory — before terminating. Decrementing here, with no restore on
+        // the return paths below, bounds total traversal work on any FST.
+        if self.visits_left == 0 {
+            return;
+        }
+        self.visits_left -= 1;
 
         if self.recursion_depth_left == 0 {
             return;

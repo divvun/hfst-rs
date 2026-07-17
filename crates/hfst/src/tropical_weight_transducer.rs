@@ -2769,11 +2769,110 @@ mod lookup_extract_misc {
         NoPath,
     }
 
+    /* Per-state distance (in arcs) to the nearest final state, computed with a
+    backward BFS from the final states over the reversed edge set. `None` marks a
+    state from which no final state is reachable (not co-accessible). Computed
+    once per extract_random_paths call and used to steer the random walk toward
+    final states: the upstream C++ heuristic (hfst/hfst#444) followed arcs blind,
+    so on guesser/cyclic transducers whose accepting state sits behind a rare
+    deep suffix the walk almost never reached a final state and `-r` returned
+    nothing. The walk restricts its choices to co-accessible targets and, if the
+    short-path heuristic would otherwise abandon a walk that has not yet reached a
+    final state, descends this distance map to guarantee an accepting path. */
+    fn distance_to_final(t: &StdVectorFst) -> Vec<Option<u32>> {
+        let n = t.num_states();
+        let mut dist: Vec<Option<u32>> = vec![None; n];
+        // Reverse edges: for each state, the predecessors that can step into it.
+        let mut preds: Vec<Vec<StateId>> = vec![Vec::new(); n];
+        let mut frontier: Vec<StateId> = Vec::new();
+        for s in t.states_iter() {
+            if t.is_final(s).expect("s is a valid state of this fst") {
+                dist[s as usize] = Some(0);
+                frontier.push(s);
+            }
+            for arc in t.get_trs(s).expect("s is a valid state of this fst").trs() {
+                preds[arc.nextstate as usize].push(s);
+            }
+        }
+        // Backward BFS from the final states over the reverse edges (level by
+        // level, so the first time a state is reached is its shortest distance).
+        let mut level = 0u32;
+        while !frontier.is_empty() {
+            level += 1;
+            let mut next: Vec<StateId> = Vec::new();
+            for s in frontier {
+                for &p in &preds[s as usize] {
+                    if dist[p as usize].is_none() {
+                        dist[p as usize] = Some(level);
+                        next.push(p);
+                    }
+                }
+            }
+            frontier = next;
+        }
+        dist
+    }
+
+    /* Extend `path` from `state` along a shortest route to a final state,
+    choosing randomly among the arcs that step strictly closer (per `dist`).
+    Guaranteed to terminate because every step decreases the distance-to-final and
+    `state` is co-accessible (`dist[state]` is Some). On arrival the final state's
+    own final weight is added. */
+    fn descend_to_final(
+        t: &StdVectorFst,
+        dist: &[Option<u32>],
+        state: StateId,
+        path: &mut HfstTwoLevelPath,
+        rng: &mut Rng,
+    ) {
+        let mut s = state;
+        loop {
+            let d = dist[s as usize].expect("descend only enters co-accessible states");
+            if d == 0 {
+                // A final state: add its final weight and stop.
+                path.first += *t
+                    .final_weight(s)
+                    .expect("s is a valid state of this fst")
+                    .expect("d == 0 marks a final state")
+                    .value();
+                return;
+            }
+            // Collect the arcs that step strictly closer to a final state.
+            let closer: Vec<StdTransition> = t
+                .get_trs(s)
+                .expect("s is a valid state of this fst")
+                .trs()
+                .iter()
+                .filter(|arc| dist[arc.nextstate as usize] == Some(d - 1))
+                .cloned()
+                .collect();
+            // `dist[s] == d > 0` guarantees at least one such arc exists.
+            let arc = closer[(rng.next() as usize) % closer.len()].clone();
+            path.second.push((
+                crate::hfst_data_types::Symbol::new(
+                    t.input_symbols()
+                        .expect("tropical transducer has an input symbol table")
+                        .get_symbol(arc.ilabel)
+                        .unwrap_or(""),
+                ),
+                crate::hfst_data_types::Symbol::new(
+                    t.input_symbols()
+                        .expect("tropical transducer has an input symbol table")
+                        .get_symbol(arc.olabel)
+                        .unwrap_or(""),
+                ),
+            ));
+            path.first += *arc.weight.value();
+            s = arc.nextstate;
+        }
+    }
+
     /* Get a random path from transducer 't'. */
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.random-path-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.random-path-fn]
     fn random_path_once(
         t: &StdVectorFst,
+        dist: &[Option<u32>],
         rng: &mut Rng,
     ) -> Result<HfstTwoLevelPath, RandomPathError> {
         /* If the transducer is empty, return. */
@@ -2794,6 +2893,20 @@ mod lookup_extract_misc {
             .expect("start state is a valid state of this fst");
 
         let mut last_index: i32 = 0;
+        // The weight the path must carry once truncated back to `last_index`:
+        // the arc weights up to the last accepting prefix PLUS that state's own
+        // final weight. Recomputed whenever `last_index` advances so the
+        // truncation branch can restore the correct weight (upstream
+        // hfst/hfst#441: the C++ truncation branch left `path.first` carrying the
+        // arc weights of the popped tail and omitted the final-state weight).
+        let mut last_weight: f32 = if is_epsilon_path_accepted {
+            *t.final_weight(current_state)
+                .expect("start state is a valid state of this fst")
+                .expect("start confirmed final via is_epsilon_path_accepted")
+                .value()
+        } else {
+            0.0
+        };
 
         let num_states = t.num_states();
         let mut visited = vec![0i32; num_states];
@@ -2802,22 +2915,37 @@ mod lookup_extract_misc {
         loop {
             visited[current_state as usize] = 1;
 
+            /* Only follow arcs whose target can still reach a final state; a
+             * co-accessible non-final state therefore always has at least one
+             * continuation, so the walk is guaranteed to reach a final state
+             * before it runs out of moves (upstream hfst/hfst#444). */
             let mut t_transitions: Vec<StdTransition> = t
                 .get_trs(current_state)
                 .expect("current_state is a valid state of this fst")
                 .trs()
-                .to_vec();
+                .iter()
+                .filter(|arc| dist[arc.nextstate as usize].is_some())
+                .cloned()
+                .collect();
 
-            /* If we cannot proceed, return the longest path so far. */
+            /* If we cannot proceed, return the longest accepting prefix so far. */
             if t_transitions.is_empty() || broken[current_state as usize] != 0 {
-                let mut i = path.second.len() as i32 - 1;
-                while i >= last_index {
-                    path.second.pop();
-                    i -= 1;
+                // If a final state was already passed, truncate back to it.
+                if last_index > 0 || is_epsilon_path_accepted {
+                    let mut i = path.second.len() as i32 - 1;
+                    while i >= last_index {
+                        path.second.pop();
+                        i -= 1;
+                    }
+                    // Restore the weight of the truncated accepting prefix rather
+                    // than the overshot tail we just popped off.
+                    path.first = last_weight;
+                    return Ok(path);
                 }
-                if !is_epsilon_path_accepted && path.second.is_empty() {
-                    return Err(RandomPathError::NoPath);
-                }
+                // No accepting prefix yet: rather than abandon the walk (the
+                // upstream hfst/hfst#444 failure), descend greedily along the
+                // shortest route to a final state and return that accepting path.
+                descend_to_final(t, dist, current_state, &mut path, rng);
                 return Ok(path);
             }
 
@@ -2864,6 +2992,13 @@ mod lookup_extract_misc {
                         return Ok(path);
                     } // or continue.
                     last_index = path.second.len() as i32;
+                    // Remember the accepting weight at this prefix (arc weights so
+                    // far + this state's final weight) for the truncation branch.
+                    last_weight = path.first
+                        + *t.final_weight(t_target)
+                            .expect("t_target is a valid state of this fst")
+                            .expect("t_target confirmed final via is_final")
+                            .value();
                 }
 
                 /* Give more probability for shorter paths. */
@@ -2890,12 +3025,13 @@ mod lookup_extract_misc {
     /* Try to extract a random path from 't' at most 'max_times' times. */
     fn random_path(
         t: &StdVectorFst,
+        dist: &[Option<u32>],
         mut max_times: u32,
         rng: &mut Rng,
     ) -> Result<HfstTwoLevelPath, RandomPathError> {
         while max_times > 0 {
             max_times -= 1;
-            match random_path_once(t, rng) {
+            match random_path_once(t, dist, rng) {
                 Ok(p) => return Ok(p),
                 Err(RandomPathError::Empty) => return Err(RandomPathError::Empty),
                 Err(RandomPathError::NoPath) => continue,
@@ -3008,17 +3144,24 @@ mod lookup_extract_misc {
             results: &mut HfstTwoLevelPaths,
             max_num: i32,
         ) {
+            // Nanosecond granularity: the C++ seeded rand() from time(NULL)
+            // (whole seconds), so every -r invocation within the same second
+            // produced the identical "random" set. Seed from the finer clock.
             let seed = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
+                .map(|d| d.as_nanos() as u64)
                 .unwrap_or(0);
             let mut rng = Rng::seeded(seed);
+
+            // Distance-to-final map: steers the random walk toward accepting
+            // states so a non-empty transducer always yields paths (hfst/hfst#444).
+            let dist = distance_to_final(t);
 
             let mut max_num = max_num;
             while max_num > 0 {
                 /* Try to extract one path at most 5 times. */
                 max_num -= 1;
-                let mut path = match random_path(t, 5, &mut rng) {
+                let mut path = match random_path(t, &dist, 5, &mut rng) {
                     Ok(p) => p,
                     Err(RandomPathError::NoPath) => {
                         continue; // one trial used, keep on trying
@@ -3033,7 +3176,7 @@ mod lookup_extract_misc {
                 let mut i = max_num;
                 while results.contains(&path) && i > 0 {
                     i -= 1;
-                    if let Ok(p) = random_path(t, 5, &mut rng) {
+                    if let Ok(p) = random_path(t, &dist, 5, &mut rng) {
                         path = p;
                     } // keep on trying
                 }

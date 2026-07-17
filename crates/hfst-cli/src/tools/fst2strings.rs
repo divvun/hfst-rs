@@ -362,9 +362,21 @@ impl ExtractStringsCb for Callback<'_> {
         let options = self.options;
         let mut istring = String::new();
         let mut ostring = String::new();
+        // Epsilon symbols carry the internal `@_EPSILON_SYMBOL_@` marker in the
+        // path but render as the empty string on output. The length / prefix
+        // (`-p`/`-P`) / exclude (`-u`/`-U`) filters below compare against these
+        // accumulated strings, so epsilons must be skipped here too — otherwise a
+        // leading (or interior) epsilon prepends the marker and an `-P "prefix"`
+        // query never matches, even though the printed output does start with the
+        // prefix. Including epsilons in the compare was hfst/hfst#587.
+        // [upstream hfst/hfst#587]
         for it in path.second.iter() {
-            istring.push_str(&it.0);
-            ostring.push_str(&it.1);
+            if !is_epsilon(&it.0) {
+                istring.push_str(&it.0);
+            }
+            if !is_epsilon(&it.1) {
+                ostring.push_str(&it.1);
+            }
         }
         let weight = path.first;
 

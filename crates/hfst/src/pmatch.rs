@@ -212,6 +212,30 @@ impl Ord for Location {
     }
 }
 
+// [DIVERGENCE hfst/hfst#335] Drop exact-duplicate Locations from a (typically
+// already sorted) location vector in place, keeping the first occurrence of
+// each and otherwise preserving order. Two Locations are exact duplicates when
+// they agree on span (start + length), output, tag and weight — the fields that
+// make up a reported match; every remaining field is derived from these plus
+// the non-printable tape symbols that the report never shows. 'Location's own
+// 'Eq'/'Ord' compare weight only (a faithful port of the C++ 'operator<' used
+// for weight-ranked sorting), so identity is spelled out here rather than
+// reusing them.
+pub(crate) fn dedup_locations(ls: &mut LocationVector) {
+    let mut seen: std::collections::BTreeSet<(u32, u32, String, String, u32)> =
+        std::collections::BTreeSet::new();
+    ls.retain(|l| {
+        let key = (
+            l.start,
+            l.length,
+            l.output.clone(),
+            l.tag.clone(),
+            l.weight.to_bits(),
+        );
+        seen.insert(key)
+    });
+}
+
 // [spec:hfst:def:pmatch.hfst-ol.context-matched-trap]
 pub struct ContextMatchedTrap {
     pub polarity: bool,
@@ -1829,6 +1853,17 @@ impl PmatchContainer {
                         ls.push(l);
                     }
                     ls.sort();
+                    // [DIVERGENCE hfst/hfst#335] The optimized-lookup walk can
+                    // reach one accepting configuration via several structurally
+                    // distinct paths (e.g. a union branch carrying an extra
+                    // EndTag or an internal epsilon/flag arc). 'locatefy' projects
+                    // away every non-printable, non-endtag symbol, so those paths
+                    // collapse to byte-identical Locations and the same match is
+                    // reported more than once. Upstream shipped this as an opt-in
+                    // '-u'/unique flag; as a successor we dedupe by default,
+                    // dropping only exact duplicates (same span, output, tag and
+                    // weight) while preserving the (already sorted) order.
+                    dedup_locations(&mut ls);
                     self.locations.push(ls);
                     printable_input_pos += self.best_input_pos - old_input_pos;
                 } else {

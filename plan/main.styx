@@ -3129,90 +3129,315 @@ children (
                         id upstream-bugs.t4.i476
                         title "hfst#476: hfst-lookup memory hole / time-cutoff ineffective on pathological FSTs — lookup resource bounding (max_time/recursion limits in the OL runtime); verify cutoffs actually bound work in the port"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:52:04.957661Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:53:37.874627Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i327
                         title "hfst#327: hfst-fst2strings time cutoff ineffective and/or memory leak — enumeration bounding in fst2strings/extract_paths; the 'leak' is C++, the unbounded work is ours to verify"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:51:51.415428Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:53:13.354641Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i490
                         title "hfst#490: hfst-fst2strings -c 0 loops infinitely on digit-combinatoric FSTs — cycle handling when max-cycles=0 (extract_paths cycles parameter); cap-guarded reproduction"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:51:54.334641Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:53:18.285459Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i293
                         title "hfst#293: lookup accumulates huge weights before printing infinities (epsilon-loop weight explosion) — OL lookup epsilon-cycle weight handling; affects affix-guessify too"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:52:09.133407Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:53:42.990931Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i225
                         title "hfst#225: @_IDENTITY_SYMBOL_@ handling broken in lookup / affix-guessify — identity arcs don't match unknown input symbols during lookup; guessify pipeline consumer"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:52:11.920954Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:53:47.239403Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i445
                         title "hfst#445: hfst-lookup doesn't match '?' (unknown/any) as expected — lookup unknown-symbol semantics vs regex-side expectations; clarify + fix or document"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:52:15.929695Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:53:52.524607Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i460
                         title "hfst#460: lookup-optimize after building a prefix-acceptor FSA loses outputs — OL conversion drops output symbols on prefix acceptors (convert_ol path); reproduce + fix"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:52:45.318541Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:54:10.071652Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i587
                         title "hfst#587: hfst-expand -P (prefix expansion) broken on transducers with initial epsilons — fst2strings/expand prefix matching; reproduce + fix"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:52:48.092244Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:54:17.495107Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i170
                         title "hfst#170: hfst-fst2strings segfaults or prints nothing on certain FSTs — the segfault is C++'s; 'prints nothing' is the logic bug to reproduce in our extract_paths"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:51:49.694736Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:53:10.423556Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i222
                         title "hfst#222: fst2strings throws after ~9M lines of enumeration — resource/format ceiling in long enumerations; verify the port's behavior on unbounded enumeration"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:51:56.797027Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:53:25.592419Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i444
                         title "hfst#444: hfst-fst2strings -r (random) generates nothing for guesser FSTs — extract_random_paths on cyclic/guesser structures; reproduce + fix"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:51:59.499307Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:53:30.809175Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i441
                         title "hfst#441: hfst-fst2strings -r -w misses some weights — random-path extraction drops weights; companion to #444"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:52:01.650877Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:53:33.09747Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i395
                         title "hfst#395: hfst-optimized-lookup doesn't handle multiple FSTs in a single archive (hfst-lookup unions them; OL tool reads only the first) — multi-transducer OL archive semantics in optimized_lookup.rs"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:52:32.589982Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:53:59.561157Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i409
                         title "hfst#409: optimized-lookup tool claims multiple transducers when there is only one — OL stream EOF/next-transducer detection miscounts; companion to #395 (same reader logic)"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:52:37.360717Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:54:02.836999Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
                         id upstream-bugs.t4.i335
                         title "hfst#335: duplicate Location results in pmatch — pmatch runtime emits duplicate matches (minimization/epsilon artifact); reproduce + dedupe or fix at source"
                         priority 4
+                        log (
+                            {
+                                at 2026-07-17T14:52:52.525989Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:54:24.66865Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
+                            }
+                        )
                     }
 
                     {
@@ -3225,6 +3450,20 @@ children (
                                 author "brendan@necessary.nu"
                                 kind @note
                                 text "2026-07-15: UPGRADED from document to INVESTIGATE (successor reframe). Validation: the port scales reasonably (500K result states in 15s / 677MB) and adds no wasteful states, but compose_intersect_lexicon is a straight C++ transcription of the agenda-driven lazy product with no pruning beyond state_pair_map, so a large enough rule intersection still OOMs (inherent O(|lex|·∏|rules|)). Investigate real algorithmic wins (rule pre-intersection+minimization, tighter agenda pruning, the native foma backend path) rather than documenting as won't-fix."
+                            }
+
+                            {
+                                at 2026-07-17T14:52:55.431356Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan_start)"
+                            }
+
+                            {
+                                at 2026-07-17T14:54:27.590874Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan_complete)"
                             }
                         )
                     }

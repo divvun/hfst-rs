@@ -189,4 +189,20 @@ assertions (
     {id upstream-bugs.t3.i570, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:47.491277Z}
     {id upstream-bugs.t3.i334, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:48.979224Z}
     {id upstream-bugs.t3.i253, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:51.189438Z}
+    {id upstream-bugs.t4.i170, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:10.423556Z}
+    {id upstream-bugs.t4.i327, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:13.354641Z}
+    {id upstream-bugs.t4.i490, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:18.285459Z}
+    {id upstream-bugs.t4.i222, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:25.592419Z}
+    {id upstream-bugs.t4.i444, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:30.809175Z}
+    {id upstream-bugs.t4.i441, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:33.09747Z}
+    {id upstream-bugs.t4.i476, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:37.874627Z}
+    {id upstream-bugs.t4.i293, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:42.990931Z}
+    {id upstream-bugs.t4.i225, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:47.239403Z}
+    {id upstream-bugs.t4.i445, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:52.524607Z}
+    {id upstream-bugs.t4.i395, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:59.561157Z}
+    {id upstream-bugs.t4.i409, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:02.836999Z}
+    {id upstream-bugs.t4.i460, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:10.071652Z}
+    {id upstream-bugs.t4.i587, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:17.495107Z}
+    {id upstream-bugs.t4.i335, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:24.66865Z}
+    {id upstream-bugs.t4.i357, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:27.590874Z}
 )
