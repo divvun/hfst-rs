@@ -4135,6 +4135,13 @@ children (
                         kind @status
                         text "Todo → Doing (nplan_start)"
                     }
+
+                    {
+                        at 2026-07-18T01:44:06.272618Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -4147,6 +4154,27 @@ children (
                         author "brendan@necessary.nu"
                         kind @note
                         text "DESIGN (2026-07-18, from reading the fork at ~/git/necessary/rustfst, branch fix/determinize-subset-canonicalization): determinize's live memory = (a) the state table (state_table.rs): id_to_tuple: Vec<Arc<DeterminizeStateTuple>> + tuple_to_id: HashMap<Arc<DeterminizeStateTuple>, StateId, FxHash> — one Arc'd tuple per OUTPUT state, alive for the whole run (a re-reached subset must map to the same id, so nothing is droppable); (b) the growing output VectorFst (per-state Arc<Vec<Tr>> COW — load-bearing, CSR retired in a0bda95); (c) the input FST. Per-tuple cost: Arc header 16 B + WeightedSubset Vec header 24 B + 8 B per element (StateId u32 + TropicalWeight f32) + hash-map entry ~24-32 B + id_to_tuple slot 8 B ≈ 72 B + 8·|subset| per output state. COMPACTION: flatten all subset elements into one arena Vec<(StateId, W)>; a tuple becomes (offset u32, len u32, filter_state) in id_to_tuple (16 B, no Arc, no per-tuple allocation); dedup via hashbrown raw-entry keyed by hashing the arena slice (fxhash already in-tree). Kills ~40-56 B/tuple fixed overhead + allocator churn, improves probe locality. Transient DeterminizeTr dest_tuples (owned subsets during expansion, determinize_fsa_op.rs) stay as-is or borrow from a scratch arena. NO unsafe needed (raw_entry is safe API). STEP 1 — INSTRUMENT BEFORE DESIGN-FREEZE: add counters (peak tuple count, total elements, avg/max |subset|) behind a feature or tracing to the fork and run the lexc oracle compile (750 MiB peak, ~1M-state encoded machines) + a pmatch morphoword compile; if the table is <20% of peak the lever is dead and the floor is the output-FST + input residency (then close honestly like rustfst-trsvec-csr / pmatch-encode-weights). Validation: lexc sha256 34f2debe... byte-oracle + hfst 291 tests + rustfst's own suite; land via the fork (see [[rustfst-now-editable]]). Affects every determinize/minimize user: lexc floor (750 MiB), pmatch compile plateau (~3.5 GiB), compose-intersect's piped minimize."
+                    }
+
+                    {
+                        at 2026-07-18T01:44:22.886671Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-18T01:49:29.334669Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "PREMISE KILLED BY INSTRUMENTATION (2026-07-18) — retired with no code change, per the node's own step-1 kill criterion (<20% of peak). Method: temporary counters in the fork's state_table.rs (elems total + doubling/final eprintln, DETERMINIZE_STATS env gate) + [patch] to the local fork; verified observation-only (lexc output byte-identical between instrumented and pinned binaries, sha ea98a54c...). Results: lang-sma lexc compile (538 MB peak this input-generation) — 4 large determinizes, tables reach 131k-262k tuples with avg_subset 1.00-1.50 → table ≈ 16-24 MB ≈ 3-5% of peak. pmatch2fst compile — ~30 large determinizes, biggest ≥524k tuples, avg_subset 1.00 (pure singletons; a few 1.04-1.26) → ~80 MB transient vs the ~3.5 GiB plateau ≈ 2%. The label-encoded machines these pipelines determinize are near-deterministic: subset construction mostly renames states, so the table is per-tuple OVERHEAD-dominated (~100 B vs 8 B payload, 10×) but absolutely tiny. The arena-flattening redesign would buy 2-5% — not worth it. The determinize-phase peak is the machines themselves (input + output VectorFst + lazy cache), whose per-state Arc COW representation is load-bearing (CSR retired in a0bda95). NOTE for the future: if a workload ever shows avg_subset >> 1 (genuinely nondeterministic weighted input), the arena idea becomes live again — the instrumentation recipe above takes minutes to re-apply. Also: the remembered lexc oracle sha 34f2debe no longer matches (input .generated/lexicon.lexc was regenerated 2026-07-06); current-tree lexc sha is ea98a54c..., 538 MB peak."
+                    }
+
+                    {
+                        at 2026-07-18T01:49:37.328055Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
                     }
                 )
             }
