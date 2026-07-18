@@ -4239,8 +4239,8 @@ children (
 
             {
                 id compose-facade-nativize
-                title "Nativize compose facade overhead: operand clone + substitute passes + harmonize_copy (23% of xfst CPU vs 7% product core); A2-style in-place tropical edits where they round-trip through basic; byte-identical oracles"
-                deps (fork-property-propagation)
+                title "xfst compose-facade residual: pin the ~680 unattributed inline frames + xerox flag encode/decode passes (5%); re-measure AFTER the lazy-framework fixes (the 680 may largely be lazy-machinery inside the compose call)"
+                deps (rustfst-lazy-direct-materialize)
                 log (
                     {
                         at 2026-07-18T12:11:03.301393Z
@@ -4255,7 +4255,31 @@ children (
                         kind @note
                         text "CORRECTED ATTRIBUTION (2026-07-18, replaces the earlier design note's cost list, which was partly wrong): proper child attribution of compose_with_config's 1811 frames (23% of thread) in the representative xfst script: rustfst product core ~588 (7%); encode_flag_diacritics+decode_flag_diacritics ~390 (5%) — the xerox_composition flag encode/decode passes, NOT in the original note; substitute passes ~112 (1.4%); harmonize_copy ~39 (0.5% — the original note wrongly listed it as a main cost); convert_to_hfst_transducer 24; UNATTRIBUTED inline ~680 (8%) — likely the operand clone, pre-compose tr_sort, and inlined alphabet work, MUST be pinned (finer sampling or temporary instrumentation) before any design is trusted. Realistic addressable slice if flag-encode + unattributed turn out churn-y: ~10% of xfst ≈ 8-10s of build — smaller than the node title implies. Do not start implementation from the title; start from pinning the 680."
                     }
+
+                    {
+                        at 2026-07-18T12:25:51.250868Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "CAUSAL REFRAME (2026-07-18, answers \"why still 1.4-1.6× slower than C++ on the xfst legs when outputs are byte-identical\"): byte-identity constrains WHAT is computed, not HOW FAST — the earlier \"algorithmic floor / byte-locked\" framing was wrong. The same chains run in OpenFST at ~100s vs our 164s (src/fst), and the divergence is in rustfst's lazy-FST framework, verified in code: (1) BOTH lazy caches (SimpleVecCache, SimpleHashMapCache: trs/start/final_weights fields) AND the state tables are std::sync::Mutex-wrapped — every get_trs/find_id/cache-fill pays lock+unlock in single-threaded static algorithms, millions of times per determinize; OpenFST CacheImpl is unsynchronized vectors. (2) the GENERIC lazy StateTable (lazy/state_table.rs BiHashMap<T, H = RandomState>) still hashes with SipHash — the determinize-specific table was FxHash-ified with a recorded ~5% win, compose et al. were not (sample evidence: sip frames under lazy StateTable::find_id + LazyFst::compute_bounded). (3) compute_bounded materializes cache-then-copy: computes each state into the Mutex-guarded cache then re-reads to build the output FST — pure overhead for one-shot static ops; plus get_trs returns an Arc clone (atomic refcount) per state visit. Frame evidence: `lazy` = 1223/~8000 (xfst sample), 7651/~10000 (errmodel determinize); likely contains the 680 unattributed compose frames. MAGNITUDE UNMEASURED — bounded above by the ~40% leg gap; measure per-change. Work order: (a) FxHash the generic StateTable (trivial, mirrors proven pattern); (b) de-Mutex the single-threaded path (RefCell/&mut cache variant — medium, design needed since LazyFst API is &self); (c) consider direct materialization bypassing the cache for static one-shot ops. All byte-safe (framework-only); validate with the standard oracle set + interleaved A/B per change."
+                    }
                 )
+            }
+
+            {
+                id rustfst-lazy-statetable-fxhash
+                title "rustfst: FxHash the generic lazy StateTable (BiHashMap defaults to SipHash/RandomState; determinize's own table got this fix with a recorded ~5% win, compose et al. never did); interleaved A/B + byte oracles"
+            }
+
+            {
+                id rustfst-lazy-demutex
+                title "rustfst: de-Mutex the single-threaded lazy path — SimpleVecCache/SimpleHashMapCache/state tables lock on every get_trs/find_id/fill; design a RefCell (non-Sync) cache variant for the static algorithms (LazyFst API is &self); byte-safe by construction"
+                deps (rustfst-lazy-statetable-fxhash)
+            }
+
+            {
+                id rustfst-lazy-direct-materialize
+                title "rustfst: direct materialization for one-shot static ops — compute_bounded fills the guarded cache then re-reads it to build the output FST; emit straight into the output for static determinize/compose/rm_epsilon (cache layer is pure overhead when nothing is lazy)"
+                deps (rustfst-lazy-demutex)
             }
         )
         log (
@@ -4264,6 +4288,13 @@ children (
                 author "brendan@necessary.nu"
                 kind @note
                 text "SCOPE + RULED-OUT LEVERS (2026-07-18 CPU-true leg profiling, rusage shims — the earlier wall-time shims double-counted pipe-waits and produced PHANTOM villains: '44s fst2fst / 41s push-weights' were <4s real CPU, ignore them). Real CPU split of the two heavy legs (~187s): xfst 93s (41 invocations), regexp2fst 54s (of which ONE errmodel -S -E = 38.4s), lexc ~25s, rest optimized. Two children scoped: fork-property-propagation (P0, ~15% of xfst), compose-facade-nativize (P1, ~16% of xfst compose sites, lower confidence). RULED OUT, do not re-open: (a) SIMD — hot loops are dfs_visit/subset-construction/partition-refinement (pointer-chasing, data-dependent branches, vectorization-hostile) and the one memcmp hotspot is already libc-vectorized; matcher binary-search->merge-join is real but the product core is only 7% so no payoff. (b) the errmodel 38.4s regexp2fst -S -E is ~100% a single encoded determinize — the same tropical-subset-construction floor hit at pmatch encode_weights and rustfst-determinize-table; algorithmic, not churn, byte-locked. (c) parallelizing pmatch/xfst per-def — ordering-sensitive shared eval context, determinism risk, rejected earlier. Coarse `make -j` remains the only free throughput lever and is orthogonal to this node (build-system, not library)."
+            }
+
+            {
+                at 2026-07-18T12:30:05.346319Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "RESTRUCTURED (2026-07-18) after the causal reframe: the xfst-leg gap vs C++ is rustfst lazy-framework constant factors (Mutex-per-access caches/state-tables, SipHash generic StateTable, Arc-per-get_trs, cache-then-copy materialization), NOT facade-level algorithm choices and NOT an \"algorithmic floor\" — byte-identity fixes what is computed, not how fast. New work order (dep chain, one A/B measurement per step, standard oracle set: lexc sha ea98a54c + tokeniser cmp 541,169,926 + speller xfst artifact cmp + 291 hfst tests): rustfst-lazy-statetable-fxhash (trivial) → rustfst-lazy-demutex (medium, RefCell cache variant design) → rustfst-lazy-direct-materialize (bypass cache for static ops) → compose-facade-residual re-measure (the old compose-facade-nativize, retitled; its 680 unattributed frames are likely lazy machinery and may evaporate with the framework fixes). fork-property-propagation stays Done/retired as the errata record."
             }
         )
     }
