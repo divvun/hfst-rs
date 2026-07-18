@@ -4074,6 +4074,13 @@ children (
                         kind @status
                         text "Todo → Doing (nplan_start)"
                     }
+
+                    {
+                        at 2026-07-18T01:10:31.649143Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 
@@ -4081,6 +4088,28 @@ children (
                 id pmatch-encode-weights
                 title "encode_weights=true through pmatch compiler minimizes (successor divergence; tokenise-identical, ~-35% archive)"
                 deps (olw-direct-conversion)
+                log (
+                    {
+                        at 2026-07-18T01:10:37.399082Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-18T01:21:35.480144Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "PREMISE OVERTURNED (2026-07-18) — retired with no code change. The 2026-07-03 characterization (openfst.algo node) showed encode_weights=true in every minimize giving 347M (-35%)/9.3GB on the sma tokeniser. That no longer reproduces on current main: (1) sweeping all 32 pmatch_compiler minimize/optimize sites to encode_weights=true → archive EXACTLY 541,169,926 B, same as baseline, peak unchanged; (2) flipping EngineConfig::default().encode_weights=true globally (every minimize in the crate) → 541,169,950 B, per-def state/arc counts IDENTICAL to baseline (morphoword 355,917/929,855); (3) DECISIVE: standalone `hfst-minimize -E` on the current TOP (561,562 states / 22,852,267 arcs, extracted via hfst-head|fst2fst -t) merges NOTHING — the automaton is already encoded-minimal. Today's default pipeline builds the encoded-minimal machine; the Jul-3 -35% was harvested en route (most plausibly the rustfst fix/determinize-subset-canonicalization branch normalizing residual-weight subsets). Nothing left for this lever; the sweep would only diverge weight-placement bytes from C++ for zero benefit, so it was reverted. Remaining pmatch2fst levers: compile-phase internals (~3.5 GiB plateau) and the conversion-window structures (~2.2 GiB: TransitionPlaceholder groups, IndexPlaceholders, in-memory tables); the foma-backend route remains the real archive-size fix per the Jul-3 note."
+                    }
+
+                    {
+                        at 2026-07-18T01:21:40.617004Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
         )
     }
