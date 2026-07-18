@@ -18,7 +18,7 @@ nfst-lexc = { workspace = true }
 nfst-pmatch = { workspace = true }
 nfst-twolc = { workspace = true }
 nfst-xfst = { workspace = true }
-foma = { version = "0.3", optional = true }
+foma = { version = "0.4", optional = true }
 thiserror = "2.0.18"
 tracing = "0.1.44"
 ariadne = "0.5"
