@@ -459,10 +459,7 @@ impl<B: Backend> HfstTransducer<B> {
             }
         }
 
-        let mut net = self.convert_to_basic_transducer()?;
-        net.add_symbols_to_alphabet_set(symbols);
-        self.convert_to_hfst_transducer(net)?;
-        Ok(())
+        self.fst.add_symbols_to_alphabet(symbols)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.remove-from-alphabet-fn]
@@ -474,10 +471,7 @@ impl<B: Backend> HfstTransducer<B> {
             crate::bail!(EmptyString, "remove_from_alphabet");
         }
 
-        let mut net = self.convert_to_basic_transducer()?;
-        net.remove_symbol_from_alphabet(&Symbol::new(symbol));
-        self.convert_to_hfst_transducer(net)?;
-        Ok(())
+        self.fst.remove_from_alphabet(symbol)
     }
 
     pub fn remove_from_alphabet_string_set(
@@ -491,9 +485,8 @@ impl<B: Backend> HfstTransducer<B> {
     }
 
     pub fn prune_alphabet(&mut self, force: bool) -> crate::error::Result<&mut HfstTransducer<B>> {
-        let mut net = self.convert_to_basic_transducer()?;
-        net.prune_alphabet(force);
-        self.convert_to_hfst_transducer(net)
+        self.fst.prune_alphabet(force)?;
+        Ok(self)
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.get-alphabet-fn]

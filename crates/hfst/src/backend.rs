@@ -87,6 +87,35 @@ pub trait Backend: Sized {
         Ok(())
     }
 
+    /// 'insert_to_alphabet(StringSet)': like [`Self::insert_to_alphabet`] but for
+    /// a whole set. Backends whose alphabet is graph-independent metadata (the
+    /// tropical SymbolTable) override this with an in-place O(alphabet) edit; the
+    /// default round-trips through the basic transducer as the C++ did.
+    fn add_symbols_to_alphabet(&mut self, symbols: &StringSet) -> crate::error::Result<()> {
+        let mut net = self.to_basic()?;
+        net.add_symbols_to_alphabet_set(symbols);
+        *self = Self::from_basic(&net)?;
+        Ok(())
+    }
+
+    /// 'remove_from_alphabet(string)'. Default round-trips; the tropical backend
+    /// edits its SymbolTable in place (no whole-graph deep copy).
+    fn remove_from_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
+        let mut net = self.to_basic()?;
+        net.remove_symbol_from_alphabet(&crate::hfst_data_types::Symbol::new(symbol));
+        *self = Self::from_basic(&net)?;
+        Ok(())
+    }
+
+    /// 'prune_alphabet'. Default round-trips; the tropical backend prunes its
+    /// SymbolTable in place, keeping surviving symbols at their original labels.
+    fn prune_alphabet(&mut self, force: bool) -> crate::error::Result<()> {
+        let mut net = self.to_basic()?;
+        net.prune_alphabet(force);
+        *self = Self::from_basic(&net)?;
+        Ok(())
+    }
+
     /// 'is_infinitely_ambiguous': the OL backends answer directly; everything
     /// else goes through the basic transducer, as the C++ default arm did.
     fn is_infinitely_ambiguous(&self) -> crate::error::Result<bool> {
@@ -239,6 +268,25 @@ impl Backend for StdVectorFst {
     }
     fn has_weights(&self) -> bool {
         TropicalWeightTransducer::has_weights(self)
+    }
+    // Alphabet edits are pure SymbolTable metadata for the tropical backend — the
+    // arc graph is untouched — so these override the round-trip default with an
+    // in-place edit that avoids two O(states) whole-graph deep copies.
+    fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
+        TropicalWeightTransducer::insert_to_alphabet(self, symbol);
+        Ok(())
+    }
+    fn add_symbols_to_alphabet(&mut self, symbols: &StringSet) -> crate::error::Result<()> {
+        TropicalWeightTransducer::add_symbols_to_alphabet(self, symbols);
+        Ok(())
+    }
+    fn remove_from_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
+        TropicalWeightTransducer::remove_from_alphabet(self, symbol);
+        Ok(())
+    }
+    fn prune_alphabet(&mut self, force: bool) -> crate::error::Result<()> {
+        TropicalWeightTransducer::prune_alphabet(self, force);
+        Ok(())
     }
     fn write(&self, os: &mut dyn std::io::Write, hfst_format: bool) -> crate::error::Result<()> {
         TropicalWeightTransducer::write_transducer_to(self, os, hfst_format)

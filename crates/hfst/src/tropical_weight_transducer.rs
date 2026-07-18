@@ -1106,12 +1106,80 @@ mod construction_io {
                 .as_ref()
                 .clone();
             let mut st = SymbolTable::empty();
-            for (_label, sym) in old.iter() {
+            for (label, sym) in old.iter() {
                 if sym != symbol {
-                    // NOTE: rustfst's SymbolTable has no add-at-explicit-label, so
-                    // the original label of 'sym' cannot be preserved (the C++ does
-                    // 'AddSymbol(sym, label)'). Symbols after the removed one shift.
-                    st.add_symbol(sym);
+                    // Preserve each symbol's original label (C++ 'AddSymbol(sym,
+                    // label)') so arc numbers stay valid; removing one entry leaves
+                    // a gap rather than shifting everything after it down.
+                    st.add_symbol_with_key(sym, label);
+                }
+            }
+            t.set_input_symbols(Arc::new(st));
+        }
+
+        // Add every symbol in `symbols` to the alphabet SymbolTable in place. The
+        // graph is untouched: this is the tropical (in-place, O(alphabet)) analog
+        // of the round-trip 'net.add_symbols_to_alphabet_set' — no state/arc copy.
+        pub fn add_symbols_to_alphabet(t: &mut StdVectorFst, symbols: &StringSet) {
+            assert!(t.input_symbols().is_some());
+            let mut st = t
+                .input_symbols()
+                .expect("input symbols present: asserted above")
+                .as_ref()
+                .clone();
+            for symbol in symbols.iter() {
+                st.add_symbol(symbol.as_str());
+            }
+            t.set_input_symbols(Arc::new(st));
+        }
+
+        // In-place O(states + arcs + alphabet) alphabet prune: drop every alphabet
+        // symbol that occurs on no arc, keeping the surviving symbols at their
+        // original labels (so no arc is renumbered). The tropical analog of the
+        // round-trip 'net.prune_alphabet(force)' — no whole-graph deep copy.
+        pub fn prune_alphabet(t: &mut StdVectorFst, force: bool) {
+            assert!(t.input_symbols().is_some());
+
+            // Numeric labels that actually occur on some transition.
+            let mut used_labels: BTreeSet<u32> = BTreeSet::new();
+            for s in t.states_iter() {
+                for arc in t
+                    .get_trs(s)
+                    .expect("s is a valid state of this fst")
+                    .trs()
+                    .iter()
+                {
+                    used_labels.insert(arc.ilabel);
+                    used_labels.insert(arc.olabel);
+                }
+            }
+
+            let old = t
+                .input_symbols()
+                .expect("input symbols present: asserted above")
+                .as_ref()
+                .clone();
+
+            // We cannot prune if unknown or identity symbols occur in transitions
+            // (they stand for the rest of the alphabet), unless forced.
+            let unknown_or_identity_used = old.iter().any(|(label, sym)| {
+                used_labels.contains(&label)
+                    && (sym == internal_unknown || sym == internal_identity)
+            });
+            if !force && unknown_or_identity_used {
+                return;
+            }
+
+            let mut st = SymbolTable::empty();
+            for (label, sym) in old.iter() {
+                // Special symbols are always known; everything else is kept only if
+                // some arc uses its label.
+                let keep = used_labels.contains(&label)
+                    || sym == internal_epsilon
+                    || sym == internal_unknown
+                    || sym == internal_identity;
+                if keep {
+                    st.add_symbol_with_key(sym, label);
                 }
             }
             t.set_input_symbols(Arc::new(st));

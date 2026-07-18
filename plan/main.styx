@@ -4007,6 +4007,28 @@ children (
             {
                 id native-alphabet-ops
                 title "(A2) Eliminate the load-bearing facade round-trips that deep-copy the whole graph to do alphabet-metadata / symbol-remapping work. Profiling (see conversion-churn) attributed the 36 big (206K-999K-state) conversions per lang-sma compile to: prune_alphabet (6), substitute_symbol_substitutions/substitute_string/substitute_with_func (10), harmonize_copy/harmonize_for_binary_op (9), insert/remove_from_alphabet, encode/decode_flag_diacritics. Each calls convert_to_basic_transducer() -> op -> convert_to_hfst_transducer(), i.e. two O(states) deep copies (rustfst TrsVec::clone is a per-state Arc::new). For the tropical backend the alphabet IS the input SymbolTable, so prune_alphabet/insert/remove could be an in-place O(alphabet) symbol-table edit with no graph copy. RISK: the round-trips re-canonicalize symbol numbering, which downstream stages rely on for byte-exact C++-faithful output — so native versions must be validated by EQUIVALENCE (same analyses/generations on lang-sma), not the byte-identical oracle. Successor port allows the divergence (see upstream-bugs-validation-successor). Biggest single event is a 999,594-state basic->trop; killing these also cuts peak (source+dest both live during a round-trip). Do AFTER benchmarking against lever B (rustfst-trsvec-csr), which reduces the per-conversion cost instead."
+                log (
+                    {
+                        at 2026-07-17T23:32:39.61823Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-18T00:02:34.945812Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "PEAK PREMISE OVERTURNED (same pattern as determinize-intermediate). Nativized the pure-metadata tropical alphabet ops — prune_alphabet, insert_to_alphabet (single+set), remove_from_alphabet — as in-place O(alphabet) SymbolTable edits (label-preserving via add_symbol_with_key), dispatched through new Backend trait methods (default round-trips; tropical overrides). This eliminates the 6 prune + insert/remove whole-graph deep-copy round-trips.\n\nMEASURED (interleaved C2-vs-A2 binaries, identical conditions, lang-sma lexc): peak RSS UNCHANGED at ~750 MiB (786M bytes) both; user CPU ~11.6s A2 vs ~12.3s C2 (neutral/noise); output BYTE-IDENTICAL (sha256 34f2debe...); 226 hfst tests pass; fmt+clippy clean. Byte-identity held because the per-graph coder numbers the contiguous lexc intermediates as identity, so label-preserving in-place edits reproduce the round-trip's numbering exactly — no equivalence-only divergence needed.\n\nWHY NO PEAK WIN: the alphabet round-trips are TRANSIENT — they run before/between the determinize calls and are freed before determinize's subset construction (lazy state table + compute_trs vecs + subset hashmap, per node C) sets the high-water mark. The peak is determinize-owned; killing pre-peak transient copies reduces churn (allocation count) but not the high-water mark. The same holds for the remaining graph-relabel round-trips (substitute ~10, harmonize ~9, encode/decode flags): also transient/pre-peak, so nativizing them (in-place arc relabel) would cut churn but NOT peak either — and they mutate the graph (equivalence-only validation, higher risk). RECOMMEND: land the safe byte-identical metadata subset (done); do NOT pursue the graph-relabel remainder for peak (it can't move peak); revisit it only if a CPU/churn goal on other workloads justifies the risk. The node's peak target (below ~750 MiB) is not reachable via alphabet-op nativization."
+                    }
+
+                    {
+                        at 2026-07-18T00:03:06.06518Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
