@@ -4113,4 +4113,36 @@ children (
             }
         )
     }
+
+    {
+        id perf-memory-round2
+        title "Memory round 2: flatten OLW packer groups + compact rustfst determinize table"
+        children (
+            {
+                id olw-flat-groups
+                title "Flatten StatePlaceholder transition groups (Vec-of-Vecs → flat arcs + (symbol,start,len) ranges); ~-1.2 GB conversion window, byte-identical oracle"
+                log (
+                    {
+                        at 2026-07-18T01:34:36.750412Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DESIGN (2026-07-18, grounded by examples/olw_conversion_stats.rs on the sma TOP): the conversion window's ~2.2 GiB is dominated by transition_placeholders: Vec<Vec<TransitionPlaceholder>>. Measured on TOP (561,562 states / 22,852,267 arcs, sigma 1191): 22,715,870 distinct (state,input) groups, of which 22,595,387 (99.5%) hold exactly ONE arc — avg 1.0 arcs/group, 40.5 groups/state. So the structure pays ~24 B Vec header + ~32 B heap allocation per group (~1.2 GiB) to hold 348 MB of 16-B payloads. FIX: per state, ONE flat Vec<TransitionPlaceholder> plus ranges — replace symbol_to_group's group index with (symbol, start: u32, len: u32) (12 B/group, 273 MB total) into the flat vec. Group insertion order and per-group arc order are preserved (arcs for one input are appended contiguously; source arcs are ilabel-sorted after minimize so groups build contiguously — non-contiguous repeats need an insert-into-range shuffle or a per-state final sort-by-first-seen, choose whichever keeps byte-identity). All consumers already go through group_of/get_transition_placeholders/iteration in ascending-symbol or group order (the sparse-map sweep in 87257e1 centralized this), so the refactor is contained in convert.rs. Expected: conversion window 2.2 → ~0.9-1.0 GiB; pmatch2fst peak 6.15 → ~4.5-5 GB, at which point the compile plateau (~3.5 GiB) becomes the owner. Validation: byte-identity vs the 541,169,926-B oracle + 291 tests (the basic→OL path shares the structure, so fst2fst/thfst suites lock it too). OPTIONAL EXTENSION (fork risk, only if more is needed): for the direct tropical path the TP payloads can be skipped entirely — pass 1 records only (symbol,count) per state; pass 2 re-walks the random-access tropical arcs and emits TransitionW directly (saves the remaining ~350 MB but forks write_transitions_from_state_placeholders)."
+                    }
+                )
+            }
+
+            {
+                id rustfst-determinize-table
+                title "Compact rustfst determinize subset table (arena-flattened tuples, raw-entry hash); attacks lexc 750 MiB floor + pmatch compile plateau; instrument first"
+                log (
+                    {
+                        at 2026-07-18T01:34:56.162694Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DESIGN (2026-07-18, from reading the fork at ~/git/necessary/rustfst, branch fix/determinize-subset-canonicalization): determinize's live memory = (a) the state table (state_table.rs): id_to_tuple: Vec<Arc<DeterminizeStateTuple>> + tuple_to_id: HashMap<Arc<DeterminizeStateTuple>, StateId, FxHash> — one Arc'd tuple per OUTPUT state, alive for the whole run (a re-reached subset must map to the same id, so nothing is droppable); (b) the growing output VectorFst (per-state Arc<Vec<Tr>> COW — load-bearing, CSR retired in a0bda95); (c) the input FST. Per-tuple cost: Arc header 16 B + WeightedSubset Vec header 24 B + 8 B per element (StateId u32 + TropicalWeight f32) + hash-map entry ~24-32 B + id_to_tuple slot 8 B ≈ 72 B + 8·|subset| per output state. COMPACTION: flatten all subset elements into one arena Vec<(StateId, W)>; a tuple becomes (offset u32, len u32, filter_state) in id_to_tuple (16 B, no Arc, no per-tuple allocation); dedup via hashbrown raw-entry keyed by hashing the arena slice (fxhash already in-tree). Kills ~40-56 B/tuple fixed overhead + allocator churn, improves probe locality. Transient DeterminizeTr dest_tuples (owned subsets during expansion, determinize_fsa_op.rs) stay as-is or borrow from a scratch arena. NO unsafe needed (raw_entry is safe API). STEP 1 — INSTRUMENT BEFORE DESIGN-FREEZE: add counters (peak tuple count, total elements, avg/max |subset|) behind a feature or tracing to the fork and run the lexc oracle compile (750 MiB peak, ~1M-state encoded machines) + a pmatch morphoword compile; if the table is <20% of peak the lever is dead and the floor is the output-FST + input residency (then close honestly like rustfst-trsvec-csr / pmatch-encode-weights). Validation: lexc sha256 34f2debe... byte-oracle + hfst 291 tests + rustfst's own suite; land via the fork (see [[rustfst-now-editable]]). Affects every determinize/minimize user: lexc floor (750 MiB), pmatch compile plateau (~3.5 GiB), compose-intersect's piped minimize."
+                    }
+                )
+            }
+        )
+    }
 )
