@@ -4128,6 +4128,13 @@ children (
                         kind @note
                         text "DESIGN (2026-07-18, grounded by examples/olw_conversion_stats.rs on the sma TOP): the conversion window's ~2.2 GiB is dominated by transition_placeholders: Vec<Vec<TransitionPlaceholder>>. Measured on TOP (561,562 states / 22,852,267 arcs, sigma 1191): 22,715,870 distinct (state,input) groups, of which 22,595,387 (99.5%) hold exactly ONE arc — avg 1.0 arcs/group, 40.5 groups/state. So the structure pays ~24 B Vec header + ~32 B heap allocation per group (~1.2 GiB) to hold 348 MB of 16-B payloads. FIX: per state, ONE flat Vec<TransitionPlaceholder> plus ranges — replace symbol_to_group's group index with (symbol, start: u32, len: u32) (12 B/group, 273 MB total) into the flat vec. Group insertion order and per-group arc order are preserved (arcs for one input are appended contiguously; source arcs are ilabel-sorted after minimize so groups build contiguously — non-contiguous repeats need an insert-into-range shuffle or a per-state final sort-by-first-seen, choose whichever keeps byte-identity). All consumers already go through group_of/get_transition_placeholders/iteration in ascending-symbol or group order (the sparse-map sweep in 87257e1 centralized this), so the refactor is contained in convert.rs. Expected: conversion window 2.2 → ~0.9-1.0 GiB; pmatch2fst peak 6.15 → ~4.5-5 GB, at which point the compile plateau (~3.5 GiB) becomes the owner. Validation: byte-identity vs the 541,169,926-B oracle + 291 tests (the basic→OL path shares the structure, so fst2fst/thfst suites lock it too). OPTIONAL EXTENSION (fork risk, only if more is needed): for the direct tropical path the TP payloads can be skipped entirely — pass 1 records only (symbol,count) per state; pass 2 re-walks the random-access tropical arcs and emits TransitionW directly (saves the remaining ~350 MB but forks write_transitions_from_state_placeholders)."
                     }
+
+                    {
+                        at 2026-07-18T01:38:26.444783Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
                 )
             }
 

@@ -453,8 +453,8 @@ pub(crate) fn pack_ol_tables(
                 continue;
             }
             state_offsets.clear();
-            state_offsets.extend(placeholder.transition_placeholders.iter().map(|group| {
-                let input = group[0].input;
+            state_offsets.extend((0..placeholder.group_ranges.len()).map(|group| {
+                let input = placeholder.group_slice(group as u32)[0].input;
                 if flag_symbols.contains(input) {
                     0
                 } else {

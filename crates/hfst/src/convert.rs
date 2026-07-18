@@ -106,10 +106,16 @@ pub struct StatePlaceholder {
     // thousands of states over a multi-thousand-symbol alphabet) the dense
     // vectors alone cost gigabytes.
     pub symbol_to_group: Vec<(SymbolNumber, u32)>,
-    pub transition_placeholders: Vec<Vec<TransitionPlaceholder>>,
-    // Per-group cumulative transition offsets (parallel to
-    // transition_placeholders), built by build_symbol_offsets once the
-    // transitions are final; answers symbol_offset queries in O(1).
+    // All of the state's transitions in one flat vector, contiguous per
+    // group, with per-group (start, len) ranges indexed by group id in
+    // first-seen order. Replaces a Vec-of-Vecs: on a pmatch TOP 99.5% of
+    // groups hold a single arc, so per-group Vec headers and allocations
+    // cost ~1.2 GiB against 348 MB of payload.
+    pub arcs: Vec<TransitionPlaceholder>,
+    pub group_ranges: Vec<(u32, u32)>,
+    // Per-group cumulative transition offsets (parallel to group_ranges),
+    // built by build_symbol_offsets once the transitions are final; answers
+    // symbol_offset queries in O(1).
     pub group_offsets: Vec<u32>,
     pub ty: IndexingType,
     pub inputs: SymbolNumber,
@@ -126,7 +132,8 @@ impl StatePlaceholder {
             start_index: u32::MAX,
             first_transition: first,
             symbol_to_group: Vec::new(),
-            transition_placeholders: Vec::new(),
+            arcs: Vec::new(),
+            group_ranges: Vec::new(),
             group_offsets: Vec::new(),
             ty: if state == 0 {
                 IndexingType::nonsimple
@@ -145,7 +152,8 @@ impl StatePlaceholder {
             start_index: u32::MAX,
             first_transition: u32::MAX,
             symbol_to_group: Vec::new(),
-            transition_placeholders: Vec::new(),
+            arcs: Vec::new(),
+            group_ranges: Vec::new(),
             group_offsets: Vec::new(),
             ty: IndexingType::empty,
             inputs: 0,
@@ -163,10 +171,7 @@ impl StatePlaceholder {
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.number-of-transitions-fn]
     // [spec:hfst:sem:convert.hfst-ol.state-placeholder.number-of-transitions-fn]
     pub fn number_of_transitions(&self) -> u32 {
-        self.transition_placeholders
-            .iter()
-            .map(|it| u32::try_from(it.len()).expect("value out of u32 range"))
-            .sum()
+        u32::try_from(self.arcs.len()).expect("value out of u32 range")
     }
 
     /// The group index registered for 'input', if present.
@@ -197,10 +202,13 @@ impl StatePlaceholder {
             pos,
             (
                 input,
-                u32::try_from(self.transition_placeholders.len()).expect("value out of u32 range"),
+                u32::try_from(self.group_ranges.len()).expect("value out of u32 range"),
             ),
         );
-        self.transition_placeholders.push(Vec::new());
+        self.group_ranges.push((
+            u32::try_from(self.arcs.len()).expect("value out of u32 range"),
+            0,
+        ));
         self.inputs += 1;
         if self.ty != IndexingType::nonsimple {
             // Depending on what type of inputs we now have, adjust the index
@@ -237,17 +245,38 @@ impl StatePlaceholder {
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.add-transition-fn]
     // [spec:hfst:sem:convert.hfst-ol.state-placeholder.add-transition-fn]
     pub fn add_transition(&mut self, trans: TransitionPlaceholder) {
-        let slot =
+        let group =
             self.group_of(trans.input)
                 .expect("the transition's input was registered by add_input") as usize;
-        self.transition_placeholders[slot].push(trans);
+        let (start, len) = self.group_ranges[group];
+        let insert_at = start + len;
+        if insert_at as usize == self.arcs.len() {
+            self.arcs.push(trans);
+        } else {
+            // A later group has already started behind this one; keep the
+            // group's arcs contiguous by inserting at its end and shifting
+            // every later-positioned group's start.
+            self.arcs.insert(insert_at as usize, trans);
+            for (other, (other_start, _)) in self.group_ranges.iter_mut().enumerate() {
+                if other != group && *other_start >= insert_at {
+                    *other_start += 1;
+                }
+            }
+        }
+        self.group_ranges[group].1 += 1;
     }
 
-    pub fn get_transition_placeholders(&self, input: SymbolNumber) -> &Vec<TransitionPlaceholder> {
-        &self.transition_placeholders[self
-            .group_of(input)
-            .expect("input is present in this state")
-            as usize]
+    /// The arcs of group 'group', in insertion order.
+    pub fn group_slice(&self, group: u32) -> &[TransitionPlaceholder] {
+        let (start, len) = self.group_ranges[group as usize];
+        &self.arcs[start as usize..(start + len) as usize]
+    }
+
+    pub fn get_transition_placeholders(&self, input: SymbolNumber) -> &[TransitionPlaceholder] {
+        self.group_slice(
+            self.group_of(input)
+                .expect("input is present in this state"),
+        )
     }
 
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.symbol-offset-fn]
@@ -284,8 +313,7 @@ impl StatePlaceholder {
             if symbol == sym {
                 return Ok(offset);
             }
-            offset += u32::try_from(self.transition_placeholders[group as usize].len())
-                .expect("value out of u32 range");
+            offset += self.group_ranges[group as usize].1;
         }
         let message = String::from(
             "error in conversion between optimized lookup format and \
@@ -300,7 +328,7 @@ impl StatePlaceholder {
     /// Epsilon and flag groups sit at offset 0; non-flag groups accumulate in
     /// the same order symbol_offset scans them.
     pub fn build_symbol_offsets(&mut self, flag_symbols: &FlagSymbolSet) {
-        self.group_offsets = vec![0; self.transition_placeholders.len()];
+        self.group_offsets = vec![0; self.group_ranges.len()];
         let mut offset: u32 = 0;
         if self.input_present(0) {
             offset = u32::try_from(self.get_transition_placeholders(0).len())
@@ -315,8 +343,7 @@ impl StatePlaceholder {
         for &(sym, group) in self.symbol_to_group.iter() {
             if sym != 0 && !flag_symbols.contains(sym) {
                 self.group_offsets[group as usize] = offset;
-                offset += u32::try_from(self.transition_placeholders[group as usize].len())
-                    .expect("value out of u32 range");
+                offset += self.group_ranges[group as usize].1;
             }
         }
     }
@@ -513,7 +540,7 @@ pub fn write_transitions_from_state_placeholders(
             }
             add_transitions_with(
                 sym,
-                &it.transition_placeholders[group as usize],
+                it.group_slice(group),
                 transition_table,
                 state_placeholders,
                 flag_symbols,

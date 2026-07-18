@@ -238,4 +238,5 @@ assertions (
     {id native-alphabet-ops, kind @complete, author "brendan@necessary.nu", at 2026-07-18T00:03:06.06518Z}
     {id olw-direct-conversion, kind @complete, author "brendan@necessary.nu", at 2026-07-18T01:10:31.649143Z}
     {id pmatch-encode-weights, kind @complete, author "brendan@necessary.nu", at 2026-07-18T01:21:40.617004Z}
+    {id olw-flat-groups, kind @doing, author "brendan@necessary.nu", at 2026-07-18T01:38:26.444783Z}
 )
