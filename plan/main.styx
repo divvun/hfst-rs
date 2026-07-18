@@ -4296,6 +4296,28 @@ children (
                 id rustfst-lazy-demutex
                 title "rustfst: de-Mutex the single-threaded lazy path — SimpleVecCache/SimpleHashMapCache/state tables lock on every get_trs/find_id/fill; design a RefCell (non-Sync) cache variant for the static algorithms (LazyFst API is &self); byte-safe by construction"
                 deps (rustfst-lazy-statetable-fxhash)
+                log (
+                    {
+                        at 2026-07-18T13:54:09.669594Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-18T15:03:46.908403Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "LANDED (fork 9928a55f, subagent-executed with measurement gate) — corrected design facts vs the node title: static determinize uses SimpleHashMapCache (Mutex + SipHash CacheTrs/final maps — a real hashing source the title missed), static compose uses SimpleVecCache (Mutex only, no hashing), and static rm_epsilon has NO lazy cache at all (direct in-place algorithm — nothing to do there). Implemented: UnsyncHashMapCache (RefCell + FxBuildHasher) and UnsyncVecCache (RefCell), wired ONLY into the static one-shot entry points (determinize_fsa, ComposeFst::new_auto); public Mutex-based lazy types untouched (only pub(crate) DeterminizeFsa went !Sync; ComposeFst default cache unchanged); reentrancy proven safe (compute_trs reads inputs + a separate state table, never the LazyFst's own cache; get_trs returns owned TrsVec so the RefCell borrow drops before compute) and locked with a no_borrow_conflict test. MEASURED HONESTLY: W1 minimize -E on the 22.8M-arc TOP: 12/16 paired wins, ~3-4% wall at min-time (medians load-inflated, treat as within-spread); frames per-1000: cache SipHash 14.2→0, Mutex 17.3→10.7 (residual = DeterminizeStateTable's own Mutex). W2 xfst speller: wall within 8-15s load spread (no claim); Mutex frames 22.3→8.6 (−61%), zero SimpleVecCache/SimpleHashMapCache frames remain on the static paths. All oracles green (291 tests; lexc ea98a54c; tokeniser cmp vs tokeniser-currentHEAD.pmhfst; speller artifact cmp; base↔new outputs byte-identical on both workloads). ALSO SURFACED: rustfst-ffi is PRE-BROKEN at baseline (missing DeterminizeConfig::max_states — predates this work; workspace-level cargo test in the fork fails before rustfst; validate with cargo test -p rustfst). Residual Mutex on the static paths = the state tables + matcher; residual RandomState = Hopcroft's Vec<u64> map + a RawTable<DeterminizeElement> rehash inside the determinize op body — candidates for the direct-materialize node's scope check, NOT cache work."
+                    }
+
+                    {
+                        at 2026-07-18T15:04:00.06994Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {
