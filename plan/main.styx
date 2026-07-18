@@ -4268,6 +4268,28 @@ children (
             {
                 id rustfst-lazy-statetable-fxhash
                 title "rustfst: FxHash the generic lazy StateTable (BiHashMap defaults to SipHash/RandomState; determinize's own table got this fix with a recorded ~5% win, compose et al. never did); interleaved A/B + byte oracles"
+                log (
+                    {
+                        at 2026-07-18T12:43:01.836367Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-18T13:48:33.582123Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "LANDED (fork fd1c702f, hfst lock bump) — HONEST OUTCOME: WITHIN NOISE on the xfst-speller A/B (median delta 0.05s vs 16-18s within-arm spread under heavy machine load); lands as hygiene/alignment with the proven determinize-table pattern, NOT a claimed win. Output-neutrality proven three ways: byte-identical lexc (ea98a54c)/xfst-speller oracles, and the pre-change binary agrees byte-for-byte with the post-change binary on the tokeniser too. Sampled frame attribution shows the residual SipHash/RandomState cost lives in lazy::cache (CacheTrs maps) and determinize::element, NOT this table — feeds the rustfst-lazy-demutex node's scope (the cache layer is confirmed as the bigger framework cost). TWO FIXTURE/PROTOCOL CORRECTIONS for the chain's future A/Bs: (1) the scratchpad tokeniser oracle tokeniser-post-c2.pmhfst (541,169,926 B) went STALE when the morning full ./configure+make regenerated the tokeniser INPUT artifacts (fresh-input archive is 541,471,216 B, tokenise-identical — recorded at the time; the subagent's attribution of the staleness to the noop-gates commit was wrong, that commit was byte-verified against the old inputs when it landed); use scratchpad/tokeniser-currentHEAD.pmhfst (sha b8353724...) as the oracle for current tree inputs. (2) Rust toolchain updated to 1.97.1 mid-session with all targets cleaned — A/B baselines MUST be rebuilt with the same toolchain (stash fork edit → build baseline → pop → build new), and the old-toolchain dist/bin binary must not appear in any A/B arm."
+                    }
+
+                    {
+                        at 2026-07-18T13:48:43.752087Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
 
             {

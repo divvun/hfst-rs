@@ -1868,7 +1868,7 @@ dependencies = [
 [[package]]
 name = "rustfst"
 version = "1.3.1"
-source = "git+https://github.com/necessary-nu/rustfst?branch=fix%2Fdeterminize-subset-canonicalization#4757976e7e5cccf779a6265c3e49a95ff1a26022"
+source = "git+https://github.com/necessary-nu/rustfst?branch=fix%2Fdeterminize-subset-canonicalization#fd1c702f4f6c979b63c27f33db6625c765d747b4"
 dependencies = [
  "anyhow",
  "bimap",

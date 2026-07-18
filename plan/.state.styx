@@ -242,4 +242,5 @@ assertions (
     {id rustfst-determinize-table, kind @complete, author "brendan@necessary.nu", at 2026-07-18T01:49:37.328055Z}
     {id rustfst-noop-gates, kind @complete, author "brendan@necessary.nu", at 2026-07-18T02:43:15.133819Z}
     {id fork-property-propagation, kind @complete, author "brendan@necessary.nu", at 2026-07-18T12:17:52.96897Z}
+    {id rustfst-lazy-statetable-fxhash, kind @complete, author "brendan@necessary.nu", at 2026-07-18T13:48:43.752087Z}
 )
