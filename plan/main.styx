@@ -4180,4 +4180,9 @@ children (
             }
         )
     }
+
+    {
+        id rustfst-noop-gates
+        title "Property-gated no-op skipping in rustfst (connect/rm_epsilon when cached properties prove trim/eps-free); byte-identical oracles"
+    }
 )
