@@ -4193,4 +4193,78 @@ children (
             }
         )
     }
+
+    {
+        id perf-xfst-compose
+        title "Profile + optimise the xfst/compose-heavy build legs (src/fst 164s + spellers 136s); SIMD survey for rustfst hot loops"
+    }
+
+    {
+        id perf-xfst-cpu
+        title "xfst/regexp2fst CPU: kill redundant passes exposed by CPU-true leg profiling (93s xfst + 54s regexp2fst of the 200s build)"
+        children (
+            {
+                id fork-property-propagation
+                title "rustfst: encode mapper stamps ACCEPTOR/UNWEIGHTED; propagate weightedness/acceptor knowledge so acceptor_minimize's compute_and_update_properties stops re-running full SCC DFS per minimize (~15% of xfst CPU); byte-identical oracles"
+                log (
+                    {
+                        at 2026-07-18T12:10:54.842599Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DESIGN (from 2026-07-18 CPU-true profiling; full data in agent memory lang-sma-memory-profile): a representative src/fst xfst derivation script spends ~15% of main-thread samples in dfs_visit/connect driven by property RECOMPUTATION — rustfst acceptor_minimize opens with compute_and_update_properties(ACCEPTOR|UNWEIGHTED|ACYCLIC), and those bits arrive unknown every time because (1) the encode mapper (encode_static.rs properties()) provably makes the machine an ACCEPTOR when encode_labels (ilabel/olabel fused into one label) and UNWEIGHTED when encode_weights (weights folded into labels, all outputs One) but never SETS either bit — it only masks; (2) determinize_properties (faithful to OpenFST) propagates ACYCLIC/ACCEPTOR from input but not weightedness. Setting bits that are true by construction is sound and cannot change output bytes (same argument as the landed trim-gated connect, fork 4757976e). Sequence per TWT::minimize today: RmEpsilon -> Encode(labels) -> Determinize -> rustfst minimize [compute_and_update FULL SCC DFS -> push/shortest_distance -> Encode(weights+labels) -> acceptor_minimize -> decode] -> Decode. The compute_and_update DFS is the killable part. Validate: lexc sha ea98a54c + tokeniser cmp 541,169,926 + speller xfst artifact cmp + 291 tests. Est ~10-15s off the 200s build."
+                    }
+
+                    {
+                        at 2026-07-18T12:14:27.892068Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-18T12:17:36.600747Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "RETIRED — PREMISE FALSE, MY MISREAD (2026-07-18). The design note claimed the encode mapper \"never SETS ACCEPTOR/UNWEIGHTED, only masks\". Wrong: encode_static.rs properties() DOES stamp both (lines 82-89, `outprops |= ACCEPTOR` / `UNWEIGHTED|UNWEIGHTED_CYCLES`). The claim came from a truncated read (`sed -n '60,80p'` — the stamping starts at line 82) and the \"~15% property recomputation\" figure came from lumping ALL dfs_visit+connect frames and attributing them to property recomputation WITHOUT caller attribution. Proper caller attribution of the same sample: compute_fst_properties = 156 frames ≈ 2% of the thread; the dfs bulk is connect-family (829 frames) of which the weighted-minimize inner decode's rm_final_epsilon connect (284) is LEGITIMATE work (encode_weights decode really removes superfinal states, bits correctly cleared, not gateable) and the rest are first-trims. Nothing here above 2%. No code change. METHODOLOGY RULE for future perf notes: never attribute a frame family to a cause without grep -B1/-A1 caller/child attribution on the sample, and never cite code behavior from a ranged read that ended exactly at the range boundary."
+                    }
+
+                    {
+                        at 2026-07-18T12:17:52.96897Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
+            }
+
+            {
+                id compose-facade-nativize
+                title "Nativize compose facade overhead: operand clone + substitute passes + harmonize_copy (23% of xfst CPU vs 7% product core); A2-style in-place tropical edits where they round-trip through basic; byte-identical oracles"
+                deps (fork-property-propagation)
+                log (
+                    {
+                        at 2026-07-18T12:11:03.301393Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DESIGN (2026-07-18 CPU-true profiling): in a representative xfst script, compose_with_config accounts for 23% of main-thread samples but the rustfst product core (compose_static) is only ~7% — the other ~16% is facade overhead in hfst_transducer.rs::compose_with_config (lines ~2318-2412): (a) `let mut another_copy = another.clone()` — full deep copy of the second operand every compose; (b) up to 4 substitute passes (IDENTITY<->UNKNOWN both sides when unknown_symbols_in_use, flag<->epsilon when flag_is_epsilon_in_composition) each walking the whole graph; (c) harmonize_copy rebuilding the operand under the merged alphabet. Levers, in risk order: (1) skip the another.clone() when the substitutions are no-ops for this operand (no IDENTITY symbol present / flags absent) — check the alphabet first, borrow when nothing to rewrite; (2) A2-style: the IDENTITY->UNKNOWN and back substitutions are label remaps that for tropical could be SymbolTable/arc-relabel edits rather than basic-transducer round-trips IF they currently round-trip (verify against substitute_symbol impl). Depends on fork-property-propagation landing first (compose output feeds the minimize whose DFS that node kills, so measure compose in isolation after). Validate: same oracle set. Est ~8-12s. LOWER CONFIDENCE than the property node — needs a per-substitution round-trip audit before committing; may partially reduce to 'already in-place, nothing to do'."
+                    }
+
+                    {
+                        at 2026-07-18T12:17:47.622961Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "CORRECTED ATTRIBUTION (2026-07-18, replaces the earlier design note's cost list, which was partly wrong): proper child attribution of compose_with_config's 1811 frames (23% of thread) in the representative xfst script: rustfst product core ~588 (7%); encode_flag_diacritics+decode_flag_diacritics ~390 (5%) — the xerox_composition flag encode/decode passes, NOT in the original note; substitute passes ~112 (1.4%); harmonize_copy ~39 (0.5% — the original note wrongly listed it as a main cost); convert_to_hfst_transducer 24; UNATTRIBUTED inline ~680 (8%) — likely the operand clone, pre-compose tr_sort, and inlined alphabet work, MUST be pinned (finer sampling or temporary instrumentation) before any design is trusted. Realistic addressable slice if flag-encode + unattributed turn out churn-y: ~10% of xfst ≈ 8-10s of build — smaller than the node title implies. Do not start implementation from the title; start from pinning the 680."
+                    }
+                )
+            }
+        )
+        log (
+            {
+                at 2026-07-18T12:11:17.978972Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "SCOPE + RULED-OUT LEVERS (2026-07-18 CPU-true leg profiling, rusage shims — the earlier wall-time shims double-counted pipe-waits and produced PHANTOM villains: '44s fst2fst / 41s push-weights' were <4s real CPU, ignore them). Real CPU split of the two heavy legs (~187s): xfst 93s (41 invocations), regexp2fst 54s (of which ONE errmodel -S -E = 38.4s), lexc ~25s, rest optimized. Two children scoped: fork-property-propagation (P0, ~15% of xfst), compose-facade-nativize (P1, ~16% of xfst compose sites, lower confidence). RULED OUT, do not re-open: (a) SIMD — hot loops are dfs_visit/subset-construction/partition-refinement (pointer-chasing, data-dependent branches, vectorization-hostile) and the one memcmp hotspot is already libc-vectorized; matcher binary-search->merge-join is real but the product core is only 7% so no payoff. (b) the errmodel 38.4s regexp2fst -S -E is ~100% a single encoded determinize — the same tropical-subset-construction floor hit at pmatch encode_weights and rustfst-determinize-table; algorithmic, not churn, byte-locked. (c) parallelizing pmatch/xfst per-def — ordering-sensitive shared eval context, determinism risk, rejected earlier. Coarse `make -j` remains the only free throughput lever and is orthogonal to this node (build-system, not library)."
+            }
+        )
+    }
 )
