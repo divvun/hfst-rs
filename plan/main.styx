@@ -4059,4 +4059,29 @@ children (
             }
         )
     }
+
+    {
+        id perf-pmatch-builder
+        title "pmatch2fst memory: kill OLW-conversion basic intermediate + encode weights in pmatch minimizes"
+        children (
+            {
+                id olw-direct-conversion
+                title "Direct tropical→OLW conversion in write_archive (no HfstBasicTransducer intermediate, no final OL copy); byte-identical oracle"
+                log (
+                    {
+                        at 2026-07-18T00:47:26.712815Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+                )
+            }
+
+            {
+                id pmatch-encode-weights
+                title "encode_weights=true through pmatch compiler minimizes (successor divergence; tokenise-identical, ~-35% archive)"
+                deps (olw-direct-conversion)
+            }
+        )
+    }
 )

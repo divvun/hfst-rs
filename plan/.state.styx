@@ -236,4 +236,5 @@ assertions (
     {id rustfst-trsvec-csr, kind @complete, author "brendan@necessary.nu", at 2026-07-17T23:19:40.508684Z}
     {id minimize-consume-input, kind @complete, author "brendan@necessary.nu", at 2026-07-17T23:29:34.552998Z}
     {id native-alphabet-ops, kind @complete, author "brendan@necessary.nu", at 2026-07-18T00:03:06.06518Z}
+    {id olw-direct-conversion, kind @doing, author "brendan@necessary.nu", at 2026-07-18T00:47:26.712815Z}
 )

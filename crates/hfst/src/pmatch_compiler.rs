@@ -6775,26 +6775,27 @@ pub fn write_archive<B: AlgebraBackend>(
         let _ = write!(msg, "Converting TOP... ");
     }
 
-    // When done compiling everything, look for TOP and output it first.
-    if !definitions.contains_key("TOP") {
+    // When done compiling everything, look for TOP and output it first. TOP is
+    // the multi-million-arc archive payload: convert it straight from the
+    // backend (no basic-transducer intermediate) and drop the source before
+    // wrapping, so only one large representation is live at a time — the old
+    // tropical+basic+OL+copy chain owned the process's peak RSS.
+    let Some(top) = definitions.remove("TOP") else {
         return Ok(false);
-    }
-    let properties: BTreeMap<String, String> = definitions["TOP"].get_properties().clone();
-    let intermediate_tmp =
-        ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&definitions["TOP"])?;
-    let harmonized_tmp = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
-        &intermediate_tmp,
+    };
+    let properties: BTreeMap<String, String> = top.get_properties().clone();
+    let harmonized_tmp = top.to_hfst_ol(
         true,                 // weighted
         "",                   // no special options
         Some(&harmonizer_ol), // harmonize with this
     )?;
-    let mut output_tmp = ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp)?;
+    drop(top);
+    let mut output_tmp = HfstTransducer::wrap(harmonized_tmp);
     output_tmp.set_name("TOP");
     for (k, v) in properties.iter() {
         output_tmp.set_property(k, v);
     }
     outstream.redirect(&mut output_tmp)?;
-    definitions.remove("TOP");
 
     if verbose {
         let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
@@ -6810,24 +6811,21 @@ pub fn write_archive<B: AlgebraBackend>(
             let _ = writeln!(msg, "Converting {}... ", key);
             timer = clock();
         }
-        let intermediate_tmp = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)?;
         let harmonized_tmp = if !key.contains("UNCOMPOSE") {
-            ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
-                &intermediate_tmp,
+            t.to_hfst_ol(
                 true,                 // weighted
                 "empty_alphabet",     // empty alphabet in RTNs, they'll use the main one
                 Some(&harmonizer_ol), // harmonize with this
             )
         } else {
-            ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
-                &intermediate_tmp,
+            t.to_hfst_ol(
                 true,                 // weighted
                 "",                   // alphabet in UNCs,
                 Some(&harmonizer_ol), // harmonize with this
             )
         };
         let harmonized_tmp = harmonized_tmp?;
-        let mut output_tmp = ConversionFunctions::hfst_ol_to_hfst_transducer(&harmonized_tmp)?;
+        let mut output_tmp = HfstTransducer::wrap(harmonized_tmp);
         output_tmp.set_name(key);
         outstream.redirect(&mut output_tmp)?;
         if verbose {

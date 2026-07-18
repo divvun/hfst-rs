@@ -86,6 +86,38 @@ fn ol_symbol_number(symbol_table_len: usize) -> crate::error::Result<SymbolNumbe
     })
 }
 
+/// The harmonizer arm of the symbol-numbering step, shared between
+/// [`get_states_and_symbols`] and the direct tropical→OL conversion
+/// ([`ConversionFunctions::tropical_ofst_to_hfst_ol`]): the symbol table,
+/// string→number map, input-symbol count and flag-symbol set all come from the
+/// already-built shared archive alphabet.
+pub(crate) fn harmonizer_numbering(
+    harmonizer: &Transducer,
+) -> (
+    SymbolTable,
+    BTreeMap<crate::hfst_data_types::Symbol, SymbolNumber>,
+    SymbolNumber,
+    FlagSymbolSet,
+) {
+    let symbol_table = harmonizer.get_symbol_table().clone();
+    let string_symbol_map = harmonizer.get_alphabet().build_string_symbol_map();
+    let seen_input_symbols = harmonizer.get_header().input_symbol_count();
+    let mut flag_symbols = FlagSymbolSet::new();
+    for (i, symbol) in symbol_table.iter().enumerate() {
+        if harmonizer.get_alphabet().is_flag_diacritic(i as u16)
+            || PmatchAlphabet::is_insertion(symbol)
+        {
+            flag_symbols.insert(i as u16);
+        }
+    }
+    (
+        symbol_table,
+        string_symbol_map,
+        seen_input_symbols,
+        flag_symbols,
+    )
+}
+
 // [spec:hfst:def:convert-ol-transducer.hfst.implementations.get-states-and-symbols-fn]
 // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.get-states-and-symbols-fn]
 #[allow(clippy::too_many_arguments)]
@@ -177,16 +209,11 @@ pub fn get_states_and_symbols(
 
     // Collect symbols if we need to
     if let Some(harmonizer) = harmonizer {
-        *symbol_table = harmonizer.get_symbol_table().clone();
-        string_symbol_map = harmonizer.get_alphabet().build_string_symbol_map();
-        *seen_input_symbols = harmonizer.get_header().input_symbol_count();
-        for (i, symbol) in symbol_table.iter().enumerate() {
-            if harmonizer.get_alphabet().is_flag_diacritic(i as u16)
-                || PmatchAlphabet::is_insertion(symbol)
-            {
-                flag_symbols.insert(i as u16);
-            }
-        }
+        let (st, map, seen, flags) = harmonizer_numbering(harmonizer);
+        *symbol_table = st;
+        string_symbol_map = map;
+        *seen_input_symbols = seen;
+        *flag_symbols = flags;
     } else {
         // 1) epsilon
         string_symbol_map.insert(
@@ -354,23 +381,16 @@ impl ConversionFunctions {
     // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-basic-transducer-to-hfst-ol-fn]
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-basic-transducer-to-hfst-ol-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-basic-transducer-to-hfst-ol-fn]
-    #[allow(unused_assignments)] // C++ initialises previous_successful_index to 0
     pub fn hfst_basic_transducer_to_hfst_ol(
         t: &HfstBasicTransducer,
         weighted: bool,
         options: &str,
         harmonizer_ol: Option<&Transducer>,
     ) -> crate::error::Result<Transducer> {
-        let packing_aggression: f32 = 0.85;
-        let floor_jump_threshold: i32 = 4; // a packing aggression parameter
-
         let empty_alphabet = options.contains("empty_alphabet");
         // The shared pmatch-archive alphabet: treat every alphabet symbol as a
         // potential input so input_symbol_count covers the whole numbering.
         let harmonizer_alphabet = options.contains("harmonizer_alphabet");
-
-        // The transition array is indexed starting from this constant
-        const TA_OFFSET: u32 = 2147483648u32;
 
         let mut state_placeholders: Vec<StatePlaceholder> = Vec::new();
         let mut symbol_table: SymbolTable = SymbolTable::new();
@@ -385,6 +405,37 @@ impl ConversionFunctions {
             harmonizer_ol,
             harmonizer_alphabet,
         )?;
+
+        pack_ol_tables(
+            state_placeholders,
+            symbol_table,
+            seen_input_symbols,
+            flag_symbols,
+            weighted,
+            empty_alphabet,
+        )
+    }
+}
+
+/// The index/transition-table packing back half of the basic→OL conversion,
+/// shared with the direct tropical→OL path: place every non-simple state in
+/// the index table, then emit the index and transition tables and assemble the
+/// final ['Transducer'].
+#[allow(unused_assignments)] // C++ initialises previous_successful_index to 0
+pub(crate) fn pack_ol_tables(
+    mut state_placeholders: Vec<StatePlaceholder>,
+    mut symbol_table: SymbolTable,
+    mut seen_input_symbols: SymbolNumber,
+    flag_symbols: FlagSymbolSet,
+    weighted: bool,
+    empty_alphabet: bool,
+) -> crate::error::Result<Transducer> {
+    {
+        let packing_aggression: f32 = 0.85;
+        let floor_jump_threshold: i32 = 4; // a packing aggression parameter
+
+        // The transition array is indexed starting from this constant
+        const TA_OFFSET: u32 = 2147483648u32;
 
         let mut used_indices = IndexPlaceholders::new();
 

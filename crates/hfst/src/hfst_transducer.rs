@@ -251,6 +251,19 @@ impl<B: Backend> HfstTransducer<B> {
         Self::wrap(B::empty())
     }
 
+    /// Convert the backend to a weighted optimized-lookup transducer — the
+    /// pmatch archive writer's per-member conversion ([`Backend::to_hfst_ol`];
+    /// facade metadata is not carried over, the caller re-applies name and
+    /// properties on the wrapped result).
+    pub fn to_hfst_ol(
+        &self,
+        weighted: bool,
+        options: &str,
+        harmonizer: Option<&crate::transducer::Transducer>,
+    ) -> crate::error::Result<crate::transducer::Transducer> {
+        self.fst.to_hfst_ol(weighted, options, harmonizer)
+    }
+
     /// \brief Create a deep copy of transducer 'another'.
     ///
     /// 'HfstTransducer(const HfstTransducer &another)'.

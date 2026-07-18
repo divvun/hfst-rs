@@ -116,6 +116,22 @@ pub trait Backend: Sized {
         Ok(())
     }
 
+    /// Convert this backend to a weighted optimized-lookup transducer — the
+    /// pmatch archive writer's per-member conversion. The default round-trips
+    /// through the basic transducer as the C++ did; the tropical backend
+    /// overrides the harmonizer case with a direct arc-table walk, because the
+    /// basic intermediate costs ~150 B/arc and owned hfst-pmatch2fst's peak
+    /// RSS on multi-million-arc TOP definitions.
+    fn to_hfst_ol(
+        &self,
+        weighted: bool,
+        options: &str,
+        harmonizer: Option<&crate::transducer::Transducer>,
+    ) -> crate::error::Result<crate::transducer::Transducer> {
+        let net = self.to_basic()?;
+        ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&net, weighted, options, harmonizer)
+    }
+
     /// 'is_infinitely_ambiguous': the OL backends answer directly; everything
     /// else goes through the basic transducer, as the C++ default arm did.
     fn is_infinitely_ambiguous(&self) -> crate::error::Result<bool> {
@@ -287,6 +303,22 @@ impl Backend for StdVectorFst {
     fn prune_alphabet(&mut self, force: bool) -> crate::error::Result<()> {
         TropicalWeightTransducer::prune_alphabet(self, force);
         Ok(())
+    }
+    fn to_hfst_ol(
+        &self,
+        weighted: bool,
+        options: &str,
+        harmonizer: Option<&crate::transducer::Transducer>,
+    ) -> crate::error::Result<crate::transducer::Transducer> {
+        match harmonizer {
+            Some(h) => ConversionFunctions::tropical_ofst_to_hfst_ol(self, weighted, options, h),
+            None => ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
+                &self.to_basic()?,
+                weighted,
+                options,
+                None,
+            ),
+        }
     }
     fn write(&self, os: &mut dyn std::io::Write, hfst_format: bool) -> crate::error::Result<()> {
         TropicalWeightTransducer::write_transducer_to(self, os, hfst_format)

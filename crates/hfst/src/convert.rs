@@ -100,7 +100,12 @@ pub struct StatePlaceholder {
     pub state_number: u32,
     pub start_index: u32,
     pub first_transition: u32,
-    pub symbol_to_transition_placeholder_v: Vec<u32>,
+    // (input symbol, group index) pairs sorted by symbol — the sparse
+    // replacement for the C++ dense symbol→group vector, which was sized by
+    // the state's largest input-symbol number: on a pmatch TOP (hundreds of
+    // thousands of states over a multi-thousand-symbol alphabet) the dense
+    // vectors alone cost gigabytes.
+    pub symbol_to_group: Vec<(SymbolNumber, u32)>,
     pub transition_placeholders: Vec<Vec<TransitionPlaceholder>>,
     // Per-group cumulative transition offsets (parallel to
     // transition_placeholders), built by build_symbol_offsets once the
@@ -120,7 +125,7 @@ impl StatePlaceholder {
             state_number: state,
             start_index: u32::MAX,
             first_transition: first,
-            symbol_to_transition_placeholder_v: Vec::new(),
+            symbol_to_group: Vec::new(),
             transition_placeholders: Vec::new(),
             group_offsets: Vec::new(),
             ty: if state == 0 {
@@ -139,7 +144,7 @@ impl StatePlaceholder {
             state_number: u32::MAX,
             start_index: u32::MAX,
             first_transition: u32::MAX,
-            symbol_to_transition_placeholder_v: Vec::new(),
+            symbol_to_group: Vec::new(),
             transition_placeholders: Vec::new(),
             group_offsets: Vec::new(),
             ty: IndexingType::empty,
@@ -164,24 +169,37 @@ impl StatePlaceholder {
             .sum()
     }
 
+    /// The group index registered for 'input', if present.
+    fn group_of(&self, input: SymbolNumber) -> Option<u32> {
+        self.symbol_to_group
+            .binary_search_by_key(&input, |&(sym, _)| sym)
+            .ok()
+            .map(|pos| self.symbol_to_group[pos].1)
+    }
+
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.input-present-fn]
     // [spec:hfst:sem:convert.hfst-ol.state-placeholder.input-present-fn]
     pub fn input_present(&self, input: SymbolNumber) -> bool {
-        (input as usize) < self.symbol_to_transition_placeholder_v.len()
-            && self.symbol_to_transition_placeholder_v[input as usize] != u32::MAX
+        self.group_of(input).is_some()
     }
 
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.add-input-fn]
     // [spec:hfst:sem:convert.hfst-ol.state-placeholder.add-input-fn]
     pub fn add_input(&mut self, input: SymbolNumber, flag_symbols: &FlagSymbolSet) {
-        if self.input_present(input) {
-            return;
-        }
-        while self.symbol_to_transition_placeholder_v.len() <= input as usize {
-            self.symbol_to_transition_placeholder_v.push(u32::MAX);
-        }
-        self.symbol_to_transition_placeholder_v[input as usize] =
-            u32::try_from(self.transition_placeholders.len()).expect("value out of u32 range");
+        let pos = match self
+            .symbol_to_group
+            .binary_search_by_key(&input, |&(sym, _)| sym)
+        {
+            Ok(_) => return,
+            Err(pos) => pos,
+        };
+        self.symbol_to_group.insert(
+            pos,
+            (
+                input,
+                u32::try_from(self.transition_placeholders.len()).expect("value out of u32 range"),
+            ),
+        );
         self.transition_placeholders.push(Vec::new());
         self.inputs += 1;
         if self.ty != IndexingType::nonsimple {
@@ -210,23 +228,26 @@ impl StatePlaceholder {
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.get-largest-index-fn]
     // [spec:hfst:sem:convert.hfst-ol.state-placeholder.get-largest-index-fn]
     pub fn get_largest_index(&self) -> SymbolNumber {
-        let back = *self
-            .symbol_to_transition_placeholder_v
+        self.symbol_to_group
             .last()
-            .expect("symbol_to_transition_placeholder_v is non-empty");
-        self.transition_placeholders[back as usize][0].input
+            .expect("symbol_to_group is non-empty")
+            .0
     }
 
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.add-transition-fn]
     // [spec:hfst:sem:convert.hfst-ol.state-placeholder.add-transition-fn]
     pub fn add_transition(&mut self, trans: TransitionPlaceholder) {
-        let slot = self.symbol_to_transition_placeholder_v[trans.input as usize] as usize;
+        let slot =
+            self.group_of(trans.input)
+                .expect("the transition's input was registered by add_input") as usize;
         self.transition_placeholders[slot].push(trans);
     }
 
     pub fn get_transition_placeholders(&self, input: SymbolNumber) -> &Vec<TransitionPlaceholder> {
-        &self.transition_placeholders
-            [self.symbol_to_transition_placeholder_v[input as usize] as usize]
+        &self.transition_placeholders[self
+            .group_of(input)
+            .expect("input is present in this state")
+            as usize]
     }
 
     // [spec:hfst:def:convert.hfst-ol.state-placeholder.symbol-offset-fn]
@@ -255,19 +276,16 @@ impl StatePlaceholder {
                     .expect("value out of u32 range");
             }
         }
-        for i in 1..self.symbol_to_transition_placeholder_v.len() {
-            let i = i as SymbolNumber;
-            if self.input_present(i) {
-                if flag_symbols.contains(i) {
-                    // already counted
-                    continue;
-                }
-                if symbol == i {
-                    return Ok(offset);
-                }
-                offset += u32::try_from(self.get_transition_placeholders(i).len())
-                    .expect("value out of u32 range");
+        for &(sym, group) in self.symbol_to_group.iter() {
+            if sym == 0 || flag_symbols.contains(sym) {
+                // epsilon and flags are already counted
+                continue;
             }
+            if symbol == sym {
+                return Ok(offset);
+            }
+            offset += u32::try_from(self.transition_placeholders[group as usize].len())
+                .expect("value out of u32 range");
         }
         let message = String::from(
             "error in conversion between optimized lookup format and \
@@ -294,12 +312,10 @@ impl StatePlaceholder {
                     .expect("value out of u32 range");
             }
         }
-        for i in 1..self.symbol_to_transition_placeholder_v.len() {
-            let i = i as SymbolNumber;
-            if self.input_present(i) && !flag_symbols.contains(i) {
-                let group = self.symbol_to_transition_placeholder_v[i as usize] as usize;
-                self.group_offsets[group] = offset;
-                offset += u32::try_from(self.transition_placeholders[group].len())
+        for &(sym, group) in self.symbol_to_group.iter() {
+            if sym != 0 && !flag_symbols.contains(sym) {
+                self.group_offsets[group as usize] = offset;
+                offset += u32::try_from(self.transition_placeholders[group as usize].len())
                     .expect("value out of u32 range");
             }
         }
@@ -315,15 +331,15 @@ impl StatePlaceholder {
         if symbol == 0 || flag_symbols.contains(symbol) {
             return Ok(0);
         }
-        if !self.input_present(symbol) {
+        let Some(group) = self.group_of(symbol) else {
             let message = String::from(
                 "error in conversion between optimized lookup format and \
                  HfstTransducer;\ntried to calculate symbol_offset for symbol not \
                  present in state",
             );
             crate::bail!(Fatal, message)
-        }
-        Ok(self.group_offsets[self.symbol_to_transition_placeholder_v[symbol as usize] as usize])
+        };
+        Ok(self.group_offsets[group as usize])
     }
 }
 
@@ -491,14 +507,13 @@ pub fn write_transitions_from_state_placeholders(
                 );
             }
         }
-        for i in 1..it.symbol_to_transition_placeholder_v.len() {
-            let i = i as SymbolNumber;
-            if !it.input_present(i) || flag_symbols.contains(i) {
+        for &(sym, group) in it.symbol_to_group.iter() {
+            if sym == 0 || flag_symbols.contains(sym) {
                 continue;
             }
             add_transitions_with(
-                i,
-                it.get_transition_placeholders(i),
+                sym,
+                &it.transition_placeholders[group as usize],
                 transition_table,
                 state_placeholders,
                 flag_symbols,

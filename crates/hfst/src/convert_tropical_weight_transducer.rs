@@ -222,6 +222,119 @@ impl ConversionFunctions {
         Ok(net)
     }
 
+    /* ----------------------------------------------------------------------
+
+    Create an hfst_ol::Transducer equivalent to an OpenFst tropical weight
+    transducer `t`, numbering symbols from an already-built harmonizer
+    alphabet.
+
+    ---------------------------------------------------------------------- */
+
+    /// The direct tropical→OL conversion used by the pmatch archive writer:
+    /// the composition of [`Self::tropical_ofst_to_hfst_basic_transducer`]
+    /// and 'hfst_basic_transducer_to_hfst_ol' for the harmonizer case,
+    /// without materializing the basic transducer — on a multi-million-arc
+    /// pmatch TOP the basic intermediate costs ~150 B/arc and owned the
+    /// process's peak RSS. State 0 and the start state are swapped and arcs
+    /// walked in order, exactly as the basic-transducer route does, so the
+    /// emitted tables are byte-identical to that route's.
+    pub fn tropical_ofst_to_hfst_ol(
+        t: &StdVectorFst,
+        weighted: bool,
+        options: &str,
+        harmonizer: &crate::transducer::Transducer,
+    ) -> crate::error::Result<crate::transducer::Transducer> {
+        use crate::convert::{StatePlaceholder, TransitionPlaceholder};
+        use crate::convert_ol_transducer::{harmonizer_numbering, pack_ol_tables};
+
+        let (symbol_table, string_symbol_map, seen_input_symbols, flag_symbols) =
+            harmonizer_numbering(harmonizer);
+
+        // Resolve each tropical label to its OL symbol number once, up front —
+        // the per-arc lookups below are then plain indexing. Symbols missing
+        // from the harmonizer alphabet fall back to 0 (epsilon), matching the
+        // string-map lookup in get_states_and_symbols.
+        let symbol_vector =
+            crate::tropical_weight_transducer::TropicalWeightTransducer::get_symbol_vector(t);
+        let label_to_ol: Vec<crate::transducer::SymbolNumber> = symbol_vector
+            .iter()
+            .map(|sym| string_symbol_map.get(sym).copied().unwrap_or(0))
+            .collect();
+
+        let initial_state: u32 = t.start().unwrap_or(u32::MAX);
+        let swap = |s: u32| {
+            if s == initial_state {
+                0
+            } else if s == 0 {
+                initial_state
+            } else {
+                s
+            }
+        };
+
+        let state_count =
+            crate::tropical_weight_transducer::TropicalWeightTransducer::number_of_states(t);
+        let mut state_placeholders: Vec<StatePlaceholder> =
+            Vec::with_capacity(state_count as usize);
+        let mut first_transition: u32 = 0;
+        for basic_state in 0..state_count {
+            let s = swap(basic_state);
+            let is_final = t.is_final(s).expect("s is a valid state of this fst");
+            let final_w: f32 = if is_final {
+                *t.final_weight(s)
+                    .expect("s is a valid state of this fst")
+                    .expect("state is final so weight is present")
+                    .value()
+            } else {
+                0.0
+            };
+            let mut placeholder =
+                StatePlaceholder::new(basic_state, is_final, first_transition, final_w);
+            first_transition += 1; // there's a padding entry between states
+            for arc in t
+                .get_trs(s)
+                .expect("s is a valid state of this fst")
+                .trs()
+                .iter()
+            {
+                first_transition += 1;
+                if arc.ilabel as usize >= label_to_ol.len() {
+                    let oss = format!(
+                        "FATAL ERROR: input number {} not in symbol_vector\n",
+                        arc.ilabel
+                    );
+                    crate::bail!(Fatal, oss);
+                }
+                if arc.olabel as usize >= label_to_ol.len() {
+                    let oss = format!(
+                        "FATAL ERROR: output number {} not in symbol_vector\n",
+                        arc.olabel
+                    );
+                    crate::bail!(Fatal, oss);
+                }
+                let in_sym = label_to_ol[arc.ilabel as usize];
+                let out_sym = label_to_ol[arc.olabel as usize];
+                placeholder.add_input(in_sym, &flag_symbols);
+                placeholder.add_transition(TransitionPlaceholder::new(
+                    swap(arc.nextstate),
+                    in_sym,
+                    out_sym,
+                    *arc.weight.value(),
+                ));
+            }
+            state_placeholders.push(placeholder);
+        }
+
+        pack_ol_tables(
+            state_placeholders,
+            symbol_table,
+            seen_input_symbols,
+            flag_symbols,
+            weighted,
+            options.contains("empty_alphabet"),
+        )
+    }
+
     /* ------------------------------------------------------------------------
 
     Create an OpenFst transducer equivalent to HfstBasicTransducer `net`.
