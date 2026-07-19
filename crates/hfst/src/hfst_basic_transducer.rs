@@ -3608,7 +3608,7 @@ impl HfstBasicTransducer {
         substitution_map: &mut SubstMap,
         harmonize: bool,
     ) -> crate::error::Result<&mut Self> {
-        for (first, _) in substitution_map.iter() {
+        for first in substitution_map.keys() {
             if !HfstTropicalTransducerTransitionData::is_valid_symbol(first) {
                 crate::bail!(
                     EmptyString,
