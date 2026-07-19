@@ -3835,6 +3835,34 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         Ok(pair_transducer)
     }
 
+    /// htwolcpre3-parser's 'PAIR' production special-cases a pair whose INPUT
+    /// side is the grammar's bare '#': it denotes BOTH the absolute word
+    /// boundary and the relative one — '[.#.:.#. | #:output]'. The absolute
+    /// boundary is the word edge the context framing wraps every rule in; the
+    /// relative '#' is the user-visible boundary symbol with whatever surface
+    /// the rule wrote. Without the split, a context ending in '#' fails to
+    /// match the word edge (and fails to FORBID it on the other rule
+    /// direction), which is exactly how 29 lang-sme boundary rules diverged
+    /// from C++. (nfst-twolc strips '%'-escapes at lex time, so an escaped
+    /// '%#' — a pure literal in C++ — is indistinguishable from bare '#' here
+    /// and also takes the split; Giella grammars only use the bare form in
+    /// rules. An undeclared '#' still errors through the pair check, where
+    /// C++ auto-declared it — the successor's strictness, hfst#334.)
+    fn boundary_pair_transducer(
+        &mut self,
+        cfg: &OstConfig,
+        output: &str,
+    ) -> crate::error::Result<OtherSymbolTransducer<B>> {
+        let mut wb = OtherSymbolTransducer::new_pair(cfg, "__HFST_TWOLC_.#.", "__HFST_TWOLC_.#.")?;
+        let alt = if self.sets.contains_key(output) {
+            self.pair_transducer(cfg, "#", output)?
+        } else {
+            OtherSymbolTransducer::new_pair(cfg, "#", output)?
+        };
+        wb.disjunct(cfg, &alt)?;
+        Ok(wb)
+    }
+
     /// Evaluate a ['TwolcRegex'] with no variable substitution (used by the
     /// 'Definitions' section, which is evaluated before any rule expansion).
     pub fn eval_regex(
@@ -3867,6 +3895,8 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                     clone_ost(def)
                 } else if self.sets.contains_key(sym.as_str()) {
                     self.pair_transducer(cfg, &sym, &sym)?
+                } else if sym.as_str() == "#" {
+                    self.boundary_pair_transducer(cfg, "#")?
                 } else {
                     OtherSymbolTransducer::new_symbol(cfg, &sym)?
                 }
@@ -3874,7 +3904,12 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             TwolcRegex::Pair { upper, lower } => {
                 let up = symbol_of(upper, vvm);
                 let lo = symbol_of(lower, vvm);
-                if self.sets.contains_key(up.as_str()) || self.sets.contains_key(lo.as_str()) {
+                if up.as_str() == "#" {
+                    // C++ dispatches on the '#' input side before any set
+                    // handling, so '#:Set' also takes the boundary split.
+                    self.boundary_pair_transducer(cfg, lo.as_str())?
+                } else if self.sets.contains_key(up.as_str()) || self.sets.contains_key(lo.as_str())
+                {
                     self.pair_transducer(cfg, &up, &lo)?
                 } else {
                     OtherSymbolTransducer::new_pair(cfg, &up, &lo)?

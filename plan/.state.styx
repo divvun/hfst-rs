@@ -251,4 +251,5 @@ assertions (
     {id foma-tokeniser-build, kind @complete, author "brendan@necessary.nu", at 2026-07-19T18:46:39.134465Z}
     {id diag-parse-error-spans, kind @complete, author "brendan@necessary.nu", at 2026-07-19T19:26:30.125695Z}
     {id twolc-name-sigma-cosmetic, kind @complete, author "brendan@necessary.nu", at 2026-07-19T20:44:44.889873Z}
+    {id twolc-boundary-arc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:06:08.063322Z}
 )

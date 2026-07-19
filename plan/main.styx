@@ -4583,6 +4583,53 @@ children (
                 kind @note
                 text "Discovered 2026-07-19 while closing twolc-name-sigma-cosmetic (names now byte-match C++, so hfst compare pairs rules positionally and the verdicts are trustworthy). Oracle: C++ htwolcpre1/2/3 built from ~/git/github/hfst (make htwolcpre1 htwolcpre2 htwolcpre3 in tools/src/hfst-twolc/src, driver ./hfst-twolc). TWO residual divergences on lang-sme phonology.twolc, both PRE-EXISTING (pre-change build showed the same class): (1) SEMANTIC: 29/102 rules compare '!=' — all word-boundary-involving (Word Final*, Deletion: Final*, *-stem vowel deletions with '#' contexts, Illative Singular Metaphony...). Minimal instance: rule 97 'a-stem vowel deletion' — Rust has exactly 2 extra arcs '5 -> 0 @#@:0' and '7 -> 0 @#@:0' vs C++ (C-locale-sorted ATT diff, otherwise identical). The extra arcs come from the boundary-framing compilation ('.#. ((? - .#.)|<D>)* .#.' framing, twolc.rs ~2113), i.e. Rust admits the absolute boundary in more states. LATENT downstream: lexicons never contain @#@, so the extra arcs are dead in hfst-compose-intersect — sme analyser/speller validated correct 2026-07-06 regardless. Repro note: bare '#' in a context is NOT the issue (both sides treat sme's declared '#' as an ordinary symbol; C++ pre1 maps it to __HFST_TWOLC_# and back); a from-scratch mini grammar with undeclared '#' errors in Rust by successor design. (2) COSMETIC: sigma symbol NUMBERING is a permutation — C++ assigns keys in process-global tropical-coder first-use order (alphabet declaration order: b=3, m=4, p=5...; store-time substitutions append @#@/space at 213/214, holes where markers died, available_key 215), Rust numbers from sorted BTreeSet iteration (' '=4, '#'=5, ...) with different holes. Symbol SETS are identical (210+3 both). Fixing (2) means threading a shared first-use coder through the twolc pipeline — deliberately de-globalized in the successor, so decide whether byte-identity of this intermediate is worth it. Size delta after the 2026-07-19 name+serializer fixes: C++ 7,729,256 B vs Rust 7,729,608 B (+352 B = the extra arcs of (1))."
             }
+
+            {
+                at 2026-07-19T20:55:39.379302Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-07-19T21:06:02.566351Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "FIXED 2026-07-19. Root cause found in C++ htwolcpre3-parser.yy's PAIR production (documented in-source): a rule-side pair whose INPUT is the grammar's bare '#' (pre1 lexes it to __HFST_TWOLC_#) is split into '[.#.:.#. | #:output]' — the absolute word boundary DISJOINED with the relative boundary symbol. The Rust port treated rule-side '#' as only the literal declared symbol, so contexts ending in '#' neither matched nor forbade the absolute word edge — Rust rules had @#@:0 permitted after a kept center (extra arcs) and missing after a realized one. Fix: boundary_pair_transducer helper (twolc.rs) building the same disjunction, wired into eval_regex_with_vars' Symbol(\"#\") and Pair{upper \"#\"} arms (checked BEFORE set handling, like C++'s dispatch; '#:Set' also splits). Verified: 5-line mini repro (bare '#' declared + used) now C-locale-sort-identical to C++; lang-sme phonology 102/102 'hfst compare' equivalent (was 29 differing) and archives now the SAME byte size — only the sigma numbering permutation (split to twolc-sigma-numbering-permutation) blocks byte-identity. lang-sma: 51/53 equivalent; the 2 residual rules are a PRE-EXISTING unrelated class (bare-colon pair-set contexts, no '#') — split to twolc-paircolon-context-divergence. Known conflation, documented in-code: nfst-twolc strips %-escapes at lex time, so C++'s literal '%#' is indistinguishable from bare '#' and also takes the split; Giella rules only use bare '#'. Undeclared '#' in rules still errors (successor strictness) where C++ auto-declared. 294 tests pass."
+            }
+
+            {
+                at 2026-07-19T21:06:08.063322Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
+        )
+    }
+
+    {
+        id twolc-paircolon-context-divergence
+        title "lang-sma twolc: 2/53 rules structurally differ vs C++ (bare-colon pair-set contexts, no # involved)"
+        log (
+            {
+                at 2026-07-19T21:05:46.023021Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Found 2026-07-19 while validating the boundary-arc fix on lang-sma phonology.twolc (oracle: C++ htwolcpre pipeline from ~/git/github/hfst). After the # split fix, 51/53 sma rules compare '==' but 2 differ: 'Even syllabic verbs Du3 e/i alternation V' [13] and 'e deletion before i-initial suffix' [37]. PRE-EXISTING and NOT boundary-related: neither rule contains '#' (the fix's branches are gated on the '#' symbol so they cannot have touched these). Sources (lang-sma phonology.twolc): :141 'e:0 <=> _ X2:0 i: ;' and :314-315 'e:0 <=> (%»:) i _ j (e) (%>:) %^NOMAGieDISIMP: ([h|m|n|i|i g u j m i e]) ; i : _ %>: %^COMESS: ;' — both use BARE-COLON pair-set context symbols ('i:' = input i, any declared surface; note :315 writes 'i :' with a space). Symptom shape: C++ keeps i:@0@/i:e/i:y/i:æ/i:ï loops at state 0 and e:a/e:e/e:i/e:o/e:y arcs to state 2 where Rust routes the same pairs through different states — a context-evaluation structural difference for pair-set ('X:') sides, not a missing/extra pair set. sme never uses this construct in a way that diverges (102/102 equivalent), so it's sma-specific exercise. Latent in practice: the July-3 sma full-build validation had the analyser byte-identical to C++ refs, so composition evidently erases it — but same class of latent-rule-divergence as the boundary bug was. Repro: build sma phonology with both toolchains, hfst compare, extract rules 13/37 by archive position, fst2txt | LC_ALL=C sort | diff."
+            }
+        )
+    }
+
+    {
+        id twolc-sigma-numbering-permutation
+        title "twolc sigma numbering is a permutation of C++ (global first-use coder vs sorted) — last blocker to byte-identical rule archives"
+        log (
+            {
+                at 2026-07-19T21:05:47.535215Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Carved out of twolc-boundary-arc-divergence 2026-07-19 when its semantic half was fixed. After the boundary fix, lang-sme phonology archives are the SAME SIZE (7,729,256 B) and all 102 rules structurally equivalent, but bytes differ solely because sigma KEY NUMBERING is a permutation: C++ assigns symbol numbers from the process-global tropical coder in first-use order (alphabet declaration order — b=3, m=4, p=5...; store-time substitutions append @#@/space near the end; holes where transient markers died; available_key runs past the row count), while the Rust port's de-globalized per-transducer coders end up numbering from sorted (BTreeSet) iteration (' '=4, '#'=5, ...) with different hole positions. Semantically neutral — compose-intersect harmonizes by symbol string, and hfst compare is 102/102. Fixing means threading a shared first-use symbol registry through the whole twolc pipeline (OstConfig is already threaded everywhere and could host it, but every transducer op rebuilds tables via the basic<->tropical conversion, so the conversion would need to honor an injected numbering). Decide whether byte-identity of this intermediate artifact is worth reintroducing that coupling; the practical validation need (hfst compare vs C++) is already met."
+            }
         )
     }
 )
