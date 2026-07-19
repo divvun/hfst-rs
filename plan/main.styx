@@ -4434,4 +4434,37 @@ children (
         title "compose-intersect: drop StatePairMap/agenda before the basic→backend conversion (peak 1.08 GB, 7s stage — LOW VALUE, only if its memory ever matters; measured 2026-07-18, not worth pulling on current evidence)"
         priority 200
     }
+
+    {
+        id successor-divergences
+        title "Byte-diverging optimisations (batch 1): validation currency = tokenise/speller behavioral equivalence + re-baselined artifacts"
+        children (
+            {
+                id flag-encode-diverge
+                title "Land the in-place tropical flag encode/decode as a successor divergence (~14% of xerox-compose xfst CPU, measured); symbol renumbering diverges bytes by design"
+                log (
+                    {
+                        at 2026-07-19T17:40:12.581269Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DESIGN: resurrect the reverted implementation from the retired xfst-flag-encode-nativize node (read its notes for the full design + verified facts: encode_flag injective on diacritics, reserved-collision panic guard at hfst_transducer.rs:4141, decode exact inverse; the Backend-trait + tropical in-place SymbolTable-rename implementation WORKED and was reverted only for byte divergence — bytes differ because the old basic round-trip renumbers symbols in arc-walk order, the in-place path preserves original labels; both are equivalent automata). VALIDATION now = equivalence, not cmp: (a) 291 tests + a new round-trip regression test; (b) speller: build the artifact with old + new binaries, then hfst-compare or divvunspell suggest parity (lea/maana CORRECT, leaa->lea top suggestion); (c) tokeniser: build .pmhfst with new binary, hfst-tokenise -g output on sample text MUST equal old binary's output line-for-line; (d) C++ read-compat if cheap. A/B the speller xfst script (expect ~14%, paired interleaved, honest verdict). RE-BASELINE CEREMONY after landing: regenerate + record new reference artifacts (speller artifact, tokeniser-<rev>.pmhfst + sha, lexc sha if moved) in scratchpad + memory; future cmp oracles use the new baselines."
+                    }
+                )
+            }
+
+            {
+                id foma-tokeniser-build
+                title "Make hfst-xfst + hfst-pmatch2fst honor --format=foma so the tokeniser builds on the unweighted backend — the real fix for the 541 MB .pmhfst (tropical weight-diversity inflation)"
+                deps (flag-encode-diverge)
+                log (
+                    {
+                        at 2026-07-19T17:40:12.613161Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "DESIGN: per foma-port-status memory, hfst-xfst IGNORES --with-backend-format=foma (emits tropical; HXFST scripts) and hfst-pmatch2fst always emits HFST_OLW from its tropical pinned compiler — so the Giella foma build still produces a tropical 541MB tokeniser. Work: (1) xfst honors --format=foma (compile at foma or redirect-convert on write, mirroring regexp2fst's redirect_converting FOMA arm); (2) pmatch2fst gains a foma compilation path or at minimum foma-backed intermediates before OLW conversion — investigate first WHERE the weight-diversity inflation enters (per-op weighted minimizes) and whether an unweighted pipeline collapses it as the Jul-3 note predicted. Validate: full lang-sma tokenisers leg with --with-backend-format=foma, tokenise output equal to tropical build's on sample corpus, archive size recorded, divvunspell unaffected. Depends on flag-encode-diverge landing + re-baseline (batch ceremony). Prereq reading: foma-port-status memory (CLI wiring history), openfst.algo node notes (inflation characterization)."
+                    }
+                )
+            }
+        )
+    }
 )
