@@ -4262,6 +4262,27 @@ children (
                         kind @note
                         text "CAUSAL REFRAME (2026-07-18, answers \"why still 1.4-1.6× slower than C++ on the xfst legs when outputs are byte-identical\"): byte-identity constrains WHAT is computed, not HOW FAST — the earlier \"algorithmic floor / byte-locked\" framing was wrong. The same chains run in OpenFST at ~100s vs our 164s (src/fst), and the divergence is in rustfst's lazy-FST framework, verified in code: (1) BOTH lazy caches (SimpleVecCache, SimpleHashMapCache: trs/start/final_weights fields) AND the state tables are std::sync::Mutex-wrapped — every get_trs/find_id/cache-fill pays lock+unlock in single-threaded static algorithms, millions of times per determinize; OpenFST CacheImpl is unsynchronized vectors. (2) the GENERIC lazy StateTable (lazy/state_table.rs BiHashMap<T, H = RandomState>) still hashes with SipHash — the determinize-specific table was FxHash-ified with a recorded ~5% win, compose et al. were not (sample evidence: sip frames under lazy StateTable::find_id + LazyFst::compute_bounded). (3) compute_bounded materializes cache-then-copy: computes each state into the Mutex-guarded cache then re-reads to build the output FST — pure overhead for one-shot static ops; plus get_trs returns an Arc clone (atomic refcount) per state visit. Frame evidence: `lazy` = 1223/~8000 (xfst sample), 7651/~10000 (errmodel determinize); likely contains the 680 unattributed compose frames. MAGNITUDE UNMEASURED — bounded above by the ~40% leg gap; measure per-change. Work order: (a) FxHash the generic StateTable (trivial, mirrors proven pattern); (b) de-Mutex the single-threaded path (RefCell/&mut cache variant — medium, design needed since LazyFst API is &self); (c) consider direct materialization bypassing the cache for static one-shot ops. All byte-safe (framework-only); validate with the standard oracle set + interleaved A/B per change."
                     }
+
+                    {
+                        at 2026-07-19T16:02:57.860246Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-19T16:26:09.698558Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "CLOSED as re-measure/attribution (2026-07-19, post-chain binary ba720706). RESIDUAL VERDICT: the one big named non-algorithmic facade cost left in the speller xfst script is the xerox_composition flag ENCODE/DECODE passes (~1,825 frames ≈ 14% of active in the post-chain sample) — and code inspection shows why: encode_flag_diacritics/decode_flag_diacritics (hfst_transducer.rs:4088/4158) do a FULL basic-transducer round-trip (tropical→basic, rebuild every arc with SmolStr symbol ops, back) and run 4× per xerox compose (encode+decode × both operands). For the tropical backend this is a pure symbol-STRING rename — labels unchanged — so it is an O(alphabet) in-place SymbolTable edit candidate, the exact A2 pattern; numbering analysis suggests byte-identity should hold (the round-trip preserves coder order), to be confirmed by the speller-artifact cmp oracle. THAT is the identified follow-up unit if more xfst CPU is wanted; everything else in the residual is algorithmic (determinize/Hopcroft/shortest-distance push) or <5% (substitutes 577, harmonize 128; also now-visible hfst-side SymbolCoder::get_number ~617 and BTreeMap<SmolStr> ops). METHODOLOGY CAVEATS recorded: (1) the pre/post family-delta comparison is PHASE-CONFOUNDED (8s windows land on different phases of a 15-28s script) — deltas here are directional only, the chain's effect is established by the paired wall A/Bs, this sample is for residual attribution; (2) rustc 1.97.1 emits v0 mangling — sample-file greps must match identifier substrings with [^ ]* wildcards, legacy-demangled patterns return zeros. CUMULATIVE LEG TIMING (adjacent-run pair, dist/bin swapped between arms, same toolchain): src/fst leg 128.98 → 106.52s user (−17%) pre-chain(fd1c702f)→post-chain(ba720706); spellers pair CONTAMINATED (pre-chain arm caught a load spike: 417s wall vs 128s post) — directional only, no number claimed. Post-chain absolute leg times (153s/128s wall, 107s/100s user) now sit at ~parity with the July-3 C++ reference legs (100s/100s), with the caveat that those C++ numbers are July measurements under different conditions."
+                    }
+
+                    {
+                        at 2026-07-19T16:26:17.752081Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
                 )
             }
 

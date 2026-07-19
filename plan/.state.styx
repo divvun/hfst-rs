@@ -245,4 +245,5 @@ assertions (
     {id rustfst-lazy-statetable-fxhash, kind @complete, author "brendan@necessary.nu", at 2026-07-18T13:48:43.752087Z}
     {id rustfst-lazy-demutex, kind @complete, author "brendan@necessary.nu", at 2026-07-18T15:04:00.06994Z}
     {id rustfst-lazy-direct-materialize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T15:50:37.960012Z}
+    {id compose-facade-nativize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T16:26:17.752081Z}
 )
