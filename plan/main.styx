@@ -4511,4 +4511,30 @@ children (
             }
         )
     }
+
+    {
+        id twolc-name-sigma-cosmetic
+        title "lang-sme twolc cosmetic byte-diff: rule name drops quotes + sigma ~205KB smaller"
+        log (
+            {
+                at 2026-07-19T19:03:42.219064Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "OPEN (triage 2026-07-19). Surfaced during lang-sme (North Sami) validation 2026-07-06 (commit d841e874 fixed the where-clause blocker; phonology.twolc now COMPILES). Two residual cosmetic byte-diffs vs C++ hfst-twolc on lang-sme phonology, both deferred as follow-ups and NEVER fixed (git log --all --since=2026-07-06 grep twolc.*name/quote/sigma = empty): (1) the compiled transducer NAME drops the rule-name quotes — C++ emits e.g. '\"Allegro Forms in Compounds \"' (quoted, trailing space) where Rust emits it unquoted; the Rust naming path is twolc.rs unescape_name (:4113) which strips __HFST_TWOLC_RULE_NAME= and __HFST_TWOLC_SPACE but does not re-add the surrounding quotes C++ keeps; set_name at :1267. (2) sigma (the alphabet section) is ~205KB SMALLER than C++ on the same phonology. Both are cosmetic/metadata: analyser is functionally CORRECT and speller works end-to-end (se.zhfst builds + divvunspell suggest correct). Impact: hfst-compare -q reports 'differ' on name-only diffs (a known confounder, see lang-sma-validation memory), so these gaps block naive byte-identity checks on lang-sme twolc output but not behaviour. Small node. Fix (1): re-add quotes in the name-building path; compare against C++ htwolcpre3 rule-name emission. Fix (2): diff the two sigma sections to find which symbols C++ carries that Rust drops (likely declared-but-unused alphabet symbols)."
+            }
+        )
+    }
+
+    {
+        id diag-parse-error-spans
+        title "Route nfst parser (xre/pmatch/twolc) parse errors through diag::emit with spans instead of terse Err(_) arms"
+        log (
+            {
+                at 2026-07-19T19:03:58.100637Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "OPEN (triage 2026-07-19). From lang-sma-validation memory: ariadne source-anchored diagnostics landed 2026-07-06 (commits 227ff455 lexc, 999be6a9 twolc+xre; also a1604d9/4bba4f1) via crate::diag, but the note flags 'parse-error arms still terse (follow-up)' — never done. Ground truth: crate::diag::emit (crates/hfst/src/diag.rs) IS rich — signature emit(name, source, span: Range<usize>, severity, message) renders an ariadne Report with a labelled span. The compilers each call it (4 sites each in twolc.rs/xre.rs/lexc.rs) for their OWN error arms. The GAP: the arms that receive a parse error from the nfst front-end parsers DISCARD the structured error instead of routing its span through diag::emit — xre.rs:710 and :739 'Err(_) => { ... }' (throws away nfst_xre ParseError), pmatch_compiler.rs:4619 and :4895 'Err(_) => {}' (format_pmatch_parse_error at :4914 stringifies but does not feed diag::emit a span), and the twolc parse path similarly. So a genuine SYNTAX error in user xre/pmatch/twolc source surfaces as a terse bail!/error! line with no source snippet, while a compiler-stage error (undeclared symbol etc.) gets the rich ariadne caret. Small node: change the 'Err(_)' arms to 'Err(e)' and route e's span+message through crate::diag::emit(name, source, e.span(), Severity::Error, &msg). Requires the nfst ParseError types to expose a byte span (verify; the pmatch ParseError already carries enough for format_pmatch_parse_error). No behaviour change beyond diagnostic quality; oracle = existing regexp2fst_malformed.rs / parse tests still exit 1."
+            }
+        )
+    }
 )
