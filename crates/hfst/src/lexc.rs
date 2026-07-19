@@ -1270,8 +1270,20 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 // mirrors 'xre.remove_defined_multichar_symbols()' in parse()
                 self.xre.remove_defined_multichar_symbols();
             }
-            Err(_e) => {
-                // mirrors the 'hlexcnerrs > 0' branch setting parseErrors_
+            Err(e) => {
+                // mirrors the 'hlexcnerrs > 0' branch setting parseErrors_,
+                // but renders the parser's spanned diagnostics first — the
+                // bison yyerror printed its syntax errors before bumping
+                // hlexcnerrs, so a silent flag-set would lose the message.
+                for d in &e.diagnostics {
+                    crate::diag::emit(
+                        &self.source_name,
+                        &self.source,
+                        d.span.range.clone(),
+                        crate::diag::Severity::Error,
+                        &d.message,
+                    );
+                }
                 self.parseErrors_ = true;
             }
         }

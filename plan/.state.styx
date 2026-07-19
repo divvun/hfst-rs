@@ -249,4 +249,5 @@ assertions (
     {id xfst-flag-encode-nativize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T17:12:24.943388Z}
     {id flag-encode-diverge, kind @complete, author "brendan@necessary.nu", at 2026-07-19T18:31:03.682621Z}
     {id foma-tokeniser-build, kind @complete, author "brendan@necessary.nu", at 2026-07-19T18:46:39.134465Z}
+    {id diag-parse-error-spans, kind @complete, author "brendan@necessary.nu", at 2026-07-19T19:26:30.125695Z}
 )

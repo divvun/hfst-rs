@@ -4535,6 +4535,20 @@ children (
                 kind @note
                 text "OPEN (triage 2026-07-19). From lang-sma-validation memory: ariadne source-anchored diagnostics landed 2026-07-06 (commits 227ff455 lexc, 999be6a9 twolc+xre; also a1604d9/4bba4f1) via crate::diag, but the note flags 'parse-error arms still terse (follow-up)' — never done. Ground truth: crate::diag::emit (crates/hfst/src/diag.rs) IS rich — signature emit(name, source, span: Range<usize>, severity, message) renders an ariadne Report with a labelled span. The compilers each call it (4 sites each in twolc.rs/xre.rs/lexc.rs) for their OWN error arms. The GAP: the arms that receive a parse error from the nfst front-end parsers DISCARD the structured error instead of routing its span through diag::emit — xre.rs:710 and :739 'Err(_) => { ... }' (throws away nfst_xre ParseError), pmatch_compiler.rs:4619 and :4895 'Err(_) => {}' (format_pmatch_parse_error at :4914 stringifies but does not feed diag::emit a span), and the twolc parse path similarly. So a genuine SYNTAX error in user xre/pmatch/twolc source surfaces as a terse bail!/error! line with no source snippet, while a compiler-stage error (undeclared symbol etc.) gets the rich ariadne caret. Small node: change the 'Err(_)' arms to 'Err(e)' and route e's span+message through crate::diag::emit(name, source, e.span(), Severity::Error, &msg). Requires the nfst ParseError types to expose a byte span (verify; the pmatch ParseError already carries enough for format_pmatch_parse_error). No behaviour change beyond diagnostic quality; oracle = existing regexp2fst_malformed.rs / parse tests still exit 1."
             }
+
+            {
+                at 2026-07-19T19:19:54.257552Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-07-19T19:26:30.125695Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
         )
     }
 )

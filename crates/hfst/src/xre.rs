@@ -36,9 +36,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use tracing::{error, warn};
 
 use nfst_xre::{
-    BinaryOp, ContextMark, MappingKind, MappingPair, MappingSide, ReadKind, ReplaceArrow,
-    ReplaceContext, ReplaceRule, RestrContext, SpannedXre, SubstituteWhat, UnaryOp, XreExpr, parse,
-    parse_all,
+    BinaryOp, ContextMark, MappingKind, MappingPair, MappingSide, ParseError, ReadKind,
+    ReplaceArrow, ReplaceContext, ReplaceRule, RestrContext, SpannedXre, SubstituteWhat, UnaryOp,
+    XreExpr, parse, parse_all,
 };
 
 use crate::backend::AlgebraBackend;
@@ -459,6 +459,22 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         );
     }
 
+    /// Render every diagnostic carried by an nfst-xre parse failure, each
+    /// anchored at its own span. The front-end parser reports syntax errors
+    /// with byte spans into `self.source`; without this the caller's terse
+    /// one-liner is all the user sees of a syntax error.
+    fn diag_parse_error(&self, e: &ParseError) {
+        for d in &e.diagnostics {
+            crate::diag::emit(
+                &self.source_name,
+                &self.source,
+                d.span.range.clone(),
+                crate::diag::Severity::Error,
+                &d.message,
+            );
+        }
+    }
+
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.set-error-stream-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.set-error-stream-fn]
     // Stream plumbing is deferred (the C++ error_ global is not ported); no-op.
@@ -707,7 +723,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 *chars_read = 0;
                 None
             }
-            Err(_) => {
+            Err(e) => {
+                self.diag_parse_error(&e);
                 *chars_read = 0;
                 None
             }
@@ -736,13 +753,15 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 t.optimize_with_config(&self.opt_cfg()).ok()?;
                 Some(t)
             }
-            Err(_) => {
+            Err(e) => {
                 // Distinguish comments-only (parse_all yields []) from a real
                 // parse error.
                 if let Ok(exprs) = parse_all(src)
                     && exprs.is_empty()
                 {
                     self.contains_only_comments = true;
+                } else {
+                    self.diag_parse_error(&e);
                 }
                 None
             }
@@ -1258,7 +1277,20 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 t.optimize_with_config(&self.opt_cfg())?;
                 t
             }
-            Err(_) => crate::bail!(Hfst, format!("Could not parse body of function '{}'", name)),
+            Err(e) => {
+                // The span is relative to the stored function body, not the
+                // caller's source, so anchor the snippet in the body text.
+                for d in &e.diagnostics {
+                    crate::diag::emit(
+                        &format!("<function {}>", name),
+                        &body,
+                        d.span.range.clone(),
+                        crate::diag::Severity::Error,
+                        &d.message,
+                    );
+                }
+                crate::bail!(Hfst, format!("Could not parse body of function '{}'", name))
+            }
         })
     }
 }

@@ -4906,20 +4906,26 @@ pub fn expand_includes<B: AlgebraBackend + 'static>(
     }
     retval
 }
-// Render a parser failure as human-readable text. The bison port used to
-// swallow 'nfst_pmatch::parse' errors and let compilation fall through to the
-// downstream "Empty ruleset, nothing to write" message, which hides the real
-// cause — e.g. a reserved predefined acceptor name (`Alpha`, `Whitespace`, ...)
-// used as a `Define` target ("expected definition name after `Define`").
-fn format_pmatch_parse_error(e: &nfst_pmatch::ParseError) -> String {
+// Render a parser failure as source-anchored diagnostics. The bison port used
+// to swallow 'nfst_pmatch::parse' errors and let compilation fall through to
+// the downstream "Empty ruleset, nothing to write" message, which hides the
+// real cause — e.g. a reserved predefined acceptor name (`Alpha`,
+// `Whitespace`, ...) used as a `Define` target. Each diagnostic carries a byte
+// span into the include-expanded script, so the rendered snippet is anchored
+// there.
+fn emit_pmatch_parse_error(e: &nfst_pmatch::ParseError, expanded_script: &str) {
     if e.diagnostics.is_empty() {
-        return "pmatch: syntax error".to_string();
+        error!("pmatch: syntax error");
     }
-    e.diagnostics
-        .iter()
-        .map(|d| format!("pmatch: syntax error: {}", d.message))
-        .collect::<Vec<_>>()
-        .join("\n")
+    for d in &e.diagnostics {
+        crate::diag::emit(
+            "<pmatch>",
+            expanded_script,
+            d.span.range.clone(),
+            crate::diag::Severity::Error,
+            &format!("pmatch: syntax error: {}", d.message),
+        );
+    }
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-fn]
@@ -4970,7 +4976,7 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
             }
         }
         Err(e) => {
-            error!("{}", format_pmatch_parse_error(&e));
+            emit_pmatch_parse_error(&e, &expanded_script);
             ctx.pmatchnerrs += 1;
         }
     }
@@ -6423,7 +6429,7 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                     }
                 }
                 Err(e) => {
-                    error!("{}", format_pmatch_parse_error(&e));
+                    emit_pmatch_parse_error(&e, &expanded_script);
                     ctx.data = String::new();
                     ctx.len = 0;
                     return Ok(HashMap::new());
