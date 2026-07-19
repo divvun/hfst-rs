@@ -3958,7 +3958,7 @@ impl HfstBasicTransducer {
 
 // [spec:hfst:def:hfst-transducer.hfst.encode-flag-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.encode-flag-fn]
-fn encode_flag(flag_diacritic: &str) -> Symbol {
+pub(crate) fn encode_flag(flag_diacritic: &str) -> Symbol {
     let mut retval: Vec<u8> = flag_diacritic.as_bytes().to_vec();
     let last = retval.len() - 1;
     retval[0] = b'%';
@@ -3970,7 +3970,7 @@ fn encode_flag(flag_diacritic: &str) -> Symbol {
 
 // [spec:hfst:def:hfst-transducer.hfst.decode-flag-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.decode-flag-fn]
-fn decode_flag(flag_diacritic: &str) -> Symbol {
+pub(crate) fn decode_flag(flag_diacritic: &str) -> Symbol {
     let bytes = flag_diacritic.as_bytes();
     if bytes[0] != b'%' || bytes[bytes.len() - 1] != b'%' {
         return Symbol::new(flag_diacritic);
@@ -4083,130 +4083,32 @@ fn rename_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>, suffix: &str)
     *fst = HfstTransducer::from_basic(&basic_fst_copy);
 }
 
+// The flag encode/decode passes ('encode_flag_diacritics' /
+// 'decode_flag_diacritics') dispatch to the backend. The tropical backend does
+// a pure in-place SymbolTable rename (equivalent automaton, bytes diverge from
+// the whole-graph round-trip by design — [node:flag-encode-diverge]); every
+// other backend keeps the C++ round-trip via the Backend default. Either way
+// the facade metadata is reset exactly as the former '*fst = from_basic(...)'
+// did: name -> "", props -> {}, anonymous/is_trie -> false.
+fn reset_facade_metadata_after_flag_pass<B: Backend>(fst: &mut HfstTransducer<B>) {
+    fst.name = String::new();
+    fst.props = BTreeMap::new();
+    fst.anonymous = false;
+    fst.is_trie = false;
+}
+
 // [spec:hfst:def:hfst-transducer.hfst.encode-flag-diacritics-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.encode-flag-diacritics-fn]
 fn encode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
-    let basic_fst = HfstBasicTransducer::from_transducer(fst);
-    let mut basic_fst_copy = HfstBasicTransducer::new();
-    let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
-
-    for (s, states) in basic_fst.state_vector.iter().enumerate() {
-        let s = s as HfstState;
-        for transition in states.iter() {
-            let input_symbol = transition.get_input_symbol(basic_fst.coder());
-            let output_symbol = transition.get_output_symbol(basic_fst.coder());
-            let isym = if FdOperation::is_diacritic(&input_symbol) {
-                encode_flag(&input_symbol)
-            } else {
-                input_symbol
-            };
-            let osym = if FdOperation::is_diacritic(&output_symbol) {
-                encode_flag(&output_symbol)
-            } else {
-                output_symbol
-            };
-            let tr = HfstBasicTransition::new_symbols(
-                transition.get_target_state(),
-                isym,
-                osym,
-                transition.get_weight(),
-                basic_fst_copy.coder_mut(),
-            );
-            basic_fst_copy.add_transition(s, &tr, true);
-        }
-
-        if basic_fst.is_final_state(s) {
-            basic_fst_copy.set_final_weight(
-                s,
-                &basic_fst
-                    .get_final_weight(s)
-                    .expect("state was confirmed final via is_final_state"),
-            );
-        }
-    }
-
-    // copy alphabet, encode all flags
-    let alpha = basic_fst.get_alphabet().clone();
-    for it in alpha.iter() {
-        if it.len() > 4 {
-            let bytes = it.as_bytes();
-            if (bytes[0] == b'%') && (bytes[it.len() - 1] == b'%') {
-                let mut str_bytes = bytes.to_vec();
-                let last = str_bytes.len() - 1;
-                str_bytes[0] = b'@';
-                str_bytes[last] = b'@';
-                let str = String::from_utf8(str_bytes)
-                    .expect("alphabet symbol remains valid UTF-8 after @-unescaping");
-                if FdOperation::is_diacritic(&str) {
-                    let msg = "error: reserved symbol '".to_string() + &str + "' detected";
-                    std::panic::panic_any(msg);
-                }
-            }
-        }
-        let mut symbol: Symbol = it.clone();
-        if FdOperation::is_diacritic(&symbol) {
-            symbol = encode_flag(&symbol);
-        }
-        basic_fst_copy.add_symbol_to_alphabet(&symbol);
-    }
-
-    *fst = HfstTransducer::from_basic(&basic_fst_copy);
+    fst.fst.encode_flag_diacritics();
+    reset_facade_metadata_after_flag_pass(fst);
 }
 
 // [spec:hfst:def:hfst-transducer.hfst.decode-flag-diacritics-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.decode-flag-diacritics-fn]
 fn decode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
-    let basic_fst = HfstBasicTransducer::from_transducer(fst);
-    let mut basic_fst_copy = HfstBasicTransducer::new();
-    let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
-
-    for (s, states) in basic_fst.state_vector.iter().enumerate() {
-        let s = s as HfstState;
-        for transition in states.iter() {
-            let input_symbol = transition.get_input_symbol(basic_fst.coder());
-            let output_symbol = transition.get_output_symbol(basic_fst.coder());
-
-            let mut istr = decode_flag(&input_symbol);
-            if !FdOperation::is_diacritic(&istr) {
-                istr = input_symbol;
-            }
-
-            let mut ostr = decode_flag(&output_symbol);
-            if !FdOperation::is_diacritic(&ostr) {
-                ostr = output_symbol;
-            }
-
-            let tr = HfstBasicTransition::new_symbols(
-                transition.get_target_state(),
-                istr,
-                ostr,
-                transition.get_weight(),
-                basic_fst_copy.coder_mut(),
-            );
-            basic_fst_copy.add_transition(s, &tr, true);
-        }
-
-        if basic_fst.is_final_state(s) {
-            basic_fst_copy.set_final_weight(
-                s,
-                &basic_fst
-                    .get_final_weight(s)
-                    .expect("state was confirmed final via is_final_state"),
-            );
-        }
-    }
-
-    // copy alphabet, decode all flags
-    let alpha = basic_fst.get_alphabet().clone();
-    for it in alpha.iter() {
-        let mut symbol: Symbol = decode_flag(it);
-        if !FdOperation::is_diacritic(&symbol) {
-            symbol = it.clone();
-        }
-        basic_fst_copy.add_symbol_to_alphabet(&symbol);
-    }
-
-    *fst = HfstTransducer::from_basic(&basic_fst_copy);
+    fst.fst.decode_flag_diacritics();
+    reset_facade_metadata_after_flag_pass(fst);
 }
 
 // C++ 'operator<<(std::ostream &out, const HfstTransducer &t)' (HfstTransducer.cc:6419)
@@ -4431,5 +4333,151 @@ impl FromAnyTransducer for crate::backend_thfst::ThfstTransducer {
             #[cfg(feature = "foma")]
             other @ AnyTransducer::Foma(_) => any_into_backend_via_basic(other),
         }
+    }
+}
+
+#[cfg(test)]
+mod flag_encode_tests {
+    use super::*;
+    use crate::hfst_basic_transducer::HfstBasicTransducer;
+    use crate::hfst_basic_transition::HfstBasicTransition;
+    use crate::hfst_data_types::Symbol;
+    use hfst_openfst::StdVectorFst;
+    use hfst_openfst::prelude::*;
+
+    // Snapshot the tropical backend's alphabet as ordered (label, symbol) pairs.
+    // The in-place encode/decode is a divergence precisely because it keeps
+    // symbols at their original labels, so comparing this exact map (not just a
+    // string set) is what proves the round-trip is the *identity* on the
+    // symbol table.
+    fn symbol_pairs(t: &HfstTransducer<StdVectorFst>) -> Vec<(u32, String)> {
+        let st = t
+            .fst
+            .input_symbols()
+            .expect("tropical transducer always carries a symbol table");
+        let mut v: Vec<(u32, String)> = st.iter().map(|(l, s)| (l, s.to_string())).collect();
+        v.sort_by_key(|(l, _)| *l);
+        v
+    }
+
+    // 0 -@U.F.FOO@-> 1 -a-> 2 -@P.F.BAR@-> 3 (final), plus an ordinary 'b' arc.
+    fn build_flagged() -> HfstTransducer<StdVectorFst> {
+        let mut t = HfstBasicTransducer::new();
+        let s1 = t.add_state_new();
+        let s2 = t.add_state_new();
+        let s3 = t.add_state_new();
+        t.set_final_weight(s3, &0.0);
+
+        let fd1 = Symbol::new_static("@U.F.FOO@");
+        let fd2 = Symbol::new_static("@P.F.BAR@");
+
+        let tr = HfstBasicTransition::new_symbols(s1, fd1.clone(), fd1.clone(), 0.0, t.coder_mut());
+        t.add_transition(0, &tr, true);
+        let tr = HfstBasicTransition::new_symbols(s2, "a".into(), "a".into(), 0.0, t.coder_mut());
+        t.add_transition(s1, &tr, true);
+        let tr = HfstBasicTransition::new_symbols(s2, "b".into(), "b".into(), 0.0, t.coder_mut());
+        t.add_transition(s1, &tr, true);
+        let tr = HfstBasicTransition::new_symbols(s3, fd2.clone(), fd2.clone(), 0.0, t.coder_mut());
+        t.add_transition(s2, &tr, true);
+
+        HfstTransducer::<StdVectorFst>::new_from_basic(&t)
+            .expect("building a tropical transducer from a basic one cannot fail")
+    }
+
+    #[test]
+    fn flag_encode_decode_round_trip_restores_exactly() {
+        let original = build_flagged();
+        let before = symbol_pairs(&original);
+        // The flags start in @...@ form.
+        assert!(
+            before.iter().any(|(_, s)| s == "@U.F.FOO@"),
+            "expected @-wrapped flag before encode: {before:?}"
+        );
+
+        let mut t = original.clone();
+        encode_flag_diacritics(&mut t);
+
+        // After encode every flag is %-escaped at its ORIGINAL label; ordinary
+        // symbols and epsilon are untouched.
+        let encoded = symbol_pairs(&t);
+        assert_eq!(
+            before.len(),
+            encoded.len(),
+            "encode must not add or drop symbols"
+        );
+        for ((lb, sb), (le, se)) in before.iter().zip(encoded.iter()) {
+            assert_eq!(lb, le, "labels must be preserved by the in-place rename");
+            if sb == "@U.F.FOO@" {
+                assert_eq!(se, "%U.F.FOO%");
+            } else if sb == "@P.F.BAR@" {
+                assert_eq!(se, "%P.F.BAR%");
+            } else {
+                assert_eq!(sb, se, "non-flag symbol {sb} must be unchanged");
+            }
+        }
+
+        decode_flag_diacritics(&mut t);
+        let after = symbol_pairs(&t);
+        // Full equality: the symbol table (labels AND strings) is byte-for-byte
+        // the original, and the automaton compares equal.
+        assert_eq!(before, after, "decode must be the exact inverse of encode");
+        assert!(
+            original
+                .compare_default(&t)
+                .expect("compare on tropical transducers cannot fail"),
+            "the round-tripped transducer must be equivalent to the original"
+        );
+    }
+
+    #[test]
+    fn encoded_transducer_is_accepted_by_compose() {
+        // Exercise the whole xerox-composition path (encode both operands ->
+        // product -> decode) the way compose_with_config does: composing a
+        // flagged acceptor with itself under xerox_composition must succeed and
+        // stay equivalent to the flag-free compose.
+        let t = build_flagged();
+        let cfg = EngineConfig {
+            xerox_composition: true,
+            ..EngineConfig::default()
+        };
+
+        let mut xerox = t.clone();
+        xerox
+            .compose_with_config(&t, true, &cfg)
+            .expect("xerox composition of a flagged acceptor must succeed");
+
+        let mut plain = t.clone();
+        plain
+            .compose(&t, true)
+            .expect("plain composition of a flagged acceptor must succeed");
+
+        assert!(
+            xerox
+                .compare_default(&plain)
+                .expect("compare on tropical transducers cannot fail"),
+            "xerox-composition must agree with the plain compose for identity flags"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "reserved symbol")]
+    fn reserved_symbol_collision_panics() {
+        // An alphabet symbol already wrapped in %...% whose @-unescaped form is a
+        // flag diacritic collides with an encoded flag: encode must panic.
+        let mut t = HfstBasicTransducer::new();
+        let s1 = t.add_state_new();
+        t.set_final_weight(s1, &0.0);
+        let reserved = Symbol::new_static("%U.RESERVED.X%");
+        let tr = HfstBasicTransition::new_symbols(
+            s1,
+            reserved.clone(),
+            reserved.clone(),
+            0.0,
+            t.coder_mut(),
+        );
+        t.add_transition(0, &tr, true);
+        let mut fst = HfstTransducer::<StdVectorFst>::new_from_basic(&t)
+            .expect("building a tropical transducer from a basic one cannot fail");
+        encode_flag_diacritics(&mut fst);
     }
 }

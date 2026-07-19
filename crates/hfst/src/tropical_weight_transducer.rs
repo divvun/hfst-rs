@@ -125,6 +125,10 @@ mod construction_io {
     // 'HfstFatalException' is referenced by the (deferred) read_transducer path.
     #[allow(unused_imports)]
     use crate::hfst_flag_diacritics::FdOperation;
+    // Flag encode/decode helpers shared with the Backend round-trip default.
+    use crate::backend::check_reserved_flag_collision;
+    use crate::hfst_data_types::Symbol;
+    use crate::hfst_transducer::{decode_flag, encode_flag};
     // ---------------------------------------------------------------------------
     // File-static globals from the .cc
     // ---------------------------------------------------------------------------
@@ -1181,6 +1185,59 @@ mod construction_io {
                 if keep {
                     st.add_symbol_with_key(sym, label);
                 }
+            }
+            t.set_input_symbols(Arc::new(st));
+        }
+
+        // In-place flag encode: rename each flag-diacritic symbol '@...@' to its
+        // escaped form '%...%' in the SymbolTable, keeping every symbol at its
+        // ORIGINAL label so no arc is renumbered. Pure alphabet metadata edit —
+        // the arc graph is untouched. Runs the reserved-symbol collision guard
+        // (identical to the basic round-trip default) before renaming. This is
+        // the tropical override for the whole-graph round-trip; equivalent
+        // automaton, divergent bytes by design ([node:flag-encode-diverge]).
+        // [spec:hfst:def:hfst-transducer.hfst.encode-flag-diacritics-fn]
+        // [spec:hfst:sem:hfst-transducer.hfst.encode-flag-diacritics-fn]
+        pub fn encode_flag_diacritics(t: &mut StdVectorFst) {
+            assert!(t.input_symbols().is_some());
+            let old = t
+                .input_symbols()
+                .expect("input symbols present: asserted above")
+                .as_ref()
+                .clone();
+            let mut st = SymbolTable::empty();
+            for (label, sym) in old.iter() {
+                check_reserved_flag_collision(sym);
+                let new_sym: Symbol = if FdOperation::is_diacritic(sym) {
+                    encode_flag(sym)
+                } else {
+                    Symbol::from(sym)
+                };
+                st.add_symbol_with_key(new_sym.as_str(), label);
+            }
+            t.set_input_symbols(Arc::new(st));
+        }
+
+        // In-place flag decode: the exact inverse of `encode_flag_diacritics`,
+        // restoring '%...%' back to '@...@' at each symbol's original label.
+        // [spec:hfst:def:hfst-transducer.hfst.decode-flag-diacritics-fn]
+        // [spec:hfst:sem:hfst-transducer.hfst.decode-flag-diacritics-fn]
+        pub fn decode_flag_diacritics(t: &mut StdVectorFst) {
+            assert!(t.input_symbols().is_some());
+            let old = t
+                .input_symbols()
+                .expect("input symbols present: asserted above")
+                .as_ref()
+                .clone();
+            let mut st = SymbolTable::empty();
+            for (label, sym) in old.iter() {
+                let decoded = decode_flag(sym);
+                let new_sym: Symbol = if FdOperation::is_diacritic(&decoded) {
+                    decoded
+                } else {
+                    Symbol::from(sym)
+                };
+                st.add_symbol_with_key(new_sym.as_str(), label);
             }
             t.set_input_symbols(Arc::new(st));
         }

@@ -247,4 +247,5 @@ assertions (
     {id rustfst-lazy-direct-materialize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T15:50:37.960012Z}
     {id compose-facade-nativize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T16:26:17.752081Z}
     {id xfst-flag-encode-nativize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T17:12:24.943388Z}
+    {id flag-encode-diverge, kind @complete, author "brendan@necessary.nu", at 2026-07-19T18:31:03.682621Z}
 )

@@ -4442,12 +4442,27 @@ children (
             {
                 id flag-encode-diverge
                 title "Land the in-place tropical flag encode/decode as a successor divergence (~14% of xerox-compose xfst CPU, measured); symbol renumbering diverges bytes by design"
+                sealed true
                 log (
                     {
                         at 2026-07-19T17:40:12.581269Z
                         author "brendan@necessary.nu"
                         kind @note
                         text "DESIGN: resurrect the reverted implementation from the retired xfst-flag-encode-nativize node (read its notes for the full design + verified facts: encode_flag injective on diacritics, reserved-collision panic guard at hfst_transducer.rs:4141, decode exact inverse; the Backend-trait + tropical in-place SymbolTable-rename implementation WORKED and was reverted only for byte divergence — bytes differ because the old basic round-trip renumbers symbols in arc-walk order, the in-place path preserves original labels; both are equivalent automata). VALIDATION now = equivalence, not cmp: (a) 291 tests + a new round-trip regression test; (b) speller: build the artifact with old + new binaries, then hfst-compare or divvunspell suggest parity (lea/maana CORRECT, leaa->lea top suggestion); (c) tokeniser: build .pmhfst with new binary, hfst-tokenise -g output on sample text MUST equal old binary's output line-for-line; (d) C++ read-compat if cheap. A/B the speller xfst script (expect ~14%, paired interleaved, honest verdict). RE-BASELINE CEREMONY after landing: regenerate + record new reference artifacts (speller artifact, tokeniser-<rev>.pmhfst + sha, lexc sha if moved) in scratchpad + memory; future cmp oracles use the new baselines."
+                    }
+
+                    {
+                        at 2026-07-19T17:40:23.198044Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-07-19T18:31:03.682621Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }

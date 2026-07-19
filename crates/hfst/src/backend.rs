@@ -15,16 +15,45 @@
 
 use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
+use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::ImplementationType;
+use crate::hfst_data_types::Symbol;
+use crate::hfst_data_types::implementations::HfstState;
 use crate::hfst_data_types::{
     HfstOneLevelPaths, HfstTwoLevelPaths, StringPair, StringPairSet, StringPairVector, StringVector,
 };
 use crate::hfst_extract_strings::ExtractStringsCb;
+use crate::hfst_flag_diacritics::FdOperation;
 use crate::hfst_ol_transducer::HfstOlTransducer;
 use crate::hfst_symbol_defs::StringSet;
+use crate::hfst_transducer::{decode_flag, encode_flag};
 use crate::transducer::{Transducer, UnweightedTables, WeightedTables};
 use crate::tropical_weight_transducer::TropicalWeightTransducer;
 use hfst_openfst::StdVectorFst;
+
+/// The reserved-symbol guard shared by every `encode_flag_diacritics` path: an
+/// alphabet symbol already wrapped in '%...%' whose '@...@'-unescaped form is a
+/// flag diacritic would collide with a freshly-encoded flag, so the C++ raised
+/// an error. Kept as a `panic_any` (the port's throw port) so both the basic
+/// round-trip default and the tropical in-place override fail identically.
+// [spec:hfst:sem:hfst-transducer.hfst.encode-flag-diacritics-fn]
+pub(crate) fn check_reserved_flag_collision(symbol: &str) {
+    if symbol.len() > 4 {
+        let bytes = symbol.as_bytes();
+        if (bytes[0] == b'%') && (bytes[symbol.len() - 1] == b'%') {
+            let mut str_bytes = bytes.to_vec();
+            let last = str_bytes.len() - 1;
+            str_bytes[0] = b'@';
+            str_bytes[last] = b'@';
+            let str = String::from_utf8(str_bytes)
+                .expect("alphabet symbol remains valid UTF-8 after @-unescaping");
+            if FdOperation::is_diacritic(&str) {
+                let msg = "error: reserved symbol '".to_string() + &str + "' detected";
+                std::panic::panic_any(msg);
+            }
+        }
+    }
+}
 
 /// The surface every backend provides: identity, serialization tag, deep
 /// copy, the typed conversions to/from the interchange
@@ -114,6 +143,133 @@ pub trait Backend: Sized {
         net.prune_alphabet(force);
         *self = Self::from_basic(&net)?;
         Ok(())
+    }
+
+    /// The xerox-composition flag encode ('encode_flag_diacritics'): rewrite
+    /// every flag-diacritic symbol '@...@' to its escaped form '%...%' so the
+    /// product treats it as an ordinary symbol. The default rebuilds the whole
+    /// graph through the basic transducer, which renumbers symbols in arc-walk
+    /// order (the C++ behaviour); the tropical backend overrides this with an
+    /// in-place SymbolTable rename that keeps each symbol at its original label
+    /// (a pure alphabet edit — the arc graph never changes). Panics via
+    /// 'panic_any' if the alphabet already carries a symbol whose escaped form
+    /// would collide with an encoded flag (the reserved-symbol guard).
+    fn encode_flag_diacritics(&mut self) {
+        let basic_fst = self
+            .to_basic()
+            .expect("to_basic on a valid backend cannot fail");
+        let mut basic_fst_copy = HfstBasicTransducer::new();
+        let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
+
+        for (s, states) in basic_fst.state_vector.iter().enumerate() {
+            let s = s as HfstState;
+            for transition in states.iter() {
+                let input_symbol = transition.get_input_symbol(basic_fst.coder());
+                let output_symbol = transition.get_output_symbol(basic_fst.coder());
+                let isym = if FdOperation::is_diacritic(&input_symbol) {
+                    encode_flag(&input_symbol)
+                } else {
+                    input_symbol
+                };
+                let osym = if FdOperation::is_diacritic(&output_symbol) {
+                    encode_flag(&output_symbol)
+                } else {
+                    output_symbol
+                };
+                let tr = HfstBasicTransition::new_symbols(
+                    transition.get_target_state(),
+                    isym,
+                    osym,
+                    transition.get_weight(),
+                    basic_fst_copy.coder_mut(),
+                );
+                basic_fst_copy.add_transition(s, &tr, true);
+            }
+
+            if basic_fst.is_final_state(s) {
+                basic_fst_copy.set_final_weight(
+                    s,
+                    &basic_fst
+                        .get_final_weight(s)
+                        .expect("state was confirmed final via is_final_state"),
+                );
+            }
+        }
+
+        // copy alphabet, encode all flags
+        let alpha = basic_fst.get_alphabet().clone();
+        for it in alpha.iter() {
+            check_reserved_flag_collision(it);
+            let mut symbol: Symbol = it.clone();
+            if FdOperation::is_diacritic(&symbol) {
+                symbol = encode_flag(&symbol);
+            }
+            basic_fst_copy.add_symbol_to_alphabet(&symbol);
+        }
+
+        *self =
+            Self::from_basic(&basic_fst_copy).expect("from_basic on a valid backend cannot fail");
+    }
+
+    /// The xerox-composition flag decode ('decode_flag_diacritics'): the exact
+    /// inverse of [`Self::encode_flag_diacritics`], restoring '%...%' back to
+    /// '@...@'. Default round-trips through the basic transducer (renumbering);
+    /// the tropical backend overrides with an in-place SymbolTable rename.
+    fn decode_flag_diacritics(&mut self) {
+        let basic_fst = self
+            .to_basic()
+            .expect("to_basic on a valid backend cannot fail");
+        let mut basic_fst_copy = HfstBasicTransducer::new();
+        let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
+
+        for (s, states) in basic_fst.state_vector.iter().enumerate() {
+            let s = s as HfstState;
+            for transition in states.iter() {
+                let input_symbol = transition.get_input_symbol(basic_fst.coder());
+                let output_symbol = transition.get_output_symbol(basic_fst.coder());
+
+                let mut istr = decode_flag(&input_symbol);
+                if !FdOperation::is_diacritic(&istr) {
+                    istr = input_symbol;
+                }
+
+                let mut ostr = decode_flag(&output_symbol);
+                if !FdOperation::is_diacritic(&ostr) {
+                    ostr = output_symbol;
+                }
+
+                let tr = HfstBasicTransition::new_symbols(
+                    transition.get_target_state(),
+                    istr,
+                    ostr,
+                    transition.get_weight(),
+                    basic_fst_copy.coder_mut(),
+                );
+                basic_fst_copy.add_transition(s, &tr, true);
+            }
+
+            if basic_fst.is_final_state(s) {
+                basic_fst_copy.set_final_weight(
+                    s,
+                    &basic_fst
+                        .get_final_weight(s)
+                        .expect("state was confirmed final via is_final_state"),
+                );
+            }
+        }
+
+        // copy alphabet, decode all flags
+        let alpha = basic_fst.get_alphabet().clone();
+        for it in alpha.iter() {
+            let mut symbol: Symbol = decode_flag(it);
+            if !FdOperation::is_diacritic(&symbol) {
+                symbol = it.clone();
+            }
+            basic_fst_copy.add_symbol_to_alphabet(&symbol);
+        }
+
+        *self =
+            Self::from_basic(&basic_fst_copy).expect("from_basic on a valid backend cannot fail");
     }
 
     /// Convert this backend to a weighted optimized-lookup transducer — the
@@ -303,6 +459,17 @@ impl Backend for StdVectorFst {
     fn prune_alphabet(&mut self, force: bool) -> crate::error::Result<()> {
         TropicalWeightTransducer::prune_alphabet(self, force);
         Ok(())
+    }
+    // A flag encode/decode is a pure alphabet rename — the arc graph is untouched
+    // — so these override the whole-graph basic round-trip with an in-place
+    // SymbolTable edit that preserves each symbol's original label. Equivalent
+    // automaton, but the serialized bytes diverge from the round-trip (which
+    // renumbers symbols in arc-walk order) by design ([node:flag-encode-diverge]).
+    fn encode_flag_diacritics(&mut self) {
+        TropicalWeightTransducer::encode_flag_diacritics(self);
+    }
+    fn decode_flag_diacritics(&mut self) {
+        TropicalWeightTransducer::decode_flag_diacritics(self);
     }
     fn to_hfst_ol(
         &self,
