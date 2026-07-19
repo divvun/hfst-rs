@@ -4522,6 +4522,27 @@ children (
                 kind @note
                 text "OPEN (triage 2026-07-19). Surfaced during lang-sme (North Sami) validation 2026-07-06 (commit d841e874 fixed the where-clause blocker; phonology.twolc now COMPILES). Two residual cosmetic byte-diffs vs C++ hfst-twolc on lang-sme phonology, both deferred as follow-ups and NEVER fixed (git log --all --since=2026-07-06 grep twolc.*name/quote/sigma = empty): (1) the compiled transducer NAME drops the rule-name quotes — C++ emits e.g. '\"Allegro Forms in Compounds \"' (quoted, trailing space) where Rust emits it unquoted; the Rust naming path is twolc.rs unescape_name (:4113) which strips __HFST_TWOLC_RULE_NAME= and __HFST_TWOLC_SPACE but does not re-add the surrounding quotes C++ keeps; set_name at :1267. (2) sigma (the alphabet section) is ~205KB SMALLER than C++ on the same phonology. Both are cosmetic/metadata: analyser is functionally CORRECT and speller works end-to-end (se.zhfst builds + divvunspell suggest correct). Impact: hfst-compare -q reports 'differ' on name-only diffs (a known confounder, see lang-sma-validation memory), so these gaps block naive byte-identity checks on lang-sme twolc output but not behaviour. Small node. Fix (1): re-add quotes in the name-building path; compare against C++ htwolcpre3 rule-name emission. Fix (2): diff the two sigma sections to find which symbols C++ carries that Rust drops (likely declared-but-unused alphabet symbols)."
             }
+
+            {
+                at 2026-07-19T19:27:50.508385Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-07-19T20:44:40.454105Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "CLOSED 2026-07-19. Outcome vs the two scoped items: (1) NAMES — fully fixed, all 102 stored names now byte-match C++: build_rule_name wraps the source name in the quotes the C++ pre1 token carried and inserts ' SUBCASE: var=value' markers BEFORE the closing quote (so get_original_name's cut yields the C++ '\"name ' shape — opening quote, trailing space, closing quote lost with the subcase text); drive_rule now mirrors htwolcpre3's size==1 dispatch (single-pair centers take add_rule_pair, no ' CENTER=in:out' suffix — 35 rules previously mis-suffixed); stored-rule ORDER now matches by sorting names under the escaped-key encoding (' ' -> '__HFST_TWOLC_SPACE') the C++ StringRuleSetMap actually keyed on. (2) SIGMA ~205KB — GONE before this session (stale 2026-07-06 pre-where-clause-fix measurement): symbol SETS are identical (210+3 both sides). BONUS: the residual container-level byte-diff was rustfst writing header num_arcs (OpenFst leaves 0) and a hardcoded 'rustfst_symboltable' name (OpenFst writes the table's own, empty for HFST) — fixed in the fork (necessary-nu/rustfst 6e8efa01), benefiting EVERY tropical .hfst artifact, not just twolc. Practical effect: hfst compare now pairs all 102 rules by identical names; 73/102 compare '=='. NOT byte-identical yet: 29 boundary rules structurally differ + sigma numbering permutation — split out with full evidence to node twolc-boundary-arc-divergence."
+            }
+
+            {
+                at 2026-07-19T20:44:44.889873Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
         )
     }
 
@@ -4548,6 +4569,19 @@ children (
                 author "brendan@necessary.nu"
                 kind @status
                 text "Doing → Done (nplan_complete)"
+            }
+        )
+    }
+
+    {
+        id twolc-boundary-arc-divergence
+        title "lang-sme twolc: 29/102 rules structurally differ vs C++ (extra @#@:0 word-boundary arcs) + sigma numbering permutation"
+        log (
+            {
+                at 2026-07-19T20:44:25.761426Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Discovered 2026-07-19 while closing twolc-name-sigma-cosmetic (names now byte-match C++, so hfst compare pairs rules positionally and the verdicts are trustworthy). Oracle: C++ htwolcpre1/2/3 built from ~/git/github/hfst (make htwolcpre1 htwolcpre2 htwolcpre3 in tools/src/hfst-twolc/src, driver ./hfst-twolc). TWO residual divergences on lang-sme phonology.twolc, both PRE-EXISTING (pre-change build showed the same class): (1) SEMANTIC: 29/102 rules compare '!=' — all word-boundary-involving (Word Final*, Deletion: Final*, *-stem vowel deletions with '#' contexts, Illative Singular Metaphony...). Minimal instance: rule 97 'a-stem vowel deletion' — Rust has exactly 2 extra arcs '5 -> 0 @#@:0' and '7 -> 0 @#@:0' vs C++ (C-locale-sorted ATT diff, otherwise identical). The extra arcs come from the boundary-framing compilation ('.#. ((? - .#.)|<D>)* .#.' framing, twolc.rs ~2113), i.e. Rust admits the absolute boundary in more states. LATENT downstream: lexicons never contain @#@, so the extra arcs are dead in hfst-compose-intersect — sme analyser/speller validated correct 2026-07-06 regardless. Repro note: bare '#' in a context is NOT the issue (both sides treat sme's declared '#' as an ordinary symbol; C++ pre1 maps it to __HFST_TWOLC_# and back); a from-scratch mini grammar with undeclared '#' errors in Rust by successor design. (2) COSMETIC: sigma symbol NUMBERING is a permutation — C++ assigns keys in process-global tropical-coder first-use order (alphabet declaration order: b=3, m=4, p=5...; store-time substitutions append @#@/space at 213/214, holes where markers died, available_key 215), Rust numbers from sorted BTreeSet iteration (' '=4, '#'=5, ...) with different holes. Symbol SETS are identical (210+3 both). Fixing (2) means threading a shared first-use coder through the twolc pipeline — deliberately de-globalized in the successor, so decide whether byte-identity of this intermediate is worth it. Size delta after the 2026-07-19 name+serializer fixes: C++ 7,729,256 B vs Rust 7,729,608 B (+352 B = the extra arcs of (1))."
             }
         )
     }

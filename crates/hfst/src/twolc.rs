@@ -2963,10 +2963,14 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
         self.right_arrow_rule_container.compile(cfg, verbose)?;
         self.other_rule_container.compile(cfg, verbose)?;
 
-        // Build one intersecting 'ResultRule' per original rule name. The
-        // 'name_to_rule_subcases' map is iterated in its (ordered) key order,
-        // mirroring the C++ 'StringRuleSetMap' traversal.
-        let names: Vec<String> = self.name_to_rule_subcases.keys().cloned().collect();
+        // Build one intersecting 'ResultRule' per original rule name. The C++
+        // 'StringRuleSetMap' was keyed by the still-escaped htwolcpre1 token —
+        // every space encoded as '__HFST_TWOLC_SPACE' — so '_' (0x5F), not
+        // ' ' (0x20), is the byte that competes against punctuation in
+        // neighbouring names. Sort by that encoding to reproduce the C++
+        // stored-rule order byte for byte.
+        let mut names: Vec<String> = self.name_to_rule_subcases.keys().cloned().collect();
+        names.sort_by_key(|n| n.replace(' ', "__HFST_TWOLC_SPACE"));
         for name in names {
             let handles: Vec<RuleHandle> =
                 self.name_to_rule_subcases[&name].iter().copied().collect();
@@ -3541,6 +3545,19 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     ) -> crate::error::Result<()> {
         for concrete in self.expand_rule_variables(cfg, rule)? {
             match concrete.center {
+                // htwolcpre3-parser dispatched on the expanded center size:
+                // a single pair takes the SymbolPair overload (rule named
+                // as-is), only genuine multi-pair centers take the vector
+                // overload with its per-pair ' CENTER=in:out' name suffixes.
+                CenterEval::Pairs(pairs) if pairs.len() == 1 => {
+                    grammar.add_rule_pair(
+                        cfg,
+                        &concrete.name,
+                        &pairs[0],
+                        concrete.oper,
+                        &concrete.contexts,
+                    )?;
+                }
                 CenterEval::Pairs(pairs) => {
                     grammar.add_rule_pairs(
                         cfg,
@@ -4081,18 +4098,24 @@ fn symbol_of(e: &Spanned<TwolcRegex>, vvm: &VariableValueMap) -> Symbol {
 }
 
 /// Build a subcase-qualified rule name from a template name + a variable
-/// assignment, reproducing the 'RuleSymbolVector::replace_variables' marker
-/// logic: when the assignment is non-empty, append a 'SUBCASE:' marker and one
-/// ' var=value' marker per variable (so ['TwolCGrammar::get_original_name'] can
-/// recover the original name by splitting at 'SUBCASE:').
+/// assignment, reproducing the C++ token shape end to end: the htwolcpre1
+/// lexer kept the rule name's surrounding double quotes in the token, and
+/// 'RuleSymbolVector::replace_variables' inserted the 'SUBCASE:'/'var=value'
+/// markers *before the closing quote*. 'TwolCGrammar::get_original_name'
+/// (split at 'SUBCASE:') therefore recovers '"name ' — opening quote kept,
+/// trailing space, closing quote lost to the cut — for where-rules, and the
+/// intact '"name"' for rules without variables. The stored transducer names
+/// carry these quotes, so byte-parity with C++ twolc output depends on this
+/// shape.
 fn build_rule_name(name: &str, vvm: &VariableValueMap) -> String {
     if vvm.is_empty() {
-        return name.to_string();
+        return format!("\"{name}\"");
     }
-    let mut result = format!("{name} SUBCASE:");
+    let mut result = format!("\"{name} SUBCASE:");
     for (k, v) in vvm.iter() {
         result.push_str(&format!(" {k}={v}"));
     }
+    result.push('"');
     result
 }
 
