@@ -4617,6 +4617,20 @@ children (
                 kind @note
                 text "Found 2026-07-19 while validating the boundary-arc fix on lang-sma phonology.twolc (oracle: C++ htwolcpre pipeline from ~/git/github/hfst). After the # split fix, 51/53 sma rules compare '==' but 2 differ: 'Even syllabic verbs Du3 e/i alternation V' [13] and 'e deletion before i-initial suffix' [37]. PRE-EXISTING and NOT boundary-related: neither rule contains '#' (the fix's branches are gated on the '#' symbol so they cannot have touched these). Sources (lang-sma phonology.twolc): :141 'e:0 <=> _ X2:0 i: ;' and :314-315 'e:0 <=> (%»:) i _ j (e) (%>:) %^NOMAGieDISIMP: ([h|m|n|i|i g u j m i e]) ; i : _ %>: %^COMESS: ;' — both use BARE-COLON pair-set context symbols ('i:' = input i, any declared surface; note :315 writes 'i :' with a space). Symptom shape: C++ keeps i:@0@/i:e/i:y/i:æ/i:ï loops at state 0 and e:a/e:e/e:i/e:o/e:y arcs to state 2 where Rust routes the same pairs through different states — a context-evaluation structural difference for pair-set ('X:') sides, not a missing/extra pair set. sme never uses this construct in a way that diverges (102/102 equivalent), so it's sma-specific exercise. Latent in practice: the July-3 sma full-build validation had the analyser byte-identical to C++ refs, so composition evidently erases it — but same class of latent-rule-divergence as the boundary bug was. Repro: build sma phonology with both toolchains, hfst compare, extract rules 13/37 by archive position, fst2txt | LC_ALL=C sort | diff."
             }
+
+            {
+                at 2026-07-19T21:42:08.201352Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "RETIRED 2026-07-19 by operator decision — not worth fixing. Full root cause is on record in case it ever bites: C++ pre1 decides pair-hood by byte-adjacency ('i :' = symbol i + dangling colon = any-pair atom; 'i:' = half-pair), nfst-twolc binds any following Colon regardless of whitespace; lang-sma's 'i : _' in rule 13 (almost certainly an author typo for 'i: _') therefore compiles differently, and same-center (e:0) right-arrow conflict resolution spreads the difference to rule 37. The prescribed fix (span-adjacency checks at nfst-twolc's three pair-binding points, ~30 lines + six spelling tests) is documented in the 2026-07-19 session; both sma checkouts would go 53/53. Latent in practice: the July-3 sma full build produced analysers byte-identical to C++ refs, so composition erases it on the real lexicon."
+            }
+
+            {
+                at 2026-07-19T21:42:16.969938Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan_complete)"
+            }
         )
     }
 
@@ -4629,6 +4643,20 @@ children (
                 author "brendan@necessary.nu"
                 kind @note
                 text "Carved out of twolc-boundary-arc-divergence 2026-07-19 when its semantic half was fixed. After the boundary fix, lang-sme phonology archives are the SAME SIZE (7,729,256 B) and all 102 rules structurally equivalent, but bytes differ solely because sigma KEY NUMBERING is a permutation: C++ assigns symbol numbers from the process-global tropical coder in first-use order (alphabet declaration order — b=3, m=4, p=5...; store-time substitutions append @#@/space near the end; holes where transient markers died; available_key runs past the row count), while the Rust port's de-globalized per-transducer coders end up numbering from sorted (BTreeSet) iteration (' '=4, '#'=5, ...) with different hole positions. Semantically neutral — compose-intersect harmonizes by symbol string, and hfst compare is 102/102. Fixing means threading a shared first-use symbol registry through the whole twolc pipeline (OstConfig is already threaded everywhere and could host it, but every transducer op rebuilds tables via the basic<->tropical conversion, so the conversion would need to honor an injected numbering). Decide whether byte-identity of this intermediate artifact is worth reintroducing that coupling; the practical validation need (hfst compare vs C++) is already met."
+            }
+
+            {
+                at 2026-07-19T21:42:09.865491Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "RETIRED 2026-07-19 by operator decision — not worth fixing. Purely cosmetic: symbol sets and rule structures are 102/102 hfst-compare equivalent vs C++; only the key permutation (C++ process-global first-use coder vs the successor's de-globalized sorted tables) separates the bytes. The prescribed fix (insertion-ordered symbol registry in OstConfig + store-time renumbering, holes/available_key matched empirically) is documented in the 2026-07-19 session if byte-identical twolc rule archives ever become the required oracle; until then hfst-compare is the validation currency for this intermediate."
+            }
+
+            {
+                at 2026-07-19T21:42:18.589647Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan_complete)"
             }
         )
     }

@@ -253,4 +253,6 @@ assertions (
     {id twolc-name-sigma-cosmetic, kind @complete, author "brendan@necessary.nu", at 2026-07-19T20:44:44.889873Z}
     {id twolc-boundary-arc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:06:08.063322Z}
     {id twolc-escaped-specials, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:32:00.766372Z}
+    {id twolc-paircolon-context-divergence, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:42:16.969938Z}
+    {id twolc-sigma-numbering-permutation, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:42:18.589647Z}
 )
