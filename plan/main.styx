@@ -4471,12 +4471,41 @@ children (
                 id foma-tokeniser-build
                 title "Make hfst-xfst + hfst-pmatch2fst honor --format=foma so the tokeniser builds on the unweighted backend — the real fix for the 541 MB .pmhfst (tropical weight-diversity inflation)"
                 deps (flag-encode-diverge)
+                sealed true
                 log (
                     {
                         at 2026-07-19T17:40:12.613161Z
                         author "brendan@necessary.nu"
                         kind @note
                         text "DESIGN: per foma-port-status memory, hfst-xfst IGNORES --with-backend-format=foma (emits tropical; HXFST scripts) and hfst-pmatch2fst always emits HFST_OLW from its tropical pinned compiler — so the Giella foma build still produces a tropical 541MB tokeniser. Work: (1) xfst honors --format=foma (compile at foma or redirect-convert on write, mirroring regexp2fst's redirect_converting FOMA arm); (2) pmatch2fst gains a foma compilation path or at minimum foma-backed intermediates before OLW conversion — investigate first WHERE the weight-diversity inflation enters (per-op weighted minimizes) and whether an unweighted pipeline collapses it as the Jul-3 note predicted. Validate: full lang-sma tokenisers leg with --with-backend-format=foma, tokenise output equal to tropical build's on sample corpus, archive size recorded, divvunspell unaffected. Depends on flag-encode-diverge landing + re-baseline (batch ceremony). Prereq reading: foma-port-status memory (CLI wiring history), openfst.algo node notes (inflation characterization)."
+                    }
+
+                    {
+                        at 2026-07-19T18:32:41.154183Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-07-19T18:45:27.687228Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "PHASE-1 GATE FAILED — NEGATIVE VERDICT, do not wire foma into pmatch2fst. Probe: crates/hfst/examples/pmatch_backend_probe.rs (kept as regression probe). FEASIBILITY (all confirmed): PmatchCompiler::<FomaTransducer> IS instantiable (FomaTransducer: AlgebraBackend+FromAnyTransducer+'static, hfst_transducer.rs:4307); @bin tropical inputs convert via into_typed→any_into_backend_via_basic; write_archive<B> is generic. BUT the hypothesis is false on two independent axes:\n\n(1) DIRECT MEASUREMENT (weighttest mode on the real tokeniser-disamb-gt-desc.pmscript): tropical TOP = 561,370 states / 22,855,366 arcs. Zero ALL weights (transform_weights(|_|0.0)+set_final_weights(0.0)) then minimize → 561,309 states / 22,846,860 arcs. That is a 0.011% state / 0.037% arc reduction — the \"weight-diversity inflation\" premise is FALSE. Arc count is inherent to the composed analyser-over-sigma machine, NOT weights. Independently corroborates the retired encode_weights lever (lang-sma-memory-profile: hfst-minimize -E merges nothing).\n\n(2) write_archive HARDCODES weighted=true (pmatch_compiler.rs:6787-6825), so even a foma-compiled TOP writes 12-byte-transition weighted OLW. On-disk transition widths: TransitionW=12B, Transition(unweighted)=8B, index entries 6B in both. Max possible de-weighting win = 22.85M×4B ≈ 87 MB = 16% of the 541 MB archive, and ONLY achievable via a SEPARATE write_archive(weighted=false) change (which changes the runtime OLW format hfst-tokenise expects). Structural floor stays ~429 MB.\n\n(3) BLOCKER even to measure foma directly: PmatchCompiler::<FomaTransducer>.compile PANICS on this pmscript — foma-0.4.0/src/constructions/merge_sigma.rs expand_unknowns undersizes the arc buffer (add_fsm_arc index 728 == len 728), reached via UpCase(lexmorph,U)→toupper→FomaTransducer::compose. Diagnosed: the count loop counts net_lines via find_arccount (arcs only) but the write loop RE-EMITS arc-less state-marker rows (line_in==-1, merge_sigma.rs:259-271) that aren't counted → overshoot by #arc-less-states. Real off-by-N bug in the foma crate (registry v0.4.0 == local ~/git/necessary/foma HEAD). NB the memory's \"foma is a path-dep\" is stale — hfst now uses the published crate foma=\"0.4\".\n\nMEASUREMENTS: tropical compile-only 561,370/22,855,366 (matches historical 561,562/22,852,267 within input-regen noise), 57s, 4.37 GB RSS. weighttest 37s, 4.73 GB RSS. foma compile panics at 1.97s/207 MB. Existing tropical .pmhfst = 541,471,216 B. Recommendation: retire this node OR redefine it as an explicit SUCCESSOR-divergence to emit UNWEIGHTED OL archives (needs write_archive(weighted=false) + hfst-tokenise read-compat) for a ~16% ceiling — a much smaller, riskier prize than the 541→~small the node assumed. Left UNCOMMITTED for the main session."
+                    }
+
+                    {
+                        at 2026-07-19T18:46:39.101276Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "RETIRED — PREMISE FALSE, killed by direct experiment (2026-07-19, opus subagent, probe kept at examples/pmatch_backend_probe.rs). The Jul-3 'foma is the real fix' claim does not survive measurement: zeroing EVERY arc+final weight on the real tropical TOP then minimizing gives 561,309/22,846,860 vs 561,370/22,855,366 — 0.011% states / 0.037% arcs. The 22.8M arcs are inherent to the composed analyser-over-sigma machine; weights contribute nothing (corroborates the retired encode_weights lever independently). Plumbing WAS feasible (PmatchCompiler::<FomaTransducer> instantiable, tropical @bin inputs convert via basic) but pointless. TWO SIDE FINDINGS: (1) foma crate 0.4.0 BUG — merge_sigma.rs expand_unknowns undersizes its arc buffer (sizing counts arcs, write loop also emits arc-less state-marker rows) → panics on any pmscript using UpCase/sigma-merging compose; latent gap in 'binary tools speak foma'; NOTE crates/hfst uses PUBLISHED foma=0.4, not the ~/git/necessary/foma path dep the old memory claims (currently byte-identical). (2) The only residual size lever is emitting UNWEIGHTED OL (write_archive hardcodes weighted=true; 12B vs 8B transitions) — ceiling 22.85M×4B ≈ 87 MB = 16% of 541 MB, and it changes the runtime OLW format hfst-tokenise reads = a real successor divergence with reader-compat risk. Structural floor ~429 MB. Not pursued."
+                    }
+
+                    {
+                        at 2026-07-19T18:46:39.134465Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }
