@@ -252,4 +252,5 @@ assertions (
     {id diag-parse-error-spans, kind @complete, author "brendan@necessary.nu", at 2026-07-19T19:26:30.125695Z}
     {id twolc-name-sigma-cosmetic, kind @complete, author "brendan@necessary.nu", at 2026-07-19T20:44:44.889873Z}
     {id twolc-boundary-arc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:06:08.063322Z}
+    {id twolc-escaped-specials, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:32:00.766372Z}
 )

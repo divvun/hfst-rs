@@ -4632,4 +4632,24 @@ children (
             }
         )
     }
+
+    {
+        id twolc-escaped-specials
+        title "twolc: distinguish escaped %#/%0 literals from bare #/0 specials (nfst-twolc marker renames)"
+        log (
+            {
+                at 2026-07-19T21:31:54.143934Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "DONE 2026-07-19, cross-repo fix. PROBLEM: nfst-twolc's lexer stripped %-escapes before tokenizing, so '%#' (literal hash) and bare '#' (word boundary) — likewise '%0' (literal zero char) vs bare '0' (two-level zero) — were indistinguishable in the AST; the boundary-split fix (d55e779) therefore applied to escaped hashes too, and '%0' compiled as epsilon. C++ htwolcpre1 keeps the distinction by renaming only BARE specials into the __HFST_TWOLC_ namespace at lex time. FIX (nfst 5953174, necessary-nu/nfst): lex_symbol tracks had_escape and renames unescaped whole-token '0'/'#'/'.#.' to __HFST_TWOLC_0 / __HFST_TWOLC_# / __HFST_TWOLC_.#.; display.rs escape_symbol inverts both directions (markers print bare, plain specials print %-escaped) so fixture round-trips hold. HFST side: normalize_symbol replaced — declared_symbol maps only the declared bare-# marker to plain '#' (htwolcpre2 alphabet completion); substitute_symbol no longer renames (markers arrive pre-named, literals stay literal); the boundary-split gate dispatches on TWOLC_HASH ('__HFST_TWOLC_#') with a bare-# output side realizing as '#' (the C++ $3 ternary); insert_grammar_pair maps marker->'#' so declared-checks and the (#,#) alphabet pair work. Consumed via [patch.crates-io] git-pin (ssh URL — repo private) at nfst 5953174; drop the patch when nfst-twolc/nfst-syntax/nfst-xre are published with the change (semver note: lexing semantics changed — warrants 0.2). VALIDATED vs C++ htwolcpre oracle: bare-# mini, escaped-%# mini, literal-%0 mini all arc-identical; lang-sme 102/102 equivalent with bytes unchanged from d55e779; divvun-sma and giellalt-sma both 2-differing-only (the known pair-colon rules 13/37 — giellalt-sma's live '%#:%-' compound-boundary rule now matches C++). 294 hfst + all nfst-twolc tests pass."
+            }
+
+            {
+                at 2026-07-19T21:32:00.766372Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan_complete)"
+            }
+        )
+    }
 )

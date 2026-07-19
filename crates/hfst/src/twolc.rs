@@ -83,6 +83,10 @@ pub const TWOLC_UNKNOWN: &str = "__HFST_TWOLC_?";
 pub const TWOLC_DIAMOND: &str = "__HFST_TWOLC_DIAMOND";
 pub const TWOLC_EPSILON: &str = "__HFST_TWOLC_0";
 pub const TWOLC_FREELY_INSERT: &str = "__HFST_TWOLC_FREELY_INSERT";
+/// The RELATIVE word boundary: what the grammar's bare '#' lexes to
+/// (htwolcpre1's rename, performed by the nfst-twolc lexer). Distinct from
+/// the plain '#' symbol, which is the '%#'-escaped literal hash character.
+pub const TWOLC_HASH: &str = "__HFST_TWOLC_#";
 
 // Typedefs (grammar_defs.h / OtherSymbolTransducer.h / variable_src/*):
 pub type SymbolPair = StringPair;
@@ -3240,8 +3244,8 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         let mut symbol_pairs: BTreeSet<SymbolPair> = BTreeSet::new();
         for p in &twolc_file.alphabet {
             symbol_pairs.insert((
-                normalize_symbol(&p.value.upper),
-                normalize_symbol(&p.value.lower),
+                declared_symbol(&p.value.upper),
+                declared_symbol(&p.value.lower),
             ));
         }
         // htwolcpre2's 'complete_alphabet()': add all explicit X:Y pairs used
@@ -3280,21 +3284,21 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     /// internal / special symbols (the two-level epsilon, the 'Any' wildcard,
     /// the word boundaries and the diamond). A grammar pair whose side is not in
     /// this set names an undeclared symbol (hfst#334) and is rejected rather
-    /// than silently auto-declared. Symbols are stored in their internal
-    /// ('normalize_symbol') form so they compare equal to the collected pairs.
+    /// than silently auto-declared. Symbols are stored in their declared
+    /// ('declared_symbol') form so they compare equal to the collected pairs.
     fn collect_declared_symbols(&self, file: &TwolcFile) -> BTreeSet<Symbol> {
         let mut declared: BTreeSet<Symbol> = BTreeSet::new();
         for p in &file.alphabet {
-            declared.insert(normalize_symbol(&p.value.upper));
-            declared.insert(normalize_symbol(&p.value.lower));
+            declared.insert(declared_symbol(&p.value.upper));
+            declared.insert(declared_symbol(&p.value.lower));
         }
         for d in &file.diacritics {
-            declared.insert(normalize_symbol(&d.value));
+            declared.insert(declared_symbol(&d.value));
         }
         for s in &file.sets {
             declared.insert(Symbol::new(s.value.name.as_str()));
             for m in &s.value.members {
-                declared.insert(normalize_symbol(m));
+                declared.insert(declared_symbol(m));
             }
         }
         for d in &file.definitions {
@@ -3458,6 +3462,11 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         pairs: &mut BTreeSet<SymbolPair>,
         undeclared: &mut BTreeSet<Symbol>,
     ) {
+        // htwolcpre2's completion records rule-side bare '#' as the plain '#'
+        // pair symbol — the relative-boundary alternative the '#'-split
+        // disjunction needs in the alphabet.
+        let upper = declared_symbol(&upper);
+        let lower = declared_symbol(&lower);
         if self.sets.contains_key(upper.as_str()) || self.sets.contains_key(lower.as_str()) {
             return;
         }
@@ -3757,7 +3766,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     /// no set ('Alphabet::define_singleton_set').
     fn set_of(&self, sym: &str) -> Vec<Symbol> {
         match self.sets.get(sym) {
-            Some(members) => members.iter().map(|m| normalize_symbol(m)).collect(),
+            Some(members) => members.iter().map(|m| Symbol::new(m.as_str())).collect(),
             None => vec![Symbol::new(sym)],
         }
     }
@@ -3843,16 +3852,19 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     /// the rule wrote. Without the split, a context ending in '#' fails to
     /// match the word edge (and fails to FORBID it on the other rule
     /// direction), which is exactly how 29 lang-sme boundary rules diverged
-    /// from C++. (nfst-twolc strips '%'-escapes at lex time, so an escaped
-    /// '%#' — a pure literal in C++ — is indistinguishable from bare '#' here
-    /// and also takes the split; Giella grammars only use the bare form in
-    /// rules. An undeclared '#' still errors through the pair check, where
-    /// C++ auto-declared it — the successor's strictness, hfst#334.)
+    /// from C++. The bare '#' arrives as the [`TWOLC_HASH`] marker (the
+    /// nfst-twolc lexer performs htwolcpre1's rename); an escaped '%#'
+    /// arrives as the plain '#' symbol and stays a pure literal, no split —
+    /// like C++. An undeclared '#' still errors through the pair check,
+    /// where C++ auto-declared it — the successor's strictness, hfst#334.
     fn boundary_pair_transducer(
         &mut self,
         cfg: &OstConfig,
         output: &str,
     ) -> crate::error::Result<OtherSymbolTransducer<B>> {
+        // C++: 'alt_wb = ("#", $3 == __HFST_TWOLC_# ? "#" : $3)' — a bare-'#'
+        // output side realizes as the relative boundary symbol itself.
+        let output = if output == TWOLC_HASH { "#" } else { output };
         let mut wb = OtherSymbolTransducer::new_pair(cfg, "__HFST_TWOLC_.#.", "__HFST_TWOLC_.#.")?;
         let alt = if self.sets.contains_key(output) {
             self.pair_transducer(cfg, "#", output)?
@@ -3895,8 +3907,8 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                     clone_ost(def)
                 } else if self.sets.contains_key(sym.as_str()) {
                     self.pair_transducer(cfg, &sym, &sym)?
-                } else if sym.as_str() == "#" {
-                    self.boundary_pair_transducer(cfg, "#")?
+                } else if sym.as_str() == TWOLC_HASH {
+                    self.boundary_pair_transducer(cfg, TWOLC_HASH)?
                 } else {
                     OtherSymbolTransducer::new_symbol(cfg, &sym)?
                 }
@@ -3904,7 +3916,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             TwolcRegex::Pair { upper, lower } => {
                 let up = symbol_of(upper, vvm);
                 let lo = symbol_of(lower, vvm);
-                if up.as_str() == "#" {
+                if up.as_str() == TWOLC_HASH {
                     // C++ dispatches on the '#' input side before any set
                     // handling, so '#:Set' also takes the boundary split.
                     self.boundary_pair_transducer(cfg, lo.as_str())?
@@ -4089,27 +4101,32 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     }
 }
 
-/// Map a surface symbol from the nfst-twolc AST into the internal
-/// '__HFST_TWOLC_' namespace the rule machinery expects: the epsilon '0' and
-/// the absolute word boundary '.#.'. (The htwolcpre1 lexer performed these
-/// renamings on every symbol token; the other reserved tokens are structural
-/// and never reach the AST as symbols.)
-fn normalize_symbol(sym: &str) -> Symbol {
-    match sym {
-        "0" => Symbol::new_static(TWOLC_EPSILON),
-        ".#." => Symbol::new_static("__HFST_TWOLC_.#."),
-        _ => Symbol::new(sym),
+/// Map a declared (Alphabet-section) symbol into the form the alphabet
+/// stores. The nfst-twolc lexer performs htwolcpre1's marker renamings itself
+/// — bare '0' / '#' / '.#.' arrive as '__HFST_TWOLC_'-namespaced markers,
+/// their '%'-escaped spellings as plain literal symbols — so most symbols
+/// pass through untouched. The one declaration-time mapping is htwolcpre2's
+/// alphabet completion: a declared bare '#' becomes the plain '#' pair
+/// symbol (the RELATIVE word boundary the rules' '#'-split disjoins with);
+/// the epsilon and absolute-boundary markers stay markers.
+fn declared_symbol(sym: &str) -> Symbol {
+    if sym == TWOLC_HASH {
+        Symbol::new_static("#")
+    } else {
+        Symbol::new(sym)
     }
 }
 
 /// Substitute a single symbol via a variable assignment: if 'sym' is a variable
 /// in 'vvm', return its value, else 'sym' unchanged (the 'RuleSymbolVector'
-/// per-symbol 'vvm' lookup). The result is mapped into the internal symbol
-/// namespace (the htwolcpre1 lexer renamings).
+/// per-symbol 'vvm' lookup). No renaming happens here: the nfst-twolc lexer
+/// already delivers bare specials as '__HFST_TWOLC_' markers and escaped
+/// specials as plain literals, and the distinction must survive to the
+/// evaluation sites (the '#'-split dispatch).
 fn substitute_symbol(sym: &str, vvm: &VariableValueMap) -> Symbol {
     match vvm.get(sym) {
-        Some(val) => normalize_symbol(val),
-        None => normalize_symbol(sym),
+        Some(val) => Symbol::new(val),
+        None => Symbol::new(sym),
     }
 }
 
