@@ -4454,6 +4454,28 @@ children (
         id compose-intersect-map-drop
         title "compose-intersect: drop StatePairMap/agenda before the basic→backend conversion (peak 1.08 GB, 7s stage — LOW VALUE, only if its memory ever matters; measured 2026-07-18, not worth pulling on current evidence)"
         priority 200
+        log (
+            {
+                at 2026-07-19T21:54:46.304223Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-07-19T22:02:25.110664Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "DONE 2026-07-20. Three pure-memory changes, output provably unchanged: (1) compose_with_rules MOVES the result out (std::mem::take) instead of the C++-shaped return-reference-then-clone — the clone alone was a full copy of the composed lexicon basic; (2) it clears state_pair_map/pair_vector/agenda/lexicon_non_epsilon_states before returning; (3) both hfst_transducer.rs call sites drop the ComposeIntersectLexicon (which holds a full ComposeIntersectFst copy of the lexicon), the rule component(s) (copies of every rule fst), and the interned basics BEFORE the basic→backend conversion, so none of it rides the conversion peak. compute_composition_result now returns Result<()> (fills self.result). MEASURED (lang-sma lexicon.hfst ∘ phonology.compose.hfst, paired interleaved A/B, /usr/bin/time -l): output BYTE-IDENTICAL; peak RSS 1065.2 MB → 829.2 MB (−236 MB, −22%), deterministic across pairs (829.20/829.17). Wall spread was load noise (both arms swung 4.6→15.1s monotonically with background load); the change does strictly less work. 294 tests pass. The node's parked premise ('1.08 GB stage') confirmed and cashed at ~5 lines of mechanism."
+            }
+
+            {
+                at 2026-07-19T22:02:32.717767Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
+        )
     }
 
     {

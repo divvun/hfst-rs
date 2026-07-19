@@ -2863,6 +2863,15 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
             let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut rule)?;
 
+            // The composition inputs (the lexicon copy inside 'lexicon', the
+            // rule copy inside 'rule', and the interned basics) contribute
+            // nothing to the output past this point — free them before the
+            // basic→backend conversion below so they don't inflate its peak.
+            drop(lexicon);
+            drop(rule);
+            drop(rule_basic);
+            drop(lexicon_basic);
+
             res.prune_alphabet(true);
             *self = HfstTransducer::from_basic(&res);
         } else {
@@ -2988,15 +2997,24 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
                 );
             let mut res: HfstBasicTransducer = lexicon.compose_with_rules(&mut rules)?;
 
+            // 'delete rules;' in the C++ — and more: the lexicon copy inside
+            // 'lexicon', every rule copy inside 'rules', and the interned
+            // basics contribute nothing to the output past this point. Free
+            // them before the basic→backend conversion below so they don't
+            // inflate its peak.
+            drop(lexicon);
+            drop(rules);
+            drop(first_rule_basic);
+            drop(second_rule_basic);
+            drop(extra_rule_basics);
+            drop(lexicon_basic);
+
             res.prune_alphabet(true);
             *self = HfstTransducer::from_basic(&res);
 
             if invert {
                 self.invert()?;
             }
-
-            // delete rules; -> the owning 'rules' Box (and the recursively nested
-            // pairs/rules it owns) is dropped at the end of this scope.
         }
 
         drop(harmonized_lexicon);

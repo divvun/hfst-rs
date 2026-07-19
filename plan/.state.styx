@@ -256,4 +256,5 @@ assertions (
     {id twolc-paircolon-context-divergence, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:42:16.969938Z}
     {id twolc-sigma-numbering-permutation, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:42:18.589647Z}
     {id rustfst-ffi-max-states, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:49:22.21658Z}
+    {id compose-intersect-map-drop, kind @complete, author "brendan@necessary.nu", at 2026-07-19T22:02:32.717767Z}
 )

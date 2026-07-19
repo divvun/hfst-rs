@@ -181,7 +181,19 @@ impl ComposeIntersectLexicon {
         // This will return 0.
         let _ = self.map_state_and_add_to_agenda(&start_pair, true);
 
-        Ok(self.compute_composition_result(rules)?.clone())
+        self.compute_composition_result(rules)?;
+
+        // The composition bookkeeping is dead once the result is assembled;
+        // free it here and MOVE the result out instead of cloning it, so
+        // neither rides the caller's basic→backend conversion peak. (The C++
+        // returned a reference into 'this' and the caller converted while the
+        // whole object stayed alive — a pure-RSS difference, the output is
+        // the same transducer.)
+        self.state_pair_map = StatePairMap::new();
+        self.pair_vector = PairVector::new();
+        self.agenda = StateQueue::new();
+        self.lexicon_non_epsilon_states = StateSet::new();
+        Ok(std::mem::take(&mut self.result))
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.get-state-fn]
@@ -218,10 +230,12 @@ impl ComposeIntersectLexicon {
     }
 
     // HfstBasicTransducer &ComposeIntersectLexicon::compute_composition_result(...)
+    // (fills 'self.result'; 'compose_with_rules' moves it out rather than
+    // returning the C++ reference-into-self)
     fn compute_composition_result(
         &mut self,
         rules: &mut ComposeIntersectRuleComponent,
-    ) -> crate::error::Result<&HfstBasicTransducer> {
+    ) -> crate::error::Result<()> {
         while !self.agenda.is_empty() {
             let s = *self
                 .agenda
@@ -234,7 +248,7 @@ impl ComposeIntersectLexicon {
         }
 
         self.set_final_state_weights(rules)?;
-        Ok(&self.result)
+        Ok(())
     }
 
     // [spec:hfst:def:compose-intersect-lexicon.hfst.implementations.compose-intersect-lexicon.get-pair-fn]
