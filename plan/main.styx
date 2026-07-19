@@ -4418,6 +4418,7 @@ children (
     {
         id rustfst-ffi-max-states
         title "rustfst fork: fix pre-broken rustfst-ffi (missing DeterminizeConfig::max_states since the budget API landed) so workspace-level cargo test works again; also generate/restore the rustfst-tests-data JSON fixtures if cheap (1464 fixture tests currently skipped-by-failure)"
+        priority 10
         log (
             {
                 at 2026-07-19T16:29:08.569011Z
