@@ -4195,11 +4195,6 @@ children (
     }
 
     {
-        id perf-xfst-compose
-        title "Profile + optimise the xfst/compose-heavy build legs (src/fst 164s + spellers 136s); SIMD survey for rustfst hot loops"
-    }
-
-    {
         id perf-xfst-cpu
         title "xfst/regexp2fst CPU: kill redundant passes exposed by CPU-true leg profiling (93s xfst + 54s regexp2fst of the 200s build)"
         children (
