@@ -4426,6 +4426,27 @@ children (
                 kind @note
                 text "Surfaced twice during the perf-xfst-cpu chain (both opus subagents hit it): `cargo test` at WORKSPACE level in ~/git/necessary/rustfst fails to compile rustfst-ffi before reaching rustfst — rustfst-ffi constructs DeterminizeConfig without the `max_states` field added by the determinize-budget API (09011adf, the hfst#435 bounded-determinize work). Pre-existing at 4757976e and every rev since; NOT introduced by the perf chain. Fix is mechanical (thread max_states through the ffi config, default None). Second item, independent: the 1464 tests_openfst fixture tests fail with `Can't open rustfst-tests-data/*/metadata.json` — the fixture JSONs were never generated in this checkout (only .h files present); upstream rustfst generates them with a script (look for utils/generate-test-data or the openfst docker tooling in the repo) — restore if cheap, otherwise document the generation recipe on this node. Until fixed, fork validation protocol = `cargo test -p rustfst` (baseline ~134 passed / 1464 fixture-failed as of ba720706)."
             }
+
+            {
+                at 2026-07-19T21:43:43.742881Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-07-19T21:49:15.913674Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "DONE 2026-07-19, both items. (1) ffi fix (fork 969d6a40): CDeterminizeConfig gains max_states — Option has no C representation so the field-mapping derives are replaced with hand-written AsRust/CReprOf/CDrop (the CSigmaMatcherConfig pattern); fst_determinize_config_new takes a size_t where 0 = unbounded; the Python ctypes wrapper (rustfst-python determinize.py) updated in lockstep with an optional max_states kwarg. Workspace-level cargo build/test compiles again. (2) Fixtures RESTORED, not just documented — the recipe was cheap after all: ./build_openfst.sh downloads + patches (std::sort→stable_sort for rust-comparable ordering, plus a bi-table.h fix) + builds static OpenFst 1.7.2 into openfst-1.7.2/ (github mjansche fallback URL works; built clean on current clang), then ./run_openfst.sh compiles rustfst-tests-data/main.cpp against it and emits metadata.json + ~130 .fst oracle files per fixture dir. Fixtures are DELIBERATELY gitignored (generated per checkout) — regenerate after any clean. NEW VALIDATION BASELINE: cargo test -p rustfst = 1598 passed / 0 failed / 22 ignored (was 134 passed / 1464 fixture-failed) — the full OpenFst-oracle suite is green against the fork including the perf-chain changes (NullCache, FxHash tables, RefCell determinize table, connect trim-gate, tr_unique accessibility, decode ilabel-0, numarcs-0/unnamed-symtab serializer), which retroactively validates them all far more strongly than the old 134-test baseline."
+            }
+
+            {
+                at 2026-07-19T21:49:22.21658Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
         )
     }
 

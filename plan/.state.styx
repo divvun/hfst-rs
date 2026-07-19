@@ -255,4 +255,5 @@ assertions (
     {id twolc-escaped-specials, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:32:00.766372Z}
     {id twolc-paircolon-context-divergence, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:42:16.969938Z}
     {id twolc-sigma-numbering-permutation, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:42:18.589647Z}
+    {id rustfst-ffi-max-states, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:49:22.21658Z}
 )
