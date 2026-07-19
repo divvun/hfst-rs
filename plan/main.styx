@@ -4396,6 +4396,27 @@ children (
                 kind @note
                 text "DESIGN (from perf-xfst-cpu close-out, 2026-07-19): encode_flag_diacritics/decode_flag_diacritics (hfst_transducer.rs ~4088/4158) currently: HfstBasicTransducer::from_transducer (tropical→basic, ~150 B/arc) → rebuild EVERY arc with SmolStr symbol ops applying encode_flag/decode_flag to flag-diacritic symbols → back to tropical. Called by compose_with_config when config.xerox_composition (lang-sma xfst + regexp2fst --xerox-composition=ON + pmatch compose all use it): encode both operands before the product, decode both after = 4 whole-graph round-trips per compose. Post-chain sample: ~1,825 frames ≈ 14% of the speller script's active samples. NATIVIZATION: a flag encode never touches graph structure or labels — it renames SYMBOL STRINGS (only those where FdOperation::is_diacritic). For tropical: clone input SymbolTable, map each flag symbol through encode_flag (resp. decode_flag), set_input_symbols — O(alphabet), zero arc work. Pattern: Backend trait method with basic-round-trip default + tropical override (exactly like insert/remove/prune alphabet in the A2 commit). BYTE-IDENTITY ANALYSIS: the current round-trip preserves symbol NUMBERING (tropical→basic interns in label order via harmonization_vector; basic→tropical writes coder order back) so an in-place rename that keeps labels should be byte-equal — but this MUST be confirmed empirically; the decisive oracle is the xfst speller artifact cmp (exercises eliminate_flag→xerox compose chain), plus tokeniser cmp (pmatch composes use xerox too — this WILL move pmatch bytes if numbering assumptions are wrong) + lexc sha + 291 tests. CARE POINTS: (1) encode_flag must be INJECTIVE on the alphabet (two distinct symbols must not collide post-encode — check encode_flag's scheme; a collision would need dedup semantics the round-trip path would also hit, but verify); (2) decode must restore exactly (round-trip identity on renamed symbols); (3) the basic path also implicitly... read the full fn to the end before assuming (the earlier truncated-read lesson applies — read the WHOLE function including what from_transducer/back-conversion does with the alphabet/props). Expected: most of the 14% back on xerox-composing scripts; A/B per the established protocol (paired interleaved + the phase-confound and v0-mangling caveats on the perf-xfst-cpu nodes)."
             }
+
+            {
+                at 2026-07-19T16:45:03.037741Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan_start)"
+            }
+
+            {
+                at 2026-07-19T17:12:18.97021Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "RETIRED — PREMISE OVERTURNED BY THE BYTE ORACLE (2026-07-19, opus subagent, no code landed, clean revert verified + 291 tests green). The design note's numbering assumption was WRONG: the tropical→basic→tropical round-trip does NOT preserve symbol numbering — it RENUMBERS by arc-walk/interning order (proven three ways on real lang-sma data: a plain round-trip already compacts gappy tables; the encode path re-interns into a fresh coder in escaped-graph arc-walk order, e.g. label 3 flipped from +Cmp/Attr to %U.CmpN_Left.SgNom%). Every reference artifact bakes in that arc-walk-order numbering, so it is LOAD-BEARING in the serialized bytes: an in-place SymbolTable rename preserving original labels produced a speller artifact differing in 4,172,486 bytes (isolated conclusively — baseline==reference, fast-path-off==reference, fast path sole cause; a density gate did not help because the encode re-intern reorders even dense tables). Reproducing the round-trip's numbering requires the full O(states+arcs) walk the optimization was meant to eliminate — the fast path cannot exist under byte-identity. The ~14% cost is REAL but is the price of the numbering semantics; revisit ONLY as a deliberate successor divergence (equivalence-validated, bytes change) if xerox-compose CPU ever matters enough — and note A2's alphabet ops got away with in-place edits precisely because coder numbering was identity for contiguous lexc intermediates, which does NOT hold here. Verified positives from step 1 worth keeping: encode_flag is injective on diacritics (escapes only byte 0 and @↔%), reserved-symbol collisions panic by design (hfst_transducer.rs:4141), decode is the exact inverse."
+            }
+
+            {
+                at 2026-07-19T17:12:24.943388Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan_complete)"
+            }
         )
     }
 
