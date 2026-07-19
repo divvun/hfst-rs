@@ -4324,6 +4324,28 @@ children (
                 id rustfst-lazy-direct-materialize
                 title "rustfst: direct materialization for one-shot static ops — compute_bounded fills the guarded cache then re-reads it to build the output FST; emit straight into the output for static determinize/compose/rm_epsilon (cache layer is pure overhead when nothing is lazy)"
                 deps (rustfst-lazy-demutex)
+                log (
+                    {
+                        at 2026-07-18T15:07:10.080837Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan_start)"
+                    }
+
+                    {
+                        at 2026-07-19T15:50:31.681501Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "LANDED (fork ba720706, opus-subagent across two rate-limit/connection interruptions; A/B data recovered from transcript between resumes). C1: NullCache replaces node-2's UnsyncHashMapCache/UnsyncVecCache on the static determinize/compose paths (those caches' ONLY two users; −455 lines) — single-touch proven structurally: compute_bounded's BFS marks visited at enqueue so each state's trs/final_weight is requested exactly once, the FstOp holds no reference to the LazyFst cache (ops resolve via their own state tables + input FSTs), so the cache was WRITE-ONLY during materialization; max_states counting uses num_discovered, not the cache, so the hfst#435 budget fallback is untouched. NullCache must never be wired to shared/requeried lazy FSTs (documented in commit). C2: DeterminizeStateTable Mutex→RefCell in place (module-private, sole user already !Sync). C3: three FxHash conversions with per-site proofs — Hopcroft pre_partition maps (entry-probed, never iterated; key is Vec<u32> Label not u64), fst_depth HashSets (membership-only), and norm_tr's new_pairs RawTable whose iteration order DOES reach dest_tuple.subset.pairs but is erased by the canonical sort_by(state) that the branch's subset-canonicalization fix installed — the conversion is safe precisely because of that earlier fix. W:Default E0277 mid-flight was derive(Default,Clone) on NullCache demanding bounds via PhantomData; fixed with hand-written impls bounded on W: Semiring only. MEASURED: W1 minimize -E 12/16 paired wins across two orderings both load-biased against the new binary, floor ~3-5%; W2 xfst speller C1+C2 in a quiet window 6/6 wins, median 16.35→15.31 user (~6%, tight spread) — the chain's first clear wall win; C3's W2 rerun within noise (no claim). Frame detector: state-table Mutex ~183→0, cache-store frames →0, DeterminizeElement RandomState 4→0. All oracles green (291; fork 134/1464 with the −4/+1 test delta accounted, zero new failures; lexc ea98a54c; tokeniser current fixture; speller artifact). Sampling lesson: compare the sample file's per-symbol totals section, not raw grep -c (file-size/case confounds)."
+                    }
+
+                    {
+                        at 2026-07-19T15:50:37.960012Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan_complete)"
+                    }
+                )
             }
         )
         log (
