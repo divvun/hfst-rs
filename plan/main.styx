@@ -4385,4 +4385,36 @@ children (
             }
         )
     }
+
+    {
+        id xfst-flag-encode-nativize
+        title "Nativize xerox flag encode/decode for tropical: encode/decode_flag_diacritics do a full basic round-trip 4× per xerox compose (~14% of the speller xfst script); pure symbol-string rename → O(alphabet) in-place SymbolTable edit (A2 pattern); byte-identity expected, speller-artifact cmp decides"
+        log (
+            {
+                at 2026-07-19T16:28:56.228187Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "DESIGN (from perf-xfst-cpu close-out, 2026-07-19): encode_flag_diacritics/decode_flag_diacritics (hfst_transducer.rs ~4088/4158) currently: HfstBasicTransducer::from_transducer (tropical→basic, ~150 B/arc) → rebuild EVERY arc with SmolStr symbol ops applying encode_flag/decode_flag to flag-diacritic symbols → back to tropical. Called by compose_with_config when config.xerox_composition (lang-sma xfst + regexp2fst --xerox-composition=ON + pmatch compose all use it): encode both operands before the product, decode both after = 4 whole-graph round-trips per compose. Post-chain sample: ~1,825 frames ≈ 14% of the speller script's active samples. NATIVIZATION: a flag encode never touches graph structure or labels — it renames SYMBOL STRINGS (only those where FdOperation::is_diacritic). For tropical: clone input SymbolTable, map each flag symbol through encode_flag (resp. decode_flag), set_input_symbols — O(alphabet), zero arc work. Pattern: Backend trait method with basic-round-trip default + tropical override (exactly like insert/remove/prune alphabet in the A2 commit). BYTE-IDENTITY ANALYSIS: the current round-trip preserves symbol NUMBERING (tropical→basic interns in label order via harmonization_vector; basic→tropical writes coder order back) so an in-place rename that keeps labels should be byte-equal — but this MUST be confirmed empirically; the decisive oracle is the xfst speller artifact cmp (exercises eliminate_flag→xerox compose chain), plus tokeniser cmp (pmatch composes use xerox too — this WILL move pmatch bytes if numbering assumptions are wrong) + lexc sha + 291 tests. CARE POINTS: (1) encode_flag must be INJECTIVE on the alphabet (two distinct symbols must not collide post-encode — check encode_flag's scheme; a collision would need dedup semantics the round-trip path would also hit, but verify); (2) decode must restore exactly (round-trip identity on renamed symbols); (3) the basic path also implicitly... read the full fn to the end before assuming (the earlier truncated-read lesson applies — read the WHOLE function including what from_transducer/back-conversion does with the alphabet/props). Expected: most of the 14% back on xerox-composing scripts; A/B per the established protocol (paired interleaved + the phase-confound and v0-mangling caveats on the perf-xfst-cpu nodes)."
+            }
+        )
+    }
+
+    {
+        id rustfst-ffi-max-states
+        title "rustfst fork: fix pre-broken rustfst-ffi (missing DeterminizeConfig::max_states since the budget API landed) so workspace-level cargo test works again; also generate/restore the rustfst-tests-data JSON fixtures if cheap (1464 fixture tests currently skipped-by-failure)"
+        log (
+            {
+                at 2026-07-19T16:29:08.569011Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Surfaced twice during the perf-xfst-cpu chain (both opus subagents hit it): `cargo test` at WORKSPACE level in ~/git/necessary/rustfst fails to compile rustfst-ffi before reaching rustfst — rustfst-ffi constructs DeterminizeConfig without the `max_states` field added by the determinize-budget API (09011adf, the hfst#435 bounded-determinize work). Pre-existing at 4757976e and every rev since; NOT introduced by the perf chain. Fix is mechanical (thread max_states through the ffi config, default None). Second item, independent: the 1464 tests_openfst fixture tests fail with `Can't open rustfst-tests-data/*/metadata.json` — the fixture JSONs were never generated in this checkout (only .h files present); upstream rustfst generates them with a script (look for utils/generate-test-data or the openfst docker tooling in the repo) — restore if cheap, otherwise document the generation recipe on this node. Until fixed, fork validation protocol = `cargo test -p rustfst` (baseline ~134 passed / 1464 fixture-failed as of ba720706)."
+            }
+        )
+    }
+
+    {
+        id compose-intersect-map-drop
+        title "compose-intersect: drop StatePairMap/agenda before the basic→backend conversion (peak 1.08 GB, 7s stage — LOW VALUE, only if its memory ever matters; measured 2026-07-18, not worth pulling on current evidence)"
+        priority 200
+    }
 )
