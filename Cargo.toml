@@ -55,10 +55,3 @@ nfst-pmatch = "0.1.0"
 nfst-twolc = "0.1.0"
 nfst-xfst = "0.1.0"
 
-[patch.crates-io]
-nfst-syntax = { git = "ssh://git@github.com/necessary-nu/nfst", rev = "59531748267d4120039aa43bfbe30294038f90e3" }
-nfst-xre = { git = "ssh://git@github.com/necessary-nu/nfst", rev = "59531748267d4120039aa43bfbe30294038f90e3" }
-nfst-lexc = { git = "ssh://git@github.com/necessary-nu/nfst", rev = "59531748267d4120039aa43bfbe30294038f90e3" }
-nfst-pmatch = { git = "ssh://git@github.com/necessary-nu/nfst", rev = "59531748267d4120039aa43bfbe30294038f90e3" }
-nfst-twolc = { git = "ssh://git@github.com/necessary-nu/nfst", rev = "59531748267d4120039aa43bfbe30294038f90e3" }
-nfst-xfst = { git = "ssh://git@github.com/necessary-nu/nfst", rev = "59531748267d4120039aa43bfbe30294038f90e3" }
