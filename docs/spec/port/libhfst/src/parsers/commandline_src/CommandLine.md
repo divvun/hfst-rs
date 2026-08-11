@@ -113,12 +113,17 @@
 
 > [spec:hfst:sem:command-line.command-line.print-version-fn]
 > Prints version/license info to stderr in the GNU --version style. Writes a blank
-> line, then "<PROGRAM_NAME> 0 (<PACKAGE_STRING>)" (the version number is the
-> literal integer 0), then "Copyright (C) 2010 University of Helsinki,",
-> "License GPLv3: GNU GPL version 3 ", "<http://gnu.org/licenses/gpl.html>",
-> "This is free software: you are free to change and redistribute it.",
-> "There is NO WARRANTY, to the extent permitted by law." with a trailing blank
-> line. Returns void.
+> line, then "<PROGRAM_NAME> <TOOL_VERSION> (<PACKAGE_STRING>)", then the shared
+> copyright/licence block of
+> [spec:hfst:sem:hfst-commandline.print-version-fn] verbatim, with a trailing
+> blank line. Returns void.
+>
+> PORT DIVERGENCE (branding, licence, and version, deliberate): upstream printed
+> its own copy of the banner — a 2010 Helsinki copyright, GPLv3, idiosyncratic
+> line wrapping, and the literal integer 0 as the version. This port shares the
+> one block (so the three former copies cannot drift apart again) and carries a
+> real TOOL_VERSION. Rationale for the branding and licence change is recorded
+> on [spec:hfst:sem:hfst-commandline.print-version-fn].
 
 > [spec:hfst:def:command-line.main-fn]
 > int main(int argc, char * argv[])

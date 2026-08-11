@@ -459,11 +459,22 @@
 
 > [spec:hfst:sem:hfst-commandline.print-version-fn]
 > Print the GNU-standard version banner to message_out: a first line
-> "<program_name> <hfst_tool_version> (<PACKAGE_STRING>)\n" followed by the
-> fixed copyright/licence block ("Copyright (C) 2017 University of Helsinki,",
-> "License GPLv3: GNU GPL version 3 <http://gnu.org/licenses/gpl.html>", "This
-> is free software: you are free to change and redistribute it.", "There is NO
+> "<program_name> <hfst_tool_version> (<PACKAGE_STRING>)\n", where
+> PACKAGE_STRING is "Divvun HFST <crate version>", followed by the fixed
+> copyright/licence block ("Copyright (C) 2026 UiT The Arctic University of
+> Norway", "Copyright (C) 2017 University of Helsinki", "License LGPLv3+: GNU
+> LGPL version 3 or later <https://gnu.org/licenses/lgpl.html>", "This is free
+> software: you are free to change and redistribute it.", "There is NO
 > WARRANTY, to the extent permitted by law."), each terminated by a newline.
+>
+> PORT DIVERGENCE (branding and licence, deliberate): upstream printed a sole
+> "Copyright (C) 2017 University of Helsinki," line and named GPLv3. This port
+> is Divvun HFST, copyright UiT The Arctic University of Norway, and the tree
+> is LGPL-3.0-or-later (COPYING) — upstream's GPLv3 banner never matched its
+> own library licence. The Helsinki line is RETAINED, not replaced: this is a
+> derivative work and the LGPL requires the original notice to survive.
+> Upstream also left PACKAGE_STRING empty without config.h, rendering an empty
+> "()"; the port fills it with the real package identity.
 
 > [spec:hfst:def:hfst-commandline.readline-fn]
 > char *

@@ -41,8 +41,25 @@ pub const COLOUR_MAGENTA: &str = "\x1b[35m";
 pub const COLOUR_CYAN: &str = "\x1b[36m";
 pub const COLOUR_RESET: &str = "\x1b[0m";
 
-// PACKAGE_STRING / PACKAGE_BUGREPORT expand to "" when config.h is absent.
-const PACKAGE_STRING: &str = "";
+/// Product identity for the --version banner's parenthetical, in the GNU
+/// convention "<program> <tool-version> (<package> <package-version>)".
+pub const PACKAGE_STRING: &str = concat!("Divvun HFST ", env!("CARGO_PKG_VERSION"));
+
+/// The copyright/licence block every tool's --version prints.
+///
+/// UiT holds copyright on the Rust work; the University of Helsinki line is
+/// retained because this remains a derivative work of the C++ HFST, whose
+/// LGPL terms require the original notice to be preserved. The licence named
+/// here is the one this project actually ships under (LGPLv3-or-later, see
+/// COPYING) — upstream's banners said GPLv3, which was never right for a
+/// library-licensed tree.
+pub const VERSION_COPYRIGHT_BLOCK: &str = "\
+Copyright (C) 2026 UiT The Arctic University of Norway
+Copyright (C) 2017 University of Helsinki
+License LGPLv3+: GNU LGPL version 3 or later <https://gnu.org/licenses/lgpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+";
 
 // ---------------------------------------------------------------------------
 // internal helpers
@@ -751,13 +768,7 @@ pub fn print_version(opts: &CommonOptions) {
         "{} {} ({})",
         opts.program_name, opts.hfst_tool_version, PACKAGE_STRING
     );
-    let _ = write!(
-        mw,
-        "Copyright (C) 2017 University of Helsinki,\n\
-         License GPLv3: GNU GPL version 3 <http://gnu.org/licenses/gpl.html>\n\
-         This is free software: you are free to change and redistribute it.\n\
-         There is NO WARRANTY, to the extent permitted by law.\n",
-    );
+    let _ = write!(mw, "{VERSION_COPYRIGHT_BLOCK}");
 }
 
 // [spec:hfst:def:hfst-commandline.extend-options-getenv-fn]

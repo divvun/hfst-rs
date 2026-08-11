@@ -263,7 +263,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             .insert("char-encoding".to_string(), "UTF-8".to_string());
         c.variables.insert(
             "copyright-owner".to_string(),
-            "Copyleft (c) University of Helsinki".to_string(),
+            "Copyleft (c) UiT The Arctic University of Norway".to_string(),
         );
         c.variables
             .insert("directory".to_string(), "OFF".to_string());

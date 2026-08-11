@@ -4723,4 +4723,19 @@ children (
             }
         )
     }
+
+    {
+        id divvun-hfst-branding
+        title "Replace the inherited Helsinki/GPLv3 --version banners with Divvun HFST + UiT copyright + the actual LGPLv3 licence; centralize the block so the copies cannot drift again"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-08-11T10:39:34.984866Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

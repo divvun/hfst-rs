@@ -257,4 +257,5 @@ assertions (
     {id twolc-sigma-numbering-permutation, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:42:18.589647Z}
     {id rustfst-ffi-max-states, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:49:22.21658Z}
     {id compose-intersect-map-drop, kind @complete, author "brendan@necessary.nu", at 2026-07-19T22:02:32.717767Z}
+    {id divvun-hfst-branding, kind @complete, author "brendan@necessary.nu", at 2026-08-11T10:39:34.984866Z}
 )

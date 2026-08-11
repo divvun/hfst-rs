@@ -17,6 +17,7 @@
 //! subcommands. It never parses a tool's own flags.
 
 use clap::{Arg, ArgAction, Command};
+use hfst_cli::hfst_commandline::{PACKAGE_STRING, VERSION_COPYRIGHT_BLOCK};
 use hfst_cli::tools::TOOLS;
 
 // The FST algorithms are allocation-heavy; mimalloc beats the system
@@ -312,10 +313,23 @@ fn install_symlinks(args: &[String]) -> i32 {
     0
 }
 
+/// The umbrella binary's --version text: the same shape and copyright block
+/// every subcommand prints, so the two entry points cannot disagree. Built
+/// once at first use because clap wants a &'static str and the block is a
+/// const rather than a literal.
+static LONG_VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    format!(
+        "{} ({})\n{}",
+        env!("CARGO_PKG_VERSION"),
+        PACKAGE_STRING,
+        VERSION_COPYRIGHT_BLOCK
+    )
+});
+
 fn build_cli() -> Command {
     let mut cmd = Command::new("hfst")
-        .version(env!("CARGO_PKG_VERSION"))
-        .about("HFST command-line tools: one binary, one subcommand per tool")
+        .version(LONG_VERSION.as_str())
+        .about("Divvun HFST command-line tools: one binary, one subcommand per tool")
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommand(
