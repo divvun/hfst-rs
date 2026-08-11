@@ -261,10 +261,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         );
         c.variables
             .insert("char-encoding".to_string(), "UTF-8".to_string());
-        c.variables.insert(
-            "copyright-owner".to_string(),
-            "Copyleft (c) UiT The Arctic University of Norway".to_string(),
-        );
+        // Empty by design: this names the owner of the network the USER is
+        // compiling, not the owner of the compiler. Upstream defaulted it to
+        // "Copyleft (c) University of Helsinki", which stamped Helsinki onto
+        // every third-party grammar that never set it.
+        c.variables
+            .insert("copyright-owner".to_string(), String::new());
         c.variables
             .insert("directory".to_string(), "OFF".to_string());
         c.variables

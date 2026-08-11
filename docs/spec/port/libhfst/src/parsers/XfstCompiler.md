@@ -1110,10 +1110,12 @@
 > `hfst::set_xerox_composition(true)`. Then populate the `variables_` map with
 > the default settings (each value is a string): assert="OFF",
 > att-epsilon="@0@ | @_EPSILON_SYMBOL_@", char-encoding="UTF-8",
-> copyright-owner="Copyleft (c) UiT The Arctic University of Norway" (PORT
-> DIVERGENCE: upstream's default named the University of Helsinki; the port
-> names its own copyright holder, per
-> [spec:hfst:sem:hfst-commandline.print-version-fn]), directory="OFF",
+> copyright-owner="" (PORT DIVERGENCE: upstream defaulted this to "Copyleft
+> (c) University of Helsinki". The variable names the copyright owner of the
+> network the USER is compiling, not the owner of the compiler, so defaulting
+> it to any organisation asserts that organisation's ownership over every
+> third-party grammar that never sets it. The port defaults it empty and
+> leaves it entirely to the user), directory="OFF",
 > encode-weights="OFF", flag-is-epsilon="OFF", harmonize-flags="OFF",
 > hopcroft-min="ON", lexc-minimize-flags="OFF", lexc-rename-flags="OFF",
 > lexc-with-flags="OFF", lookup-cycle-cutoff="5", maximum-weight="OFF",
