@@ -4821,4 +4821,19 @@ children (
             }
         )
     }
+
+    {
+        id strtoweight-strtod-semantics
+        title "hfst_strtoweight rejected an empty weight field where C++ strtod yields 0 — blocked the lang-kal speller build"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-08-11T22:10:40.026858Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

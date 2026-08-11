@@ -485,6 +485,20 @@ pub fn is_input_stream_in_ol_format(is: &HfstInputStream<'_>, program: &str) -> 
 // [spec:hfst:def:hfst-commandline.hfst-strtoweight-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strtoweight-fn]
 pub fn hfst_strtoweight(opts: &CommonOptions, s: &str) -> f32 {
+    // C++ is `strtod(s, &endptr)` accepted when `*endptr == '\0'`, which
+    // str::parse does not reproduce in two ways that reach real data:
+    //   - "" performs no conversion and leaves endptr on the NUL, so the test
+    //     passes and the weight is 0. An empty field means "no weight", not an
+    //     error — Giella's speller rules pipe through `cut -f1-2`, so a stray
+    //     second tab hands us exactly this.
+    //   - strtod skips leading whitespace. Trailing whitespace still fails,
+    //     since endptr then rests on the space rather than the NUL, and a
+    //     whitespace-only string fails too (no conversion, so endptr is left
+    //     at the start, not past the blanks).
+    if s.is_empty() {
+        return 0.0;
+    }
+    let s = s.trim_start_matches([' ', '\t', '\n', '\x0b', '\x0c', '\r']);
     match s.parse::<f64>() {
         Ok(rv) => rv as f32,
         Err(_) => {
