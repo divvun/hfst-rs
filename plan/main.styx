@@ -4738,4 +4738,19 @@ children (
             }
         )
     }
+
+    {
+        id nfst-patch-restore
+        title "Restore the nfst [patch.crates-io] pin — crates.io 0.1.0 predates the bare-special marker-rename fix, so dropping it broke every twolc deletion rule"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-08-11T10:44:59.566181Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )
