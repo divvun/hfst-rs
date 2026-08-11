@@ -629,8 +629,8 @@ checksum = "7b42b42a8125bc2c69aadd9ad2f0592c940cc85da59b9fb24425d83cfd95f7ca"
 dependencies = [
  "bitflags",
  "flate2",
- "nfst-lexc",
- "nfst-xre",
+ "nfst-lexc 0.1.0",
+ "nfst-xre 0.1.0",
  "smol_str",
  "tracing",
  "tracing-subscriber",
@@ -819,11 +819,11 @@ dependencies = [
  "glob",
  "hfst-openfst",
  "icu",
- "nfst-lexc",
+ "nfst-lexc 0.2.0",
  "nfst-pmatch",
  "nfst-twolc",
  "nfst-xfst",
- "nfst-xre",
+ "nfst-xre 0.2.0",
  "serde",
  "serde_json",
  "smallvec",
@@ -1469,57 +1469,94 @@ dependencies = [
 [[package]]
 name = "nfst-lexc"
 version = "0.1.0"
-source = "git+ssh://git@github.com/necessary-nu/nfst?rev=59531748267d4120039aa43bfbe30294038f90e3#59531748267d4120039aa43bfbe30294038f90e3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e032228b31153fa2e504f3e9a1f289598db1c6035ef02c52898cf768e9812c4"
 dependencies = [
  "logos",
- "nfst-syntax",
- "nfst-xre",
+ "nfst-syntax 0.1.0",
+ "nfst-xre 0.1.0",
+ "smol_str",
+]
+
+[[package]]
+name = "nfst-lexc"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3f0264182007be7fbb70a2e76f40648d66b8750d0f451a41118460a815a4883"
+dependencies = [
+ "logos",
+ "nfst-syntax 0.2.0",
+ "nfst-xre 0.2.0",
  "smol_str",
 ]
 
 [[package]]
 name = "nfst-pmatch"
-version = "0.1.0"
-source = "git+ssh://git@github.com/necessary-nu/nfst?rev=59531748267d4120039aa43bfbe30294038f90e3#59531748267d4120039aa43bfbe30294038f90e3"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed8d9b0a385411e33d3c49d52a0849b9763ae64fe3c56a4963a7c5b119459b45"
 dependencies = [
- "nfst-syntax",
- "nfst-xre",
+ "nfst-syntax 0.2.0",
+ "nfst-xre 0.2.0",
  "smol_str",
 ]
 
 [[package]]
 name = "nfst-syntax"
 version = "0.1.0"
-source = "git+ssh://git@github.com/necessary-nu/nfst?rev=59531748267d4120039aa43bfbe30294038f90e3#59531748267d4120039aa43bfbe30294038f90e3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4441ec0e57add49cd8fe5a81f10c57e1031c6c09f6c62b923ff97e8b1671ee1b"
+
+[[package]]
+name = "nfst-syntax"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6f6d0e10785f7441836be248612d3c6a20ffa647a2c7f0e9fe251de3253d361"
 
 [[package]]
 name = "nfst-twolc"
-version = "0.1.0"
-source = "git+ssh://git@github.com/necessary-nu/nfst?rev=59531748267d4120039aa43bfbe30294038f90e3#59531748267d4120039aa43bfbe30294038f90e3"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f08628a352989282a482b872bfbed67362379da38f0cdcf2d56bd8a8fa71e2be"
 dependencies = [
- "nfst-syntax",
- "nfst-xre",
+ "nfst-syntax 0.2.0",
+ "nfst-xre 0.2.0",
  "smol_str",
 ]
 
 [[package]]
 name = "nfst-xfst"
-version = "0.1.0"
-source = "git+ssh://git@github.com/necessary-nu/nfst?rev=59531748267d4120039aa43bfbe30294038f90e3#59531748267d4120039aa43bfbe30294038f90e3"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5883052b88361acb498f86f037dfd5b66bf681274ed4dc499c7d98b87c0aced0"
 dependencies = [
- "nfst-syntax",
- "nfst-xre",
+ "nfst-syntax 0.2.0",
+ "nfst-xre 0.2.0",
 ]
 
 [[package]]
 name = "nfst-xre"
 version = "0.1.0"
-source = "git+ssh://git@github.com/necessary-nu/nfst?rev=59531748267d4120039aa43bfbe30294038f90e3#59531748267d4120039aa43bfbe30294038f90e3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c1c59292c33c651faa5bfcd34b07e2761d41f8b06596bcf1361c58693446e9e"
 dependencies = [
  "ariadne",
  "chumsky",
  "logos",
- "nfst-syntax",
+ "nfst-syntax 0.1.0",
+ "smol_str",
+]
+
+[[package]]
+name = "nfst-xre"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b2ef6a5b1b9760f23a689e95adb649f5ac2658d653c76d9b8b287276eec7ed7"
+dependencies = [
+ "ariadne",
+ "chumsky",
+ "logos",
+ "nfst-syntax 0.2.0",
  "smol_str",
 ]
 
