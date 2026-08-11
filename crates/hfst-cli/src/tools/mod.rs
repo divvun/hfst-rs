@@ -76,13 +76,22 @@ pub type ToolRun = fn(Vec<String>) -> i32;
 /// entry points.
 pub const TOOLS: &[(&str, ToolRun)] = &[
     ("hfst-affix-guessify", affix_guessify::run),
-    // aliases
+    // aliases. Every name the C++ suite installs for a tool this port
+    // implements must appear here: a missing alias does not fail loudly, it
+    // silently resolves to whatever hfst binary sits further down PATH, so a
+    // build can mix Rust and C++ tools without any signal.
     ("hfst-lexc", lexc_compiler::run),
     ("hfst-union", disjunct::run),
     ("hfst-minus", subtract::run),
     ("hfst-intersect", conjunct::run),
+    ("hfst-expand", fst2strings::run),
+    ("hfst-priority-union", priority_disjunct::run),
+    // British spellings (the C++ suite symlinks these; Giella builds use them)
     ("hfst-tokenise", tokenize::run),
     ("hfst-optimised-lookup", optimized_lookup::run),
+    ("hfst-determinise", determinize::run),
+    ("hfst-minimise", minimize::run),
+    ("hfst-summarise", summarize::run),
     ("hfst-binary-tool", binary_tool::run),
     ("hfst-bhfst", bhfst::run),
     ("hfst-check-alpha", check_alpha::run),

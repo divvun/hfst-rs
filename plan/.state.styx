@@ -262,4 +262,5 @@ assertions (
     {id nfst-0-2-publish, kind @complete, author "brendan@necessary.nu", at 2026-08-11T10:52:54.094366Z}
     {id xfst-copyright-owner-plain, kind @complete, author "brendan@necessary.nu", at 2026-08-11T11:00:23.068557Z}
     {id xfst-print-defined-body, kind @complete, author "brendan@necessary.nu", at 2026-08-11T11:09:08.271704Z}
+    {id cli-alias-shadowing, kind @complete, author "brendan@necessary.nu", at 2026-08-11T21:45:03.502421Z}
 )

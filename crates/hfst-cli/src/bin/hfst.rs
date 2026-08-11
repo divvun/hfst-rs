@@ -72,7 +72,12 @@ const ABOUTS: &[(&str, &str)] = &[
     ),
     ("hfst-concatenate", "Concatenate two transducers"),
     ("hfst-conjunct", "Conjunct (intersect, AND) two transducers"),
+    ("hfst-determinise", "Determinize a transducer"),
     ("hfst-determinize", "Determinize a transducer"),
+    (
+        "hfst-expand",
+        "Display the strings recognized by a transducer",
+    ),
     ("hfst-disjunct", "Disjunct (union, OR) two transducers"),
     ("hfst-dump-alphabets", "Print alphabets of automaton"),
     ("hfst-edit-metadata", "Name a transducer"),
@@ -114,6 +119,7 @@ const ABOUTS: &[(&str, &str)] = &[
     ("hfst-kill-paths", "Kill all paths with specific symbols"),
     ("hfst-lexc-compiler", "Compile lexc files into transducer"),
     ("hfst-lookup", "perform transducer lookup (apply)"),
+    ("hfst-minimise", "Minimize a transducer"),
     ("hfst-minimize", "Minimize a transducer"),
     (
         "hfst-multiply",
@@ -136,6 +142,10 @@ const ABOUTS: &[(&str, &str)] = &[
     ),
     (
         "hfst-priority-disjunct",
+        "Disjunct (union, OR) two transducers",
+    ),
+    (
+        "hfst-priority-union",
         "Disjunct (union, OR) two transducers",
     ),
     ("hfst-project", "Project (extract a level) transducer"),
@@ -166,6 +176,7 @@ const ABOUTS: &[(&str, &str)] = &[
     ("hfst-strip-header", "Remove any HFST3 headers"),
     ("hfst-substitute", "Relabel transducer arcs"),
     ("hfst-subtract", "Subtract (minus) two transducers"),
+    ("hfst-summarise", "Calculate the properties of a transducer"),
     ("hfst-summarize", "Calculate the properties of a transducer"),
     ("hfst-tail", "Get last transducers from an archive"),
     ("hfst-tokenize", "perform matching/lookup on text streams"),

@@ -4796,6 +4796,29 @@ children (
                 kind @status
                 text "Todo → Done (nplan complete)"
             }
+
+            {
+                at 2026-08-11T11:14:35.056543Z
+                author "brendan@necessary.nu"
+                kind @errata
+                text "The file-size violation reason committed with df82593 misattributes the work: it says \"shrinking xfst_compiler.rs is the idiom-islands node's job\". It is not. idiom-islands scoped the residual UNSAFE islands (ol-lookup-paths *mut, substitute-alias, read_in_att, print_dot, input_stream reborrow, pmatch Rc) and is Done; it never covered file size. idiom-ratchet's four leaves (unwrap, snake-case, control-flow, new-code-cshape) are likewise all Done and carry no size dimension.\n\nNo node owns file-size reduction at all. That is the same ratchet-gap idiom-ratchet was created to close, one level up: the gate is configured and ratcheting, the debt exists, and nobody owns burning it down. Five Rust files sit above the 3000 default — pmatch_compiler 6051, xfst_compiler 5091, hfst_basic_transducer 3864, twolc 3249, hfst_transducer 3094 — each pinned at its pre-image, so every future edit to them that adds a statement needs a bypass. The bypass on this commit was legitimate; the pattern of needing one repeatedly is not."
+                after_done true
+            }
+        )
+    }
+
+    {
+        id cli-alias-shadowing
+        title "5 C++ tool aliases had no TOOLS entry, so those names silently resolved to a packaged C++ hfst further down PATH — add them + a test that fails loudly on the next gap"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-08-11T21:45:03.502421Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
         )
     }
 )
