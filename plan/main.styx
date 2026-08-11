@@ -4783,4 +4783,19 @@ children (
             }
         )
     }
+
+    {
+        id xfst-print-defined-body
+        title "print defined reported \"No defined symbols.\" for every define NAME body — the dispatch arm compiled the net but never recorded original_definitions"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-08-11T11:09:08.271704Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

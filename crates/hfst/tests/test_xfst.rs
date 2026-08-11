@@ -45,3 +45,27 @@ fn define_then_reference_pushes_definition() {
     assert!(!c.get_stack().is_empty());
     assert!(top_states(&c) >= 1);
 }
+
+// `define NAME <body>` must record the definition's source form, not just
+// compile it: `print defined` reports out of original_definitions, so a
+// dispatch arm that only calls define_transducer leaves every such definition
+// invisible while still printing "Defined 'NAME'". Verified against C++
+// hfst-xfst, which lists both names with their bodies.
+#[test]
+fn print_defined_lists_definitions_made_with_a_body() {
+    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    c.parse("define foo a ;\ndefine bar [ a b ]* ;\n");
+    let mut buf: Vec<u8> = Vec::new();
+    c.print_defined(&mut buf);
+    let out = String::from_utf8(buf).expect("print_defined emits UTF-8");
+    assert!(
+        !out.contains("No defined symbols."),
+        "two definitions exist but print_defined reported none: {out:?}"
+    );
+    for name in ["foo", "bar"] {
+        assert!(
+            out.contains(name),
+            "print_defined omitted '{name}': {out:?}"
+        );
+    }
+}

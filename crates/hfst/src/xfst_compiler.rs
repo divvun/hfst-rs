@@ -1101,6 +1101,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 } else {
                     let tr = self.compile_spanned_xre(body)?;
                     self.define_transducer(name, tr);
+                    // 'print defined' reports from original_definitions.
+                    self.original_definitions
+                        .insert(Symbol::new(name), nfst_xre::pretty_print(body).to_string());
                     self.prompt();
                 }
             }
