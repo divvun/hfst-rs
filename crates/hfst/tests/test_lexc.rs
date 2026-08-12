@@ -152,3 +152,124 @@ fn missing_file_parse_tropical() {
     let _g = serialized();
     missing_file_parse::<StdVectorFst>();
 }
+
+// =====================================================================
+// Undeclared multi-code-point graphemes.
+//
+// lexc reads `a` + U+0301 as one symbol only because the two code points form
+// one grapheme cluster; an author who meant that should say so in
+// Multichar_Symbols, and one who did not meant to type the precomposed letter.
+// The rendering goes to stderr, which a test cannot read; what is asserted here
+// is the shaping that feeds it — where it points, what it says, and its advice.
+// =====================================================================
+
+// An entry using the decomposed form of 'á' without declaring it.
+const DECOMPOSED: &str = "LEXICON Root\na\u{301}bc # ;\n";
+
+fn grapheme_reports(src: &str) -> Vec<hfst::lexc::GraphemeDiagnostic> {
+    let _g = serialized();
+    let mut compiler = LexcCompiler::<StdVectorFst>::new();
+    compiler.parse(src).expect("the source parses");
+    compiler.grapheme_diagnostics().to_vec()
+}
+
+#[test]
+fn decomposed_grapheme_is_reported() {
+    let ds = grapheme_reports(DECOMPOSED);
+    let first = ds.first().expect("the grapheme is reported");
+    assert_eq!(ds.len(), 1, "reported more than once: {ds:?}");
+    assert!(
+        first.message.contains("a\u{301}"),
+        "grapheme left unnamed in {:?}",
+        first.message
+    );
+}
+
+// Upstream anchors this at the entry's semicolon; the caret belongs under the
+// grapheme the author has to change.
+#[test]
+fn report_points_at_the_grapheme() {
+    let ds = grapheme_reports(DECOMPOSED);
+    let first = ds.first().expect("the grapheme is reported");
+    assert_eq!(&DECOMPOSED[first.span.clone()], "a\u{301}");
+}
+
+#[test]
+fn report_advises_declaring_the_grapheme() {
+    let ds = grapheme_reports(DECOMPOSED);
+    let first = ds.first().expect("the grapheme is reported");
+    assert!(
+        first.notes.iter().any(|n| n.contains("Multichar_Symbols")),
+        "no declaration advice in {:?}",
+        first.notes
+    );
+    // Every code point, not upstream's truncated first two.
+    assert!(
+        first.notes.iter().any(|n| n.contains("U+0061 U+0301")),
+        "code points left unspelled in {:?}",
+        first.notes
+    );
+}
+
+// The decomposition is usually an accident of the author's keyboard, so the
+// single-code-point spelling is worth naming where one exists.
+#[test]
+fn precomposed_spelling_is_offered_when_available() {
+    let ds = grapheme_reports(DECOMPOSED);
+    let first = ds.first().expect("the grapheme is reported");
+    assert!(
+        first.notes.iter().any(|n| n.contains("U+00E1")),
+        "no precomposed spelling in {:?}",
+        first.notes
+    );
+}
+
+// 'u' with combining dot above has no precomposed form — the case Giella
+// declares in Multichar_Symbols. Advice to normalise would be a dead end.
+#[test]
+fn no_precomposed_spelling_means_no_such_advice() {
+    let ds = grapheme_reports("LEXICON Root\nu\u{307}bc # ;\n");
+    let first = ds.first().expect("the grapheme is reported");
+    assert!(
+        !first.notes.iter().any(|n| n.contains("NFC")),
+        "unreachable advice in {:?}",
+        first.notes
+    );
+}
+
+#[test]
+fn an_ascii_lexicon_reports_nothing() {
+    assert!(grapheme_reports("LEXICON Root\nabc # ;\n").is_empty());
+}
+
+// The Giella convention: declare the grapheme and the warning goes away.
+#[test]
+fn a_declared_grapheme_stays_silent() {
+    let src = "Multichar_Symbols a\u{301}\n\nLEXICON Root\na\u{301}bc # ;\n";
+    assert!(grapheme_reports(src).is_empty());
+}
+
+// Once per distinct grapheme, not once per occurrence — including the two
+// sides of a single pair entry, which are checked separately.
+#[test]
+fn a_repeated_grapheme_is_reported_once() {
+    let src = "LEXICON Root\nxa\u{301}y:qa\u{301}z # ;\na\u{301}bc # ;\n";
+    assert_eq!(grapheme_reports(src).len(), 1);
+}
+
+// A lower-side-only grapheme is still the author's to declare.
+#[test]
+fn a_lower_side_grapheme_is_reported() {
+    assert_eq!(grapheme_reports("LEXICON Root\nx:a\u{301} # ;\n").len(), 1);
+}
+
+// Splitting characters is a request to read each code point on its own, so
+// there is no grouping left to declare.
+#[test]
+fn split_characters_disables_the_check() {
+    let _g = serialized();
+    let mut compiler = LexcCompiler::<StdVectorFst>::new();
+    compiler.set_split_characters(true);
+    compiler.parse(DECOMPOSED).expect("the source parses");
+    assert!(compiler.grapheme_diagnostics().is_empty());
+}

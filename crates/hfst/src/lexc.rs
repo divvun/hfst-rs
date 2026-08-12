@@ -19,7 +19,6 @@
 //! - 'parse(FILE*)' / 'parse(const char*)' REPLACED by the AST-walk 'compile(&str)'.
 //! - lexc-utils.cc Flex bookkeeping helpers (token positions, hand-lexer percent stripping).
 //! - 'getStringTries()' / 'getRegexpUnions()' — header-declared, never defined in .cc.
-//! - ICU grapheme segmentation inside 'unicodeCheck_'.
 
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
@@ -35,6 +34,9 @@ use nfst_lexc::{
 };
 use nfst_xre::{SpannedXre, pretty_print};
 
+use icu::normalizer::ComposingNormalizerBorrowed;
+use icu::segmenter::GraphemeClusterSegmenter;
+
 use crate::backend::AlgebraBackend;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_data_types::{
@@ -45,6 +47,18 @@ use crate::hfst_tokenizer::HfstTokenizer;
 use crate::hfst_transducer::HfstTransducer;
 use crate::xre::XreCompiler;
 use tracing::{debug, error, info, warn};
+
+/// A grapheme spelled with several code points that the source never declared:
+/// where it sits, what to say about it, and what to type instead.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraphemeDiagnostic {
+    /// Byte range in the lexc source the caret goes under — the grapheme
+    /// itself where it can be located, else the whole entry.
+    pub span: std::ops::Range<usize>,
+    pub message: String,
+    /// Advice rendered beneath the snippet.
+    pub notes: Vec<String>,
+}
 
 // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler]
 pub struct LexcCompiler<B: AlgebraBackend> {
@@ -97,6 +111,9 @@ pub struct LexcCompiler<B: AlgebraBackend> {
     /// `compile_file` visits each spanned AST node; the anchor for
     /// `error_at_current_token`/`warning_at_current_token`.
     pub(crate) current_span: std::ops::Range<usize>,
+    /// Undeclared multi-code-point graphemes reported so far, in source order.
+    /// Rendering goes to stderr; this keeps the same data addressable.
+    pub(crate) grapheme_diags: Vec<GraphemeDiagnostic>,
 }
 // (followed by a doc-comment roster of every method + lexc-utils helper the
 //  bodies fill — public API, AST-walk driver compile/compile_file, and the
@@ -363,6 +380,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             source: String::new(),
             source_name: String::from("<lexc>"),
             current_span: 0..0,
+            grapheme_diags: Vec::new(),
         };
         compiler
             .tokenizer
@@ -412,6 +430,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         self.noFlags_.clear();
         self.continuations.clear();
         self.alphabets.clear();
+        self.grapheme_diags.clear();
         self.currentLexiconName_ = String::new(); // ?
         self.lexiconNames_.insert(Symbol::new("#"));
         self.stringsTrie_ = HfstBasicTransducer::new(); // ?
@@ -743,15 +762,123 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         Some(String::from_utf8_lossy(&rv).into_owned())
     }
 
-    /// Port of 'LexcCompiler::unicodeCheck_'. The ICU grapheme-segmentation
-    /// guard (auto-adding multi-codepoint graphemes to 'alphabets') is deferred;
-    /// for the common single-codepoint-grapheme path the C++ adds nothing, so
-    /// this is faithful for ASCII and only skips the multi-codepoint warning.
-    fn unicode_check(&mut self, _data: &str) -> &mut Self {
+    /// Port of 'LexcCompiler::unicodeCheck_': report every grapheme in 'data'
+    /// that takes more than one code point and that no 'Multichar_Symbols'
+    /// declaration covers, then register it as an alphabet symbol.
+    ///
+    /// Registering is what makes the report fire once per distinct grapheme
+    /// rather than once per occurrence; it also spares '-Wmissing-alphabets'
+    /// from naming the same symbol a second time, since 'add_string_entry's own
+    /// loop would otherwise register it moments later. Under 'split_characters'
+    /// the reading is per code point by request, so there is nothing to report.
+    fn unicode_check(&mut self, data: &str) -> &mut Self {
         if self.split_characters {
             return self;
         }
+        for grapheme in self.undeclared_graphemes(data) {
+            let d = self.grapheme_diagnostic(&grapheme);
+            let severity = if self.treat_warnings_as_errors {
+                self.parseErrors_ = true;
+                crate::diag::Severity::Error
+            } else {
+                crate::diag::Severity::Warning
+            };
+            crate::diag::emit_with_notes(
+                &self.source_name,
+                &self.source,
+                d.span.clone(),
+                severity,
+                &d.message,
+                &d.notes,
+            );
+            self.grapheme_diags.push(d);
+            self.add_alphabet(&grapheme);
+        }
         self
+    }
+
+    /// Every grapheme reported by [`unicode_check`](Self::unicode_check) since
+    /// the last `reset`, in source order.
+    ///
+    /// The rendering itself goes to stderr, which a caller cannot read back;
+    /// this is the same data, kept so the shaping can be inspected.
+    pub fn grapheme_diagnostics(&self) -> &[GraphemeDiagnostic] {
+        &self.grapheme_diags
+    }
+
+    /// The distinct multi-code-point graphemes in `data` that `alphabets` does
+    /// not already cover, in order of first appearance.
+    fn undeclared_graphemes(&self, data: &str) -> Vec<String> {
+        let segmenter = GraphemeClusterSegmenter::new();
+        let mut out: Vec<String> = Vec::new();
+        let mut prev = 0usize;
+        for next in segmenter.segment_str(data).skip(1) {
+            let cluster = &data[prev..next];
+            prev = next;
+            if cluster.chars().nth(1).is_none() {
+                continue;
+            }
+            // A CRLF line ending is a two-code-point cluster; nothing about the
+            // shape of a line break belongs in a symbol table.
+            if cluster.chars().any(char::is_control) {
+                continue;
+            }
+            if self.alphabets.contains(cluster) || out.iter().any(|g| g == cluster) {
+                continue;
+            }
+            out.push(cluster.to_string());
+        }
+        out
+    }
+
+    /// Shape the report for `grapheme`: a caret under its first occurrence in
+    /// the entry being walked, its code points spelled out in full, and the
+    /// declaration that settles how it is read.
+    fn grapheme_diagnostic(&self, grapheme: &str) -> GraphemeDiagnostic {
+        // The entry text is the source the user wrote, so it may carry escapes
+        // the AST already stripped; searching it for the grapheme's own bytes
+        // survives that, and falls back to the whole entry when it cannot.
+        let span = self
+            .source
+            .get(self.current_span.clone())
+            .and_then(|entry| entry.find(grapheme))
+            .map(|off| {
+                let start = self.current_span.start + off;
+                start..start + grapheme.len()
+            })
+            .unwrap_or_else(|| self.current_span.clone());
+
+        let points: Vec<String> = grapheme
+            .chars()
+            .map(|c| format!("U+{:04X}", c as u32))
+            .collect();
+        let mut notes = vec![
+            format!(
+                "its code points are {} — lexc reads them as one symbol only because they form a single grapheme cluster",
+                points.join(" ")
+            ),
+            format!(
+                "add '{grapheme}' to the Multichar_Symbols section to declare that reading explicitly"
+            ),
+        ];
+        let composed = ComposingNormalizerBorrowed::new_nfc().normalize(grapheme);
+        if let Some(single) = composed.chars().next()
+            && composed.chars().nth(1).is_none()
+        {
+            notes.push(format!(
+                "'{grapheme}' also has a one-code-point spelling (U+{:04X}); normalising this file to NFC would avoid the question",
+                single as u32
+            ));
+        }
+
+        GraphemeDiagnostic {
+            span,
+            message: format!(
+                "undeclared multi-code-point grapheme '{grapheme}' ({} code points)",
+                points.len()
+            ),
+            notes,
+        }
     }
 
     // ----- incremental registration API -----
