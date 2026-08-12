@@ -5034,9 +5034,25 @@ children (
 
             {
                 id pmatch-initial-symbols-dead
-                title "pmatch_compiler.rs:381 collect_initial_symbols_into is a trait default returning Ok(()) without filling either set, and no node type overrides it; the real ported logic at :3657 has ZERO callers. Same shape behind it: get_real_initial_symbols (:390) defaults to an empty set while the real :3641 is also uncalled. Consumers at :5117 and :6544 build the initial-symbols archive properties from nothing, so pmatch.rs:2115 short-circuits and never skips impossible start positions. Matching stays CORRECT — this is a performance defect, not wrong output"
+                title "INVESTIGATED, answer is DO NOT SHIP: wiring pmatch's dead initial-symbol optimisation up as ported makes a correct matcher silently drop matches, and the workload we care about gains nothing. Leave the code dead — matching is correct today BECAUSE it is dead. Re-scope to \"make the initial-symbol analysis sound\" only if a workload appears that emits the property"
                 priority 2
                 kind @perf
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T11:45:10.114629Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "DO NOT SHIP. Nothing committed; the wiring was built (~56 lines, faithful — verified to emit initial-symbols strings character-identical to the C++ oracle) and then reverted. Suite green at 340/340 with no change.\n\nWhere it fires it is worth a great deal — a 30-city/28-person gazetteer grammar gave 5.6x on a 3.9 MB input, 5.1x on 19.7 MB sparse, 1.46x on 25.3 MB dense, output identical in every case.\n\nTHE WORKLOAD WE ACTUALLY CARE ABOUT GAINS NOTHING. The real Giella lang-sma tokeniser-disamb-gt-desc.pmscript emits NO initial-symbols property at all — the alphabet is open, so the analysis bails, exactly as upstream does. Corroborated: 0 of 25 real-world C++-built .pmhfst archives on this machine carry the property. The compiled archive is byte-identical before/after (534,990,133 bytes). Cost on that same workload: 29.6-30.1s -> 34.0-35.2s, +14%. A node-cache fast path to claw it back measured 34.2 vs 34.2 — noise — and was reverted rather than shipped as unearned complexity.\n\nAND THE ANALYSIS IS UNSOUND, which is the decisive part. A 16-grammar sweep found two failing shapes:\n\n(1) Rust-only, from the AST associativity divergence now filed as nfst-pmatch-concat-associativity. `Define TOP LC({the }) [ {cat} | {dog} ] EndTag(a) ;` emits initial-symbols \" \" (a single space) where C++ emits \"cd\", and EVERY MATCH IS LOST. is_left_concatenation_with_context inspects only the top node's left child, so a left-folded Rust tree falls through to reading the REVERSED left context and returns its leading space. Same failure with a nullable prefix.\n\n(2) Shared with upstream — a genuine C++ soundness bug, filed under upstream-bug-report. `Define TOP [ [ LC({the }) {cat} ] | {dog} ] EndTag(a) ;` makes BOTH Rust-after and a C++-built archive emit \"d\" and silently drop the cat match. A context at the start of an alternation branch under-reports the allowed set. Upstream has been shipping this.\n\nSo the honest scoping is not \"wire up dead code\" but \"make the initial-symbol analysis sound\" — a design job needing the parser association reconciled and a correct nullability-aware analysis, with no upstream oracle to validate against since upstream is itself wrong. Gate any future attempt on a workload that actually emits the property; every Giella tokeniser we ship does not.\n\nBenchmark assets retained under the session scratchpad at pmi/ (bench/ gazetteer + inputs, adv/ the six adversarial grammars, sma/ the real tokeniser build)."
+                    }
+
+                    {
+                        at 2026-08-12T11:45:24.453062Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5235,6 +5251,20 @@ children (
                 title "hfst tokenize SILENTLY DROPS unmatched input: with a plain .hfstol dictionary, `dogs cot cats` yields \"dogs\\ncats\" — the word `cot` vanishes, even though every letter is in the dictionary's alphabet. With -a the run is emitted as one blob including surrounding spaces. NOT a port defect: C++ hfst-tokenize does exactly the same on the same fixture and input (verified). The naive tokenizer's `others` fallback (make_exc_list(word_boundary)+, weighted f32::MAX) never fires; cause is downstream in the pmatch runtime / exclusion-list handling in crates/hfst/src/pmatch.rs, and make_naive_tokenizer faithfully mirrors the C++. So this is a DIVERGENCE CANDIDATE under [dec:hfst:independent-fork], not a bug to fix silently: a tokenizer that discards input is arguably wrong, but tokenizer output IS a contract with Giella pipelines, so changing it needs an explicit call. Decide, do not drift. Found by the naive-tokenizer agent"
                 priority 2
                 kind @fix
+            }
+
+            {
+                id nfst-pmatch-concat-associativity
+                title "nfst-pmatch folds juxtaposition LEFT where C++ bison shift-resolves RIGHT, so the AST shape diverges even though the language does not. Verified: nfst-pmatch parser.rs parse_expression7 builds `left = Concat(left, right)` in a loop; the C++ rule `EXPRESSION7: EXPRESSION7 EXPRESSION7` (pmatch_parse.yy:333) is ambiguous and bison resolves by shifting. For `A B C` Rust yields Concat(Concat(A,B),C), C++ Concat(A,Concat(B,C)). Concatenation is associative so matching and pmatch2fst output are UNAFFECTED — this is latent, not a live bug. It bites any analysis that pattern-matches on tree shape: it is precisely why the ported is_left_concatenation_with_context misreads a Rust tree, inspecting only the top node's left child and falling through to the reversed left context. Fix is in the sibling repo (necessary-nu/nfst) and needs a release; alternatively any shape-based analysis must handle both foldings. Decide which before writing another such analysis"
+                priority 2
+                kind @fix
+            }
+
+            {
+                id upstream-bug-report
+                title "Report the upstream C++ HFST bugs this sweep confirmed still present in 3.17.1, with reproductions. Four so far: (1) hfst-info feature checks are polarity-inverted — hfst-info.cc:237 guards \"Required foma support not present\" with `#if HAVE_FOMA`, so -f foma and -f openfst FAIL on builds that have them; (2) hfst-info --max-version uses the --atleast-version comparison (hfst-info.cc:214-217), accepting exactly the builds it should reject; (3) pmatch initial-symbol analysis is UNSOUND for a context at the start of an alternation branch — `Define TOP [ [ LC({the }) {cat} ] | {dog} ] EndTag(a) ;` emits initial-symbols \"d\" and SILENTLY DROPS the cat match, reproduced with a C++-built archive; (4) unicodeCheck_ hardcodes the first two code points and appends a literal \"...\" so its \"add X to Multichar_Symbols\" advice is wrong for any 3+ code point grapheme. Each was found by fixing our port and checking whether upstream shares it. Reproductions exist in this session's history"
+                priority 2
+                kind @docs
             }
         )
     }

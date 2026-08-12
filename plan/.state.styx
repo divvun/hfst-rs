@@ -284,4 +284,5 @@ assertions (
     {id xfst-set-minimal-unwired, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:15:03.860264Z}
     {id naive-tokenizer-harmonizer-alphabet, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:15:05.78157Z}
     {id backend-counts-zero, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:17:33.375314Z}
+    {id pmatch-initial-symbols-dead, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:45:24.453062Z}
 )
