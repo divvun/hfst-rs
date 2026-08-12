@@ -5244,6 +5244,22 @@ children (
                 title "Clustered short options are unsupported across the WHOLE CLI: hfst_getopt.rs treats an option as short only when `name.chars().count() == 1` and never splits a cluster, so `-wq` is rejected with \"Invalid option\" while `-w -q` works. C++ accepts both. Verified against the oracle on hfst-optimized-lookup (-wq is the ONE differing case out of 12 flag spellings tested; every other matches byte-for-byte) and reported also for hfst-fst2strings -qn. This is a flag-compatibility contract with Giella build scripts and hand-typed invocations, not a diagnostic nicety — any script using a cluster fails. Cross-cutting: one fix in hfst_getopt.rs repairs every tool. Found by the dead-code-allow-census agent, outside its file ownership"
                 priority 1
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T13:32:01.470245Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Fixed. Merged nplan/getopt-clustered-shorts (42cd441). 389/389, clippy and fmt clean. Verified here: `-wq` on hfst-optimized-lookup now matches C++ byte-for-byte; `-wqu` and `-w -q -u` agree; `-wn 2`, `-wn2`, `-wn` (missing arg) and bare `-` as stdin all behave as the oracle does.\n\nThe fix keeps the single-table design as instructed — letters resolve through the same longopts scan a lone `-f` uses, so no second table exists to drift. Two details were load-bearing and are worth remembering: the pending-cluster check must run BEFORE the end-of-argv test or a trailing cluster loses its last letter to finish(), and the scan runs over the dash-stripped token rather than the =-split name, which is what preserved the attached-argument case (-Wall, -n2, -pa=b) — that separate GNU fallback is now deleted because the cluster path subsumes it.\n\nStrongest evidence in the report is not the agreements but the disagreements: of 67 cluster-vs-separated groupings across 8 tools, both implementations agree 67/67 — INCLUDING three pairings the agent initially got wrong, where C++ and Rust rejected them identically (-en1 is `-e n1` not `-e -n 1`; -Sq is `-S=q`; -exq is `-e xq`). Agreement on cases where the expected answer was wrong is much better evidence than agreement on easy ones.\n\nDeliberately not implemented, all defensible: getopt's own opterr diagnostics (\"invalid option -- Z\"), which this port has never emitted — that is the sole content of the one edge case where we still differ from C++; GNU's literal `=` handling for a single-letter short (-n=2), where this port is leniently a superset so nothing that works in C++ breaks, and the GNU rule DOES hold inside a cluster; and `-verbose` as a long name behind one dash, which still resolves as a long name because that lookup runs first.\n\nTHREE FINDINGS OUTSIDE SCOPE, from a 131-invocation oracle diff (109 match; of the 22 differences, 19 were message text or stream routing). Filed as invert-symbol-table-duplication and ol-fast-mode-silent. The invert one I verified myself: 393 bytes vs C++'s 560 on [a:b c:d], hfst-compare EQUIVALENT, cause is C++ writing the symbol table twice. giella-core invokes hfst-invert, so it bears on byte-parity claims."
+                    }
+
+                    {
+                        at 2026-08-12T13:32:17.359197Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5265,6 +5281,20 @@ children (
                 title "Report the upstream C++ HFST bugs this sweep confirmed still present in 3.17.1, with reproductions. Four so far: (1) hfst-info feature checks are polarity-inverted — hfst-info.cc:237 guards \"Required foma support not present\" with `#if HAVE_FOMA`, so -f foma and -f openfst FAIL on builds that have them; (2) hfst-info --max-version uses the --atleast-version comparison (hfst-info.cc:214-217), accepting exactly the builds it should reject; (3) pmatch initial-symbol analysis is UNSOUND for a context at the start of an alternation branch — `Define TOP [ [ LC({the }) {cat} ] | {dog} ] EndTag(a) ;` emits initial-symbols \"d\" and SILENTLY DROPS the cat match, reproduced with a C++-built archive; (4) unicodeCheck_ hardcodes the first two code points and appends a literal \"...\" so its \"add X to Multichar_Symbols\" advice is wrong for any 3+ code point grapheme. Each was found by fixing our port and checking whether upstream shares it. Reproductions exist in this session's history"
                 priority 2
                 kind @docs
+            }
+
+            {
+                id invert-symbol-table-duplication
+                title "hfst invert output is byte-different from C++ with ZERO flags: 393 bytes vs 560 on a [a:b c:d] net, because C++ writes the symbol table TWICE (input and output sides) where the port writes it once. Transducers are hfst-compare EQUIVALENT, so this is a container-shape divergence, not a semantic one — and arguably ours is the better artifact. BUT giella-core invokes hfst-invert, so any \"byte-identical to the C++ CI reference\" claim for a lang build that inverts needs re-checking against this; the lang-sma/sme parity results predate the finding. Decide under [dec:hfst:independent-fork] whether to match C++'s duplication for byte-parity or keep the smaller correct file and retire the byte-parity claim for invert. Found by the getopt-clustered-shorts agent while running a 131-invocation oracle diff; reproduces with no options at all, unrelated to getopt"
+                priority 1
+                kind @fix
+            }
+
+            {
+                id ol-fast-mode-silent
+                title "`hfst optimized-lookup -f` (fast mode) prints NOTHING where C++ echoes the input words; and `hfst lookup -v` diverges deeper in its verbose output though the first lines match. Both reproduce on UNCLUSTERED spellings, so neither is a getopt problem. Found by the getopt-clustered-shorts agent in a 131-invocation C++-vs-Rust diff whose other 22 differences were all message-text or stream-routing noise — these two are payload. Verify each against the oracle and decide: silent fast mode looks like a straightforward port gap rather than a deliberate divergence"
+                priority 2
+                kind @fix
             }
         )
     }
