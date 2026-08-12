@@ -4952,6 +4952,15 @@ children (
                 title "hfst-tokenize --space-separated is unreachable: tokenize.rs:130 maps it to 'd', which handle_common_case claims as --debug and continues; the real branch at :188 keys on 'i' and nothing in the table maps to 'i'. Verified -i now dies as an unknown option. C++ escapes this via its short-option string \"nkawWmub:t:l:zixcSgCfL\" (spec hfst-tokenize.md:112), which the port dropped. Passing the flag silently enables debug and emits the default format"
                 priority 1
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T08:54:57.804134Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -4959,6 +4968,15 @@ children (
                 title "hfst_getopt.rs:150 never resets optarg to None: an OPTIONAL_ARGUMENT option given without an inline =value leaves the PREVIOUS option's argument visible through optarg_opt(). GNU getopt_long sets optarg = NULL there. All five call sites currently error out, so it is loud, but it aborts valid invocations like `hfst-lookup -i x.hfst --colour`. Reachable via --colour/--color, hfst-summarize -S, --pipe-mode"
                 priority 1
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T08:55:00.496786Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5053,6 +5071,14 @@ children (
                 title "#[allow(dead_code)] is the mask for the inert-flag half of this bug class — audit and remove it from options structs. ~30 sites tree-wide; 8 sit directly on CLI options-struct fields, which is the exact signature of a flag parsed-but-never-read. Verified: grep.rs expfilename/very_quiet/max_infinite and tokenize.rs token_number each have exactly TWO mentions (declaration + Default initialiser) — never parsed, never read; grep.rs matches is written but never read. grep's are C++-faithful (upstream ignores them too) so wiring them is NOT the fix; removing the blanket allow is, because while it stands rustc can never report the NEXT field that goes unread — which is how tokenize --space-separated survived. Per-field allow with a \"C++ ignores this too\" reason where faithful, deleted where not. Concrete mechanism for silent-stub-lint-gate. Also confirm tokenize.rs token_number against the C++ spec; it was not among the cleared set"
                 priority 1
                 kind @refactor
+                log (
+                    {
+                        at 2026-08-12T08:54:49.040103Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "The CLI half is done (branch nplan/tokenize-space-separated-unreachable, merged). The agent overturned my prescription and was right to: I had said keep a narrowly-scoped per-field allow WITH a \"C++ ignores this too\" reason where the faithfulness defence applies. It argued that a field NO option writes cannot preserve upstream behaviour — it can only mask the warning — so all five (grep expfilename/very_quiet/max_infinite/matches, tokenize token_number) were DELETED outright, with the faithfulness observation moved to a WHY note on the Options doc comment. token_number checked against the oracle: hfst-tokenize.cc:69 declares it once and never reads it, no spec rule names it. Ratchet verified by probe — a throwaway unread field now produces \"field is never read\".\n\nREMAINING, and the last hiding place for an inert flag: crates/hfst-cli/src/tools/optimized_lookup.rs carries FOUR more options-struct #[allow(dead_code)] fields (lines 45, 58, 67, 69). Outside that agent's file ownership so deliberately untouched. Wants the same treatment.\n\nNOT to be swept: the function-level #[allow(dead_code)] in grep.rs (467, 501, 759, 923) and tokenize.rs (first_transducer_is_called_top) sit on ported-but-uncalled functions carrying [spec:hfst:def:]/[sem:] annotations. Removing those would drop nspec coverage and they are not the inert-flag pattern."
+                    }
+                )
             }
         )
     }

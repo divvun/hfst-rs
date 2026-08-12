@@ -272,4 +272,6 @@ assertions (
     {id foma-substitute-noop, kind @doing, author "brendan@necessary.nu", at 2026-08-12T07:34:42.802871Z}
     {id compose-intersect-empty-panic, kind @doing, author "brendan@necessary.nu", at 2026-08-12T07:41:02.879515Z}
     {id hfst-info-bogus, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:51:34.541479Z}
+    {id tokenize-space-separated-unreachable, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:54:57.804134Z}
+    {id getopt-optarg-stale, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:55:00.496786Z}
 )
