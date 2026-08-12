@@ -424,6 +424,92 @@ pub fn ol_table_size(table_len: usize) -> crate::error::Result<TransitionTableIn
     })
 }
 
+/// Structural check on one index-table entry just read from a stream.
+///
+/// Both tables come off disk as raw little-endian records, and everything
+/// downstream trusts them: a symbol number indexes the alphabet and the
+/// per-symbol vectors built alongside it, a target indexes one of the two
+/// tables. A corrupt or truncated file therefore surfaces as an out-of-bounds
+/// read deep inside the lookup engine, far from anything that could still name
+/// the file. Check the invariants once, at the read boundary, and report a real
+/// error instead.
+///
+/// A slot whose input symbol is `NO_SYMBOL_NUMBER` is blank padding or a
+/// finality marker; its target field then carries a flag or a packed final
+/// weight rather than a table position, so it is left alone.
+pub(crate) fn validate_ol_index_entry(
+    position: usize,
+    input_symbol: SymbolNumber,
+    target: TransitionTableIndex,
+    symbol_count: usize,
+    transition_len: usize,
+) -> crate::error::Result<()> {
+    if input_symbol == NO_SYMBOL_NUMBER {
+        return Ok(());
+    }
+    if input_symbol as usize >= symbol_count {
+        crate::bail!(
+            Hfst,
+            format!(
+                "optimized-lookup transducer is corrupt: index entry {position} has input symbol {input_symbol}, but the alphabet holds {symbol_count} symbols"
+            )
+        );
+    }
+    if target < TRANSITION_TARGET_TABLE_START
+        || (target - TRANSITION_TARGET_TABLE_START) as usize >= transition_len
+    {
+        crate::bail!(
+            Hfst,
+            format!(
+                "optimized-lookup transducer is corrupt: index entry {position} targets {target}, which is not one of the {transition_len} transition-table entries"
+            )
+        );
+    }
+    Ok(())
+}
+
+/// Structural check on one transition-table entry just read from a stream; see
+/// [`validate_ol_index_entry`]. A transition target may address either table,
+/// so both ranges are accepted.
+pub(crate) fn validate_ol_transition_entry(
+    position: usize,
+    input_symbol: SymbolNumber,
+    output_symbol: SymbolNumber,
+    target: TransitionTableIndex,
+    symbol_count: usize,
+    index_len: usize,
+    transition_len: usize,
+) -> crate::error::Result<()> {
+    if input_symbol == NO_SYMBOL_NUMBER {
+        return Ok(());
+    }
+    let bad_symbol = [input_symbol, output_symbol]
+        .into_iter()
+        .find(|s| *s != NO_SYMBOL_NUMBER && *s as usize >= symbol_count);
+    if let Some(symbol) = bad_symbol {
+        crate::bail!(
+            Hfst,
+            format!(
+                "optimized-lookup transducer is corrupt: transition {position} uses symbol {symbol}, but the alphabet holds {symbol_count} symbols"
+            )
+        );
+    }
+    let in_range = if target >= TRANSITION_TARGET_TABLE_START {
+        ((target - TRANSITION_TARGET_TABLE_START) as usize) < transition_len
+    } else {
+        (target as usize) < index_len
+    };
+    if !in_range {
+        crate::bail!(
+            Hfst,
+            format!(
+                "optimized-lookup transducer is corrupt: transition {position} targets {target}, which is outside both the {index_len}-entry index table and the {transition_len}-entry transition table"
+            )
+        );
+    }
+    Ok(())
+}
+
 // [spec:hfst:def:transducer.hfst-ol.transducer-header]
 #[derive(Clone)]
 pub struct TransducerHeader {
@@ -1529,16 +1615,27 @@ impl<T: TableEntry + Clone> TransducerTable<T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer-table.transducer-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-table.transducer-table-fn]
     pub fn new_istream(is: &mut IStream<'_>, index_count: TransitionTableIndex) -> Self {
-        let total = T::SIZE * index_count as usize;
-        let mut buf = vec![0u8; total];
-        is.read(&mut buf);
+        // 'index_count' is a header field read straight off disk. Reading it in
+        // one 'index_count * T::SIZE' buffer lets a corrupt header ask the
+        // allocator for tens of gigabytes, which aborts the process before the
+        // short read that would have revealed the corruption. Batching keeps
+        // the ask bounded and stops at the first short read; the caller sees
+        // the stream's fail flag and reports a clean error.
+        const BATCH: usize = 64 * 1024;
         let mut table = Vec::new();
-        let mut remaining = index_count;
-        let mut p = 0usize;
+        let mut remaining = index_count as usize;
+        let mut buf = vec![0u8; T::SIZE * BATCH.min(remaining.max(1))];
         while remaining != 0 {
-            table.push(T::from_bytes(&buf[p..p + T::SIZE]));
-            remaining -= 1;
-            p += T::SIZE;
+            let n = remaining.min(BATCH);
+            let chunk = &mut buf[..T::SIZE * n];
+            is.read(chunk);
+            if !is.good() {
+                break;
+            }
+            for p in (0..chunk.len()).step_by(T::SIZE) {
+                table.push(T::from_bytes(&chunk[p..p + T::SIZE]));
+            }
+            remaining -= n;
         }
         TransducerTable { table }
     }
@@ -1554,12 +1651,26 @@ impl<T: TableEntry + Clone> TransducerTable<T> {
         self.table[index] = v;
     }
 
-    pub fn at(&self, i: TransitionTableIndex) -> &T {
-        if i < TRANSITION_TARGET_TABLE_START {
-            &self.table[i as usize]
+    /// The entry at `i`, or `None` when `i` addresses past the end of the table.
+    ///
+    /// A state's index-table probe is `state + input_symbol`, so the writer pads
+    /// the index table with blank entries — one per *input* symbol — to keep the
+    /// probe inside the table. A probe can nonetheless carry a higher symbol
+    /// number than the padding covers: identity, unknown and output-only symbols
+    /// are numbered above `input_symbol_count`, and a transducer with no
+    /// transitions at all (the empty language, which is what `compose_intersect`
+    /// of an empty rule vector yields) numbers *every* symbol that way. The C++
+    /// read past the end of the vector and got whatever was there, which failed
+    /// the symbol comparison that follows; `None` is that same "no such entry"
+    /// answer, made explicit. `get_transitions_from_state` already guards its own
+    /// probe this way.
+    pub fn at(&self, i: TransitionTableIndex) -> Option<&T> {
+        let offset = if i < TRANSITION_TARGET_TABLE_START {
+            i
         } else {
-            &self.table[(i - TRANSITION_TARGET_TABLE_START) as usize]
-        }
+            i - TRANSITION_TARGET_TABLE_START
+        };
+        self.table.get(offset as usize)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-table.get-vector-fn]
@@ -1745,70 +1856,89 @@ impl<T1: IndexEntry + TableEntry + Clone + IndexCtor, T2: TransitionEntry + Tabl
     ) -> Self {
         TransducerTables::new_istream(is, index_table_size, transition_table_size)
     }
+    // An index past the end of a table is the blank-padding entry the writer
+    // would have supplied had the probing symbol been an input symbol (see
+    // ['TransducerTable::at']), so every accessor below answers for a blank
+    // entry: no input symbol, no target, not final, matches nothing. That keeps
+    // `find_index` / `find_transitions` / `try_epsilon_indices` reporting "no
+    // transition" instead of panicking on the raw index.
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-weight-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-weight-fn]
     #[inline]
     fn get_weight(&self, i: TransitionTableIndex) -> Weight {
-        self.transition_table.at(i).get_weight()
+        self.transition_table.at(i).map_or(0.0, |e| e.get_weight())
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-transition-input-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-transition-input-fn]
     #[inline]
     fn get_transition_input(&self, i: TransitionTableIndex) -> SymbolNumber {
-        self.transition_table.at(i).get_input_symbol()
+        self.transition_table
+            .at(i)
+            .map_or(NO_SYMBOL_NUMBER, |e| e.get_input_symbol())
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-transition-output-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-transition-output-fn]
     #[inline]
     fn get_transition_output(&self, i: TransitionTableIndex) -> SymbolNumber {
-        self.transition_table.at(i).get_output_symbol()
+        self.transition_table
+            .at(i)
+            .map_or(NO_SYMBOL_NUMBER, |e| e.get_output_symbol())
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-transition-target-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-transition-target-fn]
     #[inline]
     fn get_transition_target(&self, i: TransitionTableIndex) -> TransitionTableIndex {
-        self.transition_table.at(i).get_target()
+        self.transition_table
+            .at(i)
+            .map_or(NO_TABLE_INDEX, |e| e.get_target())
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-transition-finality-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-transition-finality-fn]
     #[inline]
     fn get_transition_finality(&self, i: TransitionTableIndex) -> bool {
-        self.transition_table.at(i).is_final()
+        self.transition_table.at(i).is_some_and(|e| e.is_final())
     }
     #[inline]
     fn transition_matches(&self, i: TransitionTableIndex, s: SymbolNumber) -> bool {
-        self.transition_table.at(i).matches(s)
+        self.transition_table.at(i).is_some_and(|e| e.matches(s))
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-index-input-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-index-input-fn]
     #[inline]
     fn get_index_input(&self, i: TransitionTableIndex) -> SymbolNumber {
-        self.index_table.at(i).get_input_symbol()
+        self.index_table
+            .at(i)
+            .map_or(NO_SYMBOL_NUMBER, |e| e.get_input_symbol())
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-index-target-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-index-target-fn]
     #[inline]
     fn get_index_target(&self, i: TransitionTableIndex) -> TransitionTableIndex {
-        self.index_table.at(i).get_target()
+        self.index_table
+            .at(i)
+            .map_or(NO_TABLE_INDEX, |e| e.get_target())
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-index-finality-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-index-finality-fn]
     #[inline]
     fn get_index_finality(&self, i: TransitionTableIndex) -> bool {
-        self.index_table.at(i).is_final()
+        self.index_table.at(i).is_some_and(|e| e.is_final())
     }
     #[inline]
     fn index_matches(&self, i: TransitionTableIndex, s: SymbolNumber) -> bool {
-        self.index_table.at(i).matches(s)
+        self.index_table.at(i).is_some_and(|e| e.matches(s))
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.get-final-weight-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.get-final-weight-fn]
     #[inline]
     fn get_final_weight(&self, i: TransitionTableIndex) -> Weight {
-        self.index_table.at(i).final_weight()
+        self.index_table.at(i).map_or(0.0, |e| e.final_weight())
     }
     fn write_index(&self, i: TransitionTableIndex, os: &mut dyn std::io::Write, weighted: bool) {
-        self.index_table.at(i).write(os, weighted)
+        self.index_table
+            .at(i)
+            .expect("write iterates the header sizes, which are the table sizes")
+            .write(os, weighted)
     }
     fn write_transition(
         &self,
@@ -1816,7 +1946,10 @@ impl<T1: IndexEntry + TableEntry + Clone + IndexCtor, T2: TransitionEntry + Tabl
         os: &mut dyn std::io::Write,
         weighted: bool,
     ) {
-        self.transition_table.at(i).write(os, weighted)
+        self.transition_table
+            .at(i)
+            .expect("write iterates the header sizes, which are the table sizes")
+            .write(os, weighted)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.display-fn]
@@ -1971,6 +2104,14 @@ impl Encoder {
     fn read_input_symbol_form(&mut self, s: &str, s_num: i32) {
         let bytes = s.as_bytes();
         let strlen = bytes.len();
+        // A symbol that spells the empty string cannot be tokenized out of the
+        // input — it would consume no bytes — and the trie walk below assumes at
+        // least one byte before the terminator. An alphabet read from a stream
+        // can hold one (two adjacent NUL separators), so drop it here rather
+        // than indexing past the end of a one-byte buffer.
+        if strlen == 0 {
+            return;
+        }
         if strlen == 1
             && should_ascii_tokenize(bytes[0])
             && !self.letters.has_key_starting_with(bytes[0])
@@ -2306,6 +2447,19 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         if header.probe_flag(HeaderFlag::Weighted) != T::WEIGHTED {
             crate::bail!(TransducerHasWrongType);
         }
+        // Input symbols are the leading run of the alphabet, so a header
+        // claiming more of them than there are symbols is corrupt — and the
+        // encoder would walk off the end of the symbol table building its trie.
+        if header.input_symbol_count() > header.symbol_count() {
+            crate::bail!(
+                Hfst,
+                format!(
+                    "optimized-lookup transducer is corrupt: header declares {} input symbols out of {} symbols",
+                    header.input_symbol_count(),
+                    header.symbol_count()
+                )
+            );
+        }
         let alphabet = Box::new(TransducerAlphabet::new_istream(
             is,
             header.symbol_count(),
@@ -2585,6 +2739,36 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         self.tables = Some(T::new_istream(is, its, tts));
         if !is.good() {
             crate::bail!(TransducerHasWrongType);
+        }
+        self.validate_tables()
+    }
+
+    /// Reject a table pair whose symbols or targets point outside the tables
+    /// and the alphabet they were read alongside. Run once at the stream
+    /// boundary; see [`validate_ol_index_entry`].
+    fn validate_tables(&self) -> crate::error::Result<()> {
+        let index_len = self.hdr().index_table_size();
+        let transition_len = self.hdr().target_table_size();
+        let symbol_count = self.alph().get_symbol_table().len();
+        for i in 0..index_len {
+            validate_ol_index_entry(
+                i as usize,
+                self.tbl().get_index_input(i),
+                self.tbl().get_index_target(i),
+                symbol_count,
+                transition_len as usize,
+            )?;
+        }
+        for i in 0..transition_len {
+            validate_ol_transition_entry(
+                i as usize,
+                self.tbl().get_transition_input(i),
+                self.tbl().get_transition_output(i),
+                self.tbl().get_transition_target(i),
+                symbol_count,
+                index_len as usize,
+                transition_len as usize,
+            )?;
         }
         Ok(())
     }

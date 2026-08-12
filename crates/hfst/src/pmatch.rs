@@ -17,9 +17,9 @@ use tracing::{debug, warn};
 
 use crate::hfst_flag_diacritics::{FdState, FdTable};
 use crate::transducer::{
-    DoubleTape, Encoder, NO_COUNTER, NO_SYMBOL_NUMBER, SymbolNumber, SymbolNumberVector,
-    TRANSITION_TARGET_TABLE_START, TransducerAlphabet, TransitionTableIndex, TransitionW,
-    TransitionWIndex, Weight, WeightedDoubleTape,
+    DoubleTape, Encoder, NO_COUNTER, NO_SYMBOL_NUMBER, NO_TABLE_INDEX, SymbolNumber,
+    SymbolNumberVector, TRANSITION_TARGET_TABLE_START, TransducerAlphabet, TransitionTableIndex,
+    TransitionW, TransitionWIndex, Weight, WeightedDoubleTape,
 };
 
 // [spec:hfst:def:pmatch.hfst-ol.rtn-call-stack]
@@ -1244,6 +1244,20 @@ impl PmatchContainer {
         c.set_properties_map(&properties);
         let header = TransducerHeader::new_istream(is)?;
         c.alphabet = PmatchAlphabet::new_from_stream(is, header.symbol_count(), &mut c)?;
+        // Every compiled pmatch TOP is wrapped in @PMATCH_ENTRY@/@PMATCH_EXIT@
+        // (`add_pmatch_delimiters`); those markers are what delimits a match, so
+        // an archive lacking them cannot report one however far the walk gets.
+        // Their absence means the stream is some other optimized-lookup
+        // transducer — a plain .hfstol analyser handed to `hfst tokenize`, say —
+        // and naming that beats matching nothing.
+        if c.alphabet.get_special(SpecialSymbol::entry) == NO_SYMBOL_NUMBER
+            || c.alphabet.get_special(SpecialSymbol::exit) == NO_SYMBOL_NUMBER
+        {
+            crate::bail!(
+                Hfst,
+                "not a pmatch archive: the transducer's alphabet carries no @PMATCH_ENTRY@/@PMATCH_EXIT@ markers (an optimized-lookup transducer that was not compiled by hfst-pmatch2fst?)"
+            );
+        }
         c.orig_symbol_count = c.alphabet.get_orig_symbol_count();
         c.symbol_count = c.alphabet.get_orig_symbol_count();
         c.global_flag_state = FdState::new(c.alphabet.get_fd_table());
@@ -1261,7 +1275,7 @@ impl PmatchContainer {
             header.target_table_size(),
             &c.alphabet,
             "TOP".to_string(),
-        );
+        )?;
         c.toplevel = Some(Box::new(top));
         // C++ loops 'while (inputstream.good())' reading further archive members,
         // breaking when parse_hfst3_header throws TransducerHeaderException. A
@@ -1300,7 +1314,7 @@ impl PmatchContainer {
                     rtn_header.target_table_size(),
                     &c.alphabet,
                     transducer_name.clone(),
-                );
+                )?;
                 if !c.alphabet.has_rtn(&transducer_name) {
                     c.alphabet.add_rtn(Box::new(rtn), &transducer_name);
                 }
@@ -2498,8 +2512,7 @@ impl PmatchTransducer {
         transition_table_size: TransitionTableIndex,
         alphabet: &PmatchAlphabet,
         name: String,
-    ) -> PmatchTransducer {
-        use crate::transducer::TableEntry;
+    ) -> crate::error::Result<PmatchTransducer> {
         let orig_symbol_count = u32::try_from(alphabet.get_symbol_table().len())
             .expect("value out of u32 range") as SymbolNumber;
         // initialize the stack for local variables
@@ -2517,40 +2530,60 @@ impl PmatchTransducer {
         local_variables.tape_step = 1;
         let local_stack: Vec<LocalVariables> = vec![local_variables];
 
-        // Allocate and read tables
-        let mut indextab = vec![0u8; TransitionWIndex::SIZE * index_table_size as usize];
-        let mut transitiontab = vec![0u8; TransitionW::SIZE * transition_table_size as usize];
-        is.read(&mut indextab);
-        is.read(&mut transitiontab);
-        let mut index_table: Vec<TransitionWIndex> = Vec::with_capacity(index_table_size as usize);
-        let mut p = 0usize;
-        let mut remaining = index_table_size;
-        while remaining != 0 {
-            index_table.push(TransitionWIndex::from_bytes(
-                &indextab[p..p + TransitionWIndex::SIZE],
-            ));
-            remaining -= 1;
-            p += TransitionWIndex::SIZE;
+        // Both tables come off disk in one batched pass each, so a size field
+        // inflated by corruption stops at the short read instead of asking the
+        // allocator for the whole claim up front.
+        let index_table = crate::transducer::TransducerTable::<TransitionWIndex>::new_istream(
+            is,
+            index_table_size,
+        );
+        let transition_table = crate::transducer::TransducerTable::<TransitionW>::new_istream(
+            is,
+            transition_table_size,
+        );
+        if !is.good() {
+            crate::bail!(
+                Hfst,
+                "pmatch archive is truncated: the transducer's tables end early"
+            );
         }
-        let mut transition_table: Vec<TransitionW> =
-            Vec::with_capacity(transition_table_size as usize);
-        p = 0;
-        let mut remaining = transition_table_size;
-        while remaining != 0 {
-            transition_table.push(TransitionW::from_bytes(
-                &transitiontab[p..p + TransitionW::SIZE],
-            ));
-            remaining -= 1;
-            p += TransitionW::SIZE;
+        let index_table = index_table.get_vector();
+        let transition_table = transition_table.get_vector();
+
+        // The runtime indexes the alphabet's parallel per-symbol vectors
+        // (printability, capture tags, symbol lists, RTNs) with symbol numbers
+        // taken straight from these entries, and follows their targets back
+        // into the tables. Reject a pair that does not hold together here,
+        // where the archive can still be named.
+        let symbol_count = alphabet.get_symbol_table().len();
+        for (position, entry) in index_table.iter().enumerate() {
+            crate::transducer::validate_ol_index_entry(
+                position,
+                entry.get_input_symbol(),
+                entry.get_target(),
+                symbol_count,
+                transition_table.len(),
+            )?;
+        }
+        for (position, entry) in transition_table.iter().enumerate() {
+            crate::transducer::validate_ol_transition_entry(
+                position,
+                entry.get_input_symbol(),
+                entry.get_output_symbol(),
+                entry.get_target(),
+                symbol_count,
+                index_table.len(),
+                transition_table.len(),
+            )?;
         }
 
-        PmatchTransducer {
+        Ok(PmatchTransducer {
             name,
             local_stack,
             transition_table: Rc::new(transition_table),
             index_table: Rc::new(index_table),
             orig_symbol_count,
-        }
+        })
     }
 
     // ctor from vectors
@@ -2692,13 +2725,63 @@ impl PmatchTransducer {
         }
     }
 
+    /// The transition entry at `i`, or `None` past the end of the table.
+    ///
+    /// A state's arcs are walked by incrementing `i` until an entry with no
+    /// input symbol ends the run. The terminator is written by the packer, but
+    /// the walk is driven by targets read off disk, so "past the end" has to
+    /// answer like that terminator rather than index raw.
+    #[inline]
+    fn transition_at(&self, i: TransitionTableIndex) -> Option<&TransitionW> {
+        self.transition_table.get(i as usize)
+    }
+
+    /// The index entry at `i`, or `None` past the end of the table.
+    ///
+    /// The index table is probed at `state + input_symbol` and padded with
+    /// blank entries for exactly the alphabet's *input* symbols. The pmatch
+    /// runtime encodes the whole alphabet, though — identity, unknown and
+    /// output-only symbols are numbered above `input_symbol_count` — so a probe
+    /// can legitimately reach past the padding whenever the archive's alphabet
+    /// was not harmonized as all-input (any plain optimized-lookup transducer
+    /// handed to the runtime). C++ read past the vector and got a non-matching
+    /// entry; `None` is that same answer, made explicit.
+    #[inline]
+    fn index_at(&self, i: TransitionTableIndex) -> Option<&TransitionWIndex> {
+        self.index_table.get(i as usize)
+    }
+
+    #[inline]
+    fn transition_input(&self, i: TransitionTableIndex) -> SymbolNumber {
+        self.transition_at(i)
+            .map_or(NO_SYMBOL_NUMBER, |t| t.get_input_symbol())
+    }
+
+    #[inline]
+    fn transition_output(&self, i: TransitionTableIndex) -> SymbolNumber {
+        self.transition_at(i)
+            .map_or(NO_SYMBOL_NUMBER, |t| t.get_output_symbol())
+    }
+
+    #[inline]
+    fn transition_target(&self, i: TransitionTableIndex) -> TransitionTableIndex {
+        self.transition_at(i)
+            .map_or(NO_TABLE_INDEX, |t| t.get_target())
+    }
+
+    #[inline]
+    fn transition_weight(&self, i: TransitionTableIndex) -> Weight {
+        self.transition_at(i).map_or(0.0, |t| t.get_weight())
+    }
+
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-transducer.is-final-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.is-final-fn]
     pub fn is_final(&self, i: TransitionTableIndex) -> bool {
         if Self::indexes_transition_table(i) {
-            self.transition_table[(i - TRANSITION_TARGET_TABLE_START) as usize].is_final()
+            self.transition_at(i - TRANSITION_TARGET_TABLE_START)
+                .is_some_and(|t| t.is_final())
         } else {
-            self.index_table[i as usize].is_final()
+            self.index_at(i).is_some_and(|e| e.is_final())
         }
     }
 
@@ -2706,9 +2789,9 @@ impl PmatchTransducer {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.get-weight-fn]
     pub fn get_weight(&self, i: TransitionTableIndex) -> Weight {
         if Self::indexes_transition_table(i) {
-            self.transition_table[(i - TRANSITION_TARGET_TABLE_START) as usize].get_weight()
+            self.transition_weight(i - TRANSITION_TARGET_TABLE_START)
         } else {
-            self.index_table[i as usize].final_weight()
+            self.index_at(i).map_or(0.0, |e| e.final_weight())
         }
     }
 
@@ -2720,12 +2803,15 @@ impl PmatchTransducer {
         input: SymbolNumber,
     ) -> TransitionTableIndex {
         if Self::indexes_transition_table(i) {
-            i - TRANSITION_TARGET_TABLE_START
-        } else if self.index_table[(i + input as u32) as usize].get_input_symbol() == input {
-            self.index_table[(i + input as u32) as usize].get_target()
-                - TRANSITION_TARGET_TABLE_START
-        } else {
-            TRANSITION_TARGET_TABLE_START
+            return i - TRANSITION_TARGET_TABLE_START;
+        }
+        match self.index_at(i + input as u32) {
+            Some(entry) if entry.get_input_symbol() == input => {
+                entry.get_target() - TRANSITION_TARGET_TABLE_START
+            }
+            // No entry for this (state, symbol) — the same "nothing to walk"
+            // answer `is_good` turns into an immediate stop.
+            _ => TRANSITION_TARGET_TABLE_START,
         }
     }
 
@@ -2733,9 +2819,9 @@ impl PmatchTransducer {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.final-index-fn]
     pub fn final_index(&self, i: TransitionTableIndex) -> bool {
         if Self::indexes_transition_table(i) {
-            self.transition_table[i as usize].is_final()
+            self.transition_at(i).is_some_and(|t| t.is_final())
         } else {
-            self.index_table[i as usize].is_final()
+            self.index_at(i).is_some_and(|e| e.is_final())
         }
     }
 
@@ -2764,7 +2850,7 @@ impl PmatchTransducer {
     ) {
         let mut i = self.make_transition_table_index(i, 0);
         while Self::is_good(i) {
-            let input = self.transition_table[i as usize].get_input_symbol();
+            let input = self.transition_input(i);
             if input != 0
                 && !container.alphabet.is_flag_diacritic(input)
                 && !container.alphabet.has_rtn_sym(input)
@@ -2772,10 +2858,10 @@ impl PmatchTransducer {
                 return;
             }
 
-            let output = self.transition_table[i as usize].get_output_symbol();
-            let target = self.transition_table[i as usize].get_target();
+            let output = self.transition_output(i);
+            let target = self.transition_target(i);
             let old_weight = container.get_weight();
-            container.increment_weight(self.transition_table[i as usize].get_weight());
+            container.increment_weight(self.transition_weight(i));
 
             if self.checking_context() {
                 if self.try_exiting_context(output, container) {
@@ -2937,7 +3023,7 @@ impl PmatchTransducer {
                 .expect("entry_stack populated during a left-context check")
                 .wrapping_sub(1);
         }
-        let target = self.transition_table[i as usize].get_target();
+        let target = self.transition_target(i);
         self.get_analyses(input_pos, tape_pos, target, container);
 
         // In case we have a negative context, we check to see if the context
@@ -3012,7 +3098,7 @@ impl PmatchTransducer {
             // flag diacritic allowed
             // generally we shouldn't care to write flags
             //                container->tape.write(tape_pos, input, output);
-            let target = self.transition_table[i as usize].get_target();
+            let target = self.transition_target(i);
             self.get_analyses(input_pos, tape_pos, target, container);
         }
         if container.alphabet.is_global_flag_sym(input) {
@@ -3040,14 +3126,14 @@ impl PmatchTransducer {
         let mut i = self.make_transition_table_index(i, input);
 
         while Self::is_good(i) {
-            let mut this_input = self.transition_table[i as usize].get_input_symbol();
-            let mut this_output = self.transition_table[i as usize].get_output_symbol();
-            let target = self.transition_table[i as usize].get_target();
+            let mut this_input = self.transition_input(i);
+            let mut this_output = self.transition_output(i);
+            let target = self.transition_target(i);
             if this_input == NO_SYMBOL_NUMBER {
                 return;
             } else if this_input == input {
                 let old_weight = container.get_weight();
-                container.increment_weight(self.transition_table[i as usize].get_weight());
+                container.increment_weight(self.transition_weight(i));
                 if !self.checking_context() {
                     if container.alphabet.is_meta_arc(this_output)
                         || (container.alphabet.list2symbols[this_output as usize]

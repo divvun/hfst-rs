@@ -270,15 +270,19 @@ fn compose_intersect_with_no_rules_is_empty() -> Result<(), hfst::error::Error> 
     let no_rules: Vec<T> = Vec::new();
     lex.compose_intersect(&no_rules, false, true)?;
 
-    // Asserted structurally rather than through accepts(): converting the
-    // empty result to the optimized-lookup form and looking a string up in it
-    // panics in TransitionTable::at, which is a separate unfixed defect
-    // (defects/panic-on-malformed-input). Coupling this regression test to
-    // that one would make it fail for the wrong reason.
     assert_eq!(
         lex.number_of_arcs(),
         0,
         "no rules yields the empty language"
     );
+    // And it behaves like one end to end: converting it to the optimized-lookup
+    // form and looking a string up used to walk off the index table (see
+    // tests/malformed_ol_input.rs), which is why this was once asserted only
+    // structurally.
+    assert!(
+        !accepts(&lex, "aaaa")?,
+        "the empty language accepts nothing"
+    );
+    assert!(!accepts(&lex, "")?, "not even the empty string");
     Ok(())
 }
