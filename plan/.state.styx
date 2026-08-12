@@ -265,4 +265,5 @@ assertions (
     {id cli-alias-shadowing, kind @complete, author "brendan@necessary.nu", at 2026-08-11T21:45:03.502421Z}
     {id strtoweight-strtod-semantics, kind @complete, author "brendan@necessary.nu", at 2026-08-11T22:10:40.026858Z}
     {id xfst-prototype-adjacency, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:11.724393Z}
+    {id xre-function-as-network-error, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:55.496721Z}
 )

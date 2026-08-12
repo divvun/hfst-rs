@@ -4851,4 +4851,19 @@ children (
             }
         )
     }
+
+    {
+        id xre-function-as-network-error
+        title "error when a bare name resolves to a function instead of silently compiling the literal symbol — the diagnostic that would have named the lang-kal root cause outright"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-08-12T00:04:55.496721Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

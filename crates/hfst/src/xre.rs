@@ -1749,6 +1749,32 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                     return Ok(v.clone());
                 }
             }
+            // PORT DIVERGENCE: a bare name that names only a FUNCTION is an
+            // error here. xfst reads any bare token as a symbol, so upstream
+            // silently compiles an acceptor for the literal string "NAME" —
+            // a function is never reachable without arguments, so this is
+            // always either a missing argument list or a typo. Staying quiet
+            // is how a single misparsed rule emptied an entire Giella
+            // language: the literal acceptor composed into a `.o.` chain
+            // matched nothing and annihilated it, with no diagnostic at all.
+            // Quote the name to force the literal reading.
+            // Function definitions are keyed with the prototype's open paren
+            // still attached ("Concat("), which is how the FunctionCall arm
+            // looks them up too.
+            if self
+                .function_definitions
+                .contains_key(format!("{symbol}(").as_str())
+            {
+                crate::bail!(
+                    Hfst,
+                    format!(
+                        "'{0}' is a function, not a network: apply it with arguments as '{0}(...)'. \
+                         A bare name never resolves to a function — upstream compiles it as the \
+                         literal symbol '{0}' instead, silently.",
+                        symbol
+                    )
+                );
+            }
         }
         HfstTransducer::new_symbol_pair(symbol, symbol)
     }
