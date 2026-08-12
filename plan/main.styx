@@ -4937,6 +4937,14 @@ children (
                 title "hfst_transducer.rs:2751 compose_intersect empty-rule-vector guard is missing its return — assigns *self = HfstTransducer::new() then falls through to &v[0] and panics. Add the return; regression-test the empty-rule-vector case"
                 priority 0
                 kind @fix
+                log (
+                    {
+                        at 2026-08-12T07:41:02.879515Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {
@@ -5014,6 +5022,13 @@ children (
                 title "hfst-info reports fiction: it answers as upstream C++ HFST 3.17.1 and its feature checks are polarity-inverted. Two stacked bugs. (1) info.rs:29-36 simulates a config.h — PACKAGE_VERSION \"3.17.1\", HFST_LONGVERSION 300170001, HAVE_SFST true — so `info` prints \"HFST version: 3.17.1\" and \"SFST supported\" for a Divvun HFST 0.1.0 build with SFST out of scope, and `-a 3.17.0` exits 0 on a false claim. (2) info.rs:275/285/295 test `if HAVE_FOMA`/`HAVE_XFSM`/`HAVE_OPENFST` where the SFST branch correctly tests `!HAVE_SFST`, so -f foma and -f openfst EXIT 1 for backends that ARE supported while -f sfst exits 0 for one that is not. The inversion is faithfully ported from an upstream C++ bug (hfst-info.cc:237 `#if HAVE_FOMA` guarding \"Required foma support not present\") — fix it, per the successor reframe, rather than preserving it. Report upstream. hfst-info is a build-time detection tool and giella-core configure.ac:116 probes for it, so wrong answers steer configure"
                 priority 0
                 kind @fix
+            }
+
+            {
+                id dead-code-allow-census
+                title "#[allow(dead_code)] is the mask for the inert-flag half of this bug class — audit and remove it from options structs. ~30 sites tree-wide; 8 sit directly on CLI options-struct fields, which is the exact signature of a flag parsed-but-never-read. Verified: grep.rs expfilename/very_quiet/max_infinite and tokenize.rs token_number each have exactly TWO mentions (declaration + Default initialiser) — never parsed, never read; grep.rs matches is written but never read. grep's are C++-faithful (upstream ignores them too) so wiring them is NOT the fix; removing the blanket allow is, because while it stands rustc can never report the NEXT field that goes unread — which is how tokenize --space-separated survived. Per-field allow with a \"C++ ignores this too\" reason where faithful, deleted where not. Concrete mechanism for silent-stub-lint-gate. Also confirm tokenize.rs token_number against the C++ spec; it was not among the cleared set"
+                priority 1
+                kind @refactor
             }
         )
     }

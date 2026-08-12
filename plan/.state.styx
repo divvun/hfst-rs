@@ -270,4 +270,5 @@ assertions (
     {id function-key-normalise, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:13:26.917038Z}
     {id xfst-function-arg-substitution, kind @complete, author "brendan@necessary.nu", at 2026-08-12T06:51:38.839319Z}
     {id foma-substitute-noop, kind @doing, author "brendan@necessary.nu", at 2026-08-12T07:34:42.802871Z}
+    {id compose-intersect-empty-panic, kind @doing, author "brendan@necessary.nu", at 2026-08-12T07:41:02.879515Z}
 )
