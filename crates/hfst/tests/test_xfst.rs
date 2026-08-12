@@ -13,6 +13,60 @@ fn top_states(c: &XfstCompiler<StdVectorFst>) -> u32 {
     c.net(top).number_of_states()
 }
 
+// Number of arcs of the transducer on top of the stack.
+fn top_arcs(c: &XfstCompiler<StdVectorFst>) -> u32 {
+    let top = *c.get_stack().last().expect("empty stack");
+    c.net(top).number_of_arcs()
+}
+
+// `set minimal` has to reach the operations, not merely the variable table:
+// [a b c | x b c] determinizes to 7 states / 6 arcs and minimizes to 4 / 4.
+// Both figures are what C++ hfst-xfst 3.17.1 prints for the same script.
+#[test]
+fn minimal_off_leaves_the_result_unminimized() {
+    let mut on = XfstCompiler::<StdVectorFst>::new_with_impl();
+    on.parse("set minimal ON\nregex [a b c | x b c] ;\n");
+    assert_eq!((top_states(&on), top_arcs(&on)), (4, 4));
+
+    let mut off = XfstCompiler::<StdVectorFst>::new_with_impl();
+    off.parse("set minimal OFF\nregex [a b c | x b c] ;\n");
+    assert_eq!((top_states(&off), top_arcs(&off)), (7, 6));
+}
+
+// Turning it back ON has to restore minimization, not latch OFF.
+#[test]
+fn minimal_on_restores_minimization_after_off() {
+    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    c.parse("set minimal OFF\nset minimal ON\nregex [a b c | x b c] ;\n");
+    assert_eq!((top_states(&c), top_arcs(&c)), (4, 4));
+}
+
+// Regex compilation is one half of the reach; stack operations are the other.
+#[test]
+fn minimal_governs_stack_operations_as_well() {
+    let script = "regex [a b c] ;\nregex [x b c] ;\nunion net\n";
+
+    let mut off = XfstCompiler::<StdVectorFst>::new_with_impl();
+    off.parse(&format!("set minimal OFF\n{script}"));
+    assert_eq!((top_states(&off), top_arcs(&off)), (7, 6));
+
+    let mut on = XfstCompiler::<StdVectorFst>::new_with_impl();
+    on.parse(&format!("set minimal ON\n{script}"));
+    assert_eq!((top_states(&on), top_arcs(&on)), (4, 4));
+}
+
+// `verbose` is the flag that gates the per-command size reports; upstream
+// recorded the variable and never consulted it.
+#[test]
+fn set_verbose_reaches_the_verbosity_flag() {
+    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    c.set_verbosity(true);
+    c.parse("set verbose OFF\n");
+    assert!(!c.verbose);
+    c.parse("set verbose ON\n");
+    assert!(c.verbose);
+}
+
 #[test]
 fn regex_pushes_and_union_combines() {
     let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();

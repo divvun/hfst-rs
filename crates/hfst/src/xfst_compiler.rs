@@ -603,7 +603,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             notes.push(format!("did you mean '{}'?", near));
         }
         notes.push(String::from(
-            "'show all' lists every variable and its value",
+            "'show variables' lists every variable and its value",
         ));
         self.diag_error_with_notes(&format!("no such variable: '{}'", name), &notes);
     }
@@ -628,6 +628,38 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.current_span.clone(),
             crate::diag::Severity::Warning,
             msg,
+        );
+    }
+
+    /// As `diag_warning`, with follow-up advice under the snippet.
+    fn diag_warning_with_notes(&self, msg: &str, notes: &[String]) {
+        crate::diag::emit_with_notes(
+            &self.source_name,
+            &self.source,
+            self.current_span.clone(),
+            crate::diag::Severity::Warning,
+            msg,
+            notes,
+        );
+    }
+
+    /// Report a `set` of a variable this compiler records but never consults.
+    /// Silence is only correct while the requested value happens to describe
+    /// what the compiler does anyway; anything else is a request it cannot
+    /// honour, and the user is entitled to hear that rather than see it echoed.
+    fn warn_if_inert(&self, name: &str, text: &str) {
+        let Some((_, honest)) = INERT_VARIABLES.iter().find(|(v, _)| *v == name) else {
+            return;
+        };
+        if *honest == Some(text) {
+            return;
+        }
+        self.diag_warning_with_notes(
+            &format!("'{}' is recorded but never consulted by this build", name),
+            &[match honest {
+                Some(value) => format!("the behaviour is always '{}'", value),
+                None => String::from("no value of it changes anything"),
+            }],
         );
     }
 
@@ -1707,7 +1739,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // layer up, where the body is re-parsed at its script offset.
         self.xre.source = String::new();
         let mut t = self.xre.eval(xre)?;
-        t.optimize()?;
+        t.optimize_with_config(&self.engine_config)?;
         Ok(self.alloc_net(t))
     }
 
@@ -2003,14 +2035,23 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             if text == "OFF" {
                 self.engine_config.minimization_algorithm =
                     crate::hfst_transducer::MinimizationAlgorithm::BRZOZOWSKI;
+                self.diag_warning_with_notes(
+                    "this build has no Brzozowski minimizer: minimization stays Hopcroft",
+                    &[String::from(
+                        "the minimal network is the same either way; only the algorithm that \
+                         reaches it would differ",
+                    )],
+                );
             }
         }
         if name == "encode-weights" {
             if text == "ON" {
                 self.engine_config.encode_weights = true;
+                self.xre.set_encode_weights(true);
             }
             if text == "OFF" {
                 self.engine_config.encode_weights = false;
+                self.xre.set_encode_weights(false);
             }
         }
         if name == "harmonize-flags" {
@@ -2045,11 +2086,27 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
         if name == "minimal" {
-            // 'set minimal' was left unwired in this port (the C++ would toggle
-            // 'minimization'); the compiler's 'optimize' calls run with the default
-            // config, so this stays a no-op, as before.
-            let _ = text;
+            // C++ toggled the 'hfst::can_minimize' global that 'optimize' branches
+            // on (minimize when set, determinize when clear). Here that choice
+            // rides on the owned EngineConfig threaded into every 'optimize' call,
+            // plus the XRE compiler's own copy so 'read regex' builds the same way.
+            if text == "ON" {
+                self.engine_config.minimization = true;
+                self.xre.set_minimize_result(true);
+            }
+            if text == "OFF" {
+                self.engine_config.minimization = false;
+                self.xre.set_minimize_result(false);
+            }
         }
+        if name == "verbose" {
+            // Upstream stored this and read it nowhere, so 'set verbose ON' was
+            // inert there; the flag it obviously names is this compiler's own.
+            self.verbose = text == "ON";
+            self.xre.set_verbosity(self.verbose);
+            self.lexc.set_verbosity(if self.verbose { 2 } else { 0 });
+        }
+        self.warn_if_inert(name, text);
 
         if self.verbose {
             println!("variable {} = {}", name, text);
@@ -3508,6 +3565,23 @@ fn get_help_message(_text: &str, _message: &mut String, _help_mode: i32) -> bool
     false
 }
 
+/// Variables this compiler records but never consults, each paired with the
+/// value that does describe what it actually does (`None` where no value does).
+/// Upstream carried these too and stayed silent about most of them; `set` warns
+/// instead, because an accepted request that changes nothing is worse than a
+/// refused one.
+const INERT_VARIABLES: &[(&str, Option<&str>)] = &[
+    ("char-encoding", Some("UTF-8")),
+    ("copyright-owner", None),
+    ("directory", Some("OFF")),
+    ("quote-special", Some("OFF")),
+    ("random-seed", None),
+    ("recode-cp1252", Some("NEVER")),
+    ("recursive-define", Some("OFF")),
+    ("sort-arcs", None),
+    ("use-timer", Some("OFF")),
+];
+
 // A side table mirroring the C++ file-static 'variable_explanations' map,
 // consulted by show_all. Populated lazily on first use.
 fn variable_explanations_get(key: &str) -> String {
@@ -3520,7 +3594,7 @@ fn variable_explanations_get(key: &str) -> String {
             "att-epsilon",
             "epsilon symbol used when reading from att files",
         ),
-        ("char-encoding", "character encoding used"),
+        ("char-encoding", "character encoding used, always UTF-8"),
         ("copyright-owner", ""),
         ("directory", "<NOT IMPLEMENTED>"),
         ("encode-weights", "encode weights when minimizing"),
@@ -3532,7 +3606,10 @@ fn variable_explanations_get(key: &str) -> String {
             "harmonize-flags",
             "harmonize flag diacritics before composition",
         ),
-        ("hopcroft-min", "use hopcroft's minimization algorithm"),
+        (
+            "hopcroft-min",
+            "use hopcroft's minimization algorithm, the only one built in",
+        ),
         (
             "lexc-minimize-flags",
             "if 'lexc-with-flags' == ON, minimize number of flags",
@@ -3570,11 +3647,11 @@ fn variable_explanations_get(key: &str) -> String {
         ),
         (
             "quote-special",
-            "enclose special characters in double quotes",
+            "<NOT IMPLEMENTED> enclose special characters in double quotes",
         ),
-        ("random-seed", "<EXPLANATION MISSING>"),
+        ("random-seed", "<NOT IMPLEMENTED>"),
         ("recode-cp1252", "<NOT SUPPORTED>"),
-        ("recursive-define", "<EXPLANATION MISSING>"),
+        ("recursive-define", "<NOT IMPLEMENTED>"),
         (
             "retokenize",
             "retokenize regular expressions in 'compile-replace'",
@@ -4362,7 +4439,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
 
-        self.net_mut(result).optimize()?;
+        let cfg = self.engine_config;
+        self.net_mut(result).optimize_with_config(&cfg)?;
         self.stack.push(result);
         self.print_transducer_info();
         self.prompt();
@@ -4472,7 +4550,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
             self.stack.pop();
         }
-        self.net_mut(result).optimize()?;
+        let cfg = self.engine_config;
+        self.net_mut(result).optimize_with_config(&cfg)?;
         self.stack.push(result);
         self.print_transducer_info();
         self.prompt();
@@ -4561,7 +4640,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         fsm.complete()?;
         let result: NetId = self.alloc_net(HfstTransducer::from_basic_transducer(&fsm));
         self.stack.pop();
-        self.net_mut(result).optimize()?;
+        let cfg = self.engine_config;
+        self.net_mut(result).optimize_with_config(&cfg)?;
         self.stack.push(result);
         self.print_transducer_info();
         self.prompt();
@@ -4605,7 +4685,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let label_tr = HfstTransducer::new_symbol_pair(&it.0, &it.1)?;
             self.net_mut(result).disjunct(&label_tr, true)?;
         }
-        self.net_mut(result).minimize()?;
+        // Unconditional even under 'minimal OFF': a set of single-label arcs is
+        // trivially minimizable, and upstream minimized here for the same reason.
+        let cfg = self.engine_config;
+        self.net_mut(result).minimize_with_config(&cfg)?;
         self.stack.pop();
         self.stack.push(result);
         self.print_transducer_info();
@@ -4655,7 +4738,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
 
-        self.net_mut(t).optimize()?;
+        let cfg = self.engine_config;
+        self.net_mut(t).optimize_with_config(&cfg)?;
         self.print_transducer_info();
         self.prompt();
         Ok(self)
@@ -4695,7 +4779,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         alpha.remove("@_EPSILON_SYMBOL_@");
         let alpha = crate::hfst_symbol_defs::symbols::to_string_pair_set(&alpha);
         let sigma: NetId = self.alloc_net(HfstTransducer::new_string_pair_set(&alpha, false)?);
-        self.net_mut(sigma).optimize()?;
+        let cfg = self.engine_config;
+        self.net_mut(sigma).optimize_with_config(&cfg)?;
         self.stack.push(sigma);
         self.print_transducer_info();
         self.prompt();
@@ -4850,6 +4935,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let level_is_upper = level == Level::UPPER_LEVEL;
         let level_not_upper = level != Level::UPPER_LEVEL;
         let retokenize_on = self.variables["retokenize"] == "ON";
+        let cfg = self.engine_config;
 
         let mut fsm = HfstBasicTransducer::new_from_transducer(self.net(tmp));
         let mut early_return = false;
@@ -4890,7 +4976,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                             break 'outer;
                         };
 
-                        let _ = replacement.optimize();
+                        let _ = replacement.optimize_with_config(&cfg);
                         let repl = HfstBasicTransducer::new_from_transducer(&replacement);
                         fsm.insert_transducer(*start_state, *end_state, &repl);
                     }
@@ -4908,9 +4994,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         // filter out regexps
         let mut cr = Self::contains_regexp_markers_on_one_side(&mut self.xre, level_is_upper);
-        cr.optimize()?;
+        cr.optimize_with_config(&cfg)?;
 
-        self.net_mut(result).subtract(&cr, true)?.optimize()?;
+        self.net_mut(result)
+            .subtract(&cr, true)?
+            .optimize_with_config(&cfg)?;
         self.net_mut(result)
             .substitute("@EPSILON_MARKER@", "@_EPSILON_SYMBOL_@", true, true)?;
         self.stack.pop();
@@ -4942,10 +5030,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
         self.stack.pop();
         let result_op = result;
+        let cfg = self.engine_config;
 
         match operation {
             UnaryOperation::DETERMINIZE_NET => {
-                self.net_mut(result_op).determinize()?;
+                self.net_mut(result_op).determinize_with_config(&cfg)?;
             }
             UnaryOperation::EPSILON_REMOVE_NET => {
                 self.net_mut(result_op).remove_epsilons()?;
@@ -4972,8 +5061,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 self.net_mut(result_op).reverse()?;
             }
             UnaryOperation::MINIMIZE_NET => {
-                // implicit minimization requested, do not use optimize()
-                self.net_mut(result_op).minimize()?;
+                // explicit minimization requested, do not use optimize()
+                self.net_mut(result_op).minimize_with_config(&cfg)?;
             }
             UnaryOperation::PRUNE_NET_ => {
                 // 'prune' is a tropical-only facade operation; the C++
@@ -4992,7 +5081,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             && operation != UnaryOperation::DETERMINIZE_NET
             && operation != UnaryOperation::EPSILON_REMOVE_NET
         {
-            self.net_mut(result_op).optimize()?;
+            self.net_mut(result_op).optimize_with_config(&cfg)?;
         }
         self.stack.push(result);
         self.print_transducer_info();
@@ -5349,7 +5438,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
             let mut c = HfstTransducer::new_copy(self.net(top))?;
             // the user has been warned for possible slow performance
-            c.invert()?.minimize()?;
+            c.invert()?.minimize_with_config(&self.engine_config)?;
             owned_t = Some(c);
         }
 
@@ -5497,7 +5586,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         let mut copy = HfstTransducer::new_copy(self.net(t))?;
         // the user has been warned for possible slow performance
-        copy.invert()?.minimize()?;
+        copy.invert()?.minimize_with_config(&self.engine_config)?;
         let fsm = HfstBasicTransducer::new_from_transducer(&copy);
         self.lookup_basic(line, &fsm);
         Ok(self)
@@ -5750,7 +5839,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         if let Some(compiled) = compiled {
             let t = HfstTransducer::new_copy(self.net(compiled))?;
             let t = self.alloc_net(t);
-            self.net_mut(t).optimize()?;
+            let cfg = self.engine_config;
+            self.net_mut(t).optimize_with_config(&cfg)?;
             self.stack.push(t);
             self.print_transducer_info();
         } else {
@@ -5845,7 +5935,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        t.optimize()?;
+        t.optimize_with_config(&self.engine_config)?;
         let t = self.alloc_net(t);
         self.stack.push(t);
         self.print_transducer_info();
@@ -5883,7 +5973,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         match result {
             Ok(r) => {
                 let net = self.alloc_net(r);
-                self.net_mut(net).optimize()?;
+                let cfg = self.engine_config;
+                self.net_mut(net).optimize_with_config(&cfg)?;
                 self.stack.push(net);
                 self.print_transducer_info();
             }
@@ -5962,7 +6053,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         // The file is closed when 'reader' is dropped.
 
-        self.net_mut(tmp).minimize()?; // a trie should be easily minimizable
+        let cfg = self.engine_config;
+        self.net_mut(tmp).minimize_with_config(&cfg)?; // a trie is easily minimizable
         self.stack.push(tmp);
         self.print_transducer_info();
         self.prompt();
@@ -6051,7 +6143,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         // MAYBE_MINIMIZE(top)
-        self.net_mut(top).optimize()?;
+        let cfg = self.engine_config;
+        self.net_mut(top).optimize_with_config(&cfg)?;
         self.prompt();
         Ok(self)
     }
@@ -6135,7 +6228,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         // MAYBE_MINIMIZE(top)
-        self.net_mut(top).optimize()?;
+        let cfg = self.engine_config;
+        self.net_mut(top).optimize_with_config(&cfg)?;
         self.prompt();
         Ok(self)
     }
@@ -6189,7 +6283,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         if let Some(substituted) = substituted {
             // MAYBE_MINIMIZE(substituted)
-            self.net_mut(substituted).optimize()?;
+            let cfg = self.engine_config;
+            self.net_mut(substituted).optimize_with_config(&cfg)?;
             self.stack.push(substituted);
             self.print_transducer_info();
         } else {
