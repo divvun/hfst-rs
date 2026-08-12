@@ -5182,6 +5182,22 @@ children (
                 title "Backend::number_of_states / number_of_arcs default to 0 for every non-tropical backend (crates/hfst/src/backend.rs:92-99), so `print size` under -f foma reports \"0 states, 0 arcs\" for any net while tropical reports the real counts. Same silent-stub shape: a default value a caller consumes as fact. C++ FomaTransducer::number_of_states/number_of_arcs DO exist (hfst-cpp FomaTransducer.cc:607,622), so this is a genuine port gap, not an upstream limitation. Found by the foma-extract-paths agent while verifying its own suspects; outside its file ownership so left alone"
                 priority 1
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T11:17:19.910228Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Merged nplan/backend-counts-zero (7f7528e + cef2bca). 369/369 workspace, 276/276 foma, clippy and fmt clean, cargo check --no-default-features clean. Verified myself: foma and tropical now report identical counts (2/3, 6/7, 3/3) on the xfst net-info line.\n\nBoth trait defaults REMOVED rather than made honest — number_of_states, number_of_arcs and has_weights are now undefaulted, so a future backend gets a compile error instead of silently reporting 0/false. The old doc comment claiming \"the C++ returned the count only for the tropical backend\" was simply false: C++ HfstTransducer::number_of_states dispatches to tropical, SFST, foma and xfsm.\n\nI ASKED FOR THE WRONG THING ON has_weights AND THE AGENT WAS RIGHT TO REFUSE. I instructed it to answer from the is_weighted() that stream_type() already uses. Those are different questions: is_weighted() is the header's Weighted flag, i.e. are the tables weighted-SHAPED; has_weights() is tropical's definition, i.e. does any arc or final weight differ from 0.0. Conversions build weighted-shaped tables even for logically unweighted material (the interim invariant of [dec:hfst:monomorphic-backends]), so an OLW net from an all-zero source has is_weighted() == true while the identical tropical net has has_weights() == false. Following my instruction would have made has_weights answer a different question depending on backend — a fresh instance of the very defect class this sweep is removing. It scans for a non-zero weight instead, using is_weighted() only as a cheap negative, and the test has_weights_reports_carried_weights_not_table_shape pins the crux: all-zero net, is_weighted() true AND has_weights() false. Under my instruction that test would fail.\n\nIt also answered the question I actually cared about: has_weights had ZERO call sites — not in hfst-cli, no tool, no test. Latent public-API surface that would have lied to its first consumer, not a live bug. And stream_type()'s two readers never touch has_weights, so the disagreement I asked it to investigate had nothing riding on it.\n\nDeliberate divergence noted: C++ returns false for HFST_OL/OLW unconditionally. Answering truthfully beats a compatible stub under [dec:hfst:independent-fork].\n\nLeft alone, correctly: Backend::print_alphabet still defaults to a no-op, but it is a debug-only sink with no caller consuming a return value, so there is nothing for it to lie to."
+                    }
+
+                    {
+                        at 2026-08-12T11:17:33.375314Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
