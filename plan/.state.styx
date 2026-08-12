@@ -281,4 +281,6 @@ assertions (
     {id xfst-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:21:47.266775Z}
     {id dead-code-allow-census, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:04:45.730918Z}
     {id lexc-unicode-check-diagnostic, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:09:01.560795Z}
+    {id xfst-set-minimal-unwired, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:15:03.860264Z}
+    {id naive-tokenizer-harmonizer-alphabet, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:15:05.78157Z}
 )

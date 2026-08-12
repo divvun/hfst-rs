@@ -5099,6 +5099,22 @@ children (
                 title "xfst_compiler.rs:1929 `set minimal ON/OFF` is parsed, echoed back to the user as `variable minimal = OFF` as if applied, then discarded via `let _ = text;`. Not a stub returning a consumed value, but the one place the port REPORTS SUCCESS for something it did not do. Either wire it to the minimization config or refuse the command"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T11:14:21.601104Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "WIRED, not refused. Merged nplan/xfst-set-minimal-unwired (96c458b). Verified here on the merged tree: `regex [a b c | x b c]` gives 4 states/4 arcs with `set minimal ON` and 7/6 with OFF, byte-identical to C++ hfst-xfst in both modes. 363/363 workspace, 270/270 foma.\n\nThe reason it looked unwireable is the interesting part, and it is the same defect one layer down. Setting the flag was trivial; what mattered is that all 16 optimize() call sites in the compiler used the DEFAULT EngineConfig — i.e. the C++ MAYBE_MINIMIZE sites were reading a hardcoded minimization: true. They now take the owned self.engine_config, which is where C++ read its can_minimize global. A flag reaching a field nobody reads is exactly the trap the brief warned about, and it was already present.\n\nSame shape found in two more variables while surveying all 35:\n- encode-weights reached engine_config, but engine_config had exactly ONE reader in the file (a compose call that ignores the field). Now has real consumers, and set_encode_weights is called to match the C++ global.\n- verbose was recorded and read nowhere, HERE AND UPSTREAM, despite self.verbose existing and gating print_transducer_info — C++ gates identically and simply never connected `set verbose` to it. Now wired.\n\nhopcroft-min got option (b), correctly: minimization_algorithm is documented inert at hfst_transducer.rs:3809-3812 because rustfst's Minimize does not branch on it, and that file was outside ownership. It now emits an ariadne warning that the build has no Brzozowski minimizer, with a note that the resulting network is identical either way.\n\nNine variables confirmed genuinely inert in BOTH implementations (char-encoding, copyright-owner, directory, quote-special, random-seed, recode-cp1252, recursive-define, sort-arcs, use-timer) — quote-special is a CLI flag of hfst-lookup/fst2strings, never an xfst behaviour. Collected in one INERT_VARIABLES table paired with the value that DOES describe the compiler, so `set` warns only when the request differs: `set directory OFF` is silent, `set char-encoding latin-1` is not. Four explanations that implied working features now say otherwise in `show variables`.\n\nBonus: the `no such variable` diagnostic advised 'show all', which is not a command in either implementation — the spelling is `show variables`. That was in the diagnostic the xfst-diagnostics node had just improved, so it was giving confidently wrong advice.\n\nAgent's note worth keeping: it observed the suite is 344 locally, not the 1598 in project memory, and inferred the fixture suite lives outside cargo nextest. Correct — that is the separate rustfst/oracle fixture harness."
+                    }
+
+                    {
+                        at 2026-08-12T11:15:03.860264Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5173,12 +5189,35 @@ children (
                 title "make_naive_tokenizer (pmatch_tokenize.rs:1431) builds its harmonizer with hfst_transducer_to_hfst_ol(dictionary) WITHOUT the \"harmonizer_alphabet\" option that convert_ol_transducer.rs:180-205 documents as the fix for exactly this index-table under-padding (upstream hfst#354). That is why `hfst tokenize &lt;plain .hfstol&gt;` reached the pmatch table probe at all. Input matching is unaffected — input symbols are precisely the padded ones — so the runtime bounds fix in panic-on-malformed-input is sufficient for correctness, but the option is arguably missing here and its absence is what routed a plain transducer into the pmatch path. Found by the panics agent, outside its file ownership"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T11:14:48.05473Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "VERDICT: NO CHANGE. make_naive_tokenizer is correct as-is; the test-only commit (66fde4c) pins the conclusion so the question is not reopened from scratch. Merged.\n\nWhat harmonizer_alphabet actually does: in get_states_and_symbols it reclassifies every alphabet symbol appearing in NO transition as an input symbol, which permutes numbering (real input symbols get pushed into the alphabet tail), grows input_symbol_count to the whole alphabet, and pads the index table by that many blanks.\n\nThat is right for write_archive, which harmonizes against a transition-LESS alphabet holder — without the option every symbol is output-only, input_symbol_count is 1, and the numbering imposed on archive members carries no input structure. make_naive_tokenizer is the opposite case: the harmonizer IS the dictionary, a real transducer whose transitions already say which symbols are inputs.\n\nMeasured cost, A/B on the real code path: dictionary index table 13 -> 445 (34x); on a larger synthetic 55 -> 2059 (37x). Benefit measured at zero — tokenize output byte-identical with and without; an over-range probe answers exactly like the blank entry longer padding would have provided; the pmatch runtime never consults input_symbol_count (PmatchContainer builds its Encoder over orig_symbol_count); and the tables are never serialized here.\n\nThe decisive argument is one I had not considered: it could not be avoided anyway. EVERY plain .hfstol ever written pads for its input symbols only, and hfst tokenize must accept those files as dictionaries. So the fix genuinely belongs in the runtime bounds check that already landed under panic-on-malformed-input, not at this call site. C++ hfst-tokenize.cc:140-227 passes the dictionary with no options — same shape.\n\nSEPARATE FINDING, now filed as tokenize-drops-unmatched: the `others` fallback never fires, so unmatched words are silently dropped. I verified against C++ on the same fixture and input — it drops them too, so the port is faithful and this is upstream behaviour, not a defect. Filed as a divergence candidate rather than a bug."
+                    }
+
+                    {
+                        at 2026-08-12T11:15:05.78157Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
                 id getopt-clustered-shorts
                 title "Clustered short options are unsupported across the WHOLE CLI: hfst_getopt.rs treats an option as short only when `name.chars().count() == 1` and never splits a cluster, so `-wq` is rejected with \"Invalid option\" while `-w -q` works. C++ accepts both. Verified against the oracle on hfst-optimized-lookup (-wq is the ONE differing case out of 12 flag spellings tested; every other matches byte-for-byte) and reported also for hfst-fst2strings -qn. This is a flag-compatibility contract with Giella build scripts and hand-typed invocations, not a diagnostic nicety — any script using a cluster fails. Cross-cutting: one fix in hfst_getopt.rs repairs every tool. Found by the dead-code-allow-census agent, outside its file ownership"
                 priority 1
+                kind @fix
+            }
+
+            {
+                id tokenize-drops-unmatched
+                title "hfst tokenize SILENTLY DROPS unmatched input: with a plain .hfstol dictionary, `dogs cot cats` yields \"dogs\\ncats\" — the word `cot` vanishes, even though every letter is in the dictionary's alphabet. With -a the run is emitted as one blob including surrounding spaces. NOT a port defect: C++ hfst-tokenize does exactly the same on the same fixture and input (verified). The naive tokenizer's `others` fallback (make_exc_list(word_boundary)+, weighted f32::MAX) never fires; cause is downstream in the pmatch runtime / exclusion-list handling in crates/hfst/src/pmatch.rs, and make_naive_tokenizer faithfully mirrors the C++. So this is a DIVERGENCE CANDIDATE under [dec:hfst:independent-fork], not a bug to fix silently: a tokenizer that discards input is arguably wrong, but tokenizer output IS a contract with Giella pipelines, so changing it needs an explicit call. Decide, do not drift. Found by the naive-tokenizer agent"
+                priority 2
                 kind @fix
             }
         )
