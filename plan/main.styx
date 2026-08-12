@@ -5000,6 +5000,13 @@ children (
                 priority 2
                 kind @test
             }
+
+            {
+                id hfst-info-bogus
+                title "hfst-info reports fiction: it answers as upstream C++ HFST 3.17.1 and its feature checks are polarity-inverted. Two stacked bugs. (1) info.rs:29-36 simulates a config.h — PACKAGE_VERSION \"3.17.1\", HFST_LONGVERSION 300170001, HAVE_SFST true — so `info` prints \"HFST version: 3.17.1\" and \"SFST supported\" for a Divvun HFST 0.1.0 build with SFST out of scope, and `-a 3.17.0` exits 0 on a false claim. (2) info.rs:275/285/295 test `if HAVE_FOMA`/`HAVE_XFSM`/`HAVE_OPENFST` where the SFST branch correctly tests `!HAVE_SFST`, so -f foma and -f openfst EXIT 1 for backends that ARE supported while -f sfst exits 0 for one that is not. The inversion is faithfully ported from an upstream C++ bug (hfst-info.cc:237 `#if HAVE_FOMA` guarding \"Required foma support not present\") — fix it, per the successor reframe, rather than preserving it. Report upstream. hfst-info is a build-time detection tool and giella-core configure.ac:116 probes for it, so wrong answers steer configure"
+                priority 0
+                kind @fix
+            }
         )
     }
 )
