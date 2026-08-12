@@ -17,11 +17,14 @@ use crate::hfst_data_types::{
     StringPair, StringPairSet, StringPairVector, StringVector, Symbol,
 };
 use crate::hfst_extract_strings::ExtractStringsCb;
+use crate::hfst_flag_diacritics::{FdOperation, FdState, FdTable};
 use crate::hfst_symbol_defs::StringSet;
 use crate::hfst_tropical_transducer_transition_data::{SymbolType, WeightType};
 
 use foma::options::FomaOptions;
 use foma::types::Sigma;
+
+use std::collections::BTreeMap;
 
 /// Snapshot of a basic transducer's recognized relation and alphabet:
 /// (state count, final states, alphabet, arcs).
@@ -191,13 +194,6 @@ impl Backend for FomaTransducer {
         Ok(())
     }
 
-    fn is_infinitely_ambiguous(&self) -> crate::error::Result<bool> {
-        // Approximation for the seam: a cyclic transducer is infinitely
-        // ambiguous on some input. Refined by foma-backend.lookup, which can
-        // restrict cyclicity to the relevant input projection.
-        Ok(self.is_cyclic())
-    }
-
     // [spec:hfst:def:foma-backend.stream-io]
     // [spec:hfst:sem:foma-backend.stream-io]
     // Write half of the stream-io node: serialize the native gzip-compressed
@@ -213,30 +209,22 @@ impl Backend for FomaTransducer {
 
     // [spec:hfst:def:foma-backend.lookup-impl]
     // [spec:hfst:sem:foma-backend.lookup-impl]
-    // Path extraction via foma apply: enumerate the recognized relation and feed
-    // each complete (input, output) path to the callback. See `extract_paths_via_apply`.
     fn extract_paths_cb(&self, callback: &mut dyn ExtractStringsCb, cycles: i32) {
-        self.extract_paths_via_apply(callback, cycles);
+        self.walk_relation(callback, cycles, None, false);
     }
 
-    // Flag-diacritic variant: foma's apply obeys flag diacritics internally
-    // (`apply_init` sets `obey_flags = 1`), so `filter_fd` needs no extra work
-    // here — the enumeration already respects the flags. Documented approximation:
-    // the non-filtering distinction the OpenFst backends draw is not modelled.
     fn extract_paths_fd_cb(
         &self,
         callback: &mut dyn ExtractStringsCb,
         cycles: i32,
-        _filter_fd: bool,
+        filter_fd: bool,
     ) {
-        self.extract_paths_via_apply(callback, cycles);
+        let fd = self.flag_diacritics();
+        self.walk_relation(callback, cycles, Some(&fd), filter_fd);
     }
 }
 
-/// Safety cap on how many paths a bounded enumeration (extract-paths /
-/// random-paths) yields on a cyclic net, where a faithful HFST `cycles` bound
-/// is not expressible through foma's `apply` enumerator. The callback's
-/// `continueSearch` flag is the real terminator; this only prevents runaway.
+/// Safety cap on how many paths an unbounded random-path request yields.
 const PATH_SAFETY_CAP: usize = 8192;
 /// Safety cap on lookup results when the caller passes an unlimited (`< 0`)
 /// limit, so a cyclic transducer cannot loop forever.
@@ -263,15 +251,178 @@ fn lookup_cap(limit: isize) -> usize {
     }
 }
 
-/// Translate an HFST `cycles` bound into a path enumeration cap. foma's
-/// enumerator has no per-cycle traversal count, so a non-negative `cycles` is
-/// approximated by a proportional cap and the unlimited case by the safety cap.
-fn path_bound(cycles: i32) -> usize {
-    if cycles <= 0 {
-        PATH_SAFETY_CAP
-    } else {
-        PATH_SAFETY_CAP.min((cycles as usize).saturating_mul(64))
+/// One arc of the digested line table: the HFST symbol strings the two sides
+/// resolve to, the raw sigma numbers (the flag-diacritic table's keys), and the
+/// target state.
+struct WalkArc {
+    isym: SymbolType,
+    osym: SymbolType,
+    inum: i32,
+    onum: i32,
+    target: u32,
+}
+
+/// foma's sentinel-terminated line table digested into per-state adjacency.
+/// The table is a flat row list, so a walk that rescanned it at every state
+/// (as the C++ `FomaTransducer::extract_paths` did) is quadratic in its length.
+struct Walk {
+    arcs: Vec<Vec<WalkArc>>,
+    finals: Vec<bool>,
+}
+
+/// Gathers complete paths off a `walk_relation` traversal, stopping once `cap`
+/// of them are in hand.
+struct CollectPaths<'a> {
+    results: &'a mut HfstTwoLevelPaths,
+    cap: usize,
+}
+
+impl ExtractStringsCb for CollectPaths<'_> {
+    fn operator_call(
+        &mut self,
+        path: &mut HfstTwoLevelPath,
+        is_final: bool,
+    ) -> crate::hfst_extract_strings::RetVal {
+        if is_final && self.results.len() < self.cap {
+            self.results.insert(path.clone());
+        }
+        crate::hfst_extract_strings::RetVal::new(self.results.len() < self.cap, true)
     }
+}
+
+/// The recursive path-extraction worker: the same traversal the OpenFst and
+/// optimized-lookup backends run, over foma's line table. `all_visitations` /
+/// `path_visitations` are per-call copies; `spv` and `fd_state_stack` are
+/// shared down the recursion.
+#[allow(clippy::too_many_arguments)]
+fn walk_paths(
+    w: &Walk,
+    state: u32,
+    mut all_visitations: BTreeMap<u32, u16>,
+    mut path_visitations: BTreeMap<u32, u16>,
+    callback: &mut dyn ExtractStringsCb,
+    cycles: i32,
+    mut fd_state_stack: Option<&mut Vec<FdState<i32>>>,
+    filter_fd: bool,
+    spv: &mut StringPairVector,
+) -> bool {
+    if cycles >= 0 && (*path_visitations.entry(state).or_insert(0) as i32) > cycles {
+        return true;
+    }
+    *all_visitations.entry(state).or_insert(0) += 1;
+    *path_visitations.entry(state).or_insert(0) += 1;
+
+    if !spv.is_empty() {
+        let is_final = w.finals[state as usize];
+        // foma is unweighted, so every path weighs 0.
+        let mut path = HfstTwoLevelPath {
+            first: 0.0 as WeightType,
+            second: spv.clone(),
+        };
+        let ret = callback.operator_call(&mut path, is_final);
+        if !ret.continueSearch || !ret.continuePath {
+            *path_visitations.entry(state).or_insert(0) -= 1;
+            return ret.continueSearch;
+        }
+    }
+
+    // Visit the least-travelled targets first (stable insertion sort, ascending).
+    let mut order: Vec<&WalkArc> = Vec::new();
+    for arc in w.arcs[state as usize].iter() {
+        let mut i = 0usize;
+        while i < order.len() {
+            let av_a = *all_visitations.get(&arc.target).unwrap_or(&0);
+            let av_i = *all_visitations.get(&order[i].target).unwrap_or(&0);
+            if av_a < av_i {
+                break;
+            }
+            i += 1;
+        }
+        order.insert(i, arc);
+    }
+
+    let mut res = true;
+    let mut idx = 0usize;
+    while idx < order.len() && res {
+        let arc = order[idx];
+        let mut added_fd_state = false;
+
+        if let Some(stack) = fd_state_stack.as_deref_mut()
+            && stack
+                .last()
+                .expect("fd state stack always holds the current state")
+                .get_table()
+                .get_operation(arc.inum)
+                .is_some()
+        {
+            let top = stack
+                .last()
+                .expect("fd state stack always holds the current state")
+                .clone();
+            stack.push(top);
+            if stack
+                .last_mut()
+                .expect("fd state stack always holds the current state")
+                .apply_operation_symbol(arc.inum)
+            {
+                added_fd_state = true;
+            } else {
+                stack.pop();
+                idx += 1;
+                continue; // don't follow the transition
+            }
+        }
+
+        // Special symbols (epsilons, and flags unless filtered) are inserted as
+        // themselves; a filtered flag occupies its column as the empty symbol.
+        let mut istring = SymbolType::default();
+        let mut ostring = SymbolType::default();
+
+        let flag_filtered = |sigma_number: i32, stack: Option<&Vec<FdState<i32>>>| {
+            filter_fd
+                && stack
+                    .expect("fd state stack is Some whenever filter_fd is set")
+                    .last()
+                    .expect("fd state stack always holds the current state")
+                    .get_table()
+                    .get_operation(sigma_number)
+                    .is_some()
+        };
+
+        if !flag_filtered(arc.inum, fd_state_stack.as_deref()) {
+            istring = arc.isym.clone();
+        }
+        if !flag_filtered(arc.onum, fd_state_stack.as_deref()) {
+            ostring = arc.osym.clone();
+        }
+
+        spv.push((istring, ostring));
+
+        res = walk_paths(
+            w,
+            arc.target,
+            all_visitations.clone(),
+            path_visitations.clone(),
+            callback,
+            cycles,
+            fd_state_stack.as_deref_mut(),
+            filter_fd,
+            spv,
+        );
+
+        spv.pop();
+
+        if added_fd_state {
+            fd_state_stack
+                .as_deref_mut()
+                .expect("added_fd_state implies fd_state_stack is present")
+                .pop();
+        }
+        idx += 1;
+    }
+
+    *path_visitations.entry(state).or_insert(0) -= 1;
+    res
 }
 
 impl FomaTransducer {
@@ -319,34 +470,90 @@ impl FomaTransducer {
         h.down(input).take(lookup_cap(limit)).collect()
     }
 
-    /// Enumerate the recognized relation and feed each complete path to
-    /// `callback`. foma's `words()` yields a display string that concatenates
-    /// each arc's `in:out`, which cannot be split back into aligned symbol
-    /// columns; instead we enumerate the input side and apply each input
-    /// downward, pairing the whole input word with each output word as a single
-    /// `StringPair`. Documented approximation: the two-level path collapses to
-    /// one pair (input/output strings preserved, per-symbol alignment not),
-    /// each reported as `is_final = true`. `cycles` bounds cyclic nets.
-    fn extract_paths_via_apply(&self, callback: &mut dyn ExtractStringsCb, cycles: i32) {
-        let bound = path_bound(cycles);
-        let inputs: Vec<String> = {
-            let mut h = foma::apply::apply_init(&self.net);
-            h.upper_words().take(bound).collect()
-        };
-        let mut produced = 0usize;
-        'outer: for iw in inputs {
-            let mut h = foma::apply::apply_init(&self.net);
-            for ow in h.down(&iw).take(bound) {
-                let mut path = HfstTwoLevelPath {
-                    first: 0.0 as WeightType,
-                    second: vec![(Symbol::from(iw.as_str()), Symbol::from(ow.as_str()))],
-                };
-                let rv = callback.operator_call(&mut path, true);
-                produced += 1;
-                if !rv.continueSearch || produced >= bound {
-                    break 'outer;
-                }
+    /// Digest the line table into per-state adjacency, resolving each arc's
+    /// sigma numbers to their HFST symbol strings exactly as `to_basic` does.
+    fn digest(&self) -> Walk {
+        let sigma = &self.net.sigma;
+        let mut arcs: Vec<Vec<WalkArc>> = Vec::new();
+        let mut finals: Vec<bool> = Vec::new();
+        let grow = |arcs: &mut Vec<Vec<WalkArc>>, finals: &mut Vec<bool>, s: usize| {
+            if arcs.len() <= s {
+                arcs.resize_with(s + 1, Vec::new);
+                finals.resize(s + 1, false);
             }
+        };
+
+        for line in self.net.states.rows().iter() {
+            if line.state_no == -1 {
+                break;
+            }
+            let s = line.state_no as usize;
+            grow(&mut arcs, &mut finals, s);
+            if line.final_state == 1 {
+                finals[s] = true;
+            }
+            if line.r#in != -1 && line.target != -1 {
+                grow(&mut arcs, &mut finals, line.target as usize);
+                arcs[s].push(WalkArc {
+                    isym: sym(line.r#in as i32, sigma),
+                    osym: sym(line.out as i32, sigma),
+                    inum: line.r#in as i32,
+                    onum: line.out as i32,
+                    target: line.target as u32,
+                });
+            }
+        }
+
+        Walk { arcs, finals }
+    }
+
+    /// The sigma's flag diacritics, keyed by sigma number.
+    fn flag_diacritics(&self) -> FdTable<i32> {
+        let mut table = FdTable::new();
+        for n in &self.net.sigma {
+            if FdOperation::is_diacritic(&n.symbol) {
+                table.define_diacritic(n.number, &n.symbol);
+            }
+        }
+        table
+    }
+
+    /// Traverse the recognized relation from the start state, feeding the
+    /// callback the per-symbol aligned path after every transition (and the
+    /// empty path when the start state is itself final).
+    fn walk_relation(
+        &self,
+        callback: &mut dyn ExtractStringsCb,
+        cycles: i32,
+        fd: Option<&FdTable<i32>>,
+        filter_fd: bool,
+    ) {
+        let w = self.digest();
+        // foma's start state is always state 0; an empty line table has none.
+        if w.finals.is_empty() {
+            return;
+        }
+
+        let mut fd_state_stack: Option<Vec<FdState<i32>>> = fd.map(|fd| vec![FdState::new(fd)]);
+        let mut spv = StringPairVector::new();
+        walk_paths(
+            &w,
+            0,
+            BTreeMap::new(),
+            BTreeMap::new(),
+            callback,
+            cycles,
+            fd_state_stack.as_mut(),
+            filter_fd,
+            &mut spv,
+        );
+
+        if w.finals[0] {
+            let mut epsilon_path = HfstTwoLevelPath {
+                first: 0.0 as WeightType,
+                second: StringPairVector::new(),
+            };
+            callback.operator_call(&mut epsilon_path, true);
         }
     }
 }
@@ -541,29 +748,16 @@ impl AlgebraBackend for FomaTransducer {
         self.clone()
     }
     fn extract_random_paths(&self, results: &mut HfstTwoLevelPaths, max_num: i32) {
-        // Best-effort (unweighted): enumerate up to `max_num` input words and
-        // pair each with one output as a single-pair, weight-0 two-level path.
+        // Best-effort (unweighted): the first `max_num` complete paths of a
+        // cycle-free traversal, not a weighted random walk. The C++ backend
+        // left this unimplemented entirely.
         let cap = if max_num < 0 {
             PATH_SAFETY_CAP
         } else {
             max_num as usize
         };
-        let inputs: Vec<String> = {
-            let mut h = foma::apply::apply_init(&self.net);
-            h.upper_words().take(cap).collect()
-        };
-        for iw in inputs {
-            if results.len() >= cap {
-                break;
-            }
-            let mut h = foma::apply::apply_init(&self.net);
-            if let Some(ow) = h.down(&iw).next() {
-                results.insert(HfstTwoLevelPath {
-                    first: 0.0 as WeightType,
-                    second: vec![(Symbol::from(iw.as_str()), Symbol::from(ow.as_str()))],
-                });
-            }
-        }
+        let mut cb = CollectPaths { results, cap };
+        self.walk_relation(&mut cb, 0, None, false);
     }
     fn set_final_weights(&self, _weight: f32, _increment: bool) -> Self {
         // unweighted: no-op copy.
@@ -654,13 +848,26 @@ impl LookupBackend for FomaTransducer {
         }
         out
     }
-    fn is_lookup_infinitely_ambiguous_str(&mut self, _s: &str) -> bool {
-        // Approximation: whole-net cyclicity (not restricted to the input's
-        // reachable projection).
-        self.is_cyclic()
+    fn is_lookup_infinitely_ambiguous_str(&mut self, s: &str) -> bool {
+        let Ok(net) = self.to_basic() else {
+            return false;
+        };
+        // The input is a plain string, so it has to be re-tokenized against the
+        // alphabet before the walk can consume it symbol by symbol.
+        let mut tok = crate::hfst_tokenizer::HfstTokenizer::new();
+        for it in net.get_input_symbols().iter() {
+            tok.add_multichar_symbol(it);
+        }
+        let path = tok.tokenize_one_level(s, false);
+        net.is_lookup_infinitely_ambiguous_string_vector(&path, true)
     }
-    fn is_lookup_infinitely_ambiguous_strvec(&mut self, _s: &StringVector) -> bool {
-        self.is_cyclic()
+    fn is_lookup_infinitely_ambiguous_strvec(&mut self, s: &StringVector) -> bool {
+        match self.to_basic() {
+            // foma's apply always obeys flag diacritics (`apply_init` sets
+            // `obey_flags`), so the walk is asked to obey them too.
+            Ok(net) => net.is_lookup_infinitely_ambiguous_string_vector(s, true),
+            Err(_) => false,
+        }
     }
 }
 

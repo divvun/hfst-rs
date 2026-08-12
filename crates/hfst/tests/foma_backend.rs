@@ -710,3 +710,260 @@ fn foma_substitutes_a_pair_with_transducer_like_tropical() {
         "foma and tropical disagree after substituting a pair"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test 5: path extraction parity vs the tropical openfst backend.
+// ---------------------------------------------------------------------------
+
+/// A transducer over explicit symbol vectors, so paths can carry multichar
+/// symbols (epsilons, flag diacritics) that `basic_pair`'s per-char split
+/// cannot express.
+fn basic_symbols(inp: &[&str], outp: &[&str]) -> HfstBasicTransducer {
+    assert_eq!(inp.len(), outp.len(), "basic_symbols needs aligned columns");
+    let mut net = HfstBasicTransducer::new();
+    net.add_state(0);
+    for i in 0..inp.len() {
+        let tr = HfstBasicTransition::new_symbols(
+            (i + 1) as u32,
+            sym(inp[i]),
+            sym(outp[i]),
+            0.0,
+            net.coder_mut(),
+        );
+        net.add_transition(i as u32, &tr, true);
+    }
+    net.set_final_weight(inp.len() as u32, &0.0);
+    net
+}
+
+/// Every callback invocation of a path extraction, as `(is_final, columns)`.
+/// This is the whole observable contract: the per-symbol column vector, not
+/// just the concatenated words.
+type Trace = Vec<(bool, Vec<(String, String)>)>;
+
+struct TraceCb {
+    trace: Trace,
+    cap: usize,
+}
+
+impl ExtractStringsCb for TraceCb {
+    fn operator_call(&mut self, path: &mut HfstTwoLevelPath, is_final: bool) -> RetVal {
+        self.trace.push((
+            is_final,
+            path.second
+                .iter()
+                .map(|(a, b)| (a.to_string(), b.to_string()))
+                .collect(),
+        ));
+        RetVal::new(self.trace.len() < self.cap, true)
+    }
+}
+
+/// The extraction trace, sorted so backends that visit arcs in a different
+/// order still compare equal (multiplicity preserved).
+fn trace_of<B: Backend>(b: &B, cycles: i32, filter_fd: Option<bool>) -> Trace {
+    let mut cb = TraceCb {
+        trace: Vec::new(),
+        cap: 4096,
+    };
+    match filter_fd {
+        None => b.extract_paths_cb(&mut cb, cycles),
+        Some(f) => b.extract_paths_fd_cb(&mut cb, cycles, f),
+    }
+    cb.trace.sort();
+    cb.trace
+}
+
+/// foma used to hand the callback ONE `StringPair` holding the whole input word
+/// and the whole output word, so `HfstTwoLevelPath::second.len()` was always 1.
+/// That made `print longest-string-size` report 1 for every net and broke
+/// `fst2strings --xfst=print-pairs` / `--xfst=print-space`, which read the
+/// per-symbol columns.
+// [spec:hfst:sem:foma-backend.lookup-impl/test]
+#[test]
+fn extract_paths_columns_match_tropical() {
+    let _g = serialized();
+
+    let cases: [(&str, HfstBasicTransducer, usize); 3] = [
+        (
+            "acceptor abc",
+            basic_symbols(&["a", "b", "c"], &["a", "b", "c"]),
+            3,
+        ),
+        (
+            "relation a:b c:d e",
+            basic_symbols(&["a", "c", "e"], &["b", "d", "e"]),
+            3,
+        ),
+        (
+            "epsilon output",
+            basic_symbols(&["x", "y"], &["x", EPSILON]),
+            2,
+        ),
+    ];
+
+    for (name, net, columns) in cases {
+        let foma = trace_of(&foma_of(&net), -1, None);
+        let tropical = trace_of(&tropical_of(&net), -1, None);
+        assert_eq!(foma, tropical, "extract_paths trace parity for {name}");
+
+        // The defect's signature: a single whole-word pair per path.
+        let longest = foma
+            .iter()
+            .filter(|(is_final, _)| *is_final)
+            .map(|(_, cols)| cols.len())
+            .max()
+            .expect("every case has a final path");
+        assert_eq!(longest, columns, "{name}: one column per symbol");
+    }
+}
+
+/// A final start state must still report the empty path, as the openfst
+/// backends do (`regex [a|0]` reaches this).
+// [spec:hfst:sem:foma-backend.lookup-impl/test]
+#[test]
+fn extract_paths_reports_the_empty_path_like_tropical() {
+    let _g = serialized();
+    let mut net = basic_symbols(&["a"], &["a"]);
+    net.set_final_weight(0, &0.0);
+
+    assert_eq!(
+        trace_of(&foma_of(&net), -1, None),
+        trace_of(&tropical_of(&net), -1, None),
+        "empty-path reporting parity"
+    );
+}
+
+/// `cycles` bounds the traversal per state, rather than being approximated by
+/// a cap on the number of paths produced.
+// [spec:hfst:sem:foma-backend.lookup-impl/test]
+#[test]
+fn extract_paths_cycle_bound_matches_tropical() {
+    let _g = serialized();
+    let net = basic_sigma_star(&["a", "b"]);
+
+    for cycles in [0, 1, 2] {
+        assert_eq!(
+            trace_of(&foma_of(&net), cycles, None),
+            trace_of(&tropical_of(&net), cycles, None),
+            "cycles={cycles} traversal parity on a cyclic net"
+        );
+    }
+}
+
+/// `extract_paths_fd_cb` used to ignore `filter_fd` entirely, so flag
+/// diacritics never appeared in an extracted path on a foma transducer —
+/// `fst2strings --xfst=print-flags` printed nothing where the openfst backends
+/// printed the flags.
+// [spec:hfst:sem:foma-backend.lookup-impl/test]
+#[test]
+fn extract_paths_fd_honours_filter_fd_like_tropical() {
+    let _g = serialized();
+    let net = basic_symbols(&["@U.N.SG@", "a", "b"], &["@U.N.SG@", "a", "b"]);
+
+    let shown = trace_of(&foma_of(&net), -1, Some(false));
+    let hidden = trace_of(&foma_of(&net), -1, Some(true));
+
+    assert_eq!(
+        shown,
+        trace_of(&tropical_of(&net), -1, Some(false)),
+        "filter_fd=false (print flags) parity"
+    );
+    assert_eq!(
+        hidden,
+        trace_of(&tropical_of(&net), -1, Some(true)),
+        "filter_fd=true (filter flags) parity"
+    );
+    assert_ne!(shown, hidden, "filter_fd made no difference");
+
+    let flagged = |t: &Trace| {
+        t.iter()
+            .any(|(_, cols)| cols.iter().any(|(a, _)| a == "@U.N.SG@"))
+    };
+    assert!(flagged(&shown), "filter_fd=false must show the flag");
+    assert!(!flagged(&hidden), "filter_fd=true must hide the flag");
+}
+
+// ---------------------------------------------------------------------------
+// Test 6: infinite ambiguity is about input-epsilon cycles, not cyclicity.
+// ---------------------------------------------------------------------------
+
+/// foma used to answer whole-net `is_cyclic()`, which reports every cyclic net
+/// as infinitely ambiguous — `a*` is cyclic but reads one input symbol per arc,
+/// so it is finitely ambiguous. Only a cycle that consumes no input (an input
+/// epsilon or a flag diacritic) is.
+// [spec:hfst:sem:foma-backend.lookup-impl/test]
+#[test]
+fn is_infinitely_ambiguous_needs_an_input_epsilon_cycle() {
+    let _g = serialized();
+
+    // a* — cyclic, finitely ambiguous.
+    let consuming = basic_sigma_star(&["a"]);
+    // (0:a)* — an input-epsilon cycle, infinitely ambiguous.
+    let mut epsilon_loop = HfstBasicTransducer::new();
+    epsilon_loop.add_state(0);
+    let tr =
+        HfstBasicTransition::new_symbols(0, sym(EPSILON), sym("a"), 0.0, epsilon_loop.coder_mut());
+    epsilon_loop.add_transition(0, &tr, true);
+    epsilon_loop.set_final_weight(0, &0.0);
+
+    for (name, net, want) in [("a*", consuming, false), ("(0:a)*", epsilon_loop, true)] {
+        let foma = foma_of(&net);
+        assert!(foma.is_cyclic(), "{name} is cyclic either way");
+        assert_eq!(
+            foma.is_infinitely_ambiguous().expect("foma ambiguity"),
+            want,
+            "foma is_infinitely_ambiguous({name})"
+        );
+        assert_eq!(
+            foma.is_infinitely_ambiguous().expect("foma ambiguity"),
+            tropical_of(&net)
+                .is_infinitely_ambiguous()
+                .expect("tropical ambiguity"),
+            "is_infinitely_ambiguous parity for {name}"
+        );
+    }
+}
+
+/// The lookup-time question is about the input, not the whole net: the answer
+/// used to be whole-net cyclicity, so every input got the same answer.
+// [spec:hfst:sem:foma-backend.lookup-impl/test]
+#[test]
+fn is_lookup_infinitely_ambiguous_depends_on_the_input() {
+    let _g = serialized();
+
+    // 0 -a:a-> 1 (final, with a 0:x self-loop); 0 -b:b-> 2 (final).
+    let mut net = HfstBasicTransducer::new();
+    net.add_state(0);
+    for (target, i, o) in [(1u32, "a", "a"), (2, "b", "b")] {
+        let tr = HfstBasicTransition::new_symbols(target, sym(i), sym(o), 0.0, net.coder_mut());
+        net.add_transition(0, &tr, true);
+    }
+    let loop_tr = HfstBasicTransition::new_symbols(1, sym(EPSILON), sym("x"), 0.0, net.coder_mut());
+    net.add_transition(1, &loop_tr, true);
+    net.set_final_weight(1, &0.0);
+    net.set_final_weight(2, &0.0);
+
+    let mut foma = foma_of(&net);
+    let mut ol: Transducer<WeightedTables> =
+        <Transducer<WeightedTables> as Backend>::from_basic(&net).expect("OL from_basic");
+
+    for (input, want) in [("a", true), ("b", false)] {
+        let sv = vec![sym(input)];
+        assert_eq!(
+            foma.is_lookup_infinitely_ambiguous_strvec(&sv),
+            want,
+            "foma is_lookup_infinitely_ambiguous({input})"
+        );
+        assert_eq!(
+            foma.is_lookup_infinitely_ambiguous_strvec(&sv),
+            ol.is_lookup_infinitely_ambiguous_strvec(&sv),
+            "foma/OL lookup-ambiguity parity for {input}"
+        );
+        assert_eq!(
+            foma.is_lookup_infinitely_ambiguous_str(input),
+            want,
+            "foma is_lookup_infinitely_ambiguous_str({input})"
+        );
+    }
+}
