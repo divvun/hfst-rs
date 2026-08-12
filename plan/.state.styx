@@ -279,4 +279,5 @@ assertions (
     {id foma-lookup-ambiguity-approx, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:35.644925Z}
     {id panic-on-malformed-input, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:14:32.188148Z}
     {id xfst-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:21:47.266775Z}
+    {id dead-code-allow-census, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:04:45.730918Z}
 )

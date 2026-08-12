@@ -5120,12 +5120,27 @@ children (
                 title "#[allow(dead_code)] is the mask for the inert-flag half of this bug class — audit and remove it from options structs. ~30 sites tree-wide; 8 sit directly on CLI options-struct fields, which is the exact signature of a flag parsed-but-never-read. Verified: grep.rs expfilename/very_quiet/max_infinite and tokenize.rs token_number each have exactly TWO mentions (declaration + Default initialiser) — never parsed, never read; grep.rs matches is written but never read. grep's are C++-faithful (upstream ignores them too) so wiring them is NOT the fix; removing the blanket allow is, because while it stands rustc can never report the NEXT field that goes unread — which is how tokenize --space-separated survived. Per-field allow with a \"C++ ignores this too\" reason where faithful, deleted where not. Concrete mechanism for silent-stub-lint-gate. Also confirm tokenize.rs token_number against the C++ spec; it was not among the cleared set"
                 priority 1
                 kind @refactor
+                sealed true
                 log (
                     {
                         at 2026-08-12T08:54:49.040103Z
                         author "brendan@necessary.nu"
                         kind @decision
                         text "The CLI half is done (branch nplan/tokenize-space-separated-unreachable, merged). The agent overturned my prescription and was right to: I had said keep a narrowly-scoped per-field allow WITH a \"C++ ignores this too\" reason where the faithfulness defence applies. It argued that a field NO option writes cannot preserve upstream behaviour — it can only mask the warning — so all five (grep expfilename/very_quiet/max_infinite/matches, tokenize token_number) were DELETED outright, with the faithfulness observation moved to a WHY note on the Options doc comment. token_number checked against the oracle: hfst-tokenize.cc:69 declares it once and never reads it, no spec rule names it. Ratchet verified by probe — a throwaway unread field now produces \"field is never read\".\n\nREMAINING, and the last hiding place for an inert flag: crates/hfst-cli/src/tools/optimized_lookup.rs carries FOUR more options-struct #[allow(dead_code)] fields (lines 45, 58, 67, 69). Outside that agent's file ownership so deliberately untouched. Wants the same treatment.\n\nNOT to be swept: the function-level #[allow(dead_code)] in grep.rs (467, 501, 759, 923) and tokenize.rs (first_transducer_is_called_top) sit on ported-but-uncalled functions carrying [spec:hfst:def:]/[sem:] annotations. Removing those would drop nspec coverage and they are not the inert-flag pattern."
+                    }
+
+                    {
+                        at 2026-08-12T11:04:30.359037Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Complete. Merged nplan/dead-code-allow-census (f9467f8). 346/346, clippy and fmt clean.\n\nThe census was the vehicle; the payload was TWO real user-facing bugs in hfst-optimized-lookup, both verified here against the C++ oracle.\n\n(1) -q / -s / --quiet / --silent were COMPLETELY INERT. Upstream's -q/-s case does two things — verboseFlag = false AND displayWeightsFlag = true — and the port kept only the first, which nothing reads. The spec rule [spec:hfst:sem:hfst-optimized-lookup.main-fn] states the pair explicitly, so the impl was violating its own rule. Confirmed: `echo cat | ... -q` printed \"cat cat+N+Sg\" where C++ prints \"cat cat+N+Sg 0.5\".\n\n(2) Fixing (1) exposed fmt_weight printing 0.500000 where C++ prints 0.5. hfst-optimized-lookup streams the float (cout << weight, i.e. %g/6-sig-digits); hfst-lookup is the tool that uses printf(\"%f\"), and its shape had been copied here. The existing COMMENT already described %g — the code did not implement it. A pre-existing test asserted \"0.000000\", locking the divergence in; corrected against the oracle, where a zero weight prints as bare 0.\n\nI re-ran the comparison myself: 11 of 12 flag spellings are now byte-identical to C++ hfst-optimized-lookup.\n\nThe per-field verdicts are sound and the reasoning is better than my brief's. Where I said \"keep a per-field allow with a reason where C++ ignores it too\", the agent applied that only where a DELETION would have made a spec annotation lie — OutputType::Hfst and enum Variant are named by def/sem rules that print_analyses claims, so deleting unused members would contradict the annotation. It deleted variant_weighted/variant_has_fd, which carry no annotation, and kept pipe_input/pipe_output with reasons (every upstream read is inside #ifdef WINDOWS, and the tool's own help text says so). That is a sharper line than \"C++ ignores it too\".\n\nRatchet verified by probe: a throwaway field produced \"field is never read\" at the right line; the reasoned per-field allows do not mask new fields. Sweep of the rest of crates/hfst-cli/src found no other options-struct field allows.\n\nOUT OF SCOPE, now filed as getopt-clustered-shorts: clustered short options fail across the entire CLI. -wq is the one differing case in my 12-spelling comparison; `-w -q` works, `-wq` gives \"Invalid option\", C++ accepts both."
+                    }
+
+                    {
+                        at 2026-08-12T11:04:45.730918Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
                     }
                 )
             }
@@ -5141,6 +5156,13 @@ children (
                 id naive-tokenizer-harmonizer-alphabet
                 title "make_naive_tokenizer (pmatch_tokenize.rs:1431) builds its harmonizer with hfst_transducer_to_hfst_ol(dictionary) WITHOUT the \"harmonizer_alphabet\" option that convert_ol_transducer.rs:180-205 documents as the fix for exactly this index-table under-padding (upstream hfst#354). That is why `hfst tokenize &lt;plain .hfstol&gt;` reached the pmatch table probe at all. Input matching is unaffected — input symbols are precisely the padded ones — so the runtime bounds fix in panic-on-malformed-input is sufficient for correctness, but the option is arguably missing here and its absence is what routed a plain transducer into the pmatch path. Found by the panics agent, outside its file ownership"
                 priority 2
+                kind @fix
+            }
+
+            {
+                id getopt-clustered-shorts
+                title "Clustered short options are unsupported across the WHOLE CLI: hfst_getopt.rs treats an option as short only when `name.chars().count() == 1` and never splits a cluster, so `-wq` is rejected with \"Invalid option\" while `-w -q` works. C++ accepts both. Verified against the oracle on hfst-optimized-lookup (-wq is the ONE differing case out of 12 flag spellings tested; every other matches byte-for-byte) and reported also for hfst-fst2strings -qn. This is a flag-compatibility contract with Giella build scripts and hand-typed invocations, not a diagnostic nicety — any script using a cluster fails. Cross-cutting: one fix in hfst_getopt.rs repairs every tool. Found by the dead-code-allow-census agent, outside its file ownership"
+                priority 1
                 kind @fix
             }
         )
