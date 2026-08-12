@@ -42,7 +42,13 @@ const MAX_IO_STRING: usize = 5000;
 // [spec:hfst:def:hfst-optimized-lookup.output-type]
 #[derive(PartialEq, Clone, Copy)]
 enum OutputType {
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "`HFST` is a dead enumerator upstream too: no option assigns it \
+                  and nothing compares against it, only `xerox` is ever used. The \
+                  def rule this enum transcribes names both members, so dropping \
+                  it would put the annotation at odds with the type it describes."
+    )]
     Hfst,
     Xerox,
 }
@@ -53,9 +59,21 @@ use OutputType::Xerox;
 // ---------------------------------------------------------------------------
 /// hfst-optimized-lookup's own options. `impl Default` matches the old
 /// `static mut` initializers (not all are the type default).
+///
+/// Three fields here are written by an option handler and read by nothing.
+/// That is upstream's shape, not an oversight in the port: `verboseFlag` is
+/// assigned and never tested anywhere in hfst-optimized-lookup.cc, and every
+/// read of `pipe_input`/`pipe_output` sits inside `#ifdef WINDOWS`. Each keeps
+/// a reasoned `allow` rather than being deleted, so a future reader can tell
+/// "upstream ignores this too" apart from "we forgot to wire this up".
 struct Options {
     output_type: OutputType,
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "-v/-q/-s assign it and nothing consults it, exactly as upstream \
+                  does; verbosity has no observable effect in this tool. The \
+                  visible half of -q/-s is display_weights_flag, which is wired."
+    )]
     verbose_flag: bool,
     display_weights_flag: bool,
     display_unique_flag: bool,
@@ -64,9 +82,20 @@ struct Options {
     max_analyses: i32,
     time_cutoff: f64,
     beam: f32,
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "--pipe-mode is a Windows-only console switch: upstream reads it \
+                  only under #ifdef WINDOWS, to pick console reads over cin. On \
+                  the platforms this port builds for there is nothing to select, \
+                  but the flag must still parse and validate its STREAM argument."
+    )]
     pipe_input: bool,
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "As pipe_input: upstream's reads are all #ifdef WINDOWS, choosing \
+                  hfst_fprintf_console over cout. The help text already says \
+                  --pipe-mode=output is ignored on non-windows platforms."
+    )]
     pipe_output: bool,
     /// The single positional operand (the transducer path), resolved from the
     /// leftover free argument once the getopt loop finishes. `None` when no
@@ -114,7 +143,14 @@ fn print_err(s: &str) {
 // (the Fd variants format identically to their non-Fd counterparts).
 // ---------------------------------------------------------------------------
 #[derive(Clone, Copy, PartialEq)]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "`setup` only ever builds the four non-Fd variants, because the \
+              library engine filters flag diacritics before the sink sees a \
+              path. The Fd arms are the in-code transcription of the Fd classes' \
+              printAnalyses rules that `print_analyses` claims to implement, so \
+              they stay reachable to the spec even when unreachable at runtime."
+)]
 enum Variant {
     Plain,
     Uniq,
@@ -124,22 +160,6 @@ enum Variant {
     WUniq,
     WFd,
     WFdUniq,
-}
-
-#[allow(dead_code)]
-fn variant_weighted(v: Variant) -> bool {
-    matches!(
-        v,
-        Variant::WPlain | Variant::WUniq | Variant::WFd | Variant::WFdUniq
-    )
-}
-
-#[allow(dead_code)]
-fn variant_has_fd(v: Variant) -> bool {
-    matches!(
-        v,
-        Variant::Fd | Variant::FdUniq | Variant::WFd | Variant::WFdUniq
-    )
 }
 
 // ---------------------------------------------------------------------------
@@ -407,13 +427,48 @@ impl Transducer {
     }
 }
 
-// C++ std::cout << float uses %g-like default formatting (6 significant
-// digits); the weighted printAnalyses uses '\t' << (*it).first.
+// The weighted printAnalyses emits '\t' << (*it).first, and streaming a float
+// is %g at the default precision of 6 significant digits: fixed notation while
+// the decimal exponent stays in [-4, 6), scientific outside it, trailing
+// fractional zeros stripped either way. hfst-lookup is the tool that prints
+// 0.500000 — it goes through printf("%f") — and copying its shape here made
+// this tool render every weight six places wide.
 fn fmt_weight(w: Weight) -> String {
-    // mimic ostream default float formatting (up to 6 significant digits)
-    let s = format!("{:.6}", w);
-    // trim trailing zeros but keep ostream-ish output
-    s
+    if w.is_nan() {
+        return "nan".to_string();
+    }
+    if w.is_infinite() {
+        return if w < 0.0 { "-inf" } else { "inf" }.to_string();
+    }
+    // Round to the 6 significant digits first: it is the exponent *after*
+    // rounding that picks the notation, so 999999.9 shows as 1e+06, not
+    // 999999.9 truncated.
+    let sci = format!("{:.5e}", w);
+    let (mantissa, exp) = match sci.split_once('e') {
+        Some((m, e)) => (m, e.parse::<i32>().unwrap_or(0)),
+        None => (sci.as_str(), 0),
+    };
+    if (-4..6).contains(&exp) {
+        // %f with precision 6-1-exp, i.e. whatever keeps 6 significant digits.
+        strip_trailing_zeros(&format!("{:.*}", (5 - exp) as usize, w))
+    } else {
+        // C renders the exponent signed and at least two digits wide.
+        let sign = if exp < 0 { '-' } else { '+' };
+        format!(
+            "{}e{}{:02}",
+            strip_trailing_zeros(mantissa),
+            sign,
+            exp.abs()
+        )
+    }
+}
+
+fn strip_trailing_zeros(s: &str) -> String {
+    if !s.contains('.') {
+        return s.to_string();
+    }
+    let trimmed = s.trim_end_matches('0');
+    trimmed.strip_suffix('.').unwrap_or(trimmed).to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -663,6 +718,10 @@ fn parse_options(
             }
             b'q' | b's' => {
                 options.verbose_flag = false;
+                // Quiet also turns weights on. It reads like a typo, but it is
+                // what upstream does and the only half of -q/-s a user can see,
+                // so dropping it would silently change every -q invocation.
+                options.display_weights_flag = true;
             }
             b'e' => {
                 options.echo_inputs_flag = true;
@@ -823,4 +882,34 @@ fn parse_leading_i32(s: &str) -> i32 {
         }
     }
     t[..end].parse::<i32>().unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fmt_weight;
+
+    /// Expectations taken from the C++ tool's own output, not from printf docs:
+    /// `hfst-optimized-lookup -w` on a 0.5-weighted arc prints `0.5`.
+    #[test]
+    fn weights_render_as_ostream_g() {
+        assert_eq!(fmt_weight(0.5), "0.5");
+        assert_eq!(fmt_weight(2.5), "2.5");
+        assert_eq!(fmt_weight(0.0), "0");
+        assert_eq!(fmt_weight(-0.5), "-0.5");
+        assert_eq!(fmt_weight(1.0), "1");
+    }
+
+    #[test]
+    fn six_significant_digits_then_strip() {
+        assert_eq!(fmt_weight(1.2345678), "1.23457");
+        assert_eq!(fmt_weight(100000.0), "100000");
+        assert_eq!(fmt_weight(0.0001), "0.0001");
+    }
+
+    #[test]
+    fn out_of_range_exponents_go_scientific() {
+        assert_eq!(fmt_weight(1000000.0), "1e+06");
+        assert_eq!(fmt_weight(1234567.0), "1.23457e+06");
+        assert_eq!(fmt_weight(0.00001), "1e-05");
+    }
 }
