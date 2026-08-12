@@ -5030,6 +5030,22 @@ children (
                 title "hfst-info reports fiction: it answers as upstream C++ HFST 3.17.1 and its feature checks are polarity-inverted. Two stacked bugs. (1) info.rs:29-36 simulates a config.h — PACKAGE_VERSION \"3.17.1\", HFST_LONGVERSION 300170001, HAVE_SFST true — so `info` prints \"HFST version: 3.17.1\" and \"SFST supported\" for a Divvun HFST 0.1.0 build with SFST out of scope, and `-a 3.17.0` exits 0 on a false claim. (2) info.rs:275/285/295 test `if HAVE_FOMA`/`HAVE_XFSM`/`HAVE_OPENFST` where the SFST branch correctly tests `!HAVE_SFST`, so -f foma and -f openfst EXIT 1 for backends that ARE supported while -f sfst exits 0 for one that is not. The inversion is faithfully ported from an upstream C++ bug (hfst-info.cc:237 `#if HAVE_FOMA` guarding \"Required foma support not present\") — fix it, per the successor reframe, rather than preserving it. Report upstream. hfst-info is a build-time detection tool and giella-core configure.ac:116 probes for it, so wrong answers steer configure"
                 priority 0
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T08:51:26.889788Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Fixed on nplan/hfst-info-bogus (ba64dcb), merged to main as ae4911b. Verified independently, not taken from the agent's report: -f sfst 1, -f foma 0, -f openfst 0, -f xfsm 1, -a 3.17.0 1, -e 3.17.1 1, -a 0.1.0 0, -m 0.0.1 1, -m 9.9.9 0. 314/314 nextest, clippy and fmt clean.\n\nVersion gating now compares against this crate's version in the encoding parse_version_string already uses (0.1.0 -> 10000, from CARGO_PKG_VERSION_* at compile time). A build script asking \"is this HFST >= 3.17\" gets a truthful no through the interface it already speaks, and the refusal names what this is rather than being mysterious.\n\nStructural point worth keeping: the -f gate and the informational listing now read ONE FEATURES table instead of two independently-maintained ladders. Two ladders disagreeing is what produced the inversion. foma now tracks cfg!(feature = \"foma\") rather than a hardcoded true, and negatives are printed explicitly so an absent line is not ambiguous between \"unsupported\" and \"old build\".\n\nTHIRD upstream bug found en route and fixed: --max-version used the --atleast-version comparison (HFST_LONGVERSION < max_version instead of >), so it accepted exactly the builds it was meant to reject. Confirmed still present upstream at hfst-cpp/src/tools/src/hfst-info.cc:214-217. Worth including in the upstream report alongside the -f polarity inversion.\n\nLeft for elsewhere: hfst_set_program_name(&argv0, \"0.1\", \"HfstInfo\") still passes a stale upstream per-tool version literal, as do all ~63 tools; info no longer prints it but the field survives. And -f icu reports ICU supported unconditionally, with no cargo feature behind it as foma has."
+                    }
+
+                    {
+                        at 2026-08-12T08:51:34.541479Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
