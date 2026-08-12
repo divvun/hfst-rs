@@ -5014,6 +5014,22 @@ children (
                 title "lexc.rs:750 unicode_check ignores its argument, dropping C++'s ICU grapheme guard (LexcCompiler.cc:571): for a multi-codepoint grapheme not already in alphabets_, C++ warns \"add X to Multichar_Symbols\" AND calls addAlphabet. Verified transducers stay functionally equivalent (compare passes; symbol table 7 vs 6 entries), so the real loss is the diagnostic that tells an author to fix their source. Latent for Giella because the convention is to declare such graphemes (lang-sma root.lexc:695)"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T11:08:45.080272Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Done. Merged nplan/lexc-unicode-check-diagnostic (b1c059a). 356/356, clippy and fmt clean.\n\nCORRECTION TO MY OWN EARLIER ANALYSIS, recorded because I reasoned it out instead of testing it. I claimed the C++ 7-vs-Rust-6 symbol-table difference was \"the extra being the auto-registered grapheme\", and used that to argue addAlphabet changes the symbol table. The agent A/B'd it: emitted transducers are BYTE-IDENTICAL with and without the add_alphabet call, and C++ shows available_key=7 / num_symbols=6 for a PURE ASCII lexicon too. It is a key-numbering gap in the C++ global symbol coder (key 3 never allocated), entirely unrelated to unicodeCheck_. My 7-vs-6 was a red herring and the inference built on it was wrong.\n\nWhat addAlphabet actually buys, measured rather than assumed: reporting once per distinct grapheme instead of once per side (a both-sides pair xáy:qáz drops 2 reports to 1, since unicode_check runs on upper and lower separately), and no double-naming under -Wmissing-alphabets. It costs nothing, so it stays.\n\nThe diagnostic beats upstream on three counts, all verified: the caret sits on the GRAPHEME (2:2) where C++ points at the entry-terminating semicolon (2.13); every code point is listed where C++ hardcodes the first two and appends a literal \"...\" — so upstream's message is wrong for 3+ code points; and Note 3 is new, suggesting NFC normalisation, conditional on a precomposed form existing so Giella's u̇ (U+0075 U+0307, no precomposed spelling — its own source comment says so) gets no dead-end advice.\n\nREGRESSION RISK CLEARED, which was the thing to check: the real 115,578-line lang-sma generated lexicon produces ZERO grapheme reports and exits 0. Declaring the grapheme in Multichar_Symbols silences it (my first attempt at this test declared the whole WORD rather than the grapheme and appeared to fail — my error, not the implementation's). ASCII-only is silent.\n\nCase the brief missed and the agent caught: a CRLF line ending is a two-code-point grapheme cluster, so without a guard a Windows-authored lexicon would be told to add its line breaks to Multichar_Symbols. Clusters containing a control character are skipped.\n\nUnder -Werror it becomes Error + compilation aborted, mirroring C++'s parseErrors_."
+                    }
+
+                    {
+                        at 2026-08-12T11:09:01.560795Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {

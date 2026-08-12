@@ -280,4 +280,5 @@ assertions (
     {id panic-on-malformed-input, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:14:32.188148Z}
     {id xfst-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:21:47.266775Z}
     {id dead-code-allow-census, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:04:45.730918Z}
+    {id lexc-unicode-check-diagnostic, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:09:01.560795Z}
 )
