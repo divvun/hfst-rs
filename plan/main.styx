@@ -4866,4 +4866,19 @@ children (
             }
         )
     }
+
+    {
+        id version-line-provenance
+        title "one version, not two: Divvun &lt;cmd&gt; v&lt;version&gt; (YYYY-MM-DD, short-hash), with a build.rs git/date stamp and a -dirty marker"
+        kind @feat
+        sealed true
+        log (
+            {
+                at 2026-08-12T00:05:48.497893Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

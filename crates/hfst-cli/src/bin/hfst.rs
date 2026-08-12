@@ -17,7 +17,7 @@
 //! subcommands. It never parses a tool's own flags.
 
 use clap::{Arg, ArgAction, Command};
-use hfst_cli::hfst_commandline::{PACKAGE_STRING, VERSION_COPYRIGHT_BLOCK};
+use hfst_cli::hfst_commandline::{VERSION_COPYRIGHT_BLOCK, version_line};
 use hfst_cli::tools::TOOLS;
 
 // The FST algorithms are allocation-heavy; mimalloc beats the system
@@ -324,18 +324,14 @@ fn install_symlinks(args: &[String]) -> i32 {
     0
 }
 
-/// The umbrella binary's --version text: the same shape and copyright block
-/// every subcommand prints, so the two entry points cannot disagree. Built
-/// once at first use because clap wants a &'static str and the block is a
-/// const rather than a literal.
-static LONG_VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    format!(
-        "{} ({})\n{}",
-        env!("CARGO_PKG_VERSION"),
-        PACKAGE_STRING,
-        VERSION_COPYRIGHT_BLOCK
-    )
-});
+/// The umbrella binary's --version text: the same line and copyright block
+/// every subcommand prints, so the two entry points cannot disagree.
+///
+/// clap renders `--version` as "{name} {version}", which would prefix a bare
+/// "hfst" onto a line that already names the program, so `run_main` intercepts
+/// `--version` before clap sees it and prints this directly.
+static LONG_VERSION: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| format!("{}\n{}", version_line("hfst"), VERSION_COPYRIGHT_BLOCK));
 
 fn build_cli() -> Command {
     let mut cmd = Command::new("hfst")
@@ -410,6 +406,14 @@ fn run_main() {
     // are forwarded raw (clap never sees them), so the old getopt flags pass
     // through untouched.
     if let Some(sub) = argv.get(1) {
+        // Handled before clap: clap renders --version as "{name} {version}",
+        // which would prefix a bare "hfst" onto a line that already names the
+        // program. Printing it here keeps the umbrella's banner byte-identical
+        // to every tool's.
+        if sub == "--version" || sub == "-V" {
+            print!("{}", *LONG_VERSION);
+            std::process::exit(0);
+        }
         if sub == "install-symlinks" {
             std::process::exit(install_symlinks(&argv[2..]));
         }

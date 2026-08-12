@@ -41,9 +41,32 @@ pub const COLOUR_MAGENTA: &str = "\x1b[35m";
 pub const COLOUR_CYAN: &str = "\x1b[36m";
 pub const COLOUR_RESET: &str = "\x1b[0m";
 
-/// Product identity for the --version banner's parenthetical, in the GNU
-/// convention "<program> <tool-version> (<package> <package-version>)".
-pub const PACKAGE_STRING: &str = concat!("Divvun HFST ", env!("CARGO_PKG_VERSION"));
+/// Build provenance, "(YYYY-MM-DD, <short-hash>)", stamped in by build.rs.
+/// The hash carries a `-dirty` suffix when the tree had uncommitted changes,
+/// so a hand-patched binary cannot pass for the commit it names; both fields
+/// read `unknown` when built without a git checkout.
+pub const BUILD_STAMP: &str = concat!(
+    "(",
+    env!("HFST_BUILD_DATE"),
+    ", ",
+    env!("HFST_BUILD_REV"),
+    ")"
+);
+
+/// The one --version identity line: "Divvun <cmd> v<version> (date, ref)".
+///
+/// There is a single version here, the crate's. Upstream carried a per-tool
+/// version alongside the package version, so the banner showed two different
+/// numbers ("hfst-compose 0.1 (hfst 3.17.1)"); in this port every tool ships
+/// out of one crate at one version, so the per-tool number was noise.
+pub fn version_line(program_name: &str) -> String {
+    format!(
+        "Divvun {} v{} {}",
+        program_name,
+        env!("CARGO_PKG_VERSION"),
+        BUILD_STAMP
+    )
+}
 
 /// The copyright/licence block every tool's --version prints.
 ///
@@ -777,11 +800,7 @@ pub fn print_short_help(opts: &CommonOptions) {
 // [spec:hfst:sem:hfst-commandline.print-version-fn]
 pub fn print_version(opts: &CommonOptions) {
     let mut mw = opts.message_writer();
-    let _ = writeln!(
-        mw,
-        "{} {} ({})",
-        opts.program_name, opts.hfst_tool_version, PACKAGE_STRING
-    );
+    let _ = writeln!(mw, "{}", version_line(&opts.program_name));
     let _ = write!(mw, "{VERSION_COPYRIGHT_BLOCK}");
 }
 

@@ -13,9 +13,6 @@ use std::io::{Read, Write};
 // The 'PROGRAM_NAME' macro of the C++ CommandLine ("hfst-twolc"): the name
 // baked into the usage/version texts, independent of argv[0].
 const PROGRAM_NAME: &str = "hfst-twolc";
-// Tool version for the --version banner. Upstream printed the literal integer
-// 0 here; this port carries a real version like every other tool.
-const TOOL_VERSION: &str = "0.1";
 
 /// The parsed command line, mirroring the C++ 'class CommandLine' data
 /// members (input_file/output_file stream handles excluded — streams are
@@ -45,10 +42,8 @@ impl CommandLine {
         let f = &mut std::io::stderr();
         let _ = write!(
             f,
-            "\n{} {} ({})\n{}\n",
-            PROGRAM_NAME,
-            TOOL_VERSION,
-            crate::hfst_commandline::PACKAGE_STRING,
+            "\n{}\n{}\n",
+            crate::hfst_commandline::version_line(PROGRAM_NAME),
             crate::hfst_commandline::VERSION_COPYRIGHT_BLOCK
         );
     }

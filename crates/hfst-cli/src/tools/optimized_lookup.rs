@@ -13,7 +13,7 @@
 //! There are no `static mut` globals and no `unsafe`.
 
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{PACKAGE_STRING, VERSION_COPYRIGHT_BLOCK};
+use crate::hfst_commandline::{VERSION_COPYRIGHT_BLOCK, version_line};
 use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
 use crate::hfst_getopt::{self as getopt, Getopt};
 use std::io::Write;
@@ -593,8 +593,9 @@ fn print_version(common: &CommonOptions) -> bool {
     let mut msg = common.message_writer();
     let _ = write!(
         msg,
-        "\n{} {} ({})\n{}",
-        common.program_name, common.hfst_tool_version, PACKAGE_STRING, VERSION_COPYRIGHT_BLOCK
+        "\n{}\n{}",
+        version_line(&common.program_name),
+        VERSION_COPYRIGHT_BLOCK
     );
     true
 }
