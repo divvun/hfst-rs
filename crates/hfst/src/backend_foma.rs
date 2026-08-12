@@ -589,17 +589,16 @@ impl AlgebraBackend for FomaTransducer {
             new_symbol,
         )))
     }
-    fn substitute_string_transducer(
-        &self,
-        _old_symbol_pair: StringPair,
-        _transducer: &Self,
-    ) -> Self {
-        // Documented approximation: foma has no faithful "replace this (in, out)
-        // label with an arbitrary relation" primitive (its `fsm_substitute_label`
-        // replaces a single symbol with a network, not a symbol *pair*), so this
-        // returns an unmodified copy. Callers needing the real substitution route
-        // through the generic HfstBasicTransducer path.
-        self.clone()
+    fn substitute_string_transducer(&self, old_symbol_pair: StringPair, transducer: &Self) -> Self {
+        let mut net = self.net.clone();
+        let mut sub = transducer.net.clone();
+        self.wrap_with(foma::constructions::fsm_substitute_pair(
+            &self.opts,
+            &mut net,
+            &old_symbol_pair.0,
+            &old_symbol_pair.1,
+            &mut sub,
+        ))
     }
     fn disjunct_spv(&mut self, spv: &StringPairVector) {
         // self := self ∪ define_transducer_spv(spv).

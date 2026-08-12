@@ -673,3 +673,40 @@ fn lookup_parity_vs_optimized_lookup() {
         "OL lookup of unknown input is empty"
     );
 }
+
+/// `substitute_string_transducer` must actually substitute on foma.
+///
+/// It used to return `self.clone()` — a silent no-op — because foma had no
+/// primitive matching an exact `upper:lower` arc, only `fsm_substitute_label`
+/// on a single symbol. So xfst `substitute`, regex definition expansion, twolc,
+/// pmatch and hfst-substitute all reported success and handed back the original
+/// net under `-f foma`. Fixed by adding `fsm_substitute_pair` to the foma crate
+/// (0.4.3) rather than by the foma -> basic -> foma round-trip C++ HFST uses.
+///
+/// Asserted against the tropical backend so the two cannot drift apart.
+#[test]
+fn foma_substitutes_a_pair_with_transducer_like_tropical() {
+    let _g = serialized();
+    // "ab" with the a:a arc replaced by the relation x:y.
+    let base = basic_pair("ab", "ab");
+    let repl = basic_pair("x", "y");
+
+    let mut foma = foma_of(&base);
+    foma = foma.substitute_string_transducer((sym("a"), sym("a")), &foma_of(&repl));
+
+    let mut tropical = tropical_of(&base);
+    tropical = tropical.substitute_string_transducer((sym("a"), sym("a")), &tropical_of(&repl));
+
+    // Splicing x:y in place of the a:a arc adds states; an unchanged net is
+    // the no-op signature this test exists to catch.
+    assert_ne!(
+        state_count(&foma),
+        state_count(&foma_of(&base)),
+        "foma substitution was a no-op: the net came back unchanged"
+    );
+    assert_eq!(
+        state_count(&foma),
+        state_count(&tropical),
+        "foma and tropical disagree after substituting a pair"
+    );
+}

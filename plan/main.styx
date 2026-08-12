@@ -4922,6 +4922,14 @@ children (
                 title "foma substitute_string_transducer returns the input unchanged — silent no-op. Verified: `substitute defined R for a` on [a b] gives xyb on tropical, ab on foma. C++ (HfstTransducer.cc, HAVE_FOMA branch) converts foma→HfstBasicTransducer, calls net->substitute(pair, substituting_net), converts back; implement that round-trip. The stub's comment claims callers route through the basic path — hfst_transducer.rs:2147 calls the backend directly, no fallback. Reachable from xfst substitute, xre definition expansion, twolc, pmatch, hfst-substitute, all under -f foma"
                 priority 0
                 kind @fix
+                log (
+                    {
+                        at 2026-08-12T07:34:42.802871Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {
