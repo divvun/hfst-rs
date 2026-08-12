@@ -5278,16 +5278,32 @@ children (
 
             {
                 id upstream-bug-report
-                title "Report the upstream C++ HFST bugs this sweep confirmed still present in 3.17.1, with reproductions. Four so far: (1) hfst-info feature checks are polarity-inverted — hfst-info.cc:237 guards \"Required foma support not present\" with `#if HAVE_FOMA`, so -f foma and -f openfst FAIL on builds that have them; (2) hfst-info --max-version uses the --atleast-version comparison (hfst-info.cc:214-217), accepting exactly the builds it should reject; (3) pmatch initial-symbol analysis is UNSOUND for a context at the start of an alternation branch — `Define TOP [ [ LC({the }) {cat} ] | {dog} ] EndTag(a) ;` emits initial-symbols \"d\" and SILENTLY DROPS the cat match, reproduced with a C++-built archive; (4) unicodeCheck_ hardcodes the first two code points and appends a literal \"...\" so its \"add X to Multichar_Symbols\" advice is wrong for any 3+ code point grapheme. Each was found by fixing our port and checking whether upstream shares it. Reproductions exist in this session's history"
+                title "Report the upstream C++ HFST bugs this sweep confirmed still present in 3.17.1, with reproductions. FIVE so far: (1) hfst-info feature checks are polarity-inverted — hfst-info.cc:237 guards \"Required foma support not present\" with `#if HAVE_FOMA`, so -f foma and -f openfst FAIL on builds that have them; (2) hfst-info --max-version uses the --atleast-version comparison (hfst-info.cc:214-217), accepting exactly the builds it should reject; (3) pmatch initial-symbol analysis is UNSOUND for a context at the start of an alternation branch — `Define TOP [ [ LC({the }) {cat} ] | {dog} ] EndTag(a) ;` emits initial-symbols \"d\" and SILENTLY DROPS the cat match, reproduced with a C++-built archive; (4) unicodeCheck_ hardcodes the first two code points and appends a literal \"...\" so its \"add X to Multichar_Symbols\" advice is wrong for any 3+ code point grapheme; (5) hfst-invert writes the symbol table TWICE, producing a 560-byte file where 393 suffices — verified redundant, since our single-table file reads back in C++ with identical paths and alphabet. Each was found by fixing our port and checking whether upstream shares it. Reproductions are in this session's history"
                 priority 2
                 kind @docs
             }
 
             {
                 id invert-symbol-table-duplication
-                title "hfst invert output is byte-different from C++ with ZERO flags: 393 bytes vs 560 on a [a:b c:d] net, because C++ writes the symbol table TWICE (input and output sides) where the port writes it once. Transducers are hfst-compare EQUIVALENT, so this is a container-shape divergence, not a semantic one — and arguably ours is the better artifact. BUT giella-core invokes hfst-invert, so any \"byte-identical to the C++ CI reference\" claim for a lang build that inverts needs re-checking against this; the lang-sma/sme parity results predate the finding. Decide under [dec:hfst:independent-fork] whether to match C++'s duplication for byte-parity or keep the smaller correct file and retire the byte-parity claim for invert. Found by the getopt-clustered-shorts agent while running a 131-invocation oracle diff; reproduces with no options at all, unrelated to getopt"
+                title "RESOLVED by operator decision: keep our smaller artifact, C++'s duplicate symbol table is an upstream bug. hfst invert emits 393 bytes where C++ emits 560 on [a:b c:d], because C++ writes the symbol table TWICE. Verified our file loses nothing — C++ reads it back with identical paths (b:ad:c) and an identical alphabet, and hfst-compare says equivalent. HFST's container carries one sigma, so the second copy is pure redundancy. Consequence to act on: any \"byte-identical to the C++ CI reference\" claim for a lang build that invokes hfst-invert is now knowingly false and must be restated as behavioural equivalence"
                 priority 1
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T13:37:09.069702Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Operator decision: we keep our artifact; C++'s duplicate symbol table is an upstream bug. No code change.\n\nVerified before recording, because \"better artifact\" only holds if ours is complete: C++ hfst-fst2strings reads OUR inverted file and prints b:ad:c, identical to what we print from ITS file; hfst-dump-alphabets output is identical between the two; hfst-compare says equivalent. The HFST container carries a single sigma, so the second table C++ writes is pure redundancy — nothing is lost by omitting it, and interop is unaffected in both directions.\n\nUnder [dec:hfst:independent-fork] this is the straightforward case: a smaller file that reads correctly everywhere beats byte-parity with a redundant one, and formats stay a contract only where the contract carries information. It does not here.\n\nCONSEQUENCE THAT NEEDS ACTING ON, not just noting. giella-core invokes hfst-invert, so any lang build passing through invert now produces files that are byte-different from a C++-produced reference BY DESIGN. The lang-sma and lang-sme results recorded as \"byte-identical to the C++ CI reference\" predate this finding and were measured on a toolchain that had not yet been compared this way. Those claims must be restated as behavioural equivalence — hfst-compare equivalent, same analyses — rather than byte identity, or re-measured excluding invert-derived artifacts. This is a knowing divergence now, so a stale byte-identity claim would be a false claim rather than an unverified one.\n\nAdded to upstream-bug-report as the fifth confirmed-live C++ bug."
+                    }
+
+                    {
+                        at 2026-08-12T13:37:20.126947Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
