@@ -30,6 +30,9 @@ pub struct Getopt {
     // values) versus the free (non-option) arguments.
     free_arguments: Vec<String>,
     other_arguments: Vec<String>,
+    // The unscanned tail of a clustered short-option token ('q' while '-wq' is
+    // being taken apart); glibc's `nextchar`.
+    cluster: Option<String>,
 }
 
 impl Default for Getopt {
@@ -40,6 +43,7 @@ impl Default for Getopt {
             optind: 1,
             free_arguments: Vec::new(),
             other_arguments: Vec::new(),
+            cluster: None,
         }
     }
 }
@@ -73,6 +77,68 @@ impl Getopt {
         -1
     }
 
+    // Park the rest of a short-option token for the next getopt_long call.
+    fn park_cluster(&mut self, tail: &str) {
+        self.cluster = if tail.is_empty() {
+            None
+        } else {
+            Some(tail.to_string())
+        };
+    }
+
+    /// Take the next short option off a clustered token, `rest` being what is
+    /// left of it. The letter is resolved through the same `val` scan of the
+    /// long table that a lone `-f` uses, so the two spellings can never drift.
+    fn scan_cluster(&mut self, args: &mut Vec<String>, longopts: &[GetOpt], rest: &str) -> i32 {
+        let argc = args.len();
+        let mut letters = rest.chars();
+        let Some(letter) = letters.next() else {
+            // Unreachable: an exhausted cluster is dropped rather than parked,
+            // and the caller only enters with two characters or more.
+            return self.finish(args);
+        };
+        let tail = letters.as_str();
+        let val = letter as i32;
+
+        let Some(opt) = longopts.iter().find(|opt| opt.val == val) else {
+            // An unknown letter is reported as itself, and scanning resumes
+            // after it: '-wZq' names 'Z', not the whole token.
+            self.park_cluster(tail);
+            self.optopt = val;
+            return b'?' as i32;
+        };
+
+        if opt.has_arg == NO_ARGUMENT {
+            self.park_cluster(tail);
+            return opt.val;
+        }
+        if opt.has_arg != REQUIRED_ARGUMENT && opt.has_arg != OPTIONAL_ARGUMENT {
+            // this should not happen
+            return 0;
+        }
+        // Whatever is left of the token is the argument, so '-n2' and '-wn2'
+        // both give 'n' the value "2" and no cluster survives it.
+        if !tail.is_empty() {
+            self.optarg = Some(tail.to_string());
+            return opt.val;
+        }
+        // Only a required argument reaches out to the next argv word; an
+        // optional one has to be attached, so a bare '-p' leaves the operand
+        // that follows it alone.
+        if opt.has_arg == OPTIONAL_ARGUMENT {
+            self.optopt = 0;
+            return opt.val;
+        }
+        if self.optind >= argc {
+            self.optopt = opt.val;
+            return b':' as i32;
+        }
+        self.optarg = Some(args[self.optind].clone());
+        self.other_arguments.push(args[self.optind].clone());
+        self.optind += 1;
+        opt.val
+    }
+
     // [spec:hfst:def:hfst-getopt.getopt-long-fn]
     // [spec:hfst:sem:hfst-getopt.getopt-long-fn]
     pub fn getopt_long(&mut self, args: &mut Vec<String>, longopts: &[GetOpt]) -> i32 {
@@ -81,6 +147,12 @@ impl Getopt {
         // hfst-summarize -S, --pipe-mode) would see the *previous* option's
         // argument through optarg_opt() and misread it as its own.
         self.optarg = None;
+        // A half-scanned token outranks the argv cursor: its remaining letters
+        // are not argv elements, so the end-of-argv test below would drop them
+        // when the cluster is the last word ('hfst-optimized-lookup FILE -wq').
+        if let Some(rest) = self.cluster.take() {
+            return self.scan_cluster(args, longopts, &rest);
+        }
         let argc = args.len();
         // skip free arguments: anything not beginning with '-', plus the
         // getopt specials — a lone "-" is an operand (conventionally stdin),
@@ -173,24 +245,20 @@ impl Getopt {
             }
         }
 
-        // GNU short-option-with-attached-argument: '-Wall' is '-W' with the
-        // argument 'all' when the token has exactly one leading dash and 'W'
-        // is an argument-taking option. (The system getopt_long the C tools
-        // normally used did this; the shipped fallback this module ports did
-        // not, so Giella invocations like 'hfst-lexc -Wall' relied on it.)
+        // One leading dash and more than a letter after it is GNU's packed
+        // short-option token: either options clustered together ('-wq' is
+        // '-w -q') or an option with its argument attached ('-Wall' is
+        // '-W all'). The system getopt_long the C tools link against does
+        // this, so Giella invocations depend on it; the shipped fallback this
+        // module ports did neither. The scan runs over `stripped` rather than
+        // `name` so an '=' stays verbatim in an attached argument, as GNU
+        // keeps it.
         if token.as_bytes().first() == Some(&b'-')
             && token.as_bytes().get(1) != Some(&b'-')
             && name.chars().count() > 1
         {
-            for opt in longopts {
-                if opt.val == first_char && opt.has_arg != NO_ARGUMENT {
-                    self.optind += 1;
-                    // everything after the option letter, including any '='
-                    // (GNU keeps it verbatim in optarg for attached args)
-                    self.optarg = Some(stripped[1..].to_string());
-                    return opt.val;
-                }
-            }
+            self.optind += 1;
+            return self.scan_cluster(args, longopts, stripped);
         }
 
         // no match found
