@@ -271,4 +271,5 @@ assertions (
     {id xfst-function-arg-substitution, kind @complete, author "brendan@necessary.nu", at 2026-08-12T06:51:38.839319Z}
     {id foma-substitute-noop, kind @doing, author "brendan@necessary.nu", at 2026-08-12T07:34:42.802871Z}
     {id compose-intersect-empty-panic, kind @doing, author "brendan@necessary.nu", at 2026-08-12T07:41:02.879515Z}
+    {id foma-extract-paths-alignment, kind @doing, author "brendan@necessary.nu", at 2026-08-12T08:39:09.552247Z}
 )
