@@ -4896,4 +4896,19 @@ children (
             }
         )
     }
+
+    {
+        id xfst-function-arg-substitution
+        title "function parameters were never rewritten to their placeholder symbols (the position-finder is a stub), so compound arguments silently compiled as bare symbols"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-08-12T06:51:38.839319Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

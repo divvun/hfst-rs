@@ -69,3 +69,35 @@ fn print_defined_lists_definitions_made_with_a_body() {
         );
     }
 }
+
+// A function's parameters must be rewritten to the placeholder symbols that
+// eval_function_call binds the arguments to. C++ found them via positions its
+// flex/bison scanner recorded during compilation; nfst replaces that lexer, so
+// the port's position set was always empty and the body went through
+// unchanged — every argument silently failed to substitute, and a compound
+// argument compiled as a bare symbol (`Concat([a|b], c)` lost the union).
+// Expectations verified against C++ hfst-xfst 3.17.1.
+#[test]
+fn function_arguments_substitute_including_compound_ones() {
+    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    c.parse("define Concat(x, y) x y ;\nregex Concat([ a | b ], c) ;\n");
+    assert_eq!(c.get_stack().len(), 1);
+    // [a|b] c: 3 states, 3 arcs. Substitution failure yielded 2 arcs.
+    let top = *c.get_stack().last().expect("one net on the stack");
+    assert_eq!(
+        c.net(top).number_of_arcs(),
+        3,
+        "compound function argument lost material in substitution"
+    );
+}
+
+// A parameter is a whole NAMETOKEN: `x` must not be substituted inside `xy`.
+#[test]
+fn function_argument_substitution_respects_token_boundaries() {
+    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    c.parse("define Fn(x) x xy ;\nregex Fn(a) ;\n");
+    assert_eq!(c.get_stack().len(), 1);
+    // a xy — two arcs, the second being the untouched symbol `xy`.
+    let top = *c.get_stack().last().expect("one net on the stack");
+    assert_eq!(c.net(top).number_of_arcs(), 2);
+}

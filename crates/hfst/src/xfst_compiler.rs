@@ -4035,62 +4035,96 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         Some(args)
     }
 
+    /// Whether `c` can continue an xre NAMETOKEN. C++'s NAMECHAR is any printable
+    /// ASCII except the operator/bracket set, plus non-ASCII; used to tell a
+    /// standalone parameter from a substring of a longer name.
+    fn is_name_char(c: char) -> bool {
+        if (c as u32) > 0x7e {
+            return true;
+        }
+        if (c as u32) < 0x21 {
+            return false; // space and control characters
+        }
+        !matches!(
+            c,
+            '<' | '>'
+                | '%'
+                | '('
+                | ')'
+                | '['
+                | ']'
+                | '!'
+                | ';'
+                | ':'
+                | '"'
+                | ','
+                | '|'
+                | '&'
+                | '*'
+                | '+'
+                | '-'
+                | '~'
+                | '$'
+                | '/'
+                | '\\'
+                | '.'
+                | '{'
+                | '}'
+                | '^'
+                | '='
+                | '?'
+        )
+    }
+
     // [spec:hfst:def:xfst-compiler.hfst.xfst.convert-argument-symbols-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.convert-argument-symbols-fn]
     fn convert_argument_symbols(
         arguments: &[String],
         xre: &str,
         function_name: &str,
-        xre_compiler: &mut XreCompiler<B>,
+        _xre_compiler: &mut XreCompiler<B>,
         user_friendly_argument_names: bool,
     ) -> String {
+        // Rewrite each parameter name in the body to the placeholder symbol
+        // that eval_function_call binds the actual argument to.
+        //
+        // C++ located the parameters via positions its flex/bison scanner
+        // recorded while compiling; nfst replaces that lexer, so the position
+        // set is always empty and the port left the body untouched — every
+        // argument then failed to substitute, and a compound argument silently
+        // compiled as a bare symbol.
+        //
+        // Matching whole tokens instead: a parameter is a NAMETOKEN, so an
+        // occurrence counts only when neither neighbour could continue it.
         let mut retval: String = xre.to_string();
 
         for (arg_index, argument) in arguments.iter().enumerate() {
-            let arg_number: u32 = (arg_index as u32) + 1;
-            let mut arg_positions: BTreeSet<u32> = BTreeSet::new();
-            if !xre_compiler.get_positions_of_symbol_in_xre(
-                argument.as_str(),
-                retval.as_str(),
-                &mut arg_positions,
-            ) {
-                // XRE
-                return String::new();
+            if argument.is_empty() {
+                continue;
             }
-
-            let substituting_argument: String = if user_friendly_argument_names {
-                format!("ARGUMENT{}", arg_number)
+            let replacement: String = if user_friendly_argument_names {
+                format!("ARGUMENT{}", arg_index + 1)
             } else {
-                format!("\"@{}{}@\"", function_name, arg_number)
+                format!("\"@{}{}@\"", function_name, arg_index + 1)
             };
 
-            let retval_bytes: Vec<u8> = retval.clone().into_bytes();
-            let mut new_retval = String::new();
-
-            // go through retval
-            let mut i: u32 = 0;
-            while (i as usize) < retval_bytes.len() {
-                // argument to be replaced begins at this position
-                if arg_positions.contains(&i) {
-                    arg_positions.remove(&i); // case will not be handled again
-
-                    new_retval.push_str(&substituting_argument);
-                    // skip rest of the original symbol by advancing i to
-                    // point to the last char in the original symbol
-                    let mut offset: u32 = 1;
-                    while offset < (argument.len() as u32) {
-                        i += 1;
-                        offset += 1;
-                    }
+            let mut out = String::with_capacity(retval.len());
+            let mut rest: &str = &retval;
+            while let Some(hit) = rest.find(argument.as_str()) {
+                let before = &rest[..hit];
+                let after = &rest[hit + argument.len()..];
+                let joined_left = before.chars().next_back().is_some_and(Self::is_name_char);
+                let joined_right = after.chars().next().is_some_and(Self::is_name_char);
+                out.push_str(before);
+                if joined_left || joined_right {
+                    out.push_str(argument); // part of a longer name, leave it
+                } else {
+                    out.push_str(&replacement);
                 }
-                // else, just copy
-                else {
-                    new_retval.push(retval_bytes[i as usize] as char);
-                }
-                i += 1;
+                rest = after;
             }
-
-            retval = new_retval;
+            out.push_str(rest);
+            retval = out;
         }
 
         retval
