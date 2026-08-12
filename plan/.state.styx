@@ -274,4 +274,7 @@ assertions (
     {id hfst-info-bogus, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:51:34.541479Z}
     {id tokenize-space-separated-unreachable, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:54:57.804134Z}
     {id getopt-optarg-stale, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:55:00.496786Z}
+    {id foma-extract-paths-alignment, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:25.345187Z}
+    {id foma-extract-paths-fd-filter, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:27.825912Z}
+    {id foma-lookup-ambiguity-approx, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:35.644925Z}
 )

@@ -5013,6 +5013,22 @@ children (
                 title "backend_foma.rs:330 extract_paths_via_apply emits each path as a single StringPair of (whole input, whole output) instead of the per-symbol aligned column vector, so HfstTwoLevelPath::second.len() is always 1. Reached via extract_paths_cb/extract_paths_fd_cb and thus extract_paths/extract_paths_fd/extract_longest_paths/longest_path_size. Predicted: `print size` and longest-string-length under -f foma report 1 for every non-empty net. UNVERIFIED — confirm before fixing"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T09:08:08.388223Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "All three suspects CONFIRMED, but my predicted impact path for suspect 3 was REFUTED and the real one is worse. Verified independently here, not taken from the agent: longest-string-size on `a b c` now 3 under foma (was 1), matching tropical and C++; print-pairs on `[a:b c:d e] | [x y:0]` gives \"a:bc:de\" / \"xy:\" identically across foma, tropical and C++; flag diacritics now appear under --xfst=print-flags on foma (path ORDER differs from tropical, content matches — enumeration order is not specified); `test infinitely-ambiguous` gives a* -> 0 and [0:a]* -> 1 on foma, tropical and C++ alike, where foma previously answered 1 for a*.\n\nSuspect 1 root cause worth keeping: FomaTransducer::extract_paths DOES exist in C++ (FomaTransducer.cc:636) and does the depth-first line-table walk, but that file was excluded from the port's source-impl globs, so the stub was written blind against an oracle nobody could see. Exclusion from source-impl scope is therefore itself a risk signal — the excluded C++ still defines correct behaviour even when it is out of coverage scope.\n\nSuspect 3's fix is a deletion, not an implementation: Backend::is_infinitely_ambiguous's trait DEFAULT already delegates to to_basic()?.is_infinitely_ambiguous(), which is exactly what C++ HfstTransducer::is_infinitely_ambiguous does for every non-OL type (HfstTransducer.cc:932). The foma override was the bug. Whole-net cyclicity is not a conservative approximation of infinite ambiguity, it is a different question — infinite ambiguity needs an input-epsilon or flag cycle, so `a*` is cyclic and unambiguous. My \"conservative direction, low severity\" framing on the original node was wrong.\n\nREFUTED: no in-tree caller reaches FomaTransducer's LookupBackend::is_lookup_infinitely_ambiguous_*; flookup/lookup go via OlTransducer and xfst_compiler.rs:5299 is HfstBasicTransducer's method, not the backend's. The \"flookup truncates to infinite_cutoff 5\" scenario I described cannot occur.\n\nBonus fixed: extract_random_paths collapsed paths identically and IS reachable — xfst `print random-words` under foma printed \"ace:bde\" where tropical prints \"a:bc:de\". C++'s extract_random_paths is an empty stub, so no parity constraint.\n\nMerge note: the agent's `git commit -am` swept plan/.state.styx into its commit and the nplan merge driver could not parse the ancestor, so the merge conflicted there. Resolved --ours. Future agent briefs should say to stage explicitly rather than use -am."
+                    }
+
+                    {
+                        at 2026-08-12T09:08:25.345187Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5020,6 +5036,15 @@ children (
                 title "backend_foma.rs:226 extract_paths_fd_cb ignores its _filter_fd argument and always delegates to the flag-obeying enumeration, so the \"extract paths WITHOUT filtering flag diacritics\" mode silently behaves as the filtering mode. Caller: HfstTransducer::extract_paths_fd (hfst_transducer.rs:817), used by fst2strings. Predicted: flag diacritics never appear in extracted paths on a foma transducer regardless of mode. UNVERIFIED — confirm before fixing"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T09:08:27.825912Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5027,6 +5052,15 @@ children (
                 title "backend_foma.rs:658/663 (and :194) is_lookup_infinitely_ambiguous_str/_strvec ignore the input and answer whole-net is_cyclic(); the OL backend does the real input-restricted check via find_loop. Conservative direction, but a false positive swaps the lookup limit from unlimited to infinite_cutoff (default 5), truncating results and emitting a spurious \"Got infinite results\" warning. flookup converts foma→basic before lookup so that path is safe; xfst_compiler.rs:5299/6359 reach it directly. Decide: implement input-restricted, or make the approximation explicit"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T09:08:35.644925Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5079,6 +5113,13 @@ children (
                         text "The CLI half is done (branch nplan/tokenize-space-separated-unreachable, merged). The agent overturned my prescription and was right to: I had said keep a narrowly-scoped per-field allow WITH a \"C++ ignores this too\" reason where the faithfulness defence applies. It argued that a field NO option writes cannot preserve upstream behaviour — it can only mask the warning — so all five (grep expfilename/very_quiet/max_infinite/matches, tokenize token_number) were DELETED outright, with the faithfulness observation moved to a WHY note on the Options doc comment. token_number checked against the oracle: hfst-tokenize.cc:69 declares it once and never reads it, no spec rule names it. Ratchet verified by probe — a throwaway unread field now produces \"field is never read\".\n\nREMAINING, and the last hiding place for an inert flag: crates/hfst-cli/src/tools/optimized_lookup.rs carries FOUR more options-struct #[allow(dead_code)] fields (lines 45, 58, 67, 69). Outside that agent's file ownership so deliberately untouched. Wants the same treatment.\n\nNOT to be swept: the function-level #[allow(dead_code)] in grep.rs (467, 501, 759, 923) and tokenize.rs (first_transducer_is_called_top) sit on ported-but-uncalled functions carrying [spec:hfst:def:]/[sem:] annotations. Removing those would drop nspec coverage and they are not the inert-flag pattern."
                     }
                 )
+            }
+
+            {
+                id backend-counts-zero
+                title "Backend::number_of_states / number_of_arcs default to 0 for every non-tropical backend (crates/hfst/src/backend.rs:92-99), so `print size` under -f foma reports \"0 states, 0 arcs\" for any net while tropical reports the real counts. Same silent-stub shape: a default value a caller consumes as fact. C++ FomaTransducer::number_of_states/number_of_arcs DO exist (hfst-cpp FomaTransducer.cc:607,622), so this is a genuine port gap, not an upstream limitation. Found by the foma-extract-paths agent while verifying its own suspects; outside its file ownership so left alone"
+                priority 1
+                kind @fix
             }
         )
     }
