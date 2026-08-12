@@ -1,10 +1,13 @@
-//! Locks for two option-plumbing defects that made valid invocations either
+//! Locks for option-plumbing defects that made valid invocations either
 //! silently do the wrong thing or abort:
 //!
 //!  * `hfst tokenize --space-separated` / `-i` reached no case at all, so it
 //!    enabled `--debug` and emitted the default segmenting format.
 //!  * an OPTIONAL_ARGUMENT option given without `=value` inherited the previous
 //!    option's `optarg`, so e.g. `--colour` read the input filename as its WHEN.
+//!  * `hfst optimized-lookup -q` / `-s` set only the verbosity field, which
+//!    nothing reads, dropping the weight display that is the flag's whole
+//!    observable effect.
 
 use hfst_cli::hfst_commandline::GETOPT_COLOUR;
 use hfst_cli::hfst_getopt::{GetOpt, Getopt, NO_ARGUMENT, OPTIONAL_ARGUMENT, REQUIRED_ARGUMENT};
@@ -202,4 +205,92 @@ fn bare_optional_argument_options_do_not_read_the_previous_argument() {
     let (ok, out) = run(&["summarize", "-i", &fst, "-S"], b"");
     assert!(ok, "hfst summarize -S after -i FILE must not fail");
     assert!(out.contains("fst type"), "summarize printed nothing useful");
+}
+
+/// A weighted optimized-lookup transducer mapping `a` to `b` at weight 0.5.
+fn weighted_ol_transducer(dir: &Path) -> String {
+    let algebraic = dir.join("w.hfst");
+    let table = dir.join("w.hfstol");
+    let (ok, _) = run(
+        &["regexp2fst", "-o", algebraic.to_str().expect("utf-8 path")],
+        b"a:b::0.5;\n",
+    );
+    assert!(ok, "regexp2fst failed to build the weighted transducer");
+    let (ok, _) = run(
+        &[
+            "fst2fst",
+            "-w",
+            "-i",
+            algebraic.to_str().expect("utf-8 path"),
+            "-o",
+            table.to_str().expect("utf-8 path"),
+        ],
+        b"",
+    );
+    assert!(ok, "fst2fst failed to convert to optimized-lookup");
+    table.to_str().expect("utf-8 path").to_string()
+}
+
+/// Upstream's `-q`/`-s` case clears verbosity *and* sets displayWeights. The
+/// port kept only the first half, and that field is read by nothing, so both
+/// flags were inert. The expected bytes come from the C++ tool: streaming a
+/// float is `%g`, so the weight is `0.5`, not hfst-lookup's `0.500000`.
+#[test]
+fn quiet_flags_turn_weights_on() {
+    let dir = scratch("ol-quiet");
+    let table = weighted_ol_transducer(&dir);
+
+    let (ok, plain) = run(&["optimized-lookup", &table], b"a\n");
+    assert!(ok, "hfst optimized-lookup exited non-zero");
+    assert_eq!(plain, "a\tb\n\n", "the default output must carry no weight");
+
+    for flag in ["-q", "--quiet", "-s", "--silent", "-w", "--show-weights"] {
+        let (ok, out) = run(&["optimized-lookup", flag, &table], b"a\n");
+        assert!(ok, "hfst optimized-lookup {flag} exited non-zero");
+        assert_eq!(
+            out, "a\tb\t0.5\n\n",
+            "hfst optimized-lookup {flag} did not display the weight"
+        );
+    }
+}
+
+/// `-v` is the half of the verbosity pair that stays invisible: upstream
+/// assigns verboseFlag and never tests it, so the output must not change.
+#[test]
+fn verbose_flag_changes_no_output() {
+    let dir = scratch("ol-verbose");
+    let table = weighted_ol_transducer(&dir);
+
+    for flag in ["-v", "--verbose"] {
+        let (ok, out) = run(&["optimized-lookup", flag, &table], b"a\n");
+        assert!(ok, "hfst optimized-lookup {flag} exited non-zero");
+        assert_eq!(out, "a\tb\n\n", "-v must not alter the analyses printed");
+    }
+}
+
+/// `--pipe-mode` is a Windows console switch that does nothing here, but it is
+/// part of the flag contract: every documented STREAM must still be accepted,
+/// and an undocumented one must still fail.
+#[test]
+fn pipe_mode_accepts_documented_streams() {
+    let dir = scratch("ol-pipe");
+    let table = weighted_ol_transducer(&dir);
+
+    for flag in [
+        "-p",
+        "--pipe-mode",
+        "--pipe-mode=both",
+        "--pipe-mode=input",
+        "--pipe-mode=output",
+    ] {
+        let (ok, out) = run(&["optimized-lookup", flag, &table], b"a\n");
+        assert!(ok, "hfst optimized-lookup {flag} exited non-zero");
+        assert_eq!(out, "a\tb\n\n", "{flag} must not change the analyses");
+    }
+
+    let (ok, _) = run(
+        &["optimized-lookup", "--pipe-mode=sideways", &table],
+        b"a\n",
+    );
+    assert!(!ok, "an unrecognised --pipe-mode STREAM must fail");
 }

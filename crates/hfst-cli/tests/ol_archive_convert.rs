@@ -170,8 +170,11 @@ fn optimized_lookup_unions_weighted_archive_with_weights() {
     assert!(ok, "optimized-lookup -w failed on a two-member archive");
     assert!(out.contains("CAT"), "cat->CAT missing:\n{out}");
     assert!(out.contains("DOG"), "dog->DOG missing:\n{out}");
+    // Streaming a float is %g at 6 significant digits, so a zero weight is the
+    // single character `0`, byte-for-byte what the C++ tool prints here. The
+    // six-place `0.000000` this used to expect is hfst-lookup's printf("%f").
     assert!(
-        out.contains("0.000000"),
+        out.contains("CAT\t0\n"),
         "expected a printed weight column:\n{out}"
     );
 }
