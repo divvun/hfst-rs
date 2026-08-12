@@ -187,6 +187,30 @@ impl Backend for FomaTransducer {
         sorted.is_loop_free == foma::types::Tern::No
     }
 
+    /// C `FomaTransducer::number_of_states` counted the state-number runs of the
+    /// flat line table, and the compressed table stores exactly one block per
+    /// run — so the block count is that number, read without materializing the
+    /// rows. Not `Fsm::statecount`: that field is `maxstate + 1` as of whenever
+    /// `fsm_count` last ran, neither the same quantity under gapped numbering
+    /// nor guaranteed current.
+    fn number_of_states(&self) -> u32 {
+        self.net.states.blocks().len() as u32
+    }
+
+    /// C counted the rows with `in != -1` — every row but the arc-less-state
+    /// markers, which the compressed table keeps out of its arc array. That is
+    /// also the predicate `to_basic` filters arcs by, so this count cannot
+    /// disagree with the interchange graph.
+    fn number_of_arcs(&self) -> u32 {
+        self.net.states.arc_count() as u32
+    }
+
+    /// foma's line table carries no weight field, so no net it holds can hold a
+    /// weight. Stated rather than inherited, so the answer is a survey result.
+    fn has_weights(&self) -> bool {
+        false
+    }
+
     fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
         // `Fsm.sigma` is a plain `Vec<Sigma>` (empty ↔ absent), so there is no
         // lazy-create guard — append straight into the alphabet.
