@@ -277,4 +277,5 @@ assertions (
     {id foma-extract-paths-alignment, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:25.345187Z}
     {id foma-extract-paths-fd-filter, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:27.825912Z}
     {id foma-lookup-ambiguity-approx, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:35.644925Z}
+    {id panic-on-malformed-input, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:14:32.188148Z}
 )

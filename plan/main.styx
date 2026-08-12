@@ -4984,12 +4984,27 @@ children (
                 title "Two index-out-of-bounds panics on malformed or wrong-type input, where an error is owed: transducer.rs:1559 (hfst-lookup on a degenerate .hfstol, 'len is 2 but the index is 897') and pmatch.rs:2724 (hfst-tokenize fed a non-pmatch archive, 'len is 6 but the index is 13'). Both should validate and return Err. Sweep the OL/pmatch readers for sibling unchecked indexing"
                 priority 1
                 kind @fix
+                sealed true
                 log (
                     {
                         at 2026-08-12T07:59:45.516681Z
                         author "brendan@necessary.nu"
                         kind @note
                         text "Severity raised: transducer.rs:1559 is reachable from a NORMAL path, not only from malformed files. Converting a legitimately EMPTY transducer to the optimized-lookup form and looking any string up in it panics — \"index out of bounds: the len is 2 but the index is 2\" — because TransitionTable::at indexes unchecked. Surfaced while writing the compose-intersect-empty-panic regression test: once compose_intersect correctly returns the empty language for an empty rule set, the very next thing a caller does with that result crashes. So the two P0s were stacked, and fixing the first exposes the second on the same code path. The regression test asserts structurally (number_of_arcs) rather than through lookup, specifically to avoid coupling it to this defect; when this is fixed, that test can be strengthened to assert non-acceptance directly."
+                    }
+
+                    {
+                        at 2026-08-12T09:14:09.684703Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Fixed on nplan/panic-on-malformed-input (2fe3c92), merged as 8f49b7a. Verified here: `hfst tokenize <plain .hfstol>` now emits \"ab\" and exits 0 where it panicked at pmatch.rs:2724; `hfst pmatch <plain .hfstol>` exits 1 with \"not a pmatch archive: the transducer's alphabet carries no @PMATCH_ENTRY@/@PMATCH_EXIT@ markers\"; 334/334 workspace and 247/247 --features foma.\n\nROOT CAUSE, deeper than the two sites I filed and worth remembering: both panics are ONE bug. A state's index-table probe is `state + input_symbol`, and the OL writer pads the index table with one blank entry per INPUT symbol — but identity, unknown and output-only symbols are numbered ABOVE input_symbol_count, so a probe can legitimately exceed the padding. An empty transducer has seen_input_symbols == 1 (epsilon only) and a 2-entry index table, yet its alphabet still holds @_IDENTITY_SYMBOL_@/@_UNKNOWN_SYMBOL_@, so get_analyses routes unmatched input to find_index(identity_symbol) -> index_table[2]. pmatch probes further still because PmatchContainer builds its encoder over orig_symbol_count rather than input_symbol_count. C++ read past the vector and got a non-matching entry; get_transitions_from_state (transducer.rs:2669) already guarded its probe with exactly this reasoning, so the fix follows in-tree precedent.\n\nDESIGN ANSWER to the question I posed: empty RESULT, not Err. An empty transducer is a value and the empty language accepts nothing, so Err would be wrong for compose_intersect's callers. Returning the blank padding entry is what a correctly-padded table would have given, so nothing is lost — the out-of-range probes are only ever for symbols with no arcs. Err is reserved for input that cannot hold together: bad targets/symbols, impossible header (input_symbol_count > symbol_count), wrong file type.\n\nAlso hardened at the read boundary: tables cross-validated against each other and the alphabet in load_tables / PmatchTransducer::new_from_stream (this is what catches the original \"len is 2 but the index is 897\" .hfstol), table reads batched at 64Ki entries so a corrupt size field stops at a short read rather than a 48 GB allocation, and an empty-string alphabet symbol no longer walks the encoder trie off a one-byte buffer.\n\nFOLLOW-THROUGH: the agent un-deferred the assertion in compose_intersect_with_no_rules_is_empty, which I had written structurally (number_of_arcs) precisely because this defect made accepts() unusable. It now asserts non-acceptance directly, as that node's log said it should once this was fixed."
+                    }
+
+                    {
+                        at 2026-08-12T09:14:32.188148Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
                     }
                 )
             }
@@ -5119,6 +5134,13 @@ children (
                 id backend-counts-zero
                 title "Backend::number_of_states / number_of_arcs default to 0 for every non-tropical backend (crates/hfst/src/backend.rs:92-99), so `print size` under -f foma reports \"0 states, 0 arcs\" for any net while tropical reports the real counts. Same silent-stub shape: a default value a caller consumes as fact. C++ FomaTransducer::number_of_states/number_of_arcs DO exist (hfst-cpp FomaTransducer.cc:607,622), so this is a genuine port gap, not an upstream limitation. Found by the foma-extract-paths agent while verifying its own suspects; outside its file ownership so left alone"
                 priority 1
+                kind @fix
+            }
+
+            {
+                id naive-tokenizer-harmonizer-alphabet
+                title "make_naive_tokenizer (pmatch_tokenize.rs:1431) builds its harmonizer with hfst_transducer_to_hfst_ol(dictionary) WITHOUT the \"harmonizer_alphabet\" option that convert_ol_transducer.rs:180-205 documents as the fix for exactly this index-table under-padding (upstream hfst#354). That is why `hfst tokenize &lt;plain .hfstol&gt;` reached the pmatch table probe at all. Input matching is unaffected — input symbols are precisely the padded ones — so the runtime bounds fix in panic-on-malformed-input is sufficient for correctness, but the option is arguably missing here and its absence is what routed a plain transducer into the pmatch path. Found by the panics agent, outside its file ownership"
+                priority 2
                 kind @fix
             }
         )
