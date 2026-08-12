@@ -281,6 +281,7 @@ fn parse_file<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyT
         return EXIT_FAILURE;
     };
 
+    comp.set_source_name(filename);
     if 0 != comp.parse_line(line) {
         hfst_error(
             common,
