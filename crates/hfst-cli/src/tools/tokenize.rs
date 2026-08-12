@@ -38,8 +38,6 @@ struct Options {
     /// Input is separated by blank lines (as opposed to single newlines).
     blankline_separated: bool,
     keep_newlines: bool,
-    #[allow(dead_code)]
-    token_number: i32,
     tokenizer_filename: String,
     /// 'static TokenizeSettings settings;' — default-constructed as in C++.
     settings: TokenizeSettings,
@@ -51,7 +49,6 @@ impl Default for Options {
             superblanks: false,
             blankline_separated: true,
             keep_newlines: false,
-            token_number: 1,
             tokenizer_filename: String::new(),
             settings: TokenizeSettings::default(),
         }
@@ -127,7 +124,14 @@ fn parse_options(
             ("weight-classes", getopt::REQUIRED_ARGUMENT, b'l' as i32),
             ("unique", getopt::NO_ARGUMENT, b'u' as i32),
             ("segment", getopt::NO_ARGUMENT, b'z' as i32),
-            ("space-separated", getopt::NO_ARGUMENT, b'd' as i32),
+            // C++ declares this long option as 'd' and only ever reaches the
+            // space-separated case through the 'i' in its short-option string
+            // "nkawWmub:t:l:zixcSgCfL", so upstream --space-separated silently
+            // means --debug. This getopt carries no short string — `val` is the
+            // sole channel for both spellings — so 'd' would lose the option to
+            // the common --debug case and leave -i unknown. 'i' serves both;
+            // --debug keeps 'd' via the common table.
+            ("space-separated", getopt::NO_ARGUMENT, b'i' as i32),
             ("xerox", getopt::NO_ARGUMENT, b'x' as i32),
             ("cg", getopt::NO_ARGUMENT, b'c' as i32),
             ("superblanks", getopt::NO_ARGUMENT, b'S' as i32),

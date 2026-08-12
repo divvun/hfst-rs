@@ -76,6 +76,11 @@ impl Getopt {
     // [spec:hfst:def:hfst-getopt.getopt-long-fn]
     // [spec:hfst:sem:hfst-getopt.getopt-long-fn]
     pub fn getopt_long(&mut self, args: &mut Vec<String>, longopts: &[GetOpt]) -> i32 {
+        // glibc clears optarg on entry to every getopt_long call. Without that,
+        // an OPTIONAL_ARGUMENT option given with no '=value' (--colour,
+        // hfst-summarize -S, --pipe-mode) would see the *previous* option's
+        // argument through optarg_opt() and misread it as its own.
+        self.optarg = None;
         let argc = args.len();
         // skip free arguments: anything not beginning with '-', plus the
         // getopt specials — a lone "-" is an operand (conventionally stdin),
