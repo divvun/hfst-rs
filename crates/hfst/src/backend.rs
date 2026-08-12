@@ -87,16 +87,15 @@ pub trait Backend: Sized {
     /// 'is_cyclic' (every backend had a real arm).
     fn is_cyclic(&self) -> bool;
 
-    /// 'number_of_states': the C++ returned the count only for the tropical
-    /// backend and 0 for every other type.
-    fn number_of_states(&self) -> u32 {
-        0
-    }
+    /// 'number_of_states'. Deliberately undefaulted: a count is a fact the
+    /// caller prints as one, and a stubbed 0 is indistinguishable at the call
+    /// site from an honestly empty net. A backend that truly cannot count has
+    /// to say so in its own body rather than inherit silence.
+    fn number_of_states(&self) -> u32;
 
-    /// 'number_of_arcs': tropical-only, like 'number_of_states'.
-    fn number_of_arcs(&self) -> u32 {
-        0
-    }
+    /// 'number_of_arcs', undefaulted for the same reason as
+    /// [`Self::number_of_states`].
+    fn number_of_arcs(&self) -> u32;
 
     /// 'print_alphabet' (test function): tropical-only, no-op elsewhere.
     fn print_alphabet(&self) {}
@@ -630,6 +629,29 @@ impl AlgebraBackend for StdVectorFst {
 // Optimized-lookup (the two table instantiations)
 // ---------------------------------------------------------------------------
 
+/// The reachable (state, arc) counts of an optimized-lookup table pair.
+///
+/// The OL encoding keeps no state list to read a count off: a state is just an
+/// offset into the index or the transition table, and the two tables share one
+/// address space. So the honest count is the reachability walk from the start
+/// offset — the same walk `hfst_ol_to_hfst_basic_transducer` numbers states
+/// with, minus the interchange transducer it would otherwise materialize.
+fn ol_counts<T: crate::transducer::TransducerTablesInterface>(t: &Transducer<T>) -> (u32, u32) {
+    let mut seen = std::collections::BTreeSet::from([0u32]);
+    let mut agenda = vec![0u32];
+    let mut arcs = 0u32;
+    while let Some(state) = agenda.pop() {
+        for tr in t.get_transitions_from_state(state).iter() {
+            arcs += 1;
+            let target = t.get_transition_target(*tr);
+            if seen.insert(target) {
+                agenda.push(target);
+            }
+        }
+    }
+    (seen.len() as u32, arcs)
+}
+
 impl Backend for Transducer<WeightedTables> {
     const TYPE: ImplementationType = ImplementationType::HFST_OLW_TYPE;
     fn stream_type(&self) -> ImplementationType {
@@ -662,6 +684,12 @@ impl Backend for Transducer<WeightedTables> {
     }
     fn is_cyclic(&self) -> bool {
         HfstOlTransducer::is_cyclic(self)
+    }
+    fn number_of_states(&self) -> u32 {
+        ol_counts(self).0
+    }
+    fn number_of_arcs(&self) -> u32 {
+        ol_counts(self).1
     }
     fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
         self.include_symbol_in_alphabet(symbol);
@@ -717,6 +745,12 @@ impl Backend for Transducer<UnweightedTables> {
     }
     fn is_cyclic(&self) -> bool {
         HfstOlTransducer::is_cyclic(self)
+    }
+    fn number_of_states(&self) -> u32 {
+        ol_counts(self).0
+    }
+    fn number_of_arcs(&self) -> u32 {
+        ol_counts(self).1
     }
     fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
         self.include_symbol_in_alphabet(symbol);

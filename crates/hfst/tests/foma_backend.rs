@@ -17,6 +17,7 @@ use std::collections::BTreeSet;
 
 use hfst::backend::{AlgebraBackend, Backend, LookupBackend};
 use hfst::backend_foma::FomaTransducer;
+use hfst::backend_thfst::ThfstTransducer;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::hfst_data_types::{HfstTwoLevelPath, HfstTwoLevelPaths, Symbol};
@@ -24,6 +25,7 @@ use hfst::hfst_extract_strings::{ExtractStringsCb, RetVal};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
 use hfst::transducer::{Transducer, WeightedTables};
+use hfst::xfst_compiler::XfstCompiler;
 use hfst_openfst::StdVectorFst;
 
 /// The tropical/OL symbol coding lives in process-global statics behind
@@ -92,12 +94,22 @@ fn tropical_of(net: &HfstBasicTransducer) -> StdVectorFst {
     <StdVectorFst as Backend>::from_basic(net).expect("tropical from_basic")
 }
 
-/// State count of a backend transducer, read off its interchange form so foma
-/// and openfst are compared on the same footing (FomaTransducer does not
-/// implement `number_of_states`).
+/// State count of a backend transducer, read off its interchange form — an
+/// independent witness against the backend's own `number_of_states`.
 fn state_count<B: Backend>(b: &B) -> usize {
     let basic = b.to_basic().expect("to_basic");
     (basic.get_max_state() + 1) as usize
+}
+
+/// Arc count of a backend transducer, read off its interchange form — the
+/// counterpart witness against `number_of_arcs`.
+fn arc_count<B: Backend>(b: &B) -> usize {
+    let basic = b.to_basic().expect("to_basic");
+    basic
+        .states_and_transitions()
+        .iter()
+        .map(|trs| trs.len())
+        .sum()
 }
 
 // ---------------------------------------------------------------------------
@@ -966,4 +978,119 @@ fn is_lookup_infinitely_ambiguous_depends_on_the_input() {
             "foma is_lookup_infinitely_ambiguous_str({input})"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// State/arc counts. `Backend::number_of_states` / `number_of_arcs` used to be
+// defaulted to 0, and only the tropical backend overrode them — so `hfst xfst
+// -f foma` printed "0 states, 0 arcs" for every net it built, a stub value the
+// caller printed as fact. The C++ FomaTransducer::number_of_states/_arcs do
+// exist (FomaTransducer.cc), so this was a port gap, not a foma limitation.
+// ---------------------------------------------------------------------------
+
+/// Both counts, from the backend itself and from its interchange form.
+fn counts<B: Backend>(b: &B) -> ((u32, u32), (usize, usize)) {
+    (
+        (b.number_of_states(), b.number_of_arcs()),
+        (state_count(b), arc_count(b)),
+    )
+}
+
+fn count_cases() -> Vec<(&'static str, HfstBasicTransducer)> {
+    vec![
+        ("cat", basic_acceptor("cat")),
+        ("a:b", basic_pair("a", "b")),
+        ("abc:xyz", basic_pair("abc", "xyz")),
+        ("{a,b,c}*", basic_sigma_star(&["a", "b", "c"])),
+    ]
+}
+
+#[test]
+fn foma_matches_tropical_state_and_arc_counts() {
+    let _g = serialized();
+
+    for (name, net) in count_cases() {
+        let foma = foma_of(&net);
+        let tropical = tropical_of(&net);
+        assert_eq!(
+            (foma.number_of_states(), foma.number_of_arcs()),
+            (tropical.number_of_states(), tropical.number_of_arcs()),
+            "foma/tropical count parity for {name}"
+        );
+        assert!(
+            foma.number_of_states() > 0 && foma.number_of_arcs() > 0,
+            "{name} is a non-trivial net, so neither foma count may be 0"
+        );
+    }
+}
+
+#[test]
+fn foma_counts_agree_with_its_own_graph() {
+    let _g = serialized();
+
+    for (name, net) in count_cases() {
+        let (reported, witness) = counts(&foma_of(&net));
+        assert_eq!(
+            reported,
+            (witness.0 as u32, witness.1 as u32),
+            "foma counts disagree with its interchange graph for {name}"
+        );
+    }
+}
+
+#[test]
+fn optimized_lookup_and_thfst_report_real_counts() {
+    let _g = serialized();
+
+    for (name, net) in count_cases() {
+        let ol: Transducer<WeightedTables> =
+            <Transducer<WeightedTables> as Backend>::from_basic(&net).expect("OL from_basic");
+        let (reported, witness) = counts(&ol);
+        assert_eq!(
+            reported,
+            (witness.0 as u32, witness.1 as u32),
+            "OL counts disagree with its interchange graph for {name}"
+        );
+        assert!(
+            reported.0 > 0 && reported.1 > 0,
+            "{name} is a non-trivial net, so neither OL count may be 0"
+        );
+
+        // THFST is the same engine under a different stream identity, so it must
+        // report the same counts rather than fall back to a stub.
+        let thfst = ThfstTransducer::from_ol(ol);
+        assert_eq!(
+            (thfst.number_of_states(), thfst.number_of_arcs()),
+            reported,
+            "THFST count parity with its inner OL engine for {name}"
+        );
+    }
+}
+
+/// The observable defect: the net-size line `hfst xfst -f foma` prints after
+/// every command reads these counts straight off the backend.
+#[test]
+fn xfst_net_size_under_foma_is_nonzero() {
+    let _g = serialized();
+
+    let script = "regex [a:b | c:d | e:f];\n";
+
+    let mut foma_c = XfstCompiler::<FomaTransducer>::new_with_impl();
+    foma_c.parse(script);
+    let foma_top = *foma_c.get_stack().last().expect("foma stack non-empty");
+    let foma_size = (
+        foma_c.net(foma_top).number_of_states(),
+        foma_c.net(foma_top).number_of_arcs(),
+    );
+
+    let mut trop_c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    trop_c.parse(script);
+    let trop_top = *trop_c.get_stack().last().expect("tropical stack non-empty");
+    let trop_size = (
+        trop_c.net(trop_top).number_of_states(),
+        trop_c.net(trop_top).number_of_arcs(),
+    );
+
+    assert_eq!(foma_size, (2, 3), "three alternations over two states");
+    assert_eq!(foma_size, trop_size, "xfst net size is backend-independent");
 }
