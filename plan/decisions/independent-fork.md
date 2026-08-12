@@ -23,6 +23,7 @@ consequences {
         "A faithfully ported upstream bug is a bug in this project. It gets fixed here and, where worthwhile, reported upstream."
         "Spec rules under docs/spec/port/ describe what this project does. Where that departs from the C++ they carry a PORT DIVERGENCE note with the reason; a rule that merely records upstream behaviour does not bind us."
         "Sibling crates (nfst, foma) may gain primitives their upstreams lack when that is the honest fix, published as normal releases."
+        "Human-facing output quality is in scope on its own merits. Upstream's diagnostics are poor, and improving them — source-anchored ariadne spans, readable errors, legible reports — needs no further justification than that it helps the person reading them."
     )
     deferred (
         "The C++ oracle stays useful and stays installed, but it is now advisory. Each divergence has to be argued on its merits, which is more work per decision than 'match upstream' was."
@@ -51,12 +52,24 @@ The governing rule is therefore: **compatibility where possible, divergence for
 correctness where necessary.**
 
 Compatibility is not abandoned, because it is what downstream actually consumes.
-On-disk formats, the `.hfst` header, tool names and their flags, and the shape
-of tool output are contracts with Giella build systems, divvunspell, and every
+On-disk formats, the `.hfst` header, tool names and their flags, and any output
+a script parses — `hfst-lookup`'s analysis columns, `hfst-fst2strings`' paths,
+exit codes — are contracts with Giella build systems, divvunspell, and every
 existing archive. Those change only for a reason that outweighs breaking them.
-Where behaviour is merely incidental — an internal map key, a diagnostic, a
-symbol-table entry count, a compiler's parse of an ambiguous construct — this
-project answers to correctness alone.
+Where behaviour is merely incidental — an internal map key, a symbol-table entry
+count, a compiler's parse of an ambiguous construct — this project answers to
+correctness alone.
+
+Diagnostics are not in the contract, and are held to a higher standard than
+upstream sets. Errors, warnings and progress reporting exist to be read by a
+person, and hfst has historically been bad at that: unanchored messages, no
+source context, failures that name neither the file nor the line. Improving them
+is in scope as its own goal, not merely as a side effect of fixing something
+else. The mechanism is already established — `crate::diag` renders
+source-anchored ariadne snippets, and the xre, twolc, lexc and pmatch parsers
+route their errors through it. The xfst compiler does not, and its ~59 raw
+error sites are the largest remaining gap, on the surface where a user is most
+often reading errors interactively.
 
 The C++ build remains installed and remains valuable: for any behaviour nobody
 has reasoned about carefully, comparing against it is still the cheapest way to
@@ -70,9 +83,15 @@ same reasoning applies: when the honest fix is a primitive the upstream lacks,
 adding it is correct, and it ships as a normal release rather than as a local
 patch.
 
-The practical test for any proposed divergence is whether it makes the software
-answer a question more truthfully. Fixing an inverted check, deleting a
-copyright that was never ours to claim, adding a parser rule that resolves an
-ambiguity the way the language actually means it — all yes. Renaming things
-because a different name reads better, or changing an output format because it
-would be tidier, are not: they impose migration cost on users to buy taste.
+The practical test for a proposed divergence is whether it makes the software
+answer more truthfully, or makes a person better able to understand the answer.
+Fixing an inverted check, deleting a copyright that was never ours to claim,
+resolving a parse ambiguity the way the language actually means it, threading a
+span through so an error points at the offending line — all yes.
+
+What the test excludes is change that charges users migration cost to buy
+preference: renaming a tool because another name reads better, or reshaping
+script-parsed output because a different layout would be tidier. The distinction
+is not cosmetic-versus-functional, it is who pays. Nobody has a pipeline built
+on the exact wording of an error message, so improving it costs no one; a
+pipeline built on `hfst-lookup`'s columns breaks the moment they move.

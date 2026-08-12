@@ -5032,4 +5032,11 @@ children (
             }
         )
     }
+
+    {
+        id xfst-diagnostics
+        title "Thread ariadne spans through the xfst compiler: it has ~59 raw error!/eprintln! sites and zero crate::diag usage, while xre, twolc, lexc and pmatch already render source-anchored snippets. xfst is the interactive/script surface where a user reads errors most, and an unanchored \"could not be parsed\" naming neither line nor file is the worst diagnostic in the tree — the `set copyright-owner \"Acme Corp\"` rejection this session gave no hint that the quoting, not the command, was the problem. Carry the span from nfst-xfst's Spanned AST into the compiler's error paths and route them through diag::emit. Per [dec:hfst:independent-fork], diagnostic quality is in scope on its own merits"
+        priority 1
+        kind @feat
+    }
 )
