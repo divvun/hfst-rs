@@ -287,4 +287,5 @@ assertions (
     {id pmatch-initial-symbols-dead, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:45:24.453062Z}
     {id getopt-clustered-shorts, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:32:17.359197Z}
     {id invert-symbol-table-duplication, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:37:20.126947Z}
+    {id silent-stub-lint-gate, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:42:56.796308Z}
 )

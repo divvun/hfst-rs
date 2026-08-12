@@ -5138,6 +5138,22 @@ children (
                 title "Close the ratchet on this bug class rather than re-sweeping. The tell is not TODO/unimplemented (those are loud) but a comment asserting a safety net that does not exist — \"callers needing the real X route through Y\" — beside a body returning self/empty/Ok(()). Every core-library instance was in backend_foma.rs, added after the idiom audits closed. Options: a review checklist for new backends, a test that every Backend trait method is exercised per backend, or a grep-based CI check for reassurance-comment shapes"
                 priority 2
                 kind @test
+                sealed true
+                log (
+                    {
+                        at 2026-08-12T13:42:38.352729Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Built and merged (6ee0e94). 403/403 workspace, 290/290 foma, clippy and fmt clean.\n\nTHE TECHNIQUE IS THE THING WORTH REMEMBERING: a default cannot vary. The battery asks every query over fixtures whose truthful answers DIFFER, and every transformation over a fixture whose truthful result differs from its input. No constant, no self.clone(), no empty collection survives a pair of assertions like that — and it works without knowing which backend is under test, so a new backend inherits the whole battery for free. That is a much better ratchet than anything grep-shaped.\n\nCompile-time half: `classify` is a wildcard-free match over ImplementationType, so a new backend tag is an E0004 until its author places it, and a runtime test asserts every tag classified Battery actually ran, so the registry cannot claim coverage it does not have.\n\nSecond gate, trivial_body_census.rs: a frozen list of every trait-impl method whose whole body is a constant — exactly 7 workspace-wide, each with the reason it is honest. This reaches where behaviour cannot. FomaTransducer::push_weights returning self.clone() is CORRECT and unprovable: foma's line table has no weight field, so the right answer and a stub are observationally identical. A list entry with a reason is the only check such a method can get.\n\nProved load-bearing by reintroducing nine stubs of the swept shapes and reverting each; all nine fired at an assertion naming the defect, including restoring the number_of_states default while deleting foma's override — the case the compiler cannot catch.\n\nREJECTIONS, all with data, all correct:\n- Remove remaining defaults: nothing left. Every other value-returning default in the workspace does real work (the battery now asserts each takes effect), write_to_dir bails loudly, print_alphabet is the documented exception. PmatchObject's 20 defaults are faithful C++ base-class virtuals on the analysis 586ac73 deliberately left dead.\n- Reassurance-comment regex: the tell is not the comment, it is that the claim is FALSE, and you cannot grep for truth. Measured: 32 trivial-body functions tree-wide, and the CORRECT ones carry explanatory comments just as densely as the bug did.\n- clippy::missing_trait_methods: 532 hits in hfst alone — it fires on every legitimate default, which is the design of the trait.\n- clippy::allow_attributes + allow_attributes_without_reason WOULD have caught the #[allow(dead_code)] mask (because #[expect] self-destructs when the lint stops firing) but needs edits at ~110 sites. Worth its own node.\n\nTHREE REAL VIOLATIONS found and reported rather than fixed, each pinned by an expected-red test that fails the moment it is corrected — so they cannot rot in either direction. Filed as ol-header-flags-always-false (P0 — I verified the hang myself: 15,954 lines in 5s on a cyclic .hfstol where tropical refuses), foma-alphabet-set-ops, foma-first-vs-initial-symbols.\n\nHONEST LIMIT, and the agent named it precisely: a method returning a PLAUSIBLE BUT WRONG NON-CONSTANT value is invisible to both gates. foma's get_first_input_symbols is the demonstration — a real, non-empty, fixture-varying set that passes every assertion a semantics-blind battery can make. Only cross-backend differential testing against a backend known to be right catches that, and it requires someone to first suspect the two methods should differ."
+                    }
+
+                    {
+                        at 2026-08-12T13:42:56.796308Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5309,6 +5325,27 @@ children (
             {
                 id ol-fast-mode-silent
                 title "`hfst optimized-lookup -f` (fast mode) prints NOTHING where C++ echoes the input words; and `hfst lookup -v` diverges deeper in its verbose output though the first lines match. Both reproduce on UNCLUSTERED spellings, so neither is a getopt problem. Found by the getopt-clustered-shorts agent in a 131-invocation C++-vs-Rust diff whose other 22 differences were all message-text or stream-routing noise — these two are payload. Verify each against the oracle and decide: silent fast mode looks like a straightforward port gap rather than a deliberate divergence"
+                priority 2
+                kind @fix
+            }
+
+            {
+                id ol-header-flags-always-false
+                title "is_cyclic and is_infinitely_ambiguous are constant false for the WHOLE OL family, and it hangs a live tool. Transducer::is_cyclic probes HeaderFlag::Cyclic and is_infinitely_ambiguous probes Has_input_epsilon_cycles, but TransducerHeader::set_flag has ZERO callers in the workspace and both new_weighted (transducer.rs:568) and new_sizes (:596) hardcode all seven property flags false — only a header read off disk (:618) can set them. So every in-memory-built OLW/THFST transducer answers false whatever it contains. Worse than an inherited default: it OVERRIDES a trait default at backend.rs:296 that would compute the answer from the graph, under a comment reading \"the OL backends answer directly\". MEASURED CONSEQUENCE: `hfst fst2strings` on a cyclic .hfstol runs UNBOUNDED — 15,954 lines in 5s, longest 31,824 chars and growing — where the same net as tropical refuses immediately with \"Transducer is cyclic. Use one or more of these options\". Live readers: hfst_transducer.rs:808/824, xfst_compiler.rs:6372/6431/6593, fst2strings.rs:622/738. deterministic/input_deterministic/minimized are hardcoded TRUE by the same constructors, same shape, no live readers today. NOT fixed by the gate agent because the obvious repair turns an O(1) header read into an O(states) walk on the pmatch/lookup hot path — that trade is an operator call. Pinned by an expected-red test"
+                priority 0
+                kind @fix
+            }
+
+            {
+                id foma-alphabet-set-ops
+                title "FomaTransducer::add_symbols_to_alphabet returns Ok(()) having added nothing: foma overrides insert_to_alphabet but INHERITS the round-trip default for the set form, and from_basic (backend_foma.rs:141) builds the sigma purely by interning each arc's symbols — it never reads the interchange net's alphabet — so any symbol on no arc is dropped. remove_from_alphabet is the same defect with the opposite sign: it appears to work only because the round trip drops arc-less symbols regardless, and it cannot touch a symbol still on an arc. Two paths on the same backend disagree about what the alphabet is. Consumer to check when fixing: hfst_xerox_rules strips its temporary markers via remove_from_alphabet_symbol/_set on every replace-rule compile. Found by the ratchet battery; pinned by an expected-red test"
+                priority 1
+                kind @fix
+            }
+
+            {
+                id foma-first-vs-initial-symbols
+                title "foma answers get_first_input_symbols and get_initial_input_symbols with ONE shared helper, under a comment at backend_foma.rs:471 claiming \"foma draws no distinction between them\" — the same reassurance shape, asserting an equivalence the contract does not have. Tropical's are different walks: get_initial_input_symbols descends THROUGH epsilon and flag arcs and stops at the first real symbol; get_first_input_symbols walks the whole net. Measured on the acceptor `abc`: tropical gives initial=[a] first=[a,b,c], foma gives initial=[a] first=[a]. Currently LATENT — summarize is the only live caller and its foma arm returns None — which is exactly the state has_weights was in before the previous sweep. NOT caught by either new gate: the value is real, non-empty and varies correctly across fixtures, so it passes every assertion a semantics-blind battery can make. This is the demonstration case for what the ratchet cannot catch"
                 priority 2
                 kind @fix
             }
