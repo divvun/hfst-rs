@@ -38,6 +38,12 @@ use std::io::{BufRead, Write};
 /// In the C the per-file inputs were a FILE** array (each from hfst_fopen, or
 /// stdin); after the io-foundation de-C-ism the names are a `Vec<String>` and
 /// the readers are `std::io::BufRead` readers, parallel to INFILENAMES.
+///
+/// Upstream's `expfilename`, `very_quiet`, `max_infinite` and `matches` globals
+/// are declared and then never read on any path, so they are deliberately not
+/// mirrored: a field no option handler writes and no code reads carries no
+/// behaviour, and silencing its dead-code warning is how a genuinely inert flag
+/// hides (see the --space-separated defect).
 struct Options {
     infilenames: Vec<String>,
     infile_readers: Vec<Box<dyn BufRead>>,
@@ -48,8 +54,6 @@ struct Options {
     // Modelled as a bool so the same "was -f given" check survives the FILE*
     // removal.
     expfile_given: bool,
-    #[allow(dead_code)]
-    expfilename: Option<String>,
     dialect_xerox: bool,
     dialect_posix_bre: bool,
     dialect_posix_ere: bool,
@@ -58,12 +62,8 @@ struct Options {
     match_word: bool,
     match_full_line: bool,
     linesep: u8,
-    #[allow(dead_code)]
-    very_quiet: bool,
     invert_matches: bool,
     max_count: u64,
-    #[allow(dead_code)]
-    max_infinite: bool,
     print_offset: bool,
     print_linenumbers: bool,
     flush_newlines: bool,
@@ -76,8 +76,6 @@ struct Options {
     print_filename_null: bool,
     before_context: u64,
     after_context: u64,
-    #[allow(dead_code)]
-    matches: u64,
     format: ImplementationType,
 }
 
@@ -88,7 +86,6 @@ impl Default for Options {
             infile_readers: Vec::new(),
             regexp: None,
             expfile_given: false,
-            expfilename: None,
             dialect_xerox: false,
             dialect_posix_bre: false,
             dialect_posix_ere: false,
@@ -97,10 +94,8 @@ impl Default for Options {
             match_word: false,
             match_full_line: false,
             linesep: b'\n',
-            very_quiet: false,
             invert_matches: false,
             max_count: u64::MAX,
-            max_infinite: true,
             print_offset: false,
             print_linenumbers: false,
             flush_newlines: false,
@@ -113,7 +108,6 @@ impl Default for Options {
             print_filename_null: false,
             before_context: 0,
             after_context: 0,
-            matches: 0,
             format: ImplementationType::UNSPECIFIED_TYPE,
         }
     }
