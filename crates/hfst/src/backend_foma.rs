@@ -205,6 +205,12 @@ impl Backend for FomaTransducer {
         self.net.states.arc_count() as u32
     }
 
+    /// foma's line table carries no weight field, so no net it holds can hold a
+    /// weight. Stated rather than inherited, so the answer is a survey result.
+    fn has_weights(&self) -> bool {
+        false
+    }
+
     fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
         // `Fsm.sigma` is a plain `Vec<Sigma>` (empty ↔ absent), so there is no
         // lazy-create guard — append straight into the alphabet.

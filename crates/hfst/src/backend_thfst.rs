@@ -122,6 +122,9 @@ impl Backend for ThfstTransducer {
     fn number_of_arcs(&self) -> u32 {
         Backend::number_of_arcs(&self.0)
     }
+    fn has_weights(&self) -> bool {
+        Backend::has_weights(&self.0)
+    }
     fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
         Backend::insert_to_alphabet(&mut self.0, symbol)
     }

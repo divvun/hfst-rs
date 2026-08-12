@@ -1094,3 +1094,70 @@ fn xfst_net_size_under_foma_is_nonzero() {
     assert_eq!(foma_size, (2, 3), "three alternations over two states");
     assert_eq!(foma_size, trop_size, "xfst net size is backend-independent");
 }
+
+// ---------------------------------------------------------------------------
+// has_weights. Same silent-stub shape as the counts: the trait defaulted it to
+// false and only tropical overrode it, so every OL/OLW and THFST transducer
+// answered false regardless of what it carried.
+// ---------------------------------------------------------------------------
+
+/// `a:b` carrying `arc_w` on its single arc and `final_w` on its final state.
+fn basic_weighted(arc_w: f32, final_w: f32) -> HfstBasicTransducer {
+    let mut net = HfstBasicTransducer::new();
+    net.add_state(0);
+    let tr = HfstBasicTransition::new_symbols(1, sym("a"), sym("b"), arc_w, net.coder_mut());
+    net.add_transition(0, &tr, true);
+    net.set_final_weight(1, &final_w);
+    net
+}
+
+/// The three cases that separate "carries a weight" from "is weighted-shaped".
+fn weight_cases() -> Vec<(&'static str, HfstBasicTransducer, bool)> {
+    vec![
+        ("all-zero", basic_weighted(0.0, 0.0), false),
+        ("weighted arc", basic_weighted(0.5, 0.0), true),
+        ("weighted final", basic_weighted(0.0, 0.5), true),
+    ]
+}
+
+#[test]
+fn has_weights_reports_carried_weights_not_table_shape() {
+    let _g = serialized();
+
+    for (name, net, want) in weight_cases() {
+        let ol: Transducer<WeightedTables> =
+            <Transducer<WeightedTables> as Backend>::from_basic(&net).expect("OL from_basic");
+
+        // Conversions always build weighted-SHAPED tables, so the header flag
+        // `stream_type` reads is true even for the all-zero net. `has_weights`
+        // deliberately answers the other question, and tropical is the reference
+        // for what that question means.
+        assert!(
+            ol.is_weighted(),
+            "{name}: conversions produce weighted-shaped tables"
+        );
+        assert_eq!(ol.has_weights(), want, "OL has_weights({name})");
+        assert_eq!(
+            ol.has_weights(),
+            tropical_of(&net).has_weights(),
+            "OL/tropical has_weights parity for {name}"
+        );
+    }
+}
+
+#[test]
+fn foma_and_thfst_report_weights_honestly() {
+    let _g = serialized();
+
+    for (name, net, want) in weight_cases() {
+        assert!(
+            !foma_of(&net).has_weights(),
+            "{name}: foma nets have no weight field to carry a weight in"
+        );
+
+        let ol: Transducer<WeightedTables> =
+            <Transducer<WeightedTables> as Backend>::from_basic(&net).expect("OL from_basic");
+        let thfst = ThfstTransducer::from_ol(ol);
+        assert_eq!(thfst.has_weights(), want, "THFST has_weights({name})");
+    }
+}
