@@ -101,3 +101,106 @@ fn function_argument_substitution_respects_token_boundaries() {
     let top = *c.get_stack().last().expect("one net on the stack");
     assert_eq!(c.net(top).number_of_arcs(), 2);
 }
+
+// ---------------------------------------------------------------------------
+// Diagnostics. xfst is where a user meets this compiler, so a failure has to
+// name a position in their script and, where the cause is a known xfst trap,
+// what to type instead. The rendering goes to stderr; what is asserted here is
+// the shaping that feeds it — the span, the wording, and the advice.
+// ---------------------------------------------------------------------------
+
+// 1-based line number a byte offset falls on.
+fn line_of(src: &str, offset: usize) -> usize {
+    src[..offset].matches('\n').count() + 1
+}
+
+// Every diagnostic a failing script produces, in source order.
+fn diagnose(src: &str) -> Vec<hfst::xfst_compiler::XfstDiagnostic> {
+    match nfst_xfst::parse(src) {
+        Ok(_) => Vec::new(),
+        Err(e) => hfst::xfst_compiler::parse_diagnostics(src, &e),
+    }
+}
+
+// `set copyright-owner "Acme Corp"` is the canonical xfst trap: a NAMETOKEN
+// ends at the first space or quote, so the value has to be %-escaped. Upstream
+// rejects the whole line with no position and no reason.
+#[test]
+fn quoted_value_points_at_the_quote() {
+    let src = "set copyright-owner \"Acme Corp\"\n";
+    let ds = diagnose(src);
+    let first = ds.first().expect("the quote is rejected");
+    assert_eq!(&src[first.span.clone()], "\"");
+    assert!(
+        first.notes.iter().any(|n| n.contains('%')),
+        "no escaping advice in {:?}",
+        first.notes
+    );
+}
+
+// A mistyped command names itself and the command it was probably meant to be.
+#[test]
+fn mistyped_command_suggests_the_real_one() {
+    let src = "regex a ;\ndetrminize net ;\n";
+    let ds = diagnose(src);
+    let first = ds.first().expect("the typo is rejected");
+    assert_eq!(&src[first.span.clone()], "detrminize");
+    assert_eq!(first.message, "unknown command 'detrminize'");
+    assert!(
+        first.notes.iter().any(|n| n.contains("determinize")),
+        "no suggestion in {:?}",
+        first.notes
+    );
+}
+
+// A regex body is parsed as a standalone string by the front end, so its error
+// spans count from the body rather than the script. They have to be rebased or
+// the caret lands on unrelated text — here, line 4 of the script.
+#[test]
+fn regex_body_error_is_anchored_in_the_script() {
+    let src = "regex a ;\nregex b ;\n\ndefine Broken [ a | b ;\n";
+    let ds = diagnose(src);
+    let first = ds.first().expect("the unclosed bracket is rejected");
+    assert!(
+        first.span.start >= src.find("Broken").expect("body is on line 4"),
+        "span {:?} points before the offending line",
+        first.span
+    );
+    assert_eq!(line_of(src, first.span.start), 4);
+    // The Rust token name the regex parser reports is spelled as the character
+    // the user did not type.
+    assert!(
+        first.message.contains("']'"),
+        "token name left unspelled in {:?}",
+        first.message
+    );
+}
+
+// The whole point of retaining the script: a failure late in a long file must
+// report its own line, not the file's.
+#[test]
+fn late_failure_reports_its_own_line() {
+    let mut src = String::new();
+    for _ in 0..239 {
+        src.push_str("regex a ;\n");
+    }
+    src.push_str("bogus command\n");
+    let ds = diagnose(&src);
+    let first = ds.first().expect("the unknown command is rejected");
+    assert_eq!(line_of(&src, first.span.start), 240);
+}
+
+// Notes are advice, not noise: a stray character that is not a quoting mistake
+// gets no lecture about escaping.
+#[test]
+fn ordinary_stray_character_gets_no_advice() {
+    let ds = diagnose("regex a ;\n\u{7}\n");
+    let first = ds.first().expect("the stray byte is rejected");
+    assert!(first.notes.is_empty(), "unwanted advice {:?}", first.notes);
+}
+
+// A script that parses produces no diagnostics at all.
+#[test]
+fn a_valid_script_produces_no_diagnostics() {
+    assert!(diagnose("define V [ a | e ] ;\nregex V ;\nprint size\n").is_empty());
+}

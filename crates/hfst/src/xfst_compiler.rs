@@ -37,7 +37,7 @@ use crate::hfst_tropical_transducer_transition_data::SymbolCoder;
 use crate::lexc::LexcCompiler;
 use crate::xre::XreCompiler;
 use std::io::BufRead;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 static APPLY_END_STRING: &str = "<ctrl-d>";
 
@@ -167,7 +167,21 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     // the compiler drops); this preserves the raw-pointer aliasing the C++
     // relied on.
     nets: Vec<HfstTransducer<B>>,
+    /// The script text currently being walked, retained so a failure can be
+    /// rendered with the offending line and a caret under it.
+    source: String,
+    /// Label shown in diagnostics: a script file name, or the sentinel for a
+    /// line typed at the prompt.
+    source_name: String,
+    /// Byte span in 'source' of the command currently being evaluated. Every
+    /// command-level diagnostic anchors here, so the many sites that only
+    /// report a failure gain a source position without each carrying one.
+    current_span: std::ops::Range<usize>,
 }
+
+/// Source label for xfst input that came from no file — a line typed at the
+/// interactive prompt, or a script handed straight to the library.
+const REPL_SOURCE_NAME: &str = "<xfst>";
 
 impl<B: AlgebraBackend> XfstCompiler<B> {
     // Resolve a 'NetId' to the transducer it names in the arena.
@@ -241,6 +255,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             restricted_mode: false,
             engine_config: crate::hfst_transducer::EngineConfig::default(),
             nets: Vec::new(),
+            source: String::new(),
+            source_name: String::from(REPL_SOURCE_NAME),
+            current_span: 0..0,
         };
         c.xre.set_expand_definitions(true);
         c.xre.set_verbosity(c.verbose);
@@ -339,7 +356,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Print parts of automaton with epsilon loops
     // @todo unimplemented yet
     pub fn collect_epsilon_loops(&mut self) -> &mut Self {
-        warn!("cannot collect epsilon loops");
+        self.diag_warning("collect epsilon-loops is not implemented; nothing was printed");
         // PROMPT_AND_RETURN_THIS
         self.prompt();
         self
@@ -369,7 +386,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // @brief Print file info
     pub fn print_file_info(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        warn!("file info not implemented (cf. summarize)");
+        self.diag_warning("print file-info is not implemented; nothing was printed");
         // PROMPT_AND_RETURN_THIS
         self.prompt();
         self
@@ -402,7 +419,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // @brief Print properties of network named @a name
     pub fn print_properties_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
-        warn!("missing print properties");
+        self.diag_warning("print properties is not implemented; nothing was printed");
         // PROMPT_AND_RETURN_THIS
         self.prompt();
         self
@@ -469,7 +486,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Sort top network of the stack
     // @todo HFST automata sort or not by default
     pub fn sort_net(&mut self) -> &mut Self {
-        warn!("missing sort net");
+        self.diag_warning("sort is not implemented; the network was left as it was");
         // PRINT_INFO_PROMPT_AND_RETURN_THIS
         self.print_transducer_info();
         self.prompt();
@@ -479,7 +496,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Substring top network of stack
     // @todo unimplementedd
     pub fn substring_net(&mut self) -> &mut Self {
-        warn!("missing substring net");
+        self.diag_warning("substring is not implemented; the network was left as it was");
         // PRINT_INFO_PROMPT_AND_RETURN_THIS
         self.print_transducer_info();
         self.prompt();
@@ -504,18 +521,31 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // macro that the bison actions appended ('if get_fail_flag() YYABORT')
         // becomes a per-command fail-flag test, and the QUIT action that
         // returned EXIT_SUCCESS becomes the quit_requested test.
+        //
+        // Retaining the script text is what turns every downstream failure into
+        // a located one: line and column come from ariadne rendering a span
+        // against this string.
+        self.source = src.to_string();
         let script = match nfst_xfst::parse(src) {
             Ok(s) => s,
             Err(e) => {
-                for d in &e.diagnostics {
-                    error!("{}", d.message);
+                for d in parse_diagnostics(src, &e) {
+                    crate::diag::emit_with_notes(
+                        &self.source_name,
+                        src,
+                        d.span,
+                        crate::diag::Severity::Error,
+                        &d.message,
+                        &d.notes,
+                    );
                 }
                 return 1;
             }
         };
         for c in &script.value.commands {
+            self.current_span = c.span.range.clone();
             if let Err(e) = self.eval_command(&c.value) {
-                error!("{}", e);
+                self.diag_error(&e.to_string());
                 return 1;
             }
             // QUIT action returned EXIT_SUCCESS immediately.
@@ -528,6 +558,77 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
         0
+    }
+
+    /// Name shown in source-anchored diagnostics — the script file the text
+    /// about to be parsed came from. Defaults to the interactive sentinel,
+    /// which is right for a line typed at the prompt.
+    pub fn set_source_name(&mut self, name: &str) -> &mut Self {
+        self.source_name = if name.is_empty() {
+            String::from(REPL_SOURCE_NAME)
+        } else {
+            name.to_string()
+        };
+        self
+    }
+
+    /// Render an error about the command currently being evaluated, anchored at
+    /// its span in the script source.
+    ///
+    /// With no retained source — a caller driving the command methods directly
+    /// rather than through `parse` — this degrades to the plain one-line
+    /// message it replaced, never to a caret pointing at the wrong place.
+    fn diag_error(&self, msg: &str) {
+        self.diag_error_with_notes(msg, &[]);
+    }
+
+    /// As `diag_error`, with follow-up advice under the snippet.
+    fn diag_error_with_notes(&self, msg: &str, notes: &[String]) {
+        crate::diag::emit_with_notes(
+            &self.source_name,
+            &self.source,
+            self.current_span.clone(),
+            crate::diag::Severity::Error,
+            msg,
+            notes,
+        );
+    }
+
+    /// Report a `set`/`show` against a variable this compiler does not have,
+    /// suggesting the nearest one it does. The valid set is session state, so
+    /// the suggestion is drawn from it rather than from a fixed list.
+    fn diag_unknown_variable(&self, name: &str) {
+        let mut notes = Vec::new();
+        if let Some(near) = nearest_name(name, self.variables.keys().map(String::as_str)) {
+            notes.push(format!("did you mean '{}'?", near));
+        }
+        notes.push(String::from(
+            "'show all' lists every variable and its value",
+        ));
+        self.diag_error_with_notes(&format!("no such variable: '{}'", name), &notes);
+    }
+
+    /// Report a reference to a network that was never defined, suggesting the
+    /// nearest name this session has defined.
+    fn diag_unknown_definition(&self, name: &str) {
+        let mut notes = Vec::new();
+        if let Some(near) = nearest_name(name, self.definitions.keys().map(|k| k.as_str())) {
+            notes.push(format!("did you mean '{}'?", near));
+        }
+        notes.push(String::from("'print defined' lists the defined networks"));
+        self.diag_error_with_notes(&format!("no such defined network: '{}'", name), &notes);
+    }
+
+    /// Render a warning about the command currently being evaluated, anchored
+    /// at its span in the script source.
+    fn diag_warning(&self, msg: &str) {
+        crate::diag::emit(
+            &self.source_name,
+            &self.source,
+            self.current_span.clone(),
+            crate::diag::Severity::Warning,
+            msg,
+        );
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.parse-line-fn]
@@ -557,7 +658,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // mirror the success path of the C++ wrapper.
         let retval: i32 = 0;
         if retval != 0 {
-            error!("could not close file {}", name);
+            self.diag_error(&format!("could not close file '{}'", name));
             self.flush();
             self.xfst_fail();
         }
@@ -570,7 +671,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     pub fn open_file(&mut self, path: &str, mode: &str) {
         match crate::hfst_data_types::open_file(path, mode) {
             Err(_) => {
-                error!("could not open file {}", path);
+                self.diag_error(&format!("could not open file '{}'", path));
                 self.flush();
                 self.xfst_fail();
             }
@@ -638,8 +739,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 || t_type == ImplementationType::THFST_TYPE
             {
                 if self.verbose {
-                    warn!(
-                        "transducer is in optimized lookup format, 'apply up' is the only operation it supports"
+                    self.diag_warning(
+                        "transducer is in optimized lookup format, 'apply up' is the only operation it supports",
                     );
                 }
             } else {
@@ -684,8 +785,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         match crate::hfst_data_types::open_file(filename, "r") {
-            Err(_) => {
-                error!("Could not open file {}", filename);
+            Err(e) => {
+                // The io error names the actual cause (missing, unreadable, a
+                // directory); 'could not open' alone leaves the user guessing.
+                self.diag_error(&format!("could not open file '{}': {}", filename, e));
                 self.flush();
                 self.xfst_fail();
                 return None;
@@ -701,9 +804,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         match HfstInputStream::new_filename(filename) {
             Ok(instream) => Some(instream),
             Err(_) => {
-                error!(
-                    "Unable to read transducers from {}",
-                    to_filename(Some(filename))
+                self.diag_error_with_notes(
+                    &format!(
+                        "unable to read transducers from {}",
+                        to_filename(Some(filename))
+                    ),
+                    &[String::from(
+                        "the file exists but is not in a transducer format this compiler reads",
+                    )],
                 );
                 self.flush();
                 self.xfst_fail();
@@ -735,7 +843,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let t = match instream.read() {
                 Ok(t) => t,
                 Err(e) => {
-                    error!("{e}");
+                    self.diag_error(&format!("reading '{}': {}", infilename, e));
                     if self.variables["quit-on-fail"] == "ON" {
                         self.fail_flag = true;
                     }
@@ -747,7 +855,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let t = match self.convert_to_common_format(t, Some(infilename)) {
                 Ok(t) => t,
                 Err(e) => {
-                    error!("{e}");
+                    self.diag_error(&format!("converting '{}': {}", infilename, e));
                     if self.variables["quit-on-fail"] == "ON" {
                         self.fail_flag = true;
                     }
@@ -763,7 +871,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     || t_type == ImplementationType::HFST_OLW_TYPE
                     || t_type == ImplementationType::THFST_TYPE
                 {
-                    error!("cannot load optimized lookup transducers as definitions");
+                    self.diag_error("cannot load optimized lookup transducers as definitions");
                     self.flush();
                     break;
                 }
@@ -787,14 +895,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     fn add_loaded_definition(&mut self, t: NetId) -> &mut Self {
         let def_name = self.net(t).get_name();
         if def_name.is_empty() {
-            warn!("loaded transducer definition has no name, skipping it");
+            self.diag_warning("loaded transducer definition has no name, skipping it");
             return self;
         }
         if self.definitions.contains_key(def_name.as_str()) {
-            warn!(
+            self.diag_warning(&format!(
                 "a definition named '{}' already exists, overwriting it",
                 def_name
-            );
+            ));
             // the previous net stays in the arena; the map entry is replaced.
             self.definitions.remove(def_name.as_str());
         }
@@ -911,7 +1019,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     fn top(&mut self) -> Option<NetId> {
         if self.stack.is_empty() {
             // EMPTY_STACK
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             self.prompt();
             return None;
@@ -923,8 +1031,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 || t.get_type() == ImplementationType::HFST_OLW_TYPE
                 || t.get_type() == ImplementationType::THFST_TYPE
             {
-                warn!(
-                    "Operation not supported for optimized lookup format. Consider 'remove-optimization' to convert into ordinary format."
+                self.diag_warning(
+                    "operation not supported for optimized lookup format; 'remove-optimization' converts the network back to ordinary format",
                 );
                 self.prompt();
                 return None;
@@ -994,7 +1102,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // ------------------------------------------------------------------
 
     fn error_message(&self, message: &str) -> &Self {
-        error!("{}", message);
+        self.diag_error(message);
         self
     }
 
@@ -1260,7 +1368,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 | NetworkOp::ExtractUnambiguous
                 | NetworkOp::Ambiguous => {
                     // hxfsterror("unimplemetend ambiguous\n"); return EXIT_FAILURE;
-                    error!("unimplemetend ambiguous");
+                    self.diag_error("the ambiguity commands are not implemented");
                     self.fail_flag = true;
                 }
                 NetworkOp::CompileReplaceLower => {
@@ -1385,7 +1493,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
             XfstCommand::Source(_path) => {
                 // hxfsterror("source not implemented yywrap\n"); return EXIT_FAILURE;
-                error!("source not implemented yywrap");
+                self.diag_error("'source' is not implemented; run the script with -F instead");
                 self.fail_flag = true;
             }
             XfstCommand::Quit => {
@@ -1434,7 +1542,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             XfstCommand::EditProps => {
                 // hxfsterror("NETWORK PROPERTY EDITOR unimplemented\n");
                 // return EXIT_FAILURE;
-                error!("NETWORK PROPERTY EDITOR unimplemented");
+                self.diag_error("the network property editor is not implemented");
                 self.fail_flag = true;
             }
             XfstCommand::Hfst(data) => {
@@ -1590,6 +1698,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // here the tree is already parsed, so we walk it directly and optimize,
     // returning a shared handle just like xre.compile.
     fn compile_spanned_xre(&mut self, xre: &nfst_xre::SpannedXre) -> crate::error::Result<NetId> {
+        // An embedded body is parsed by nfst-xfst as a standalone string, so
+        // only its root node carries a script span and every inner node counts
+        // from the body's first byte. Those spans would be read against
+        // whatever source a previous 'xre.compile' left behind, putting a caret
+        // under unrelated text; clearing it makes the regex compiler fall back
+        // to plain messages here. Body syntax errors are anchored properly a
+        // layer up, where the body is re-parsed at its script offset.
+        self.xre.source = String::new();
         let mut t = self.xre.eval(xre)?;
         t.optimize()?;
         Ok(self.alloc_net(t))
@@ -1845,14 +1961,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Execute @c system()
     pub fn system(&mut self, command: &str) -> &mut Self {
         if self.restricted_mode {
-            warn!("Restricted mode (--restricted-mode) is in use, system calls are disabled");
+            self.diag_warning("system calls are disabled by restricted mode (--restricted-mode)");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
         }
         let rv = run_shell(command);
         if rv != 0 {
-            warn!("system {} returned {}", command, rv);
+            self.diag_warning(&format!("system '{}' returned {}", command, rv));
         }
         self.prompt();
         self
@@ -1862,7 +1978,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     pub fn set(&mut self, name: &str, text: &str) -> &mut Self {
         if !self.variables.contains_key(name) {
             if name == "compose-flag-as-special" {
-                warn!("variable compose-flag-as-special not found, using flag-is-epsilon instead");
+                self.diag_warning(
+                    "there is no compose-flag-as-special variable; setting flag-is-epsilon instead",
+                );
                 self.variables
                     .insert("flag-is-epsilon".to_string(), text.to_string());
                 if self.verbose {
@@ -1871,7 +1989,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 self.prompt();
                 return self;
             } else {
-                error!("no such variable: '{}'", name);
+                self.diag_unknown_variable(name);
                 self.prompt();
                 return self;
             }
@@ -1944,7 +2062,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Set variable @c name = @c number
     pub fn set_number(&mut self, name: &str, number: u32) -> &mut Self {
         if !self.variables.contains_key(name) {
-            error!("no such variable: '{}'", name);
+            self.diag_unknown_variable(name);
             self.prompt();
             return self;
         }
@@ -1967,7 +2085,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Show named variable
     pub fn show(&mut self, name: &str) -> &mut Self {
         if !self.variables.contains_key(name) {
-            error!("no such variable: '{}'", name);
+            self.diag_unknown_variable(name);
             self.prompt();
             return self;
         }
@@ -2501,7 +2619,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         let cmd1 = format!("dot -Tpng {} > {} 2> /dev/null", dotfilename, pngfilename);
         if run_shell(&cmd1) != 0 {
-            error!("Converting failed.");
+            self.diag_error_with_notes(
+                "could not render the network to png",
+                &[String::from("'view' needs graphviz 'dot' on PATH")],
+            );
             self.xfst_lesser_fail();
         }
         if self.verbose {
@@ -2509,7 +2630,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         let cmd2 = format!("/usr/bin/xdg-open {} 2> /dev/null &", pngfilename);
         if run_shell(&cmd2) != 0 {
-            error!("Viewing failed.");
+            self.diag_error_with_notes(
+                "could not open the rendered network",
+                &[String::from("'view' needs 'xdg-open' on PATH")],
+            );
             self.xfst_lesser_fail();
         }
         self.prompt();
@@ -2540,7 +2664,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     ) -> crate::error::Result<&mut Self> {
         match self.definitions.get(name).copied() {
             None => {
-                error!("no such defined network: '{}'", name);
+                self.diag_unknown_definition(name);
                 self.prompt();
                 Ok(self)
             }
@@ -2653,7 +2777,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @todo HFST automata do not remember their names
     pub fn name_net(&mut self, name: &str) -> &mut Self {
         if self.stack.is_empty() {
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             return self;
         }
@@ -2773,15 +2897,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Handle unknown command \a s.
     //  @return Whether the parser should go on, 0 signifying true.
     pub fn unknown_command(&mut self, s: &str) -> i32 {
+        let d = unknown_command_diagnostic(s, self.current_span.clone());
         if self.variables["quit-on-fail"] == "ON" {
             if self.verbose {
-                error!("Command {} is not recognised.", s);
-                // fprintf(stderr, "Command %s is not recognised.\n", s);
+                self.diag_error_with_notes(&d.message, &d.notes);
             }
             return 1;
         }
-        error!("Command {} is not recognised.", s);
-        // fprintf(stderr, "Command %s is not recognised.\n", s);
+        self.diag_error_with_notes(&d.message, &d.notes);
         self.prompt();
         0
     }
@@ -3065,8 +3188,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             if self.variables["show-flags"] == "OFF"
                 && (tmp_upper.has_flag_diacritics() || tmp_lower.has_flag_diacritics())
             {
-                warn!(
-                    "longest string may have flag diacritics that are not shown\n         but are used in calculating its length (use 'eliminate flags')"
+                self.diag_warning(
+                    "longest string may have flag diacritics that are not shown but are counted in its length ('eliminate flags' removes them)",
                 );
             }
 
@@ -3144,10 +3267,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             if matches!(e.kind, crate::error::ErrorKind::TransducerIsCyclic) {
                 let cutoff = u32::try_from(parse_size(&self.variables["print-words-cycle-cutoff"]))
                     .expect("value out of u32 range");
-                warn!(
+                self.diag_warning(&format!(
                     "transducer is cyclic, limiting the number of cycles to {}",
                     cutoff
-                );
+                ));
                 if obey_flags_off {
                     temp.extract_paths(&mut results, number as i32, cutoff as i32)?;
                 } else {
@@ -3650,7 +3773,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @todo Unicode ranges are not supported
     pub fn define_list_by_range(&mut self, name: &str, start: &str, end: &str) -> &mut Self {
         if (start.len() > 1) || (end.len() > 1) {
-            warn!("unsupported unicode range {}-{}", start, end);
+            self.diag_warning(&format!("unsupported unicode range {}-{}", start, end));
         }
         let mut l: BTreeSet<Symbol> = BTreeSet::new();
         let start_c = start.as_bytes().first().copied().unwrap_or(0);
@@ -3669,12 +3792,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @todo lists are not supportedd by HFST
     pub fn define_list(&mut self, name: &str, list: &str) -> &mut Self {
         if self.definitions.contains_key(name) {
-            error!(
-                "Error: '{}' has already been defined as a transducer variable.",
-                name
+            self.diag_error_with_notes(
+                &format!("'{}' is already defined as a transducer", name),
+                &[format!(
+                    "a name cannot be both; 'undefine {}' first to redefine it as a list",
+                    name
+                )],
             );
-            error!("It cannot have an incompatible definition as a list.");
-            error!("Please undefine the definition first.");
             // MAYBE_QUIT
             if self.variables["quit-on-fail"] == "ON" {
                 self.fail_flag = true;
@@ -3702,12 +3826,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // the variable latest_regex_compiled.
 
         if self.lists.contains_key(name) {
-            error!(
-                "Error: '{}' has already been defined as a list variable.",
-                name
+            self.diag_error_with_notes(
+                &format!("'{}' is already defined as a list", name),
+                &[format!(
+                    "a name cannot be both; 'unlist {}' first to redefine it as a transducer",
+                    name
+                )],
             );
-            error!("It cannot have an incompatible definition as a transducer.");
-            error!("Please undefine the variable first.");
             // MAYBE_QUIT
             if self.variables["quit-on-fail"] == "ON" {
                 self.fail_flag = true;
@@ -3726,12 +3851,18 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                         .insert(Symbol::new(name), xre.to_string());
                 }
                 None => {
-                    error!("Could not define variable '{}'", name);
+                    self.diag_error(&format!(
+                        "could not define '{}': its regex did not compile",
+                        name
+                    ));
                     self.xfst_fail();
                 }
             }
         } else {
-            error!("Could not define variable '{}'", name);
+            self.diag_error(&format!(
+                "could not define '{}': no regex was compiled for it",
+                name
+            ));
             self.xfst_fail();
         }
         self.prompt();
@@ -3784,20 +3915,20 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @todo Regex parser does not support macro functions
     pub fn define_function(&mut self, prototype: &str, xre: &str) -> &mut Self {
         let Some(name) = Self::extract_function_name(prototype) else {
-            error!(
-                "Error extracting function name from prototype '{}'",
+            self.diag_error(&format!(
+                "could not read a function name out of the prototype '{}'",
                 prototype
-            );
+            ));
             self.xfst_fail();
             self.prompt();
             return self;
         };
 
         let Some(arguments) = Self::extract_function_arguments(prototype) else {
-            error!(
-                "Error extracting function arguments from prototype '{}'",
+            self.diag_error(&format!(
+                "could not read the argument list out of the prototype '{}'",
                 prototype
-            );
+            ));
             self.xfst_fail();
             self.prompt();
             return self;
@@ -3806,7 +3937,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let xre_converted =
             Self::convert_argument_symbols(&arguments, xre, &name, &mut self.xre, false);
         if xre_converted.is_empty() {
-            error!("Error parsing function definition '{}'", xre);
+            self.diag_error(&format!("could not parse the body of function '{}'", name));
             self.xfst_fail();
             self.prompt();
             return self;
@@ -3820,7 +3951,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             &xre_converted,
         ) {
             // XRE
-            error!("Error when defining function");
+            self.diag_error(&format!("could not define function '{}'", name));
             self.xfst_fail();
             self.prompt();
             return self;
@@ -4180,7 +4311,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         operation: BinaryOperation,
     ) -> crate::error::Result<&mut Self> {
         if self.stack.len() < 2 {
-            self.error_message("Not enough networks on stack. Operation requires at least 2.");
+            self.error_message("not enough networks on the stack: this operation needs two");
             self.flush();
             self.xfst_lesser_fail();
             return Ok(self);
@@ -4249,7 +4380,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         operation: BinaryOperation,
     ) -> crate::error::Result<&mut Self> {
         if self.stack.len() < 2 {
-            self.error_message("Not enough networks on stack. Operation requires at least 2.");
+            self.error_message("not enough networks on the stack: this operation needs two");
             self.flush();
             self.xfst_lesser_fail();
             return Ok(self);
@@ -4373,7 +4504,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let elim = self.net_mut(tmp).eliminate_flag(name).map(|_| ());
         if let Err(__e) = elim {
             let __name = __e.message.clone().unwrap_or_default();
-            error!("could not eliminate flag '{}': {}", name, __name);
+            self.diag_error(&format!("could not eliminate flag '{}': {}", name, __name));
             if self.variables["quit-on-fail"] == "ON" {
                 self.fail_flag = true;
             }
@@ -4408,9 +4539,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief do some label pushing
     // @todo HFST automata cannot push labels
     pub fn cleanup_net(&mut self) -> &mut Self {
-        warn!("cannot cleanup net");
+        self.diag_warning("cleanup is not implemented; the network was left as it was");
         if self.stack.is_empty() {
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             return self;
         }
@@ -4500,7 +4631,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Negate top of stack
     pub fn negate_net(&mut self) -> crate::error::Result<&mut Self> {
         if self.stack.is_empty() {
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             return Ok(self);
         }
@@ -4511,9 +4642,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let negated = self.net_mut(t_op).negate().map(|_| ());
         if let Err(__e) = negated {
             if matches!(__e.kind, crate::error::ErrorKind::TransducerIsNotAutomaton) {
-                error!("Error: Negation is defined only for automata.");
-                error!(
-                    "Use expression [[?:?]* - A] instead where A is the transducer to be negated."
+                self.diag_error_with_notes(
+                    "negation is defined only for automata, and the top of the stack is a transducer",
+                    &[String::from(
+                        "subtract from the universal relation instead: [[?:?]* - A]",
+                    )],
                 );
                 self.xfst_lesser_fail();
                 return Ok(self);
@@ -4724,10 +4857,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // malformed compile-replace regexp to a diagnostic.
         match fsm.find_replacements(level_is_upper) {
             Err(e) => {
-                error!(
-                    "compile_replace threw an error: '{}'",
+                self.diag_error(&format!(
+                    "compile-replace failed: {}",
                     e.message.unwrap_or_default()
-                );
+                ));
             }
             Ok(replacement_map) => {
                 'outer: for (start_state, replacements) in replacement_map.iter() {
@@ -4749,10 +4882,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                         }
 
                         let Some(mut replacement) = self.xre.compile(&cross_product_regexp) else {
-                            error!(
-                                "Could not compile regular expression in compile-replace: {}.",
+                            self.diag_error(&format!(
+                                "compile-replace could not compile the regex it built: {}",
                                 cross_product_regexp
-                            );
+                            ));
                             early_return = true;
                             break 'outer;
                         };
@@ -5070,7 +5203,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     pub fn lookup_optimize(&mut self) -> crate::error::Result<&mut Self> {
         if self.stack.is_empty() {
             // EMPTY_STACK
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             self.prompt();
             return Ok(self);
@@ -5097,11 +5230,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // ([dec:hfst:monomorphic-backends]); the former in-place
         // 'convert(to_format)' of every stack entry cannot change the backend
         // type parameter, so the optimized-lookup conversion is unsupported.
-        warn!(
+        self.diag_warning(&format!(
             "cannot convert transducer type from {} to {}: the stack is monomorphically typed, ignoring 'lookup-optimize'",
             crate::hfst_data_types::implementation_type_to_format(t_type),
             crate::hfst_data_types::implementation_type_to_format(to_format)
-        );
+        ));
 
         self.prompt();
         Ok(self)
@@ -5110,7 +5243,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     pub fn remove_optimization(&mut self) -> crate::error::Result<&mut Self> {
         if self.stack.is_empty() {
             // EMPTY_STACK
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             self.prompt();
             return Ok(self);
@@ -5139,8 +5272,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 crate::hfst_data_types::implementation_type_to_format(B::TYPE)
             );
             if !crate::hfst_transducer::is_safe_conversion(t_type, B::TYPE) {
-                warn!(
-                    "converting from weighted to unweighted format, loss of information is possible"
+                self.diag_warning(
+                    "converting from weighted to unweighted format, loss of information is possible",
                 );
             }
         }
@@ -5179,7 +5312,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         if self.stack.is_empty() {
             // EMPTY_STACK
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             self.prompt();
             return Ok(self);
@@ -5201,8 +5334,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 || ty == ImplementationType::HFST_OLW_TYPE
                 || ty == ImplementationType::THFST_TYPE
             {
-                warn!(
-                    "Operation not supported for optimized lookup format. Consider 'remove-optimization' to convert into ordinary format."
+                self.diag_warning(
+                    "operation not supported for optimized lookup format; 'remove-optimization' converts the network back to ordinary format",
                 );
                 self.prompt();
                 return Ok(self);
@@ -5210,8 +5343,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
             // lookdown not yet implemented in HFST
             if self.verbose {
-                warn!(
-                    "apply up not implemented, inverting transducer and performing apply down\nfor faster performance, invert and minimize top network and do apply down instead"
+                self.diag_warning(
+                    "apply up on this format is done by inverting and applying down; invert and minimize the top network yourself to avoid the cost",
                 );
             }
             let mut c = HfstTransducer::new_copy(self.net(top))?;
@@ -5302,10 +5435,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         ) {
             cutoff = parse_size(&self.variables["lookup-cycle-cutoff"]);
             if self.verbose {
-                warn!(
+                self.diag_warning(&format!(
                     "lookup is infinitely ambiguous, limiting the number of cycles to {}",
                     cutoff
-                );
+                ));
             }
         }
 
@@ -5358,8 +5491,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
         // lookdown not yet implemented in HFST
         if self.verbose {
-            warn!(
-                "apply up not implemented, inverting transducer and performing apply down\nfor faster performance, invert and minimize top network and do apply down instead"
+            self.diag_warning(
+                "apply up on this format is done by inverting and applying down; invert and minimize the top network yourself to avoid the cost",
             );
         }
         let mut copy = HfstTransducer::new_copy(self.net(t))?;
@@ -5374,7 +5507,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     fn apply_down_line(&mut self, line: &str) -> crate::error::Result<&mut Self> {
         if self.stack.is_empty() {
             // EMPTY_STACK
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             self.prompt();
             return Ok(self);
@@ -5391,7 +5524,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     fn apply_med_line(&mut self, line: &str) -> &mut Self {
         let _ = line;
-        warn!("Missing apply med");
+        self.diag_warning("apply med is not implemented; no output was produced");
         self
     }
 
@@ -5409,15 +5542,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     pub fn write_dot_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
         let _ = oss;
         if self.stack.is_empty() {
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
         }
         let mut outfile = match std::fs::File::create(name) {
             Ok(f) => f,
-            Err(_) => {
-                error!("Could not open file {}", name);
+            Err(e) => {
+                self.diag_error(&format!("could not open file '{}': {}", name, e));
                 self.xfst_fail();
                 self.prompt();
                 return self;
@@ -5435,7 +5568,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Save top networks dot form in @a outfile
     pub fn write_dot(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
         if self.stack.is_empty() {
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             self.prompt();
             return self;
@@ -5456,7 +5589,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         oss: &mut dyn std::io::Write,
     ) -> crate::error::Result<&mut Self> {
         if self.stack.is_empty() {
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             self.prompt();
             return Ok(self);
@@ -5516,7 +5649,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         outfilename: &str,
     ) -> crate::error::Result<&mut Self> {
         if !self.definitions.contains_key(name) {
-            error!("no such defined network: '{}'", name);
+            self.diag_unknown_definition(name);
             self.prompt();
             return Ok(self);
         }
@@ -5541,7 +5674,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @todo HFST does not support saving name of definition in file
     pub fn write_definitions(&mut self, outfilename: &str) -> crate::error::Result<&mut Self> {
         if self.definitions.is_empty() {
-            warn!("no defined networks");
+            self.diag_warning("no networks are defined, nothing to save");
             self.prompt();
             return Ok(self);
         }
@@ -5569,7 +5702,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Save all transducers in stack to @a outfile
     pub fn write_stack(&mut self, outfilename: &str) -> crate::error::Result<&mut Self> {
         if self.stack.is_empty() {
-            warn!("Empty stack.");
+            self.diag_warning("empty stack: this command needs a network on the stack");
             self.xfst_lesser_fail();
             return Ok(self);
         }
@@ -5621,7 +5754,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.stack.push(t);
             self.print_transducer_info();
         } else {
-            error!("Error reading regex '{}'.", indata);
+            self.diag_error(&format!("could not read regex '{}'", indata));
             self.xfst_fail();
         }
         self.prompt();
@@ -5631,7 +5764,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Read prolog form transducer from @a indata
     pub fn read_prolog(&mut self, indata: &str) -> &mut Self {
         let _ = indata;
-        warn!("missing read prolog");
+        self.diag_warning("read prolog is not implemented; nothing was pushed");
         self.print_transducer_info();
         self.prompt();
         self
@@ -5648,7 +5781,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Read spaced form transducer from @a indata
     pub fn read_spaced(&mut self, indata: &str) -> &mut Self {
         let _ = indata;
-        warn!("missing read spaced");
+        self.diag_warning("read spaced-text is not implemented; nothing was pushed");
         self.print_transducer_info();
         self.prompt();
         self
@@ -5665,7 +5798,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Read text form transducer from @a indata
     pub fn read_text(&mut self, indata: &str) -> &mut Self {
         let _ = indata;
-        warn!("missing read text");
+        self.diag_warning("read text is not implemented; nothing was pushed");
         self.print_transducer_info();
         self.prompt();
         self
@@ -5691,8 +5824,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // 'lexc.compile(&str)', so the file contents are read into a string.
         let indata = match std::fs::read_to_string(filename) {
             Ok(s) => s,
-            Err(_) => {
-                error!("could not read lexc file");
+            Err(e) => {
+                self.diag_error(&format!("could not read lexc file '{}': {}", filename, e));
                 self.xfst_fail();
                 self.prompt();
                 return Ok(self);
@@ -5706,7 +5839,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         let Some(mut t) = self.lexc.compile(&indata) else {
-            error!("error compiling file in lexc format");
+            self.diag_error(&format!("could not compile '{}' as lexc", filename));
             self.xfst_fail();
             self.prompt();
             return Ok(self);
@@ -5727,8 +5860,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         let infile = match std::fs::File::open(filename) {
             Ok(f) => f,
-            Err(_) => {
-                error!("could not read att file {}", filename);
+            Err(e) => {
+                self.diag_error(&format!("could not read att file '{}': {}", filename, e));
                 self.xfst_fail();
                 self.prompt();
                 return Ok(self);
@@ -5754,8 +5887,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 self.stack.push(net);
                 self.print_transducer_info();
             }
-            Err(_e) => {
-                error!("error reading in att format");
+            Err(e) => {
+                self.diag_error(&format!("'{}' is not valid att format: {}", filename, e));
                 self.xfst_fail();
             }
         }
@@ -5769,8 +5902,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         if self.restricted_mode {
             let fname = filename.to_string();
             if fname.contains('/') || fname.contains('\\') {
-                warn!(
-                    "Restricted mode (--restricted-mode) is in use, write and read operations are allowed\nonly in current directory (i.e. filenames cannot contain '/' or '\\')"
+                self.diag_warning(
+                    "restricted mode (--restricted-mode) allows reads and writes only in the current directory, so a filename cannot contain a path separator",
                 );
                 self.xfst_lesser_fail();
                 self.prompt();
@@ -5794,8 +5927,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         let infile = match std::fs::File::open(filename) {
             Ok(f) => f,
-            Err(_) => {
-                error!("Could not open file {}", filename);
+            Err(e) => {
+                self.diag_error(&format!("could not open file '{}': {}", filename, e));
                 self.xfst_fail();
                 self.prompt();
                 return Ok(self);
@@ -5848,7 +5981,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
 
         if !self.definitions.contains_key(variable) {
-            error!("no such definition '{}', cannot substitute", variable);
+            self.diag_unknown_definition(variable);
             // MAYBE_QUIT
             if self.variables["quit-on-fail"] == "ON" {
                 self.fail_flag = true;
@@ -5870,7 +6003,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         let mut alpha = self.net(top).get_alphabet()?;
         if !alpha.contains(&labelstr) {
-            error!("no occurrences of label '{}', cannot substitute", label);
+            self.diag_error(&format!(
+                "no occurrences of label '{}' in the network, nothing to substitute",
+                label
+            ));
             // MAYBE_QUIT
             if self.variables["quit-on-fail"] == "ON" {
                 self.fail_flag = true;
@@ -5886,10 +6022,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 let isymbol = tr_it.get_input_symbol(fsm.coder());
                 let osymbol = tr_it.get_output_symbol(fsm.coder());
                 if isymbol != osymbol && (isymbol == labelstr || osymbol == labelstr) {
-                    error!(
-                        "label '{}' is used as a symbol on one side of an arc, cannot substitute",
+                    self.diag_error(&format!(
+                        "label '{}' is used as a symbol on one side of an arc, so it cannot be substituted",
                         label
-                    );
+                    ));
                     // MAYBE_QUIT
                     if self.variables["quit-on-fail"] == "ON" {
                         self.fail_flag = true;
@@ -5945,7 +6081,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                         symbol_pairs.insert(sp);
                     }
                     None => {
-                        error!("could not substitute with '{}'", list);
+                        self.diag_error(&format!("could not substitute with '{}'", list));
                         // MAYBE_QUIT
                         if self.variables["quit-on-fail"] == "ON" {
                             self.fail_flag = true;
@@ -5978,10 +6114,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     }
                 }
                 if !target_label_found {
-                    error!(
-                        "no occurrences of '{}:{}', cannot substitute",
+                    self.diag_error(&format!(
+                        "no occurrences of '{}:{}' in the network, nothing to substitute",
                         target_label.0, target_label.1
-                    );
+                    ));
                     self.prompt();
                     return Ok(self);
                 }
@@ -5990,7 +6126,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     .substitute_symbol_pair_with_set(&target_label, &symbol_pairs)?;
             }
             None => {
-                error!("could not substitute '{}'", target);
+                self.diag_error(&format!("could not substitute '{}'", target));
                 // MAYBE_QUIT
                 if self.variables["quit-on-fail"] == "ON" {
                     self.fail_flag = true;
@@ -6018,7 +6154,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         let alpha = self.net(top).get_alphabet()?;
         if !alpha.contains(target) {
-            error!("no occurrences of symbol '{}', cannot substitute", target);
+            self.diag_error(&format!(
+                "no occurrences of symbol '{}' in the network, nothing to substitute",
+                target
+            ));
             // MAYBE_QUIT
             if self.variables["quit-on-fail"] == "ON" {
                 self.fail_flag = true;
@@ -6054,7 +6193,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.stack.push(substituted);
             self.print_transducer_info();
         } else {
-            error!("fatal error in substitution");
+            self.diag_error("fatal error in substitution");
             self.fail_flag = true;
         }
         self.prompt();
@@ -6065,7 +6204,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @todo tests are not implemented
     pub fn test_eq(&mut self, assertion: bool) -> crate::error::Result<&mut Self> {
         if self.stack.len() < 2 {
-            warn!("Not enough networks on stack.\nOperation requires at least 2.");
+            self.diag_warning("not enough networks on the stack: this operation needs two");
             self.xfst_lesser_fail();
             return Ok(self);
         }
@@ -6094,7 +6233,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @todo tests are not implemented
     pub fn test_funct(&mut self, assertion: bool) -> &mut Self {
         let _ = assertion;
-        warn!("test funct missing");
+        self.diag_warning("test funct is not implemented; no verdict was produced");
         self.prompt();
         self
     }
@@ -6257,7 +6396,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         assertion: bool,
     ) -> crate::error::Result<&mut Self> {
         if self.stack.len() < 2 {
-            warn!("Not enough networks on stack. Operation requires at least 2.");
+            self.diag_warning("not enough networks on the stack: this operation needs two");
             self.xfst_lesser_fail();
             self.prompt();
             return Ok(self);
@@ -6344,7 +6483,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @todo tests are not implemented
     pub fn test_unambiguous(&mut self, assertion: bool) -> &mut Self {
         let _ = assertion;
-        warn!("test unambiguous missing");
+        self.diag_warning("test unambiguous is not implemented; no verdict was produced");
         self.prompt();
         self
     }
@@ -6423,4 +6562,321 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         Some(sp)
     }
+}
+
+// ===================== source-anchored diagnostics =========================
+// The xfst surface is where a user meets this compiler: a script driver and a
+// REPL. A failure here has to say where it happened and, where the cause is a
+// known xfst trap, what to type instead. The front-end parser reports byte
+// spans; these helpers turn them into something worth reading.
+
+/// A failure to report against xfst source: where it points, what it says, and
+/// any follow-up advice.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct XfstDiagnostic {
+    /// Byte range in the script the caret goes under.
+    pub span: std::ops::Range<usize>,
+    pub message: String,
+    /// Advice rendered beneath the snippet; empty when there is nothing
+    /// specific to suggest.
+    pub notes: Vec<String>,
+}
+
+/// Turn an nfst-xfst parse failure into diagnostics worth showing: front-end
+/// messages rephrased in the user's vocabulary, regex-body failures re-anchored
+/// from body-relative to script-absolute spans, and advice attached where the
+/// cause is a known xfst trap.
+///
+/// Public so the shaping can be asserted directly — the rendering itself goes
+/// to stderr, which a test cannot read.
+pub fn parse_diagnostics(src: &str, e: &nfst_xfst::ParseError) -> Vec<XfstDiagnostic> {
+    let mut out = Vec::new();
+    for d in &e.diagnostics {
+        let span = clamp_span(d.span.range.clone(), src.len());
+        let text = src.get(span.clone()).unwrap_or("");
+        if d.message.starts_with("xre body:") {
+            out.extend(regex_body_diagnostics(src, span));
+            continue;
+        }
+        if d.message.starts_with("expected command keyword") {
+            out.push(unknown_command_diagnostic(text, span));
+            continue;
+        }
+        if let Some(rest) = d.message.strip_prefix("unexpected character ") {
+            out.push(unexpected_character_diagnostic(rest, span));
+            continue;
+        }
+        // Everything else: keep the front-end wording but drop the debug dump
+        // of the token it stopped on, which names Rust types, not xfst syntax.
+        let message = match d.message.split_once(", got ") {
+            Some((expected, _)) => expected.to_string(),
+            None => d.message.clone(),
+        };
+        out.push(XfstDiagnostic {
+            span,
+            message,
+            notes: d.notes.clone(),
+        });
+    }
+    out
+}
+
+fn clamp_span(span: std::ops::Range<usize>, len: usize) -> std::ops::Range<usize> {
+    let end = span.end.min(len);
+    span.start.min(end)..end
+}
+
+/// Re-parse the regex body at `span` so its syntax errors carry spans into the
+/// script rather than into the body alone.
+///
+/// nfst-xfst parses an embedded body as a standalone string and keeps only the
+/// root node's script span, so the inner spans count from the body's first
+/// byte. Re-parsing the body padded to its real offset — the prefix blanked to
+/// whitespace, which the regex lexer skips — puts every inner span back in
+/// script coordinates, and byte-for-byte blanking keeps line and column exact.
+fn regex_body_diagnostics(src: &str, span: std::ops::Range<usize>) -> Vec<XfstDiagnostic> {
+    let body_only = XfstDiagnostic {
+        span: span.clone(),
+        message: String::from("could not parse this regular expression"),
+        notes: Vec::new(),
+    };
+    let Some(padded) = pad_to_offset(src, span.clone()) else {
+        return vec![body_only];
+    };
+    match nfst_xre::parse(&padded) {
+        // The body parsed in isolation but not as part of the script: nothing
+        // more specific to say than where it is.
+        Ok(_) => vec![body_only],
+        Err(inner) => {
+            let mut out: Vec<XfstDiagnostic> = inner
+                .diagnostics
+                .iter()
+                .map(|d| XfstDiagnostic {
+                    span: clamp_span(d.span.range.clone(), src.len()),
+                    message: format!(
+                        "in this regular expression: {}",
+                        spell_token_names(&d.message)
+                    ),
+                    notes: d.notes.clone(),
+                })
+                .collect();
+            if out.is_empty() {
+                out.push(body_only);
+            }
+            out
+        }
+    }
+}
+
+/// `src[span]` preceded by as many bytes of whitespace as `src` has before it,
+/// so a parser reading the result reports spans in `src` coordinates. Newlines
+/// are kept so line numbers survive; every other byte becomes a space, which
+/// preserves both the byte count and the column.
+fn pad_to_offset(src: &str, span: std::ops::Range<usize>) -> Option<String> {
+    let prefix = src.get(..span.start)?;
+    let body = src.get(span.clone())?;
+    let mut padded = String::with_capacity(span.end);
+    for b in prefix.bytes() {
+        padded.push(if b == b'\n' { '\n' } else { ' ' });
+    }
+    padded.push_str(body);
+    Some(padded)
+}
+
+/// Replace the regex parser's Rust token names with the characters the user
+/// actually typed: 'expected RightBracket' names a variant of an enum the user
+/// has never seen, where 'expected ]' names a key on their keyboard.
+fn spell_token_names(message: &str) -> String {
+    const GLYPHS: &[(&str, &str)] = &[
+        ("RightBracketDotted", ".]"),
+        ("LeftBracketDotted", "[."),
+        ("RightParenthesis", ")"),
+        ("LeftParenthesis", "("),
+        ("RightBracket", "]"),
+        ("LeftBracket", "["),
+        ("EndOfExpression", ";"),
+        ("PairSeparator", ":"),
+        ("CenterMarker", "_"),
+        ("Comma", ","),
+    ];
+    let mut out = message.to_string();
+    for (name, glyph) in GLYPHS {
+        out = out.replace(name, &format!("'{}'", glyph));
+    }
+    out
+}
+
+fn unknown_command_diagnostic(text: &str, span: std::ops::Range<usize>) -> XfstDiagnostic {
+    let word = text.trim();
+    if word.is_empty() {
+        return XfstDiagnostic {
+            span,
+            message: String::from("expected a command here"),
+            notes: Vec::new(),
+        };
+    }
+    let mut notes = Vec::new();
+    if let Some(near) = nearest_command(word) {
+        notes.push(format!("did you mean '{}'?", near));
+    }
+    notes.push(String::from(
+        "'help' lists the commands this compiler accepts",
+    ));
+    XfstDiagnostic {
+        span,
+        message: format!("unknown command '{}'", word),
+        notes,
+    }
+}
+
+fn unexpected_character_diagnostic(quoted: &str, span: std::ops::Range<usize>) -> XfstDiagnostic {
+    // The front-end quotes the byte it stopped on; recover it to decide whether
+    // this is the quoting trap or an ordinary stray character.
+    let ch = quoted.trim().trim_matches('\'').chars().next();
+    let mut notes = Vec::new();
+    if matches!(ch, Some('"') | Some('\'')) {
+        notes.push(String::from(
+            "xfst has no quoted strings: a word ends at the first space or quote",
+        ));
+        notes.push(String::from(
+            "escape each special character with '%', e.g. 'Acme% Corp' for the value 'Acme Corp'",
+        ));
+    }
+    XfstDiagnostic {
+        span,
+        message: match ch {
+            Some(c) => format!("unexpected character '{}' in a word", c),
+            None => String::from("unexpected character"),
+        },
+        notes,
+    }
+}
+
+/// The xfst command keyword within one edit of `word`, if there is one.
+///
+/// The keyword table lives in the front-end lexer and is not exported, so the
+/// candidates are probed against that lexer rather than matched against a
+/// second copy of the table here — a copy would drift the first time a command
+/// is added. A probe is a command exactly when the lexer's first token spans
+/// the whole probe.
+fn nearest_command(word: &str) -> Option<String> {
+    const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz- ";
+    // Long enough that no keyword is within one edit; also bounds the probing.
+    if word.is_empty() || word.len() > 32 || !word.is_ascii() {
+        return None;
+    }
+    let lower = word.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let mut best: Option<String> = None;
+    let mut consider = |cand: String| {
+        if !is_command_keyword(&cand) {
+            return;
+        }
+        let better = match &best {
+            None => true,
+            Some(b) => (cand.len(), &cand) < (b.len(), b),
+        };
+        if better {
+            best = Some(cand);
+        }
+    };
+    for i in 0..bytes.len() {
+        let mut del = lower.clone();
+        del.remove(i);
+        consider(del);
+        if i + 1 < bytes.len() {
+            let mut swap = bytes.to_vec();
+            swap.swap(i, i + 1);
+            if let Ok(s) = String::from_utf8(swap) {
+                consider(s);
+            }
+        }
+        for &c in ALPHABET {
+            if c == bytes[i] {
+                continue;
+            }
+            let mut sub = bytes.to_vec();
+            sub[i] = c;
+            if let Ok(s) = String::from_utf8(sub) {
+                consider(s);
+            }
+        }
+    }
+    for i in 0..=bytes.len() {
+        for &c in ALPHABET {
+            let mut ins = bytes.to_vec();
+            ins.insert(i, c);
+            if let Ok(s) = String::from_utf8(ins) {
+                consider(s);
+            }
+        }
+    }
+    best
+}
+
+/// Whether `word` is exactly one xfst command keyword, asked of the front-end
+/// lexer so there is nothing to keep in sync.
+fn is_command_keyword(word: &str) -> bool {
+    let trimmed = word.trim();
+    if trimmed.len() != word.len() || trimmed.is_empty() {
+        return false;
+    }
+    match nfst_xfst::tokenize(word) {
+        Ok(tokens) => match tokens.first() {
+            Some((nfst_xfst::Token::Command(_), span)) => {
+                span.start() == 0 && span.end() == word.len()
+            }
+            _ => false,
+        },
+        Err(_) => false,
+    }
+}
+
+/// The closest name in `known` to `word`, when one is close enough to be worth
+/// suggesting. Used for the runtime lookups — variables, defined networks —
+/// whose valid names are session state rather than grammar.
+fn nearest_name<'a>(word: &str, known: impl Iterator<Item = &'a str>) -> Option<String> {
+    // A third of the word may differ, at least one edit and at most three: a
+    // suggestion further away than that is noise.
+    let budget = (word.chars().count() / 3).clamp(1, 3);
+    let mut best: Option<(usize, String)> = None;
+    for name in known {
+        let d = edit_distance(word, name, budget);
+        if d > budget {
+            continue;
+        }
+        let better = match &best {
+            None => true,
+            Some((bd, bn)) => (d, name) < (*bd, bn.as_str()),
+        };
+        if better {
+            best = Some((d, name.to_string()));
+        }
+    }
+    best.map(|(_, name)| name)
+}
+
+/// Levenshtein distance, abandoned once it is known to exceed `budget`.
+fn edit_distance(a: &str, b: &str, budget: usize) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    if a.len().abs_diff(b.len()) > budget {
+        return budget + 1;
+    }
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0usize; b.len() + 1];
+    for i in 1..=a.len() {
+        cur[0] = i;
+        let mut row_best = cur[0];
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            cur[j] = (prev[j] + 1).min(cur[j - 1] + 1).min(prev[j - 1] + cost);
+            row_best = row_best.min(cur[j]);
+        }
+        if row_best > budget {
+            return budget + 1;
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[b.len()]
 }
