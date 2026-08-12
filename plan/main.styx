@@ -5151,5 +5151,21 @@ children (
         title "Thread ariadne spans through the xfst compiler: it has ~59 raw error!/eprintln! sites and zero crate::diag usage, while xre, twolc, lexc and pmatch already render source-anchored snippets. xfst is the interactive/script surface where a user reads errors most, and an unanchored \"could not be parsed\" naming neither line nor file is the worst diagnostic in the tree — the `set copyright-owner \"Acme Corp\"` rejection this session gave no hint that the quoting, not the command, was the problem. Carry the span from nfst-xfst's Spanned AST into the compiler's error paths and route them through diag::emit. Per [dec:hfst:independent-fork], diagnostic quality is in scope on its own merits"
         priority 1
         kind @feat
+        sealed true
+        log (
+            {
+                at 2026-08-12T09:21:27.71146Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Landed on nplan/xfst-diagnostics (51937a4), merged as 99eaf07. Verified here: `set copyright-owner \"Acme Corp\"` now renders a caret at 1:21 under the quote with two notes — \"xfst has no quoted strings: a word ends at the first space or quote\" and \"escape each special character with '%', e.g. 'Acme% Corp' for the value 'Acme Corp'\". That is the exact question I had to read the C++ flex lexer to answer earlier in the session. A mistyped `detrminize` at line 6 of 8 reports 6:1 with \"did you mean 'determinize'?\".\n\n28 of 33 error! and all 30 warn! sites are on the diag path. Leverage is wider than the count: converting top() (37 callers) and error_message() (9 callers) anchored ~40 report-only sites off ONE assignment of current_span per top-level command in parse().\n\nThe 5 left alone are correct to leave: internal invariants with no user span (no-colon-in-line, two FATAL could-not-return-to-level, test_uni's self-passed argument). A caret on those would point at whatever command happened to be running — the brief said a wrong caret is worse than none, and it held to that.\n\nI made the one-line hookup the agent flagged as outside its ownership: comp.set_source_name(filename) in hfst-cli/src/tools/xfst.rs parse_file. Headers now read \"/tmp/bad.xfst:6:1\" instead of \"<xfst>:6:1\", so the location is clickable.\n\nTwo design points worth keeping. Regex bodies: nfst-xfst parses them as standalone strings so inner spans count from the body; regex_body_diagnostics re-parses blank-padded to the true offset (newlines kept, other bytes spaced) and rebases, on the error path only. And compile_spanned_xre now clears xre.source before evaluating an embedded body, fixing a latent bug where a stale source from an earlier xre.compile would have had body-relative spans read against it.\n\nDeliberately BACKED OUT by the agent, and right to: rebasing spans for eval-time xre diagnostics cost a re-parse per regex (25% on a 62 KB/1500-define script, needing a work budget to bound the quadratic) and it could not trigger a single reachable xre eval-time diagnostic through xfst — is_valid_function_call and warn_about_xfst_special_symbol are dead from that path, the rest are verbose-gated. Perf is at baseline (2.55s vs 2.54s on a 634 KB/15000-define script)."
+            }
+
+            {
+                at 2026-08-12T09:21:47.266775Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
     }
 )
