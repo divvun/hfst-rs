@@ -51,9 +51,9 @@ rustfst = { git = "https://github.com/necessary-nu/rustfst", branch = "fix/deter
 # parser front-ends (sibling repo: text -> AST). The port owns AST -> transducer.
 # 0.2 carries htwolcpre1's marker renames for bare 0/#/.#. — required by the
 # hfst#334 alphabet validator, which sees a literal "0" without them.
-nfst-xre = "0.2.0"
-nfst-lexc = "0.2.0"
-nfst-pmatch = "0.2.0"
-nfst-twolc = "0.2.0"
-nfst-xfst = "0.2.0"
+nfst-xre = "0.2.1"
+nfst-lexc = "0.2.1"
+nfst-pmatch = "0.2.1"
+nfst-twolc = "0.2.1"
+nfst-xfst = "0.2.1"
 

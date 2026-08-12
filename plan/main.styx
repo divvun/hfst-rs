@@ -4836,4 +4836,19 @@ children (
             }
         )
     }
+
+    {
+        id xfst-prototype-adjacency
+        title "define NAME (x) was misparsed as a function prototype, silently emptying any rule using a parenthesised optional on the replace LHS — fixed in nfst-xfst, consume via published 0.2.1"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-08-12T00:04:11.724393Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

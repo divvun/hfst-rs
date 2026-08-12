@@ -264,4 +264,5 @@ assertions (
     {id xfst-print-defined-body, kind @complete, author "brendan@necessary.nu", at 2026-08-11T11:09:08.271704Z}
     {id cli-alias-shadowing, kind @complete, author "brendan@necessary.nu", at 2026-08-11T21:45:03.502421Z}
     {id strtoweight-strtod-semantics, kind @complete, author "brendan@necessary.nu", at 2026-08-11T22:10:40.026858Z}
+    {id xfst-prototype-adjacency, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:11.724393Z}
 )
