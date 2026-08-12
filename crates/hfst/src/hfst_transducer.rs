@@ -2735,7 +2735,6 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         Ok(self)
     }
 
-    #[allow(unused_variables, unused_mut, unreachable_code)]
     pub fn compose_intersect(
         &mut self,
         v: &HfstTransducerVector<B>,
@@ -2750,6 +2749,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // which makes the result empty.
         if v.is_empty() {
             *self = HfstTransducer::new();
+            return Ok(self);
         }
 
         let first = &v[0];

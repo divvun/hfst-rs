@@ -258,3 +258,27 @@ fn issue357_blowup_is_bounded_and_minimizes_away() -> Result<(), hfst::error::Er
     );
     Ok(())
 }
+
+// The intersection of an EMPTY rule set is the empty language. The guard for
+// it assigned the empty transducer but did not return, so control fell through
+// to `&v[0]` and panicked on the index: any caller that composed a lexicon
+// against a rule vector which happened to be empty crashed instead of getting
+// the documented empty result.
+#[test]
+fn compose_intersect_with_no_rules_is_empty() -> Result<(), hfst::error::Error> {
+    let mut lex = lexicon(4);
+    let no_rules: Vec<T> = Vec::new();
+    lex.compose_intersect(&no_rules, false, true)?;
+
+    // Asserted structurally rather than through accepts(): converting the
+    // empty result to the optimized-lookup form and looking a string up in it
+    // panics in TransitionTable::at, which is a separate unfixed defect
+    // (defects/panic-on-malformed-input). Coupling this regression test to
+    // that one would make it fail for the wrong reason.
+    assert_eq!(
+        lex.number_of_arcs(),
+        0,
+        "no rules yields the empty language"
+    );
+    Ok(())
+}

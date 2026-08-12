@@ -4966,6 +4966,14 @@ children (
                 title "Two index-out-of-bounds panics on malformed or wrong-type input, where an error is owed: transducer.rs:1559 (hfst-lookup on a degenerate .hfstol, 'len is 2 but the index is 897') and pmatch.rs:2724 (hfst-tokenize fed a non-pmatch archive, 'len is 6 but the index is 13'). Both should validate and return Err. Sweep the OL/pmatch readers for sibling unchecked indexing"
                 priority 1
                 kind @fix
+                log (
+                    {
+                        at 2026-08-12T07:59:45.516681Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Severity raised: transducer.rs:1559 is reachable from a NORMAL path, not only from malformed files. Converting a legitimately EMPTY transducer to the optimized-lookup form and looking any string up in it panics — \"index out of bounds: the len is 2 but the index is 2\" — because TransitionTable::at indexes unchecked. Surfaced while writing the compose-intersect-empty-panic regression test: once compose_intersect correctly returns the empty language for an empty rule set, the very next thing a caller does with that result crashes. So the two P0s were stacked, and fixing the first exposes the second on the same code path. The regression test asserts structurally (number_of_arcs) rather than through lookup, specifically to avoid coupling it to this defect; when this is fixed, that test can be strengthened to assert non-acceptance directly."
+                    }
+                )
             }
 
             {
