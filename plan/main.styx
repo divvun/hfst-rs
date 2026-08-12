@@ -4911,4 +4911,95 @@ children (
             }
         )
     }
+
+    {
+        id defects
+        title "Defects found by the 2026-08-12 silent-stub sweep: functions whose real logic was never ported but which return an empty/default/success value a caller consumes, so the failure is wrong output rather than an error"
+        kind @fix
+        children (
+            {
+                id foma-substitute-noop
+                title "foma substitute_string_transducer returns the input unchanged — silent no-op. Verified: `substitute defined R for a` on [a b] gives xyb on tropical, ab on foma. C++ (HfstTransducer.cc, HAVE_FOMA branch) converts foma→HfstBasicTransducer, calls net->substitute(pair, substituting_net), converts back; implement that round-trip. The stub's comment claims callers route through the basic path — hfst_transducer.rs:2147 calls the backend directly, no fallback. Reachable from xfst substitute, xre definition expansion, twolc, pmatch, hfst-substitute, all under -f foma"
+                priority 0
+                kind @fix
+            }
+
+            {
+                id compose-intersect-empty-panic
+                title "hfst_transducer.rs:2751 compose_intersect empty-rule-vector guard is missing its return — assigns *self = HfstTransducer::new() then falls through to &v[0] and panics. Add the return; regression-test the empty-rule-vector case"
+                priority 0
+                kind @fix
+            }
+
+            {
+                id tokenize-space-separated-unreachable
+                title "hfst-tokenize --space-separated is unreachable: tokenize.rs:130 maps it to 'd', which handle_common_case claims as --debug and continues; the real branch at :188 keys on 'i' and nothing in the table maps to 'i'. Verified -i now dies as an unknown option. C++ escapes this via its short-option string \"nkawWmub:t:l:zixcSgCfL\" (spec hfst-tokenize.md:112), which the port dropped. Passing the flag silently enables debug and emits the default format"
+                priority 1
+                kind @fix
+            }
+
+            {
+                id getopt-optarg-stale
+                title "hfst_getopt.rs:150 never resets optarg to None: an OPTIONAL_ARGUMENT option given without an inline =value leaves the PREVIOUS option's argument visible through optarg_opt(). GNU getopt_long sets optarg = NULL there. All five call sites currently error out, so it is loud, but it aborts valid invocations like `hfst-lookup -i x.hfst --colour`. Reachable via --colour/--color, hfst-summarize -S, --pipe-mode"
+                priority 1
+                kind @fix
+            }
+
+            {
+                id panic-on-malformed-input
+                title "Two index-out-of-bounds panics on malformed or wrong-type input, where an error is owed: transducer.rs:1559 (hfst-lookup on a degenerate .hfstol, 'len is 2 but the index is 897') and pmatch.rs:2724 (hfst-tokenize fed a non-pmatch archive, 'len is 6 but the index is 13'). Both should validate and return Err. Sweep the OL/pmatch readers for sibling unchecked indexing"
+                priority 1
+                kind @fix
+            }
+
+            {
+                id lexc-unicode-check-diagnostic
+                title "lexc.rs:750 unicode_check ignores its argument, dropping C++'s ICU grapheme guard (LexcCompiler.cc:571): for a multi-codepoint grapheme not already in alphabets_, C++ warns \"add X to Multichar_Symbols\" AND calls addAlphabet. Verified transducers stay functionally equivalent (compare passes; symbol table 7 vs 6 entries), so the real loss is the diagnostic that tells an author to fix their source. Latent for Giella because the convention is to declare such graphemes (lang-sma root.lexc:695)"
+                priority 2
+                kind @fix
+            }
+
+            {
+                id pmatch-initial-symbols-dead
+                title "pmatch_compiler.rs:381 collect_initial_symbols_into is a trait default returning Ok(()) without filling either set, and no node type overrides it; the real ported logic at :3657 has ZERO callers. Same shape behind it: get_real_initial_symbols (:390) defaults to an empty set while the real :3641 is also uncalled. Consumers at :5117 and :6544 build the initial-symbols archive properties from nothing, so pmatch.rs:2115 short-circuits and never skips impossible start positions. Matching stays CORRECT — this is a performance defect, not wrong output"
+                priority 2
+                kind @perf
+            }
+
+            {
+                id foma-extract-paths-alignment
+                title "backend_foma.rs:330 extract_paths_via_apply emits each path as a single StringPair of (whole input, whole output) instead of the per-symbol aligned column vector, so HfstTwoLevelPath::second.len() is always 1. Reached via extract_paths_cb/extract_paths_fd_cb and thus extract_paths/extract_paths_fd/extract_longest_paths/longest_path_size. Predicted: `print size` and longest-string-length under -f foma report 1 for every non-empty net. UNVERIFIED — confirm before fixing"
+                priority 2
+                kind @fix
+            }
+
+            {
+                id foma-extract-paths-fd-filter
+                title "backend_foma.rs:226 extract_paths_fd_cb ignores its _filter_fd argument and always delegates to the flag-obeying enumeration, so the \"extract paths WITHOUT filtering flag diacritics\" mode silently behaves as the filtering mode. Caller: HfstTransducer::extract_paths_fd (hfst_transducer.rs:817), used by fst2strings. Predicted: flag diacritics never appear in extracted paths on a foma transducer regardless of mode. UNVERIFIED — confirm before fixing"
+                priority 2
+                kind @fix
+            }
+
+            {
+                id foma-lookup-ambiguity-approx
+                title "backend_foma.rs:658/663 (and :194) is_lookup_infinitely_ambiguous_str/_strvec ignore the input and answer whole-net is_cyclic(); the OL backend does the real input-restricted check via find_loop. Conservative direction, but a false positive swaps the lookup limit from unlimited to infinite_cutoff (default 5), truncating results and emitting a spurious \"Got infinite results\" warning. flookup converts foma→basic before lookup so that path is safe; xfst_compiler.rs:5299/6359 reach it directly. Decide: implement input-restricted, or make the approximation explicit"
+                priority 2
+                kind @fix
+            }
+
+            {
+                id xfst-set-minimal-unwired
+                title "xfst_compiler.rs:1929 `set minimal ON/OFF` is parsed, echoed back to the user as `variable minimal = OFF` as if applied, then discarded via `let _ = text;`. Not a stub returning a consumed value, but the one place the port REPORTS SUCCESS for something it did not do. Either wire it to the minimization config or refuse the command"
+                priority 2
+                kind @fix
+            }
+
+            {
+                id silent-stub-lint-gate
+                title "Close the ratchet on this bug class rather than re-sweeping. The tell is not TODO/unimplemented (those are loud) but a comment asserting a safety net that does not exist — \"callers needing the real X route through Y\" — beside a body returning self/empty/Ok(()). Every core-library instance was in backend_foma.rs, added after the idiom audits closed. Options: a review checklist for new backends, a test that every Backend trait method is exercised per backend, or a grep-based CI check for reassurance-comment shapes"
+                priority 2
+                kind @test
+            }
+        )
+    }
 )
