@@ -267,4 +267,5 @@ assertions (
     {id xfst-prototype-adjacency, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:11.724393Z}
     {id xre-function-as-network-error, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:55.496721Z}
     {id version-line-provenance, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:05:48.497893Z}
+    {id function-key-normalise, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:13:26.917038Z}
 )

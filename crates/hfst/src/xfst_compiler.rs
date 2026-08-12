@@ -3984,10 +3984,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     fn extract_function_name(prototype: &str) -> Option<String> {
         let mut name = String::new();
         for ch in prototype.chars() {
-            name.push(ch);
             if ch == '(' {
                 return Some(name);
             }
+            name.push(ch);
         }
         None // no starting parenthesis found
     }

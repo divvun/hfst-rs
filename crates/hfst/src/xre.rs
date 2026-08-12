@@ -1205,16 +1205,12 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     // LABEL: FUNCTION REGEXP_LIST ')'. Because eval is &self, the function
     // arguments are registered in a cloned, augmented compiler (the C++ flow
     // define_function_args -> recursive parse -> undefine_function_args, but
-    // re-entrant). The canonical function key carries the trailing '(' that the
-    // C++ FUNCTION_NAME token includes; nfst-xre strips it from the AST name, so
-    // it is reconstructed here (and used to build the "@name N@" arg symbols).
+    // re-entrant).
     fn eval_function_call(
         &mut self,
         name: &str,
         args: &[SpannedXre],
     ) -> crate::error::Result<HfstTransducer<B>> {
-        let fname = format!("{}(", name);
-
         let arg_trs: Vec<HfstTransducer<B>> =
             args.iter()
                 .map(|a| self.eval(a))
@@ -1222,13 +1218,13 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         let n_args = arg_trs.len();
 
         // is_valid_function_call: defined + correct arity.
-        let expected = match self.function_arguments.get(fname.as_str()) {
+        let expected = match self.function_arguments.get(name) {
             Some(n) => *n,
             None => {
                 crate::bail!(Hfst, format!("No such function defined: '{}'", name))
             }
         };
-        if !self.function_definitions.contains_key(fname.as_str()) {
+        if !self.function_definitions.contains_key(name) {
             crate::bail!(Hfst, format!("No such function defined: '{}'", name));
         }
         if expected as usize != n_args {
@@ -1244,7 +1240,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         // define_function_args: definitions["@name N@"] = arg (1-based).
         let mut sub_defs = self.definitions.clone();
         for (i, arg) in arg_trs.into_iter().enumerate() {
-            sub_defs.insert(Symbol::from(format!("@{}{}@", fname, i + 1)), arg);
+            sub_defs.insert(Symbol::from(format!("@{}{}@", name, i + 1)), arg);
         }
         let mut sub = XreCompiler {
             definitions: sub_defs,
@@ -1268,7 +1264,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         // get_function_xre + recursive compile.
         let body = self
             .function_definitions
-            .get(fname.as_str())
+            .get(name)
             .cloned()
             .expect("function definition present (checked above)");
         Ok(match parse(&body) {
@@ -1749,22 +1745,10 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                     return Ok(v.clone());
                 }
             }
-            // PORT DIVERGENCE: a bare name that names only a FUNCTION is an
-            // error here. xfst reads any bare token as a symbol, so upstream
-            // silently compiles an acceptor for the literal string "NAME" —
-            // a function is never reachable without arguments, so this is
-            // always either a missing argument list or a typo. Staying quiet
-            // is how a single misparsed rule emptied an entire Giella
-            // language: the literal acceptor composed into a `.o.` chain
-            // matched nothing and annihilated it, with no diagnostic at all.
-            // Quote the name to force the literal reading.
-            // Function definitions are keyed with the prototype's open paren
-            // still attached ("Concat("), which is how the FunctionCall arm
-            // looks them up too.
-            if self
-                .function_definitions
-                .contains_key(format!("{symbol}(").as_str())
-            {
+            // PORT DIVERGENCE: upstream reads a bare token as a symbol, so a
+            // function name compiles to a literal acceptor for its own name.
+            // That is always a missing argument list or a typo.
+            if self.function_definitions.contains_key(symbol) {
                 crate::bail!(
                     Hfst,
                     format!(

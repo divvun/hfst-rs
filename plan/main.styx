@@ -4881,4 +4881,19 @@ children (
             }
         )
     }
+
+    {
+        id function-key-normalise
+        title "key function definitions by the bare name instead of carrying the prototype's open paren, so the obvious lookup stops silently missing"
+        kind @refactor
+        sealed true
+        log (
+            {
+                at 2026-08-12T00:13:26.917038Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )
