@@ -24,8 +24,28 @@ pub enum Severity {
 /// like `"<lexc>"`). When `source` is empty or the span is unusable, this falls
 /// back to a plain one-line message so no diagnostic is ever lost.
 pub fn emit(name: &str, source: &str, span: Range<usize>, severity: Severity, message: &str) {
+    emit_with_notes(name, source, span, severity, message, &[]);
+}
+
+/// As [`emit`], with follow-up advice rendered under the snippet.
+///
+/// A diagnostic that only states what went wrong leaves the reader to work out
+/// what to type instead; `notes` carries that second half (the escape to use,
+/// the command that was probably meant). Notes survive the plain-message
+/// fallback, where they are printed as further lines.
+pub fn emit_with_notes(
+    name: &str,
+    source: &str,
+    span: Range<usize>,
+    severity: Severity,
+    message: &str,
+    notes: &[String],
+) {
     if source.is_empty() {
         emit_plain(severity, message);
+        for n in notes {
+            emit_plain(severity, n);
+        }
         return;
     }
     // Clamp to the source bounds — a stale or degenerate span must never make
@@ -39,20 +59,30 @@ pub fn emit(name: &str, source: &str, span: Range<usize>, severity: Severity, me
         Severity::Warning => (ReportKind::Warning, Color::Yellow),
     };
 
-    let mut out: Vec<u8> = Vec::new();
-    let rendered = Report::build(kind, (name, span.clone()))
+    let mut builder = Report::build(kind, (name, span.clone()))
         .with_message(message)
         .with_label(
             Label::new((name, span))
                 .with_message(message)
                 .with_color(color),
-        )
+        );
+    for n in notes {
+        builder = builder.with_note(n);
+    }
+
+    let mut out: Vec<u8> = Vec::new();
+    let rendered = builder
         .finish()
         .write((name, Source::from(source)), &mut out);
 
     match rendered {
         Ok(()) => eprint!("{}", String::from_utf8_lossy(&out)),
-        Err(_) => emit_plain(severity, message),
+        Err(_) => {
+            emit_plain(severity, message);
+            for n in notes {
+                emit_plain(severity, n);
+            }
+        }
     }
 }
 
