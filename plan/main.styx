@@ -5334,6 +5334,22 @@ children (
                 title "is_cyclic and is_infinitely_ambiguous are constant false for the WHOLE OL family, and it hangs a live tool. Transducer::is_cyclic probes HeaderFlag::Cyclic and is_infinitely_ambiguous probes Has_input_epsilon_cycles, but TransducerHeader::set_flag has ZERO callers in the workspace and both new_weighted (transducer.rs:568) and new_sizes (:596) hardcode all seven property flags false — only a header read off disk (:618) can set them. So every in-memory-built OLW/THFST transducer answers false whatever it contains. Worse than an inherited default: it OVERRIDES a trait default at backend.rs:296 that would compute the answer from the graph, under a comment reading \"the OL backends answer directly\". MEASURED CONSEQUENCE: `hfst fst2strings` on a cyclic .hfstol runs UNBOUNDED — 15,954 lines in 5s, longest 31,824 chars and growing — where the same net as tropical refuses immediately with \"Transducer is cyclic. Use one or more of these options\". Live readers: hfst_transducer.rs:808/824, xfst_compiler.rs:6372/6431/6593, fst2strings.rs:622/738. deterministic/input_deterministic/minimized are hardcoded TRUE by the same constructors, same shape, no live readers today. NOT fixed by the gate agent because the obvious repair turns an O(1) header read into an O(states) walk on the pmatch/lookup hot path — that trade is an operator call. Pinned by an expected-red test"
                 priority 0
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-13T14:52:27.636942Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "FIXED. The agent stalled mid-verification without committing, so I assessed its uncommitted work, completed the outstanding checks and committed it myself. 416/416 workspace (up from 403), 303/303 foma, clippy and fmt clean, cargo check --no-default-features clean.\n\nP0 verified gone by hand: `fst2strings` on a cyclic .hfstol now refuses with \"Transducer is cyclic. Use one or more of these options: -n, -N, -r, -l, -L, -c\" and produces ZERO lines in 5s, where it previously emitted 15,954 with the longest line at 31,824 chars and growing. `a*` and `[0:a]*` both trip the guard; `[a b]` correctly does not.\n\nMY BRIEF'S PREMISE ABOUT THE COST WAS RIGHT AND THE NODE'S WAS WRONG: is_cyclic has no caller in the OL lookup runtime or in pmatch.rs — every one is a path-extraction guard or an interactive xfst test, on operations that already traverse the graph. The \"O(1) header read becomes an O(states) walk on the hot path\" objection that deferred this had no hot path behind it.\n\nDESIGN CHOICE, and it is the right one: always compute, never trust the flag. That makes the write-path stamping I had asked for MOOT rather than incomplete — convert_ol_transducer.rs is deliberately untouched. I nearly recorded that file as unfinished work; it is not. Nothing reads the flags now, and an unreliable flag is worse than a cheap walk since third-party files may carry the same wrong values this port was writing. THFST carries no header at all, so no lie is possible there either.\n\nVerified no consumer is misled, which was the open question: C++ hfst-fst2strings reads a cyclic .hfstol written by us and refuses correctly.\n\nThe semantic distinction is pinned by tests rather than assumed: infinite ambiguity is strictly narrower than cyclicity — it needs an INPUT-EPSILON cycle, so a* is cyclic and finitely ambiguous while [0:a]* is both. Named tests star_is_cyclic_but_finitely_ambiguous and epsilon_star_is_cyclic_and_infinitely_ambiguous, 14 in the new ol_graph_properties.rs.\n\nThe ratchet's expected-red assertion in backend_answers.rs was updated to assert the fixed behaviour rather than deleted, as instructed — so the gate still covers this method.\n\nSTILL OPEN from the original finding: deterministic / input_deterministic / minimized are hardcoded TRUE by the same constructors. No live readers today, which is exactly where has_weights sat before the previous sweep, and true is the more dangerous direction — a false positive on \"already minimized\" silently skips an operation where a false negative merely costs work."
+                    }
+
+                    {
+                        at 2026-08-13T14:52:56.645145Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5347,6 +5363,13 @@ children (
                 id foma-first-vs-initial-symbols
                 title "foma answers get_first_input_symbols and get_initial_input_symbols with ONE shared helper, under a comment at backend_foma.rs:471 claiming \"foma draws no distinction between them\" — the same reassurance shape, asserting an equivalence the contract does not have. Tropical's are different walks: get_initial_input_symbols descends THROUGH epsilon and flag arcs and stops at the first real symbol; get_first_input_symbols walks the whole net. Measured on the acceptor `abc`: tropical gives initial=[a] first=[a,b,c], foma gives initial=[a] first=[a]. Currently LATENT — summarize is the only live caller and its foma arm returns None — which is exactly the state has_weights was in before the previous sweep. NOT caught by either new gate: the value is real, non-empty and varies correctly across fixtures, so it passes every assertion a semantics-blind battery can make. This is the demonstration case for what the ratchet cannot catch"
                 priority 2
+                kind @fix
+            }
+
+            {
+                id ol-header-flags-hardcoded-true
+                title "deterministic / input_deterministic / minimized are hardcoded TRUE by TransducerHeader::new_weighted and new_sizes, the same constructors whose false flags caused the ol-header-flags-always-false hang. No live reader today — which is precisely where has_weights sat before the previous sweep found it. TRUE is the more dangerous direction than false: a false positive on \"already minimized\" silently SKIPS an operation, where a false negative merely costs work. Same fix shape as the cyclic case: either compute from the graph (ol_walk exists) or delete the fields if nothing should ever consult them. Check has_epsilon_epsilon_transitions and has_input_epsilon_transitions in the same pass"
+                priority 1
                 kind @fix
             }
         )

@@ -288,4 +288,5 @@ assertions (
     {id getopt-clustered-shorts, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:32:17.359197Z}
     {id invert-symbol-table-duplication, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:37:20.126947Z}
     {id silent-stub-lint-gate, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:42:56.796308Z}
+    {id ol-header-flags-always-false, kind @complete, author "brendan@necessary.nu", at 2026-08-13T14:52:56.645145Z}
 )
