@@ -1329,8 +1329,9 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
        Flag diacritics from the alphabet of this transducer are inserted
        to the alphabet of the copy of another, so that they are excluded
        from harmonization.
-       (The foma no-harmonization arm returned NULL; foma is compiled out, but
-       the Option shape is kept — callers still handle the None case.)
+       (The C++ returned NULL for foma inputs, harmonizing them not at all.
+       Every backend is harmonized here, through the interchange graph. The
+       Option shape is kept — callers still handle the None case.)
     */
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.harmonize-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.harmonize-fn]
@@ -1344,8 +1345,9 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
         let another_copy = another.clone();
 
-        // (The FOMA-only flag-diacritic pre-insertion block is compiled out
-        // with the foma backend.)
+        // (The C++ pre-inserted flag diacritics for foma inputs only. The
+        // harmonization below runs on the interchange graph, which treats
+        // flags alike whatever backend the operands came from.)
 
         let mut another_basic = another_copy.get_basic_transducer()?;
         let mut this_basic = self.convert_to_basic_transducer()?;
@@ -1884,15 +1886,16 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         results: &mut HfstTwoLevelPaths,
         max_num: i32,
     ) -> crate::error::Result<()> {
-        // (The SFST/FOMA convert-to-tropical arms are compiled out with those
-        // backends; tropical answers directly.)
+        // (The C++ round-tripped SFST and foma through TROPICAL_OPENFST_TYPE
+        // to borrow its implementation. Each backend answers for itself here;
+        // foma's unweighted reading is documented on its impl.)
         self.fst.extract_random_paths(results, max_num);
         Ok(())
     }
 
     pub fn n_best(&mut self, n: u32) -> crate::error::Result<&mut HfstTransducer<B>> {
-        // (The C++ SFST/FOMA round-trip through TROPICAL_OPENFST_TYPE is gone
-        // with those backends; tropical answers directly.)
+        // (Same C++ round-trip through TROPICAL_OPENFST_TYPE as
+        // extract_random_paths; each backend answers for itself here.)
         self.fst = self.fst.n_best(n);
         Ok(self)
     }
@@ -2741,9 +2744,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         invert: bool,
         _b: bool,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        // (The C++ converted foma inputs to TROPICAL_OPENFST_TYPE first; the
-        // foma backend is compiled out, so the 'convert_to_openfst' round-trip
-        // is gone.)
+        // (The C++ converted foma inputs to TROPICAL_OPENFST_TYPE first. This
+        // runs over the generic backend, so no conversion is needed.)
 
         // The intersection of an empty set of rules is the empty language,
         // which makes the result empty.
