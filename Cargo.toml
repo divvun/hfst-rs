@@ -42,7 +42,11 @@ wildcard_enum_match_arm = "deny"
 [workspace.dependencies]
 # internal crates (dependency layers, bottom-up)
 hfst-openfst = { path = "crates/hfst-openfst" }
-hfst = { path = "crates/hfst" }
+# default-features = false so a consumer's own backend features are the only
+# thing that turn a backend on. Inheriting the library's defaults instead let it
+# keep AnyTransducer::Foma while --no-default-features gated away the CLI arms
+# matching it, and the CLI stopped compiling without the backend.
+hfst = { path = "crates/hfst", default-features = false }
 
 # weighted-FST backend (git submodule; our fork of rustfst). Missing algos
 # (difference/intersect/prune/equivalent/eps-normalize) get added here + upstreamed.

@@ -278,6 +278,30 @@ fn the_written_header_records_epsilon_arcs() {
     );
 }
 
+/// A flag diacritic advances no input tape position, which is why
+/// `is_infinitely_ambiguous` counts a flag cycle as an input-epsilon cycle. The
+/// written header has to take the same reading: a file claiming an
+/// input-epsilon CYCLE while denying it has any input-epsilon TRANSITION
+/// describes a graph that cannot exist.
+#[test]
+fn the_header_reads_flags_as_the_engine_does() {
+    let _g = serialized();
+    let t = to_ol(&flag_cycle());
+    assert!(t.is_infinitely_ambiguous(), "engine reading, for reference");
+
+    let header = round_trip(&t);
+    let header = header.get_header();
+    assert!(header.probe_flag(HeaderFlag::Has_input_epsilon_cycles));
+    assert!(
+        header.probe_flag(HeaderFlag::Has_input_epsilon_transitions),
+        "the cycle is made of arcs the header just denied having"
+    );
+    assert!(
+        !header.probe_flag(HeaderFlag::Has_epsilon_epsilon_transitions),
+        "the flag is written to the output tape, so it is not epsilon on both"
+    );
+}
+
 /// A weight on the loop arc is what a cutoff prunes; a free loop is the one
 /// nothing can stop.
 #[test]

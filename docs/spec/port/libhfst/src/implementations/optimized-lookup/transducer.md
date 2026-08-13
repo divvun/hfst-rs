@@ -1724,6 +1724,20 @@
 > flag tells each entry's write() whether to emit weight fields. Const; side
 > effect is the byte output. No return value.
 
+> PORT DIVERGENCE (upstream bug deliberately fixed): upstream writes the header
+> it happens to be holding. No constructor ever computed the property flags and
+> `set_flag` has no caller in either tree, so every file written from an
+> in-memory transducer described itself with constructor defaults — cyclic and
+> the epsilon flags false whatever the graph, deterministic / input_deterministic
+> / minimized true whatever the graph. `hfst-fst2strings` guards path extraction
+> on the cyclic flag, so an `.hfstol` of `[a b]*` enumerated its infinite
+> language until the disk filled. This port derives the flags a walk can decide
+> from the graph immediately before writing (one walk per file), and claims
+> nothing for the three no single walk can establish. "Input epsilon" is read as
+> the lookup engine reads it — an arc that advances no input tape position,
+> which includes a flag diacritic — so the cycle and transition flags cannot
+> contradict each other.
+
 > [spec:hfst:def:transducer.hfst-ol.transition]
 > class Transition {
 >   SymbolNumber input_symbol;

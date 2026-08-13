@@ -4937,12 +4937,20 @@ children (
                 title "hfst_transducer.rs:2751 compose_intersect empty-rule-vector guard is missing its return — assigns *self = HfstTransducer::new() then falls through to &v[0] and panics. Add the return; regression-test the empty-rule-vector case"
                 priority 0
                 kind @fix
+                sealed true
                 log (
                     {
                         at 2026-08-12T07:41:02.879515Z
                         author "brendan@necessary.nu"
                         kind @status
                         text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-13T23:41:01.321301Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }
@@ -5371,6 +5379,29 @@ children (
                 title "deterministic / input_deterministic / minimized are hardcoded TRUE by TransducerHeader::new_weighted and new_sizes, the same constructors whose false flags caused the ol-header-flags-always-false hang. No live reader today — which is precisely where has_weights sat before the previous sweep found it. TRUE is the more dangerous direction than false: a false positive on \"already minimized\" silently SKIPS an operation, where a false negative merely costs work. Same fix shape as the cyclic case: either compute from the graph (ol_walk exists) or delete the fields if nothing should ever consult them. Check has_epsilon_epsilon_transitions and has_input_epsilon_transitions in the same pass"
                 priority 1
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-13T23:50:10.754732Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Premise was stale on the main charge, and the real defect was next to it.\n\nStale part: the P0 fix (741b9d9) had already dealt with the hardcoded trues. new_sizes leaves every property flag false (\"nothing claimed\"), and Transducer::write derives the decidable flags from the graph via header_with_graph_properties before emitting. undecidable_properties_are_not_claimed already round-trips a non-minimal input-nondeterministic net through a written file and asserts Deterministic / Input_deterministic / Minimized all read false. Confirmed by grep that those three have no reader anywhere outside the header printer.\n\nnew_weighted's trues are honest and stay: that constructor builds the one-state no-arc header, and it is only ever paired with empty tables (Transducer::new_empty and create_empty_transducer). A 1-state 0-arc net is deterministic, input-deterministic, minimized and acyclic.\n\nThe real defect, found by the \"check the epsilon flags in the same pass\" instruction: the two epsilon flags read \"input epsilon\" differently. has_input_epsilon_cycles used consumes_no_input (epsilon OR flag diacritic, the reading the lookup engine and is_infinitely_ambiguous take); has_input_epsilon_transitions used a literal arc.input == 0. A flag-only cycle therefore wrote a header claiming an input-epsilon CYCLE while denying it had any input-epsilon TRANSITION — a graph that cannot exist. Pinned expected-red first (the_header_reads_flags_as_the_engine_does), then made the transition flag use consumes_no_input. has_epsilon_epsilon_transitions stays strict symbol-zero on both tapes and no longer hangs off the input flag: a flag is written to the output tape, and stripping it is the lookup formatter's business, not a property of the graph.\n\nSeparately, cargo check --no-default-features did not build at all on main (22 errors) and had nothing to do with this node. The workspace declared hfst = { path = \"crates/hfst\" } with defaults on, so hfst-cli built against a library that still had AnyTransducer::Foma while --no-default-features gated away the CLI match arms for it. Fixed at the workspace declaration (default-features = false) so a consumer's own backend features are the only thing that turn a backend on; hfst-cli's default = [\"foma\"] keeps ordinary builds identical. Filed no-default-features-ungated for the missing gate."
+                    }
+
+                    {
+                        at 2026-08-13T23:50:30.334693Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
+            }
+
+            {
+                id no-default-features-ungated
+                title "cargo check --no-default-features was broken on main for an unknown span and nothing noticed: hfst-cli built against an hfst that still carried AnyTransducer::Foma while its own match arms were gated away, 22 E0004 errors. Root cause fixed (workspace hfst dep now default-features = false), but the gap that let it rot is unfixed — there is no CI in this repo at all (no .github), and the nplan rust platform block runs only cargo fmt --check, gated on crates/**/*.rs so a Cargo.toml-only change would not trip it anyway. Needs a feature-combination build gate somewhere that actually runs. Commit checks are budgeted at 60s and a feature-flip forces a full rebuild, so the commit hook is likely the wrong home for it"
+                priority 2
+                kind @build
             }
         )
     }

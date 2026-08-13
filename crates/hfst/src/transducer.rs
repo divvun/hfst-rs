@@ -2862,12 +2862,22 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         header.has_unweighted_input_epsilon_cycles = header.has_input_epsilon_cycles
             && graph.has_cycle_over(|arc| self.consumes_no_input(arc.input) && arc.weight == 0.0);
 
-        header.has_input_epsilon_transitions = graph.arcs.iter().any(|arc| arc.input == 0);
-        header.has_epsilon_epsilon_transitions = header.has_input_epsilon_transitions
-            && graph
-                .arcs
-                .iter()
-                .any(|arc| arc.input == 0 && arc.output == 0);
+        // "Input epsilon" means the same thing here as it does to the lookup
+        // engine and to the cycle flags above: an arc that advances no input
+        // tape position, which a flag diacritic does not either. Reading it as
+        // literal symbol zero let a flag-only cycle write a header claiming an
+        // input-epsilon cycle whose arcs it denied having.
+        header.has_input_epsilon_transitions = graph
+            .arcs
+            .iter()
+            .any(|arc| self.consumes_no_input(arc.input));
+        // Both tapes, and here epsilon is strictly symbol zero: a flag is
+        // written to the output tape, and stripping it again is the lookup
+        // formatter's business rather than a property of the graph.
+        header.has_epsilon_epsilon_transitions = graph
+            .arcs
+            .iter()
+            .any(|arc| arc.input == 0 && arc.output == 0);
         header
     }
 
