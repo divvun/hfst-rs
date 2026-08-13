@@ -291,8 +291,10 @@ pub trait Backend: Sized {
         ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&net, weighted, options, harmonizer)
     }
 
-    /// 'is_infinitely_ambiguous': the OL backends answer directly; everything
-    /// else goes through the basic transducer, as the C++ default arm did.
+    /// 'is_infinitely_ambiguous': the OL backends override with a walk of
+    /// their own tables, which answers the same question without building the
+    /// interchange copy; everything else goes through the basic transducer, as
+    /// the C++ default arm did.
     fn is_infinitely_ambiguous(&self) -> crate::error::Result<bool> {
         // hfst::implementations::HfstBasicTransducer net(*this);
         // return net.is_infinitely_ambiguous();

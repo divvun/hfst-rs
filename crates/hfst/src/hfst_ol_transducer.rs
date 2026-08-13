@@ -412,12 +412,13 @@ mod ol_construction_io {
             }
         }
 
-        // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.is-cyclic-fn]
-        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.is-cyclic-fn]
+        /// The C++ probed `HeaderFlag::Cyclic`, which nothing ever sets; the
+        /// answer comes off the graph instead. See
+        /// [`crate::transducer::Transducer::is_cyclic`] for why.
         pub fn is_cyclic<T: crate::transducer::TransducerTablesInterface>(
             t: &Transducer<T>,
         ) -> bool {
-            t.get_header().probe_flag(HeaderFlag::Cyclic)
+            t.is_cyclic()
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.get-flag-diacritics-fn]
