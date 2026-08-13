@@ -442,8 +442,9 @@ pub fn read_dir(dir: &Path) -> crate::error::Result<Transducer<WeightedTables>> 
 
     // Synthesize the OL header THFST does not store: both symbol counts =
     // n_syms, table sizes = exact record counts, weighted = true; `new_sizes`
-    // leaves state/transition counts 0 and all nine property flags false (the
-    // documented display-only + is_infinitely_ambiguous divergence).
+    // leaves state/transition counts 0 and every property flag false. Nothing
+    // reads those flags — `is_cyclic` / `is_infinitely_ambiguous` walk the
+    // tables — so a format that carries no header loses no answer.
     // [spec:hfst:sem:thfst-backend.read-dir-fn]
     let header =
         TransducerHeader::new_sizes(n_syms, n_syms, index_records, transition_records, true);

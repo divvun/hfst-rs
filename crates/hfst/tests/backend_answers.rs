@@ -639,8 +639,7 @@ fn foma_backend_answers_every_query() {
 }
 
 // ---------------------------------------------------------------------------
-// Graph properties. Held out of the shared battery because the optimized-lookup
-// family does not compute them — see the expected-red pins below.
+// Graph properties. Every backend answers these from its own graph.
 // ---------------------------------------------------------------------------
 
 /// `is_cyclic` and `is_infinitely_ambiguous` are different questions, and
@@ -675,44 +674,21 @@ fn foma_reports_real_graph_properties() {
     assert_graph_properties::<FomaTransducer>("foma");
 }
 
-/// EXPECTED RED WHEN FIXED. The optimized-lookup family answers `is_cyclic` and
-/// `is_infinitely_ambiguous` by probing `HeaderFlag::Cyclic` /
-/// `HeaderFlag::Has_input_epsilon_cycles`, and nothing in the workspace ever
-/// sets them: `TransducerHeader::set_flag` has no callers, and both
-/// `new_weighted` and `new_sizes` hardcode the flags false, so only a header
-/// read off disk can make either true. Every in-memory-built OL/OLW/THFST
-/// transducer therefore answers false to both, whatever it contains — the
-/// silent-default shape, in the core library, behind an override of a trait
-/// default that WOULD have computed the answer from the graph.
-///
-/// This test pins the defect without locking it in: it asserts the wrong
-/// answers are still being given, so the moment the flags are computed it fails
-/// and points here. Fixing it means adding the OL family to
-/// `assert_graph_properties` above and deleting this test.
-fn assert_graph_properties_are_stubbed<B: Backend>(tag: &str) {
-    for (name, net) in [
-        ("a*", basic_sigma_star(&["a"])),
-        ("(0:a)*", basic_epsilon_loop()),
-    ] {
-        let b: B = build(&net, name);
-        assert!(
-            !b.is_cyclic(),
-            "{tag}: is_cyclic({name}) now answers — wire this backend into \
-             assert_graph_properties and delete this pin"
-        );
-        assert!(
-            !b.is_infinitely_ambiguous().expect("ambiguity query"),
-            "{tag}: is_infinitely_ambiguous({name}) now answers — wire this \
-             backend into assert_graph_properties and delete this pin"
-        );
-    }
-}
-
+/// This pin used to assert the OL family got both answers WRONG: it probed
+/// `HeaderFlag::Cyclic` / `HeaderFlag::Has_input_epsilon_cycles`, which nothing
+/// in either tree ever sets — `TransducerHeader::set_flag` has no callers, and
+/// the in-memory constructors hardcode the flags false — so every OL/OLW/THFST
+/// transducer answered false to both, whatever it contained, behind an override
+/// of the trait default that WOULD have computed the answer. The queries now
+/// walk the tables, so the pin is the same battery every other backend runs.
+/// Cyclicity needs on-stack marking rather than a visited set, and infinite
+/// ambiguity needs input-epsilon arcs specifically; both distinctions are
+/// pinned in detail in `ol_graph_properties.rs`.
 #[test]
-fn optimized_lookup_graph_properties_are_stubbed() {
+fn optimized_lookup_reports_real_graph_properties() {
     let _g = serialized();
-    assert_graph_properties_are_stubbed::<Transducer<WeightedTables>>("olw");
-    assert_graph_properties_are_stubbed::<ThfstTransducer>("thfst");
+    assert_graph_properties::<Transducer<WeightedTables>>("olw");
+    assert_graph_properties::<ThfstTransducer>("thfst");
 }
 
 /// The registry is only worth its compile error if the arms it claims are real:
