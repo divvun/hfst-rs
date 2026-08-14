@@ -290,4 +290,5 @@ assertions (
     {id silent-stub-lint-gate, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:42:56.796308Z}
     {id ol-header-flags-always-false, kind @complete, author "brendan@necessary.nu", at 2026-08-13T14:52:56.645145Z}
     {id ol-header-flags-hardcoded-true, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:50:30.334693Z}
+    {id ol-fast-mode-silent, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:07:39.017992Z}
 )

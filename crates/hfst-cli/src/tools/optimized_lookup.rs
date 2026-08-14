@@ -193,6 +193,13 @@ impl OlInner {
             OlInner::U(t) => t.lookup_fd_string(s, limit, time_cutoff),
         }
     }
+
+    fn can_tokenize(&self, s: &str) -> bool {
+        match self {
+            OlInner::W(t) => t.can_tokenize(s),
+            OlInner::U(t) => t.can_tokenize(s),
+        }
+    }
 }
 
 struct Transducer {
@@ -210,6 +217,12 @@ struct Transducer {
 }
 
 impl Transducer {
+    /// Any member able to tokenize the word is enough: the stream is looked up
+    /// as a union, so an alphabet gap in one member is not a gap in the whole.
+    fn can_tokenize(&self, input: &str) -> bool {
+        self.inner.iter().any(|m| m.can_tokenize(input))
+    }
+
     // Run the library optimized-lookup engine on the input and route each path
     // into the variant's display sink, mirroring the C++ note_analysis hooks.
     // The input is looked up in every archive member and the results are unioned
@@ -234,6 +247,15 @@ impl Transducer {
                     .collect::<Vec<_>>()
                     .concat();
                 match self.variant {
+                    // Fast mode is a streaming path, not a quieter one: C++
+                    // Transducer::note_analysis writes each analysis out as it
+                    // is found and leaves printAnalyses a no-op, so porting
+                    // only the no-op half printed nothing at all. No other
+                    // variant streams, and no other variant's printAnalyses is
+                    // beFast-guarded.
+                    Variant::Plain | Variant::Fd if options.be_fast => {
+                        print_out(&format!("{output}\n"));
+                    }
                     Variant::Plain | Variant::Fd => self.display_vector.push(output),
                     Variant::Uniq | Variant::FdUniq => {
                         self.display_set.insert(output);
@@ -279,7 +301,8 @@ impl Transducer {
         let beam = options.beam;
         match self.variant {
             Variant::Plain | Variant::Fd => {
-                // Transducer::printAnalyses (Fd inherits it). beFast -> nothing.
+                // Transducer::printAnalyses (Fd inherits it). Under beFast the
+                // analyses were already streamed out by `analyze`.
                 if options.be_fast {
                     return;
                 }
@@ -499,6 +522,21 @@ fn run_transducer(options: &Options, t: &mut Transducer) {
 
         if options.echo_inputs_flag {
             print_out(&format!("{}\n", str_display));
+        }
+
+        // A word carrying a symbol the transducer has never heard of is
+        // unanalysable for a different reason than one that tokenizes and
+        // matches nothing, and C++ treats the two differently: this branch is
+        // not beFast-guarded, so fast mode still reports it, and it skips the
+        // lookup entirely rather than searching for what cannot be there.
+        if !t.can_tokenize(&str_display) {
+            if options.echo_inputs_flag {
+                print_out("\n");
+            }
+            if options.output_type == Xerox {
+                print_out(&format!("{}\t{}\t+?\n\n", str_display, str_display));
+            }
+            continue;
         }
 
         t.analyze(options, &str_display);

@@ -3164,6 +3164,14 @@ macro_rules! ol_lookup_facade {
                 self.lookup_fd_string(s, limit, time_cutoff)
             }
 
+            /// Whether `s` tokenizes into symbols this transducer already has.
+            /// Unlike the lookup methods, this cannot grow the alphabet — see
+            /// [`Transducer::can_tokenize`] for why the distinction is
+            /// observable.
+            pub fn can_tokenize(&self, s: &str) -> bool {
+                self.fst.can_tokenize(s)
+            }
+
             // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.lookup-pairs-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.lookup-pairs-fn]
             pub fn lookup_pairs(

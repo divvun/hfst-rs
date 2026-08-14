@@ -3293,6 +3293,30 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         true
     }
 
+    /// Whether `input` tokenizes wholly into symbols the alphabet already has.
+    ///
+    /// [`Self::initialize_input`] answers a different question: it ADOPTS an
+    /// unrecognized symbol into the alphabet and carries on, so it fails only on
+    /// malformed UTF-8. The C++ `find_next_key` loop in hfst-optimized-lookup is
+    /// the strict reading, and the tool distinguishes the two outcomes — a word
+    /// it cannot tokenize is reported unanalysable even in fast mode, while a
+    /// word that tokenizes and simply has no analysis is not.
+    pub fn can_tokenize(&self, input: &str) -> bool {
+        let mut buf: Vec<u8> = input.as_bytes().to_vec();
+        buf.push(0);
+        let mut p: usize = 0;
+        let encoder = self
+            .encoder
+            .as_ref()
+            .expect("encoder is initialized during transducer load");
+        while buf[p] != 0 {
+            if encoder.find_key(&buf, &mut p).is_none() {
+                return false;
+            }
+        }
+        true
+    }
+
     // [spec:hfst:def:transducer.hfst-ol.transducer.include-symbol-in-alphabet-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.include-symbol-in-alphabet-fn]
     pub fn include_symbol_in_alphabet(&mut self, sym: &str) {

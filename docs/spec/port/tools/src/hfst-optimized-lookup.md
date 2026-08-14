@@ -336,6 +336,16 @@
 > NO_SYMBOL_NUMBER, (re)start the per-input clock when time_cutoff is set, call
 > T.analyze(input_string), then T.printAnalyses(line).
 
+> PORT DIVERGENCE (upstream bug deliberately fixed): "blank lines" above is two
+> statements in upstream, not one. It prints the +? record with its blank-line
+> terminator and then unconditionally prints two more, so an unknown word is
+> followed by three blank lines where an analysed word is followed by one
+> (hfst-optimized-lookup.cc 651-659, and again at 1276-1284 for the no-analyses
+> case). Anything splitting the stream on blank lines therefore reads two empty
+> records out of upstream after every unknown word. This port terminates every
+> record with exactly one blank line. The record text itself is unchanged: the
+> columns downstream parses are the contract, the padding between them is not.
+
 > [spec:hfst:def:hfst-optimized-lookup.setup-fn]
 > int
 

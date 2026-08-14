@@ -5335,6 +5335,29 @@ children (
                 title "`hfst optimized-lookup -f` (fast mode) prints NOTHING where C++ echoes the input words; and `hfst lookup -v` diverges deeper in its verbose output though the first lines match. Both reproduce on UNCLUSTERED spellings, so neither is a getopt problem. Found by the getopt-clustered-shorts agent in a 131-invocation C++-vs-Rust diff whose other 22 differences were all message-text or stream-routing noise — these two are payload. Verify each against the oracle and decide: silent fast mode looks like a straightforward port gap rather than a deliberate divergence"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-14T00:01:44.484484Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-14T00:07:13.675531Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Both halves resolved; the fast-mode half was a real port gap, the lookup -v half was noise.\n\nFast mode. The node's guess (\"a straightforward port gap\") was right, and the gap was structural. Fast mode in C++ is a STREAMING path, not a quieter one: Transducer::note_analysis has an `if (beFast)` branch that writes each analysis straight to stdout as it is found, and printAnalyses is then wrapped in `if (!beFast)` precisely because the work is already done. The port took the printAnalyses half (return early under be_fast) and not the note_analysis half, so nothing was printed at all. Only the unweighted plain variant is affected — Transducer::note_analysis is the sole one with a beFast branch and the sole one whose printAnalyses is guarded — which is why an OLW transducer looked fine under -f and the committed unweighted fixture printed nothing.\n\nFixing that exposed a second fold. C++ has two distinct paths to a +? record: tokenization failure in the main loop (NOT beFast-guarded, skips the lookup entirely) and no-analyses in printAnalyses (beFast-guarded). The port had only the second, so a word the alphabet cannot even spell was treated identically to one that spells fine and is not in the language. Invisible outside fast mode, where both print. Verified against the oracle: `-f` on `xyz` prints the +? record, `-f` on `act` prints nothing.\n\nTelling them apart needed a strict tokenizer probe. Transducer::initialize_input is the wrong instrument: it ADOPTS an unrecognized symbol into the alphabet and carries on, failing only on malformed UTF-8, where C++'s find_next_key loop stops at the first unknown. Added Transducer::can_tokenize (non-mutating, uses the existing encoder's find_key) and exposed it on the OL lookup facade. In the tool it is asked of the whole stream — any member that can tokenize is enough, since the members are looked up as a union.\n\nA/B'd against C++ 3.17.1 across -f, -e, -e -f and no flags: every line agrees except the deliberate blank-line divergence.\n\nlookup -v was noise, contrary to the node's \"diverges deeper in its verbose output\". Two differences, both cosmetic: upstream renders the format strings with the archaic backtick-apostrophe quoting where we use plain quotes, and its warning is prefixed with argv[0] as a full path where ours names the multiplexer subcommand. Neither is payload; both are the message-text class the node's author had already excluded.\n\nKept and now spec'd: upstream prints a +? record followed by THREE blank lines (record terminator, then two more from an unconditional second statement) where an analysed word gets one. We emit one uniformly. Recorded as PORT DIVERGENCE on run-transducer-fn and pinned by an_unknown_word_terminates_like_any_other, which puts the unknown word mid-stream — the golden fixture has it last, where the difference cannot be seen.\n\nLeft alone deliberately: the variant selection is a 4-way (weighted, unique) match, where C++ picks among 8 classes on (flags, weighted, unique). Variant::Fd and Variant::WFd are therefore unreachable. Flag diacritics are handled inside the library engine (lookup_fd_string) rather than by variant, so this is probably vestigial rather than broken, but it is unexamined — filed as ol-variant-fd-unreachable."
+                    }
+
+                    {
+                        at 2026-08-14T00:07:39.017992Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5409,6 +5432,13 @@ children (
                 title "Four sites in hfst_transducer.rs carried comments saying foma was compiled out, in a tree where foma is a live validated backend: harmonize_copy's no-harmonization arm, its flag-diacritic pre-insertion block, extract_random_paths/n_best, and compose_intersect. Each documented a C++ arm dropped on the grounds the backend did not exist. All four verified correct through the generic path by CLI A/B (compose-intersect on .foma inputs gives the same result as tropical; union of foma nets with disjoint alphabets, unknowns, and a flag diacritic agrees path-for-path, 16 and 3 paths) and the prose is corrected, but only the prose — nothing gates it. Add the cross-backend parity cases to foma_backend.rs next to assert_binary_parity, which already has fac_foma/fac_trop: compose_intersect is uncovered there, and so are the disjoint-alphabet and flag-carrying harmonization inputs. Deferred behind the alphabet-set-ops work to avoid two agents editing the same test file"
                 priority 2
                 kind @test
+            }
+
+            {
+                id ol-variant-fd-unreachable
+                title "optimized_lookup.rs picks its display Variant from a 2-tuple (weighted, unique), giving 4 outcomes, where C++ setup picks among 8 classes on 3 booleans (has-flag-diacritics, weighted, unique). Variant::Fd, Variant::WFd and Variant::WFdUniq are consequently constructed nowhere, though every match arm still handles them. Most likely vestigial rather than broken: flag diacritics are resolved inside the library engine via lookup_fd_string, so the tool may not need a per-flag variant at all. But that is a hypothesis, not a finding — nobody has checked whether the Fd classes differ from their non-Fd counterparts in any way that survives that difference. Decide it: either prove the distinction is subsumed and delete the dead variants, or restore the third selector. Found while fixing ol-fast-mode-silent"
+                priority 2
+                kind @fix
             }
         )
     }
