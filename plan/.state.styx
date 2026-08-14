@@ -269,7 +269,7 @@ assertions (
     {id version-line-provenance, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:05:48.497893Z}
     {id function-key-normalise, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:13:26.917038Z}
     {id xfst-function-arg-substitution, kind @complete, author "brendan@necessary.nu", at 2026-08-12T06:51:38.839319Z}
-    {id foma-substitute-noop, kind @doing, author "brendan@necessary.nu", at 2026-08-12T07:34:42.802871Z}
+    {id foma-substitute-noop, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:16:15.020576Z}
     {id compose-intersect-empty-panic, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:41:01.321301Z}
     {id hfst-info-bogus, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:51:34.541479Z}
     {id tokenize-space-separated-unreachable, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:54:57.804134Z}
@@ -291,4 +291,5 @@ assertions (
     {id ol-header-flags-always-false, kind @complete, author "brendan@necessary.nu", at 2026-08-13T14:52:56.645145Z}
     {id ol-header-flags-hardcoded-true, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:50:30.334693Z}
     {id ol-fast-mode-silent, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:07:39.017992Z}
+    {id foma-alphabet-set-ops, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:16:19.396105Z}
 )

@@ -4922,12 +4922,20 @@ children (
                 title "foma substitute_string_transducer returns the input unchanged — silent no-op. Verified: `substitute defined R for a` on [a b] gives xyb on tropical, ab on foma. C++ (HfstTransducer.cc, HAVE_FOMA branch) converts foma→HfstBasicTransducer, calls net->substitute(pair, substituting_net), converts back; implement that round-trip. The stub's comment claims callers route through the basic path — hfst_transducer.rs:2147 calls the backend directly, no fallback. Reachable from xfst substitute, xre definition expansion, twolc, pmatch, hfst-substitute, all under -f foma"
                 priority 0
                 kind @fix
+                sealed true
                 log (
                     {
                         at 2026-08-12T07:34:42.802871Z
                         author "brendan@necessary.nu"
                         kind @status
                         text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-14T00:16:15.020576Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }
@@ -5386,6 +5394,7 @@ children (
                 title "FomaTransducer::add_symbols_to_alphabet returns Ok(()) having added nothing: foma overrides insert_to_alphabet but INHERITS the round-trip default for the set form, and from_basic (backend_foma.rs:141) builds the sigma purely by interning each arc's symbols — it never reads the interchange net's alphabet — so any symbol on no arc is dropped. remove_from_alphabet is the same defect with the opposite sign: it appears to work only because the round trip drops arc-less symbols regardless, and it cannot touch a symbol still on an arc. Two paths on the same backend disagree about what the alphabet is. Consumer to check when fixing: hfst_xerox_rules strips its temporary markers via remove_from_alphabet_symbol/_set on every replace-rule compile. Found by the ratchet battery; pinned by an expected-red test"
                 priority 1
                 kind @fix
+                sealed true
                 log (
                     {
                         at 2026-08-14T00:02:45.98179Z
@@ -5399,6 +5408,13 @@ children (
                         author "brendan@necessary.nu"
                         kind @status
                         text "Doing → Done (nplan complete)"
+                    }
+
+                    {
+                        at 2026-08-14T00:16:19.396105Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
                     }
                 )
             }
