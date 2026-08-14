@@ -23,7 +23,9 @@ use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::hfst_data_types::{HfstTwoLevelPath, HfstTwoLevelPaths, Symbol};
 use hfst::hfst_extract_strings::{ExtractStringsCb, RetVal};
 use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
+use hfst::hfst_tokenizer::HfstTokenizer;
+use hfst::hfst_transducer::{AnyTransducer, HfstTransducer, HfstTransducerPair};
+use hfst::hfst_xerox_rules as xr;
 use hfst::transducer::{Transducer, WeightedTables};
 use hfst::xfst_compiler::XfstCompiler;
 use hfst_openfst::StdVectorFst;
@@ -1160,4 +1162,80 @@ fn foma_and_thfst_report_weights_honestly() {
         let thfst = ThfstTransducer::from_ol(ol);
         assert_eq!(thfst.has_weights(), want, "THFST has_weights({name})");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Replace-rule marker hygiene (the live consumer of the alphabet edits).
+// ---------------------------------------------------------------------------
+
+/// `hfst_xerox_rules` compiles a conditioned replace rule by bracketing the
+/// centre with temporary markers (`@LM@`, `@RM@`, `@LM2@`, `@RM2@`, `@1@`, ...),
+/// declaring them with `insert_to_alphabet_set` so `?` stops covering them, and
+/// stripping them again with `remove_from_alphabet_symbol` / `_set` once the
+/// composition is done. Both halves are alphabet edits, so both were silent on
+/// the foma backend while `from_basic` rebuilt the sigma from arcs alone: the
+/// declarations never landed and the strip had nothing to strip.
+///
+/// Now that they land, the strip has to be real — a marker left in the sigma is
+/// a symbol `?` no longer matches, which changes what the rule accepts.
+// ab -> x || ab _ a  (test1 of test_xerox_rules.rs, on the foma backend)
+#[test]
+fn replace_rule_leaves_no_markers_in_the_alphabet() -> Result<(), hfst::error::Error> {
+    let _g = serialized();
+    type B = FomaTransducer;
+
+    let mut tok = HfstTokenizer::new();
+    tok.add_multichar_symbol(EPSILON);
+
+    let mapping_pair: HfstTransducerPair<B> = (
+        HfstTransducer::<B>::new_tokenized("ab", &tok)?,
+        HfstTransducer::<B>::new_tokenized("x", &tok)?,
+    );
+    let context: HfstTransducerPair<B> = (
+        HfstTransducer::<B>::new_tokenized("ab", &tok)?,
+        HfstTransducer::<B>::new_tokenized("a", &tok)?,
+    );
+
+    let rule = xr::Rule::new_mapping_context_repl_type(
+        &vec![mapping_pair],
+        &vec![context],
+        xr::ReplaceType::REPL_UP,
+    )?;
+    let replace_tr = xr::replace_rule(&rule, false)?;
+
+    let alphabet = replace_tr.get_alphabet()?;
+    let leftovers: BTreeSet<String> = alphabet
+        .iter()
+        .map(|s| s.to_string())
+        .filter(|s| s.starts_with('@') && s.ends_with('@') && s != EPSILON)
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "foma replace-rule compile left temporary markers in the alphabet: {leftovers:?}"
+    );
+    assert_eq!(
+        alphabet
+            .iter()
+            .map(|s| s.to_string())
+            .filter(|s| !s.starts_with('@'))
+            .collect::<BTreeSet<String>>(),
+        BTreeSet::from(["a".to_string(), "b".to_string(), "x".to_string()]),
+        "foma replace-rule compile lost or gained an ordinary alphabet symbol"
+    );
+
+    // The markers being gone is only worth asserting if the rule they built is
+    // the right one: `abababa` has exactly one non-optional upward replacement.
+    let input = HfstTransducer::<B>::new_tokenized("abababa", &tok)?;
+    let expected = HfstTransducer::<B>::new_tokenized_pair(
+        "abababa",
+        "abx@_EPSILON_SYMBOL_@x@_EPSILON_SYMBOL_@a",
+        &tok,
+    )?;
+    let mut got = input.clone();
+    got.compose(&replace_tr, true)?.minimize()?;
+    assert!(
+        got.compare(&expected, true)?,
+        "foma replace-rule compile produced the wrong relation"
+    );
+    Ok(())
 }

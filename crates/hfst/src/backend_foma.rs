@@ -58,6 +58,12 @@ pub struct FomaTransducer {
     pub opts: FomaOptions,
 }
 
+/// Whether `symbol` is one of the three HFST special strings foma represents by
+/// a reserved sigma number rather than an ordinary alphabet entry.
+fn is_reserved_symbol(symbol: &str) -> bool {
+    symbol == EPSILON_SYMBOL || symbol == UNKNOWN_SYMBOL || symbol == IDENTITY_SYMBOL
+}
+
 /// Map a foma sigma number to its HFST symbol string. The three reserved
 /// numbers map to their HFST special strings; every other number is resolved
 /// through the sigma alphabet.
@@ -70,6 +76,42 @@ fn sym(n: i32, sigma: &[Sigma]) -> SymbolType {
             foma::sigma::sigma_string(n, sigma).expect("arc symbol number resolves in sigma"),
         ),
     }
+}
+
+/// Declare every symbol of `symbols` in `net`'s sigma, skipping those already
+/// there and the three reserved strings (which are sigma numbers 0/1/2, not
+/// alphabet members).
+///
+/// foma's sigma is not decoration. It is simultaneously the alphabet and the
+/// arc-label namespace, and `@_UNKNOWN_@` / `@_IDENTITY_@` match exactly the
+/// symbols it does NOT list — so declaring a symbol that sits on no arc is a
+/// real semantic act (it narrows what `?` and `@` cover), which is precisely
+/// what HFST's alphabet inserts mean.
+///
+/// Every foma construction assumes the sigma is sorted by symbol string:
+/// `fsm_merge_sigma` walks two sigmas as a single ordered merge and silently
+/// mismaps arcs if either is out of order. `sigma_add` appends, so an insertion
+/// is only complete once `sigma_sort` has restored that order (renumbering the
+/// survivors and rewriting the arcs to match).
+fn sigma_declare<'a>(net: &mut foma::types::Fsm, symbols: impl IntoIterator<Item = &'a str>) {
+    // Sieved against the whole sigma at once rather than one `sigma_find` scan
+    // per symbol: `from_basic` runs this over the entire alphabet, where the
+    // per-symbol form would be quadratic in it.
+    let missing: std::collections::BTreeSet<&str> = {
+        let present: std::collections::BTreeSet<&str> =
+            net.sigma.iter().map(|s| s.symbol.as_str()).collect();
+        symbols
+            .into_iter()
+            .filter(|s| !is_reserved_symbol(s) && !present.contains(s))
+            .collect()
+    };
+    if missing.is_empty() {
+        return;
+    }
+    for symbol in missing {
+        foma::sigma::sigma_add(symbol, &mut net.sigma);
+    }
+    foma::sigma::sigma_sort(net);
 }
 
 // [spec:hfst:def:foma-backend.backend-impl]
@@ -165,7 +207,15 @@ impl Backend for FomaTransducer {
             }
         }
 
-        let fsm = foma::dynarray::fsm_construct_done(handle);
+        let mut fsm = foma::dynarray::fsm_construct_done(handle);
+        // The construction API interns only what it is handed, so the sigma it
+        // produces is the set of symbols seen on an arc. An HFST alphabet is
+        // wider than that by design — `insert_to_alphabet`, `prune_alphabet`,
+        // the flag encode/decode and substitution all carry symbols that no arc
+        // mentions — and those are the ones foma's `?`/`@` must stop matching.
+        // Declaring them here is what makes the round trip alphabet-preserving
+        // for every operation routed through it, not just the alphabet edits.
+        sigma_declare(&mut fsm, net.get_alphabet().iter().map(|s| s.as_str()));
         Ok(Self::wrap(fsm))
     }
 
@@ -211,10 +261,62 @@ impl Backend for FomaTransducer {
         false
     }
 
+    // The three alphabet edits are in-place sigma work. The round-trip defaults
+    // would also answer correctly now that `from_basic` carries the alphabet,
+    // but at the cost of two whole-graph rebuilds for what is a `Vec<Sigma>`
+    // edit plus (at most) one arc-relabelling pass.
     fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
-        // `Fsm.sigma` is a plain `Vec<Sigma>` (empty ↔ absent), so there is no
-        // lazy-create guard — append straight into the alphabet.
-        foma::sigma::sigma_add(symbol, &mut self.net.sigma);
+        sigma_declare(&mut self.net, [symbol]);
+        Ok(())
+    }
+
+    fn add_symbols_to_alphabet(&mut self, symbols: &StringSet) -> crate::error::Result<()> {
+        sigma_declare(&mut self.net, symbols.iter().map(|s| s.as_str()));
+        Ok(())
+    }
+
+    /// Removal is alphabet-only: it never touches the graph.
+    ///
+    /// A foma arc addresses its symbol by sigma NUMBER, so dropping a sigma
+    /// entry that some arc still carries does not un-declare a symbol — it
+    /// leaves the arc pointing into a hole, and the following `sigma_sort`
+    /// renumbers a neighbouring symbol into that hole, silently relabelling the
+    /// arc. There is no representation in foma for "this arc is labelled X but
+    /// X is not in the alphabet", so the request is unsatisfiable, and the two
+    /// satisfiable readings of it are both worse: deleting the arcs changes the
+    /// language, and refusing breaks callers that strip a marker set wholesale.
+    /// So a symbol still on an arc keeps its sigma entry, and every entry for it
+    /// that no arc uses is dropped.
+    ///
+    /// In practice the distinction never bites: every caller (hfst_xerox_rules'
+    /// marker cleanup, xre/xfst definition expansion) removes a symbol it has
+    /// just substituted off the graph, which is also foma's own idiom for the
+    /// operation — `sigma_remove` followed by `sigma_sort`, as in rewrite.rs.
+    fn remove_from_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
+        if is_reserved_symbol(symbol) || foma::sigma::sigma_find(symbol, &self.net.sigma).is_none()
+        {
+            return Ok(());
+        }
+        let mut used = std::collections::BTreeSet::new();
+        for line in self.net.states.rows().iter() {
+            if line.state_no == -1 {
+                break;
+            }
+            if line.r#in != -1 && line.target != -1 {
+                used.insert(line.r#in as i32);
+                used.insert(line.out as i32);
+            }
+        }
+        let mut removed = false;
+        self.net.sigma.retain(|s| {
+            let drop =
+                s.number > foma::types::IDENTITY && s.symbol == symbol && !used.contains(&s.number);
+            removed |= drop;
+            !drop
+        });
+        if removed {
+            foma::sigma::sigma_sort(&mut self.net);
+        }
         Ok(())
     }
 
