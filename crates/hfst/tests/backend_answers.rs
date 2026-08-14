@@ -525,8 +525,7 @@ fn run_battery<B: Backend>(tag: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Set-at-a-time alphabet edits. Held out of the shared battery because foma
-// cannot honour them — see the expected-red pin below.
+// Set-at-a-time alphabet edits.
 // ---------------------------------------------------------------------------
 
 /// `add_symbols_to_alphabet` and `remove_from_alphabet` are inverses, so
@@ -569,43 +568,90 @@ fn optimized_lookup_honours_alphabet_set_edits() {
     assert_alphabet_set_edits::<ThfstTransducer>("thfst");
 }
 
-/// EXPECTED RED WHEN FIXED. foma overrides `insert_to_alphabet` (a direct
-/// `sigma_add`, asserted in the shared battery) but inherits the round-trip
-/// default for the set-at-a-time edits, and the round trip cannot carry them:
-/// `FomaTransducer::from_basic` builds the sigma purely by interning each arc's
-/// symbols and never reads the interchange net's alphabet, so every symbol on
-/// no arc is dropped on the way back in. `add_symbols_to_alphabet` therefore
-/// returns `Ok(())` having added nothing — the silent-success shape, and
-/// inconsistent with the single-symbol path on the very same backend.
-///
-/// `remove_from_alphabet` is the same defect with the opposite sign: it appears
-/// to work, because the round trip drops arc-less symbols whether or not they
-/// were named, and it cannot touch a symbol that is still on an arc.
-///
-/// The consumer to check when fixing this is `hfst_xerox_rules`, which strips
-/// its temporary markers with `remove_from_alphabet_symbol` / `_set` on every
-/// replace-rule compile.
 #[cfg(feature = "foma")]
 #[test]
-fn foma_alphabet_set_edits_are_silent_no_ops() {
+fn foma_honours_alphabet_set_edits() {
+    let _g = serialized();
+    assert_alphabet_set_edits::<FomaTransducer>("foma");
+}
+
+/// The root cause the set-at-a-time edits used to fail on, pinned directly:
+/// `FomaTransducer::from_basic` built the sigma purely by interning each arc's
+/// symbols and never read the interchange net's alphabet, so every alphabet
+/// symbol sitting on no arc was dropped on the way back in. That silently
+/// emptied `add_symbols_to_alphabet` (which round-trips by default), made
+/// `remove_from_alphabet` look right for the wrong reason, and cost every other
+/// operation routed through the round trip — `prune_alphabet`, the flag
+/// encode/decode, substitution — its arc-less alphabet members too.
+///
+/// A backend whose sigma is built from arcs alone passes every other assertion
+/// in this file, so the round trip is asserted here rather than left implied.
+#[cfg(feature = "foma")]
+#[test]
+fn foma_round_trip_carries_arcless_alphabet_symbols() {
     let _g = serialized();
 
     let mut b: FomaTransducer = build(&basic_acceptor("ab"), "ab");
-    let mut symbols = hfst::hfst_symbol_defs::StringSet::new();
-    symbols.insert(sym("quokka"));
-    b.add_symbols_to_alphabet(&symbols)
-        .expect("add_symbols_to_alphabet");
+    b.insert_to_alphabet("quokka").expect("insert_to_alphabet");
+
+    // The interchange form must carry it...
+    let basic = b.to_basic().expect("to_basic");
     assert!(
-        !alphabet_of(&b).contains("quokka"),
-        "foma add_symbols_to_alphabet now adds — wire foma into \
-         assert_alphabet_set_edits and delete this pin"
+        basic.get_alphabet().contains("quokka"),
+        "foma to_basic dropped an alphabet symbol that no arc uses"
     );
 
+    // ...and so must the way back, which is what every default that mutates
+    // through the basic transducer depends on.
+    let back: FomaTransducer = build(&basic, "round-tripped ab");
+    assert!(
+        alphabet_of(&back).contains("quokka"),
+        "foma from_basic dropped an alphabet symbol that no arc uses"
+    );
+    assert_eq!(
+        accepted(&back),
+        pairs(&[("ab", "ab")]),
+        "foma from_basic changed the relation while carrying the alphabet"
+    );
+}
+
+/// foma's sigma is the arc-label namespace as well as the alphabet, so a symbol
+/// still carried by an arc keeps its entry: dropping it would leave the arc
+/// addressing a hole that the following renumber fills with a neighbouring
+/// symbol, silently relabelling the arc. Removal is alphabet-only and never
+/// touches the graph — pinned here because it is a deliberate divergence from
+/// the SymbolTable backends, which will happily unname a live arc label.
+#[cfg(feature = "foma")]
+#[test]
+fn foma_removal_spares_a_live_arc_label() {
+    let _g = serialized();
+
+    let mut b: FomaTransducer = build(&basic_acceptor("ab"), "ab");
     b.remove_from_alphabet("a").expect("remove_from_alphabet");
     assert!(
         alphabet_of(&b).contains("a"),
-        "foma remove_from_alphabet now reaches a symbol that is still on an \
-         arc — wire foma into assert_alphabet_set_edits and delete this pin"
+        "foma removed a live arc label from the sigma"
+    );
+    assert_eq!(
+        accepted(&b),
+        pairs(&[("ab", "ab")]),
+        "foma removal corrupted the relation"
+    );
+
+    // Sparing a live label is not a licence to spare everything: an arc-less
+    // entry added alongside it still goes, and the live ones stay put.
+    b.insert_to_alphabet("quokka").expect("insert_to_alphabet");
+    b.remove_from_alphabet("quokka")
+        .expect("remove_from_alphabet");
+    assert_eq!(
+        alphabet_of(&b),
+        BTreeSet::from(["a".to_string(), "b".to_string()]),
+        "foma removal took the wrong entries"
+    );
+    assert_eq!(
+        accepted(&b),
+        pairs(&[("ab", "ab")]),
+        "foma removal corrupted the relation"
     );
 }
 

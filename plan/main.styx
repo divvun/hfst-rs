@@ -4937,7 +4937,6 @@ children (
                 title "hfst_transducer.rs:2751 compose_intersect empty-rule-vector guard is missing its return — assigns *self = HfstTransducer::new() then falls through to &v[0] and panics. Add the return; regression-test the empty-rule-vector case"
                 priority 0
                 kind @fix
-                sealed true
                 log (
                     {
                         at 2026-08-12T07:41:02.879515Z
@@ -5335,7 +5334,6 @@ children (
                 title "`hfst optimized-lookup -f` (fast mode) prints NOTHING where C++ echoes the input words; and `hfst lookup -v` diverges deeper in its verbose output though the first lines match. Both reproduce on UNCLUSTERED spellings, so neither is a getopt problem. Found by the getopt-clustered-shorts agent in a 131-invocation C++-vs-Rust diff whose other 22 differences were all message-text or stream-routing noise — these two are payload. Verify each against the oracle and decide: silent fast mode looks like a straightforward port gap rather than a deliberate divergence"
                 priority 2
                 kind @fix
-                sealed true
                 log (
                     {
                         at 2026-08-14T00:01:44.484484Z
@@ -5388,6 +5386,21 @@ children (
                 title "FomaTransducer::add_symbols_to_alphabet returns Ok(()) having added nothing: foma overrides insert_to_alphabet but INHERITS the round-trip default for the set form, and from_basic (backend_foma.rs:141) builds the sigma purely by interning each arc's symbols — it never reads the interchange net's alphabet — so any symbol on no arc is dropped. remove_from_alphabet is the same defect with the opposite sign: it appears to work only because the round trip drops arc-less symbols regardless, and it cannot touch a symbol still on an arc. Two paths on the same backend disagree about what the alphabet is. Consumer to check when fixing: hfst_xerox_rules strips its temporary markers via remove_from_alphabet_symbol/_set on every replace-rule compile. Found by the ratchet battery; pinned by an expected-red test"
                 priority 1
                 kind @fix
+                log (
+                    {
+                        at 2026-08-14T00:02:45.98179Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Root cause fixed in from_basic, not just the two methods. FomaTransducer::from_basic now declares every remaining member of the interchange alphabet in the sigma (sigma_add per missing non-reserved symbol, then sigma_sort) after fsm_construct_done. That repairs the round trip for every Backend default routed through it, not only the alphabet edits: prune_alphabet (which previously behaved as force=true regardless of the flag, because the round trip dropped arc-less symbols whether or not unknown/identity were on arcs), encode_flag_diacritics / decode_flag_diacritics (both explicitly copy the alphabet into the rebuilt basic net, so arc-less flag entries vanished), and the facade's generic substitution. to_hfst_ol and is_infinitely_ambiguous only read to_basic, so they were never lossy themselves.\n\nsigma_sort is not optional after a sigma_add: fsm_merge_sigma walks two sigmas as one ordered merge keyed on strcmp, so an unsorted sigma silently mismaps arcs. The pre-existing insert_to_alphabet override did a bare sigma_add with neither a sort nor a duplicate check, violating foma's own documented precondition on sigma_add; both are now handled by the shared sigma_declare helper. I could not construct a case where the unsorted sigma visibly corrupted a result (the merge's two-pointer walk mostly self-heals), so this is defensive, not a demonstrated corruption.\n\nRemoval semantics decided deliberately: alphabet-only, never touches the graph. A foma arc addresses its symbol by sigma NUMBER, so dropping an entry an arc still carries leaves that arc pointing into a hole which the following sigma_sort fills with a neighbouring symbol — a silent relabel. The other two readings are worse (deleting the arcs changes the language; erroring breaks callers that strip a marker set wholesale). So an in-use symbol keeps its entry and every entry for that symbol which no arc uses is dropped. This is a deliberate divergence from the SymbolTable backends, which will unname a live arc label on request. It never bites in practice: every caller removes a symbol it has just substituted off the graph, which is also foma's own idiom (sigma_remove + sigma_sort, as in rewrite.rs / derived.rs).\n\nNo change to the foma crate was needed: sigma_add / sigma_find / sigma_sort are public and sufficient."
+                    }
+
+                    {
+                        at 2026-08-14T00:02:50.648365Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5402,7 +5415,6 @@ children (
                 title "deterministic / input_deterministic / minimized are hardcoded TRUE by TransducerHeader::new_weighted and new_sizes, the same constructors whose false flags caused the ol-header-flags-always-false hang. No live reader today — which is precisely where has_weights sat before the previous sweep found it. TRUE is the more dangerous direction than false: a false positive on \"already minimized\" silently SKIPS an operation, where a false negative merely costs work. Same fix shape as the cyclic case: either compute from the graph (ol_walk exists) or delete the fields if nothing should ever consult them. Check has_epsilon_epsilon_transitions and has_input_epsilon_transitions in the same pass"
                 priority 1
                 kind @fix
-                sealed true
                 log (
                     {
                         at 2026-08-13T23:50:10.754732Z

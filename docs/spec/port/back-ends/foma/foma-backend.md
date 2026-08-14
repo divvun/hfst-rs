@@ -71,9 +71,19 @@ those ops in foma instead of round-tripping through openfst.
 > `origin -> target` with the mapped `(in, out)` sigma numbers; mark a
 > state final when `is_final_state` holds (HFST weight is discarded —
 > foma is unweighted). HFST state 0 is the foma start state. Finalize
-> via the construction handle and return `FomaTransducer(fsm)`. The
-> round-trip `to_basic ∘ from_basic` preserves the recognized relation
-> and the (non-reserved) alphabet.
+> via the construction handle. The construction API interns only the
+> symbols it is handed, so the sigma it produces is exactly the set seen
+> on an arc; every remaining member of the interchange net's alphabet is
+> then declared in that sigma (non-reserved, not already present) and the
+> sigma re-sorted. This is not bookkeeping: foma's `?`/`@` match exactly
+> the symbols the sigma does NOT list, so an alphabet member on no arc
+> has to be a sigma entry for the net to mean what HFST says it means.
+> Return `FomaTransducer(fsm)`. The round-trip `to_basic ∘ from_basic`
+> preserves the recognized relation and the (non-reserved) alphabet,
+> including alphabet members that no arc uses — which is what makes the
+> `Backend` defaults that mutate through the interchange form
+> (`prune_alphabet`, the flag encode/decode, substitution) alphabet-safe
+> on this backend.
 
 ## Backend trait obligations (`foma-backend.seam` + downstream)
 
@@ -82,11 +92,36 @@ those ops in foma instead of round-tripping through openfst.
 > (`fsm_empty_set`); `copy` = `fsm_copy`; `get_alphabet` = the sigma's
 > non-reserved symbols as a `StringSet`; `is_cyclic` = negation of
 > foma's acyclicity (via `fsm_topsort`'s loop-free flag);
-> `insert_to_alphabet` = `sigma_add`; `is_infinitely_ambiguous` derived
+> `is_infinitely_ambiguous` derived
 > from cyclicity on the input projection. `write` (foma-backend.io)
 > serializes the native `.foma` binary format. `extract_paths_cb` /
 > `extract_paths_fd_cb` (foma-backend.lookup) enumerate paths via foma
 > apply.
+>
+> The three alphabet edits are in-place sigma work rather than the
+> trait's interchange round trip. `insert_to_alphabet` and
+> `add_symbols_to_alphabet` declare each non-reserved symbol not already
+> in the sigma (`sigma_add`), then re-sort — foma's constructions read
+> the sigma as sorted by symbol string, and `fsm_merge_sigma` mismaps
+> arcs silently if it is not. `remove_from_alphabet` is alphabet-only
+> and never touches the graph: a foma arc addresses its symbol by sigma
+> NUMBER, so an entry some arc still carries is retained (dropping it
+> would leave the arc addressing a hole that the following renumber
+> fills with a neighbouring symbol, relabelling the arc), while every
+> entry for that symbol which no arc uses is dropped and the sigma
+> re-sorted.
+>
+> PORT DIVERGENCE. Upstream C++ HFST answers the set form and the
+> removal through the same lossy interchange round trip this backend
+> inherited, so on a foma net an alphabet insert never landed and a
+> removal succeeded only because the round trip discarded arc-less
+> symbols regardless — two paths to the alphabet that disagreed about
+> what it was. Fixed here per [dec:hfst:independent-fork]: the port is a
+> successor, and a silent `Ok(())` that changes nothing is the failure
+> mode this backend's whole test battery exists to catch. The upstream
+> SymbolTable backends will additionally unname a live arc label on
+> request; foma will not, because in foma that is not a rename but a
+> corruption.
 
 ## Algebra (`foma-backend.algebra` node)
 
