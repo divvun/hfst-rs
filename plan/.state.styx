@@ -292,4 +292,6 @@ assertions (
     {id ol-header-flags-hardcoded-true, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:50:30.334693Z}
     {id ol-fast-mode-silent, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:07:39.017992Z}
     {id foma-alphabet-set-ops, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:16:19.396105Z}
+    {id foma-first-vs-initial-symbols, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:32:58.821601Z}
+    {id foma-generic-path-parity-tests, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:33:03.770684Z}
 )

@@ -391,12 +391,28 @@
 
 > [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.get-first-input-symbols-fn]
 > Const method returning a StringSet of input symbols on transitions leaving the start state. Switches on type: only TROPICAL_OPENFST_TYPE is implemented, delegating to tropical_ofst_interface.get_first_input_symbols(implementation.tropical_ofst). All other cases (SFST, LOG_OPENFST, FOMA, XFSM, HFST_OL, HFST_OLW, default) throw FunctionNotImplementedException with message "get_first_input_symbols", and ERROR_TYPE throws TransducerHasWrongTypeException.
+>
+> PORT DIVERGENCE. Two corrections, per [dec:hfst:independent-fork].
+> (1) The name and the summary above are both misleading about what the one
+> implemented arm does: the tropical walk does NOT stop at the start state's
+> out-arcs. It descends the WHOLE reachable graph and collects every non-epsilon,
+> non-flag input symbol anywhere in it (see the TropicalWeightTransducer rule).
+> "First" means first-of-each-arc-encountered, not first-of-the-path — that is
+> `get_initial_input_symbols`. The port keeps the upstream names but implements
+> the two contracts as the two distinct walks they are.
+> (2) The port dispatches through the `AlgebraBackend` trait, so every live
+> backend answers for itself and there is no not-implemented throw. FOMA_TYPE in
+> particular runs both walks natively over foma's own line table.
 
 > [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.get-initial-input-symbols-fn]
 > StringSet
 
 > [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.get-initial-input-symbols-fn]
 > Const method returning a StringSet of the initial input symbols. Switches on type: only TROPICAL_OPENFST_TYPE is implemented, delegating to tropical_ofst_interface.get_initial_input_symbols(implementation.tropical_ofst). The default case throws FunctionNotImplementedException with message "get_first_input_symbols".
+>
+> PORT DIVERGENCE. Dispatched through the `AlgebraBackend` trait, so every live
+> backend answers for itself rather than throwing; FOMA_TYPE walks its own line
+> table. Per [dec:hfst:independent-fork].
 
 > [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.get-name-fn]
 > std::string

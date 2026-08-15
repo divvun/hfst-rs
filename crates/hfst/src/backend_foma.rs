@@ -569,23 +569,6 @@ impl FomaTransducer {
         }
     }
 
-    /// The resolved input symbols on arcs leaving the start state (foma's start
-    /// is always state 0). Backs both `get_initial_input_symbols` and
-    /// `get_first_input_symbols` (foma draws no distinction between them).
-    fn initial_input_symbols(&self) -> StringSet {
-        let sigma = &self.net.sigma;
-        let mut out = StringSet::new();
-        for line in self.net.states.rows().iter() {
-            if line.state_no == -1 {
-                break;
-            }
-            if line.state_no == 0 && line.r#in != -1 && line.target != -1 {
-                out.insert(sym(line.r#in as i32, sigma));
-            }
-        }
-        out
-    }
-
     /// Apply `input` downward and collect the output words (space-tokenizable),
     /// bounded by `limit`. Shared by the one-level lookup entry points.
     fn apply_down_outputs(&self, input: &str, limit: isize) -> Vec<String> {
@@ -862,11 +845,60 @@ impl AlgebraBackend for FomaTransducer {
         }
         true
     }
+    /// The input symbols a path can start with: descend from the start state
+    /// (foma's is always state 0) THROUGH epsilon and flag-diacritic arcs, and
+    /// stop on each branch at the first arc carrying a real input symbol.
+    /// `@_UNKNOWN_@` / `@_IDENTITY_@` are real symbols here, as they are on the
+    /// tropical side — reserved sigma numbers, but not epsilon.
     fn get_initial_input_symbols(&self) -> StringSet {
-        self.initial_input_symbols()
+        let walk = self.digest();
+        let mut out = StringSet::new();
+        let mut visited: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+        let mut pending: Vec<u32> = vec![0];
+        while let Some(s) = pending.pop() {
+            if !visited.insert(s) {
+                continue;
+            }
+            let Some(arcs) = walk.arcs.get(s as usize) else {
+                continue;
+            };
+            for arc in arcs {
+                if arc.inum != foma::types::EPSILON && !FdOperation::is_diacritic(arc.isym.as_str())
+                {
+                    out.insert(arc.isym.clone());
+                } else {
+                    pending.push(arc.target);
+                }
+            }
+        }
+        out
     }
+    /// Every input symbol appearing anywhere in the net — the whole reachable
+    /// graph, not just the symbols a path can start with. Epsilon and flag arcs
+    /// contribute nothing here either, but unlike `get_initial_input_symbols`
+    /// the descent continues past every arc rather than stopping at the first
+    /// real symbol, which is what makes this a superset and a different walk.
     fn get_first_input_symbols(&self) -> StringSet {
-        self.initial_input_symbols()
+        let walk = self.digest();
+        let mut out = StringSet::new();
+        let mut visited: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+        let mut pending: Vec<u32> = vec![0];
+        while let Some(s) = pending.pop() {
+            if !visited.insert(s) {
+                continue;
+            }
+            let Some(arcs) = walk.arcs.get(s as usize) else {
+                continue;
+            };
+            for arc in arcs {
+                if arc.inum != foma::types::EPSILON && !FdOperation::is_diacritic(arc.isym.as_str())
+                {
+                    out.insert(arc.isym.clone());
+                }
+                pending.push(arc.target);
+            }
+        }
+        out
     }
 
     fn n_best(&self, _n: u32) -> Self {

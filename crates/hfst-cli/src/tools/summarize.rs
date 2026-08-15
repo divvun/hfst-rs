@@ -177,27 +177,27 @@ fn process_stream(
             }
         };
         // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
-        // The tropical-only first-input-symbols query of the verbose
-        // branch, answered at the boundary (the runtime type gate the C++
-        // used is a compile-time absence for the other backends).
+        // The first-input-symbols query of the verbose branch, answered at the
+        // boundary. It belongs to the algebra backends; the lookup-only runtime
+        // formats have no graph to walk, so for them it is a compile-time
+        // absence rather than the C++'s runtime type gate.
         let first_input_symbols = if common.verbose {
-            match &any {
+            let symbols = match &any {
                 hfst::hfst_transducer::AnyTransducer::Tropical(t) => {
-                    match t.get_first_input_symbols() {
-                        Ok(ss) => Some(ss),
-                        Err(e) => {
-                            error(common, 1, 0, &format!("{e}"));
-                            return 1;
-                        }
-                    }
+                    Some(t.get_first_input_symbols())
                 }
+                #[cfg(feature = "foma")]
+                hfst::hfst_transducer::AnyTransducer::Foma(t) => Some(t.get_first_input_symbols()),
                 hfst::hfst_transducer::AnyTransducer::OlW(_)
                 | hfst::hfst_transducer::AnyTransducer::OlU(_)
                 | hfst::hfst_transducer::AnyTransducer::Thfst(_) => None,
-                // The first-input-symbols query is tropical-only; a
-                // compile-time absence for foma, like the OL backends.
-                #[cfg(feature = "foma")]
-                hfst::hfst_transducer::AnyTransducer::Foma(_) => None,
+            };
+            match symbols.transpose() {
+                Ok(ss) => ss,
+                Err(e) => {
+                    error(common, 1, 0, &format!("{e}"));
+                    return 1;
+                }
             }
         } else {
             None

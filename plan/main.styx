@@ -5424,6 +5424,15 @@ children (
                 title "foma answers get_first_input_symbols and get_initial_input_symbols with ONE shared helper, under a comment at backend_foma.rs:471 claiming \"foma draws no distinction between them\" — the same reassurance shape, asserting an equivalence the contract does not have. Tropical's are different walks: get_initial_input_symbols descends THROUGH epsilon and flag arcs and stops at the first real symbol; get_first_input_symbols walks the whole net. Measured on the acceptor `abc`: tropical gives initial=[a] first=[a,b,c], foma gives initial=[a] first=[a]. Currently LATENT — summarize is the only live caller and its foma arm returns None — which is exactly the state has_weights was in before the previous sweep. NOT caught by either new gate: the value is real, non-empty and varies correctly across fixtures, so it passes every assertion a semantics-blind battery can make. This is the demonstration case for what the ratchet cannot catch"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-15T16:32:58.821601Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5460,6 +5469,15 @@ children (
                 title "Four sites in hfst_transducer.rs carried comments saying foma was compiled out, in a tree where foma is a live validated backend: harmonize_copy's no-harmonization arm, its flag-diacritic pre-insertion block, extract_random_paths/n_best, and compose_intersect. Each documented a C++ arm dropped on the grounds the backend did not exist. All four verified correct through the generic path by CLI A/B (compose-intersect on .foma inputs gives the same result as tropical; union of foma nets with disjoint alphabets, unknowns, and a flag diacritic agrees path-for-path, 16 and 3 paths) and the prose is corrected, but only the prose — nothing gates it. Add the cross-backend parity cases to foma_backend.rs next to assert_binary_parity, which already has fac_foma/fac_trop: compose_intersect is uncovered there, and so are the disjoint-alphabet and flag-carrying harmonization inputs. Deferred behind the alphabet-set-ops work to avoid two agents editing the same test file"
                 priority 2
                 kind @test
+                sealed true
+                log (
+                    {
+                        at 2026-08-15T16:33:03.770684Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
