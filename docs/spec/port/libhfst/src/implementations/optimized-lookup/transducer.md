@@ -101,6 +101,31 @@
 > number_of_input_symbols entries of the SymbolTable `kt` into the encoder's
 > trie and ascii lookup. No return value.
 
+> PORT NOTE (upstream-bugs.i439, DIVERGENCE from hfst/hfst#439): the grapheme
+> cluster is the port's logical tokenization unit, so a base + combining
+> diacritic and its precomposed form are the SAME unit and must reach the same
+> symbol. The port therefore ALSO indexes each symbol under its NFC and NFD
+> spellings (when those differ from the symbol and from each other), all mapping
+> to the same symbol number, so input in either normal form tokenizes to that
+> symbol. Output is unaffected: the number still maps back to the original
+> surface string.
+>
+> Because an alias spelling can coincide with a REAL symbol of the alphabet, the
+> port runs this as TWO passes rather than C++'s single one. Pass 1 registers
+> every symbol under its own, verbatim spelling; this is exactly the C++ walk
+> above, and it wins outright. Pass 2 adds the normalization aliases, and only
+> for spellings pass 1 left unclaimed, so an alias never overwrites a real
+> symbol and the outcome no longer depends on where in the symbol table the
+> colliding symbols sit.
+>
+> The collision is not hypothetical: U+0387 GREEK ANO TELEIA has a singleton
+> canonical decomposition to U+00B7 MIDDLE DOT, so NFC(U+0387) == NFD(U+0387) ==
+> U+00B7. In an alphabet holding both, which the Giella tokenisers do, a
+> single-pass registration let U+0387's alias overwrite the genuine U+00B7 trie
+> entry whenever U+0387 came later in the table. U+00B7 input then encoded to
+> the U+0387 symbol: its own analyses became unreachable and even the echoed
+> surface form came back as U+0387.
+
 > [spec:hfst:def:transducer.hfst-ol.flag-diacritic-state]
 > typedef std::vector<short> FlagDiacriticState
 
