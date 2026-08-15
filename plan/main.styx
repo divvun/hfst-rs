@@ -5298,6 +5298,14 @@ children (
                 title "hfst tokenize SILENTLY DROPS unmatched input: with a plain .hfstol dictionary, `dogs cot cats` yields \"dogs\\ncats\" — the word `cot` vanishes, even though every letter is in the dictionary's alphabet. With -a the run is emitted as one blob including surrounding spaces. NOT a port defect: C++ hfst-tokenize does exactly the same on the same fixture and input (verified). The naive tokenizer's `others` fallback (make_exc_list(word_boundary)+, weighted f32::MAX) never fires; cause is downstream in the pmatch runtime / exclusion-list handling in crates/hfst/src/pmatch.rs, and make_naive_tokenizer faithfully mirrors the C++. So this is a DIVERGENCE CANDIDATE under [dec:hfst:independent-fork], not a bug to fix silently: a tokenizer that discards input is arguably wrong, but tokenizer output IS a contract with Giella pipelines, so changing it needs an explicit call. Decide, do not drift. Found by the naive-tokenizer agent"
                 priority 2
                 kind @fix
+                log (
+                    {
+                        at 2026-08-15T17:13:46.582941Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Independent verification of the branch before merge. The mechanism and the naive-path fix hold up; two claims in the agent's report do not survive as stated, and a larger unrelated bug turned up.\n\nCONFIRMED — the mechanism, exactly as diagnosed. INFINITE_WEIGHT is NO_TABLE_INDEX as f32 = 4294967295.0; f32::MAX is 3.4028235e38; the ratio is 7.9e28. The guard at pmatch.rs:3217 is a strict `>`, and make_naive_tokenizer sets the fallback to f32::MAX, so the walk is abandoned before the `others` arm can accept. The corroborating upstream comment at pmatch_tokenize.rs:763 filters `weight < f32::MAX` and asks \"why aren't the <W:inf> excluded earlier?\" — a filter for a reading upstream can never produce. Strong evidence the fallback was meant to fire.\n\nCONFIRMED — the naive-dictionary fix. `dogs cot cats` against a plain .hfstol now emits cot, marked `\"cot\" ?` in cg. That is the node's reported case, closed.\n\nNOT AS REPORTED — \"-g giellacg byte-identical\". True only for the pmatch-archive path, which the freecorpus run exercised. On the naive-dictionary path -g DID change: main emits `: cot ` (byte-identical to C++), the branch emits a `\"<cot>\"` cohort with `\"cot\" ?`. That is a divergence from the oracle in the format Giella consumes. It may well be the better output — an unknown word as a cohort is actionable by CG rules where inter-cohort text is not — but it is a change, not a no-op, and the report presented it as unchanged.\n\nNOT AS REPORTED — \"778,856 spurious `??` readings are gone\". They are not spurious: C++ prints them. On the production archive `hfst-tokenize -c` emits `\"Manne\" ??` alongside the real reading `manne Pron Pers Sg1 Nom`. The branch removes those, moving -c away from C++ rather than toward it. Defensible under [dec:hfst:independent-fork] and consistent with giellacg, which has always suppressed the marker — but it is an unrequested output divergence and was not flagged as one.\n\nUNRELATED AND LARGER — filed as pmatch-tokenize-runtime-divergence (P1). Verifying the above surfaced a pre-existing runtime disagreement with C++ on lang-sma's production .pmhfst, reading the same file: `Manne leam Aanta.` yields four correct cohorts in C++ and, in ours, one cohort plus `: leam Aant` as raw text plus a bogus `\"<a.>\"`. Roughly 2% of cohorts on real corpus text. Reproduces identically before and after this branch, so it is neither caused nor fixed here. It does mean the agent's freecorpus byte-identical comparisons established \"no regression\" and not \"correct\" — both legs were the Rust binary; neither was compared against C++."
+                    }
+                )
             }
 
             {
@@ -5552,6 +5560,13 @@ children (
                         text "Todo → Done (nplan complete)"
                     }
                 )
+            }
+
+            {
+                id pmatch-tokenize-runtime-divergence
+                title "The pmatch tokenize RUNTIME disagrees with C++ on lang-sma's production tokeniser-disamb-gt-desc.pmhfst, reading the SAME archive file. Minimal case: `Manne leam Aanta.` with -g gives C++ four correct cohorts (Manne / leam / Aanta / .) and gives us one cohort plus the raw text `: leam Aant` plus a bogus `\"<a.>\"` cohort — two real analysable words demoted to inter-cohort text. Single words in isolation are byte-identical (`leam` alone, `Aanta` alone), so the alphabet and the archive are fine; it is the multi-token match that goes wrong. At corpus scale on 200 lines of corp/freecorpus.txt: C++ 5679 cohorts / 20675 lines vs ours 5558 / 20021, about 2% of cohorts. Same binary pair, same archive, same input. Since C++ recovers the correct tokenization from that file, the archive carries the right information and the divergence is in OUR runtime, not in pmatch2fst. NOTE the nested `\"<...>\"` inside reading lines is NOT the bug — that is legitimate giellacg sub-reading syntax and C++ emits 436 of them on the same sample. Found while verifying tokenize-drops-unmatched; unrelated to it and NOT fixed by it (reproduces identically before and after that fix). Affects -g, the format Giella pipelines actually consume"
+                priority 1
+                kind @fix
             }
         )
     }
