@@ -97,6 +97,32 @@ pub fn find_last_not_of_def(str: &str, c: u8, def: usize) -> usize {
     }
 }
 
+/// Weight carried by a reading that segments a token without analysing it —
+/// the naive tokenizer's `others` fallback.
+///
+/// PORT DIVERGENCE. Upstream marks that fallback with
+/// `std::numeric_limits<float>::max()`, but `PmatchTransducer::get_analyses`
+/// abandons any walk whose running weight exceeds the cutoff handed to
+/// `locate`, and every call site here passes `INFINITE_WEIGHT` — which is
+/// `NO_TABLE_INDEX as f32`, about 4.29e9, twenty-nine orders of magnitude
+/// below `f32::MAX`. The fallback branch is therefore unreachable upstream and
+/// dictionary-external input is discarded. `INFINITE_WEIGHT` is the largest
+/// weight the runtime admits (its cutoff test is a strict `>`), so it keeps
+/// the fallback worse than any realistic dictionary path while staying
+/// reachable.
+// [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.unanalysed-weight]
+// [spec:hfst:sem:pmatch-tokenize.hfst-ol-tokenize.unanalysed-weight]
+pub const UNANALYSED_WEIGHT: Weight = INFINITE_WEIGHT;
+
+/// Whether a location segments a token without analysing it: an empty output,
+/// the ` ??` unknown marker a pmatch script can emit, or the naive tokenizer's
+/// fallback weight.
+// [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.is-unanalysed-fn]
+// [spec:hfst:sem:pmatch-tokenize.hfst-ol-tokenize.is-unanalysed-fn]
+pub fn is_unanalysed(loc: &Location) -> bool {
+    loc.output.is_empty() || loc.output.contains(" ??") || loc.weight >= UNANALYSED_WEIGHT
+}
+
 // [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.print-escaping-backslashes-fn]
 // [spec:hfst:sem:pmatch-tokenize.hfst-ol-tokenize.print-escaping-backslashes-fn]
 pub fn print_escaping_backslashes(str: &str, outstream: &mut dyn Write) {
@@ -299,15 +325,14 @@ pub fn keep_n_best_weight(locations: &LocationVector, s: &TokenizeSettings) -> L
     let mut last_weight_class: Weight = 0.0;
     let mut goodweight: LocationVector = Vec::new();
     for it in locations.iter() {
-        // Empty and unknown (" ??") readings are tokenised-but-unanalysed
-        // placeholders, not real analyses. They must not count toward the
-        // weight classes: since the unknown reading sits at the best (lowest)
-        // weight, counting it would let `--weight-classes 1` keep only the
-        // unknown and drop every genuine, non-zero-weight analysis (issue
-        // #562). Pass them through uncounted, exactly like empty outputs; the
-        // giellacg printer already suppresses " ??" whenever a real reading
-        // survives.
-        if it.output.is_empty() || it.output.contains(" ??") {
+        // Tokenised-but-unanalysed readings are placeholders, not real
+        // analyses. They must not count toward the weight classes: since the
+        // unknown reading sits at the best (lowest) weight, counting it would
+        // let `--weight-classes 1` keep only the unknown and drop every
+        // genuine, non-zero-weight analysis (issue #562). Pass them through
+        // uncounted; the giellacg printer already suppresses them whenever a
+        // real reading survives.
+        if is_unanalysed(it) {
             goodweight.push(it.clone());
             continue;
         }
@@ -615,7 +640,7 @@ pub fn print_reading_giellacg(
     s: &TokenizeSettings,
 ) -> (SplitPoints, usize) {
     let mut bt_its: SplitPoints = BTreeSet::new();
-    if loc.output.is_empty() || (loc.output.contains(" ??") && indent == 1) {
+    if loc.output.is_empty() || (is_unanalysed(loc) && indent == 1) {
         return (bt_its, indent);
     }
     // The C++ uses iterators over output_symbol_strings/input_symbol_strings;
@@ -759,10 +784,7 @@ pub fn locate_fullmatch(
         }
         let loc = keep_n_best_weight(&dedupe_locations(it, s), s);
         for loc_it in loc.iter() {
-            if !loc_it.output.is_empty()
-                && loc_it.weight < f32::MAX
-                && !loc_it.output.contains(" ??")
-            {
+            if !is_unanalysed(loc_it) {
                 // (C++ note) why aren't the <W:inf> excluded earlier?
                 let mut loc_it = loc_it.clone();
                 if s.hack_uncompose {
@@ -816,9 +838,7 @@ pub fn print_location_vector_giellacg(
     let _ = write!(outstream, "\"<");
     print_escaping_backslashes(&locations[0].input, outstream);
     let _ = writeln!(outstream, ">\"");
-    if locations.len() == 1
-        && (locations[0].output.is_empty() || locations[0].output.contains(" ??"))
-    {
+    if locations.len() == 1 && is_unanalysed(&locations[0]) {
         // Treat empty analyses as unknown-but-tokenised:
         // and ??
         let _ = write!(outstream, "\t\"");
@@ -1144,10 +1164,13 @@ pub fn print_location_vector(
             let _ = writeln!(outstream);
         }
         let _ = writeln!(outstream);
-    } else if s.output_format == OutputFormat::conllu {
-        let mut lowest_weight: Weight = INFINITE_WEIGHT;
-        let mut best_location: Location = Location::default();
-        for loc_it in locations.iter() {
+    } else if s.output_format == OutputFormat::conllu && !locations.is_empty() {
+        // Seeded from the first reading rather than from a default Location:
+        // an unanalysed token weighs exactly INFINITE_WEIGHT, which no strict
+        // `<` beats, and the default's empty input would blank the FORM column.
+        let mut lowest_weight: Weight = locations[0].weight;
+        let mut best_location: Location = locations[0].clone();
+        for loc_it in locations.iter().skip(1) {
             if loc_it.weight < lowest_weight {
                 best_location = loc_it.clone();
                 lowest_weight = loc_it.weight;
@@ -1247,6 +1270,50 @@ pub fn print_location_vector(
     //    std::cerr << "from print_location_vector\n";
 }
 
+/// Print a token that was segmented but not analysed, using the marking each
+/// format already reserves for unknown material rather than emitting the
+/// fallback reading as if it were an analysis.
+// [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.print-unanalysed-location-fn]
+// [spec:hfst:sem:pmatch-tokenize.hfst-ol-tokenize.print-unanalysed-location-fn]
+fn print_unanalysed_location(
+    container: &mut PmatchContainer,
+    locations: &LocationVector,
+    outstream: &mut dyn Write,
+    token_number: i32,
+    s: &TokenizeSettings,
+) {
+    match s.output_format {
+        // `"<w>"\n\t"w" ?` and `w\tw+?\tinf` — the layouts print_no_output
+        // already uses for an input that produced nothing at all, cohort
+        // separator included.
+        OutputFormat::cg | OutputFormat::xerox => {
+            print_no_output(&locations[0].input, outstream, s)
+        }
+        // No analysis column, so the bare token line is already unambiguous;
+        // the weight column, if asked for, reads `inf` as it does in xerox.
+        OutputFormat::tokenize | OutputFormat::space_separated => {
+            let _ = write!(outstream, "{}", locations[0].input);
+            if s.print_weights {
+                let _ = write!(outstream, "\tinf");
+            }
+            if s.output_format == OutputFormat::tokenize {
+                let _ = writeln!(outstream);
+            } else {
+                let _ = write!(outstream, " ");
+            }
+        }
+        // giellacg and visl route to print_location_vector_giellacg, whose
+        // unknown-but-tokenised branch prints `"w" ?`; conllu and finnpos
+        // render a featureless reading as underscores either way.
+        OutputFormat::giellacg
+        | OutputFormat::visl
+        | OutputFormat::conllu
+        | OutputFormat::finnpos => {
+            print_location_vector(container, locations, outstream, token_number, s)
+        }
+    }
+}
+
 // [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.match-and-print-fn]
 // [spec:hfst:sem:pmatch-tokenize.hfst-ol-tokenize.match-and-print-fn]
 pub fn match_and_print(
@@ -1270,13 +1337,17 @@ pub fn match_and_print(
             continue;
             // All nonmatching cases have been handled
         }
-        print_location_vector(
-            container,
-            &keep_n_best_weight(&dedupe_locations(it, s), s),
-            outstream,
-            token_number,
-            s,
-        );
+        let kept = keep_n_best_weight(&dedupe_locations(it, s), s);
+        // The naive tokenizer's fallback covers the same span as any
+        // dictionary reading of that span, so an analysed token carries the
+        // fallback alongside its real analyses; report it only where it is all
+        // there is.
+        let analysed: LocationVector = kept.iter().filter(|l| !is_unanalysed(l)).cloned().collect();
+        if analysed.is_empty() {
+            print_unanalysed_location(container, &kept, outstream, token_number, s);
+        } else {
+            print_location_vector(container, &analysed, outstream, token_number, s);
+        }
         token_number += 1;
     }
     // [#500] xerox is omitted here: unlike tokenize/finnpos (which need this
@@ -1370,7 +1441,7 @@ pub fn make_naive_tokenizer<B: AlgebraBackend>(
     let mut others = pmatch_compiler::make_exc_list(&word_boundary)?;
     others.repeat_plus()?;
     // make the default token less likely than any dictionary token
-    others.set_final_weights(f32::MAX, false)?;
+    others.set_final_weights(UNANALYSED_WEIGHT, false)?;
     let mut word_boundary_list = pmatch_compiler::make_list(&word_boundary)?;
     // @BOUNDARY@ is pmatch's special input boundary marker
     let boundary = HfstTransducer::new_symbol("@BOUNDARY@")?;

@@ -5298,6 +5298,22 @@ children (
                 title "hfst tokenize SILENTLY DROPS unmatched input: with a plain .hfstol dictionary, `dogs cot cats` yields \"dogs\\ncats\" — the word `cot` vanishes, even though every letter is in the dictionary's alphabet. With -a the run is emitted as one blob including surrounding spaces. NOT a port defect: C++ hfst-tokenize does exactly the same on the same fixture and input (verified). The naive tokenizer's `others` fallback (make_exc_list(word_boundary)+, weighted f32::MAX) never fires; cause is downstream in the pmatch runtime / exclusion-list handling in crates/hfst/src/pmatch.rs, and make_naive_tokenizer faithfully mirrors the C++. So this is a DIVERGENCE CANDIDATE under [dec:hfst:independent-fork], not a bug to fix silently: a tokenizer that discards input is arguably wrong, but tokenizer output IS a contract with Giella pipelines, so changing it needs an explicit call. Decide, do not drift. Found by the naive-tokenizer agent"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-15T17:03:50.450262Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Mechanism: not the exclusion list. make_naive_tokenizer weights its `others` fallback with f32::MAX (3.4e38), but PmatchTransducer::get_analyses abandons any walk whose running weight exceeds the cutoff locate() is called with, and every caller in pmatch_tokenize passes INFINITE_WEIGHT = NO_TABLE_INDEX as f32 = 4.294967296e9. The fallback is pruned before it can accept, so an unmatched run falls through to the @_NONMATCHING_@ blob, which the default mode discards. Bisected on the weight: 4.2949673e9 emits `cot`, 5.0e9 does not — exactly the strict `>` at get_analyses.\n\nFix: UNANALYSED_WEIGHT = INFINITE_WEIGHT (the largest weight the runtime admits) on the fallback; is_unanalysed(loc) unifies the four sites that already had the empty/\" ??\" placeholder test; match_and_print drops unanalysed readings where a real one survives and otherwise routes to print_unanalysed_location, which reuses each format's existing unknown marking (`\"w\" ?`, `w+?  inf`, plain token line, `inf` weight column). conllu's best-location scan reseeded from locations[0] because nothing beats INFINITE_WEIGHT under a strict `<`.\n\nlang-sma validation: two full `make -j18` builds (before/after binary) — 210/223 artifacts byte-identical incl. tokeniser-disamb-gt-desc.pmhfst; the 13 that differ are the timestamped easter-egg chain, proved by a same-binary control build differing in exactly the same 13. Runtime over corp/freecorpus.txt (8.2 MB): giellacg/default/-a byte-identical; naive path over analyser-gt-desc.hfstol gained 56,291 previously-dropped tokens with the old output an exact subsequence of the new; plain -c lost 778,856 spurious `\"w\" ??` readings and respelled 49,498 solo unknowns as `\"w\" ?`, i.e. plain cg now agrees with giellacg."
+                    }
+
+                    {
+                        at 2026-08-15T17:03:54.653147Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {

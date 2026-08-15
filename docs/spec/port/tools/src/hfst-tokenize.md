@@ -58,7 +58,12 @@
 > 2. others = make_exc_list(word_boundary) (a one-symbol acceptor for the
 >    "everything except these" list); others->repeat_plus(); set every final
 >    weight of others to float max, so the default token is less likely than
->    any dictionary token.
+>    any dictionary token. (PORT DIVERGENCE: the weight is
+>    `pmatch-tokenize.hfst-ol-tokenize.unanalysed-weight`, not float max. Float
+>    max sits above the weight cutoff every `locate` call in the tokenize
+>    driver passes, so upstream's fallback branch is pruned before it can
+>    accept and dictionary-external input is silently dropped. That rule
+>    carries the mechanism and the reasoning.)
 > 3. word_boundary_list = make_list(word_boundary); disjunct it with a
 >    transducer accepting the literal "@BOUNDARY@" (pmatch's special input
 >    boundary marker). Delete word_boundary and punctuation.
