@@ -5624,6 +5624,22 @@ children (
                 title "Our pmatch matcher enumerates ONE path where C++ enumerates two with the same output, so cg cohorts lose readings C++ prints. On lang-sma's tokeniser, `aktem` in -c gives C++ `akte Num Sg Acc` TWICE plus the `??` marker, and gives us one copy; same for `\"-\" PUNCT MIDDLE` and `\"/\" PUNCT MIDDLE`. 91 differing hunks over 200 corpus lines, with cohort counts equal, so segmentation is right and only reading multiplicity differs. Confirmed NOT a dedupe difference: TokenizeSettings::dedupe defaults false, the -c arm does not set it (matching C++, where only -g and -L do), keep_n_best_weight only trims weight classes, and under -c -w C++ shows both copies at an identical weight of 0.0000000000. Same class as pmatch-tokenize-runtime-divergence (path enumeration) but a distinct instance that survived its fix. Also noticed in the same comparison and worth splitting out if it is not the same root cause: under -c -w we render weights as `0` and `280284` where C++ renders `0.0000000000` and `280284.0000000000`"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-15T22:43:17.472978Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Root cause was NOT path enumeration. The matcher already enumerated both paths; we deleted one before reporting. crates/hfst/src/pmatch.rs:1879 called dedup_locations() on every location vector in PmatchContainer::process — an undocumented divergence added under [DIVERGENCE hfst/hfst#335] (commit 2f321cb) that dropped Locations agreeing on span+output+tag+weight. That is precisely the multiplicity a CG cohort encodes, so 668 of 39200 cohorts lost readings. Removed the call and the dedup_locations fn; the location vector is now passed through unfiltered, matching C++, which offers uniqueness only as an opt-in -u flag. This restores conformance with the existing spec sem for pmatch-container.process-fn, which never described a dedup.\n\nNote for the operator: C++'s duplicates are arguably noise (two structurally distinct paths that project to byte-identical readings). Equivalence was implemented as instructed rather than acting on that. If a -u-style opt-in or a default-unique mode is wanted, it is worth a divergence discussion — but it must not live inside locate(), because -g/visl consumers read the same vector.\n\nAlso fixed here (same comparison, trivially a formatting divergence): pmatch_tokenize.rs print_location_vector's cg branch printed the weight column with {} where C++ inherits std::fixed/setprecision(10) set stream-wide by hfst-tokenize's process_input for cg/giellacg/visl. Now {:.10}, so -c -w reads 0.0000000000 / 280284.0000000000. giellacg/visl were already correct (their subreading printers set precision 9 and trim). Spec text in docs/spec/port/tools/src/hfst-tokenize.md claimed \"the library print functions format weights themselves so there is no separate flag to mirror\" — that was wrong and is corrected."
+                    }
+
+                    {
+                        at 2026-08-15T22:43:51.575711Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5631,6 +5647,22 @@ children (
                 title "U+00B7 MIDDLE DOT is segmented into its own cohort correctly but loses its analysis: on lang-sma's tokeniser over 2000 lines of corp/freecorpus.txt with -g, C++ emits `\"<·>\"` followed by the reading `\"·\" PUNCT <W:0.0>` and we emit the cohort with no reading at all. Six occurrences, and the ONLY remaining -g difference at that scale (160135 vs 160129 lines, cohort counts equal at 39200). An analysis gap rather than a segmentation one, so distinct from pmatch-tokenize-runtime-divergence which fixed the segmentation. Worth checking whether it is specific to this codepoint or a class — try other Unicode punctuation outside ASCII that the tokeniser's PUNCT rules should cover, and check whether the character survives whatever normalisation or grapheme handling the input tape applies before lookup"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-15T22:43:34.289322Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "SEPARATE root cause from pmatch-duplicate-path-readings — the shared-cause hypothesis was refuted. Disabling the dedup fixed the 668 multiplicity cohorts and left all 6 middot cohorts unchanged; disabling the path-scoped epsilon_visited guard changed nothing either.\n\nThe real cause is in the ENCODER, not the matcher: crates/hfst/src/transducer.rs read_input_symbol registered each symbol's NFC and NFD spellings as aliases (added for hfst/hfst#439 so a grapheme cluster matches in either normal form), in a single pass, with OlLetterTrie::add_string overwriting unconditionally. U+0387 GREEK ANO TELEIA has a SINGLETON canonical decomposition to U+00B7 MIDDLE DOT, so NFC(U+0387) == NFD(U+0387) == U+00B7. The sma tokeniser's alphabet holds both, and U+0387 comes later in the symbol table, so its alias overwrote the genuine U+00B7 trie entry. Input U+00B7 then encoded to the U+0387 SYMBOL NUMBER outright — which is why we lost the U+00B7 reading AND corrupted the echoed surface: `hfst tokenize -c` on U+00B7 printed the cohort header as \"<U+0387>\". C++ prints two readings there (output U+0387 \" PUNCT\" and U+00B7 \" PUNCT\"; the first takes the -c raw-output branch because output does not start with input, which is why it renders unquoted).\n\nFix: read_input_symbols is now two passes — pass 1 registers every symbol's own verbatim spelling (exactly the C++ walk, wins outright), pass 2 adds aliases only for spellings nothing has claimed. Claim is tested with a new Encoder::spelling_is_taken, which runs the real find_key and requires it to consume the whole string, so a prefix match is not mistaken for a claim. read_input_symbol (the incremental single-symbol path, 3 callers) uses the same rule, so the hardening covers post-construction symbol additions too. Result is order-independent: verified with the collision grammar written in both symbol orders. hfst/hfst#439 is preserved — an alias spelling that is not itself a symbol still resolves (locked by a test).\n\nSpec updated: PORT NOTE on transducer.hfst-ol.encoder.read-input-symbols-fn documents the alias divergence and the never-shadow-a-real-symbol rule, which had never been written down."
+                    }
+
+                    {
+                        at 2026-08-15T22:43:56.279798Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
         )
     }

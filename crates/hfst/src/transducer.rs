@@ -2082,31 +2082,87 @@ impl Encoder {
 
     // [spec:hfst:def:transducer.hfst-ol.encoder.read-input-symbols-fn]
     // [spec:hfst:sem:transducer.hfst-ol.encoder.read-input-symbols-fn]
+    //
+    // Two passes. Pass 1 indexes every symbol under its OWN, verbatim spelling —
+    // that is the C++ walk, and it must win outright. Pass 2 adds the [#439]
+    // normalization aliases, and only for spellings pass 1 left unclaimed.
+    //
+    // The order matters because an alias can collide with a real symbol: U+0387
+    // GREEK ANO TELEIA has a singleton canonical decomposition to U+00B7 MIDDLE
+    // DOT, so an alphabet containing BOTH (the Giella tokenisers do) had the
+    // U+0387 alias overwrite the genuine U+00B7 entry whenever U+0387 came later
+    // in the symbol table. Input U+00B7 then encoded to the U+0387 symbol: the
+    // U+00B7 analyses vanished and even the echoed surface form was corrupted.
+    // Registering aliases only into free slots keeps [#439] (an alias spelling
+    // that is not itself a symbol still resolves) without ever shadowing a real
+    // symbol.
     pub fn read_input_symbols(&mut self, kt: &SymbolTable) {
         for k in 0..self.number_of_input_symbols {
             let sym = kt[k as usize].clone();
-            self.read_input_symbol(&sym, k as i32);
+            self.read_input_symbol_form(&sym, k as i32);
         }
+        for k in 0..self.number_of_input_symbols {
+            let sym = kt[k as usize].clone();
+            self.read_alias_forms(&sym, k as i32);
+        }
+    }
+
+    // True when the encoder already tokenizes exactly `s` to some symbol, so the
+    // spelling is spoken for and an alias must not overwrite it. Runs the real
+    // 'find_key' and demands it consume the whole string, so a prefix match (a
+    // one-byte ascii symbol at the head of a longer spelling, say) is not
+    // mistaken for a claim on the longer one.
+    fn spelling_is_taken(&self, s: &str) -> bool {
+        if s.is_empty() {
+            return true;
+        }
+        // 'find_key' walks a 0-terminated buffer; the terminator is what stops
+        // the trie descent reading past the end when the last byte has children.
+        let mut buf = s.as_bytes().to_vec();
+        buf.push(0);
+        let mut p = 0usize;
+        self.find_key(&buf, &mut p).is_some() && p == s.len()
+    }
+
+    // Register `s`'s normalization aliases against `s_num`, skipping any
+    // spelling already claimed — by a real symbol or by an earlier alias.
+    fn read_alias_forms(&mut self, s: &str, s_num: i32) {
+        for form in Self::normalization_aliases(s) {
+            if !self.spelling_is_taken(&form) {
+                self.read_input_symbol_form(&form, s_num);
+            }
+        }
+    }
+
+    // [#439] Grapheme cluster is the port's logical tokenization unit, so a base
+    // + combining diacritic and its precomposed form are the SAME unit and must
+    // match the same symbol. These are the alternative spellings a symbol is
+    // additionally indexed under (when they differ from it and from each other),
+    // all mapping to the same symbol number, so input in either normalization
+    // tokenizes to this symbol. Output is unaffected — the number still maps
+    // back to the original surface.
+    fn normalization_aliases(s: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let nfc = icu::normalizer::ComposingNormalizerBorrowed::new_nfc().normalize(s);
+        if nfc.as_ref() != s {
+            out.push(nfc.to_string());
+        }
+        let nfd = icu::normalizer::DecomposingNormalizerBorrowed::new_nfd().normalize(s);
+        if nfd.as_ref() != s && nfd != nfc {
+            out.push(nfd.into_owned());
+        }
+        out
     }
 
     // [spec:hfst:def:transducer.hfst-ol.encoder.read-input-symbol-fn]
     // [spec:hfst:sem:transducer.hfst-ol.encoder.read-input-symbol-fn]
+    // Single-symbol registration, for the incremental callers that add a symbol
+    // to an already-built encoder. The symbol's own spelling is registered
+    // unconditionally (a real symbol always wins); its aliases only claim
+    // spellings nothing else has, on the same rule as the table-wide walk.
     pub fn read_input_symbol(&mut self, s: &str, s_num: i32) {
         self.read_input_symbol_form(s, s_num);
-        // [#439] Grapheme cluster is the port's logical tokenization unit, so a
-        // base + combining diacritic and its precomposed form are the SAME unit
-        // and must match the same symbol. Index the symbol under its NFC and NFD
-        // forms too (when they differ), all mapping to the same symbol number, so
-        // input in either normalization tokenizes to this symbol. Output is
-        // unaffected — the number still maps back to the original surface.
-        let nfc = icu::normalizer::ComposingNormalizerBorrowed::new_nfc().normalize(s);
-        if nfc.as_ref() != s {
-            self.read_input_symbol_form(&nfc, s_num);
-        }
-        let nfd = icu::normalizer::DecomposingNormalizerBorrowed::new_nfd().normalize(s);
-        if nfd.as_ref() != s && nfd != nfc {
-            self.read_input_symbol_form(&nfd, s_num);
-        }
+        self.read_alias_forms(s, s_num);
     }
 
     fn read_input_symbol_form(&mut self, s: &str, s_num: i32) {

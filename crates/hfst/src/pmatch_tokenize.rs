@@ -1120,7 +1120,15 @@ pub fn print_location_vector(
                 let _ = write!(outstream, "\t{}", loc_it.output);
             }
             if s.print_weights {
-                let _ = write!(outstream, "\t{}", loc_it.weight);
+                // C++ 'process_input' puts the whole output stream into
+                // 'std::fixed << std::setprecision(10)' for the cg, giellacg and
+                // visl formats, so a cg weight column reads '0.0000000000', not
+                // '0'. giellacg/visl weights go through the trimming path in
+                // 'print_cg_subreading_ex' and set their own precision; this is
+                // the only site that prints a raw weight under that stream
+                // setting, so the format is applied here rather than by carrying
+                // a stream-wide mode around.
+                let _ = write!(outstream, "\t{:.10}", loc_it.weight);
             }
             let _ = writeln!(outstream);
         }

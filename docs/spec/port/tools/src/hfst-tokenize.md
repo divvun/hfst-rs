@@ -211,8 +211,11 @@
 
 > [spec:hfst:sem:hfst-tokenize.process-input-fn]
 > Top-level input dispatcher. (For cg/giellacg/visl the C++ sets the output
-> stream to std::fixed with precision 10; the library print functions format
-> weights themselves so there is no separate flag to mirror.) Dispatch:
+> stream to std::fixed with precision 10. The giellacg/visl subreading printers
+> set their own precision and trim, so they are unaffected; the `cg` cohort
+> print path, however, writes its weight column RAW and so inherits fixed-10 —
+> a port without a stream-wide mode must apply that precision at that site, or
+> the column reads `0` where C++ reads `0.0000000000`.) Dispatch:
 >  - If output_format == giellacg OR superblanks: if superblanks,
 >    verbose_printf("Processign giellacg with superblanks\n") and return
 >    process_input_0delim<true>; else verbose_printf("Processign giellacg

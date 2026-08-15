@@ -414,3 +414,94 @@ fn pmatch2fst_reserved_name_redefinition_reports_parse_error() {
         "reserved-name redefinition should surface a parse error, got stderr:\n{err}"
     );
 }
+
+/// End-to-end lock for the `hfst-tokenize -c` cohort contract, covering two
+/// defects found by diffing 2 000 corpus lines against the C++ oracle on the
+/// Giella sma tokeniser (39 200 cohorts: 668 differed in reading multiplicity,
+/// 6 in reading set).
+///
+///  * Reading MULTIPLICITY. One accepting configuration reachable by several
+///    structurally distinct paths projects to identical Locations; C++ prints
+///    one line per path and Constraint Grammar consumers depend on that. The
+///    port used to dedupe them at the source (hfst/hfst#335), dropping e.g. one
+///    of the two `akte Num Sg Acc` readings of "aktem".
+///
+///  * Normalization ALIASES shadowing real symbols. The encoder also indexes
+///    each symbol under its NFC/NFD spellings (hfst/hfst#439). U+0387 GREEK ANO
+///    TELEIA canonically decomposes to U+00B7 MIDDLE DOT, so in an alphabet with
+///    both, U+0387's alias overwrote the genuine U+00B7 entry: U+00B7 input lost
+///    its own analyses and echoed back as U+0387.
+///
+///  * Weight FORMAT. C++ `process_input` puts the stream into
+///    `std::fixed << std::setprecision(10)` for cg/giellacg/visl, so `-c -w`
+///    prints `0.0000000000`, not `0`.
+///
+/// Expected strings below are the C++ oracle's output for this grammar.
+#[test]
+fn tokenize_cg_cohort_matches_cpp_readings_and_weights() {
+    let dir = scratch("cg_cohort");
+    let src = dir.join("g.pmatch");
+    let out = dir.join("g.pmhfst");
+    // Two duplicate-producing union branches for "cat" (extra EndTag on one),
+    // plus the U+0387 / U+00B7 pair that collides under NFC.
+    std::fs::write(
+        &src,
+        "Define TOP [ [{cat}:{C} EndTag(w) | [{cat}:{C} EndTag(w)] EndTag(w)] \
+         | [{\u{0387}}:{ANO} EndTag(w)] | [{\u{00B7}}:{MID} EndTag(w)] ] ;\n",
+    )
+    .expect("write grammar");
+    let (ok, _) = run(
+        &[
+            "pmatch2fst",
+            "-i",
+            src.to_str().expect("utf8 path"),
+            "-o",
+            out.to_str().expect("utf8 path"),
+        ],
+        b"",
+    );
+    assert!(ok, "pmatch2fst failed to compile the cohort grammar");
+
+    // Both paths for "cat" are reported: two identical readings in one cohort.
+    let (ok, o) = run(
+        &["tokenize", "-c", out.to_str().expect("utf8 path")],
+        b"cat\n",
+    );
+    assert!(ok, "tokenize -c failed");
+    assert_eq!(
+        o, "\"<cat>\"\n\tC\n\tC\n\n",
+        "both accepting paths must be reported, as C++ does"
+    );
+
+    // U+00B7 reaches its OWN arc, not U+0387's normalization alias, and the
+    // cohort header echoes the original character.
+    let (ok, o) = run(
+        &["tokenize", "-c", out.to_str().expect("utf8 path")],
+        "\u{00B7}\n".as_bytes(),
+    );
+    assert!(ok, "tokenize -c failed on U+00B7");
+    assert_eq!(
+        o, "\"<\u{00B7}>\"\n\tMID\n\n",
+        "U+00B7 must match its own arc and echo itself, not U+0387"
+    );
+    let (ok, o) = run(
+        &["tokenize", "-c", out.to_str().expect("utf8 path")],
+        "\u{0387}\n".as_bytes(),
+    );
+    assert!(ok, "tokenize -c failed on U+0387");
+    assert_eq!(
+        o, "\"<\u{0387}>\"\n\tANO\n\n",
+        "U+0387 must still match its own arc"
+    );
+
+    // -w renders the cg weight column fixed at 10 decimals.
+    let (ok, o) = run(
+        &["tokenize", "-c", "-w", out.to_str().expect("utf8 path")],
+        b"cat\n",
+    );
+    assert!(ok, "tokenize -c -w failed");
+    assert_eq!(
+        o, "\"<cat>\"\n\tC\t0.0000000000\n\tC\t0.0000000000\n\n",
+        "cg weights print as fixed(10), matching the C++ stream setting"
+    );
+}

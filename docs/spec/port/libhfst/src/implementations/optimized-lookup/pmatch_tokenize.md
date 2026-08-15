@@ -385,6 +385,20 @@
 >   print `\t"` + escaped input + `"` + `output.substr(input.size())`; else
 >   print `\t` + `output`. If print_weights append `"\t<weight>"`; then endl.
 >   Finally print a blank line.
+>
+>   Every location is printed, including ones byte-identical to an earlier one:
+>   a single accepting configuration reachable through several structurally
+>   distinct paths yields one location per path, and the resulting multiplicity
+>   of a reading inside a cohort is part of the Constraint Grammar contract.
+>   (Upstream offers an opt-in `-u` unique flag; it is not applied by default,
+>   and the location vector is never filtered at this site.)
+>
+>   `<weight>` is the RAW weight written to the output stream, which
+>   `hfst-tokenize`'s `process_input` has put into `std::fixed` with precision 10
+>   for this format: the column reads e.g. `0.0000000000`, not `0`. This is the
+>   only cg/giellacg/visl print path that emits an unformatted weight — the
+>   giellacg subreading printers set their own precision (9) and trim — so a port
+>   that does not carry a stream-wide mode must apply fixed-10 here.
 > - `giellacg` or `visl`: delegate to `print_location_vector_giellacg(container,
 >   locations, outstream, s)`.
 > - `xerox`: compute `best_weight` = min weight over locations. With a
