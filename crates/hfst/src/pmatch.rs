@@ -2231,33 +2231,91 @@ impl PmatchContainer {
         self.single_codepoint_tokenization = b;
     }
 
-    // [DIVERGENCE hfst/hfst#367] Does the transducer's alphabet carry any real
-    // *text* symbol whose surface spans more than one grapheme cluster (e.g. a
-    // multichar symbol like "dz")? Such symbols only match under longest-match
+    // Is this symbol a plain text symbol whose surface spans more than one
+    // grapheme cluster (e.g. a multichar symbol like "dz")? Composed characters
+    // — precomposed OR decomposed, each a single grapheme cluster — are not.
+    // Epsilon / flag / `@...@` special symbols are not input text at all.
+    fn is_multichar_text_symbol(&self, sym: SymbolNumber) -> bool {
+        let Some(s) = self.alphabet.get_symbol_table().get(sym as usize) else {
+            return false;
+        };
+        if s.is_empty() || crate::hfst_symbol_defs::is_epsilon(s) {
+            return false;
+        }
+        // @...@ specials (flags, insertions, ENDTAG, IDENTITY/UNKNOWN, ...)
+        // are never plain input text.
+        if s.starts_with('@') && s.ends_with('@') {
+            return false;
+        }
+        if self.alphabet.is_flag_diacritic(sym) {
+            return false;
+        }
+        let first = nByte_grapheme(s);
+        first > 0 && (first as usize) < s.len()
+    }
+
+    // [DIVERGENCE hfst/hfst#367] Can this network consume a multichar text
+    // symbol from the input tape? Such symbols only match under longest-match
     // ('multichar') tokenization; single-codepoint tokenization segments one
     // grapheme at a time and never sees them, so `tokenise` would drop words
-    // that `lookup` accepts. Composed characters — precomposed OR decomposed,
-    // both a single grapheme cluster — do NOT count and stay fine under either
-    // mode. Epsilon / flag / `@...@` special symbols are not input text.
-    // The tokeniser uses this to pick the default mode when the user did not
-    // force `--tokenize-multichar`.
+    // that `lookup` accepts. The tokeniser uses this to pick the default mode
+    // when the user did not force `--tokenize-multichar`.
+    //
+    // The question is deliberately asked of the *transition* input sides, not of
+    // the symbol table. A pmatch archive's symbol table is shared between both
+    // tapes, so an Ins-ed analyser contributes its whole analysis vocabulary to
+    // it — and a giellacg tokeniser's tag inventory contains space-prefixed
+    // multichar symbols like " N" / " A" / " V". Judging by the symbol table
+    // alone, every such archive looks multichar, longest-match tokenization then
+    // glues the space onto the next word's initial, and the surrounding words
+    // stop matching entirely. Only symbols some arc can actually read — directly
+    // or as a member of a symbol list (`Lst`) an arc reads — are evidence that
+    // longest-match segmentation is needed. Exclusionary lists (`Exc`) are not:
+    // they are character-class constructs that match by exclusion.
     pub fn has_multichar_input_symbols(&self) -> bool {
-        let symbol_table = self.alphabet.get_symbol_table();
-        for (i, s) in symbol_table.iter().enumerate() {
-            if s.is_empty() || crate::hfst_symbol_defs::is_epsilon(s) {
-                continue;
+        let table_len = self.alphabet.get_symbol_table().len();
+        let multichar: Vec<bool> = (0..table_len)
+            .map(|i| self.is_multichar_text_symbol(i as SymbolNumber))
+            .collect();
+        if !multichar.iter().any(|m| *m) {
+            return false;
+        }
+        let readable_as_multichar = |sym: SymbolNumber| -> bool {
+            let i = sym as usize;
+            if i >= table_len {
+                return false;
             }
-            // @...@ specials (flags, insertions, ENDTAG, IDENTITY/UNKNOWN, ...)
-            // are never plain input text.
-            if s.starts_with('@') && s.ends_with('@') {
-                continue;
-            }
-            if self.alphabet.is_flag_diacritic(i as SymbolNumber) {
-                continue;
-            }
-            let first = nByte_grapheme(s);
-            if first > 0 && (first as usize) < s.len() {
+            if multichar[i] {
                 return true;
+            }
+            let list = self
+                .alphabet
+                .list2symbols
+                .get(i)
+                .copied()
+                .unwrap_or(NO_SYMBOL_NUMBER);
+            if list == NO_SYMBOL_NUMBER {
+                return false;
+            }
+            self.alphabet
+                .symbol_list_members
+                .get(list as usize)
+                .is_some_and(|members| {
+                    members
+                        .iter()
+                        .any(|m| (*m as usize) < table_len && multichar[*m as usize])
+                })
+        };
+        let nets = self
+            .toplevel
+            .as_deref()
+            .into_iter()
+            .chain(self.alphabet.rtns.iter().filter_map(|r| r.as_deref()));
+        for net in nets {
+            for transition in net.transition_table.iter() {
+                if readable_as_multichar(transition.get_input_symbol()) {
+                    return true;
+                }
             }
         }
         false

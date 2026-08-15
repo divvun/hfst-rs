@@ -5586,6 +5586,15 @@ children (
                 title "The pmatch tokenize RUNTIME disagrees with C++ on lang-sma's production tokeniser-disamb-gt-desc.pmhfst, reading the SAME archive file. Minimal case: `Manne leam Aanta.` with -g gives C++ four correct cohorts (Manne / leam / Aanta / .) and gives us one cohort plus the raw text `: leam Aant` plus a bogus `\"<a.>\"` cohort — two real analysable words demoted to inter-cohort text. Single words in isolation are byte-identical (`leam` alone, `Aanta` alone), so the alphabet and the archive are fine; it is the multi-token match that goes wrong. At corpus scale on 200 lines of corp/freecorpus.txt: C++ 5679 cohorts / 20675 lines vs ours 5558 / 20021, about 2% of cohorts. Same binary pair, same archive, same input. Since C++ recovers the correct tokenization from that file, the archive carries the right information and the divergence is in OUR runtime, not in pmatch2fst. NOTE the nested `\"<...>\"` inside reading lines is NOT the bug — that is legitimate giellacg sub-reading syntax and C++ emits 436 of them on the same sample. Found while verifying tokenize-drops-unmatched; unrelated to it and NOT fixed by it (reproduces identically before and after that fix). Affects -g, the format Giella pipelines actually consume"
                 priority 1
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-15T19:11:22.718785Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
         )
     }
