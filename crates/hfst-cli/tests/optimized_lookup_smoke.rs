@@ -81,11 +81,6 @@ fn fast_mode_streams_analyses_without_the_prepend_column() {
     );
 }
 
-/// Two different reasons for having no analysis, told apart. `act` is spelled
-/// entirely from the alphabet and simply is not in the language; `xyz` is not
-/// spellable at all. Only the second is reported in fast mode, and only the
-/// first goes through a lookup — searching for an analysis of a word the
-/// alphabet cannot even express is work with a known answer.
 /// The weighted variants terminate a no-analysis record with ONE blank line
 /// where the unweighted ones use three, because upstream bracketed the same
 /// copy-pasted block inside `#ifdef WINDOWS` at those two sites and outside it
@@ -130,6 +125,70 @@ fn weighted_no_analysis_ends_with_one_blank() {
     );
 }
 
+/// Flag diacritics must not reach the printed analysis, and must still filter
+/// the traversal.
+///
+/// Upstream selects a whole parallel class hierarchy (TransducerFd and
+/// friends) when the alphabet declares flag diacritics, and blanks every flag
+/// symbol's key-table entry while parsing the alphabet, so its analyses never
+/// contain one. This port runs the library optimized-lookup engine, whose
+/// alphabet keeps flag strings because other callers need them, so the tool
+/// filters them at the display layer instead — exactly as hfst-lookup and
+/// hfst-flookup do. Before the filter existed, `dog` printed
+/// `@U.F.A@dog+N+Sg`.
+///
+/// `cat` is the filtering half: its path sets F=A and then demands F=B, so a
+/// flag-aware traversal rejects it and it comes back `+?`. Both
+/// optimized-lookup formats are checked, since the flag axis is orthogonal to
+/// the weighted/unweighted one — and they punctuate the `+?` record
+/// differently, one blank line against three.
+#[test]
+fn flags_filter_the_traversal_without_reaching_output() {
+    let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let regex = dir.join("flagged.hfst");
+    run(
+        &["regexp2fst", "-o"],
+        &regex,
+        b"[ \"@U.F.A@\" {dog}:{dog+N+Sg} | \"@U.F.A@\" {cat}:{cat+N+Sg} \"@U.F.B@\" ]\n",
+    );
+
+    for (format, expected) in [
+        ("olw", "dog\tdog+N+Sg\n\ncat\tcat\t+?\n\n"),
+        ("olu", "dog\tdog+N+Sg\n\ncat\tcat\t+?\n\n\n\n"),
+    ] {
+        let fixture = dir.join(format!("flagged.{format}"));
+        let converted = Command::new(env!("CARGO_BIN_EXE_hfst"))
+            .args(["fst2fst", "-f", format, "-i"])
+            .arg(&regex)
+            .arg("-o")
+            .arg(&fixture)
+            .status()
+            .expect("spawn hfst-fst2fst");
+        assert!(converted.success(), "conversion exited with {converted:?}");
+
+        let mut child = Command::new(env!("CARGO_BIN_EXE_hfst"))
+            .arg("optimized-lookup")
+            .arg(&fixture)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn hfst-optimized-lookup");
+        child
+            .stdin
+            .take()
+            .expect("stdin was piped")
+            .write_all(b"dog\ncat\n")
+            .expect("write queries to stdin");
+        let out = child.wait_with_output().expect("wait for the tool");
+
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout),
+            expected,
+            "flag-diacritic handling drifted for the {format} format"
+        );
+    }
+}
+
 /// Compile `source` through `args` (which must end in the output flag) into
 /// `out`.
 fn run(args: &[&str], out: &std::path::Path, source: &[u8]) {
@@ -149,6 +208,11 @@ fn run(args: &[&str], out: &std::path::Path, source: &[u8]) {
     assert!(status.success(), "compiler exited with {status:?}");
 }
 
+/// Two different reasons for having no analysis, told apart. `act` is spelled
+/// entirely from the alphabet and simply is not in the language; `xyz` is not
+/// spellable at all. Only the second is reported in fast mode, and only the
+/// first goes through a lookup — searching for an analysis of a word the
+/// alphabet cannot even express is work with a known answer.
 #[test]
 fn untokenizable_and_unanalysable_are_different() {
     assert_eq!(lookup(&["-f"], b"act\n"), "");

@@ -16,6 +16,7 @@ use crate::globals::CommonOptions;
 use crate::hfst_commandline::{VERSION_COPYRIGHT_BLOCK, version_line};
 use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
 use crate::hfst_getopt::{self as getopt, Getopt};
+use hfst::hfst_flag_diacritics::FdOperation;
 use std::io::Write;
 
 // ---------------------------------------------------------------------------
@@ -138,28 +139,25 @@ fn print_err(s: &str) {
 // ---------------------------------------------------------------------------
 // Display sink: the various transducer variants differ only in how they
 // collect and emit analyses. This enum captures the C++ class hierarchy's
-// virtual note_analysis / printAnalyses behaviour. The library lookup engine
-// already filters flag diacritics, so Plain/Uniq/WPlain/WUniq cover all output
-// (the Fd variants format identically to their non-Fd counterparts).
+// virtual note_analysis / printAnalyses behaviour.
+//
+// Upstream has EIGHT classes, selected on three booleans (has-flag-diacritics,
+// weighted, unique); this enum has four, because the flag axis is not a display
+// axis at all. TransducerFd and TransducerWFd declare neither printAnalyses nor
+// note_analysis and inherit both from Transducer / TransducerW verbatim;
+// TransducerFdUniq and TransducerWFdUniq declare bodies that are copy-paste
+// duplicates of TransducerUniq's and TransducerWUniq's (only loop syntax and
+// blank lines differ). What the Fd subclasses actually override is
+// try_epsilon_transitions plus PushState — flag-diacritic filtering during
+// traversal, which the library engine already does. So the eight classes have
+// exactly four display behaviours, and these are they.
 // ---------------------------------------------------------------------------
 #[derive(Clone, Copy, PartialEq)]
-#[allow(
-    dead_code,
-    reason = "`setup` only ever builds the four non-Fd variants, because the \
-              library engine filters flag diacritics before the sink sees a \
-              path. The Fd arms are the in-code transcription of the Fd classes' \
-              printAnalyses rules that `print_analyses` claims to implement, so \
-              they stay reachable to the spec even when unreachable at runtime."
-)]
 enum Variant {
     Plain,
     Uniq,
-    Fd,
-    FdUniq,
     WPlain,
     WUniq,
-    WFd,
-    WFdUniq,
 }
 
 /// What follows a `+?` record everywhere except the weighted variants: the
@@ -228,9 +226,9 @@ struct Transducer {
     inner: Vec<OlInner>,
     variant: Variant,
     display_vector: DisplayVector,     // Plain
-    display_set: DisplaySet,           // Uniq / FdUniq
+    display_set: DisplaySet,           // Uniq
     display_multimap: DisplayMultiMap, // WPlain
-    display_map: DisplayMap,           // WUniq / WFdUniq
+    display_map: DisplayMap,           // WUniq
 }
 
 impl Transducer {
@@ -257,9 +255,19 @@ impl Transducer {
             };
             for path in &paths {
                 let weight = path.first;
+                // Flag diacritics never reach the display. Upstream achieves
+                // that in its own alphabet reader, which rewrites every flag
+                // symbol's key-table entry to "" as it parses it, so by the
+                // time a path is assembled the flags contribute nothing. The
+                // library's optimized-lookup alphabet keeps the flag strings
+                // (other callers need them), so the tool drops them here
+                // instead — the same display-layer filter hfst-lookup and
+                // hfst-flookup apply. Without it every flag-bearing analyser
+                // printed its flags inline, e.g. "@U.F.A@dog+N+Sg".
                 let output: String = path
                     .second
                     .iter()
+                    .filter(|s| !FdOperation::is_diacritic(s))
                     .map(|s| s.as_str())
                     .collect::<Vec<_>>()
                     .concat();
@@ -270,15 +278,15 @@ impl Transducer {
                     // only the no-op half printed nothing at all. No other
                     // variant streams, and no other variant's printAnalyses is
                     // beFast-guarded.
-                    Variant::Plain | Variant::Fd if options.be_fast => {
+                    Variant::Plain if options.be_fast => {
                         print_out(&format!("{output}\n"));
                     }
-                    Variant::Plain | Variant::Fd => self.display_vector.push(output),
-                    Variant::Uniq | Variant::FdUniq => {
+                    Variant::Plain => self.display_vector.push(output),
+                    Variant::Uniq => {
                         self.display_set.insert(output);
                     }
-                    Variant::WPlain | Variant::WFd => self.display_multimap.push((weight, output)),
-                    Variant::WUniq | Variant::WFdUniq => {
+                    Variant::WPlain => self.display_multimap.push((weight, output)),
+                    Variant::WUniq => {
                         // mirror the original display_map population: keep the
                         // lowest weight per output. The original guard treats a
                         // missing entry or a stored weight greater than the
@@ -317,9 +325,9 @@ impl Transducer {
         let max_analyses = options.max_analyses;
         let beam = options.beam;
         match self.variant {
-            Variant::Plain | Variant::Fd => {
-                // Transducer::printAnalyses (Fd inherits it). Under beFast the
-                // analyses were already streamed out by `analyze`.
+            Variant::Plain => {
+                // Transducer::printAnalyses (TransducerFd inherits it). Under
+                // beFast the analyses were already streamed out by `analyze`.
                 if options.be_fast {
                     return;
                 }
@@ -342,8 +350,9 @@ impl Transducer {
                 self.display_vector.clear(); // purge the display vector
                 print_out("\n");
             }
-            Variant::Uniq | Variant::FdUniq => {
-                // TransducerUniq/TransducerFdUniq::printAnalyses
+            Variant::Uniq => {
+                // TransducerUniq::printAnalyses (TransducerFdUniq's body is a
+                // copy of it)
                 if output_type == Xerox && self.display_set.is_empty() {
                     print_out(&format!(
                         "{}\t{}\t+?{}",
@@ -364,7 +373,7 @@ impl Transducer {
                 print_out("\n");
             }
             Variant::WPlain => {
-                // TransducerW::printAnalyses
+                // TransducerW::printAnalyses (TransducerWFd inherits it)
                 if output_type == Xerox && self.display_multimap.is_empty() {
                     print_out(&format!("{}\t{}\t+?\n\n", prepend, prepend));
                     return;
@@ -397,8 +406,9 @@ impl Transducer {
                 self.display_multimap.clear();
                 print_out("\n");
             }
-            Variant::WUniq | Variant::WFdUniq => {
-                // TransducerWUniq/TransducerWFdUniq::printAnalyses
+            Variant::WUniq => {
+                // TransducerWUniq::printAnalyses (TransducerWFdUniq's body is
+                // a copy of it)
                 if output_type == Xerox && self.display_map.is_empty() {
                     // NOTE: the WUniq/WFdUniq empty-case prints a single blank
                     // line (one std::endl), unlike WPlain's two.
@@ -435,38 +445,6 @@ impl Transducer {
                     print_out("\n");
                 }
                 self.display_map.clear();
-                print_out("\n");
-            }
-            Variant::WFd => {
-                // TransducerWFd has no own printAnalyses: inherits TransducerW.
-                if output_type == Xerox && self.display_multimap.is_empty() {
-                    print_out(&format!("{}\t{}\t+?\n\n", prepend, prepend));
-                    return;
-                }
-                let mut sorted = self.display_multimap.clone();
-                sorted.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-                let mut lowest_weight: f32 = -1.0;
-                let mut first = true;
-                for (i, (weight, value)) in sorted.iter().enumerate() {
-                    if i as i32 >= max_analyses {
-                        break;
-                    }
-                    if first {
-                        lowest_weight = *weight;
-                        first = false;
-                    }
-                    if beam < 0.0 || *weight <= (lowest_weight + beam) {
-                        if output_type == Xerox {
-                            print_out(&format!("{}\t", prepend));
-                        }
-                        print_out(value);
-                        if display_weights {
-                            print_out(&format!("\t{}", fmt_weight(*weight)));
-                        }
-                        print_out("\n");
-                    }
-                }
-                self.display_multimap.clear();
                 print_out("\n");
             }
         }
@@ -639,6 +617,15 @@ fn setup(options: &Options, path: &str) -> i32 {
         return 1;
     }
     let unique = options.display_unique_flag;
+    // Upstream selects among eight transducer classes on three booleans; the
+    // third — "does the alphabet declare flag diacritics?" — is absent here on
+    // purpose. It never picked a different *display*: TransducerFd and
+    // TransducerWFd inherit printAnalyses and note_analysis unchanged, and the
+    // two Fd*Uniq bodies are copies of the corresponding non-Fd ones. All it
+    // picked was a traversal that honours flag diacritics, and the library
+    // engine behind `lookup_fd_string` always does that. Verified against
+    // hfst-optimized-lookup 3.17.1 over a flag-bearing analyser in both
+    // optimized-lookup formats and the whole option matrix.
     let variant = match (weighted, unique) {
         (false, false) => Variant::Plain,
         (false, true) => Variant::Uniq,
