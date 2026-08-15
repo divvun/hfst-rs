@@ -366,6 +366,27 @@
 > variants; weighted vs unweighted; unique vs all analyses. The eight combinations
 > map to Transducer / TransducerUniq / TransducerW / TransducerWUniq / TransducerFd
 > / TransducerFdUniq / TransducerWFd / TransducerWFdUniq. Return 0 on success.
+>
+> PORT DIVERGENCE (eight classes collapsed to four display variants): this port
+> selects on two booleans, not three, dropping the has-flag-diacritics axis. That
+> axis never selected a different display. TransducerFd and TransducerWFd declare
+> neither printAnalyses nor note_analysis and inherit both from Transducer and
+> TransducerW verbatim; TransducerFdUniq's and TransducerWFdUniq's bodies are
+> copy-paste duplicates of TransducerUniq's and TransducerWUniq's, differing only
+> in loop syntax, blank lines, and a Windows-only format-string bug. What the Fd
+> subclasses do override is try_epsilon_transitions plus PushState — flag-diacritic
+> filtering during traversal — and the library optimized-lookup engine behind
+> lookup_fd_string always applies that, so there is no traversal to select either.
+> Measured against hfst-optimized-lookup 3.17.1 over a flag-bearing analyser in
+> both optimized-lookup formats across the whole option matrix: byte-identical.
+>
+> The port does need one thing upstream gets for free. Upstream's alphabet reader
+> rewrites each flag symbol's key-table entry to the empty string as it parses it
+> (see [spec:hfst:sem:hfst-optimized-lookup.transducer-alphabet.get-next-symbol-fn]),
+> so flags cannot reach a printed analysis; the library alphabet preserves them
+> because other callers need the strings. The tool therefore drops flag diacritics
+> from each path at the display layer, the same filter hfst-lookup and
+> hfst-flookup apply. Without it a flag-bearing analyser printed its flags inline.
 
 > [spec:hfst:def:hfst-optimized-lookup.state-id-number]
 > typedef unsigned int StateIdNumber
