@@ -299,4 +299,5 @@ assertions (
     {id ol-variant-fd-unreachable, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:45:17.169609Z}
     {id tokenize-drops-unmatched, kind @complete, author "brendan@necessary.nu", at 2026-08-15T17:32:24.247021Z}
     {id pmatch-tokenize-runtime-divergence, kind @complete, author "brendan@necessary.nu", at 2026-08-15T19:11:22.718785Z}
+    {id nfst-pmatch-concat-associativity, kind @complete, author "brendan@necessary.nu", at 2026-08-15T21:43:50.350056Z}
 )

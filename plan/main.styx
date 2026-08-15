@@ -5335,6 +5335,22 @@ children (
                 title "nfst-pmatch folds juxtaposition LEFT where C++ bison shift-resolves RIGHT, so the AST shape diverges even though the language does not. Verified: nfst-pmatch parser.rs parse_expression7 builds `left = Concat(left, right)` in a loop; the C++ rule `EXPRESSION7: EXPRESSION7 EXPRESSION7` (pmatch_parse.yy:333) is ambiguous and bison resolves by shifting. For `A B C` Rust yields Concat(Concat(A,B),C), C++ Concat(A,Concat(B,C)). Concatenation is associative so matching and pmatch2fst output are UNAFFECTED — this is latent, not a live bug. It bites any analysis that pattern-matches on tree shape: it is precisely why the ported is_left_concatenation_with_context misreads a Rust tree, inspecting only the top node's left child and falling through to the reversed left context. Fix is in the sibling repo (necessary-nu/nfst) and needs a release; alternatively any shape-based analysis must handle both foldings. Decide which before writing another such analysis"
                 priority 2
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-08-15T21:43:43.932396Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Bumped to nfst 0.3.0 and validated on lang-sma. The AST reshape is behaviour-preserving for the production tokeniser: byte-identical compiled archive.\n\nWHAT WAS COMPARED. Rebuilt lang-sma's tokeniser-disamb-gt-desc.pmhfst from source under each nfst version, holding everything else fixed, following the giella-core rules by hand (rule (a) of tools-tokenisers-dir-include.am: compose src/fst/analyser-pmatchdisamb-gt-desc.hfst with filters/make-disamb-CG-tags.hfst through xfst, relabel the two @P.Pmatch.*@ flags via substitute, then pmatch2fst the pmscript).\n\n- nfst 0.2.1 archive: 541650604 bytes, BYTE-IDENTICAL to the archive the earlier full `make` produced. That equality is what validates the hand-run recipe as faithful.\n- nfst 0.3.0 archive: 541650604 bytes, BYTE-IDENTICAL to the 0.2.1 one.\n\nSo the three shape-reading predicates in pmatch_compiler (is_left_concatenation_with_context and the two get_initial_*RC_initial_symbols) reach the same conclusions on both foldings for this grammar. The predicted change in initial_symbols_list / disallowed_initial_symbols_list did not materialise here. That is a negative result about THIS grammar, not proof the shapes are interchangeable in general — the reason to prefer the right fold stands, since the predicates were written against it.\n\nRUNTIME, production archive, 2000 lines of corp/freecorpus.txt against hfst-tokenize 3.17.1:\n- -g: 6 hunks, cohorts equal at 39200 — entirely pmatch-middot-loses-punct-reading.\n- -c: 681 hunks, cohorts equal at 39200 — entirely pmatch-duplicate-path-readings.\nBoth are the already-filed residuals, unchanged by the bump. No new divergence.\n\nTWO METHOD ERRORS I MADE, recorded so the recipe is not re-derived wrongly. First I fed pmatch2fst the raw src/fst/analyser-disamb-gt-desc.hfst, skipping the CG-tags composition, which produced `mijjieh+Pron+Pers+Pl1+Nom` where the pipeline expects `mijjieh Pron Pers Pl1 Nom`, and an archive 6.9 MB short. Then, having fixed that, I still used rule (b)'s source; the target has TWO pattern rules and rule (a) wins when src/fst/analyser-pmatchdisamb-gt-desc.hfst exists, which it does. Only after switching to the pmatchdisamb source did the rebuild reproduce the full-build archive byte for byte. Any future hand-run of this recipe must use rule (a)'s source.\n\nWorkspace: 436 tests pass, clippy 0, fmt clean. foma 0.4.3 still pulls nfst-xre 0.1.0 and nfst-lexc 0.1.0 transitively, so three nfst crates remain in the lock at two major-ish versions; pre-existing and unrelated to this bump."
+                    }
+
+                    {
+                        at 2026-08-15T21:43:50.350056Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
