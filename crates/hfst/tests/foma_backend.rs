@@ -23,6 +23,7 @@ use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::hfst_data_types::{HfstTwoLevelPath, HfstTwoLevelPaths, Symbol};
 use hfst::hfst_extract_strings::{ExtractStringsCb, RetVal};
 use hfst::hfst_input_stream::HfstInputStream;
+use hfst::hfst_symbol_defs::StringSet;
 use hfst::hfst_tokenizer::HfstTokenizer;
 use hfst::hfst_transducer::{AnyTransducer, HfstTransducer, HfstTransducerPair};
 use hfst::hfst_xerox_rules as xr;
@@ -533,6 +534,250 @@ fn algebra_parity_determinize_minimize_nondeterministic_union() {
         state_count(&t)
     );
     assert_eq!(state_count(&f), 2, "minimal {{a}} is 2 states in foma");
+}
+
+// ---------------------------------------------------------------------------
+// Generic-path parity: harmonization and compose_intersect.
+//
+// Four arms of `hfst_transducer.rs` once dropped their C++ counterparts on the
+// grounds that foma "is compiled out": harmonize_copy's no-harmonization
+// branch, its flag-diacritic pre-insertion, extract_random_paths/n_best, and
+// compose_intersect. Each is now served by the generic backend path, which is
+// only correct if foma's interchange round trip carries everything those arms
+// depend on — the unknown/identity specials and the flag diacritics. The cases
+// below are the ones where a lossy round trip would silently change the answer
+// rather than fail: disjoint alphabets (so harmonization has real work), the
+// two specials (whose meaning is defined by what the alphabet does NOT list),
+// and flags (which must survive harmonization unexpanded).
+// ---------------------------------------------------------------------------
+
+const UNKNOWN: &str = "@_UNKNOWN_SYMBOL_@";
+const IDENTITY: &str = "@_IDENTITY_SYMBOL_@";
+
+/// Build a net from an explicit arc list `(from, isym, osym, to)` and final
+/// states — the shapes below branch and self-loop, which `basic_pair` cannot
+/// express.
+fn basic_arcs(arcs: &[(u32, &str, &str, u32)], finals: &[u32]) -> HfstBasicTransducer {
+    let mut n = HfstBasicTransducer::new();
+    n.add_state(0);
+    for (from, i, o, to) in arcs {
+        let tr = HfstBasicTransition::new_symbols(*to, sym(i), sym(o), 0.0, n.coder_mut());
+        n.add_transition(*from, &tr, true);
+    }
+    for f in finals {
+        n.set_final_weight(*f, &0.0);
+    }
+    n
+}
+
+/// The `assert_binary_parity` shape for `compose_intersect`, which takes a rule
+/// VECTOR rather than a second operand: `lexicon ∘ (⋂ rules)` must come out the
+/// same relation on both backends, and equal `expected`.
+fn assert_compose_intersect_parity(
+    lexicon: &HfstBasicTransducer,
+    rules: &[HfstBasicTransducer],
+    expected: &[(&str, &str)],
+    label: &str,
+) {
+    let mut f = fac_foma(lexicon);
+    let frules: Vec<HfstTransducer<FomaTransducer>> = rules.iter().map(fac_foma).collect();
+    f.compose_intersect(&frules, false, true)
+        .expect("foma compose_intersect");
+
+    let mut t = fac_trop(lexicon);
+    let trules: Vec<HfstTransducer<StdVectorFst>> = rules.iter().map(fac_trop).collect();
+    t.compose_intersect(&trules, false, true)
+        .expect("openfst compose_intersect");
+
+    let fp = facade_pairs(&f);
+    let tp = facade_pairs(&t);
+    let ep = expect_pairs(expected);
+    assert_eq!(fp, ep, "{label}: foma relation");
+    assert_eq!(tp, ep, "{label}: openfst relation");
+    assert_eq!(fp, tp, "{label}: foma/openfst parity");
+}
+
+// [spec:hfst:sem:foma-backend.algebra-impl/test]
+#[test]
+fn harmonization_parity_across_disjoint_alphabets_and_specials() {
+    let _g = serialized();
+
+    // Baseline: disjoint alphabets, no specials. Harmonization must leave both
+    // relations alone rather than let one operand's coding bleed into the other.
+    assert_binary_parity(
+        &basic_pair("ab", "ab"),
+        &basic_pair("cd", "cd"),
+        |x, y| {
+            x.disjunct(y, true).expect("foma disjunct");
+        },
+        |x, y| {
+            x.disjunct(y, true).expect("openfst disjunct");
+        },
+        &[("ab", "ab"), ("cd", "cd")],
+        "union of disjoint alphabets",
+    );
+
+    // `?` on the left, `@` on the right, alphabets {a} and {c}. Harmonization
+    // expands each special against the symbols the OTHER operand contributes:
+    // the left `?:?` gains `?:c` and `c:?` (the `c:c` case folds into the plain
+    // `a c` path), while the right `@:@` gains the identity `a:a`. A round trip
+    // that dropped either special would leave 2 paths here.
+    assert_binary_parity(
+        &basic_arcs(&[(0, "a", "a", 1), (1, UNKNOWN, UNKNOWN, 2)], &[2]),
+        &basic_arcs(&[(0, "c", "c", 1), (1, IDENTITY, IDENTITY, 2)], &[2]),
+        |x, y| {
+            x.disjunct(y, true).expect("foma disjunct");
+        },
+        |x, y| {
+            x.disjunct(y, true).expect("openfst disjunct");
+        },
+        &[
+            ("a@_UNKNOWN_SYMBOL_@", "a@_UNKNOWN_SYMBOL_@"),
+            ("a@_UNKNOWN_SYMBOL_@", "ac"),
+            ("ac", "a@_UNKNOWN_SYMBOL_@"),
+            ("c@_IDENTITY_SYMBOL_@", "c@_IDENTITY_SYMBOL_@"),
+            ("ca", "ca"),
+        ],
+        "union with unknown and identity",
+    );
+
+    // A NON-identity unknown (`?:b`): the input side expands, the output side
+    // stays pinned to `b`, so the expansion has to be asymmetric.
+    assert_binary_parity(
+        &basic_arcs(&[(0, "a", "a", 1), (1, UNKNOWN, "b", 2)], &[2]),
+        &basic_arcs(&[(0, "c", "c", 1), (1, IDENTITY, IDENTITY, 2)], &[2]),
+        |x, y| {
+            x.disjunct(y, true).expect("foma disjunct");
+        },
+        |x, y| {
+            x.disjunct(y, true).expect("openfst disjunct");
+        },
+        &[
+            ("a@_UNKNOWN_SYMBOL_@", "ab"),
+            ("ac", "ab"),
+            ("c@_IDENTITY_SYMBOL_@", "c@_IDENTITY_SYMBOL_@"),
+            ("ca", "ca"),
+            ("cb", "cb"),
+        ],
+        "union with a non-identity unknown",
+    );
+}
+
+// [spec:hfst:sem:foma-backend.algebra-impl/test]
+#[test]
+fn harmonization_parity_with_flag_carrying_operands() {
+    let _g = serialized();
+
+    // A flag is NOT an ordinary symbol: harmonization pre-inserts it into the
+    // other operand's alphabet precisely so no `?` expansion ever produces it.
+    // Three paths, the flag surviving verbatim on its own.
+    assert_binary_parity(
+        &basic_arcs(&[(0, "@U.F.A@", "@U.F.A@", 1), (1, "a", "a", 2)], &[2]),
+        &basic_arcs(&[(0, "b", "b", 1), (0, "c", "c", 1)], &[1]),
+        |x, y| {
+            x.disjunct(y, true).expect("foma disjunct");
+        },
+        |x, y| {
+            x.disjunct(y, true).expect("openfst disjunct");
+        },
+        &[("@U.F.A@a", "@U.F.A@a"), ("b", "b"), ("c", "c")],
+        "union with a flag-carrying operand",
+    );
+
+    // Flags on both sides, from different features, over disjoint alphabets:
+    // neither feature may leak into the other operand's paths.
+    assert_binary_parity(
+        &basic_arcs(
+            &[
+                (0, "@P.F.X@", "@P.F.X@", 1),
+                (1, "a", "a", 2),
+                (2, "@R.F.X@", "@R.F.X@", 3),
+            ],
+            &[3],
+        ),
+        &basic_arcs(&[(0, "@U.G.Y@", "@U.G.Y@", 1), (1, "z", "z", 2)], &[2]),
+        |x, y| {
+            x.disjunct(y, true).expect("foma disjunct");
+        },
+        |x, y| {
+            x.disjunct(y, true).expect("openfst disjunct");
+        },
+        &[
+            ("@P.F.X@a@R.F.X@", "@P.F.X@a@R.F.X@"),
+            ("@U.G.Y@z", "@U.G.Y@z"),
+        ],
+        "union with flags on both operands",
+    );
+}
+
+// [spec:hfst:sem:foma-backend.algebra-impl/test]
+#[test]
+fn compose_intersect_parity_vs_tropical() {
+    let _g = serialized();
+
+    // Two rules whose INTERSECTION is what the lexicon composes with:
+    // {a,b}² ∘ ({aa,ab} ∩ {ab,bb}) = {ab}. Composing with the rules in sequence
+    // would give the same answer here; losing one gives {aa,ab} or {ab,bb}.
+    let lexicon = basic_arcs(
+        &[
+            (0, "a", "a", 1),
+            (0, "b", "b", 1),
+            (1, "a", "a", 2),
+            (1, "b", "b", 2),
+        ],
+        &[2],
+    );
+    assert_compose_intersect_parity(
+        &lexicon,
+        &[
+            basic_arcs(
+                &[(0, "a", "a", 1), (1, "a", "a", 2), (1, "b", "b", 2)],
+                &[2],
+            ),
+            basic_arcs(
+                &[(0, "a", "a", 1), (0, "b", "b", 1), (1, "b", "b", 2)],
+                &[2],
+            ),
+        ],
+        &[("ab", "ab")],
+        "compose_intersect of two acceptor rules",
+    );
+
+    // A transducing rule in the usual xerox shape: rewrite `a`, stay identity on
+    // everything the rule does not name (`?` / `@`). The specials have to survive
+    // the harmonization compose_intersect does internally, or `b` falls off the
+    // end of the rule and the result is empty.
+    let ab = basic_pair("ab", "ab");
+    assert_compose_intersect_parity(
+        &ab,
+        &[basic_arcs(
+            &[
+                (0, "a", "A", 0),
+                (0, UNKNOWN, UNKNOWN, 0),
+                (0, IDENTITY, IDENTITY, 0),
+            ],
+            &[0],
+        )],
+        &[("ab", "Ab")],
+        "compose_intersect with an unknown-carrying rule",
+    );
+
+    // A rule whose alphabet carries the word boundary `@#@` takes the branch
+    // that wraps the lexicon in boundaries before composing.
+    assert_compose_intersect_parity(
+        &ab,
+        &[basic_arcs(
+            &[
+                (0, "@#@", "@#@", 1),
+                (1, "a", "A", 1),
+                (1, IDENTITY, IDENTITY, 1),
+                (1, "@#@", "@#@", 2),
+            ],
+            &[2],
+        )],
+        &[("ab", "@#@Ab@#@")],
+        "compose_intersect with a word-boundary rule",
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1162,6 +1407,125 @@ fn foma_and_thfst_report_weights_honestly() {
         let thfst = ThfstTransducer::from_ol(ol);
         assert_eq!(thfst.has_weights(), want, "THFST has_weights({name})");
     }
+}
+
+// ---------------------------------------------------------------------------
+// get_initial_input_symbols vs get_first_input_symbols.
+//
+// The has_weights shape again, one layer subtler: foma answered BOTH from one
+// helper that read the start state's out-arcs, so the wrong answer was never
+// empty and still varied plausibly with the net — nothing an assertion about
+// shape alone can catch. The two are DIFFERENT walks in the contract tropical
+// sets, so the test has to be that they DISAGREE where the contract says they
+// must, and that each separately agrees with tropical on the same net.
+// ---------------------------------------------------------------------------
+
+fn syms(items: &[&str]) -> StringSet {
+    items.iter().copied().map(sym).collect()
+}
+
+// [spec:hfst:sem:foma-backend.algebra-impl/test]
+#[test]
+fn initial_and_first_input_symbols_are_different_walks() {
+    let _g = serialized();
+
+    // `abc`: initial is the one symbol a path can start with; first is every
+    // symbol in the net. Answering both from the start state's out-arcs gives
+    // {a} twice — non-empty, correct for `initial`, and wrong for `first`.
+    let abc = basic_acceptor("abc");
+    let f = foma_of(&abc);
+    let t = tropical_of(&abc);
+
+    assert_eq!(f.get_initial_input_symbols(), syms(&["a"]));
+    assert_eq!(f.get_first_input_symbols(), syms(&["a", "b", "c"]));
+    assert_ne!(
+        f.get_initial_input_symbols(),
+        f.get_first_input_symbols(),
+        "the two walks must disagree on a net longer than one symbol"
+    );
+    assert_eq!(
+        f.get_initial_input_symbols(),
+        t.get_initial_input_symbols(),
+        "initial-symbol parity with tropical"
+    );
+    assert_eq!(
+        f.get_first_input_symbols(),
+        t.get_first_input_symbols(),
+        "first-symbol parity with tropical"
+    );
+}
+
+// [spec:hfst:sem:foma-backend.algebra-impl/test]
+#[test]
+fn initial_input_symbols_descend_through_epsilon_and_flags() {
+    let _g = serialized();
+
+    // Reading the start state's out-arcs literally answers `@_EPSILON_SYMBOL_@`
+    // / `@U.F.A@` here — a symbol no path can begin with. `@_UNKNOWN_@` is the
+    // control: it is a reserved sigma number too, but it is not epsilon and not
+    // a flag, so both walks report it as the real symbol it is.
+    let eps = basic_arcs(
+        &[(0, EPSILON, EPSILON, 1), (1, "a", "a", 2), (2, "b", "b", 3)],
+        &[3],
+    );
+    let flag = basic_arcs(
+        &[
+            (0, "@U.F.A@", "@U.F.A@", 1),
+            (1, "a", "a", 2),
+            (2, "b", "b", 3),
+        ],
+        &[3],
+    );
+    let unk = basic_arcs(&[(0, UNKNOWN, IDENTITY, 1), (1, "b", "b", 2)], &[2]);
+    // Two branches off the start state, one of them behind an epsilon: both
+    // first symbols are initial, and the walk must not stop at the first branch.
+    let branch = basic_arcs(
+        &[
+            (0, "a", "a", 1),
+            (1, "b", "b", 2),
+            (0, EPSILON, EPSILON, 3),
+            (3, "c", "c", 4),
+        ],
+        &[2, 4],
+    );
+
+    let cases: [(&str, &HfstBasicTransducer, &[&str], &[&str]); 4] = [
+        ("epsilon prefix", &eps, &["a"], &["a", "b"]),
+        ("flag prefix", &flag, &["a"], &["a", "b"]),
+        ("unknown arc", &unk, &[UNKNOWN], &[UNKNOWN, "b"]),
+        ("epsilon branch", &branch, &["a", "c"], &["a", "b", "c"]),
+    ];
+
+    for (name, net, initial, first) in cases {
+        let f = foma_of(net);
+        let t = tropical_of(net);
+        assert_eq!(
+            f.get_initial_input_symbols(),
+            syms(initial),
+            "{name}: foma initial"
+        );
+        assert_eq!(
+            f.get_first_input_symbols(),
+            syms(first),
+            "{name}: foma first"
+        );
+        assert_eq!(
+            f.get_initial_input_symbols(),
+            t.get_initial_input_symbols(),
+            "{name}: initial parity with tropical"
+        );
+        assert_eq!(
+            f.get_first_input_symbols(),
+            t.get_first_input_symbols(),
+            "{name}: first parity with tropical"
+        );
+    }
+
+    // An empty net has no start state to walk from; both answer the empty set
+    // rather than panicking.
+    let empty = HfstBasicTransducer::new();
+    assert!(foma_of(&empty).get_initial_input_symbols().is_empty());
+    assert!(foma_of(&empty).get_first_input_symbols().is_empty());
 }
 
 // ---------------------------------------------------------------------------

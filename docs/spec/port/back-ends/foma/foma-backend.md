@@ -141,6 +141,20 @@ those ops in foma instead of round-tripping through openfst.
 > `fsm_equivalent`. Inputs are consumed/copied per foma's ownership
 > conventions. This is the node that lets hfst run unweighted
 > determinize/minimize in foma to avoid tropical blowup.
+>
+> The two input-symbol queries are two DIFFERENT walks over the line
+> table, matching the tropical contract rather than approximating it.
+> `get_initial_input_symbols` descends from state 0 through epsilon and
+> flag-diacritic arcs and stops on each branch at the first real input
+> symbol — the symbols a path can begin with.
+> `get_first_input_symbols` walks the whole reachable graph and collects
+> every real input symbol on it, epsilon and flag arcs skipped over but
+> descended past. Both resolve sigma numbers with the same `sym` mapping
+> `to_basic` uses, so foma's reserved `@_UNKNOWN_@` / `@_IDENTITY_@`
+> count as real symbols (they are not epsilon) exactly as their tropical
+> label counterparts do. They coincide only on nets where every path is
+> one symbol long; answering both from one helper is a bug, not an
+> optimization.
 
 ## Lookup (`foma-backend.lookup` node)
 
