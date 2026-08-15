@@ -100,6 +100,43 @@
 > Reads/writes the global one-time-warning flag and uses the shared
 > `characterBoundary` iterator state.
 
+> [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.is-unanalysed-fn]
+> bool
+
+> [spec:hfst:sem:pmatch-tokenize.hfst-ol-tokenize.is-unanalysed-fn]
+> PORT ADDITION. True when a `Location` segments a token without analysing it:
+> its `output` is empty, its `output` contains the `" ??"` unknown marker a
+> pmatch script can emit, or its `weight` is at least
+> `pmatch-tokenize.hfst-ol-tokenize.unanalysed-weight`. Upstream spells the
+> first two conditions inline at each of the four sites that care
+> (`keep_n_best_weight`, `locate_fullmatch`, `print_reading_giellacg`,
+> `print_location_vector_giellacg`) and has no third condition, because
+> upstream's fallback reading is unreachable. Naming the predicate once keeps
+> those sites in agreement about what an unanalysed reading is.
+
+> [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.unanalysed-weight]
+> const Weight
+
+> [spec:hfst:sem:pmatch-tokenize.hfst-ol-tokenize.unanalysed-weight]
+> PORT ADDITION. The weight `make_naive_tokenizer` puts on its `others`
+> fallback: `INFINITE_WEIGHT`, i.e. `NO_TABLE_INDEX` cast to `Weight`.
+>
+> PORT DIVERGENCE (upstream data loss deliberately fixed). Upstream weights the
+> fallback with `std::numeric_limits<float>::max()`. But `get_analyses`
+> abandons any walk whose running weight exceeds the `weight_cutoff` handed to
+> `locate`, every caller in this module passes `INFINITE_WEIGHT`, and
+> `INFINITE_WEIGHT` is about 4.29e9 — twenty-nine orders of magnitude below
+> `float` max. The fallback branch is therefore pruned before it can accept,
+> the `others` arm never fires, and a run of dictionary-external characters
+> falls through to the `"@_NONMATCHING_@"` path, which the default output mode
+> discards: `dogs cot cats` against a plain `.hfstol` prints `dogs\ncats`. C++
+> `hfst-tokenize` does the same on the same fixture; `[dec:hfst:independent-fork]`
+> makes a faithfully ported upstream bug this port's bug, and a tokenizer that
+> discards input is a data-loss bug. `INFINITE_WEIGHT` is the largest weight
+> the runtime admits (its cutoff test is a strict `>`), so it preserves
+> upstream's intent — the fallback loses to any realistic dictionary path —
+> while staying reachable.
+
 > [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.keep-n-best-weight-fn]
 > const LocationVector
 
@@ -120,6 +157,14 @@
 > - If `classes_found > s.max_weight_classes`, break out of the loop; otherwise
 >   push the location to `goodweight`.
 > Returns `goodweight`. Pure with respect to inputs (builds a new vector).
+>
+> PORT DIVERGENCE. The pass-through test is
+> `pmatch-tokenize.hfst-ol-tokenize.is-unanalysed-fn`, which covers the ` ??`
+> unknown marker (issue #562) and the naive tokenizer's fallback weight as well
+> as the empty output upstream tests for. Since the fallback sits at the worst
+> weight rather than the best, counting it as a weight class would let
+> `--weight-classes n` spend one of its n classes on a reading that is only a
+> placeholder.
 
 > [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.locate-fullmatch-fn]
 > const LocationVector
@@ -137,6 +182,14 @@
 > output does not contain the substring `" ??"`. For each kept location, if
 > `s.hack_uncompose` is set call `container.uncompose(*loc_it)` to mutate it, then
 > push it onto the result `loc_filtered`. Returns `loc_filtered`.
+>
+> PORT DIVERGENCE. The three-part keep test is
+> `!pmatch-tokenize.hfst-ol-tokenize.is-unanalysed-fn`, which says the same
+> thing about the two conditions upstream can actually observe and additionally
+> excludes the naive tokenizer's fallback reading. Upstream's `float` max test
+> was written for that reading (its comment asks why the `<W:inf>` are not
+> excluded earlier) but could never fire, since the reading it names is pruned
+> by the weight cutoff before it reaches here.
 
 > [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.location-compare-fn]
 > bool
@@ -180,6 +233,59 @@
 >   and increment `token_number`.
 > After the loop, if `s.output_format` is `finnpos`, `tokenize`, or `xerox`,
 > print an extra blank line (`std::endl`) to `outstream`.
+>
+> PORT DIVERGENCE (upstream data loss deliberately fixed). Once the naive
+> tokenizer's `others` fallback is reachable (see
+> `pmatch-tokenize.hfst-ol-tokenize.unanalysed-weight`) it covers every token,
+> not only the ones the dictionary cannot analyse, because it accepts any run
+> of non-boundary characters. So this port partitions
+> `keep_n_best_weight(dedupe_locations(*it, s), s)` on
+> `pmatch-tokenize.hfst-ol-tokenize.is-unanalysed-fn`. If any analysed reading
+> survives, only those are passed to `print_location_vector` — the placeholder
+> never appears beside a real analysis. If none does, the whole (unpartitioned)
+> vector goes to `pmatch-tokenize.hfst-ol-tokenize.print-unanalysed-location-fn`
+> instead. `token_number` still advances in both cases: an unanalysed token is
+> a token.
+>
+> Nonmatching cohorts are unchanged and still print only under `s.print_all`.
+> They are now genuinely separator material — with the fallback firing, the
+> unmatched *word* is a token of its own rather than one blob glued to the
+> whitespace on either side of it — so the default stream gains no whitespace
+> lines, and `-a` still reconstructs its input verbatim.
+>
+> The partition keys on the fallback's WEIGHT, not on `is_unanalysed`, and that
+> distinction is load-bearing. A pmatch script emits its own `" ??"` unknown
+> marker — lang-sma's tokeniser puts `"Manne" ??` beside the real reading
+> `manne Pron Pers Sg1 Nom` — and upstream prints those in plain `cg` while
+> `print_reading_giellacg` drops them at indent 1. Both behaviours are kept.
+>
+> An earlier revision filtered on the marker instead, which made plain `cg`
+> agree with `giellacg` and removed 778,856 readings over lang-sma's free
+> corpus. Those readings are the script's own output, not an artifact of the
+> fallback, and reshaping a stream a grammar parses is outside what this change
+> is for. Verified byte-identical to hfst-tokenize 3.17.1 in both `-c` and `-g`
+> over that tokeniser, for analysed input and for an unknown word alike.
+
+> [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.print-unanalysed-location-fn]
+> void
+
+> [spec:hfst:sem:pmatch-tokenize.hfst-ol-tokenize.print-unanalysed-location-fn]
+> PORT ADDITION. Prints a token that was segmented but not analysed, using the
+> marking the requested format already reserves for unknown material, so that a
+> downstream parser cannot read the placeholder as an analysis. Dispatch on
+> `s.output_format`:
+> - `cg` and `xerox`: `print_no_output(locations[0].input, outstream, s)` —
+>   `"<w>"\n\t"w" ?` and `w\tw+?\tinf` respectively, each with the trailing
+>   blank line that separates cohorts in those formats.
+> - `tokenize` and `space_separated`: the input alone, since neither has an
+>   analysis column; then, if `s.print_weights`, a tab and the literal `inf`
+>   (the weight xerox prints for the same condition) rather than the numeric
+>   sentinel. Terminated by a newline for `tokenize` and a space for
+>   `space_separated`, matching `print_location_vector`.
+> - `giellacg`, `visl`, `conllu`, `finnpos`: `print_location_vector`, which
+>   already renders the condition — `print_location_vector_giellacg` has an
+>   unknown-but-tokenised branch printing `"w" ?`, and the other two render a
+>   reading with no lemma or features as underscores.
 
 > [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.output-format]
 > enum OutputFormat {
@@ -310,6 +416,15 @@
 >   print an extra blank line.
 > Writes only to `outstream`; the conllu branch mutates a local copy of the
 > best location's output via the fetch-and-kill calls.
+>
+> PORT DIVERGENCE. The conllu branch requires `locations.size() != 0` like the
+> others, and seeds `best_location` from `locations[0]` rather than from a
+> default-constructed `Location`, scanning from the second element. Upstream's
+> seed is beaten only by a weight strictly below `INFINITE_WEIGHT`, so a cohort
+> whose only reading weighs exactly that — the naive tokenizer's unanalysed
+> token — kept the default and blanked the FORM column. Seeding from the first
+> reading is otherwise identical: the input is already ordered by ascending
+> weight and the strict `<` still keeps the first of an equally weighted run.
 
 > [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.print-location-vector-giellacg-fn]
 > void
@@ -318,9 +433,13 @@
 > Prints a CG cohort for `locations` in giellacg/visl style, handling
 > backtracking. Steps:
 > - Print the cohort header `"<` + escaped `locations[0].input` + `>"` + endl.
-> - If there is exactly one location and its output is empty or contains `" ??"`,
->   treat it as unknown-but-tokenized: print `\t"` + escaped input + `" ?` + endl
->   and return.
+> - If there is exactly one location and it is unanalysed, treat it as
+>   unknown-but-tokenized: print `\t"` + escaped input + `" ?` + endl and
+>   return. (PORT DIVERGENCE: the test is
+>   `pmatch-tokenize.hfst-ol-tokenize.is-unanalysed-fn`, so the naive
+>   tokenizer's fallback reading gets the same `"w" ?` cohort as the empty and
+>   `" ??"` outputs upstream tests for, instead of a bare reading a CG grammar
+>   would read as an analysis.)
 > - Print regular analyses: for each location, copy it into a heap `Location`
 >   (`hack`); if `s.hack_uncompose`, call `container.uncompose(*hack)`; call
 >   `print_reading_giellacg(hack, 1, false, outstream, s)` and take the returned
@@ -381,8 +500,11 @@
 > Prints one analysis `loc` as a (possibly multi-level) giellacg reading,
 > peeling sub-readings and input marks from the right, and returns the set of
 > backtracking split points plus the final indent. Returns immediately with
-> `(empty SplitPoints, indent)` if `loc->output` is empty, or if `loc->output`
-> contains `" ??"` and `indent == 1`.
+> `(empty SplitPoints, indent)` if `loc->output` is empty, or if `loc` is
+> unanalysed and `indent == 1`. (PORT DIVERGENCE: the second test is
+> `pmatch-tokenize.hfst-ol-tokenize.is-unanalysed-fn` rather than the `" ??"`
+> substring alone, so a naive-tokenizer fallback reading is suppressed at the
+> top level of a cohort that also has a real analysis.)
 > Sets up output iterators over `loc->output_symbol_strings`
 > (`out_beg`..`out_end`) and input iterators over `loc->input_symbol_strings`
 > (`in_beg`..`in_end`). If `!always_wftag`, suppress the input wordform tag by
