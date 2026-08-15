@@ -294,4 +294,7 @@ assertions (
     {id foma-alphabet-set-ops, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:16:19.396105Z}
     {id no-default-features-ungated, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:15:25.879206Z}
     {id upstream-bug-report, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:15:27.620318Z}
+    {id foma-first-vs-initial-symbols, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:44:42.880799Z}
+    {id foma-generic-path-parity-tests, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:44:59.995342Z}
+    {id ol-variant-fd-unreachable, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:45:17.169609Z}
 )
