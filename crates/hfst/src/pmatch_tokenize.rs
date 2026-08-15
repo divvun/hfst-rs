@@ -61,7 +61,13 @@ impl Default for TokenizeSettings {
         TokenizeSettings {
             output_format: OutputFormat::tokenize,
             max_weight_classes: i32::MAX,
-            dedupe: false,
+            // PORT DIVERGENCE: upstream defaults this false and exposes it as
+            // -u. Two readings identical in span, output, tag AND weight say
+            // nothing a grammar can act on differently — they are two paths
+            // through the network projecting to one analysis, and a CG rule
+            // cannot distinguish them. Reporting the multiplicity is noise, so
+            // uniqueness is the default here and `--duplicates` restores it.
+            dedupe: true,
             print_weights: false,
             print_all: false,
             time_cutoff: 0.0,

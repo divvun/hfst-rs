@@ -5664,6 +5664,13 @@ children (
                     }
                 )
             }
+
+            {
+                id pmatch-epsilon-visited-guard
+                title "The path-scoped epsilon_visited guard in pmatch.rs is a divergence from C++, which bounds the same traversal only by recursion depth. It was added under hfst#476/#293 to stop an epsilon-cycle memory and weight explosion (5000 analyses at weight 4999 down to 2 at weight 1), so it earns its place — but its key omits tape_pos, which means two arrivals at the same state with DIFFERENT accumulated output are treated as the same visit, and the second is pruned. In principle that can drop a legitimate reading. NOT PROVEN TO MATTER: disabling it changes nothing on lang-sma's tokeniser over 2000 corpus lines, and after the dedup and encoder fixes that output is byte-identical to C++ in -c, -c -w and -g, so no live case is known. Parked at P3 deliberately rather than chased. If a missing-reading report ever appears that the duplicate and normalisation fixes do not explain, start here: add tape_pos to the key and see whether the reading returns, then check the cycle bound still holds. Found while fixing pmatch-duplicate-path-readings"
+                priority 3
+                kind @fix
+            }
         )
     }
 

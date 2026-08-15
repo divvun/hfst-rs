@@ -79,7 +79,8 @@ fn print_usage(common: &CommonOptions) {
          \x20 -tS, --time-cutoff=S     Limit search after having used S seconds per input\n\
          \x20 -lN, --weight-classes=N  Output no more than N best weight classes\n\
          \x20                          (where analyses with equal weight constitute a class\n\
-         \x20 -u, --unique             Remove duplicate analyses\n\
+         \x20 -u, --unique             Remove duplicate analyses (the default)\n\
+         \x20     --duplicates         Keep duplicate analyses, as upstream does\n\
          \x20 -z, --segment            Segmenting / tokenization mode (default)\n\
          \x20 -i, --space-separated    Tokenization with one sentence per line, space-separated tokens\n\
          \x20 -x, --xerox              Xerox output\n\
@@ -123,6 +124,10 @@ fn parse_options(
             ("time-cutoff", getopt::REQUIRED_ARGUMENT, b't' as i32),
             ("weight-classes", getopt::REQUIRED_ARGUMENT, b'l' as i32),
             ("unique", getopt::NO_ARGUMENT, b'u' as i32),
+            // PORT ADDITION: uniqueness is the default here, so the opt-out is
+            // the option upstream has no counterpart for. Long-only, since a
+            // short letter would be one upstream could later claim.
+            ("duplicates", getopt::NO_ARGUMENT, 0x100 + b'u' as i32),
             ("segment", getopt::NO_ARGUMENT, b'z' as i32),
             // C++ declares this long option as 'd' and only ever reaches the
             // space-separated case through the 'i' in its short-option string
@@ -175,6 +180,8 @@ fn parse_options(
             }
         } else if c == b'u' as i32 {
             options.settings.dedupe = true;
+        } else if c == 0x100 + b'u' as i32 {
+            options.settings.dedupe = false;
         } else if c == b'b' as i32 {
             options.settings.beam = opt.optarg().trim().parse::<f64>().unwrap_or(0.0) as f32;
             if options.settings.beam < 0.0 {

@@ -462,15 +462,33 @@ fn tokenize_cg_cohort_matches_cpp_readings_and_weights() {
     );
     assert!(ok, "pmatch2fst failed to compile the cohort grammar");
 
-    // Both paths for "cat" are reported: two identical readings in one cohort.
+    // Two accepting paths, one analysis. Uniqueness is this port's default, so
+    // the cohort carries the reading once.
     let (ok, o) = run(
         &["tokenize", "-c", out.to_str().expect("utf8 path")],
         b"cat\n",
     );
     assert!(ok, "tokenize -c failed");
     assert_eq!(
+        o, "\"<cat>\"\n\tC\n\n",
+        "identical readings must collapse by default"
+    );
+
+    // --duplicates restores upstream's multiplicity for anyone who needs byte
+    // parity with hfst-tokenize; this is the exact output C++ produces here.
+    let (ok, o) = run(
+        &[
+            "tokenize",
+            "-c",
+            "--duplicates",
+            out.to_str().expect("utf8 path"),
+        ],
+        b"cat\n",
+    );
+    assert!(ok, "tokenize -c --duplicates failed");
+    assert_eq!(
         o, "\"<cat>\"\n\tC\n\tC\n\n",
-        "both accepting paths must be reported, as C++ does"
+        "--duplicates must report both accepting paths, as C++ does"
     );
 
     // U+00B7 reaches its OWN arc, not U+0387's normalization alias, and the
@@ -501,7 +519,7 @@ fn tokenize_cg_cohort_matches_cpp_readings_and_weights() {
     );
     assert!(ok, "tokenize -c -w failed");
     assert_eq!(
-        o, "\"<cat>\"\n\tC\t0.0000000000\n\tC\t0.0000000000\n\n",
+        o, "\"<cat>\"\n\tC\t0.0000000000\n\n",
         "cg weights print as fixed(10), matching the C++ stream setting"
     );
 }

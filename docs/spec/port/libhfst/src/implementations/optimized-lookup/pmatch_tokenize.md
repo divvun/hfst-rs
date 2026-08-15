@@ -37,6 +37,21 @@
 >   weight only), and return it.
 > Returns a new vector; does not mutate the input.
 
+> PORT DIVERGENCE (deliberate, `s.dedupe` default): upstream defaults `dedupe`
+> false and exposes it as `-u`. This port defaults it TRUE. Two readings
+> identical in span, output, tag and weight are two paths through the network
+> projecting to a single analysis; a CG rule cannot act on one differently from
+> the other, so the multiplicity carries no information a grammar can use. On
+> lang-sma's tokeniser over 2000 corpus lines that is 1198 repeated readings in
+> `-c` output. `--duplicates` (long-only, a port addition) restores upstream's
+> behaviour and is byte-identical to hfst-tokenize.
+>
+> The dedup lives HERE, consulted per call from `match_and_print`, and NOT in
+> `locate()`. An earlier revision deduped inside `locate()`, which put it on the
+> shared path so it silently reached `giellacg` and `visl` as well — both of
+> which set `dedupe` themselves, so the effect was invisible there and only
+> `cg` showed it. Library callers of `locate()` still see every path.
+
 > [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.empty-to-underscore-fn]
 > std::string
 
