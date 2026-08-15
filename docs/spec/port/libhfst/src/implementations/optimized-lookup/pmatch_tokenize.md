@@ -253,16 +253,18 @@
 > whitespace on either side of it — so the default stream gains no whitespace
 > lines, and `-a` still reconstructs its input verbatim.
 >
-> The partition also reaches the `" ??"` unknown marker a pmatch script emits,
-> which upstream suppressed in `giellacg` (`print_reading_giellacg` drops it at
-> indent 1) but printed in plain `cg`, so every `cg` cohort that had real
-> analyses also carried a `"w" ??` reading a grammar could not tell from one.
-> Plain `cg` now agrees with `giellacg`: the marker is dropped where a real
-> analysis survives and rendered as the CG-standard `"w" ?` where it is the
-> only reading. Measured over lang-sma's 8.2 MB free corpus through its own
-> `tokeniser-disamb-gt-desc.pmhfst`, that removes 778,856 spurious readings and
-> respells 49,498 genuinely unknown cohorts; `giellacg` output is unchanged
-> byte for byte.
+> The partition keys on the fallback's WEIGHT, not on `is_unanalysed`, and that
+> distinction is load-bearing. A pmatch script emits its own `" ??"` unknown
+> marker — lang-sma's tokeniser puts `"Manne" ??` beside the real reading
+> `manne Pron Pers Sg1 Nom` — and upstream prints those in plain `cg` while
+> `print_reading_giellacg` drops them at indent 1. Both behaviours are kept.
+>
+> An earlier revision filtered on the marker instead, which made plain `cg`
+> agree with `giellacg` and removed 778,856 readings over lang-sma's free
+> corpus. Those readings are the script's own output, not an artifact of the
+> fallback, and reshaping a stream a grammar parses is outside what this change
+> is for. Verified byte-identical to hfst-tokenize 3.17.1 in both `-c` and `-g`
+> over that tokeniser, for analysed input and for an unknown word alike.
 
 > [spec:hfst:def:pmatch-tokenize.hfst-ol-tokenize.print-unanalysed-location-fn]
 > void

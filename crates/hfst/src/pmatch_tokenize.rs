@@ -1338,11 +1338,21 @@ pub fn match_and_print(
             // All nonmatching cases have been handled
         }
         let kept = keep_n_best_weight(&dedupe_locations(it, s), s);
-        // The naive tokenizer's fallback covers the same span as any
-        // dictionary reading of that span, so an analysed token carries the
-        // fallback alongside its real analyses; report it only where it is all
-        // there is.
-        let analysed: LocationVector = kept.iter().filter(|l| !is_unanalysed(l)).cloned().collect();
+        // The naive tokenizer's fallback covers the same span as any dictionary
+        // reading of that span, so an analysed token carries the fallback
+        // alongside its real analyses; report it only where it is all there is.
+        //
+        // Keyed on the fallback's weight alone, NOT on `is_unanalysed`. A pmatch
+        // script emits its own ` ??` readings beside real analyses — lang-sma's
+        // tokeniser puts `"Manne" ??` next to `manne Pron Pers Sg1 Nom` — and
+        // C++ prints those in cg output. Filtering on the marker would strip
+        // them, silently reshaping a stream that is not ours to reshape.
+        // giellacg suppresses them separately, where upstream also does.
+        let analysed: LocationVector = kept
+            .iter()
+            .filter(|l| l.weight < UNANALYSED_WEIGHT)
+            .cloned()
+            .collect();
         if analysed.is_empty() {
             print_unanalysed_location(container, &kept, outstream, token_number, s);
         } else {

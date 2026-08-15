@@ -183,13 +183,17 @@ fn analysed_tokens_do_not_gain_a_fallback_reading() {
     }
 }
 
-/// Naming the unanalysed test once also settles a disagreement between the two
-/// CG writers. `" ??"` is the unknown marker a pmatch script emits; giellacg
-/// has always dropped it where a real reading survives, but plain cg printed
-/// it, so a grammar saw a tagless `"w" ??` reading beside every analysis. Over
-/// lang-sma's free corpus that was 778,856 spurious readings.
+/// The two CG writers treat a script-emitted `" ??"` differently, and that is
+/// upstream's design, not a defect: plain cg prints the marker beside a real
+/// reading, giellacg drops it. Only the naive tokenizer's own fallback is
+/// filtered here, which is why the partition keys on its weight rather than on
+/// the marker — keying on the marker stripped readings the pmatch script
+/// authored and C++ prints.
+///
+/// Both expectations below are hfst-tokenize 3.17.1's output for this grammar,
+/// byte for byte.
 #[test]
-fn plain_cg_marks_unknown_like_giellacg() {
+fn the_two_cg_writers_disagree_about_the_marker() {
     let dir = std::env::temp_dir().join("hfst-tokenize-unmatched-qqmarker");
     std::fs::create_dir_all(&dir).expect("create scratch dir");
     let src = dir.join("g.pmatch");
@@ -209,8 +213,15 @@ fn plain_cg_marks_unknown_like_giellacg() {
     let (ok, cg) = run(&["tokenise", "-c", path(&archive)], b"cat dog\n\n");
     assert!(ok, "hfst tokenise -c failed on the unknown-marker archive");
     assert_eq!(
-        cg, "\"<cat>\"\n\t\"cat\" N\n\n\"<dog>\"\n\t\"dog\" ?\n\n",
-        "plain cg did not handle the unknown marker the way giellacg does:\n{cg}"
+        cg, "\"<cat>\"\n\t\"cat\" ??\n\t\"cat\" N\n\n\"<dog>\"\n\t\"dog\" ??\n\n",
+        "plain cg dropped a marker the script authored:\n{cg}"
+    );
+
+    let (ok, gcg) = run(&["tokenise", "-g", path(&archive)], b"cat dog\n\n");
+    assert!(ok, "hfst tokenise -g failed on the unknown-marker archive");
+    assert_eq!(
+        gcg, "\"<cat>\"\n\t\"cat N\" <W:0.0>\n: \n\"<dog>\"\n\t\"dog\" ?\n:\\n\n:\\n\n",
+        "giellacg did not suppress the marker where a real reading survives:\n{gcg}"
     );
 }
 
