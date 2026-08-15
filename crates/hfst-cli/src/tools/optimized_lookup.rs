@@ -162,6 +162,23 @@ enum Variant {
     WFdUniq,
 }
 
+/// What follows a `+?` record everywhere except the weighted variants: the
+/// record's own newline and then THREE blank lines.
+///
+/// Upstream copy-pasted one block to six sites and bracketed the preprocessor
+/// two different ways. Where the `#endif` precedes the second `std::endl <<
+/// std::endl` it runs on every platform; where it follows, the statement is
+/// inside `#ifdef WINDOWS` and a POSIX build emits nothing. So an unweighted
+/// transducer terminates an unanalysable word with three blank lines and a
+/// weighted one with a single blank line, for no reason a reader could infer.
+///
+/// Both are matched deliberately. This is the output a Giella pipeline parses,
+/// and being bug-compatible costs us nothing while diverging would silently
+/// reshape somebody's records. Measured against hfst-optimized-lookup 3.17.1
+/// over the whole variant matrix rather than read off the source, which is how
+/// the weighted exception was found.
+const NO_ANALYSIS_TERMINATOR: &str = "\n\n\n\n";
+
 // ---------------------------------------------------------------------------
 // The Transducer wraps the hfst library transducer plus the per-variant output
 // sinks; analysis is delegated to the library's optimized-lookup engine.
@@ -307,7 +324,10 @@ impl Transducer {
                     return;
                 }
                 if output_type == Xerox && self.display_vector.is_empty() {
-                    print_out(&format!("{}\t{}\t+?\n\n", prepend, prepend));
+                    print_out(&format!(
+                        "{}\t{}\t+?{}",
+                        prepend, prepend, NO_ANALYSIS_TERMINATOR
+                    ));
                     return;
                 }
                 for (i, it) in self.display_vector.iter().enumerate() {
@@ -325,7 +345,10 @@ impl Transducer {
             Variant::Uniq | Variant::FdUniq => {
                 // TransducerUniq/TransducerFdUniq::printAnalyses
                 if output_type == Xerox && self.display_set.is_empty() {
-                    print_out(&format!("{}\t{}\t+?\n\n", prepend, prepend));
+                    print_out(&format!(
+                        "{}\t{}\t+?{}",
+                        prepend, prepend, NO_ANALYSIS_TERMINATOR
+                    ));
                     return;
                 }
                 for (i, it) in self.display_set.iter().enumerate() {
@@ -534,7 +557,10 @@ fn run_transducer(options: &Options, t: &mut Transducer) {
                 print_out("\n");
             }
             if options.output_type == Xerox {
-                print_out(&format!("{}\t{}\t+?\n\n", str_display, str_display));
+                print_out(&format!(
+                    "{}\t{}\t+?{}",
+                    str_display, str_display, NO_ANALYSIS_TERMINATOR
+                ));
             }
             continue;
         }

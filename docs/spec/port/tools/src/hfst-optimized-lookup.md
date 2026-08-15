@@ -336,15 +336,21 @@
 > NO_SYMBOL_NUMBER, (re)start the per-input clock when time_cutoff is set, call
 > T.analyze(input_string), then T.printAnalyses(line).
 
-> PORT DIVERGENCE (upstream bug deliberately fixed): "blank lines" above is two
-> statements in upstream, not one. It prints the +? record with its blank-line
-> terminator and then unconditionally prints two more, so an unknown word is
-> followed by three blank lines where an analysed word is followed by one
-> (hfst-optimized-lookup.cc 651-659, and again at 1276-1284 for the no-analyses
-> case). Anything splitting the stream on blank lines therefore reads two empty
-> records out of upstream after every unknown word. This port terminates every
-> record with exactly one blank line. The record text itself is unchanged: the
-> columns downstream parses are the contract, the padding between them is not.
+> NOTE ON "blank lines": that is two statements in upstream, not one — the +?
+> record with its own blank-line terminator, then a second block printing two
+> more. The second block is copy-pasted to six sites and bracketed two different
+> ways: where `#endif` precedes the `std::endl << std::endl` it runs everywhere,
+> where it follows, the statement sits inside `#ifdef WINDOWS` and a POSIX build
+> emits nothing. So on POSIX an unanalysable word ends with THREE blank lines
+> from the tokenization-failure path and from the unweighted variants, and with
+> ONE from the weighted variants (TransducerW / TransducerWUniq /
+> TransducerWFdUniq). An analysed record always ends with one.
+>
+> The port reproduces all of this, inconsistency included. This is the stream
+> Giella pipelines parse, so being bug-compatible costs nothing while diverging
+> would silently reshape a consumer's records. The counts were measured against
+> hfst-optimized-lookup 3.17.1 across the variant matrix rather than read off
+> the source; reading alone had produced the wrong answer for the weighted case.
 
 > [spec:hfst:def:hfst-optimized-lookup.setup-fn]
 > int
