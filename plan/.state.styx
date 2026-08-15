@@ -292,4 +292,6 @@ assertions (
     {id ol-header-flags-hardcoded-true, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:50:30.334693Z}
     {id ol-fast-mode-silent, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:07:39.017992Z}
     {id foma-alphabet-set-ops, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:16:19.396105Z}
+    {id no-default-features-ungated, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:15:25.879206Z}
+    {id upstream-bug-report, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:15:27.620318Z}
 )

@@ -5312,6 +5312,22 @@ children (
                 title "Report the upstream C++ HFST bugs this sweep confirmed still present in 3.17.1, with reproductions. FIVE so far: (1) hfst-info feature checks are polarity-inverted — hfst-info.cc:237 guards \"Required foma support not present\" with `#if HAVE_FOMA`, so -f foma and -f openfst FAIL on builds that have them; (2) hfst-info --max-version uses the --atleast-version comparison (hfst-info.cc:214-217), accepting exactly the builds it should reject; (3) pmatch initial-symbol analysis is UNSOUND for a context at the start of an alternation branch — `Define TOP [ [ LC({the }) {cat} ] | {dog} ] EndTag(a) ;` emits initial-symbols \"d\" and SILENTLY DROPS the cat match, reproduced with a C++-built archive; (4) unicodeCheck_ hardcodes the first two code points and appends a literal \"...\" so its \"add X to Multichar_Symbols\" advice is wrong for any 3+ code point grapheme; (5) hfst-invert writes the symbol table TWICE, producing a 560-byte file where 393 suffices — verified redundant, since our single-table file reads back in C++ with identical paths and alphabet. Each was found by fixing our port and checking whether upstream shares it. Reproductions are in this session's history"
                 priority 2
                 kind @docs
+                sealed true
+                log (
+                    {
+                        at 2026-08-15T16:15:20.591347Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "RETIRED by operator decision 2026-08-15: not reported upstream. Nothing was sent.\n\nThe six confirmed HFST 3.17.1 bugs stay documented for our own purposes — in this node's title, in the individual defect nodes that found each one, and in the PORT DIVERGENCE notes on the spec rules that depart from them. That record is what a future reader needs; the outbound half is what is declined.\n\nThe six, so this entry stands alone:\n1. hfst-info feature checks are polarity-inverted (hfst-info.cc:237 guards \"Required foma support not present\" with #if HAVE_FOMA), so -f foma and -f openfst fail on builds that have them.\n2. hfst-info --max-version uses the --atleast-version comparison (hfst-info.cc:214-217), accepting exactly the builds it should reject.\n3. pmatch initial-symbol analysis is unsound for a context at the start of an alternation branch, silently dropping matches.\n4. unicodeCheck_ hardcodes the first two code points and appends a literal \"...\", so its \"add X to Multichar_Symbols\" advice is wrong for any 3+ code point grapheme.\n5. hfst-invert writes the symbol table twice, 560 bytes where 393 suffices.\n6. The +? blank-line terminator block is copy-pasted to six sites with two different preprocessor bracketings, so an unanalysable word ends with three blank lines from the unweighted variants and one from the weighted ones. Found 2026-08-15; this port reproduces both, deliberately.\n\nConsequence to keep in mind: each of these is a live difference between us and upstream that upstream does not know about, so it will not converge on its own. Where we match the bug (6) we match it knowingly; where we fix it (1, 2, 3, 4, 5) our output is correct and theirs is not."
+                    }
+
+                    {
+                        at 2026-08-15T16:15:27.620318Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -5453,6 +5469,22 @@ children (
                 title "cargo check --no-default-features was broken on main for an unknown span and nothing noticed: hfst-cli built against an hfst that still carried AnyTransducer::Foma while its own match arms were gated away, 22 E0004 errors. Root cause fixed (workspace hfst dep now default-features = false), but the gap that let it rot is unfixed — there is no CI in this repo at all (no .github), and the nplan rust platform block runs only cargo fmt --check, gated on crates/**/*.rs so a Cargo.toml-only change would not trip it anyway. Needs a feature-combination build gate somewhere that actually runs. Commit checks are budgeted at 60s and a feature-flip forces a full rebuild, so the commit hook is likely the wrong home for it"
                 priority 2
                 kind @build
+                sealed true
+                log (
+                    {
+                        at 2026-08-15T16:15:18.775613Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "RETIRED by operator decision 2026-08-15: no gate, no CI. Checks stay manual.\n\nThe root cause is fixed and stays fixed — the workspace declares hfst with default-features = false, so a consumer's own backend features are the only thing that turn a backend on, and cargo check --no-default-features builds clean. What is declined is the automation around it.\n\nWhat that means concretely, recorded so nobody re-derives it as a surprise:\n- Nothing runs cargo clippy, cargo nextest run, or any feature-combination build unless a person does. Green at any moment means somebody checked, not that anything enforced it.\n- The nplan rust platform block runs cargo fmt --check only, globbed on crates/**/*.rs. A Cargo.toml-only change — exactly the shape that broke this — trips nothing.\n- The specific failure mode that opened this node can therefore recur: a feature edge goes stale, the default build stays green, and it surfaces whenever someone next runs the non-default configuration.\n\nAnyone re-proposing a gate should read this entry first: the absence is chosen, not overlooked."
+                    }
+
+                    {
+                        at 2026-08-15T16:15:25.879206Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
