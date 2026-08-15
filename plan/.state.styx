@@ -298,4 +298,5 @@ assertions (
     {id foma-generic-path-parity-tests, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:44:59.995342Z}
     {id ol-variant-fd-unreachable, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:45:17.169609Z}
     {id tokenize-drops-unmatched, kind @complete, author "brendan@necessary.nu", at 2026-08-15T17:32:24.247021Z}
+    {id pmatch-tokenize-runtime-divergence, kind @complete, author "brendan@necessary.nu", at 2026-08-15T19:11:22.718785Z}
 )
