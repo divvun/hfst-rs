@@ -56,6 +56,11 @@ use crate::hfst_tokenizer::HfstTokenizer;
 use crate::transducer::{Transducer, UnweightedTables, WeightedTables};
 use crate::tropical_weight_transducer::TropicalWeightTransducer;
 
+#[path = "hfst_transducer_flag_ops.rs"]
+mod flag_ops;
+pub(crate) use flag_ops::{decode_flag, encode_flag};
+use flag_ops::{decode_flag_diacritics, encode_flag_diacritics, has_flags, rename_flag_diacritics};
+
 // -----------------------------------------------------------------------------
 // Facade type aliases (the 'HfstTransducer'-dependent typedefs deferred out of
 // 'HfstDataTypes.h' until the facade type exists). Generic over the backend.
@@ -72,6 +77,23 @@ pub type HfstTransducerPair<B> = (HfstTransducer<B>, HfstTransducer<B>);
 /// 'typedef std::vector<HfstTransducerPair> HfstTransducerPairVector;'
 // [spec:hfst:def:hfst-data-types.hfst.hfst-transducer-pair-vector]
 pub type HfstTransducerPairVector<B> = Vec<HfstTransducerPair<B>>;
+
+/// The flag-diacritic self-loops that `-F` composition must expose virtually.
+///
+/// Preparing an overlay inserts these symbols into the corresponding operand's
+/// alphabet, but deliberately does not insert transitions.  The OpenFst layer
+/// maps the symbols to labels and presents a unit-weight self-loop only when
+/// its composition matcher asks for one.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FlagDiacriticComposeOverlay {
+    /// Flags logically inserted as self-loops at every state of the left FST.
+    pub left_self_loops: StringSet,
+    /// Flags logically inserted as self-loops at every state of the right FST.
+    pub right_self_loops: StringSet,
+    /// Whether `_1` flags must precede `_2` flags between regular left-output
+    /// symbols, matching HFST's two-state illegal-flag-path restriction.
+    pub enforce_left_before_right: bool,
+}
 
 // -----------------------------------------------------------------------------
 // Static predicates (formerly static member functions of the facade; free
@@ -299,6 +321,18 @@ impl<B: Backend> HfstTransducer<B> {
         })
     }
 
+    /// [`Self::new_from_basic`] for a caller that is finished with `net`, so a
+    /// backend can release the graph as it converts it.
+    pub fn new_from_basic_owned(net: HfstBasicTransducer) -> crate::error::Result<Self> {
+        Ok(HfstTransducer {
+            name: net.name.clone(),
+            props: BTreeMap::new(),
+            anonymous: false,
+            is_trie: false,
+            fst: B::from_basic_owned(net)?,
+        })
+    }
+
     // -------------------------------------------------------------------------
     // ----- Assignment -----
     // -------------------------------------------------------------------------
@@ -439,8 +473,8 @@ impl<B: Backend> HfstTransducer<B> {
         &mut self,
         t: HfstBasicTransducer,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.fst = B::from_basic(&t)?;
         self.name = t.name.clone();
+        self.fst = B::from_basic_owned(t)?;
         Ok(self)
     }
     // -------------------------------------------------------------------------
@@ -623,22 +657,38 @@ impl<B: Backend> HfstTransducer<B> {
         ) {
             let mut basic: HfstBasicTransducer = HfstBasicTransducer::from_transducer(self);
 
-            let mut s: u32 = 0;
-            while s <= basic.get_max_state() {
-                for missing_flag in missing_flags.iter() {
+            // Every state gains a free self-loop per missing flag, so the graph
+            // grows by 'states x flags' transitions — on a Giella speller that is
+            // hundreds of millions. Intern each flag's symbol number and alphabet
+            // entry once instead of once per (state, flag), and give each state
+            // room for exactly its new loops, so the transition vectors never
+            // double past the size they end at.
+            let loops: Vec<(u32, u32)> = missing_flags
+                .iter()
+                .map(|flag| {
                     let tr = HfstBasicTransition::new_symbols(
-                        s,
-                        missing_flag.clone(),
-                        missing_flag.clone(),
+                        0,
+                        flag.clone(),
+                        flag.clone(),
                         0.0,
                         basic.coder_mut(),
                     );
-                    basic.add_transition(s, &tr, true);
+                    basic.add_symbol_to_alphabet(flag);
+                    (tr.get_input_number(), tr.get_output_number())
+                })
+                .collect();
+
+            for s in 0..=basic.get_max_state() {
+                let transitions = &mut basic.state_vector[s as usize];
+                transitions.reserve_exact(loops.len());
+                for (input, output) in &loops {
+                    transitions.push(HfstBasicTransition::new_numbers(
+                        s, *input, *output, 0.0, false,
+                    ));
                 }
-                s += 1;
             }
 
-            *self = HfstTransducer::from_basic(&basic);
+            *self = HfstTransducer::from_basic_owned(basic);
         }
     }
 
@@ -1087,6 +1137,10 @@ impl<B: Backend> HfstTransducer<B> {
         HfstTransducer::new_from_basic(net)
             .expect("converting a basic transducer to an available backend type cannot fail")
     }
+    pub fn from_basic_owned(net: HfstBasicTransducer) -> Self {
+        HfstTransducer::new_from_basic_owned(net)
+            .expect("converting a basic transducer to an available backend type cannot fail")
+    }
     pub fn from_basic_transducer(net: &HfstBasicTransducer) -> Self {
         HfstTransducer::new_from_basic(net)
             .expect("converting a basic transducer to an available backend type cannot fail")
@@ -1343,13 +1397,40 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             crate::bail!(Fatal, "harmonize_copy with anonymous transducers");
         }
 
-        let another_copy = another.clone();
-
         // (The C++ pre-inserted flag diacritics for foma inputs only. The
         // harmonization below runs on the interchange graph, which treats
         // flags alike whatever backend the operands came from.)
 
-        let mut another_basic = another_copy.get_basic_transducer()?;
+        // The C++ copied 'another' before converting, because its conversion
+        // consumed the source. 'get_basic_transducer' builds a fresh graph from
+        // a shared reference, so the copy is a second full transducer nobody
+        // reads — on a flag-harmonized operand that is gigabytes.
+        let another_basic = another.get_basic_transducer()?;
+        self.harmonize_onto(another_basic).map(Some)
+    }
+
+    /// [`Self::harmonize_copy`] for a caller that is finished with `another`,
+    /// which is then released before the harmonized copy is built rather than
+    /// standing beside it.
+    pub fn harmonize_copy_owned(
+        &mut self,
+        another: HfstTransducer<B>,
+    ) -> crate::error::Result<Option<HfstTransducer<B>>> {
+        if self.anonymous && another.anonymous {
+            crate::bail!(Fatal, "harmonize_copy with anonymous transducers");
+        }
+
+        let another_basic = another.get_basic_transducer()?;
+        drop(another);
+        self.harmonize_onto(another_basic).map(Some)
+    }
+
+    /// Harmonize this transducer against `another_basic` in place and return
+    /// the matching harmonized copy of it.
+    fn harmonize_onto(
+        &mut self,
+        mut another_basic: HfstBasicTransducer,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         let mut this_basic = self.convert_to_basic_transducer()?;
 
         this_basic.harmonize(&mut another_basic);
@@ -1369,9 +1450,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         another_basic.reindex_into(&mut canonical);
 
         self.convert_to_hfst_transducer(this_basic)?;
-        let another_harmonized = HfstTransducer::from_basic_transducer(&another_basic);
-
-        Ok(Some(another_harmonized))
+        Ok(HfstTransducer::from_basic_owned(another_basic))
     }
 
     /*  Harmonize symbol-to-number encodings and expand unknown and
@@ -1481,6 +1560,42 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             self.insert_freely_missing_flags_from(another);
         }
         Ok(())
+    }
+
+    /// Prepare the operands for flag-diacritic-aware composition without
+    /// materializing the `states * missing_flags` self-loops.
+    ///
+    /// This performs the same flag renaming as [`Self::harmonize_flag_diacritics`]
+    /// when both operands originally contain flags.  It then harmonizes only
+    /// the missing flag symbols into the opposite alphabets and returns those
+    /// exact differences for the lazy OpenFst overlay.
+    pub fn prepare_flag_diacritics_for_compose(
+        &mut self,
+        another: &mut HfstTransducer<B>,
+    ) -> crate::error::Result<FlagDiacriticComposeOverlay> {
+        let left_had_flags = has_flags(self);
+        let right_had_flags = has_flags(another);
+
+        if left_had_flags && right_had_flags {
+            rename_flag_diacritics(self, "_1");
+            rename_flag_diacritics(another, "_2");
+        }
+
+        // Do this in order: after right-side flags are inserted into the left
+        // alphabet, the reverse difference still consists exactly of the
+        // original left-side flags because the post-rename sets are disjoint.
+        let left_self_loops = self.insert_missing_diacritics_to_alphabet_from(another)?;
+        let right_self_loops = another.insert_missing_diacritics_to_alphabet_from(self)?;
+        let enforce_left_before_right = left_had_flags
+            && right_had_flags
+            && !left_self_loops.is_empty()
+            && !right_self_loops.is_empty();
+
+        Ok(FlagDiacriticComposeOverlay {
+            left_self_loops,
+            right_self_loops,
+            enforce_left_before_right,
+        })
     }
 
     // -------------------------------------------------------------------------
@@ -2335,6 +2450,45 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         harmonize: bool,
         config: &EngineConfig,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
+        self.compose_with_config_and_flag_overlay(another, harmonize, config, None)
+    }
+
+    /// Compose with an optional lazy flag-diacritic self-loop overlay.
+    ///
+    /// The overlay must have been produced by
+    /// [`Self::prepare_flag_diacritics_for_compose`] for these operands.  It is
+    /// resolved to backend labels only after ordinary symbol harmonization has
+    /// established the operands' shared canonical coding. Virtual overlays are
+    /// rejected for backends without overlay support and for the flag-as-epsilon
+    /// and Xerox composition modes, which require the eager flag path.
+    pub fn compose_with_config_and_flag_overlay(
+        &mut self,
+        another: &HfstTransducer<B>,
+        harmonize: bool,
+        config: &EngineConfig,
+        flag_overlay: Option<&FlagDiacriticComposeOverlay>,
+    ) -> crate::error::Result<&mut HfstTransducer<B>> {
+        if flag_overlay.is_some() {
+            if !B::SUPPORTS_FLAG_OVERLAY {
+                crate::bail!(
+                    Hfst,
+                    "this backend does not support virtual flag composition"
+                );
+            }
+            if config.flag_is_epsilon_in_composition {
+                crate::bail!(
+                    Hfst,
+                    "virtual flag composition cannot be combined with flag-is-epsilon composition"
+                );
+            }
+            if config.xerox_composition {
+                crate::bail!(
+                    Hfst,
+                    "virtual flag composition cannot be combined with xerox composition"
+                );
+            }
+        }
+
         self.is_trie = false;
 
         let mut another_copy: HfstTransducer<B> = another.clone();
@@ -2377,7 +2531,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // Harmonize (FOMA and XFSM took care of this by default; both are
         // compiled out).
         another_copy = self
-            .harmonize_copy(&another_copy)?
+            .harmonize_copy_owned(another_copy)?
             .expect("harmonize_copy returns Some for tropical types");
 
         /* Take care of unknown and identity symbols being handled right in
@@ -2394,12 +2548,16 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
         // (The HFST_OL/HFST_OLW arm threw HfstTransducerTypeMismatch — compose
         // simply does not exist on the lookup instantiations now.)
-        self.fst = self.fst.compose(&another_copy.fst);
+        let left = std::mem::replace(&mut self.fst, B::empty());
+        self.fst = left.try_compose_owned(
+            another_copy.fst,
+            flag_overlay,
+            config.compose_memory_limit_bytes,
+        )?;
 
         // Revert changes made before composition
         if config.xerox_composition {
             decode_flag_diacritics(self);
-            decode_flag_diacritics(&mut another_copy);
         }
 
         if config.flag_is_epsilon_in_composition {
@@ -2408,7 +2566,6 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
         if config.unknown_symbols_in_use {
             self.substitute_with_func(substitute_single_identity_with_the_other_symbol)?;
-            another_copy.substitute_with_func(substitute_unknown_identity_pairs)?;
         }
 
         Ok(self)
@@ -3854,6 +4011,11 @@ pub struct EngineConfig {
     // [spec:hfst:def:hfst-transducer.hfst.get-flag-is-epsilon-in-composition-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.get-flag-is-epsilon-in-composition-fn]
     pub flag_is_epsilon_in_composition: bool,
+    /// Exact configured allowance for OpenFst tropical compose working memory.
+    /// That backend partitions it among budget-aware compose structures; it is
+    /// not an exact RSS ceiling. Other backends do not honor it. `None` is
+    /// unbounded.
+    pub compose_memory_limit_bytes: Option<u64>,
     // [spec:hfst:def:hfst-transducer.hfst.set-encode-weights-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.set-encode-weights-fn]
     // [spec:hfst:def:hfst-transducer.hfst.get-encode-weights-fn]
@@ -3885,6 +4047,7 @@ impl Default for EngineConfig {
             minimize_even_if_already_minimal: false,
             unknown_symbols_in_use: true,
             flag_is_epsilon_in_composition: false,
+            compose_memory_limit_bytes: None,
             encode_weights: false,
             minimization_algorithm: MinimizationAlgorithm::HOPCROFT,
             harmonize_smaller: true,
@@ -3978,165 +4141,6 @@ impl HfstBasicTransducer {
     pub fn from_hfst_transducer<B: Backend>(t: &HfstTransducer<B>) -> HfstBasicTransducer {
         HfstBasicTransducer::from_transducer(t)
     }
-}
-
-// C++ file-static flag-diacritic helpers. 'has_flags' is read-only; the others
-// mutate the transducer in place (C++ 'fst = HfstTransducer(...)'), so they take
-// &mut HfstTransducer (callers pass &mut self / &mut another).
-
-// [spec:hfst:def:hfst-transducer.hfst.encode-flag-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.encode-flag-fn]
-pub(crate) fn encode_flag(flag_diacritic: &str) -> Symbol {
-    let mut retval: Vec<u8> = flag_diacritic.as_bytes().to_vec();
-    let last = retval.len() - 1;
-    retval[0] = b'%';
-    retval[last] = b'%';
-    Symbol::from(
-        String::from_utf8(retval).expect("flag diacritic remains valid UTF-8 after %-escaping"),
-    )
-}
-
-// [spec:hfst:def:hfst-transducer.hfst.decode-flag-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.decode-flag-fn]
-pub(crate) fn decode_flag(flag_diacritic: &str) -> Symbol {
-    let bytes = flag_diacritic.as_bytes();
-    if bytes[0] != b'%' || bytes[bytes.len() - 1] != b'%' {
-        return Symbol::new(flag_diacritic);
-    }
-    let mut retval: Vec<u8> = bytes.to_vec();
-    let last = retval.len() - 1;
-    retval[0] = b'@';
-    retval[last] = b'@';
-    Symbol::from(
-        String::from_utf8(retval).expect("flag diacritic remains valid UTF-8 after @-unescaping"),
-    )
-}
-
-// [spec:hfst:def:hfst-transducer.hfst.add-suffix-to-feature-name-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.add-suffix-to-feature-name-fn]
-fn add_suffix_to_feature_name(flag_diacritic: &str, suffix: &str) -> Symbol {
-    Symbol::from(
-        "@".to_string()
-            + &FdOperation::get_operator(flag_diacritic)
-            + "."
-            + &FdOperation::get_feature(flag_diacritic)
-            + suffix
-            + &(if FdOperation::has_value(flag_diacritic) {
-                ".".to_string() + &FdOperation::get_value(flag_diacritic)
-            } else {
-                String::new()
-            })
-            + "@",
-    )
-}
-
-// [spec:hfst:def:hfst-transducer.hfst.has-flags-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.has-flags-fn]
-fn has_flags<B: Backend>(fst: &HfstTransducer<B>) -> bool {
-    let alphabet = fst
-        .get_alphabet()
-        .expect("get_alphabet on a valid transducer cannot fail");
-    for it in alphabet.iter() {
-        if FdOperation::is_diacritic(it) {
-            return true;
-        }
-    }
-    false
-}
-
-// Return true if the flag in flag_diacritic ends in suffix and false
-// otherwise. E.g. if flag_diacritic = "@D.NeedNoun_1.ON@ and suffix =
-// "_1", return true.
-// [spec:hfst:def:hfst-transducer.hfst.is-flag-suffix-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.is-flag-suffix-fn]
-#[allow(dead_code)]
-fn is_flag_suffix(suffix: &str, flag_diacritic: &str) -> bool {
-    let flag_end_pos = match flag_diacritic.rfind('.') {
-        None => return false,
-        Some(pos) => pos,
-    };
-
-    if flag_end_pos < suffix.len() {
-        return false;
-    }
-
-    if flag_diacritic[flag_end_pos - suffix.len()..flag_end_pos] != *suffix {
-        return false;
-    }
-
-    true
-}
-
-// [spec:hfst:def:hfst-transducer.hfst.rename-flag-diacritics-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.rename-flag-diacritics-fn]
-fn rename_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>, suffix: &str) {
-    let basic_fst = HfstBasicTransducer::from_transducer(fst);
-    let mut basic_fst_copy = HfstBasicTransducer::new();
-    let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
-
-    for (s, states) in basic_fst.state_vector.iter().enumerate() {
-        let s = s as HfstState;
-        for transition in states.iter() {
-            let input_symbol = transition.get_input_symbol(basic_fst.coder());
-            let output_symbol = transition.get_output_symbol(basic_fst.coder());
-            let isym = if FdOperation::is_diacritic(&input_symbol) {
-                add_suffix_to_feature_name(&input_symbol, suffix)
-            } else {
-                input_symbol
-            };
-            let osym = if FdOperation::is_diacritic(&output_symbol) {
-                add_suffix_to_feature_name(&output_symbol, suffix)
-            } else {
-                output_symbol
-            };
-            let tr = HfstBasicTransition::new_symbols(
-                transition.get_target_state(),
-                isym,
-                osym,
-                transition.get_weight(),
-                basic_fst_copy.coder_mut(),
-            );
-            basic_fst_copy.add_transition(s, &tr, true);
-        }
-
-        if basic_fst.is_final_state(s) {
-            basic_fst_copy.set_final_weight(
-                s,
-                &basic_fst
-                    .get_final_weight(s)
-                    .expect("state was confirmed final via is_final_state"),
-            );
-        }
-    }
-    *fst = HfstTransducer::from_basic(&basic_fst_copy);
-}
-
-// The flag encode/decode passes ('encode_flag_diacritics' /
-// 'decode_flag_diacritics') dispatch to the backend. The tropical backend does
-// a pure in-place SymbolTable rename (equivalent automaton, bytes diverge from
-// the whole-graph round-trip by design — [node:flag-encode-diverge]); every
-// other backend keeps the C++ round-trip via the Backend default. Either way
-// the facade metadata is reset exactly as the former '*fst = from_basic(...)'
-// did: name -> "", props -> {}, anonymous/is_trie -> false.
-fn reset_facade_metadata_after_flag_pass<B: Backend>(fst: &mut HfstTransducer<B>) {
-    fst.name = String::new();
-    fst.props = BTreeMap::new();
-    fst.anonymous = false;
-    fst.is_trie = false;
-}
-
-// [spec:hfst:def:hfst-transducer.hfst.encode-flag-diacritics-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.encode-flag-diacritics-fn]
-fn encode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
-    fst.fst.encode_flag_diacritics();
-    reset_facade_metadata_after_flag_pass(fst);
-}
-
-// [spec:hfst:def:hfst-transducer.hfst.decode-flag-diacritics-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.decode-flag-diacritics-fn]
-fn decode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
-    fst.fst.decode_flag_diacritics();
-    reset_facade_metadata_after_flag_pass(fst);
 }
 
 // C++ 'operator<<(std::ostream &out, const HfstTransducer &t)' (HfstTransducer.cc:6419)
@@ -4365,147 +4369,9 @@ impl FromAnyTransducer for crate::backend_thfst::ThfstTransducer {
 }
 
 #[cfg(test)]
-mod flag_encode_tests {
-    use super::*;
-    use crate::hfst_basic_transducer::HfstBasicTransducer;
-    use crate::hfst_basic_transition::HfstBasicTransition;
-    use crate::hfst_data_types::Symbol;
-    use hfst_openfst::StdVectorFst;
-    use hfst_openfst::prelude::*;
+#[path = "hfst_transducer_flag_compose_overlay_tests.rs"]
+mod flag_compose_overlay_tests;
 
-    // Snapshot the tropical backend's alphabet as ordered (label, symbol) pairs.
-    // The in-place encode/decode is a divergence precisely because it keeps
-    // symbols at their original labels, so comparing this exact map (not just a
-    // string set) is what proves the round-trip is the *identity* on the
-    // symbol table.
-    fn symbol_pairs(t: &HfstTransducer<StdVectorFst>) -> Vec<(u32, String)> {
-        let st = t
-            .fst
-            .input_symbols()
-            .expect("tropical transducer always carries a symbol table");
-        let mut v: Vec<(u32, String)> = st.iter().map(|(l, s)| (l, s.to_string())).collect();
-        v.sort_by_key(|(l, _)| *l);
-        v
-    }
-
-    // 0 -@U.F.FOO@-> 1 -a-> 2 -@P.F.BAR@-> 3 (final), plus an ordinary 'b' arc.
-    fn build_flagged() -> HfstTransducer<StdVectorFst> {
-        let mut t = HfstBasicTransducer::new();
-        let s1 = t.add_state_new();
-        let s2 = t.add_state_new();
-        let s3 = t.add_state_new();
-        t.set_final_weight(s3, &0.0);
-
-        let fd1 = Symbol::new_static("@U.F.FOO@");
-        let fd2 = Symbol::new_static("@P.F.BAR@");
-
-        let tr = HfstBasicTransition::new_symbols(s1, fd1.clone(), fd1.clone(), 0.0, t.coder_mut());
-        t.add_transition(0, &tr, true);
-        let tr = HfstBasicTransition::new_symbols(s2, "a".into(), "a".into(), 0.0, t.coder_mut());
-        t.add_transition(s1, &tr, true);
-        let tr = HfstBasicTransition::new_symbols(s2, "b".into(), "b".into(), 0.0, t.coder_mut());
-        t.add_transition(s1, &tr, true);
-        let tr = HfstBasicTransition::new_symbols(s3, fd2.clone(), fd2.clone(), 0.0, t.coder_mut());
-        t.add_transition(s2, &tr, true);
-
-        HfstTransducer::<StdVectorFst>::new_from_basic(&t)
-            .expect("building a tropical transducer from a basic one cannot fail")
-    }
-
-    #[test]
-    fn flag_encode_decode_round_trip_restores_exactly() {
-        let original = build_flagged();
-        let before = symbol_pairs(&original);
-        // The flags start in @...@ form.
-        assert!(
-            before.iter().any(|(_, s)| s == "@U.F.FOO@"),
-            "expected @-wrapped flag before encode: {before:?}"
-        );
-
-        let mut t = original.clone();
-        encode_flag_diacritics(&mut t);
-
-        // After encode every flag is %-escaped at its ORIGINAL label; ordinary
-        // symbols and epsilon are untouched.
-        let encoded = symbol_pairs(&t);
-        assert_eq!(
-            before.len(),
-            encoded.len(),
-            "encode must not add or drop symbols"
-        );
-        for ((lb, sb), (le, se)) in before.iter().zip(encoded.iter()) {
-            assert_eq!(lb, le, "labels must be preserved by the in-place rename");
-            if sb == "@U.F.FOO@" {
-                assert_eq!(se, "%U.F.FOO%");
-            } else if sb == "@P.F.BAR@" {
-                assert_eq!(se, "%P.F.BAR%");
-            } else {
-                assert_eq!(sb, se, "non-flag symbol {sb} must be unchanged");
-            }
-        }
-
-        decode_flag_diacritics(&mut t);
-        let after = symbol_pairs(&t);
-        // Full equality: the symbol table (labels AND strings) is byte-for-byte
-        // the original, and the automaton compares equal.
-        assert_eq!(before, after, "decode must be the exact inverse of encode");
-        assert!(
-            original
-                .compare_default(&t)
-                .expect("compare on tropical transducers cannot fail"),
-            "the round-tripped transducer must be equivalent to the original"
-        );
-    }
-
-    #[test]
-    fn encoded_transducer_is_accepted_by_compose() {
-        // Exercise the whole xerox-composition path (encode both operands ->
-        // product -> decode) the way compose_with_config does: composing a
-        // flagged acceptor with itself under xerox_composition must succeed and
-        // stay equivalent to the flag-free compose.
-        let t = build_flagged();
-        let cfg = EngineConfig {
-            xerox_composition: true,
-            ..EngineConfig::default()
-        };
-
-        let mut xerox = t.clone();
-        xerox
-            .compose_with_config(&t, true, &cfg)
-            .expect("xerox composition of a flagged acceptor must succeed");
-
-        let mut plain = t.clone();
-        plain
-            .compose(&t, true)
-            .expect("plain composition of a flagged acceptor must succeed");
-
-        assert!(
-            xerox
-                .compare_default(&plain)
-                .expect("compare on tropical transducers cannot fail"),
-            "xerox-composition must agree with the plain compose for identity flags"
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "reserved symbol")]
-    fn reserved_symbol_collision_panics() {
-        // An alphabet symbol already wrapped in %...% whose @-unescaped form is a
-        // flag diacritic collides with an encoded flag: encode must panic.
-        let mut t = HfstBasicTransducer::new();
-        let s1 = t.add_state_new();
-        t.set_final_weight(s1, &0.0);
-        let reserved = Symbol::new_static("%U.RESERVED.X%");
-        let tr = HfstBasicTransition::new_symbols(
-            s1,
-            reserved.clone(),
-            reserved.clone(),
-            0.0,
-            t.coder_mut(),
-        );
-        t.add_transition(0, &tr, true);
-        let mut fst = HfstTransducer::<StdVectorFst>::new_from_basic(&t)
-            .expect("building a tropical transducer from a basic one cannot fail");
-        encode_flag_diacritics(&mut fst);
-    }
-}
+#[cfg(test)]
+#[path = "hfst_transducer_flag_encode_tests.rs"]
+mod flag_encode_tests;

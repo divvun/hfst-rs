@@ -111,6 +111,9 @@ pub type StateMap = BTreeMap<i32, StateId>;
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer]
 pub struct TropicalWeightTransducer;
 
+#[path = "tropical_weight_transducer_compose.rs"]
+mod compose;
+
 // ===== construction-io (workflow body) =====
 mod construction_io {
     #![allow(unused_imports)]
@@ -2250,42 +2253,6 @@ mod operations {
             retval
         }
 
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.compose-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.compose-fn]
-        pub fn compose(t1: &StdVectorFst, t2: &StdVectorFst) -> StdVectorFst {
-            let mut symbol_set: StringSet = StringSet::new();
-            // a copy of t2 is created so that its symbol table check sum
-            // is the same as t1's
-            // (else OpenFst complains about non-matching check sums... )
-            let mut t2_copy = TropicalWeightTransducer::expand_arcs(t2, &mut symbol_set, false);
-
-            // C++ mutates t1 (sets/sorts/unsets); operate on a local clone.
-            let mut t1_copy = t1.clone();
-
-            // t1->SetOutputSymbols(t1->InputSymbols());
-            let in_syms = t1_copy.input_symbols().map(std::sync::Arc::clone);
-            if let Some(a) = in_syms {
-                t1_copy.set_output_symbols(a);
-            }
-            // t2_->SetInputSymbols(t1->OutputSymbols());
-            let out_syms = t1_copy.output_symbols().map(std::sync::Arc::clone);
-            if let Some(a) = out_syms {
-                t2_copy.set_input_symbols(a);
-            }
-
-            algorithms::ArcSortOutput(&mut t1_copy);
-            algorithms::ArcSortInput(&mut t2_copy);
-
-            let mut result = StdVectorFst::new();
-            algorithms::Compose(&t1_copy, &t2_copy, &mut result);
-
-            // t1->SetOutputSymbols(NULL); (only affected the caller's t1 in C++)
-
-            // result->SetInputSymbols(t1->InputSymbols());
-            copy_input_symbol_table(t1, &mut result);
-            result
-        }
-
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.concatenate-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.concatenate-fn]
         pub fn concatenate(t1: &StdVectorFst, t2: &StdVectorFst) -> StdVectorFst {
@@ -3693,3 +3660,7 @@ mod lookup_extract_misc {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tropical_weight_transducer_compose_tests.rs"]
+mod compose_owned_tests;

@@ -302,4 +302,5 @@ assertions (
     {id nfst-pmatch-concat-associativity, kind @complete, author "brendan@necessary.nu", at 2026-08-15T21:43:50.350056Z}
     {id pmatch-duplicate-path-readings, kind @complete, author "brendan@necessary.nu", at 2026-08-15T22:43:51.575711Z}
     {id pmatch-middot-loses-punct-reading, kind @complete, author "brendan@necessary.nu", at 2026-08-15T22:43:56.279798Z}
+    {id compose-peak-memory, kind @complete, author "brendan@necessary.nu", at 2026-08-17T22:46:57.246529Z}
 )

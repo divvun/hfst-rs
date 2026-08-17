@@ -24,6 +24,8 @@ pub use rustfst;
 pub use rustfst::prelude;
 
 pub mod algorithms;
+pub mod compose_storage;
+pub mod flag_overlay_compose;
 
 /// 'fst::TropicalWeight' — the tropical semiring (min, +) over 'f32'.
 pub type TropicalWeight = rustfst::semirings::TropicalWeight;

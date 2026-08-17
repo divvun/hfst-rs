@@ -97,6 +97,7 @@ pub mod hfst_commandline;
 pub mod hfst_getopt;
 pub mod hfst_program_options;
 pub mod hfst_tool_metadata;
+pub(crate) mod memory_limit;
 
 // The 'inc/' switch-case and post-parse-validation fragments that every tool
 // '#include's into its 'parse_options' (getopt-cases-*.h, check-params-*.h),

@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+anyhow = "1"
 rustfst = { workspace = true }
 
 [lints]

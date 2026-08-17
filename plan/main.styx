@@ -5677,6 +5677,36 @@ children (
                 title "hfst-compose needs ~35 GB peak RSS for lang-kal's speller compose, which OOMs a 32 GB build. NOT a port regression — measured on the real inputs (generator-desktopspeller-gt-norm-base.hfst 323680 states/576671 arcs, composed under -F with spellercorpus.surfweights.hfst 461154/755932): C++ hfst-compose 3.17.1 peaks at 35.13 GB in 280s, ours at 35.35 GB in 148s, and hfst-compare says the two results are equivalent with identical counts (2866873 states / 3319342 arcs). So upstream OOMs the same build and we are 1.9x faster at the same memory. The opportunity is that the RESULT is only 87 MB on disk and 3.3M arcs, so ~35 GB peak for it is roughly two orders of magnitude of intermediate garbage — the composed product before trimming, most likely, since both implementations land within 0.6% of each other and therefore almost certainly blow up in the same algorithmic step. As a successor project we are free to beat upstream here rather than match it. Worth profiling where the peak actually accrues before assuming: candidates are the eager product materialization in the tropical backend's compose, and the harmonize_copy round trip which converts BOTH operands through HfstBasicTransducer and back before the product is even started. Practical interim answer for the build: the limit needs to be ~40 GB, because no flag makes either implementation fit in 32"
                 priority 1
                 kind @perf
+                sealed true
+                log (
+                    {
+                        at 2026-08-17T14:57:24.688072Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Implemented and verified the first production increment: hfst-compose -F now uses virtual flag-loop matchers (lang-kal avoids 482,367,084 physical loops), owned operands, a CLI/env/automatic allowance whose default is floor(50% of effective host/cgroup available RAM), and transactional CWD scratch materialization at 90% of that allowance with RAII cleanup. Real lang-kal profile versus the saved equivalent 2,866,873-state/3,319,342-arc baseline: automatic 27.00s / 12,835,225,600-byte peak RSS; 1GiB 35.10s / 9,042,657,280; zero allowance 34.93s / 7,665,795,072; prior path 147.71s / 35,351,740,416. All outputs are semantically equal and no scratch survives. Residual: rustfst ComposeFst's private state-pair HashMap/reverse Vec remains outside the materializer budget and creates the ~7.67GB zero-allowance floor, so this is not yet a strict whole-process maximum; keep the node Doing if that stronger guarantee remains required."
+                    }
+
+                    {
+                        at 2026-08-17T19:52:39.146977Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "2026-08-17 implementation + exact profile: replaced eager -F flag-loop materialization (482,367,084 avoidable loops on lang-kal) with a virtual compose overlay; added CLI/env memory allowance with automatic floor(50% of effective available RAM); partitioned one 90% tracked budget 3:1 between a spillable rustfst compose-pair interner and HFST product storage; added post-producer external coaccessibility trim so only survivors reload. Exact 1GiB run on real inputs: 497.82s, max RSS 1,372,930,048 B versus pre-trim 7,534,641,152 B and original 35.35 GB; output SHA-256 4d793dd1df8f4720c3a6cc3467445bc0e7514eb75bcda34b71dc7691dbafc762, semantically equal baseline, 2,866,873 states / 3,319,342 arcs, scratch clean. Automatic path: 54.09s / 11,827,052,544 B on 64GiB host, byte-identical. Green: hfst-openfst 23, hfst lib 14, CLI memory 6, hfst#143, workspace all-target check/clippy/fmt/diff; rustfst compose 17 and all-target check. Pending before node completion: commit/push rustfst branch, pin HFST to immutable rev, restore portable lock, rerun normal locked checks."
+                    }
+
+                    {
+                        at 2026-08-17T22:46:48.619558Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Final 2026-08-18 delivery/profile: published rustfst spillable compose state-pair store as 86ab28cf91c469d37ce9b986033d5c49750ad3cc on origin/fix/compose-state-table-budget and pinned HFST Cargo.toml/Cargo.lock to that immutable rev. Real lang-kal cutoff matrix (wall time / max RSS): automatic 50%-available startup allowance 54.09s / 11,827,052,544 B; 8GiB 51.36s / 11,130,437,632 B; 4GiB 377.01s / 5,008,015,360 B; 1GiB 497.82s / 1,372,930,048 B; 0-byte forced spill 582.66s / 853,213,184 B. The 8->4GiB cliff is pair-interner migration to random-access scratch. All outputs are byte-identical (87,560,762 B, SHA-256 4d793dd1df8f4720c3a6cc3467445bc0e7514eb75bcda34b71dc7691dbafc762), semantically equal to baseline, 2,866,873 states / 3,319,342 arcs, and both scratch-prefixes clean. Original Rust was 147.71s / 35,351,740,416 B, so automatic is 2.73x faster with 66.54% lower peak RSS. Budgeting is explicitly OpenFst tropical-only; explicit Foma limits now error instead of being ignored. Green: cargo test --locked --workspace --all-targets; workspace all-target check; workspace Clippy -D warnings; fmt; diff-check; focused hfst#143; RustFST compose/store tests and remote-rev portability audit."
+                    }
+
+                    {
+                        at 2026-08-17T22:46:57.246529Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
         )
     }

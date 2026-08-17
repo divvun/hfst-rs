@@ -133,6 +133,52 @@ fn printable_input_set(t: &HfstTransducer<StdVectorFst>) -> BTreeSet<String> {
 // harmonize_flag_diacritics(second, true) then compose (see hfst-cli
 // tools/compose.rs ComposeOp).
 // ==========================================================================
+fn assert_hfst_143_result_has_no_bloat(result: &HfstTransducer<StdVectorFst>, compose_path: &str) {
+    // Exactly ONE path in the result (upstream bloated to 262144).
+    let mut paths: HfstTwoLevelPaths = BTreeSet::new();
+    result
+        .extract_paths(&mut paths, -1, -1)
+        .expect("extract_paths");
+    assert_eq!(
+        paths.len(),
+        1,
+        "{compose_path} flag-harmonised compose must yield exactly one path, got {}",
+        paths.len()
+    );
+
+    // The single path maps the surface `talo` to `talo` (flags/epsilons erased).
+    let only = paths.iter().next().expect("one path");
+    assert_eq!(printable_input(only), "talo", "input side must be 'talo'");
+    assert_eq!(printable_output(only), "talo", "output side must be 'talo'");
+
+    // No duplicate arcs: every (src, in, out, tgt, weight) tuple is unique.
+    // Upstream duplicated each flag arc 8-9 times; neither compose path may.
+    let basic = result.to_basic().expect("to_basic");
+    let coder = basic.coder();
+    let mut arcs: Vec<(u32, String, String, u32, u32)> = Vec::new();
+    for (src, transitions) in basic.states_and_transitions().iter().enumerate() {
+        for tr in transitions.iter() {
+            let data = tr.get_transition_data();
+            arcs.push((
+                src as u32,
+                data.get_input_symbol(coder).to_string(),
+                data.get_output_symbol(coder).to_string(),
+                tr.get_target_state(),
+                // Weights are all 0.0 here; bit-quantise so the tuple is Ord.
+                tr.get_weight().to_bits(),
+            ));
+        }
+    }
+    let unique: BTreeSet<_> = arcs.iter().cloned().collect();
+    assert_eq!(
+        arcs.len(),
+        unique.len(),
+        "no duplicate arcs allowed in {compose_path} compose (flag bloat): {} total vs {} unique",
+        arcs.len(),
+        unique.len()
+    );
+}
+
 #[test]
 fn hfst_143_flag_harmonise_no_bloat() {
     let _guard = serialized();
@@ -165,49 +211,29 @@ fn hfst_143_flag_harmonise_no_bloat() {
     first
         .compose_with_config(&second, true, &EngineConfig::default())
         .expect("compose");
+    assert_hfst_143_result_has_no_bloat(&first, "eager");
 
-    // Exactly ONE path in the result (upstream bloated to 262144).
-    let mut paths: HfstTwoLevelPaths = BTreeSet::new();
-    first
-        .extract_paths(&mut paths, -1, -1)
-        .expect("extract_paths");
-    assert_eq!(
-        paths.len(),
-        1,
-        "flag-harmonised compose must yield exactly one path, got {}",
-        paths.len()
-    );
-
-    // The single path maps the surface `talo` to `talo` (flags/epsilons erased).
-    let only = paths.iter().next().expect("one path");
-    assert_eq!(printable_input(only), "talo", "input side must be 'talo'");
-    assert_eq!(printable_output(only), "talo", "output side must be 'talo'");
-
-    // No duplicate arcs: every (src, in, out, tgt, weight) tuple is unique.
-    // Upstream duplicated each flag arc 8-9 times; the AutoFilter must not.
-    let basic = first.to_basic().expect("to_basic");
-    let coder = basic.coder();
-    let mut arcs: Vec<(u32, String, String, u32, u32)> = Vec::new();
-    for (src, transitions) in basic.states_and_transitions().iter().enumerate() {
-        for tr in transitions.iter() {
-            let data = tr.get_transition_data();
-            arcs.push((
-                src as u32,
-                data.get_input_symbol(coder).to_string(),
-                data.get_output_symbol(coder).to_string(),
-                tr.get_target_state(),
-                // Weights are all 0.0 here; bit-quantise so the tuple is Ord.
-                tr.get_weight().to_bits(),
-            ));
-        }
-    }
-    let unique: BTreeSet<_> = arcs.iter().cloned().collect();
-    assert_eq!(
-        arcs.len(),
-        unique.len(),
-        "no duplicate arcs allowed (flag bloat): {} total vs {} unique",
-        arcs.len(),
-        unique.len()
+    // The bounded OpenFst path keeps the same semantics without physically
+    // adding the missing flag loop to every state. A zero-byte allowance
+    // forces the product through operation-owned scratch storage too.
+    let mut overlay_first = analyser;
+    let mut overlay_second = surface;
+    let overlay = overlay_first
+        .prepare_flag_diacritics_for_compose(&mut overlay_second)
+        .expect("lazy flag overlay preparation");
+    let spill_config = EngineConfig {
+        compose_memory_limit_bytes: Some(0),
+        ..EngineConfig::default()
+    };
+    overlay_first
+        .compose_with_config_and_flag_overlay(&overlay_second, true, &spill_config, Some(&overlay))
+        .expect("lazy flag overlay compose");
+    assert_hfst_143_result_has_no_bloat(&overlay_first, "lazy spilled");
+    assert!(
+        overlay_first
+            .compare(&first, true)
+            .expect("compare lazy and eager flag composition"),
+        "lazy spilled flag composition must be equivalent to the eager reference"
     );
 }
 

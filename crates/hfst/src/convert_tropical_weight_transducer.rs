@@ -346,78 +346,116 @@ impl ConversionFunctions {
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-basic-transducer-to-tropical-ofst-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-basic-transducer-to-tropical-ofst-fn]
     pub fn hfst_basic_transducer_to_tropical_ofst(net: &HfstBasicTransducer) -> StdVectorFst {
-        let mut t = StdVectorFst::new();
-        let start_state = t.add_state(); // always zero
-        t.set_start(start_state)
-            .expect("start state just created by add_state");
-
-        // How state numbers are recoded
-        let mut state_vector: Vec<u32> = Vec::new();
-        state_vector.push(start_state);
-        for _i in 1..=net.get_max_state() {
-            state_vector.push(t.add_state());
+        let (mut t, state_vector, st) = tropical_shell(net);
+        for (source_state, transitions) in net.iter().enumerate() {
+            copy_transitions(&mut t, &state_vector, source_state, transitions);
         }
-
-        // 'fst::SymbolTable st("");' — an empty table (rustfst's 'new()' would
-        // pre-seed epsilon, so 'empty()' is used and epsilon is added below).
-        let mut st = SymbolTable::empty();
-        st.add_symbol(internal_epsilon); // label 0
-        st.add_symbol(internal_unknown); // label 1
-        st.add_symbol(internal_identity); // label 2
-
-        // Copy the alphabet. The arc labels written below are 'net's own coder
-        // numbers (get_input_number/get_output_number); resolve each alphabet
-        // symbol's label through a clone of that coder so they coincide (and the
-        // tropical->basic round-trip recovers them). The clone interns the few
-        // alphabet-only symbols absent from any arc without disturbing 'net'.
-        let mut coder = net.coder().clone();
-        for it in net.get_alphabet().iter() {
-            assert!(!it.is_empty());
-            // C++: 'st.AddSymbol(*it, net->get_symbol_number(*it));' — assign the
-            // symbol's coder number as its explicit label.
-            let symbol_number = coder.get_number(it);
-            st.add_symbol_with_key(it.clone(), symbol_number);
-        }
-
-        // Go through all states...
-        for (source_state, it) in net.iter().enumerate() {
-            // Go through the set of transitions in each state...
-            for tr_it in it.iter() {
-                // Copy the transition
-
-                let input: u32 = tr_it.get_input_number();
-                let out: u32 = tr_it.get_output_number();
-
-                t.add_tr(
-                    state_vector[source_state],
-                    StdTransition::new(
-                        input,
-                        out,
-                        tr_it.get_weight(),
-                        state_vector[tr_it.get_target_state() as usize],
-                    ),
-                )
-                .expect("transition added to a state created above from state_vector");
-            } // ... set of transitions gone through
-        } // ... all states gone through
-
-        // Go through the final states...
-        // The C++ iterates 'net->final_weight_map' (a map ordered by state); the
-        // private map is not exposed, so the equivalent ascending-state walk over
-        // the final states is used.
-        for state in 0..=net.get_max_state() {
-            if net.is_final_state(state) {
-                t.set_final(
-                    state_vector[state as usize],
-                    net.get_final_weight(state)
-                        .expect("state was confirmed final via is_final_state"),
-                )
-                .expect("state_vector maps to a state that exists in the fst");
-            }
-        }
-        // ... final states gone through
-
-        t.set_input_symbols(Arc::new(st));
+        finish_tropical(net, &mut t, &state_vector, st);
         t
     }
+
+    /// [`Self::hfst_basic_transducer_to_tropical_ofst`], consuming `net`.
+    ///
+    /// Each state's transitions are moved out and dropped as soon as they are
+    /// copied, so the source shrinks while the result grows instead of both
+    /// standing at full size. On a flag-harmonized operand — hundreds of
+    /// millions of transitions — that is the difference between one copy of the
+    /// graph in memory and two.
+    pub fn basic_to_tropical_ofst_owned(mut net: HfstBasicTransducer) -> StdVectorFst {
+        let (mut t, state_vector, st) = tropical_shell(&net);
+        for source_state in 0..net.state_vector.len() {
+            let transitions = std::mem::take(&mut net.state_vector[source_state]);
+            copy_transitions(&mut t, &state_vector, source_state, &transitions);
+        }
+        finish_tropical(&net, &mut t, &state_vector, st);
+        t
+    }
+}
+
+/// The states, the state renumbering and the symbol table of the tropical
+/// transducer equivalent to `net` — everything but its transitions and final
+/// weights.
+fn tropical_shell(net: &HfstBasicTransducer) -> (StdVectorFst, Vec<u32>, SymbolTable) {
+    let mut t = StdVectorFst::new();
+    let start_state = t.add_state(); // always zero
+    t.set_start(start_state)
+        .expect("start state just created by add_state");
+
+    // How state numbers are recoded
+    let mut state_vector: Vec<u32> = Vec::new();
+    state_vector.push(start_state);
+    for _i in 1..=net.get_max_state() {
+        state_vector.push(t.add_state());
+    }
+
+    // 'fst::SymbolTable st("");' — an empty table (rustfst's 'new()' would
+    // pre-seed epsilon, so 'empty()' is used and epsilon is added below).
+    let mut st = SymbolTable::empty();
+    st.add_symbol(internal_epsilon); // label 0
+    st.add_symbol(internal_unknown); // label 1
+    st.add_symbol(internal_identity); // label 2
+
+    // Copy the alphabet. The arc labels written below are 'net's own coder
+    // numbers (get_input_number/get_output_number); resolve each alphabet
+    // symbol's label through a clone of that coder so they coincide (and the
+    // tropical->basic round-trip recovers them). The clone interns the few
+    // alphabet-only symbols absent from any arc without disturbing 'net'.
+    let mut coder = net.coder().clone();
+    for it in net.get_alphabet().iter() {
+        assert!(!it.is_empty());
+        // C++: 'st.AddSymbol(*it, net->get_symbol_number(*it));' — assign the
+        // symbol's coder number as its explicit label.
+        let symbol_number = coder.get_number(it);
+        st.add_symbol_with_key(it.clone(), symbol_number);
+    }
+
+    (t, state_vector, st)
+}
+
+/// Copy one state's transitions across, reserving exactly the room they need.
+fn copy_transitions(
+    t: &mut StdVectorFst,
+    state_vector: &[u32],
+    source_state: usize,
+    transitions: &[HfstBasicTransition],
+) {
+    let source = state_vector[source_state];
+    t.reserve_trs(source, transitions.len())
+        .expect("state created above from state_vector");
+    for tr_it in transitions {
+        t.add_tr(
+            source,
+            StdTransition::new(
+                tr_it.get_input_number(),
+                tr_it.get_output_number(),
+                tr_it.get_weight(),
+                state_vector[tr_it.get_target_state() as usize],
+            ),
+        )
+        .expect("transition added to a state created above from state_vector");
+    }
+}
+
+/// The final weights and the symbol table, once every transition is in place.
+fn finish_tropical(
+    net: &HfstBasicTransducer,
+    t: &mut StdVectorFst,
+    state_vector: &[u32],
+    st: SymbolTable,
+) {
+    // The C++ iterates 'net->final_weight_map' (a map ordered by state); the
+    // private map is not exposed, so the equivalent ascending-state walk over
+    // the final states is used.
+    for state in 0..=net.get_max_state() {
+        if net.is_final_state(state) {
+            t.set_final(
+                state_vector[state as usize],
+                net.get_final_weight(state)
+                    .expect("state was confirmed final via is_final_state"),
+            )
+            .expect("state_vector maps to a state that exists in the fst");
+        }
+    }
+
+    t.set_input_symbols(Arc::new(st));
 }

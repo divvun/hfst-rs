@@ -18,9 +18,13 @@ use crate::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
+use crate::memory_limit::{self, LimitSource, ResolvedMemoryLimit};
 use hfst::backend::AlgebraBackend;
-use hfst::hfst_transducer::{EngineConfig, HfstTransducer};
+use hfst::hfst_data_types::ImplementationType;
+use hfst::hfst_transducer::{EngineConfig, FlagDiacriticComposeOverlay, HfstTransducer};
 use std::io::Write;
+
+const GETOPT_MEMORY_LIMIT: i32 = 0x100;
 
 /// hfst-compose's own options (the former tool-specific `static mut`s).
 struct Options {
@@ -35,6 +39,8 @@ struct Options {
     /// '--xerox-composition' (was the 'xerox_composition' file-static global in
     /// the library; now threaded into compose via EngineConfig).
     xerox_composition: bool,
+    /// '--memory-limit=SIZE': allowance for budget-aware compose working data.
+    memory_limit_bytes: Option<u64>,
 }
 
 impl Default for Options {
@@ -44,6 +50,7 @@ impl Default for Options {
             harmonize: true,
             flag_is_epsilon: false,
             xerox_composition: false,
+            memory_limit_bytes: None,
         }
     }
 }
@@ -62,7 +69,7 @@ fn print_usage(common: &CommonOptions) {
     print_common_binary_program_options(&mut *msg);
     let _ = write!(
         msg,
-        "Composition options:\n  -x, --xerox-composition=VALUE Whether flag diacritics are treated as ordinary\n                                symbols in composition (default is false).\n  -X, --xfst=VARIABLE    Toggle xfst compatibility option VARIABLE.\nHarmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n"
+        "Composition options:\n  -x, --xerox-composition=VALUE Whether flag diacritics are treated as ordinary\n                                symbols in composition (default is false).\n  -X, --xfst=VARIABLE    Toggle xfst compatibility option VARIABLE.\n      --memory-limit=SIZE\n                         OpenFst tropical working-memory allowance for budget-aware\n                         compose state (default: 50% of available RAM; excess spills).\nHarmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n"
     );
     let _ = writeln!(msg);
     print_common_binary_program_parameter_instructions(&mut *msg);
@@ -73,6 +80,18 @@ fn print_usage(common: &CommonOptions) {
         "VALUE can be one of the following: [true|false], [yes|no] or [ON|OFF],"
     );
     let _ = writeln!(msg, "false being the default.");
+    let _ = writeln!(
+        msg,
+        "SIZE is an integer byte count with an optional binary K/KB/KiB through T/TB/TiB suffix; 0 forces nonempty OpenFst tropical products to spill."
+    );
+    let _ = writeln!(
+        msg,
+        "The allowance is not an RSS ceiling: loaded operands and the final result are not included."
+    );
+    let _ = writeln!(
+        msg,
+        "HFST_COMPOSE_MEMORY_LIMIT supplies SIZE when --memory-limit is absent; explicit memory limits are not supported for Foma composition."
+    );
     let _ = write!(
         msg,
         "\nExamples:\n  {} -o cat2dog.hfst cat2mouse.hfst mouse2dog.hfst  composes two automata\n\n",
@@ -116,6 +135,11 @@ fn parse_options(
             name: "xfst",
             has_arg: 1,
             val: b'X' as i32,
+        });
+        long_options.push(getopt::GetOpt {
+            name: "memory-limit",
+            has_arg: getopt::REQUIRED_ARGUMENT,
+            val: GETOPT_MEMORY_LIMIT,
         });
         let c = opt.getopt_long(args, &long_options);
         if -1 == c {
@@ -169,6 +193,20 @@ fn parse_options(
                 return Err(1);
             }
             continue;
+        } else if c == GETOPT_MEMORY_LIMIT {
+            let argument = opt.optarg();
+            options.memory_limit_bytes = match memory_limit::parse_size(&argument) {
+                Ok(bytes) => Some(bytes),
+                Err(detail) => {
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "{}: invalid value for --memory-limit: {detail}",
+                        common.program_name
+                    );
+                    return Err(1);
+                }
+            };
+            continue;
         }
         return Err(handle_error_case(&common, &opt, c));
     }
@@ -209,12 +247,26 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Err(code) => return code,
     };
 
+    // Resolve the allowance before either input stream is opened, so the
+    // automatic 50% value is a stable startup snapshot rather than a moving
+    // target as transducers are loaded.
+    let memory_limit = match memory_limit::resolve(options.memory_limit_bytes) {
+        Ok(limit) => limit,
+        Err(detail) => {
+            let _ = writeln!(std::io::stderr(), "{}: {detail}", common.program_name);
+            return 1;
+        }
+    };
     let mut op = ComposeOp {
         harmonize: options.harmonize,
         harmonize_flags: options.harmonize_flags,
+        flag_overlay: None,
+        memory_limit,
+        memory_policy_reported: false,
         cfg: EngineConfig {
             flag_is_epsilon_in_composition: options.flag_is_epsilon,
             xerox_composition: options.xerox_composition,
+            compose_memory_limit_bytes: Some(memory_limit.allowance_bytes),
             ..EngineConfig::default()
         },
     };
@@ -224,7 +276,76 @@ pub fn run(mut args: Vec<String>) -> i32 {
 struct ComposeOp {
     harmonize: bool,
     harmonize_flags: bool,
+    flag_overlay: Option<FlagDiacriticComposeOverlay>,
+    memory_limit: ResolvedMemoryLimit,
+    memory_policy_reported: bool,
     cfg: EngineConfig,
+}
+
+fn supports_compose_memory_limit(implementation: ImplementationType) -> bool {
+    implementation == ImplementationType::TROPICAL_OPENFST_TYPE
+}
+
+fn explicit_memory_limit_name(source: LimitSource) -> Option<&'static str> {
+    match source {
+        LimitSource::Cli => Some("--memory-limit"),
+        LimitSource::Environment => Some("HFST_COMPOSE_MEMORY_LIMIT"),
+        LimitSource::Automatic | LimitSource::ProbeFallback => None,
+    }
+}
+
+impl ComposeOp {
+    fn validate_and_report_memory_policy(
+        &mut self,
+        common: &CommonOptions,
+        implementation: ImplementationType,
+    ) -> Result<(), i32> {
+        if !supports_compose_memory_limit(implementation) {
+            if let Some(name) = explicit_memory_limit_name(self.memory_limit.source) {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!(
+                        "{name} is not supported for Foma composition; bounded spilling is available only for OpenFst tropical composition"
+                    ),
+                );
+                return Err(1);
+            }
+            return Ok(());
+        }
+
+        if self.memory_policy_reported {
+            return Ok(());
+        }
+        self.memory_policy_reported = true;
+        if common.silent {
+            return Ok(());
+        }
+
+        if self.memory_limit.source == LimitSource::ProbeFallback {
+            warning(
+                common,
+                0,
+                0,
+                "Could not determine available RAM; using a 0-byte composition memory allowance and spilling immediately. Use --memory-limit to override.",
+            );
+        }
+        if self.memory_limit.cgroup_clamped
+            && let Some(requested) = self.memory_limit.requested_bytes
+        {
+            warning(
+                common,
+                0,
+                0,
+                &format!(
+                    "Requested composition memory allowance of {requested} bytes exceeds current cgroup headroom; using {} bytes.",
+                    self.memory_limit.allowance_bytes
+                ),
+            );
+        }
+        Ok(())
+    }
 }
 
 impl BinaryToolOp for ComposeOp {
@@ -238,6 +359,8 @@ impl BinaryToolOp for ComposeOp {
         second: &mut HfstTransducer<B>,
         _ctx: &PairContext<'_>,
     ) -> Result<(), i32> {
+        self.flag_overlay = None;
+        self.validate_and_report_memory_policy(common, <B as hfst::backend::Backend>::TYPE)?;
         let has_flags = first.has_flag_diacritics() || second.has_flag_diacritics();
         if has_flags {
             if !self.harmonize_flags {
@@ -249,9 +372,22 @@ impl BinaryToolOp for ComposeOp {
                         "At least one of the arguments contains flag diacritics. Use -F to harmonize them.",
                     );
                 }
-            } else if let Err(e) = first.harmonize_flag_diacritics(second, true) {
-                error(common, 1, 0, &format!("{e}"));
-                return Err(1);
+            } else {
+                let prepared = if B::SUPPORTS_FLAG_OVERLAY
+                    && !self.cfg.flag_is_epsilon_in_composition
+                    && !self.cfg.xerox_composition
+                {
+                    first.prepare_flag_diacritics_for_compose(second).map(Some)
+                } else {
+                    first.harmonize_flag_diacritics(second, true).map(|()| None)
+                };
+                match prepared {
+                    Ok(overlay) => self.flag_overlay = overlay,
+                    Err(e) => {
+                        error(common, 1, 0, &format!("{e}"));
+                        return Err(1);
+                    }
+                }
             }
         }
         Ok(())
@@ -263,7 +399,27 @@ impl BinaryToolOp for ComposeOp {
         second: &HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
         first
-            .compose_with_config(second, self.harmonize, &self.cfg)
+            .compose_with_config_and_flag_overlay(
+                second,
+                self.harmonize,
+                &self.cfg,
+                self.flag_overlay.as_ref(),
+            )
             .map(|_| ())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compose_memory_limit_backend_scope_is_tropical_only() {
+        assert!(supports_compose_memory_limit(
+            ImplementationType::TROPICAL_OPENFST_TYPE
+        ));
+        assert!(!supports_compose_memory_limit(
+            ImplementationType::FOMA_TYPE
+        ));
     }
 }

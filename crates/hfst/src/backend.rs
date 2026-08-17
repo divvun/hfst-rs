@@ -13,6 +13,7 @@
 //! wrapper signatures, so they move here verbatim. An impl ignores arguments
 //! its backend never used.
 
+use crate::backend_ol::{ol_counts, ol_has_weights};
 use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
@@ -26,10 +27,8 @@ use crate::hfst_extract_strings::ExtractStringsCb;
 use crate::hfst_flag_diacritics::FdOperation;
 use crate::hfst_ol_transducer::HfstOlTransducer;
 use crate::hfst_symbol_defs::StringSet;
-use crate::hfst_transducer::{decode_flag, encode_flag};
-use crate::transducer::{
-    Transducer, TransitionTableIndex, TransitionTableIndexSet, UnweightedTables, WeightedTables,
-};
+use crate::hfst_transducer::{FlagDiacriticComposeOverlay, decode_flag, encode_flag};
+use crate::transducer::{Transducer, UnweightedTables, WeightedTables};
 use crate::tropical_weight_transducer::TropicalWeightTransducer;
 use hfst_openfst::StdVectorFst;
 
@@ -82,6 +81,16 @@ pub trait Backend: Sized {
     /// The typed conversion from the interchange transducer — the per-type
     /// arms of 'HfstTransducer(const HfstBasicTransducer&, type)'.
     fn from_basic(net: &HfstBasicTransducer) -> crate::error::Result<Self>;
+
+    /// [`Self::from_basic`] for a caller that is finished with `net`. A backend
+    /// that can release the source as it consumes it overrides this to halve
+    /// what the conversion of a very large graph stands at; the default keeps
+    /// both alive, as the borrowing form must.
+    fn from_basic_owned(net: HfstBasicTransducer) -> crate::error::Result<Self> {
+        let converted = Self::from_basic(&net);
+        drop(net);
+        converted
+    }
 
     /// 'get_alphabet' (every backend had a real arm).
     fn get_alphabet(&self) -> StringSet;
@@ -350,6 +359,10 @@ pub trait Backend: Sized {
 /// backend (the C++ freed the old one and stored the new — the facade's
 /// assignment does that implicitly).
 pub trait AlgebraBackend: Backend {
+    /// Whether this backend can consume flag self-loops as a lazy composition
+    /// overlay instead of requiring them to be inserted into every state.
+    const SUPPORTS_FLAG_OVERLAY: bool = false;
+
     // ----- unary (apply) -----
     fn remove_epsilons(&self) -> Self;
     // determinize/minimize consume the input: the facade always overwrites its
@@ -373,6 +386,25 @@ pub trait AlgebraBackend: Backend {
     fn intersect(&self, another: &Self) -> Self;
     fn subtract(&self, another: &Self) -> Self;
     fn compose(&self, another: &Self) -> Self;
+
+    /// Fallible, consuming compose entry used by the bounded OpenFst path.
+    /// Backends without that path retain their existing borrowed operation;
+    /// the CLI materializes flag loops before calling them.
+    fn try_compose_owned(
+        self,
+        another: Self,
+        flag_overlay: Option<&FlagDiacriticComposeOverlay>,
+        memory_limit_bytes: Option<u64>,
+    ) -> crate::error::Result<Self> {
+        let _ = memory_limit_bytes;
+        if flag_overlay.is_some() {
+            crate::bail!(
+                Hfst,
+                "this backend does not support virtual flag composition"
+            );
+        }
+        Ok(self.compose(&another))
+    }
 
     // ----- construction (the define_transducer_* constructor arms) -----
     fn define_transducer_spv(spv: &StringPairVector) -> Self;
@@ -427,6 +459,9 @@ impl Backend for StdVectorFst {
         Ok(ConversionFunctions::hfst_basic_transducer_to_tropical_ofst(
             net,
         ))
+    }
+    fn from_basic_owned(net: HfstBasicTransducer) -> crate::error::Result<Self> {
+        Ok(ConversionFunctions::basic_to_tropical_ofst_owned(net))
     }
     fn get_alphabet(&self) -> StringSet {
         TropicalWeightTransducer::get_alphabet(self)
@@ -516,6 +551,8 @@ impl Backend for StdVectorFst {
 }
 
 impl AlgebraBackend for StdVectorFst {
+    const SUPPORTS_FLAG_OVERLAY: bool = true;
+
     fn remove_epsilons(&self) -> Self {
         TropicalWeightTransducer::remove_epsilons(self)
     }
@@ -567,6 +604,14 @@ impl AlgebraBackend for StdVectorFst {
     }
     fn compose(&self, another: &Self) -> Self {
         TropicalWeightTransducer::compose(self, another)
+    }
+    fn try_compose_owned(
+        self,
+        another: Self,
+        flag_overlay: Option<&FlagDiacriticComposeOverlay>,
+        memory_limit_bytes: Option<u64>,
+    ) -> crate::error::Result<Self> {
+        TropicalWeightTransducer::try_compose_owned(self, another, flag_overlay, memory_limit_bytes)
     }
 
     fn define_transducer_spv(spv: &StringPairVector) -> Self {
@@ -634,95 +679,6 @@ impl AlgebraBackend for StdVectorFst {
 // ---------------------------------------------------------------------------
 // Optimized-lookup (the two table instantiations)
 // ---------------------------------------------------------------------------
-
-/// Walk the reachable states of an optimized-lookup table pair from the start
-/// offset, handing each state index and its outgoing transition indices to
-/// `visit`; stops early when `visit` answers false.
-///
-/// The OL encoding keeps no state list to read anything off: a state is just an
-/// offset into the index or the transition table, and the two tables share one
-/// address space. This is the walk `hfst_ol_to_hfst_basic_transducer` numbers
-/// states with, minus the interchange transducer it would otherwise
-/// materialize — so anything derived here matches the graph `to_basic` builds.
-fn ol_walk<T, F>(t: &Transducer<T>, mut visit: F)
-where
-    T: crate::transducer::TransducerTablesInterface,
-    F: FnMut(TransitionTableIndex, &TransitionTableIndexSet) -> bool,
-{
-    const START: TransitionTableIndex = 0;
-    let mut seen = std::collections::BTreeSet::from([START]);
-    let mut agenda = vec![START];
-    while let Some(state) = agenda.pop() {
-        let transitions = t.get_transitions_from_state(state);
-        if !visit(state, &transitions) {
-            return;
-        }
-        for tr in transitions.iter() {
-            let target = t.get_transition_target(*tr);
-            if seen.insert(target) {
-                agenda.push(target);
-            }
-        }
-    }
-}
-
-/// The reachable (state, arc) counts of an optimized-lookup table pair.
-fn ol_counts<T: crate::transducer::TransducerTablesInterface>(t: &Transducer<T>) -> (u32, u32) {
-    let mut states = 0u32;
-    let mut arcs = 0u32;
-    ol_walk(t, |_, transitions| {
-        states += 1;
-        arcs += transitions.len() as u32;
-        true
-    });
-    (states, arcs)
-}
-
-/// The final weight of an optimized-lookup state index, 0.0 when non-final —
-/// the two index-space arms of `hfst_ol_to_hfst_basic_add_state`.
-fn ol_final_weight<T: crate::transducer::TransducerTablesInterface>(
-    t: &Transducer<T>,
-    state: TransitionTableIndex,
-) -> crate::transducer::Weight {
-    if crate::transducer::indexes_transition_index_table(state) {
-        if t.get_index_finality(state) {
-            t.get_index_final_weight(state)
-        } else {
-            0.0
-        }
-    } else if t.get_transition_finality(state) {
-        t.get_transition_weight(state)
-    } else {
-        0.0
-    }
-}
-
-/// Whether any weight of an optimized-lookup table pair is non-zero.
-///
-/// Deliberately not `is_weighted()`, which reports the header's Weighted flag —
-/// whether the tables are weighted-SHAPED. That is the right question for
-/// `stream_type`'s OLW/OL tag and the wrong one here: conversions build
-/// weighted-shaped tables even for logically unweighted material, so the flag
-/// says true for nets whose every weight is 0.0, where the equivalent tropical
-/// net says false. The flag is still the cheap negative: an unweighted-shaped
-/// table reads every weight as 0.0, and `to_basic` zeroes them regardless.
-fn ol_has_weights<T: crate::transducer::TransducerTablesInterface>(t: &Transducer<T>) -> bool {
-    if !t.is_weighted() {
-        return false;
-    }
-    let mut found = false;
-    ol_walk(t, |state, transitions| {
-        if ol_final_weight(t, state) != 0.0
-            || transitions
-                .iter()
-                .any(|tr| t.get_transition_weight(*tr) != 0.0)
-        {
-            found = true;
-        }
-        !found
-    });
-    found
-}
 
 impl Backend for Transducer<WeightedTables> {
     const TYPE: ImplementationType = ImplementationType::HFST_OLW_TYPE;
