@@ -5671,6 +5671,13 @@ children (
                 priority 3
                 kind @fix
             }
+
+            {
+                id compose-peak-memory
+                title "hfst-compose needs ~35 GB peak RSS for lang-kal's speller compose, which OOMs a 32 GB build. NOT a port regression — measured on the real inputs (generator-desktopspeller-gt-norm-base.hfst 323680 states/576671 arcs, composed under -F with spellercorpus.surfweights.hfst 461154/755932): C++ hfst-compose 3.17.1 peaks at 35.13 GB in 280s, ours at 35.35 GB in 148s, and hfst-compare says the two results are equivalent with identical counts (2866873 states / 3319342 arcs). So upstream OOMs the same build and we are 1.9x faster at the same memory. The opportunity is that the RESULT is only 87 MB on disk and 3.3M arcs, so ~35 GB peak for it is roughly two orders of magnitude of intermediate garbage — the composed product before trimming, most likely, since both implementations land within 0.6% of each other and therefore almost certainly blow up in the same algorithmic step. As a successor project we are free to beat upstream here rather than match it. Worth profiling where the peak actually accrues before assuming: candidates are the eager product materialization in the tropical backend's compose, and the harmonize_copy round trip which converts BOTH operands through HfstBasicTransducer and back before the product is even started. Practical interim answer for the build: the limit needs to be ~40 GB, because no flag makes either implementation fit in 32"
+                priority 1
+                kind @perf
+            }
         )
     }
 
