@@ -10,6 +10,7 @@ children (
         id scaffold
         title "Cargo workspace + crate skeletons, nfst path deps, Rust nplan platform, manifest re-scope"
         priority 0
+        kind @build
         log (
             {
                 at 2026-06-24T16:34:38.219695Z
@@ -31,6 +32,7 @@ children (
         id types
         title "Port hfst-types (data types, exceptions, symbol defs, string utils)"
         priority 6
+        kind @feat
         deps (scaffold idiom2)
         log (
             {
@@ -53,6 +55,7 @@ children (
         id core
         title "Port hfst-core (tokenizer, flag diacritics, HfstBasicTransducer, transition graph, convert)"
         priority 6
+        kind @feat
         deps (types)
         children (
             {
@@ -106,6 +109,7 @@ children (
         id openfst
         title "Reimplement used OpenFST subset (hfst-openfst): VectorFst, semirings, algorithms, SymbolTable, binary I/O"
         priority 6
+        kind @feat
         deps (types)
         children (
             {
@@ -173,6 +177,7 @@ children (
         id ol
         title "Port hfst-ol (optimized-lookup + HfstOlTransducer + ConvertOl)"
         priority 7
+        kind @feat
         deps (types core)
         log (
             {
@@ -188,6 +193,7 @@ children (
         id facade
         title "Port hfst facade (HfstTransducer, I/O streams, Tropical/Log wrappers, compose_intersect, rules, print/extract)"
         priority 7
+        kind @feat
         deps (core openfst ol)
         children (
             {
@@ -293,6 +299,7 @@ children (
         id parsers
         title "Port hfst-parsers (XRE/LEXC/PMATCH/TWOLC/XFST evaluators over nfst + AT&T I/O)"
         priority 8
+        kind @feat
         deps (facade)
         children (
             {
@@ -391,6 +398,7 @@ children (
         id literal-port
         title "Literal 1:1 bug-for-bug port of all of libhfst/src into the hfst crate (progress tracked by port_check/manifest, not sub-nodes)"
         priority 0
+        kind @feat
         deps (scaffold)
         log (
             {
@@ -413,6 +421,7 @@ children (
         id idiom1
         title "Wave 4 Stage 1 — make the hfst library memory-safe (union→enum, raw-ptr→Box, no static mut); no naming/structural change beyond what safety requires"
         priority 4
+        kind @refactor
         deps (literal-port)
         children (
             {
@@ -565,6 +574,7 @@ children (
         id idiom2
         title "Wave 4 Stage 2 — remove all C-isms; drop the libc crate dependency"
         priority 5
+        kind @refactor
         deps (idiom1)
         children (
             {
@@ -705,6 +715,7 @@ children (
         id librarify
         title "Wave 4.5 — lift bespoke transducer logic out of the CLI tools into the hfst library so all 59 tools become thin (parse opts → open std::fs I/O → call lib → format); single hfst crate (crate split deferred to types/Stage 3)"
         priority 5
+        kind @refactor
         children (
             {
                 id librarify.ol-reuse
@@ -1321,6 +1332,7 @@ children (
     {
         id idiom3
         title "Stage 3 — de-C-ify the string/argv substrate: char* → &str/String, remove all std::ffi (CStr/CString/c_char/c_void/c_int), delete the vestigial hfst_ string/mem wrappers and fput* helpers. No CString/CStr/char* anywhere in the built crates."
+        kind @refactor
         children (
             {
                 id idiom3.getopt
@@ -1423,6 +1435,7 @@ children (
     {
         id idiom4
         title "Stage 4 — eliminate all remaining `unsafe`; flag the irreducible. hfst-cli static mut → thread_local Cell/RefCell (single-threaded tools); hfst lib: unmark vestigial `unsafe fn`, convert convertible raw-ptr islands, flag genuinely-irreducible ones with #[allow]+SAFETY. hfst-c stays out of scope (FFI). Deps idiom3."
+        kind @refactor
         children (
             {
                 id idiom4.lib
@@ -1479,6 +1492,7 @@ children (
         id idiom5
         title "Stage 5 — de-globalize the hfst library + eliminate UB. Remove all global mutable state (thread it through an explicit context / fold onto owning instances) and remove every raw pointer unless absolutely necessary AND proven UB-free. Supersedes the [dec:hfst:idiomatize-staging] deferral of symbol-coding de-singletonization to Stage 3+. Oracle: 151 hfst tests. Deps idiom4."
         priority 3
+        kind @refactor
         deps (idiom4)
         children (
             {
@@ -1781,6 +1795,7 @@ children (
         id idiom6
         title "Stage 6 — replace the exception model with a proper Result. HFST_THROW/HFST_THROW_MESSAGE + panic_any/catch_unwind + the ~30 *Exception structs become Result<T, HfstError> with a thiserror error enum; drop the \"Exception\" nomenclature entirely. ~382 throw sites + 24 catch sites + 443 naming refs across ~24 files. Oracle: 151 hfst tests. Foundational for the idiom5 keystone's coding errors. Deps idiom4."
         priority 3
+        kind @refactor
         deps (idiom4)
         children (
             {
@@ -1892,6 +1907,7 @@ children (
     {
         id idiom7
         title "Stage 7 — adopt `tracing` for all diagnostic logging in the hfst lib. The library must not write diagnostics to stderr directly; it emits `tracing` events (warn!/error!/info!/debug!/trace!) and the application owns the subscriber. DATA output (att/dot writers, lookup results, xfst REPL result text to stdout) and interactive prompts are NOT logging and stay as direct I/O. Oracle: 152 hfst tests."
+        kind @refactor
         children (
             {
                 id idiom7.warning-stream-tracing
@@ -1946,6 +1962,7 @@ children (
     {
         id idiom8
         title "Stage 8 — drop the C++ trailing-underscore private-field convention. Rename `field_`→`field` across the hfst lib (the port kept C++ member names verbatim), except where the bare name collides with a Rust keyword (`type_`, `match_`, `loop_`, `ref_`, …) — those get a non-underscore rename or stay justified. No behaviour change; 153 tests as oracle. Deps idiom6."
+        kind @refactor
         deps (idiom6)
         log (
             {
@@ -1967,6 +1984,7 @@ children (
     {
         id idiom9
         title "Stage 9 — de-C-shape: idiomatize the libc-FREE-but-C-SHAPED Rust that idiom2's de-libc pass left behind. Audit (2026-06-30, 5-dimension sweep) found ~350-450 distinct actionable sites + a large mechanical tail. OUT OF SCOPE (documented): the load-bearing std::istream/OL byte-reader emulation (fail/eof-bit + ungetc semantics, format-mandated NUL writes), faithful bug-preserving sites (is_fst_file fread bug, remove_transitions cursor, parse_quoted, interior-NUL truncation), and essential index use (OL transition-table walks, MED/DP tables, split-borrow clusters, FST state-id-as-identity). Behaviour-changing sites need a version bump. Oracle: 153 tests. Deps idiom6."
+        kind @refactor
         deps (idiom6)
         children (
             {
@@ -2119,6 +2137,7 @@ children (
     {
         id unify-cli
         title "Endgame CLI (operator, 2026-07-02): a single `hfst` binary. Modern clap subcommand interface (`hfst compose ...`) + argv[0] symlink dispatch so the original hfst-* binary names keep working byte-identically + the original getopt-style flags accepted in both invocation modes (subcommand args route through each tool's existing getopt parse_options, so old flags parse exactly; clap owns only the outer layer: subcommand selection, top-level help/version, discoverable per-tool about strings)."
+        kind @feat
         children (
             {
                 id tool-runs
@@ -2179,6 +2198,7 @@ children (
     {
         id mono
         title "Monomorphize the world: HfstTransducer&lt;B: Backend&gt; + capability traits, one pass [dec:hfst:monomorphic-backends]"
+        kind @refactor
         children (
             {
                 id mono.ol-core
@@ -2324,6 +2344,7 @@ children (
     {
         id idiom-islands
         title "Eliminate the residual unsafe islands in the hfst lib (the 6 flagged from idiom4): split LookupState from Transducer (kills ol-lookup-paths *mut + as_hfst_ol_ptr const-cast + folds fdstate-self-ref into a borrowed &FdTable, and unblocks parallel lookup); substitute-alias -> store symbol key; read_in_att -> owned (drop Box::leak/from_raw); print_dot from_utf8_unchecked -> checked; input_stream 'a mut T<'a> -> scoped reborrow; pmatch locatefy/stringify -> Rc<PmatchAlphabet>. End state: hfst lib unsafe -> 0, tighten lib.rs deny(unsafe_op_in_unsafe_fn) toward deny(unsafe_code). Oracle: 152/14 hfst + 131 rustfst tests, 538MB pmhfst + errmodel byte-identical."
+        kind @refactor
         log (
             {
                 at 2026-07-06T12:34:35.317146Z
@@ -2345,6 +2366,7 @@ children (
     {
         id foma-backend
         title "Native foma backend behind 'foma' feature: unweighted algebra + .foma I/O (path-dep to the foma crate; the plan's fix for the tropical determinize blowup)"
+        kind @feat
         children (
             {
                 id foma-backend.spec
@@ -2495,6 +2517,7 @@ children (
     {
         id hfst-write-rename
         title "Rename operator_shl/operator_shl_os (C++ operator<< transliterations) -> HfstOutputStream::write / free write_to; monomorphise write_to (kill &mut dyn Write)"
+        kind @refactor
         log (
             {
                 at 2026-07-06T17:18:32.465522Z
@@ -2508,6 +2531,7 @@ children (
     {
         id sme-validation-fixes
         title "lang-sme end-to-end validation fixes: (1) twolc compiles an empty/standalone-0 context to real epsilon HFST_EPSILON instead of the __HFST_TWOLC_0 placeholder (was over-restricting any rule with an open context side + epsilon center, e.g. h:0 &lt;=&gt; _ b) — phonology.twolc pair-test now passes + full phonology.hfst is hfst-compare equivalent to C++; (2) hfst-pair-test strip_space UTF-8 char-boundary panic (rfind on char predicate → inclusive byte slice through trailing multi-byte char); (3) HfstInputStream reports EmptyTransducerStream for 0-byte input instead of the generic not-a-transducer-stream. Surfaced by building divvun/lang-sme with the Rust toolchain."
+        kind @fix
         log (
             {
                 at 2026-07-06T20:30:16.960378Z
@@ -2521,6 +2545,7 @@ children (
     {
         id thfst
         title "THFST backend + BHFST packer: first post-parity NOVEL backend (divvunspell interop; proves the monomorphic seam extensible; replaces the zip+thfst-tools pipeline steps) [dec:hfst:thfst-backend]"
+        kind @feat
         children (
             {
                 id thfst.spec
@@ -2673,6 +2698,7 @@ children (
     {
         id flag-complement
         title "hfst/hfst#349: flag diacritics under complement — XRE ~ and \\ swallow flags (upstream fixed only the xfst negate command, cdab3f74); make complement universes flag-ordinary like HfstTransducer::negate(), audit every embedded ?*-universe ($/filters/pmatch/xerox-rules)"
+        kind @fix
         children (
             {
                 id flag-complement.fix
@@ -2727,6 +2753,7 @@ children (
     {
         id upstream-bugs
         title "Triage of open hfst/hfst issues against the Rust port (2026-07-11, 139 open reviewed): ~60 dropped (bindings/packaging/build, hfst-proc excluded, SFST, memory-safety-only mechanics void under forbid(unsafe), #349 already fixed, #374 moot — library is LGPL); remainder tiered below. Each leaf = reproduce in the port → fix or document → regression test."
+        kind @fix
         children (
             {
                 id upstream-bugs.t1
@@ -3752,6 +3779,7 @@ children (
         id smolstr-symbols
         title "SmolStr everywhere symbols flow (the deferred 'task #27' from [dec:hfst:monomorphic-backends], operator-directed 2026-07-11): core Symbol + OL SymbolTable are already SmolStr — sweep the rest to match divvunspell: thfst_io key_table Vec<String> -> Vec<SmolStr> (enable smol_str/serde like divvunspell's TransducerAlphabet), twolc.rs symbols fields, xre.rs symbol params, and every symbol-shaped String surface in the parser/compiler layers (audit: grep String against symbol/alphabet/key contexts incl. the nfst-* parser crates' hand-back types); oracle = zero behavior change (SmolStr Ord == str Ord, so symbol numbering and output bytes are invariant — the hfst_data_types.rs:52 comment is the contract), suite + lang-sma byte-identity green"
         priority 6
+        kind @refactor
         log (
             {
                 at 2026-07-11T15:49:44.79698Z
@@ -3773,6 +3801,7 @@ children (
         id idiom-ratchet
         title "Idiom ratchet — convert one-time idiomatisation sweeps into enforced lint gates + burn down the debt accrued since idiom6/8/9 closed. Empirical finding (2026-07-12): the invariants backed by a workspace lint held at exactly zero across 8 subsequent feature waves (unsafe_code=forbid, clippy::wildcard_enum_match_arm=deny, rust_2018_idioms=deny → 0/0/0); the hand-swept conventions with NO lint decayed — .unwrap() 0→390 (non-test hfst lib), camelCase locals reappeared (240). Method per dimension: burn the debt to zero, THEN add the workspace lint that keeps it there. Deliberately NOT gating clippy::expect_used — .expect(\\\"reason\\\") is the sanctioned idiom (229 compliant sites carry real invariant reasons); gating it would fight the correct pattern."
         priority 0
+        kind @refactor
         children (
             {
                 id idiom-ratchet.unwrap
@@ -3835,6 +3864,7 @@ children (
     {
         id perf-ol-epsilon-guard
         title "OL lookup perf: replace the BTreeSet epsilon-loop guard with a Vec DFS-stack + inline (SmallVec) flag snapshots. Profiling a real South Sámi analyzer (8MB OLW, 2053 in-vocab forms) showed >70% of lookup CPU was per-arc ordered-set churn + the allocator traffic it drove; the guard is used strictly LIFO so a Vec stack is membership-identical, and the flag snapshot fits inline. 3.5x faster (216->61 µs/lookup), analyses byte-identical (oracle-diffed), 291 tests pass."
+        kind @perf
         log (
             {
                 at 2026-07-17T16:41:01.428427Z
@@ -3855,6 +3885,7 @@ children (
     {
         id idiom-clippy-clean
         title "Make the whole workspace clippy-clean (0 warnings/errors, --all-targets) via real fixes, not allows: idiom rewrites (needless_range_loop→iterators, ptr_arg &Vec→&[T], vec_init_then_push→vec![], explicit_counter_loop→enumerate/zip, if_same_then_else→merged conditions, unnecessary_get_then_check→contains_key, map_entry, needless_late_init, nonminimal_bool, redundant_locals); assert!(false)→unreachable!/panic! (dead tails removed); box the large ComposeIntersectRuleComponent::Rule variant; foma wrap/wrap_with take Fsm by value (deref Box at the FFI boundary); WeightedPath inherent to_string→Display impl; rename placeholder foo vars + drop the FstTextFormat Text-suffix; and param-struct grouping for every too_many_arguments fn — LookupParams+LookupAcc (lookup_recursive), IntersectSearch (find_matches), MergeContext (handle_list_match/find_matches_for_merge), LookupCtx (perform_lookups_ol/basic), Grammar (pair_test). 291 tests pass, OL lookup byte-identical (oracle sha 2afa19d8), fmt clean."
+        kind @refactor
         log (
             {
                 at 2026-07-17T19:07:36.203696Z
@@ -3875,6 +3906,7 @@ children (
     {
         id drop-dead-commandline-def
         title "Delete the never-called hfst_set_commandline_def{,_unary,_binary} and their private basename helper from hfst_tool_metadata.rs — dead 1:1 C++ ports (the command-line-in-metadata feature was never wired into the new CLI), which carried vestigial argc/argv C-shape and a latent argv[argc] out-of-bounds. Nothing referenced them (pub-so-not-dead-code-flagged); build green, clippy still 0, tests unaffected."
+        kind @refactor
         log (
             {
                 at 2026-07-17T19:45:09.939582Z
@@ -3895,6 +3927,7 @@ children (
     {
         id clippy-deny-gate
         title "Ratchet the clippy-clean state: add `clippy::all = { level = \"deny\", priority = -1 }` to [workspace.lints.clippy] so the now-zero default clippy set (correctness/suspicious/style/complexity/perf) becomes a hard build error on any regression instead of a warning that rots unnoticed (as unwrap/camelCase did before gating). All three crates already opt in via [lints] workspace=true; verified the workspace still passes clean under the deny, and a throwaway probe (useless_vec) errors the build. Complements the existing todo + wildcard_enum_match_arm denies."
+        kind @ci
         log (
             {
                 at 2026-07-17T19:49:53.906068Z
@@ -3915,6 +3948,7 @@ children (
     {
         id perf-tropical-builder
         title "Optimize the tropical (OpenFST/rustfst-backed) FST builder — the main construction path. Profiled on a real lang-sma lexc compile (26 files -> 130,667-state / 222,603-arc lexicon, 5MB output): 7.7s wall (5.5s CPU, single-threaded) and 613MB peak RSS (>100x the output). dhat: 46.3M total allocations / 6.9M live at peak / 518MB at t-gmax, dominated by per-state Arc&lt;Vec&gt; transition storage and deep-copy FST conversions/clones. Children A/B/C are the ranked levers; harness is the cfg-gated dhat-heap CLI feature + /usr/bin/sample."
+        kind @perf
         children (
             {
                 id conversion-churn
@@ -4063,6 +4097,7 @@ children (
     {
         id perf-pmatch-builder
         title "pmatch2fst memory: kill OLW-conversion basic intermediate + encode weights in pmatch minimizes"
+        kind @perf
         children (
             {
                 id olw-direct-conversion
@@ -4117,6 +4152,7 @@ children (
     {
         id perf-memory-round2
         title "Memory round 2: flatten OLW packer groups + compact rustfst determinize table"
+        kind @perf
         children (
             {
                 id olw-flat-groups
@@ -4184,6 +4220,7 @@ children (
     {
         id rustfst-noop-gates
         title "Property-gated no-op skipping in rustfst (connect/rm_epsilon when cached properties prove trim/eps-free); byte-identical oracles"
+        kind @perf
         log (
             {
                 at 2026-07-18T02:43:15.133819Z
@@ -4197,6 +4234,7 @@ children (
     {
         id perf-xfst-cpu
         title "xfst/regexp2fst CPU: kill redundant passes exposed by CPU-true leg profiling (93s xfst + 54s regexp2fst of the 200s build)"
+        kind @perf
         children (
             {
                 id fork-property-propagation
@@ -4384,6 +4422,7 @@ children (
     {
         id xfst-flag-encode-nativize
         title "Nativize xerox flag encode/decode for tropical: encode/decode_flag_diacritics do a full basic round-trip 4× per xerox compose (~14% of the speller xfst script); pure symbol-string rename → O(alphabet) in-place SymbolTable edit (A2 pattern); byte-identity expected, speller-artifact cmp decides"
+        kind @perf
         log (
             {
                 at 2026-07-19T16:28:56.228187Z
@@ -4419,6 +4458,7 @@ children (
         id rustfst-ffi-max-states
         title "rustfst fork: fix pre-broken rustfst-ffi (missing DeterminizeConfig::max_states since the budget API landed) so workspace-level cargo test works again; also generate/restore the rustfst-tests-data JSON fixtures if cheap (1464 fixture tests currently skipped-by-failure)"
         priority 10
+        kind @fix
         log (
             {
                 at 2026-07-19T16:29:08.569011Z
@@ -4454,6 +4494,7 @@ children (
         id compose-intersect-map-drop
         title "compose-intersect: drop StatePairMap/agenda before the basic→backend conversion (peak 1.08 GB, 7s stage — LOW VALUE, only if its memory ever matters; measured 2026-07-18, not worth pulling on current evidence)"
         priority 200
+        kind @perf
         log (
             {
                 at 2026-07-19T21:54:46.304223Z
@@ -4481,6 +4522,7 @@ children (
     {
         id successor-divergences
         title "Byte-diverging optimisations (batch 1): validation currency = tokenise/speller behavioral equivalence + re-baselined artifacts"
+        kind @perf
         children (
             {
                 id flag-encode-diverge
@@ -4558,6 +4600,7 @@ children (
     {
         id twolc-name-sigma-cosmetic
         title "lang-sme twolc cosmetic byte-diff: rule name drops quotes + sigma ~205KB smaller"
+        kind @fix
         log (
             {
                 at 2026-07-19T19:03:42.219064Z
@@ -4592,6 +4635,7 @@ children (
     {
         id diag-parse-error-spans
         title "Route nfst parser (xre/pmatch/twolc) parse errors through diag::emit with spans instead of terse Err(_) arms"
+        kind @feat
         log (
             {
                 at 2026-07-19T19:03:58.100637Z
@@ -4619,6 +4663,7 @@ children (
     {
         id twolc-boundary-arc-divergence
         title "lang-sme twolc: 29/102 rules structurally differ vs C++ (extra @#@:0 word-boundary arcs) + sigma numbering permutation"
+        kind @fix
         log (
             {
                 at 2026-07-19T20:44:25.761426Z
@@ -4653,6 +4698,7 @@ children (
     {
         id twolc-paircolon-context-divergence
         title "lang-sma twolc: 2/53 rules structurally differ vs C++ (bare-colon pair-set contexts, no # involved)"
+        kind @fix
         log (
             {
                 at 2026-07-19T21:05:46.023021Z
@@ -4680,6 +4726,7 @@ children (
     {
         id twolc-sigma-numbering-permutation
         title "twolc sigma numbering is a permutation of C++ (global first-use coder vs sorted) — last blocker to byte-identical rule archives"
+        kind @fix
         log (
             {
                 at 2026-07-19T21:05:47.535215Z
@@ -4707,6 +4754,7 @@ children (
     {
         id twolc-escaped-specials
         title "twolc: distinguish escaped %#/%0 literals from bare #/0 specials (nfst-twolc marker renames)"
+        kind @fix
         log (
             {
                 at 2026-07-19T21:31:54.143934Z
@@ -5801,6 +5849,28 @@ children (
                 author "brendan@necessary.nu"
                 kind @note
                 text "sealed — decomposition asserted complete (nplan seal)"
+            }
+        )
+    }
+
+    {
+        id plan-node-kinds
+        title "Declare change kinds for legacy plan nodes"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-08-18T11:06:58.66531Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-08-18T11:07:48.927105Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan complete)"
             }
         )
     }

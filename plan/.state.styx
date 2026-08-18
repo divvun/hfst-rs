@@ -304,6 +304,7 @@ assertions (
     {id pmatch-middot-loses-punct-reading, kind @complete, author "brendan@necessary.nu", at 2026-08-15T22:43:56.279798Z}
     {id compose-peak-memory, kind @complete, author "brendan@necessary.nu", at 2026-08-17T22:46:57.246529Z}
     {id foma-compose-resource-contract, kind @complete, author "brendan@necessary.nu", at 2026-08-18T08:59:05.581108Z}
+    {id plan-node-kinds, kind @complete, author "brendan@necessary.nu", at 2026-08-18T11:07:48.927105Z}
 )
 
 impl_evidence (
