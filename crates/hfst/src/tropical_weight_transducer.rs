@@ -115,6 +115,8 @@ pub struct TropicalWeightTransducer;
 mod compose;
 #[path = "tropical_weight_transducer_intersect.rs"]
 mod intersect;
+#[path = "tropical_weight_transducer_subtract.rs"]
+mod subtract;
 
 // ===== construction-io (workflow body) =====
 mod construction_io {

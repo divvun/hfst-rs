@@ -585,6 +585,7 @@ impl Backend for StdVectorFst {
 impl AlgebraBackend for StdVectorFst {
     const SUPPORTS_FLAG_OVERLAY: bool = true;
     const SUPPORTS_VIRTUAL_FLAG_INTERSECTION: bool = true;
+    const SUPPORTS_VIRTUAL_FLAG_SUBTRACTION: bool = true;
 
     fn remove_epsilons(&self) -> Self {
         TropicalWeightTransducer::remove_epsilons(self)
@@ -667,15 +668,12 @@ impl AlgebraBackend for StdVectorFst {
                 flag_overlay,
                 memory_limit_bytes,
             ),
-            FlagDiacriticOperation::Subtract => {
-                if flag_overlay.is_some() {
-                    crate::bail!(
-                        Hfst,
-                        "this backend does not support virtual flag subtraction"
-                    );
-                }
-                Ok(TropicalWeightTransducer::subtract(&self, &another))
-            }
+            FlagDiacriticOperation::Subtract => TropicalWeightTransducer::try_subtract_owned(
+                self,
+                another,
+                flag_overlay,
+                memory_limit_bytes,
+            ),
         }
     }
 

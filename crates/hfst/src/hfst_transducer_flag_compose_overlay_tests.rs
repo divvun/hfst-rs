@@ -144,61 +144,68 @@ fn flag_path<B: AlgebraBackend>(flag: &str) -> HfstTransducer<B> {
 }
 
 fn assert_special_mode_parity<B: AlgebraBackend>() {
-    for config in [
-        EngineConfig {
-            flag_is_epsilon_in_composition: true,
-            ..EngineConfig::default()
-        },
-        EngineConfig {
-            xerox_composition: true,
-            ..EngineConfig::default()
-        },
-        EngineConfig {
-            flag_is_epsilon_in_composition: true,
-            xerox_composition: true,
-            ..EngineConfig::default()
-        },
+    for (left_flag, right_flag) in [
+        ("@U.LEFT.VALUE@", "@P.RIGHT.VALUE@"),
+        // Clear flags have no value component after the feature name. They
+        // must still participate in the `_1`/`_2` ordering restriction.
+        ("@C.LEFT@", "@P.RIGHT.VALUE@"),
     ] {
-        let mut virtual_left = flag_path::<B>("@U.LEFT.VALUE@");
-        let mut virtual_right = flag_path::<B>("@P.RIGHT.VALUE@");
-        let mut eager_left = virtual_left.clone();
-        let mut eager_right = virtual_right.clone();
+        for config in [
+            EngineConfig {
+                flag_is_epsilon_in_composition: true,
+                ..EngineConfig::default()
+            },
+            EngineConfig {
+                xerox_composition: true,
+                ..EngineConfig::default()
+            },
+            EngineConfig {
+                flag_is_epsilon_in_composition: true,
+                xerox_composition: true,
+                ..EngineConfig::default()
+            },
+        ] {
+            let mut virtual_left = flag_path::<B>(left_flag);
+            let mut virtual_right = flag_path::<B>(right_flag);
+            let mut eager_left = virtual_left.clone();
+            let mut eager_right = virtual_right.clone();
 
-        eager_left
-            .harmonize_flag_diacritics(&mut eager_right, true)
-            .expect("eager special-mode harmonization");
-        eager_left
-            .compose_with_config(&eager_right, true, &config)
-            .expect("eager special-mode composition");
+            eager_left
+                .harmonize_flag_diacritics(&mut eager_right, true)
+                .expect("eager special-mode harmonization");
+            eager_left
+                .compose_with_config(&eager_right, true, &config)
+                .expect("eager special-mode composition");
 
-        let sizes = (
-            virtual_left.number_of_arcs(),
-            virtual_right.number_of_arcs(),
-        );
-        let overlay = virtual_left
-            .prepare_flag_diacritics_for_compose(&mut virtual_right)
-            .expect("virtual special-mode harmonization");
-        assert_eq!(
-            (
+            let sizes = (
                 virtual_left.number_of_arcs(),
                 virtual_right.number_of_arcs(),
-            ),
-            sizes,
-            "special-mode preparation inserted physical flag loops"
-        );
-        virtual_left
-            .compose_with_config_and_flag_overlay(&virtual_right, true, &config, Some(&overlay))
-            .expect("virtual special-mode composition");
+            );
+            let overlay = virtual_left
+                .prepare_flag_diacritics_for_compose(&mut virtual_right)
+                .expect("virtual special-mode harmonization");
+            assert_eq!(
+                (
+                    virtual_left.number_of_arcs(),
+                    virtual_right.number_of_arcs(),
+                ),
+                sizes,
+                "special-mode preparation inserted physical flag loops"
+            );
+            virtual_left
+                .compose_with_config_and_flag_overlay(&virtual_right, true, &config, Some(&overlay))
+                .expect("virtual special-mode composition");
 
-        let equivalent = virtual_left
-            .compare(&eager_left, true)
-            .expect("compare eager and virtual special-mode results");
-        assert!(
-            equivalent,
-            "virtual special mode differs from eager reference: {config:?}; virtual={:?}; eager={:?}",
-            graph_rows(&virtual_left),
-            graph_rows(&eager_left)
-        );
+            let equivalent = virtual_left
+                .compare(&eager_left, true)
+                .expect("compare eager and virtual special-mode results");
+            assert!(
+                equivalent,
+                "virtual special mode differs from eager reference: {config:?}; virtual={:?}; eager={:?}",
+                graph_rows(&virtual_left),
+                graph_rows(&eager_left)
+            );
+        }
     }
 }
 

@@ -19,6 +19,7 @@ use crate::inc::{
     handle_error_case,
 };
 use hfst::backend::AlgebraBackend;
+use hfst::hfst_transducer::FlagDiacriticOverlay;
 use hfst::hfst_transducer::HfstTransducer;
 use std::io::Write;
 
@@ -159,6 +160,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
     let mut op = SubtractOp {
         harmonize: options.harmonize,
         harmonize_flags: options.harmonize_flags,
+        flag_overlay: None,
     };
     run_binary_streams_tool(&common, &SPEC, &mut op)
 }
@@ -166,6 +168,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
 struct SubtractOp {
     harmonize: bool,
     harmonize_flags: bool,
+    flag_overlay: Option<FlagDiacriticOverlay>,
 }
 
 impl BinaryToolOp for SubtractOp {
@@ -176,6 +179,7 @@ impl BinaryToolOp for SubtractOp {
         second: &mut HfstTransducer<B>,
         _ctx: &PairContext<'_>,
     ) -> Result<(), i32> {
+        self.flag_overlay = None;
         if second.has_flag_diacritics() {
             warning(
                 common,
@@ -200,11 +204,21 @@ impl BinaryToolOp for SubtractOp {
                     );
                 }
             } else {
-                // C: 'first->harmonize_flag_diacritics(*second)' — relies
-                // on the default 'insert_renamed_flags=true'.
-                if let Err(e) = first.harmonize_flag_diacritics(second, true) {
-                    error(common, 1, 0, &format!("{e}"));
-                    return Err(1);
+                let prepared = if B::SUPPORTS_VIRTUAL_FLAG_SUBTRACTION {
+                    first
+                        .prepare_flag_diacritics_for_operation(second)
+                        .map(Some)
+                } else {
+                    // C: 'first->harmonize_flag_diacritics(*second)' — relies
+                    // on the default 'insert_renamed_flags=true'.
+                    first.harmonize_flag_diacritics(second, true).map(|()| None)
+                };
+                match prepared {
+                    Ok(overlay) => self.flag_overlay = overlay,
+                    Err(e) => {
+                        error(common, 1, 0, &format!("{e}"));
+                        return Err(1);
+                    }
                 }
             }
         }
@@ -216,6 +230,8 @@ impl BinaryToolOp for SubtractOp {
         first: &mut HfstTransducer<B>,
         second: &HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
-        first.subtract(second, self.harmonize).map(|_| ())
+        first
+            .subtract_with_flag_overlay(second, self.harmonize, self.flag_overlay.as_ref())
+            .map(|_| ())
     }
 }

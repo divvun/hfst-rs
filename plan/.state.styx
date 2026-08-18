@@ -402,4 +402,9 @@ impl_evidence (
     ), rule_versions_seen (
         {id virtual-flag-algebra.special-compose, version 0}
     )}
+    {id virtual-flag-subtraction, covered_rules (
+        virtual-flag-algebra.subtraction
+    ), covered_claims (
+        {impl_name target-impl, rule virtual-flag-algebra.subtraction}
+    )}
 )

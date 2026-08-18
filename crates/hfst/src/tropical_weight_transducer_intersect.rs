@@ -122,7 +122,7 @@ impl TropicalWeightTransducer {
     }
 }
 
-fn encode_overlay(
+pub(super) fn encode_overlay(
     mut encoder: algorithms::EncodeTable<TropicalWeight>,
     overlay: Option<&FlagDiacriticOverlay>,
     symbols: &SymbolTable,

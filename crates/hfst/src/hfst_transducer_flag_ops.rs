@@ -71,22 +71,9 @@ pub(super) fn has_flags<B: Backend>(fst: &HfstTransducer<B>) -> bool {
 // "_1", return true.
 // [spec:hfst:def:hfst-transducer.hfst.is-flag-suffix-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.is-flag-suffix-fn]
-#[allow(dead_code)]
-fn is_flag_suffix(suffix: &str, flag_diacritic: &str) -> bool {
-    let flag_end_pos = match flag_diacritic.rfind('.') {
-        None => return false,
-        Some(pos) => pos,
-    };
-
-    if flag_end_pos < suffix.len() {
-        return false;
-    }
-
-    if flag_diacritic[flag_end_pos - suffix.len()..flag_end_pos] != *suffix {
-        return false;
-    }
-
-    true
+pub(super) fn is_flag_suffix(suffix: &str, flag_diacritic: &str) -> bool {
+    FdOperation::is_diacritic(flag_diacritic)
+        && FdOperation::get_feature(flag_diacritic).ends_with(suffix)
 }
 
 // [spec:hfst:def:hfst-transducer.hfst.rename-flag-diacritics-fn]

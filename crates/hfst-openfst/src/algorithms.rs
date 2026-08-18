@@ -274,7 +274,7 @@ where
 // a reaching test fails visibly rather than silently misbehaving.
 
 // Collect the non-epsilon input labels of an fst (its acceptor alphabet).
-fn labels_of<W: Semiring, F: ExpandedFst<W>>(fst: &F) -> std::collections::BTreeSet<Label> {
+pub fn Labels<W: Semiring, F: ExpandedFst<W>>(fst: &F) -> std::collections::BTreeSet<Label> {
     let mut s = std::collections::BTreeSet::new();
     for q in fst.states_iter() {
         if let Ok(trs) = fst.get_trs(q) {
@@ -292,7 +292,7 @@ fn labels_of<W: Semiring, F: ExpandedFst<W>>(fst: &F) -> std::collections::BTree
 // a sink state (every missing label leads to the always-accepting sink), then flip
 // final/non-final. The language becomes Σ* \ L(fst). Mirrors OpenFST's
 // ComplementFst as used by Difference.
-fn complement_acceptor<W, F>(
+pub fn ComplementAcceptor<W, F>(
     fst: &F,
     sigma: &std::collections::BTreeSet<Label>,
 ) -> rustfst::fst_impls::VectorFst<W>
@@ -358,9 +358,9 @@ where
     F2: ExpandedFst<W>,
     F3: MutableFst<W> + AllocableFst<W>,
 {
-    let mut sigma = labels_of(fst1);
-    sigma.append(&mut labels_of(fst2));
-    let comp = complement_acceptor(fst2, &sigma);
+    let mut sigma = Labels(fst1);
+    sigma.append(&mut Labels(fst2));
+    let comp = ComplementAcceptor(fst2, &sigma);
     Intersect(fst1, &comp, ofst);
 }
 

@@ -5991,6 +5991,14 @@ children (
                         kind @status
                         text "Todo → Doing (nplan start)"
                     }
+
+                    {
+                        at 2026-08-18T14:47:06.770842Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Real lang-kal OpenFst A/B, same source and only virtual capabilities disabled for the eager reference: XRE file-reference composition 88.20s / 30,331,158,528 B peak RSS eager versus 50.37s / 12,800,409,600 B virtual (1.75x faster, 57.8% lower RSS); XFST stack compose 88.21s / 30,330,535,936 B versus 42.98s / 12,740,804,608 B (2.05x faster, 58.0% lower RSS). Both virtual outputs passed hfst compare against their eager reference."
+                        after_done true
+                    }
                 )
             }
 
@@ -6024,6 +6032,14 @@ children (
                         author "brendan@necessary.nu"
                         kind @status
                         text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-18T14:47:15.57997Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Real lang-kal OpenFst generator-surface intersect corpus A/B: 86.89s / 35,885,711,360 B peak RSS eager versus 12.39s / 5,013,766,144 B virtual (7.01x faster, 86.0% lower RSS). Both outputs were 2,041,447 states / 2,492,511 arcs and passed hfst compare."
+                        after_done true
                     }
                 )
             }
@@ -6059,6 +6075,14 @@ children (
                         kind @status
                         text "Todo → Doing (nplan start)"
                     }
+
+                    {
+                        at 2026-08-18T14:47:26.320063Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Real lang-kal OpenFst Xerox-composition A/B: 90.49s / 29,238,329,344 B peak RSS eager versus 52.08s / 11,827,249,152 B virtual (1.74x faster, 59.6% lower RSS). Both outputs were 2,866,873 states / 3,319,342 arcs and passed hfst compare. A separate flag-is-epsilon timing exists but is not counted as a release-gate result because its multi-gigabyte outputs were not jointly loaded for semantic comparison."
+                        after_done true
+                    }
                 )
             }
 
@@ -6085,6 +6109,20 @@ children (
                         author "brendan@necessary.nu"
                         kind @decision
                         text "priority pinned to 1 — operator override: Operator approved prioritizing the virtual-flag algebra project now; nplan does not inherit the valid P1 container pin, so this leaf carries the same project pass while deps retain internal ordering."
+                    }
+
+                    {
+                        at 2026-08-18T13:35:07.321978Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-18T14:47:36.474533Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Real lang-kal OpenFst generator-surface minus URL-surface A/B after fixing the shared two-sided classifier for no-value clear flags such as @C.Num@: 21.53s / 1,675,755,520 B peak RSS eager versus 4.38s / 1,259,208,704 B virtual (4.92x faster, 24.9% lower RSS). hfst compare passed. Eager materialized 11,005,120 left and 892,238 right flag loops; virtual preparation inserted none. Focused Tropical and Foma clear/valued/alphabet-only parity tests pass."
                     }
                 )
             }

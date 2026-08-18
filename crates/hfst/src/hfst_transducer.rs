@@ -60,6 +60,8 @@ use crate::tropical_weight_transducer::TropicalWeightTransducer;
 mod flag_ops;
 #[path = "hfst_transducer_intersect.rs"]
 mod intersect;
+#[path = "hfst_transducer_subtract.rs"]
+mod subtract;
 pub(crate) use flag_ops::{decode_flag, encode_flag};
 use flag_ops::{decode_flag_diacritics, encode_flag_diacritics, has_flags, rename_flag_diacritics};
 
@@ -2572,11 +2574,11 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
                 continue;
             }
 
-            if it.find("_1.").is_some() {
+            if flag_ops::is_flag_suffix("_1", it) {
                 _1_flags.insert(it.clone());
             }
 
-            if it.find("_2.").is_some() {
+            if flag_ops::is_flag_suffix("_2", it) {
                 _2_flags.insert(it.clone());
             }
         }
@@ -3216,10 +3218,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         another: &HfstTransducer<B>,
         harmonize: bool,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.is_trie = false; // This could be done so that is_trie is preserved
-        let another = self.harmonize_for_binary_op(another, harmonize)?;
-        self.fst = self.fst.subtract(&another.fst);
-        Ok(self)
+        self.subtract_with_flag_overlay(another, harmonize, None)
     }
 
     // ----- integration shims (constructor-name aliases; the 'ty' parameter is

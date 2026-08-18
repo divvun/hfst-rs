@@ -614,6 +614,7 @@ impl FomaTransducer {
 impl AlgebraBackend for FomaTransducer {
     const SUPPORTS_FLAG_OVERLAY: bool = true;
     const SUPPORTS_VIRTUAL_FLAG_INTERSECTION: bool = true;
+    const SUPPORTS_VIRTUAL_FLAG_SUBTRACTION: bool = true;
 
     fn remove_epsilons(&self) -> Self {
         self.wrap_with(foma::determinize::fsm_epsilon_remove(self.net.clone()))
@@ -744,13 +745,28 @@ impl AlgebraBackend for FomaTransducer {
             return Ok(FomaTransducer { net: result, opts });
         }
         if operation == FlagDiacriticOperation::Subtract {
-            if flag_overlay.is_some() {
-                crate::bail!(
-                    Hfst,
-                    "this backend does not support virtual flag subtraction"
-                );
+            let FomaTransducer { net, opts } = self;
+            let mut complement_source = another.net;
+
+            // A missing right-side flag is a self-loop at every state of the
+            // subtrahend. Such a loop commutes with determinization, but it
+            // must be present before complement: ordinary completion would
+            // otherwise send the flag to the accepting complement sink.
+            // Remove these alphabet-only labels while complement completes
+            // the real alphabet; the lazy intersection overlay restores them
+            // as self-loops on every complement state, including its sink.
+            if let Some(flag_overlay) = flag_overlay {
+                for symbol in &flag_overlay.right_self_loops {
+                    foma::sigma::sigma_remove(symbol, &mut complement_source.sigma);
+                }
+                foma::sigma::sigma_sort(&mut complement_source);
             }
-            return Ok(self.subtract(&another));
+            let complement = foma::constructions::fsm_complement(&opts, complement_source);
+            let result = foma::constructions::fsm_intersect_with_flag_overlay(
+                &opts, net, complement, &overlay,
+            )
+            .map_err(|error| crate::err!(Hfst, format!("Foma subtraction: {error}")))?;
+            return Ok(FomaTransducer { net: result, opts });
         }
 
         let resources = match memory_limit_bytes {
