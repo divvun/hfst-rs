@@ -35,6 +35,7 @@ use crate::hfst_symbol_defs::internal_identity;
 use crate::hfst_transducer::{FromAnyTransducer, HfstTransducer};
 use crate::hfst_tropical_transducer_transition_data::SymbolCoder;
 use crate::lexc::LexcCompiler;
+use crate::virtual_flag_frontends::prepare_compose_flag_overlay;
 use crate::xre::XreCompiler;
 use std::io::BufRead;
 use tracing::{debug, error, info};
@@ -142,6 +143,8 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     pub variables: BTreeMap<String, String>,
     pub properties: BTreeMap<String, String>,
     pub lists: BTreeMap<Symbol, BTreeSet<Symbol>>,
+    /// Typed operational state for the textual `harmonize-flags` variable.
+    harmonize_flags: bool,
     pub verbose: bool,
     pub verbose_prompt: bool,
     /* The latest regex that has been compiled when 'compile_regex' has been
@@ -247,6 +250,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             variables: BTreeMap::new(),
             properties: BTreeMap::new(),
             lists: BTreeMap::new(),
+            harmonize_flags: false,
             verbose: false,
             verbose_prompt: false,
             latest_regex_compiled: None,
@@ -2054,13 +2058,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 self.xre.set_encode_weights(false);
             }
         }
-        if name == "harmonize-flags" {
-            if text == "ON" {
-                self.xre.set_flag_harmonization(true);
-            }
-            if text == "OFF" {
-                self.xre.set_flag_harmonization(false);
-            }
+        if name == "harmonize-flags" && matches!(text, "ON" | "OFF") {
+            self.harmonize_flags = text == "ON";
+            self.xre.set_flag_harmonization(self.harmonize_flags);
         }
         if name == "xerox-composition" {
             // C++ toggled the 'hfst::xerox_composition' global shared with the
@@ -4488,27 +4488,26 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     rm.insert_freely(tm, true)?;
                 }
                 BinaryOperation::COMPOSE_NET => {
-                    let both_have_flags =
-                        self.net(result).has_flag_diacritics() && self.net(t).has_flag_diacritics();
-                    if both_have_flags {
-                        if self.variables["harmonize-flags"] == "OFF" {
-                            if self.verbose {
-                                self.error_message(
-                                    "Both composition arguments contain flag \
-                                     diacritics. Set harmonize-flags ON to \
-                                     harmonize them.",
-                                );
-                                self.flush();
-                            }
-                        } else {
-                            let (rb, tb) = self.net_pair_mut(result, t);
-                            rb.harmonize_flag_diacritics(tb, true)?;
-                        }
+                    let left_has_flags = self.net(result).has_flag_diacritics();
+                    let right_has_flags = self.net(t).has_flag_diacritics();
+                    let harmonize_flags = self.harmonize_flags;
+                    if left_has_flags && right_has_flags && !harmonize_flags && self.verbose {
+                        self.error_message(
+                            "Both composition arguments contain flag diacritics. \
+                             Set harmonize-flags ON to harmonize them.",
+                        );
+                        self.flush();
                     }
-
                     let cfg = self.engine_config;
+                    let overlay = {
+                        let (left, right) = self.net_pair_mut(result, t);
+                        prepare_compose_flag_overlay(left, right, harmonize_flags, &cfg)?
+                    };
+
                     let (rm, tm) = self.net_pair_mut(result, t);
-                    let composed = rm.compose_with_config(tm, true, &cfg).map(|_| ());
+                    let composed = rm
+                        .compose_with_config_and_flag_overlay(tm, true, &cfg, overlay.as_ref())
+                        .map(|_| ());
                     if let Err(e) = composed {
                         if matches!(
                             e.kind,

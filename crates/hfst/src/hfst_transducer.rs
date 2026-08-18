@@ -653,6 +653,7 @@ impl<B: Backend> HfstTransducer<B> {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.insert-freely-missing-flags-from-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.insert-freely-missing-flags-from-fn]
+    #[track_caller]
     pub fn insert_freely_missing_flags_from(&mut self, another: &HfstTransducer<B>) {
         let mut missing_flags: StringSet = StringSet::new();
         if self.check_for_missing_flags_in_into(
@@ -660,6 +661,19 @@ impl<B: Backend> HfstTransducer<B> {
             &mut missing_flags,
             false, /* do not return on first miss */
         ) {
+            let caller = std::panic::Location::caller();
+            let state_count = self.number_of_states();
+            let missing_flag_count = missing_flags.len();
+            let added_arc_count = u64::from(state_count) * missing_flag_count as u64;
+            tracing::warn!(
+                target: "hfst::virtual_flags",
+                state_count,
+                missing_flag_count,
+                added_arc_count,
+                caller_file = caller.file(),
+                caller_line = caller.line(),
+                "materializing missing flag-diacritic self-loops eagerly; no virtual overlay was selected"
+            );
             let mut basic: HfstBasicTransducer = HfstBasicTransducer::from_transducer(self);
 
             // Every state gains a free self-loop per missing flag, so the graph
@@ -1542,6 +1556,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.harmonize-flag-diacritics-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.harmonize-flag-diacritics-fn]
+    #[track_caller]
     pub fn harmonize_flag_diacritics(
         &mut self,
         another: &mut HfstTransducer<B>,

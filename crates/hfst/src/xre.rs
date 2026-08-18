@@ -45,6 +45,7 @@ use crate::backend::AlgebraBackend;
 use crate::hfst_data_types::ImplementationType;
 use crate::hfst_data_types::Symbol;
 use crate::hfst_transducer::HfstTransducer;
+use crate::virtual_flag_frontends::prepare_compose_flag_overlay;
 
 /// Arguments bundle mirroring 'hfst::xre::XreConstructorArguments'
 /// ('XreCompiler.h'). Carries the four definition maps used to seed a fresh
@@ -1089,15 +1090,20 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             BinaryOp::Compose => {
                 let mut left = self.eval(l)?;
                 let mut right = self.eval(r)?;
-                // Flag-diacritic harmonization only matters when flag
-                // harmonization is enabled; the verbose "not harmonized" warning
-                // is skipped (has_flags() in the facade is a deferred port).
-                if self.harmonize_flags && left.has_flag_diacritics() && right.has_flag_diacritics()
-                {
-                    left.harmonize_flag_diacritics(&mut right, true)?;
-                }
-                left.compose_with_config(&right, self.harmonize, &self.opt_cfg())?;
-                left.optimize_with_config(&self.opt_cfg())?;
+                let config = self.opt_cfg();
+                let overlay = prepare_compose_flag_overlay(
+                    &mut left,
+                    &mut right,
+                    self.harmonize_flags,
+                    &config,
+                )?;
+                left.compose_with_config_and_flag_overlay(
+                    &right,
+                    self.harmonize,
+                    &config,
+                    overlay.as_ref(),
+                )?;
+                left.optimize_with_config(&config)?;
                 left
             }
             BinaryOp::CrossProduct => {

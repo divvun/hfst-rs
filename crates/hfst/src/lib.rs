@@ -82,5 +82,6 @@ pub mod thfst_io;
 pub mod transducer;
 pub mod tropical_weight_transducer;
 pub mod twolc;
+mod virtual_flag_frontends;
 pub mod xfst_compiler;
 pub mod xre;

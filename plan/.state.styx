@@ -373,4 +373,9 @@ impl_evidence (
         {impl_name target-impl, rule virtual-flag-algebra.backend-core}
         {impl_name target-impl, rule virtual-flag-algebra.materialized-reference}
     )}
+    {id virtual-flag-frontends, covered_rules (
+        virtual-flag-algebra.frontend-compose
+    ), covered_claims (
+        {impl_name target-impl, rule virtual-flag-algebra.frontend-compose}
+    )}
 )
