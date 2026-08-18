@@ -5874,4 +5874,137 @@ children (
             }
         )
     }
+
+    {
+        id virtual-flag-algebra
+        title "Virtualize flag harmonization across HFST algebra operations"
+        kind @perf
+        deps (compose-peak-memory foma-compose-resource-integration)
+        children (
+            {
+                id virtual-flag-contract
+                title "Specify virtual flag semantics across algebra operations"
+                kind @docs
+                sealed true
+                log (
+                    {
+                        at 2026-08-18T11:09:31.171716Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "sealed — decomposition asserted complete (nplan seal)"
+                    }
+                )
+            }
+
+            {
+                id virtual-flag-core
+                title "Generalize virtual flag transitions across OpenFst and Foma"
+                kind @perf
+                deps (virtual-flag-contract)
+                sealed true
+                log (
+                    {
+                        at 2026-08-18T11:09:34.659341Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "sealed — decomposition asserted complete (nplan seal)"
+                    }
+                )
+            }
+
+            {
+                id virtual-flag-frontends
+                title "Route XRE and XFST composition through virtual flags"
+                kind @perf
+                deps (virtual-flag-core)
+                sealed true
+                log (
+                    {
+                        at 2026-08-18T11:09:37.557608Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "sealed — decomposition asserted complete (nplan seal)"
+                    }
+                )
+            }
+
+            {
+                id virtual-flag-intersection
+                title "Virtualize flag harmonization for intersection"
+                kind @perf
+                deps (virtual-flag-core)
+                sealed true
+                log (
+                    {
+                        at 2026-08-18T11:09:39.994905Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "sealed — decomposition asserted complete (nplan seal)"
+                    }
+                )
+            }
+
+            {
+                id virtual-flag-special-compose
+                title "Virtualize flag-is-epsilon and Xerox composition"
+                kind @perf
+                deps (virtual-flag-core)
+                sealed true
+                log (
+                    {
+                        at 2026-08-18T11:09:44.092611Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "sealed — decomposition asserted complete (nplan seal)"
+                    }
+                )
+            }
+
+            {
+                id virtual-flag-subtraction
+                title "Virtualize flag harmonization for subtraction"
+                kind @perf
+                deps (virtual-flag-core)
+                sealed true
+                log (
+                    {
+                        at 2026-08-18T11:09:46.726965Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "sealed — decomposition asserted complete (nplan seal)"
+                    }
+                )
+            }
+
+            {
+                id virtual-flag-lang-gates
+                title "Verify GLE KAL SMA and SME equivalence and performance"
+                kind @test
+                deps (
+                    virtual-flag-frontends
+                    virtual-flag-intersection
+                    virtual-flag-special-compose
+                    virtual-flag-subtraction
+                )
+                sealed true
+                log (
+                    {
+                        at 2026-08-18T11:09:49.88773Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "sealed — decomposition asserted complete (nplan seal)"
+                    }
+                )
+            }
+        )
+        sealed true
+        log (
+            {
+                at 2026-08-18T11:09:52.419531Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "sealed — decomposition asserted complete (nplan seal)"
+            }
+        )
+    }
 )
