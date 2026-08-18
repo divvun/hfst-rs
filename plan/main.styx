@@ -5885,12 +5885,14 @@ children (
     {
         id virtual-flag-algebra
         title "Virtualize flag harmonization across HFST algebra operations"
+        priority 1
         kind @perf
         deps (compose-peak-memory foma-compose-resource-integration)
         children (
             {
                 id virtual-flag-contract
                 title "Specify virtual flag semantics across algebra operations"
+                priority 1
                 kind @docs
                 sealed true
                 log (
@@ -5900,12 +5902,20 @@ children (
                         kind @note
                         text "sealed — decomposition asserted complete (nplan seal)"
                     }
+
+                    {
+                        at 2026-08-18T11:15:11.473506Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "priority pinned to 1 — operator override: Operator approved prioritizing the virtual-flag algebra project now; nplan does not inherit the valid P1 container pin, so this leaf carries the same project pass while deps retain internal ordering."
+                    }
                 )
             }
 
             {
                 id virtual-flag-core
                 title "Generalize virtual flag transitions across OpenFst and Foma"
+                priority 1
                 kind @perf
                 deps (virtual-flag-contract)
                 sealed true
@@ -5916,12 +5926,20 @@ children (
                         kind @note
                         text "sealed — decomposition asserted complete (nplan seal)"
                     }
+
+                    {
+                        at 2026-08-18T11:15:11.570762Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "priority pinned to 1 — operator override: Operator approved prioritizing the virtual-flag algebra project now; nplan does not inherit the valid P1 container pin, so this leaf carries the same project pass while deps retain internal ordering."
+                    }
                 )
             }
 
             {
                 id virtual-flag-frontends
                 title "Route XRE and XFST composition through virtual flags"
+                priority 1
                 kind @perf
                 deps (virtual-flag-core)
                 sealed true
@@ -5932,12 +5950,20 @@ children (
                         kind @note
                         text "sealed — decomposition asserted complete (nplan seal)"
                     }
+
+                    {
+                        at 2026-08-18T11:15:11.660723Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "priority pinned to 1 — operator override: Operator approved prioritizing the virtual-flag algebra project now; nplan does not inherit the valid P1 container pin, so this leaf carries the same project pass while deps retain internal ordering."
+                    }
                 )
             }
 
             {
                 id virtual-flag-intersection
                 title "Virtualize flag harmonization for intersection"
+                priority 1
                 kind @perf
                 deps (virtual-flag-core)
                 sealed true
@@ -5948,12 +5974,20 @@ children (
                         kind @note
                         text "sealed — decomposition asserted complete (nplan seal)"
                     }
+
+                    {
+                        at 2026-08-18T11:15:11.751292Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "priority pinned to 1 — operator override: Operator approved prioritizing the virtual-flag algebra project now; nplan does not inherit the valid P1 container pin, so this leaf carries the same project pass while deps retain internal ordering."
+                    }
                 )
             }
 
             {
                 id virtual-flag-special-compose
                 title "Virtualize flag-is-epsilon and Xerox composition"
+                priority 1
                 kind @perf
                 deps (virtual-flag-core)
                 sealed true
@@ -5964,12 +5998,20 @@ children (
                         kind @note
                         text "sealed — decomposition asserted complete (nplan seal)"
                     }
+
+                    {
+                        at 2026-08-18T11:15:11.840479Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "priority pinned to 1 — operator override: Operator approved prioritizing the virtual-flag algebra project now; nplan does not inherit the valid P1 container pin, so this leaf carries the same project pass while deps retain internal ordering."
+                    }
                 )
             }
 
             {
                 id virtual-flag-subtraction
                 title "Virtualize flag harmonization for subtraction"
+                priority 1
                 kind @perf
                 deps (virtual-flag-core)
                 sealed true
@@ -5980,12 +6022,20 @@ children (
                         kind @note
                         text "sealed — decomposition asserted complete (nplan seal)"
                     }
+
+                    {
+                        at 2026-08-18T11:15:11.930935Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "priority pinned to 1 — operator override: Operator approved prioritizing the virtual-flag algebra project now; nplan does not inherit the valid P1 container pin, so this leaf carries the same project pass while deps retain internal ordering."
+                    }
                 )
             }
 
             {
                 id virtual-flag-lang-gates
                 title "Verify GLE KAL SMA and SME equivalence and performance"
+                priority 1
                 kind @test
                 deps (
                     virtual-flag-frontends
@@ -6001,6 +6051,13 @@ children (
                         kind @note
                         text "sealed — decomposition asserted complete (nplan seal)"
                     }
+
+                    {
+                        at 2026-08-18T11:15:12.020874Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "priority pinned to 1 — operator override: Operator approved prioritizing the virtual-flag algebra project now; nplan does not inherit the valid P1 container pin, so this leaf carries the same project pass while deps retain internal ordering."
+                    }
                 )
             }
         )
@@ -6011,6 +6068,13 @@ children (
                 author "brendan@necessary.nu"
                 kind @note
                 text "sealed — decomposition asserted complete (nplan seal)"
+            }
+
+            {
+                at 2026-08-18T11:14:47.239085Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "priority pinned to 1 — operator override: Operator wants the virtual-flag algebra project pursued now; P1 is the highest valid pass because it depends on the P1 compose-peak-memory predecessor, and it preempts the parked speculative P3 issue."
             }
         )
     }
