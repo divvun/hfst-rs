@@ -308,5 +308,9 @@ assertions (
 )
 
 impl_evidence (
-    {id foma-compose-resource-integration}
+    {id foma-compose-resource-integration, covered_rules (
+        foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose
+    ), covered_claims (
+        {impl_name target-impl, rule foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose}
+    )}
 )

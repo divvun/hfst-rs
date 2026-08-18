@@ -158,22 +158,79 @@ fn special_modes_reject_overlay_before_mutation() {
 
 #[cfg(feature = "foma")]
 #[test]
+// [spec:hfst:req:foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose/test]
 fn foma_backend_accepts_virtual_overlay() {
     use crate::backend_foma::FomaTransducer;
 
-    let mut left =
-        HfstTransducer::<FomaTransducer>::new_symbol("shared").expect("valid Foma left fixture");
-    let right =
-        HfstTransducer::<FomaTransducer>::new_symbol("shared").expect("valid Foma right fixture");
-    let overlay = FlagDiacriticComposeOverlay::default();
+    let path = |flag: &str| {
+        let mut basic = HfstBasicTransducer::new();
+        let flag_state = basic.add_state_new();
+        let flag = Symbol::new(flag);
+        let flag_transition = HfstBasicTransition::new_symbols(
+            flag_state,
+            flag.clone(),
+            flag,
+            0.0,
+            basic.coder_mut(),
+        );
+        basic.add_transition(0, &flag_transition, true);
 
-    left.compose_with_config_and_flag_overlay(
-        &right,
-        true,
-        &EngineConfig::default(),
-        Some(&overlay),
-    )
-    .expect("Foma must accept the virtual-overlay compose path");
+        let final_state = basic.add_state_new();
+        let ordinary = Symbol::new_static("shared");
+        let ordinary_transition = HfstBasicTransition::new_symbols(
+            final_state,
+            ordinary.clone(),
+            ordinary,
+            0.0,
+            basic.coder_mut(),
+        );
+        basic.add_transition(flag_state, &ordinary_transition, true);
+        basic.set_final_weight(final_state, &0.0);
+        HfstTransducer::<FomaTransducer>::new_from_basic(&basic).expect("valid Foma flag path")
+    };
 
-    assert!(left.is_cyclic().is_ok(), "composed Foma graph is queryable");
+    let mut virtual_left = path("@U.LEFT.VALUE@");
+    let mut virtual_right = path("@P.RIGHT.VALUE@");
+    let mut eager_left = virtual_left.clone();
+    let mut eager_right = virtual_right.clone();
+
+    eager_left
+        .harmonize_flag_diacritics(&mut eager_right, true)
+        .expect("eager two-sided Foma harmonization");
+    eager_left
+        .compose(&eager_right, true)
+        .expect("eager two-sided Foma composition");
+
+    let sizes = (
+        virtual_left.number_of_arcs(),
+        virtual_right.number_of_arcs(),
+    );
+    let overlay = virtual_left
+        .prepare_flag_diacritics_for_compose(&mut virtual_right)
+        .expect("virtual two-sided Foma harmonization");
+    assert!(overlay.enforce_left_before_right);
+    assert_eq!(
+        (
+            virtual_left.number_of_arcs(),
+            virtual_right.number_of_arcs(),
+        ),
+        sizes,
+        "overlay preparation inserted physical flag loops"
+    );
+
+    virtual_left
+        .compose_with_config_and_flag_overlay(
+            &virtual_right,
+            true,
+            &EngineConfig::default(),
+            Some(&overlay),
+        )
+        .expect("Foma must accept the two-sided virtual-overlay path");
+
+    assert!(
+        virtual_left
+            .compare(&eager_left, true)
+            .expect("compare eager and virtual Foma results"),
+        "two-sided virtual Foma composition differs from eager harmonization"
+    );
 }
