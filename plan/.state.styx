@@ -1,11 +1,16 @@
 schema_version 7
 
-last_sync_at 2026-08-18T11:19:03.814367Z
+last_sync_at 2026-08-18T12:59:07.706994Z
 
 rule_versions (
     {id foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose, version 0}
     {id virtual-flag-algebra.backend-core, version 0}
+    {id virtual-flag-algebra.frontend-compose, version 0}
+    {id virtual-flag-algebra.intersection, version 0}
+    {id virtual-flag-algebra.language-gates, version 0}
     {id virtual-flag-algebra.materialized-reference, version 0}
+    {id virtual-flag-algebra.special-compose, version 0}
+    {id virtual-flag-algebra.subtraction, version 0}
 )
 
 derived_priorities (
@@ -372,20 +377,29 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule virtual-flag-algebra.backend-core}
         {impl_name target-impl, rule virtual-flag-algebra.materialized-reference}
+    ), rule_versions_seen (
+        {id virtual-flag-algebra.backend-core, version 0}
+        {id virtual-flag-algebra.materialized-reference, version 0}
     )}
     {id virtual-flag-frontends, covered_rules (
         virtual-flag-algebra.frontend-compose
     ), covered_claims (
         {impl_name target-impl, rule virtual-flag-algebra.frontend-compose}
+    ), rule_versions_seen (
+        {id virtual-flag-algebra.frontend-compose, version 0}
     )}
     {id virtual-flag-intersection, covered_rules (
         virtual-flag-algebra.intersection
     ), covered_claims (
         {impl_name target-impl, rule virtual-flag-algebra.intersection}
+    ), rule_versions_seen (
+        {id virtual-flag-algebra.intersection, version 0}
     )}
     {id virtual-flag-special-compose, covered_rules (
         virtual-flag-algebra.special-compose
     ), covered_claims (
         {impl_name target-impl, rule virtual-flag-algebra.special-compose}
+    ), rule_versions_seen (
+        {id virtual-flag-algebra.special-compose, version 0}
     )}
 )
