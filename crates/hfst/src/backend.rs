@@ -387,7 +387,7 @@ pub trait AlgebraBackend: Backend {
     fn subtract(&self, another: &Self) -> Self;
     fn compose(&self, another: &Self) -> Self;
 
-    /// Fallible, consuming compose entry used by the bounded OpenFst path.
+    /// Fallible, consuming compose entry used by resource-controlled backends.
     /// Backends without that path retain their existing borrowed operation;
     /// the CLI materializes flag loops before calling them.
     fn try_compose_owned(

@@ -10,6 +10,7 @@
 //! the contract in `docs/spec/port/back-ends/foma/foma-backend.md`.
 
 use crate::backend::{AlgebraBackend, Backend, LookupBackend};
+use crate::backend_foma_sigma::{is_reserved_symbol, sigma_declare, sym};
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::{
@@ -19,11 +20,10 @@ use crate::hfst_data_types::{
 use crate::hfst_extract_strings::ExtractStringsCb;
 use crate::hfst_flag_diacritics::{FdOperation, FdState, FdTable};
 use crate::hfst_symbol_defs::StringSet;
+use crate::hfst_transducer::FlagDiacriticComposeOverlay;
 use crate::hfst_tropical_transducer_transition_data::{SymbolType, WeightType};
 
 use foma::options::FomaOptions;
-use foma::types::Sigma;
-
 use std::collections::BTreeMap;
 
 /// Snapshot of a basic transducer's recognized relation and alphabet:
@@ -35,11 +35,6 @@ type FomaSnapshot = (
     std::collections::BTreeSet<String>,
     std::collections::BTreeSet<(u32, String, String, u32)>,
 );
-
-/// The HFST special-symbol strings for foma's three reserved sigma numbers.
-const EPSILON_SYMBOL: &str = "@_EPSILON_SYMBOL_@";
-const UNKNOWN_SYMBOL: &str = "@_UNKNOWN_SYMBOL_@";
-const IDENTITY_SYMBOL: &str = "@_IDENTITY_SYMBOL_@";
 
 /// The backend's transducer handle: foma's `Fsm` (the sentinel-terminated
 /// line table plus its `Sigma` alphabet, with reserved numbers EPSILON=0,
@@ -56,62 +51,6 @@ pub struct FomaTransducer {
     /// defaults; results of operations inherit the receiving operand's
     /// options; tune fields directly to steer subsequent operations.
     pub opts: FomaOptions,
-}
-
-/// Whether `symbol` is one of the three HFST special strings foma represents by
-/// a reserved sigma number rather than an ordinary alphabet entry.
-fn is_reserved_symbol(symbol: &str) -> bool {
-    symbol == EPSILON_SYMBOL || symbol == UNKNOWN_SYMBOL || symbol == IDENTITY_SYMBOL
-}
-
-/// Map a foma sigma number to its HFST symbol string. The three reserved
-/// numbers map to their HFST special strings; every other number is resolved
-/// through the sigma alphabet.
-fn sym(n: i32, sigma: &[Sigma]) -> SymbolType {
-    match n {
-        foma::types::EPSILON => SymbolType::from(EPSILON_SYMBOL),
-        foma::types::UNKNOWN => SymbolType::from(UNKNOWN_SYMBOL),
-        foma::types::IDENTITY => SymbolType::from(IDENTITY_SYMBOL),
-        _ => SymbolType::from(
-            foma::sigma::sigma_string(n, sigma).expect("arc symbol number resolves in sigma"),
-        ),
-    }
-}
-
-/// Declare every symbol of `symbols` in `net`'s sigma, skipping those already
-/// there and the three reserved strings (which are sigma numbers 0/1/2, not
-/// alphabet members).
-///
-/// foma's sigma is not decoration. It is simultaneously the alphabet and the
-/// arc-label namespace, and `@_UNKNOWN_@` / `@_IDENTITY_@` match exactly the
-/// symbols it does NOT list — so declaring a symbol that sits on no arc is a
-/// real semantic act (it narrows what `?` and `@` cover), which is precisely
-/// what HFST's alphabet inserts mean.
-///
-/// Every foma construction assumes the sigma is sorted by symbol string:
-/// `fsm_merge_sigma` walks two sigmas as a single ordered merge and silently
-/// mismaps arcs if either is out of order. `sigma_add` appends, so an insertion
-/// is only complete once `sigma_sort` has restored that order (renumbering the
-/// survivors and rewriting the arcs to match).
-fn sigma_declare<'a>(net: &mut foma::types::Fsm, symbols: impl IntoIterator<Item = &'a str>) {
-    // Sieved against the whole sigma at once rather than one `sigma_find` scan
-    // per symbol: `from_basic` runs this over the entire alphabet, where the
-    // per-symbol form would be quadratic in it.
-    let missing: std::collections::BTreeSet<&str> = {
-        let present: std::collections::BTreeSet<&str> =
-            net.sigma.iter().map(|s| s.symbol.as_str()).collect();
-        symbols
-            .into_iter()
-            .filter(|s| !is_reserved_symbol(s) && !present.contains(s))
-            .collect()
-    };
-    if missing.is_empty() {
-        return;
-    }
-    for symbol in missing {
-        foma::sigma::sigma_add(symbol, &mut net.sigma);
-    }
-    foma::sigma::sigma_sort(net);
 }
 
 // [spec:hfst:def:foma-backend.backend-impl]
@@ -673,6 +612,8 @@ impl FomaTransducer {
 // the weight-transform ops are no-ops (foma is a boolean/unweighted algebra).
 // Inputs are cloned into owned `Box<Fsm>` (foma's ops consume their arguments).
 impl AlgebraBackend for FomaTransducer {
+    const SUPPORTS_FLAG_OVERLAY: bool = true;
+
     fn remove_epsilons(&self) -> Self {
         self.wrap_with(foma::determinize::fsm_epsilon_remove(self.net.clone()))
     }
@@ -762,6 +703,50 @@ impl AlgebraBackend for FomaTransducer {
             self.net.clone(),
             another.net.clone(),
         ))
+    }
+
+    // [spec:hfst:req:foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose]
+    fn try_compose_owned(
+        self,
+        another: Self,
+        flag_overlay: Option<&FlagDiacriticComposeOverlay>,
+        memory_limit_bytes: Option<u64>,
+    ) -> crate::error::Result<Self> {
+        let overlay = flag_overlay
+            .map(|overlay| {
+                foma::constructions::ComposeFlagOverlay::new(
+                    overlay.left_self_loops.iter().cloned().collect(),
+                    overlay.right_self_loops.iter().cloned().collect(),
+                    overlay.enforce_left_before_right,
+                )
+            })
+            .transpose()
+            .map_err(|error| crate::err!(Hfst, format!("Foma flag overlay: {error}")))?
+            .unwrap_or_default();
+
+        let resources = match memory_limit_bytes {
+            Some(allowance_bytes) => {
+                let scratch_parent = std::env::current_dir().map_err(|error| {
+                    crate::err!(
+                        Hfst,
+                        format!("resolve Foma compose scratch directory: {error}")
+                    )
+                })?;
+                foma::constructions::ComposeResourceConfig::bounded(allowance_bytes, scratch_parent)
+            }
+            None => foma::constructions::ComposeResourceConfig::unbounded(),
+        };
+
+        let FomaTransducer { net, opts } = self;
+        let result = foma::constructions::fsm_compose_with_config(
+            &opts,
+            net,
+            another.net,
+            &overlay,
+            &resources,
+        )
+        .map_err(|error| crate::err!(Hfst, format!("Foma composition: {error}")))?;
+        Ok(FomaTransducer { net: result, opts })
     }
 
     fn define_transducer_spv(spv: &StringPairVector) -> Self {

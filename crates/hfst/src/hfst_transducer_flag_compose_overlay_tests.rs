@@ -158,33 +158,22 @@ fn special_modes_reject_overlay_before_mutation() {
 
 #[cfg(feature = "foma")]
 #[test]
-fn unsupported_backend_rejects_an_overlay_before_mutation() {
+fn foma_backend_accepts_virtual_overlay() {
     use crate::backend_foma::FomaTransducer;
 
     let mut left =
-        HfstTransducer::<FomaTransducer>::new_symbol("left").expect("valid Foma left fixture");
+        HfstTransducer::<FomaTransducer>::new_symbol("shared").expect("valid Foma left fixture");
     let right =
-        HfstTransducer::<FomaTransducer>::new_symbol("right").expect("valid Foma right fixture");
+        HfstTransducer::<FomaTransducer>::new_symbol("shared").expect("valid Foma right fixture");
     let overlay = FlagDiacriticComposeOverlay::default();
-    let before = (left.number_of_states(), left.number_of_arcs());
-    left.is_trie = true;
 
-    let error = left
-        .compose_with_config_and_flag_overlay(
-            &right,
-            true,
-            &EngineConfig::default(),
-            Some(&overlay),
-        )
-        .err()
-        .expect("unsupported backend must reject an overlay");
+    left.compose_with_config_and_flag_overlay(
+        &right,
+        true,
+        &EngineConfig::default(),
+        Some(&overlay),
+    )
+    .expect("Foma must accept the virtual-overlay compose path");
 
-    assert!(
-        error
-            .to_string()
-            .contains("does not support virtual flag composition"),
-        "{error}"
-    );
-    assert_eq!((left.number_of_states(), left.number_of_arcs()), before);
-    assert!(left.is_trie, "validation mutated facade metadata");
+    assert!(left.is_cyclic().is_ok(), "composed Foma graph is queryable");
 }

@@ -69,7 +69,7 @@ fn print_usage(common: &CommonOptions) {
     print_common_binary_program_options(&mut *msg);
     let _ = write!(
         msg,
-        "Composition options:\n  -x, --xerox-composition=VALUE Whether flag diacritics are treated as ordinary\n                                symbols in composition (default is false).\n  -X, --xfst=VARIABLE    Toggle xfst compatibility option VARIABLE.\n      --memory-limit=SIZE\n                         OpenFst tropical working-memory allowance for budget-aware\n                         compose state (default: 50% of available RAM; excess spills).\nHarmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n"
+        "Composition options:\n  -x, --xerox-composition=VALUE Whether flag diacritics are treated as ordinary\n                                symbols in composition (default is false).\n  -X, --xfst=VARIABLE    Toggle xfst compatibility option VARIABLE.\n      --memory-limit=SIZE\n                         Working-memory allowance for budget-aware OpenFst tropical\n                         and Foma compose state (default: 50% of available RAM;\n                         excess spills).\nHarmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n"
     );
     let _ = writeln!(msg);
     print_common_binary_program_parameter_instructions(&mut *msg);
@@ -82,7 +82,7 @@ fn print_usage(common: &CommonOptions) {
     let _ = writeln!(msg, "false being the default.");
     let _ = writeln!(
         msg,
-        "SIZE is an integer byte count with an optional binary K/KB/KiB through T/TB/TiB suffix; 0 forces nonempty OpenFst tropical products to spill."
+        "SIZE is an integer byte count with an optional binary K/KB/KiB through T/TB/TiB suffix; 0 forces nonempty budget-aware products to spill."
     );
     let _ = writeln!(
         msg,
@@ -90,7 +90,7 @@ fn print_usage(common: &CommonOptions) {
     );
     let _ = writeln!(
         msg,
-        "HFST_COMPOSE_MEMORY_LIMIT supplies SIZE when --memory-limit is absent; explicit memory limits are not supported for Foma composition."
+        "HFST_COMPOSE_MEMORY_LIMIT supplies SIZE when --memory-limit is absent."
     );
     let _ = write!(
         msg,
@@ -284,6 +284,7 @@ struct ComposeOp {
 
 fn supports_compose_memory_limit(implementation: ImplementationType) -> bool {
     implementation == ImplementationType::TROPICAL_OPENFST_TYPE
+        || implementation == ImplementationType::FOMA_TYPE
 }
 
 fn explicit_memory_limit_name(source: LimitSource) -> Option<&'static str> {
@@ -307,7 +308,7 @@ impl ComposeOp {
                     1,
                     0,
                     &format!(
-                        "{name} is not supported for Foma composition; bounded spilling is available only for OpenFst tropical composition"
+                        "{name} is not supported for {implementation:?} composition; bounded spilling is available for OpenFst tropical and Foma composition"
                     ),
                 );
                 return Err(1);
@@ -414,12 +415,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compose_memory_limit_backend_scope_is_tropical_only() {
+    fn compose_memory_limit_backend_scope_includes_foma() {
         assert!(supports_compose_memory_limit(
             ImplementationType::TROPICAL_OPENFST_TYPE
         ));
-        assert!(!supports_compose_memory_limit(
-            ImplementationType::FOMA_TYPE
-        ));
+        assert!(supports_compose_memory_limit(ImplementationType::FOMA_TYPE));
     }
 }

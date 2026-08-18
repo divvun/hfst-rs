@@ -69,7 +69,7 @@ fn build_foma_operands(dir: &Path) -> (String, String) {
     let left_output = run_with_stdin(
         dir,
         &["txt2fst", "-f", "foma", "-o", &left_path],
-        b"0\t1\ta\tb\n1\n",
+        b"0\t1\ta\t@P.FEATURE.VALUE@\n1\t2\tb\tb\n2\n",
     );
     assert_success("build Foma left operand", &left_output);
     let right_output = run_with_stdin(
@@ -93,7 +93,9 @@ fn assert_semantically_equal(dir: &Path, first: &str, second: &str) {
 
 fn is_compose_scratch_artifact(name: &str) -> bool {
     name.ends_with(".scratch")
-        && (name.starts_with(".hfst-compose.") || name.starts_with(".rustfst-compose-state-table."))
+        && (name.starts_with(".hfst-compose.")
+            || name.starts_with(".rustfst-compose-state-table.")
+            || name.starts_with(".foma-compose."))
 }
 
 fn scratch_artifacts(dir: &Path) -> Vec<String> {
@@ -111,10 +113,13 @@ fn scratch_artifacts(dir: &Path) -> Vec<String> {
 }
 
 #[test]
-fn scratch_detection_covers_materializer_and_pair_interner() {
+fn scratch_detection_covers_all_compose_stores() {
     assert!(is_compose_scratch_artifact(".hfst-compose.123.456.scratch"));
     assert!(is_compose_scratch_artifact(
         ".rustfst-compose-state-table.random.scratch"
+    ));
+    assert!(is_compose_scratch_artifact(
+        ".foma-compose.123.random.scratch"
     ));
     assert!(!is_compose_scratch_artifact("ordinary.scratch"));
     assert!(!is_compose_scratch_artifact(
@@ -134,10 +139,7 @@ fn compose_help_documents_memory_allowance_policy() {
     assert!(stdout.contains("--memory-limit=SIZE"), "{stdout}");
     assert!(stdout.contains("50% of available RAM"), "{stdout}");
     assert!(stdout.contains("OpenFst tropical"), "{stdout}");
-    assert!(
-        stdout.contains("not supported for Foma composition"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("Foma compose state"), "{stdout}");
     assert!(stdout.contains("HFST_COMPOSE_MEMORY_LIMIT"), "{stdout}");
 }
 
@@ -288,72 +290,78 @@ fn flag_epsilon_spill_parity_and_cleanup() {
 
 #[cfg(feature = "foma")]
 #[test]
-fn foma_auto_silent_explicit_limits_rejected() {
+// [spec:hfst:req:foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose/test]
+fn foma_limits_preserve_flag_compose() {
     let temp = tempfile::tempdir().expect("create compose working directory");
     let dir = temp.path();
     let (left, right) = build_foma_operands(dir);
 
-    let automatic_path = dir.join("automatic-foma.hfst");
-    let automatic = hfst()
-        .current_dir(dir)
-        .args([
-            "compose",
-            "-o",
-            automatic_path.to_str().expect("UTF-8 temporary path"),
-            &left,
-            &right,
-        ])
-        .output()
-        .expect("run automatic Foma compose");
-    assert_success("automatic Foma compose", &automatic);
-    let automatic_stderr = String::from_utf8_lossy(&automatic.stderr);
-    assert!(
-        !automatic_stderr.contains("memory allowance")
-            && !automatic_stderr.contains("bounded spilling"),
-        "automatic Foma compose emitted a memory-policy message: {automatic_stderr}"
-    );
+    let spilled = dir.join("spilled-foma.hfst");
+    let memory = dir.join("memory-foma.hfst");
+    let spilled_path = spilled.to_str().expect("UTF-8 temporary path");
+    let memory_path = memory.to_str().expect("UTF-8 temporary path");
 
-    let cli_path = dir.join("cli-foma.hfst");
-    let explicit_cli = hfst()
+    let forced = hfst()
         .current_dir(dir)
         .args([
             "compose",
+            "-F",
             "--memory-limit=0",
             "-o",
-            cli_path.to_str().expect("UTF-8 temporary path"),
+            spilled_path,
             &left,
             &right,
         ])
         .output()
-        .expect("run explicit-limit Foma compose");
-    assert!(!explicit_cli.status.success());
-    let cli_stderr = String::from_utf8_lossy(&explicit_cli.stderr);
-    assert!(cli_stderr.contains("--memory-limit"), "{cli_stderr}");
-    assert!(cli_stderr.contains("OpenFst tropical"), "{cli_stderr}");
+        .expect("run forced-spill Foma compose");
+    assert_success("forced-spill Foma compose", &forced);
 
-    let env_path = dir.join("env-foma.hfst");
-    let explicit_env = hfst()
+    let generous = hfst()
         .current_dir(dir)
-        .env("HFST_COMPOSE_MEMORY_LIMIT", "0")
-        .args([
-            "compose",
-            "-o",
-            env_path.to_str().expect("UTF-8 temporary path"),
-            &left,
-            &right,
-        ])
+        .env("HFST_COMPOSE_MEMORY_LIMIT", "1GiB")
+        .args(["compose", "-F", "-o", memory_path, &left, &right])
         .output()
-        .expect("run environment-limit Foma compose");
-    assert!(!explicit_env.status.success());
-    let env_stderr = String::from_utf8_lossy(&explicit_env.stderr);
-    assert!(
-        env_stderr.contains("HFST_COMPOSE_MEMORY_LIMIT"),
-        "{env_stderr}"
-    );
-    assert!(env_stderr.contains("OpenFst tropical"), "{env_stderr}");
+        .expect("run in-memory Foma compose");
+    assert_success("in-memory Foma compose", &generous);
+    assert_semantically_equal(dir, spilled_path, memory_path);
+
+    let text = hfst()
+        .current_dir(dir)
+        .args(["fst2txt", spilled_path])
+        .output()
+        .expect("render forced-spill Foma result");
+    assert_success("render forced-spill Foma result", &text);
+    let text = String::from_utf8_lossy(&text.stdout);
+    assert!(text.contains("@P.FEATURE.VALUE@"), "{text}");
+    assert!(text.contains("\tb\tc"), "{text}");
+
+    let special_spilled = dir.join("special-spilled-foma.hfst");
+    let special_memory = dir.join("special-memory-foma.hfst");
+    let special_spilled_path = special_spilled.to_str().expect("UTF-8 temporary path");
+    let special_memory_path = special_memory.to_str().expect("UTF-8 temporary path");
+    for (limit, output_path) in [("0", special_spilled_path), ("1GiB", special_memory_path)] {
+        let memory_limit = format!("--memory-limit={limit}");
+        let output = hfst()
+            .current_dir(dir)
+            .args([
+                "compose",
+                "-F",
+                "--xfst=flag-is-epsilon",
+                memory_limit.as_str(),
+                "-o",
+                output_path,
+                &left,
+                &right,
+            ])
+            .output()
+            .expect("run Foma special-mode composition");
+        assert_success("Foma special-mode composition", &output);
+    }
+    assert_semantically_equal(dir, special_spilled_path, special_memory_path);
+
     assert!(
         scratch_artifacts(dir).is_empty(),
-        "Foma policy checks left compose scratch behind: {:?}",
+        "Foma composition left scratch behind: {:?}",
         scratch_artifacts(dir)
     );
 }

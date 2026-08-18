@@ -81,9 +81,9 @@ pub type HfstTransducerPairVector<B> = Vec<HfstTransducerPair<B>>;
 /// The flag-diacritic self-loops that `-F` composition must expose virtually.
 ///
 /// Preparing an overlay inserts these symbols into the corresponding operand's
-/// alphabet, but deliberately does not insert transitions.  The OpenFst layer
-/// maps the symbols to labels and presents a unit-weight self-loop only when
-/// its composition matcher asks for one.
+/// alphabet, but deliberately does not insert transitions. The selected
+/// backend presents a unit-weight self-loop only when its composition engine
+/// asks for that symbol at that state.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FlagDiacriticComposeOverlay {
     /// Flags logically inserted as self-loops at every state of the left FST.
@@ -4011,10 +4011,9 @@ pub struct EngineConfig {
     // [spec:hfst:def:hfst-transducer.hfst.get-flag-is-epsilon-in-composition-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.get-flag-is-epsilon-in-composition-fn]
     pub flag_is_epsilon_in_composition: bool,
-    /// Exact configured allowance for OpenFst tropical compose working memory.
-    /// That backend partitions it among budget-aware compose structures; it is
-    /// not an exact RSS ceiling. Other backends do not honor it. `None` is
-    /// unbounded.
+    /// Exact configured allowance for budget-aware compose working memory.
+    /// The OpenFst tropical and Foma backends partition it among their scalable
+    /// compose structures; it is not an exact RSS ceiling. `None` is unbounded.
     pub compose_memory_limit_bytes: Option<u64>,
     // [spec:hfst:def:hfst-transducer.hfst.set-encode-weights-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.set-encode-weights-fn]
