@@ -5909,6 +5909,20 @@ children (
                         kind @decision
                         text "priority pinned to 1 — operator override: Operator approved prioritizing the virtual-flag algebra project now; nplan does not inherit the valid P1 container pin, so this leaf carries the same project pass while deps retain internal ordering."
                     }
+
+                    {
+                        at 2026-08-18T11:17:05.11359Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-18T11:19:28.704235Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
                 )
             }
 
@@ -5917,6 +5931,9 @@ children (
                 title "Generalize virtual flag transitions across OpenFst and Foma"
                 priority 1
                 kind @perf
+                implements {
+                    target-impl ([spec:hfst:req:virtual-flag-algebra.materialized-reference] [spec:hfst:req:virtual-flag-algebra.backend-core])
+                }
                 deps (virtual-flag-contract)
                 sealed true
                 log (
@@ -5941,6 +5958,9 @@ children (
                 title "Route XRE and XFST composition through virtual flags"
                 priority 1
                 kind @perf
+                implements {
+                    target-impl ([spec:hfst:req:virtual-flag-algebra.frontend-compose])
+                }
                 deps (virtual-flag-core)
                 sealed true
                 log (
@@ -5965,6 +5985,9 @@ children (
                 title "Virtualize flag harmonization for intersection"
                 priority 1
                 kind @perf
+                implements {
+                    target-impl ([spec:hfst:req:virtual-flag-algebra.intersection])
+                }
                 deps (virtual-flag-core)
                 sealed true
                 log (
@@ -5989,6 +6012,9 @@ children (
                 title "Virtualize flag-is-epsilon and Xerox composition"
                 priority 1
                 kind @perf
+                implements {
+                    target-impl ([spec:hfst:req:virtual-flag-algebra.special-compose])
+                }
                 deps (virtual-flag-core)
                 sealed true
                 log (
@@ -6013,6 +6039,9 @@ children (
                 title "Virtualize flag harmonization for subtraction"
                 priority 1
                 kind @perf
+                implements {
+                    target-impl ([spec:hfst:req:virtual-flag-algebra.subtraction])
+                }
                 deps (virtual-flag-core)
                 sealed true
                 log (
@@ -6037,6 +6066,9 @@ children (
                 title "Verify GLE KAL SMA and SME equivalence and performance"
                 priority 1
                 kind @test
+                implements {
+                    target-impl ([spec:hfst:req:virtual-flag-algebra.language-gates])
+                }
                 deps (
                     virtual-flag-frontends
                     virtual-flag-intersection

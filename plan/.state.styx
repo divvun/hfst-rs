@@ -1,11 +1,26 @@
 schema_version 7
 
-last_sync_at 2026-07-11T20:19:58.119495Z
+last_sync_at 2026-08-18T11:19:03.814367Z
+
+rule_versions (
+    {id foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose, version 0}
+    {id virtual-flag-algebra.backend-core, version 0}
+    {id virtual-flag-algebra.materialized-reference, version 0}
+)
 
 derived_priorities (
     {id c-names, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
+    {id cli-alias-shadowing, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id clippy-deny-gate, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id compose-facade-nativize, priority 3, derived_at 2026-08-18T11:19:03.814367Z}
+    {id conversion-churn, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id determinize-intermediate, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id diag-parse-error-spans, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id divvun-hfst-branding, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id drop-dead-commandline-def, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id flag-complement.audit, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
     {id flag-complement.fix, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
+    {id flag-encode-diverge, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id foma-backend.algebra, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
     {id foma-backend.cli, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id foma-backend.convert, priority 2, derived_at 2026-07-11T20:19:58.119495Z}
@@ -15,8 +30,15 @@ derived_priorities (
     {id foma-backend.seam, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
     {id foma-backend.spec, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id foma-backend.tests, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
+    {id foma-backend.wave9-api, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id foma-compose-resource-contract, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id foma-compose-resource-integration, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
+    {id foma-tokeniser-build, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
+    {id fork-property-propagation, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id function-key-normalise, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id giella-tools, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id hfst-write-rename, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
+    {id idiom-clippy-clean, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id idiom-islands, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id idiom3.gate, priority 2, derived_at 2026-06-30T01:24:36.929302Z}
     {id idiom3.getopt, priority 0, derived_at 2026-06-30T01:24:36.929302Z}
@@ -40,15 +62,31 @@ derived_priorities (
     {id idiom9.parsers, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
     {id idiom9.sentinels, priority 2, derived_at 2026-07-11T20:19:58.119495Z}
     {id idiom9.signatures, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
+    {id minimize-consume-input, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id mono.backend-traits, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id mono.cli, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
     {id mono.compilers, priority 2, derived_at 2026-07-11T20:19:58.119495Z}
     {id mono.facade, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
     {id mono.ol-core, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id multiplex, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
+    {id native-alphabet-ops, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id nfst-0-2-publish, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id nfst-patch-restore, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id olw-direct-conversion, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id olw-flat-groups, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id perf-ol-epsilon-guard, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id plan-node-kinds, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id pmatch-encode-weights, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
+    {id rustfst-determinize-table, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id rustfst-lazy-demutex, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
+    {id rustfst-lazy-direct-materialize, priority 2, derived_at 2026-08-18T11:19:03.814367Z}
+    {id rustfst-lazy-statetable-fxhash, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id rustfst-noop-gates, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id rustfst-perf, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
+    {id rustfst-trsvec-csr, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id sme-validation-fixes, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id smolstr, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
+    {id strtoweight-strtod-semantics, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id thfst.bhfst, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
     {id thfst.io, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
     {id thfst.oracle, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
@@ -57,6 +95,18 @@ derived_priorities (
     {id thfst.streams, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
     {id thfst.type, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
     {id tool-runs, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
+    {id twolc-boundary-arc-divergence, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id twolc-escaped-specials, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id twolc-name-sigma-cosmetic, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id twolc-paircolon-context-divergence, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id twolc-sigma-numbering-permutation, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id version-line-provenance, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id xfst-copyright-owner-plain, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id xfst-flag-encode-nativize, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id xfst-function-arg-substitution, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id xfst-print-defined-body, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id xfst-prototype-adjacency, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id xre-function-as-network-error, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
 )
 
 assertions (
@@ -305,6 +355,7 @@ assertions (
     {id compose-peak-memory, kind @complete, author "brendan@necessary.nu", at 2026-08-17T22:46:57.246529Z}
     {id foma-compose-resource-contract, kind @complete, author "brendan@necessary.nu", at 2026-08-18T08:59:05.581108Z}
     {id plan-node-kinds, kind @complete, author "brendan@necessary.nu", at 2026-08-18T11:07:48.927105Z}
+    {id virtual-flag-contract, kind @complete, author "brendan@necessary.nu", at 2026-08-18T11:19:28.704235Z}
 )
 
 impl_evidence (
@@ -312,5 +363,8 @@ impl_evidence (
         foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose
     ), covered_claims (
         {impl_name target-impl, rule foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose}
+    ), rule_versions_seen (
+        {id foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose, version 0}
     )}
+    {id virtual-flag-core}
 )
