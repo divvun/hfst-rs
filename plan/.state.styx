@@ -378,4 +378,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule virtual-flag-algebra.frontend-compose}
     )}
+    {id virtual-flag-intersection, covered_rules (
+        virtual-flag-algebra.intersection
+    ), covered_claims (
+        {impl_name target-impl, rule virtual-flag-algebra.intersection}
+    )}
 )

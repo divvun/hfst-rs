@@ -44,6 +44,7 @@ type BaseMatcherIter = <BaseMatcher as Matcher<TropicalWeight, StdVectorFst, Fst
 pub struct FlagOverlay {
     left_self_loops: Arc<[Label]>,
     right_self_loops: Arc<[Label]>,
+    ordering_epsilon_labels: Arc<[Label]>,
     enforce_left_before_right: bool,
 }
 
@@ -68,8 +69,26 @@ impl FlagOverlay {
         Ok(Self {
             left_self_loops: Arc::from(left_self_loops),
             right_self_loops: Arc::from(right_self_loops),
+            ordering_epsilon_labels: Arc::from([]),
             enforce_left_before_right,
         })
+    }
+
+    /// Marks encoded labels whose logical left-output label is epsilon.
+    ///
+    /// Intersection encodes an input/output pair as one acceptor label before
+    /// running the product.  An encoded `x:epsilon` transition is numerically
+    /// non-epsilon, but it must not reset HFST's two-sided flag-order state.
+    pub fn with_ordering_epsilon_labels(mut self, mut labels: Vec<Label>) -> Result<Self> {
+        canonicalize_labels(&mut labels)?;
+        if labels
+            .iter()
+            .any(|label| self.left_contains(*label) || self.right_contains(*label))
+        {
+            bail!("flag labels cannot also be ordering-epsilon labels");
+        }
+        self.ordering_epsilon_labels = Arc::from(labels);
+        Ok(self)
     }
 
     pub fn left_self_loops(&self) -> &[Label] {
@@ -90,6 +109,10 @@ impl FlagOverlay {
 
     fn right_contains(&self, label: Label) -> bool {
         self.right_self_loops.binary_search(&label).is_ok()
+    }
+
+    fn is_ordering_epsilon(&self, label: Label) -> bool {
+        self.ordering_epsilon_labels.binary_search(&label).is_ok()
     }
 }
 
@@ -419,7 +442,10 @@ impl
             return Ok(Self::FS::new_no_state());
         } else if right_flag {
             FLAG_ORDER_SAW_RIGHT
-        } else if logical_left_output != EPS_LABEL && logical_left_output != NO_LABEL {
+        } else if logical_left_output != EPS_LABEL
+            && logical_left_output != NO_LABEL
+            && !self.overlay.is_ordering_epsilon(logical_left_output)
+        {
             FLAG_ORDER_CLEAR
         } else {
             *self.flag_order.state()

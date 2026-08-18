@@ -19,7 +19,7 @@ use crate::inc::{
     handle_error_case,
 };
 use hfst::backend::AlgebraBackend;
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::hfst_transducer::{FlagDiacriticOverlay, HfstTransducer};
 use std::io::Write;
 
 /// hfst-conjunct's own options (the former tool-specific `static mut`s).
@@ -155,6 +155,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
     let mut op = ConjunctOp {
         harmonize: options.harmonize,
         harmonize_flags: options.harmonize_flags,
+        flag_overlay: None,
     };
     run_binary_streams_tool(&common, &SPEC, &mut op)
 }
@@ -162,9 +163,11 @@ pub fn run(mut args: Vec<String>) -> i32 {
 struct ConjunctOp {
     harmonize: bool,
     harmonize_flags: bool,
+    flag_overlay: Option<FlagDiacriticOverlay>,
 }
 
 impl BinaryToolOp for ConjunctOp {
+    // [spec:hfst:req:virtual-flag-algebra.intersection]
     fn pre_apply<B: AlgebraBackend>(
         &mut self,
         common: &CommonOptions,
@@ -172,6 +175,7 @@ impl BinaryToolOp for ConjunctOp {
         second: &mut HfstTransducer<B>,
         _ctx: &PairContext<'_>,
     ) -> Result<(), i32> {
+        self.flag_overlay = None;
         if first.has_flag_diacritics() || second.has_flag_diacritics() {
             if !self.harmonize_flags {
                 if !common.silent {
@@ -183,11 +187,19 @@ impl BinaryToolOp for ConjunctOp {
                     );
                 }
             } else {
-                // C: 'first->harmonize_flag_diacritics(*second)' — relies
-                // on the default 'insert_renamed_flags=true'.
-                if let Err(e) = first.harmonize_flag_diacritics(second, true) {
-                    error(common, 1, 0, &format!("{e}"));
-                    return Err(1);
+                let prepared = if B::SUPPORTS_VIRTUAL_FLAG_INTERSECTION {
+                    first
+                        .prepare_flag_diacritics_for_operation(second)
+                        .map(Some)
+                } else {
+                    first.harmonize_flag_diacritics(second, true).map(|()| None)
+                };
+                match prepared {
+                    Ok(overlay) => self.flag_overlay = overlay,
+                    Err(e) => {
+                        error(common, 1, 0, &format!("{e}"));
+                        return Err(1);
+                    }
                 }
             }
         }
@@ -199,6 +211,8 @@ impl BinaryToolOp for ConjunctOp {
         first: &mut HfstTransducer<B>,
         second: &HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
-        first.intersect(second, self.harmonize).map(|_| ())
+        first
+            .intersect_with_flag_overlay(second, self.harmonize, self.flag_overlay.as_ref())
+            .map(|_| ())
     }
 }

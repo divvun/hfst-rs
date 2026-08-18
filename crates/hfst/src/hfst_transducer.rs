@@ -58,6 +58,8 @@ use crate::tropical_weight_transducer::TropicalWeightTransducer;
 
 #[path = "hfst_transducer_flag_ops.rs"]
 mod flag_ops;
+#[path = "hfst_transducer_intersect.rs"]
+mod intersect;
 pub(crate) use flag_ops::{decode_flag, encode_flag};
 use flag_ops::{decode_flag_diacritics, encode_flag_diacritics, has_flags, rename_flag_diacritics};
 
@@ -3205,10 +3207,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         another: &HfstTransducer<B>,
         harmonize: bool,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.is_trie = false; // This could be done so that is_trie is preserved
-        let another = self.harmonize_for_binary_op(another, harmonize)?;
-        self.fst = self.fst.intersect(&another.fst);
-        Ok(self)
+        self.intersect_with_flag_overlay(another, harmonize, None)
     }
 
     pub fn subtract(

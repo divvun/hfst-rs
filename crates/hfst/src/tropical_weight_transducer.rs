@@ -113,6 +113,8 @@ pub struct TropicalWeightTransducer;
 
 #[path = "tropical_weight_transducer_compose.rs"]
 mod compose;
+#[path = "tropical_weight_transducer_intersect.rs"]
+mod intersect;
 
 // ===== construction-io (workflow body) =====
 mod construction_io {
@@ -1878,7 +1880,7 @@ mod operations {
     /// here we first run the cheap O(states+arcs) weight scan (no allocation) and
     /// only pay for the throwaway deep-copy conversion when a negative weight is
     /// actually present. Faithful: the warning fires in exactly the same cases.
-    fn check_epsilon_cycles(x: &StdVectorFst, y: &str) {
+    pub(super) fn check_epsilon_cycles(x: &StdVectorFst, y: &str) {
         if TropicalWeightTransducer::get_smallest_weight(x) >= 0.0 {
             return;
         }
@@ -2364,43 +2366,6 @@ mod operations {
             let t2_state = t2.start().expect("t2 has a start state");
             TropicalWeightTransducer::disjunct_as_tries(t1, t1_state, t2, t2_state);
             t1
-        }
-
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.intersect-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.intersect-fn]
-        pub fn intersect(t1: &StdVectorFst, t2: &StdVectorFst) -> StdVectorFst {
-            check_epsilon_cycles(t1, "intersect");
-            check_epsilon_cycles(t2, "intersect");
-
-            // C++ mutates t1/t2 in place; operate on local clones.
-            let mut t1 = t1.clone();
-            let mut t2 = t2.clone();
-
-            algorithms::RmEpsilon(&mut t1);
-            algorithms::RmEpsilon(&mut t2);
-
-            algorithms::ArcSortOutput(&mut t1);
-            algorithms::ArcSortInput(&mut t2);
-
-            // weights must not be encoded, else e.g. [a:b::1] & [a:b::2] will be empty
-            // EncodeMapper<StdArc> encoder(0x0001, ENCODE); (0x0001 == kEncodeLabels)
-            // One shared encoder for t1 AND t2 (and the Decode below).
-            let encoder = algorithms::Encode(&mut t1, algorithms::EncodeType::EncodeLabels);
-            let encoder = algorithms::EncodeInto(&mut t2, encoder);
-
-            algorithms::ArcSortOutput(&mut t1);
-            algorithms::ArcSortInput(&mut t2);
-
-            // IntersectFst<StdArc> intersect(*t1, *t2); result = new StdVectorFst(intersect);
-            let mut intersect_fst = StdVectorFst::new();
-            algorithms::Intersect(&t1, &t2, &mut intersect_fst);
-
-            // DecodeFst<StdArc> decode(intersect, encoder); result = new StdVectorFst(decode);
-            algorithms::Decode(&mut intersect_fst, encoder);
-            let result = intersect_fst;
-
-            // t1->SetOutputSymbols(NULL); t2->SetOutputSymbols(NULL); (caller-side only)
-            result
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.subtract-fn]

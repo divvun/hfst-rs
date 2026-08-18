@@ -18,7 +18,7 @@ nfst-lexc = { workspace = true }
 nfst-pmatch = { workspace = true }
 nfst-twolc = { workspace = true }
 nfst-xfst = { workspace = true }
-foma = { git = "https://github.com/divvun/foma-rs", rev = "07e95c27de87f21e48c79c4535f58a793157c0e8", optional = true }
+foma = { git = "https://github.com/divvun/foma-rs", rev = "51aaf5ea546ee2c3d20dd94b4855683d5e09c5e9", optional = true }
 thiserror = "2.0.18"
 tracing = "0.1.44"
 ariadne = "0.5"

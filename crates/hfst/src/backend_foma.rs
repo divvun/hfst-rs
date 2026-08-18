@@ -613,6 +613,7 @@ impl FomaTransducer {
 // Inputs are cloned into owned `Box<Fsm>` (foma's ops consume their arguments).
 impl AlgebraBackend for FomaTransducer {
     const SUPPORTS_FLAG_OVERLAY: bool = true;
+    const SUPPORTS_VIRTUAL_FLAG_INTERSECTION: bool = true;
 
     fn remove_epsilons(&self) -> Self {
         self.wrap_with(foma::determinize::fsm_epsilon_remove(self.net.clone()))
@@ -714,28 +715,9 @@ impl AlgebraBackend for FomaTransducer {
         flag_overlay: Option<&FlagDiacriticOverlay>,
         memory_limit_bytes: Option<u64>,
     ) -> crate::error::Result<Self> {
-        if operation != FlagDiacriticOperation::Compose {
-            if flag_overlay.is_some() {
-                let operation = match operation {
-                    FlagDiacriticOperation::Intersect => "intersection",
-                    FlagDiacriticOperation::Subtract => "subtraction",
-                    FlagDiacriticOperation::Compose => unreachable!(),
-                };
-                crate::bail!(
-                    Hfst,
-                    format!("this backend does not support virtual flag {operation}")
-                );
-            }
-            return Ok(match operation {
-                FlagDiacriticOperation::Intersect => self.intersect(&another),
-                FlagDiacriticOperation::Subtract => self.subtract(&another),
-                FlagDiacriticOperation::Compose => unreachable!(),
-            });
-        }
-
         let overlay = flag_overlay
             .map(|overlay| {
-                foma::constructions::ComposeFlagOverlay::new(
+                foma::constructions::FlagOverlay::new(
                     overlay.left_self_loops.iter().cloned().collect(),
                     overlay.right_self_loops.iter().cloned().collect(),
                     overlay.enforce_left_before_right,
@@ -744,6 +726,27 @@ impl AlgebraBackend for FomaTransducer {
             .transpose()
             .map_err(|error| crate::err!(Hfst, format!("Foma flag overlay: {error}")))?
             .unwrap_or_default();
+
+        if operation == FlagDiacriticOperation::Intersect {
+            let FomaTransducer { net, opts } = self;
+            let result = foma::constructions::fsm_intersect_with_flag_overlay(
+                &opts,
+                net,
+                another.net,
+                &overlay,
+            )
+            .map_err(|error| crate::err!(Hfst, format!("Foma intersection: {error}")))?;
+            return Ok(FomaTransducer { net: result, opts });
+        }
+        if operation == FlagDiacriticOperation::Subtract {
+            if flag_overlay.is_some() {
+                crate::bail!(
+                    Hfst,
+                    "this backend does not support virtual flag subtraction"
+                );
+            }
+            return Ok(self.subtract(&another));
+        }
 
         let resources = match memory_limit_bytes {
             Some(allowance_bytes) => {

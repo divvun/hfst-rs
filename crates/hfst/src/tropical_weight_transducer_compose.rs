@@ -54,8 +54,6 @@ impl TropicalWeightTransducer {
         // but mutate the now-owned operands instead of cloning them.
         t1.set_output_symbols(std::sync::Arc::clone(&input_symbols));
         t2.set_input_symbols(std::sync::Arc::clone(&input_symbols));
-        algorithms::ArcSortOutput(&mut t1);
-        algorithms::ArcSortInput(&mut t2);
 
         let overlay = match flag_overlay {
             Some(overlay) => {
@@ -87,55 +85,73 @@ impl TropicalWeightTransducer {
             None => hfst_openfst::flag_overlay_compose::FlagOverlay::default(),
         };
 
-        let (pair_store, storage) = match memory_plan {
-            hfst_openfst::compose_storage::ComposeMemoryPlan::Unbounded => (
-                None,
-                hfst_openfst::compose_storage::ComposeStorageConfig::unbounded(scratch_dir),
-            ),
-            hfst_openfst::compose_storage::ComposeMemoryPlan::Bounded {
-                pair_interner_cap_bytes,
-                materializer_cap_bytes,
-                ..
-            } => (
-                Some(
-                    hfst_openfst::rustfst::algorithms::compose::ComposeStateStoreConfig::new(
-                        pair_interner_cap_bytes,
-                        scratch_dir.clone(),
-                    ),
-                ),
-                hfst_openfst::compose_storage::ComposeStorageConfig::bounded(
-                    materializer_cap_bytes,
-                    scratch_dir,
-                ),
-            ),
-        };
-        let lazy = hfst_openfst::flag_overlay_compose::compose_flag_overlay_lazy_with_store(
-            std::sync::Arc::new(t1),
-            std::sync::Arc::new(t2),
-            overlay,
-            pair_store,
-        )
-        .map_err(|error| crate::err!(Hfst, format!("OpenFst compose setup: {error}")))?;
-        let mut artifact = hfst_openfst::compose_storage::materialize_fst(lazy.as_fst(), &storage)
-            .map_err(|error| {
-                crate::err!(Hfst, format!("OpenFst compose materialization: {error}"))
-            })?;
-
-        // A spilled artifact is intentionally trimmed and loaded only
-        // after the lazy FST releases both potentially huge operands and
-        // its pair-state store.
-        drop(lazy);
-        let externally_trimmed = artifact.prepare_for_reload().map_err(|error| {
-            crate::err!(Hfst, format!("OpenFst compose external trim: {error}"))
-        })?;
-        let mut result = artifact.into_vector_fst().map_err(|error| {
-            crate::err!(Hfst, format!("OpenFst compose result reload: {error}"))
-        })?;
-        if !externally_trimmed {
-            hfst_openfst::rustfst::algorithms::connect(&mut result)
-                .map_err(|error| crate::err!(Hfst, format!("OpenFst compose connect: {error}")))?;
-        }
+        let mut result =
+            try_flag_overlay_product_owned(t1, t2, overlay, memory_plan, scratch_dir, "compose")?;
         result.set_input_symbols(input_symbols);
         Ok(result)
     }
+}
+
+pub(super) fn try_flag_overlay_product_owned(
+    mut t1: StdVectorFst,
+    mut t2: StdVectorFst,
+    overlay: hfst_openfst::flag_overlay_compose::FlagOverlay,
+    memory_plan: hfst_openfst::compose_storage::ComposeMemoryPlan,
+    scratch_dir: std::path::PathBuf,
+    operation: &str,
+) -> crate::error::Result<StdVectorFst> {
+    algorithms::ArcSortOutput(&mut t1);
+    algorithms::ArcSortInput(&mut t2);
+
+    let (pair_store, storage) = match memory_plan {
+        hfst_openfst::compose_storage::ComposeMemoryPlan::Unbounded => (
+            None,
+            hfst_openfst::compose_storage::ComposeStorageConfig::unbounded(scratch_dir),
+        ),
+        hfst_openfst::compose_storage::ComposeMemoryPlan::Bounded {
+            pair_interner_cap_bytes,
+            materializer_cap_bytes,
+            ..
+        } => (
+            Some(
+                hfst_openfst::rustfst::algorithms::compose::ComposeStateStoreConfig::new(
+                    pair_interner_cap_bytes,
+                    scratch_dir.clone(),
+                ),
+            ),
+            hfst_openfst::compose_storage::ComposeStorageConfig::bounded(
+                materializer_cap_bytes,
+                scratch_dir,
+            ),
+        ),
+    };
+    let lazy = hfst_openfst::flag_overlay_compose::compose_flag_overlay_lazy_with_store(
+        std::sync::Arc::new(t1),
+        std::sync::Arc::new(t2),
+        overlay,
+        pair_store,
+    )
+    .map_err(|error| crate::err!(Hfst, format!("OpenFst {operation} setup: {error}")))?;
+    let mut artifact = hfst_openfst::compose_storage::materialize_fst(lazy.as_fst(), &storage)
+        .map_err(|error| {
+            crate::err!(
+                Hfst,
+                format!("OpenFst {operation} materialization: {error}")
+            )
+        })?;
+
+    // A spilled artifact is intentionally trimmed and loaded only after the
+    // lazy FST releases both operands and its pair-state store.
+    drop(lazy);
+    let externally_trimmed = artifact.prepare_for_reload().map_err(|error| {
+        crate::err!(Hfst, format!("OpenFst {operation} external trim: {error}"))
+    })?;
+    let mut result = artifact.into_vector_fst().map_err(|error| {
+        crate::err!(Hfst, format!("OpenFst {operation} result reload: {error}"))
+    })?;
+    if !externally_trimmed {
+        hfst_openfst::rustfst::algorithms::connect(&mut result)
+            .map_err(|error| crate::err!(Hfst, format!("OpenFst {operation} connect: {error}")))?;
+    }
+    Ok(result)
 }

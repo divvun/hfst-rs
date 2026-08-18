@@ -579,6 +579,7 @@ impl Backend for StdVectorFst {
 
 impl AlgebraBackend for StdVectorFst {
     const SUPPORTS_FLAG_OVERLAY: bool = true;
+    const SUPPORTS_VIRTUAL_FLAG_INTERSECTION: bool = true;
 
     fn remove_epsilons(&self) -> Self {
         TropicalWeightTransducer::remove_epsilons(self)
@@ -646,27 +647,20 @@ impl AlgebraBackend for StdVectorFst {
                 flag_overlay,
                 memory_limit_bytes,
             ),
-            FlagDiacriticOperation::Intersect | FlagDiacriticOperation::Subtract => {
+            FlagDiacriticOperation::Intersect => TropicalWeightTransducer::try_intersect_owned(
+                self,
+                another,
+                flag_overlay,
+                memory_limit_bytes,
+            ),
+            FlagDiacriticOperation::Subtract => {
                 if flag_overlay.is_some() {
-                    let operation = match operation {
-                        FlagDiacriticOperation::Intersect => "intersection",
-                        FlagDiacriticOperation::Subtract => "subtraction",
-                        FlagDiacriticOperation::Compose => unreachable!(),
-                    };
                     crate::bail!(
                         Hfst,
-                        format!("this backend does not support virtual flag {operation}")
+                        "this backend does not support virtual flag subtraction"
                     );
                 }
-                Ok(match operation {
-                    FlagDiacriticOperation::Intersect => {
-                        TropicalWeightTransducer::intersect(&self, &another)
-                    }
-                    FlagDiacriticOperation::Subtract => {
-                        TropicalWeightTransducer::subtract(&self, &another)
-                    }
-                    FlagDiacriticOperation::Compose => unreachable!(),
-                })
+                Ok(TropicalWeightTransducer::subtract(&self, &another))
             }
         }
     }
