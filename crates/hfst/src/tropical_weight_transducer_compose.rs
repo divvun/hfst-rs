@@ -20,6 +20,16 @@ impl TropicalWeightTransducer {
         flag_overlay: Option<&crate::hfst_transducer::FlagDiacriticOverlay>,
         memory_limit_bytes: Option<u64>,
     ) -> crate::error::Result<StdVectorFst> {
+        Self::try_compose_mode(t1, t2, flag_overlay, memory_limit_bytes, false)
+    }
+
+    pub(crate) fn try_compose_mode(
+        t1: StdVectorFst,
+        t2: StdVectorFst,
+        flag_overlay: Option<&crate::hfst_transducer::FlagDiacriticOverlay>,
+        memory_limit_bytes: Option<u64>,
+        flags_as_epsilon: bool,
+    ) -> crate::error::Result<StdVectorFst> {
         let memory_plan =
             hfst_openfst::compose_storage::ComposeMemoryPlan::from_allowance(memory_limit_bytes);
         let scratch_dir = match memory_plan {
@@ -35,7 +45,14 @@ impl TropicalWeightTransducer {
                 })?
             }
         };
-        Self::try_compose_owned_with_memory_plan(t1, t2, flag_overlay, memory_plan, scratch_dir)
+        Self::try_compose_owned_with_memory_plan(
+            t1,
+            t2,
+            flag_overlay,
+            memory_plan,
+            scratch_dir,
+            flags_as_epsilon,
+        )
     }
 
     pub(crate) fn try_compose_owned_with_memory_plan(
@@ -44,6 +61,7 @@ impl TropicalWeightTransducer {
         flag_overlay: Option<&crate::hfst_transducer::FlagDiacriticOverlay>,
         memory_plan: hfst_openfst::compose_storage::ComposeMemoryPlan,
         scratch_dir: std::path::PathBuf,
+        flags_as_epsilon: bool,
     ) -> crate::error::Result<StdVectorFst> {
         let input_symbols = t1
             .input_symbols()
@@ -73,14 +91,19 @@ impl TropicalWeightTransducer {
                         })
                         .collect()
                 };
-                hfst_openfst::flag_overlay_compose::FlagOverlay::new(
+                let overlay = hfst_openfst::flag_overlay_compose::FlagOverlay::new(
                     labels(&overlay.left_self_loops)?,
                     labels(&overlay.right_self_loops)?,
                     overlay.enforce_left_before_right,
                 )
                 .map_err(|error| {
                     crate::err!(Hfst, format!("invalid flag composition overlay: {error}"))
-                })?
+                })?;
+                if flags_as_epsilon {
+                    overlay.with_flags_as_epsilon()
+                } else {
+                    overlay
+                }
             }
             None => hfst_openfst::flag_overlay_compose::FlagOverlay::default(),
         };

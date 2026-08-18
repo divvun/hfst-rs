@@ -383,4 +383,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule virtual-flag-algebra.intersection}
     )}
+    {id virtual-flag-special-compose, covered_rules (
+        virtual-flag-algebra.special-compose
+    ), covered_claims (
+        {impl_name target-impl, rule virtual-flag-algebra.special-compose}
+    )}
 )

@@ -121,41 +121,107 @@ fn alphabet_only_flags_form_overlay() {
     }
 }
 
-#[test]
-fn special_modes_reject_overlay_before_mutation() {
-    for (config, expected_message) in [
-        (
-            EngineConfig {
-                flag_is_epsilon_in_composition: true,
-                ..EngineConfig::default()
-            },
-            "flag-is-epsilon",
-        ),
-        (
-            EngineConfig {
-                xerox_composition: true,
-                ..EngineConfig::default()
-            },
-            "xerox composition",
-        ),
+fn flag_path<B: AlgebraBackend>(flag: &str) -> HfstTransducer<B> {
+    let mut basic = HfstBasicTransducer::new();
+    let flag_state = basic.add_state_new();
+    let flag = Symbol::new(flag);
+    let flag_transition =
+        HfstBasicTransition::new_symbols(flag_state, flag.clone(), flag, 0.0, basic.coder_mut());
+    basic.add_transition(0, &flag_transition, true);
+
+    let final_state = basic.add_state_new();
+    let ordinary = Symbol::new_static("shared");
+    let ordinary_transition = HfstBasicTransition::new_symbols(
+        final_state,
+        ordinary.clone(),
+        ordinary,
+        0.0,
+        basic.coder_mut(),
+    );
+    basic.add_transition(flag_state, &ordinary_transition, true);
+    basic.set_final_weight(final_state, &0.0);
+    HfstTransducer::<B>::new_from_basic(&basic).expect("valid flag path")
+}
+
+fn assert_special_mode_parity<B: AlgebraBackend>() {
+    for config in [
+        EngineConfig {
+            flag_is_epsilon_in_composition: true,
+            ..EngineConfig::default()
+        },
+        EngineConfig {
+            xerox_composition: true,
+            ..EngineConfig::default()
+        },
+        EngineConfig {
+            flag_is_epsilon_in_composition: true,
+            xerox_composition: true,
+            ..EngineConfig::default()
+        },
     ] {
-        let mut left = fixture(Some("@U.LEFT.VALUE@"), &[]);
-        let mut right = fixture(None, &[]);
-        let overlay = left
-            .prepare_flag_diacritics_for_compose(&mut right)
-            .expect("overlay preparation");
-        left.is_trie = true;
-        let before = left.fst.clone();
+        let mut virtual_left = flag_path::<B>("@U.LEFT.VALUE@");
+        let mut virtual_right = flag_path::<B>("@P.RIGHT.VALUE@");
+        let mut eager_left = virtual_left.clone();
+        let mut eager_right = virtual_right.clone();
 
-        let error = left
-            .compose_with_config_and_flag_overlay(&right, true, &config, Some(&overlay))
-            .err()
-            .expect("incompatible overlay configuration must fail");
+        eager_left
+            .harmonize_flag_diacritics(&mut eager_right, true)
+            .expect("eager special-mode harmonization");
+        eager_left
+            .compose_with_config(&eager_right, true, &config)
+            .expect("eager special-mode composition");
 
-        assert!(error.to_string().contains(expected_message), "{error}");
-        assert_eq!(left.fst, before, "validation mutated the left graph");
-        assert!(left.is_trie, "validation mutated facade metadata");
+        let sizes = (
+            virtual_left.number_of_arcs(),
+            virtual_right.number_of_arcs(),
+        );
+        let overlay = virtual_left
+            .prepare_flag_diacritics_for_compose(&mut virtual_right)
+            .expect("virtual special-mode harmonization");
+        assert_eq!(
+            (
+                virtual_left.number_of_arcs(),
+                virtual_right.number_of_arcs(),
+            ),
+            sizes,
+            "special-mode preparation inserted physical flag loops"
+        );
+        virtual_left
+            .compose_with_config_and_flag_overlay(&virtual_right, true, &config, Some(&overlay))
+            .expect("virtual special-mode composition");
+
+        let equivalent = virtual_left
+            .compare(&eager_left, true)
+            .expect("compare eager and virtual special-mode results");
+        assert!(
+            equivalent,
+            "virtual special mode differs from eager reference: {config:?}; virtual={:?}; eager={:?}",
+            graph_rows(&virtual_left),
+            graph_rows(&eager_left)
+        );
     }
+}
+
+fn graph_rows<B: Backend>(fst: &HfstTransducer<B>) -> Vec<(u32, String, String, u32)> {
+    let basic = HfstBasicTransducer::from_transducer(fst);
+    let mut rows = Vec::new();
+    for (state, transitions) in basic.state_vector.iter().enumerate() {
+        for transition in transitions {
+            rows.push((
+                state as u32,
+                transition.get_input_symbol(basic.coder()).to_string(),
+                transition.get_output_symbol(basic.coder()).to_string(),
+                transition.get_target_state(),
+            ));
+        }
+    }
+    rows
+}
+
+#[test]
+// [spec:hfst:req:virtual-flag-algebra.special-compose/test]
+fn special_modes_match_eager_reference() {
+    assert_special_mode_parity::<StdVectorFst>();
 }
 
 #[cfg(feature = "foma")]
@@ -236,4 +302,13 @@ fn foma_backend_accepts_virtual_overlay() {
             .expect("compare eager and virtual Foma results"),
         "two-sided virtual Foma composition differs from eager harmonization"
     );
+}
+
+#[cfg(feature = "foma")]
+#[test]
+// [spec:hfst:req:virtual-flag-algebra.special-compose/test]
+fn foma_special_modes_match_eager() {
+    use crate::backend_foma::FomaTransducer;
+
+    assert_special_mode_parity::<FomaTransducer>();
 }

@@ -726,6 +726,11 @@ impl AlgebraBackend for FomaTransducer {
             .transpose()
             .map_err(|error| crate::err!(Hfst, format!("Foma flag overlay: {error}")))?
             .unwrap_or_default();
+        let overlay = if operation == FlagDiacriticOperation::ComposeFlagsAsEpsilon {
+            overlay.with_flags_as_epsilon()
+        } else {
+            overlay
+        };
 
         if operation == FlagDiacriticOperation::Intersect {
             let FomaTransducer { net, opts } = self;

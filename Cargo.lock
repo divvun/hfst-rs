@@ -624,7 +624,7 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 [[package]]
 name = "foma"
 version = "0.4.4"
-source = "git+https://github.com/divvun/foma-rs?rev=51aaf5ea546ee2c3d20dd94b4855683d5e09c5e9#51aaf5ea546ee2c3d20dd94b4855683d5e09c5e9"
+source = "git+https://github.com/divvun/foma-rs?rev=11c08d3f32b4d22ade2337e8e69da47434616c15#11c08d3f32b4d22ade2337e8e69da47434616c15"
 dependencies = [
  "bitflags",
  "flate2",

@@ -130,6 +130,34 @@ fn explicit_overlay_compose(
     ordinary_compose(&left, &right)
 }
 
+fn rewrite_flag_side(
+    fst: &StdVectorFst,
+    labels: &[Label],
+    rewrite_output: bool,
+) -> Result<StdVectorFst> {
+    let mut rewritten = StdVectorFst::new();
+    rewritten.add_states(fst.num_states());
+    if let Some(start) = fst.start() {
+        rewritten.set_start(start)?;
+    }
+    for state in 0..fst.num_states() as StateId {
+        if let Some(weight) = fst.final_weight(state)? {
+            rewritten.set_final(state, weight)?;
+        }
+        for tr in fst.get_trs(state)?.trs() {
+            let mut tr = tr.clone();
+            if rewrite_output && labels.contains(&tr.olabel) {
+                tr.olabel = EPS_LABEL;
+            }
+            if !rewrite_output && labels.contains(&tr.ilabel) {
+                tr.ilabel = EPS_LABEL;
+            }
+            rewritten.add_tr(state, tr)?;
+        }
+    }
+    Ok(rewritten)
+}
+
 fn arc_count(fst: &StdVectorFst) -> Result<usize> {
     (0..fst.num_states() as StateId)
         .try_fold(0, |count, state| Ok(count + fst.get_trs(state)?.len()))
@@ -388,6 +416,50 @@ fn both_sided_overlay_orders_left_before_right() -> Result<()> {
         saw_right_trs
             .iter()
             .any(|tr| { tr.ilabel == REGULAR && tr.olabel == REGULAR && tr.nextstate == start })
+    );
+    Ok(())
+}
+
+#[test]
+// [spec:hfst:req:virtual-flag-algebra.special-compose/test]
+fn flag_epsilon_matches_eager_ordering() -> Result<()> {
+    let mut left = one_state_final()?;
+    left.add_tr(
+        0,
+        Tr::new(LEFT_FLAG, LEFT_FLAG, TropicalWeight::new(0.5), 0),
+    )?;
+    left.add_tr(0, Tr::new(REGULAR, REGULAR, TropicalWeight::new(0.75), 0))?;
+
+    let mut right = one_state_final()?;
+    right.add_tr(
+        0,
+        Tr::new(RIGHT_FLAG, RIGHT_FLAG, TropicalWeight::new(1.0), 0),
+    )?;
+    right.add_tr(0, Tr::new(REGULAR, REGULAR, TropicalWeight::new(1.25), 0))?;
+
+    let overlay = FlagOverlay::new(vec![RIGHT_FLAG], vec![LEFT_FLAG], true)?;
+    let mut eager_left = left.clone();
+    let mut eager_right = right.clone();
+    add_self_loops(&mut eager_left, overlay.left_self_loops())?;
+    add_self_loops(&mut eager_right, overlay.right_self_loops())?;
+    eager_left = ordinary_compose(
+        &eager_left,
+        &restriction(&[LEFT_FLAG, RIGHT_FLAG, REGULAR])?,
+    )?;
+    eager_left = rewrite_flag_side(&eager_left, &[LEFT_FLAG, RIGHT_FLAG], true)?;
+    eager_right = rewrite_flag_side(&eager_right, &[LEFT_FLAG, RIGHT_FLAG], false)?;
+    let expected = ordinary_compose(&eager_left, &eager_right)?;
+
+    sort_left(&mut left);
+    sort_right(&mut right);
+    let actual = materialize_pair_store_variants(
+        Arc::new(left),
+        Arc::new(right),
+        overlay.with_flags_as_epsilon(),
+    )?;
+    assert!(
+        isomorphic(&actual, &expected)?,
+        "virtual flag-as-epsilon composition differs from eager loop insertion and rewrite"
     );
     Ok(())
 }

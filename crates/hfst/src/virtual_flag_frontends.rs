@@ -8,15 +8,12 @@ pub(crate) fn prepare_compose_flag_overlay<B: AlgebraBackend>(
     left: &mut HfstTransducer<B>,
     right: &mut HfstTransducer<B>,
     harmonize_flags: bool,
-    config: &EngineConfig,
+    _config: &EngineConfig,
 ) -> crate::error::Result<Option<FlagDiacriticOverlay>> {
     if !harmonize_flags || !(left.has_flag_diacritics() || right.has_flag_diacritics()) {
         return Ok(None);
     }
-    if B::SUPPORTS_VIRTUAL_FLAG_COMPOSE
-        && !config.flag_is_epsilon_in_composition
-        && !config.xerox_composition
-    {
+    if B::SUPPORTS_VIRTUAL_FLAG_COMPOSE {
         return left.prepare_flag_diacritics_for_operation(right).map(Some);
     }
     left.harmonize_flag_diacritics(right, true)?;

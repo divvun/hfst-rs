@@ -374,10 +374,7 @@ impl BinaryToolOp for ComposeOp {
                     );
                 }
             } else {
-                let prepared = if B::SUPPORTS_FLAG_OVERLAY
-                    && !self.cfg.flag_is_epsilon_in_composition
-                    && !self.cfg.xerox_composition
-                {
+                let prepared = if B::SUPPORTS_FLAG_OVERLAY {
                     first.prepare_flag_diacritics_for_compose(second).map(Some)
                 } else {
                     first.harmonize_flag_diacritics(second, true).map(|()| None)

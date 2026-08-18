@@ -6052,6 +6052,13 @@ children (
                         kind @decision
                         text "priority pinned to 1 — operator override: Operator approved prioritizing the virtual-flag algebra project now; nplan does not inherit the valid P1 container pin, so this leaf carries the same project pass while deps retain internal ordering."
                     }
+
+                    {
+                        at 2026-08-18T12:14:17.455055Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
                 )
             }
 

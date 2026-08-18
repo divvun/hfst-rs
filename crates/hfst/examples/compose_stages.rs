@@ -21,12 +21,11 @@ fn load(path: &str) -> HfstTransducer<StdVectorFst> {
     let kind = any.get_type();
     match any {
         AnyTransducer::Tropical(t) => t,
-        AnyTransducer::OlW(_)
-        | AnyTransducer::OlU(_)
-        | AnyTransducer::Foma(_)
-        | AnyTransducer::Thfst(_) => {
+        AnyTransducer::OlW(_) | AnyTransducer::OlU(_) | AnyTransducer::Thfst(_) => {
             panic!("expected a tropical transducer, got {kind:?}")
         }
+        #[cfg(feature = "foma")]
+        AnyTransducer::Foma(_) => panic!("expected a tropical transducer, got {kind:?}"),
     }
 }
 

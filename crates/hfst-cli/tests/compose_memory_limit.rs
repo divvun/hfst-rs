@@ -239,6 +239,7 @@ fn missing_flag_spill_parity_and_cleanup() {
 }
 
 #[test]
+// [spec:hfst:req:virtual-flag-algebra.special-compose/test]
 fn flag_epsilon_spill_parity_and_cleanup() {
     let temp = tempfile::tempdir().expect("create compose working directory");
     let dir = temp.path();
@@ -291,6 +292,7 @@ fn flag_epsilon_spill_parity_and_cleanup() {
 #[cfg(feature = "foma")]
 #[test]
 // [spec:hfst:req:foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose/test]
+// [spec:hfst:req:virtual-flag-algebra.special-compose/test]
 fn foma_limits_preserve_flag_compose() {
     let temp = tempfile::tempdir().expect("create compose working directory");
     let dir = temp.path();

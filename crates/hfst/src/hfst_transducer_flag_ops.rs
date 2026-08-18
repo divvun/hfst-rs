@@ -179,6 +179,16 @@ impl FlagDiacriticOverlay {
     pub fn is_empty(&self) -> bool {
         self.left_self_loops.is_empty() && self.right_self_loops.is_empty()
     }
+
+    pub(crate) fn xerox_encoded(&self) -> Self {
+        let encode =
+            |symbols: &StringSet| symbols.iter().map(|symbol| encode_flag(symbol)).collect();
+        Self {
+            left_self_loops: encode(&self.left_self_loops),
+            right_self_loops: encode(&self.right_self_loops),
+            enforce_left_before_right: self.enforce_left_before_right,
+        }
+    }
 }
 
 impl<B: AlgebraBackend> HfstTransducer<B> {

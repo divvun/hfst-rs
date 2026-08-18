@@ -189,6 +189,7 @@ fn owned_compose_matches_all_memory_plans() {
             None,
             hfst_openfst::compose_storage::ComposeMemoryPlan::from_allowance(Some(allowance)),
             scratch.path().to_path_buf(),
+            false,
         )
         .unwrap();
         assert_eq!(
@@ -218,6 +219,7 @@ fn unbounded_compose_ignores_scratch_parent() {
         None,
         hfst_openfst::compose_storage::ComposeMemoryPlan::Unbounded,
         not_a_directory,
+        false,
     )
     .expect("unbounded compose must not touch its scratch parent");
 }
@@ -236,6 +238,7 @@ fn external_trim_matches_connect() {
         None,
         hfst_openfst::compose_storage::ComposeMemoryPlan::from_allowance(Some(0)),
         scratch.path().to_path_buf(),
+        false,
     )
     .unwrap();
 

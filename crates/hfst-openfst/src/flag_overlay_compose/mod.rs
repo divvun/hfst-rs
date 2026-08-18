@@ -9,14 +9,12 @@
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
-use rustfst::algorithms::compose::compose_filters::{
-    ComposeFilter, ComposeFilterBuilder, SequenceComposeFilter, SequenceComposeFilterBuilder,
-};
+use rustfst::algorithms::compose::compose_filters::{ComposeFilter, ComposeFilterBuilder};
 use rustfst::algorithms::compose::filter_states::{
     FilterState, IntegerFilterState, PairFilterState,
 };
 use rustfst::algorithms::compose::matchers::{
-    IterItemMatcher, MatchType, Matcher, MatcherFlags, SortedMatcher,
+    IterItemMatcher, MatchType, Matcher, MatcherFlags, REQUIRE_PRIORITY, SortedMatcher,
 };
 use rustfst::algorithms::compose::{
     ComposeFst, ComposeFstOpOptions, ComposeFstOpState, ComposeStateStoreConfig, ComposeStateTuple,
@@ -25,7 +23,7 @@ use rustfst::algorithms::lazy::NullCache;
 use rustfst::fst_properties::FstProperties;
 use rustfst::fst_traits::{CoreFst, Fst};
 use rustfst::semirings::{Semiring, TropicalWeight};
-use rustfst::{EPS_LABEL, Label, NO_LABEL, StateId, Tr, TrsVec};
+use rustfst::{EPS_LABEL, Label, NO_LABEL, StateId, Tr, Trs, TrsVec};
 
 use crate::StdVectorFst;
 
@@ -46,6 +44,7 @@ pub struct FlagOverlay {
     right_self_loops: Arc<[Label]>,
     ordering_epsilon_labels: Arc<[Label]>,
     enforce_left_before_right: bool,
+    flags_as_epsilon: bool,
 }
 
 impl FlagOverlay {
@@ -71,7 +70,16 @@ impl FlagOverlay {
             right_self_loops: Arc::from(right_self_loops),
             ordering_epsilon_labels: Arc::from([]),
             enforce_left_before_right,
+            flags_as_epsilon: false,
         })
+    }
+
+    /// Treats real flag events and the virtual loops as the one-sided epsilon
+    /// moves used by HFST's `flag-is-epsilon` composition mode.
+    // [spec:hfst:req:virtual-flag-algebra.special-compose]
+    pub fn with_flags_as_epsilon(mut self) -> Self {
+        self.flags_as_epsilon = true;
+        self
     }
 
     /// Marks encoded labels whose logical left-output label is epsilon.
@@ -101,6 +109,10 @@ impl FlagOverlay {
 
     pub fn enforces_left_before_right(&self) -> bool {
         self.enforce_left_before_right
+    }
+
+    pub fn flags_are_epsilon(&self) -> bool {
+        self.flags_as_epsilon
     }
 
     fn left_contains(&self, label: Label) -> bool {
@@ -165,6 +177,71 @@ impl Iterator for ListedMatcherIter {
     }
 }
 
+/// Enumerates the logical epsilon moves of the flag-as-epsilon mode without
+/// adding them to either operand. Real flags on this matcher are returned with
+/// their original label so the filter can classify the event before rewriting
+/// it to epsilon. The two synthetic groups represent this operand's missing
+/// loops and the opposite operand's missing loops, respectively.
+struct EpsilonMatcherIter {
+    base: BaseMatcherIter,
+    trs: TrsVec<TropicalWeight>,
+    position: usize,
+    match_type: MatchType,
+    listed_labels: Arc<[Label]>,
+    loop_labels: Arc<[Label]>,
+    own_virtual_position: usize,
+    opposite_virtual_position: usize,
+    state: StateId,
+}
+
+impl Iterator for EpsilonMatcherIter {
+    type Item = IterItemMatcher<TropicalWeight>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(item) = self.base.next() {
+            return Some(item);
+        }
+        while let Some(tr) = self.trs.get(self.position) {
+            self.position += 1;
+            let label = match self.match_type {
+                MatchType::MatchInput => tr.ilabel,
+                MatchType::MatchOutput => tr.olabel,
+                MatchType::MatchBoth | MatchType::MatchNone | MatchType::MatchUnknown => {
+                    unreachable!("validated overlay matcher type")
+                }
+            };
+            if label != EPS_LABEL && self.listed_labels.binary_search(&label).is_ok() {
+                return Some(IterItemMatcher::Tr(tr.clone()));
+            }
+        }
+        if let Some(label) = self.loop_labels.get(self.own_virtual_position) {
+            self.own_virtual_position += 1;
+            return Some(IterItemMatcher::Tr(Tr::new(
+                *label,
+                *label,
+                TropicalWeight::one(),
+                self.state,
+            )));
+        }
+        if let Some(label) = self.listed_labels.get(self.opposite_virtual_position) {
+            self.opposite_virtual_position += 1;
+            let tr = match self.match_type {
+                MatchType::MatchInput => {
+                    Tr::new(NO_LABEL, *label, TropicalWeight::one(), self.state)
+                }
+                MatchType::MatchOutput => {
+                    Tr::new(*label, NO_LABEL, TropicalWeight::one(), self.state)
+                }
+                MatchType::MatchBoth | MatchType::MatchNone | MatchType::MatchUnknown => {
+                    unreachable!("validated overlay matcher type")
+                }
+            };
+            return Some(IterItemMatcher::Tr(tr));
+        }
+        None
+    }
+}
+
 enum OverlayMatcherIter {
     Base(BaseMatcherIter),
     BaseThenVirtual {
@@ -172,6 +249,8 @@ enum OverlayMatcherIter {
         virtual_tr: Option<IterItemMatcher<TropicalWeight>>,
     },
     Listed(ListedMatcherIter),
+    Epsilon(EpsilonMatcherIter),
+    One(Option<IterItemMatcher<TropicalWeight>>),
 }
 
 impl Iterator for OverlayMatcherIter {
@@ -182,6 +261,8 @@ impl Iterator for OverlayMatcherIter {
             Self::Base(iter) => iter.next(),
             Self::BaseThenVirtual { base, virtual_tr } => base.next().or_else(|| virtual_tr.take()),
             Self::Listed(iter) => iter.next(),
+            Self::Epsilon(iter) => iter.next(),
+            Self::One(item) => item.take(),
         }
     }
 }
@@ -193,6 +274,7 @@ struct OverlayMatcher {
     match_type: MatchType,
     loop_labels: Arc<[Label]>,
     listed_labels: Arc<[Label]>,
+    flags_as_epsilon: bool,
 }
 
 impl OverlayMatcher {
@@ -201,6 +283,7 @@ impl OverlayMatcher {
         match_type: MatchType,
         loop_labels: Arc<[Label]>,
         listed_labels: Arc<[Label]>,
+        flags_as_epsilon: bool,
     ) -> Result<Self> {
         if !matches!(match_type, MatchType::MatchInput | MatchType::MatchOutput) {
             bail!("overlay matcher requires input or output matching");
@@ -211,6 +294,7 @@ impl OverlayMatcher {
             match_type,
             loop_labels,
             listed_labels,
+            flags_as_epsilon,
         })
     }
 
@@ -223,16 +307,39 @@ impl OverlayMatcher {
             }
         }
     }
+
+    fn is_flag_label(&self, label: Label) -> bool {
+        self.loop_labels.binary_search(&label).is_ok()
+            || self.listed_labels.binary_search(&label).is_ok()
+    }
 }
 
 impl Matcher<TropicalWeight, StdVectorFst, FstHandle> for OverlayMatcher {
     type Iter = OverlayMatcherIter;
 
     fn new(fst: FstHandle, match_type: MatchType) -> Result<Self> {
-        Self::with_overlay(fst, match_type, Arc::from([]), Arc::from([]))
+        Self::with_overlay(fst, match_type, Arc::from([]), Arc::from([]), false)
     }
 
     fn iter(&self, state: StateId, label: Label) -> Result<Self::Iter> {
+        if self.flags_as_epsilon {
+            if label == NO_LABEL {
+                return Ok(OverlayMatcherIter::Epsilon(EpsilonMatcherIter {
+                    base: self.base.iter(state, NO_LABEL)?,
+                    trs: self.base.fst().as_ref().get_trs(state)?,
+                    position: 0,
+                    match_type: self.match_type,
+                    listed_labels: Arc::clone(&self.listed_labels),
+                    loop_labels: Arc::clone(&self.loop_labels),
+                    own_virtual_position: 0,
+                    opposite_virtual_position: 0,
+                    state,
+                }));
+            }
+            if self.is_flag_label(label) {
+                return Ok(OverlayMatcherIter::One(Some(IterItemMatcher::EpsLoop)));
+            }
+        }
         if label == NO_LABEL {
             return Ok(OverlayMatcherIter::Listed(ListedMatcherIter {
                 base: self.base.iter(state, NO_LABEL)?,
@@ -267,7 +374,11 @@ impl Matcher<TropicalWeight, StdVectorFst, FstHandle> for OverlayMatcher {
     }
 
     fn priority(&self, state: StateId) -> Result<usize> {
-        self.base.priority(state)
+        if self.flags_as_epsilon && self.match_type == MatchType::MatchInput {
+            Ok(REQUIRE_PRIORITY)
+        } else {
+            self.base.priority(state)
+        }
     }
 
     fn fst(&self) -> &FstHandle {
@@ -275,24 +386,6 @@ impl Matcher<TropicalWeight, StdVectorFst, FstHandle> for OverlayMatcher {
     }
 }
 
-type BaseSequenceFilter = SequenceComposeFilter<
-    TropicalWeight,
-    StdVectorFst,
-    StdVectorFst,
-    FstHandle,
-    FstHandle,
-    OverlayMatcher,
-    OverlayMatcher,
->;
-type BaseSequenceFilterBuilder = SequenceComposeFilterBuilder<
-    TropicalWeight,
-    StdVectorFst,
-    StdVectorFst,
-    FstHandle,
-    FstHandle,
-    OverlayMatcher,
-    OverlayMatcher,
->;
 type OverlayFilterState = PairFilterState<IntegerFilterState, IntegerFilterState>;
 
 const FLAG_ORDER_CLEAR: StateId = 0;
@@ -300,7 +393,8 @@ const FLAG_ORDER_SAW_RIGHT: StateId = 1;
 
 #[derive(Clone, Debug)]
 struct OverlayComposeFilterBuilder {
-    base: BaseSequenceFilterBuilder,
+    matcher1: Arc<OverlayMatcher>,
+    matcher2: Arc<OverlayMatcher>,
     overlay: FlagOverlay,
 }
 
@@ -312,8 +406,17 @@ impl OverlayComposeFilterBuilder {
         matcher2: Option<OverlayMatcher>,
         overlay: FlagOverlay,
     ) -> Result<Self> {
+        let matcher1 = match matcher1 {
+            Some(matcher) => matcher,
+            None => OverlayMatcher::new(fst1, MatchType::MatchOutput)?,
+        };
+        let matcher2 = match matcher2 {
+            Some(matcher) => matcher,
+            None => OverlayMatcher::new(fst2, MatchType::MatchInput)?,
+        };
         Ok(Self {
-            base: BaseSequenceFilterBuilder::new(fst1, fst2, matcher1, matcher2)?,
+            matcher1: Arc::new(matcher1),
+            matcher2: Arc::new(matcher2),
             overlay,
         })
     }
@@ -345,18 +448,26 @@ impl
 
     fn build(&self) -> Result<Self::CF> {
         Ok(OverlayComposeFilter {
-            base: self.base.build()?,
+            matcher1: Arc::clone(&self.matcher1),
+            matcher2: Arc::clone(&self.matcher2),
             overlay: self.overlay.clone(),
+            sequence_state: IntegerFilterState::new(FLAG_ORDER_CLEAR),
             flag_order: IntegerFilterState::new(FLAG_ORDER_CLEAR),
+            all_eps_left: false,
+            no_eps_left: false,
         })
     }
 }
 
 #[derive(Clone, Debug)]
 struct OverlayComposeFilter {
-    base: BaseSequenceFilter,
+    matcher1: Arc<OverlayMatcher>,
+    matcher2: Arc<OverlayMatcher>,
     overlay: FlagOverlay,
+    sequence_state: IntegerFilterState,
     flag_order: IntegerFilterState,
+    all_eps_left: bool,
+    no_eps_left: bool,
 }
 
 impl
@@ -373,12 +484,34 @@ impl
     type FS = OverlayFilterState;
 
     fn start(&self) -> Self::FS {
-        Self::FS::new((self.base.start(), IntegerFilterState::new(FLAG_ORDER_CLEAR)))
+        Self::FS::new((
+            IntegerFilterState::new(FLAG_ORDER_CLEAR),
+            IntegerFilterState::new(FLAG_ORDER_CLEAR),
+        ))
     }
 
-    fn set_state(&mut self, s1: StateId, s2: StateId, filter_state: &Self::FS) -> Result<()> {
-        self.base.set_state(s1, s2, filter_state.state1())?;
+    fn set_state(&mut self, s1: StateId, _s2: StateId, filter_state: &Self::FS) -> Result<()> {
+        self.sequence_state = filter_state.state1().clone();
         self.flag_order = filter_state.state2().clone();
+        let fst1 = self.matcher1.fst().as_ref();
+        let trs = fst1.get_trs(s1)?;
+        let transition_count = trs.len();
+        let mut epsilon_count = fst1.num_output_epsilons(s1)?;
+        let virtual_count = if self.overlay.flags_as_epsilon {
+            epsilon_count += trs
+                .trs()
+                .iter()
+                .filter(|tr| {
+                    self.overlay.left_contains(tr.olabel) || self.overlay.right_contains(tr.olabel)
+                })
+                .count();
+            self.overlay.left_self_loops.len()
+        } else {
+            0
+        };
+        self.all_eps_left = transition_count + virtual_count == epsilon_count + virtual_count
+            && !fst1.is_final(s1)?;
+        self.no_eps_left = epsilon_count + virtual_count == 0;
         Ok(())
     }
 
@@ -387,55 +520,102 @@ impl
         arc1: &mut Tr<TropicalWeight>,
         arc2: &mut Tr<TropicalWeight>,
     ) -> Result<Self::FS> {
-        let left_output = arc1.olabel;
-        let direct_virtual_right = arc2.olabel == NO_LABEL
-            && arc2.ilabel == left_output
-            && self.overlay.right_contains(left_output);
-        let listed_virtual_right = arc2.ilabel == NO_LABEL
-            && arc2.olabel == EPS_LABEL
-            && self.overlay.right_contains(left_output);
-        let virtual_right = direct_virtual_right || listed_virtual_right;
+        let mut logical_left_output = arc1.olabel;
+        let mut left_flag = false;
+        let mut right_flag = false;
 
-        let direct_virtual_left = arc1.ilabel == NO_LABEL
-            && arc1.olabel == arc2.ilabel
-            && self.overlay.left_contains(arc1.olabel);
-        let listed_virtual_left = arc1.ilabel == EPS_LABEL
-            && arc1.olabel == NO_LABEL
-            && self.overlay.left_contains(arc2.ilabel);
-        let virtual_left = direct_virtual_left || listed_virtual_left;
+        if self.overlay.flags_as_epsilon {
+            let synthetic_left = arc1.ilabel == EPS_LABEL && arc1.olabel == NO_LABEL;
+            if synthetic_left && arc2.ilabel == NO_LABEL && self.overlay.left_contains(arc2.olabel)
+            {
+                // Missing right-origin loop on the left: f:f becomes f:eps.
+                logical_left_output = arc2.olabel;
+                right_flag = true;
+                arc1.ilabel = arc2.olabel;
+                arc1.olabel = EPS_LABEL;
+                arc2.olabel = EPS_LABEL;
+            } else if arc2.ilabel == NO_LABEL
+                && arc2.olabel == EPS_LABEL
+                && (self.overlay.left_contains(arc1.olabel)
+                    || self.overlay.right_contains(arc1.olabel))
+            {
+                // A real left-output flag participates as an epsilon while its
+                // original label still drives the left-path ordering state.
+                logical_left_output = arc1.olabel;
+                left_flag = self.overlay.right_contains(logical_left_output);
+                right_flag = self.overlay.left_contains(logical_left_output);
+                arc1.olabel = EPS_LABEL;
+            } else if synthetic_left
+                && (self.overlay.left_contains(arc2.ilabel)
+                    || self.overlay.right_contains(arc2.ilabel))
+            {
+                // A real or virtual right-input flag is a right-only epsilon
+                // move and therefore does not alter the left-path ordering.
+                logical_left_output = NO_LABEL;
+                arc2.ilabel = EPS_LABEL;
+            } else if synthetic_left {
+                logical_left_output = NO_LABEL;
+            }
+        } else {
+            let left_output = arc1.olabel;
+            let direct_virtual_right = arc2.olabel == NO_LABEL
+                && arc2.ilabel == left_output
+                && self.overlay.right_contains(left_output);
+            let listed_virtual_right = arc2.ilabel == NO_LABEL
+                && arc2.olabel == EPS_LABEL
+                && self.overlay.right_contains(left_output);
+            let direct_virtual_left = arc1.ilabel == NO_LABEL
+                && arc1.olabel == arc2.ilabel
+                && self.overlay.left_contains(arc1.olabel);
+            let listed_virtual_left = arc1.ilabel == EPS_LABEL
+                && arc1.olabel == NO_LABEL
+                && self.overlay.left_contains(arc2.ilabel);
 
-        debug_assert!(!(virtual_left && virtual_right));
+            debug_assert!(!(direct_virtual_left && direct_virtual_right));
+            debug_assert!(!(listed_virtual_left && listed_virtual_right));
 
-        // The matchers use NO_LABEL on the exposed side as an unambiguous
-        // marker. Restore the exact f:f self-loop before the ordinary epsilon
-        // sequence filter and ComposeFst build the result transition.
-        if direct_virtual_right {
-            arc2.olabel = arc2.ilabel;
-        }
-        if listed_virtual_right {
-            arc2.ilabel = left_output;
-            arc2.olabel = left_output;
-        }
-        if direct_virtual_left {
-            arc1.ilabel = arc1.olabel;
-        }
-        if listed_virtual_left {
-            arc1.ilabel = arc2.ilabel;
-            arc1.olabel = arc2.ilabel;
+            if direct_virtual_right {
+                arc2.olabel = arc2.ilabel;
+            }
+            if listed_virtual_right {
+                arc2.ilabel = left_output;
+                arc2.olabel = left_output;
+            }
+            if direct_virtual_left {
+                arc1.ilabel = arc1.olabel;
+            }
+            if listed_virtual_left {
+                arc1.ilabel = arc2.ilabel;
+                arc1.olabel = arc2.ilabel;
+            }
+            logical_left_output = arc1.olabel;
+            left_flag = self.overlay.right_contains(logical_left_output);
+            right_flag = self.overlay.left_contains(logical_left_output);
         }
 
-        let sequence_state = self.base.filter_tr(arc1, arc2)?;
+        let sequence_state = if arc1.olabel == NO_LABEL {
+            if self.all_eps_left {
+                IntegerFilterState::new_no_state()
+            } else if self.no_eps_left {
+                IntegerFilterState::new(0)
+            } else {
+                IntegerFilterState::new(1)
+            }
+        } else if arc2.ilabel == NO_LABEL {
+            if self.sequence_state != IntegerFilterState::new(0) {
+                IntegerFilterState::new_no_state()
+            } else {
+                IntegerFilterState::new(0)
+            }
+        } else if arc1.olabel == EPS_LABEL {
+            IntegerFilterState::new_no_state()
+        } else {
+            IntegerFilterState::new(0)
+        };
         if sequence_state == IntegerFilterState::new_no_state() {
             return Ok(Self::FS::new_no_state());
         }
 
-        // This is the output label the eagerly augmented left FST would expose
-        // to HFST's two-state restriction. Classifying that label (rather than
-        // only the synthetic marker shape) also remains exact if a caller gives
-        // an overlay label that already has a real transition in the operand.
-        let logical_left_output = arc1.olabel;
-        let left_flag = self.overlay.right_contains(logical_left_output);
-        let right_flag = self.overlay.left_contains(logical_left_output);
         let next_flag_order = if !self.overlay.enforce_left_before_right {
             FLAG_ORDER_CLEAR
         } else if left_flag && *self.flag_order.state() == FLAG_ORDER_SAW_RIGHT {
@@ -459,30 +639,30 @@ impl
 
     fn filter_final(
         &self,
-        weight1: &mut TropicalWeight,
-        weight2: &mut TropicalWeight,
+        _weight1: &mut TropicalWeight,
+        _weight2: &mut TropicalWeight,
     ) -> Result<()> {
-        self.base.filter_final(weight1, weight2)
+        Ok(())
     }
 
     fn matcher1(&self) -> &OverlayMatcher {
-        self.base.matcher1()
+        &self.matcher1
     }
 
     fn matcher2(&self) -> &OverlayMatcher {
-        self.base.matcher2()
+        &self.matcher2
     }
 
     fn matcher1_shared(&self) -> &Arc<OverlayMatcher> {
-        self.base.matcher1_shared()
+        &self.matcher1
     }
 
     fn matcher2_shared(&self) -> &Arc<OverlayMatcher> {
-        self.base.matcher2_shared()
+        &self.matcher2
     }
 
     fn properties(&self, inprops: FstProperties) -> FstProperties {
-        self.base.properties(inprops)
+        inprops
     }
 }
 
@@ -534,12 +714,14 @@ impl FlagOverlayComposeFst {
             MatchType::MatchOutput,
             Arc::clone(&overlay.left_self_loops),
             Arc::clone(&overlay.right_self_loops),
+            overlay.flags_as_epsilon,
         )?;
         let matcher2 = OverlayMatcher::with_overlay(
             Arc::clone(&fst2),
             MatchType::MatchInput,
             Arc::clone(&overlay.right_self_loops),
             Arc::clone(&overlay.left_self_loops),
+            overlay.flags_as_epsilon,
         )?;
         let filter_builder = OverlayComposeFilterBuilder::with_overlay(
             Arc::clone(&fst1),

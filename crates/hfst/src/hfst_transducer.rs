@@ -2444,9 +2444,11 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     /// The overlay must have been produced by
     /// [`Self::prepare_flag_diacritics_for_compose`] for these operands.  It is
     /// resolved to backend labels only after ordinary symbol harmonization has
-    /// established the operands' shared canonical coding. Virtual overlays are
-    /// rejected for backends without overlay support and for the flag-as-epsilon
-    /// and Xerox composition modes, which require the eager flag path.
+    /// established the operands' shared canonical coding. In Xerox mode the
+    /// overlay labels follow the operands through the `%...%` encoding pass; in
+    /// flag-as-epsilon mode the backend exposes the missing loops as one-sided
+    /// epsilon moves without modifying either operand.
+    // [spec:hfst:req:virtual-flag-algebra.special-compose]
     pub fn compose_with_config_and_flag_overlay(
         &mut self,
         another: &HfstTransducer<B>,
@@ -2454,25 +2456,11 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         config: &EngineConfig,
         flag_overlay: Option<&FlagDiacriticComposeOverlay>,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        if flag_overlay.is_some() {
-            if !B::SUPPORTS_FLAG_OVERLAY {
-                crate::bail!(
-                    Hfst,
-                    "this backend does not support virtual flag composition"
-                );
-            }
-            if config.flag_is_epsilon_in_composition {
-                crate::bail!(
-                    Hfst,
-                    "virtual flag composition cannot be combined with flag-is-epsilon composition"
-                );
-            }
-            if config.xerox_composition {
-                crate::bail!(
-                    Hfst,
-                    "virtual flag composition cannot be combined with xerox composition"
-                );
-            }
+        if flag_overlay.is_some() && !B::SUPPORTS_FLAG_OVERLAY {
+            crate::bail!(
+                Hfst,
+                "this backend does not support virtual flag composition"
+            );
         }
 
         self.is_trie = false;
@@ -2482,7 +2470,9 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         /* If we want flag diacritcs to be handled in the same way as epsilons
         in composition, we substitute output flags of first transducer with
         epsilons and input flags of second transducer with epsilons. */
-        if config.flag_is_epsilon_in_composition {
+        let virtual_flags_as_epsilon =
+            config.flag_is_epsilon_in_composition && flag_overlay.is_some();
+        if config.flag_is_epsilon_in_composition && !virtual_flags_as_epsilon {
             // The C++ caught a throw from these substitutions and rethrew it as
             // FlagDiacriticsAreNotIdentities; the ported substitute returns the
             // error instead, so remap it the same way.
@@ -2503,6 +2493,12 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             encode_flag_diacritics(self);
             encode_flag_diacritics(&mut another_copy);
         }
+        let encoded_flag_overlay = if config.xerox_composition {
+            flag_overlay.map(FlagDiacriticOverlay::xerox_encoded)
+        } else {
+            None
+        };
+        let backend_flag_overlay = encoded_flag_overlay.as_ref().or(flag_overlay);
 
         /* Prevent harmonization (i.e. matching unknown symbols), if requested. */
         if !harmonize {
@@ -2535,10 +2531,15 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // (The HFST_OL/HFST_OLW arm threw HfstTransducerTypeMismatch — compose
         // simply does not exist on the lookup instantiations now.)
         let left = std::mem::replace(&mut self.fst, B::empty());
+        let flag_operation = if virtual_flags_as_epsilon {
+            FlagDiacriticOperation::ComposeFlagsAsEpsilon
+        } else {
+            FlagDiacriticOperation::Compose
+        };
         self.fst = left.try_flag_operation_owned(
             another_copy.fst,
-            FlagDiacriticOperation::Compose,
-            flag_overlay,
+            flag_operation,
+            backend_flag_overlay,
             config.compose_memory_limit_bytes,
         )?;
 

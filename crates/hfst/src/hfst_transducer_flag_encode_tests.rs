@@ -142,3 +142,32 @@ fn reserved_symbol_collision_panics() {
         .expect("building a tropical transducer from a basic one cannot fail");
     encode_flag_diacritics(&mut fst);
 }
+
+#[test]
+#[should_panic(expected = "reserved symbol")]
+// [spec:hfst:req:virtual-flag-algebra.special-compose/test]
+fn virtual_xerox_preserves_collision_error() {
+    let mut left = build_flagged();
+    let mut basic = HfstBasicTransducer::new();
+    let final_state = basic.add_state_new();
+    basic.set_final_weight(final_state, &0.0);
+    let reserved = Symbol::new_static("%U.F.FOO%");
+    let transition = HfstBasicTransition::new_symbols(
+        final_state,
+        reserved.clone(),
+        reserved,
+        0.0,
+        basic.coder_mut(),
+    );
+    basic.add_transition(0, &transition, true);
+    let mut right = HfstTransducer::<StdVectorFst>::new_from_basic(&basic)
+        .expect("valid reserved-symbol fixture");
+    let overlay = left
+        .prepare_flag_diacritics_for_compose(&mut right)
+        .expect("virtual flag preparation");
+    let config = EngineConfig {
+        xerox_composition: true,
+        ..EngineConfig::default()
+    };
+    let _ = left.compose_with_config_and_flag_overlay(&right, true, &config, Some(&overlay));
+}

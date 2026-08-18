@@ -36,6 +36,7 @@ use hfst_openfst::StdVectorFst;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlagDiacriticOperation {
     Compose,
+    ComposeFlagsAsEpsilon,
     Intersect,
     Subtract,
 }
@@ -417,7 +418,9 @@ pub trait AlgebraBackend: Backend {
         let _ = memory_limit_bytes;
         if flag_overlay.is_some() {
             let operation = match operation {
-                FlagDiacriticOperation::Compose => "composition",
+                FlagDiacriticOperation::Compose | FlagDiacriticOperation::ComposeFlagsAsEpsilon => {
+                    "composition"
+                }
                 FlagDiacriticOperation::Intersect => "intersection",
                 FlagDiacriticOperation::Subtract => "subtraction",
             };
@@ -427,7 +430,9 @@ pub trait AlgebraBackend: Backend {
             );
         }
         Ok(match operation {
-            FlagDiacriticOperation::Compose => self.compose(&another),
+            FlagDiacriticOperation::Compose | FlagDiacriticOperation::ComposeFlagsAsEpsilon => {
+                self.compose(&another)
+            }
             FlagDiacriticOperation::Intersect => self.intersect(&another),
             FlagDiacriticOperation::Subtract => self.subtract(&another),
         })
@@ -647,6 +652,15 @@ impl AlgebraBackend for StdVectorFst {
                 flag_overlay,
                 memory_limit_bytes,
             ),
+            FlagDiacriticOperation::ComposeFlagsAsEpsilon => {
+                TropicalWeightTransducer::try_compose_mode(
+                    self,
+                    another,
+                    flag_overlay,
+                    memory_limit_bytes,
+                    true,
+                )
+            }
             FlagDiacriticOperation::Intersect => TropicalWeightTransducer::try_intersect_owned(
                 self,
                 another,
