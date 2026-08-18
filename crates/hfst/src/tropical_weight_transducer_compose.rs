@@ -13,10 +13,11 @@ impl TropicalWeightTransducer {
     /// Consuming, fallible composition used by the bounded/spilling
     /// backend path. Both operand graphs are sorted in place and then held
     /// by the lazy FST, so there is no full operand clone at peak memory.
+    // [spec:hfst:req:virtual-flag-algebra.backend-core]
     pub fn try_compose_owned(
         t1: StdVectorFst,
         t2: StdVectorFst,
-        flag_overlay: Option<&crate::hfst_transducer::FlagDiacriticComposeOverlay>,
+        flag_overlay: Option<&crate::hfst_transducer::FlagDiacriticOverlay>,
         memory_limit_bytes: Option<u64>,
     ) -> crate::error::Result<StdVectorFst> {
         let memory_plan =
@@ -40,7 +41,7 @@ impl TropicalWeightTransducer {
     pub(crate) fn try_compose_owned_with_memory_plan(
         mut t1: StdVectorFst,
         mut t2: StdVectorFst,
-        flag_overlay: Option<&crate::hfst_transducer::FlagDiacriticComposeOverlay>,
+        flag_overlay: Option<&crate::hfst_transducer::FlagDiacriticOverlay>,
         memory_plan: hfst_openfst::compose_storage::ComposeMemoryPlan,
         scratch_dir: std::path::PathBuf,
     ) -> crate::error::Result<StdVectorFst> {

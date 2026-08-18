@@ -27,10 +27,18 @@ use crate::hfst_extract_strings::ExtractStringsCb;
 use crate::hfst_flag_diacritics::FdOperation;
 use crate::hfst_ol_transducer::HfstOlTransducer;
 use crate::hfst_symbol_defs::StringSet;
-use crate::hfst_transducer::{FlagDiacriticComposeOverlay, decode_flag, encode_flag};
+use crate::hfst_transducer::{FlagDiacriticOverlay, decode_flag, encode_flag};
 use crate::transducer::{Transducer, UnweightedTables, WeightedTables};
 use crate::tropical_weight_transducer::TropicalWeightTransducer;
 use hfst_openfst::StdVectorFst;
+
+/// Binary algebra operation that may consume a virtual flag overlay.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FlagDiacriticOperation {
+    Compose,
+    Intersect,
+    Subtract,
+}
 
 /// The reserved-symbol guard shared by every `encode_flag_diacritics` path: an
 /// alphabet symbol already wrapped in '%...%' whose '@...@'-unescaped form is a
@@ -359,9 +367,17 @@ pub trait Backend: Sized {
 /// backend (the C++ freed the old one and stored the new — the facade's
 /// assignment does that implicitly).
 pub trait AlgebraBackend: Backend {
-    /// Whether this backend can consume flag self-loops as a lazy composition
-    /// overlay instead of requiring them to be inserted into every state.
+    /// Legacy capability name for virtual flag composition.
     const SUPPORTS_FLAG_OVERLAY: bool = false;
+
+    /// Whether this backend consumes virtual flag loops during composition.
+    const SUPPORTS_VIRTUAL_FLAG_COMPOSE: bool = Self::SUPPORTS_FLAG_OVERLAY;
+
+    /// Whether this backend consumes virtual flag loops during intersection.
+    const SUPPORTS_VIRTUAL_FLAG_INTERSECTION: bool = false;
+
+    /// Whether this backend consumes virtual flag loops during subtraction.
+    const SUPPORTS_VIRTUAL_FLAG_SUBTRACTION: bool = false;
 
     // ----- unary (apply) -----
     fn remove_epsilons(&self) -> Self;
@@ -387,23 +403,34 @@ pub trait AlgebraBackend: Backend {
     fn subtract(&self, another: &Self) -> Self;
     fn compose(&self, another: &Self) -> Self;
 
-    /// Fallible, consuming compose entry used by resource-controlled backends.
-    /// Backends without that path retain their existing borrowed operation;
-    /// the CLI materializes flag loops before calling them.
-    fn try_compose_owned(
+    /// Fallible, consuming entry for operations with an optional virtual flag
+    /// overlay. Backends may retain their borrowed implementation when no
+    /// overlay or resource policy needs specialized handling.
+    // [spec:hfst:req:virtual-flag-algebra.backend-core]
+    fn try_flag_operation_owned(
         self,
         another: Self,
-        flag_overlay: Option<&FlagDiacriticComposeOverlay>,
+        operation: FlagDiacriticOperation,
+        flag_overlay: Option<&FlagDiacriticOverlay>,
         memory_limit_bytes: Option<u64>,
     ) -> crate::error::Result<Self> {
         let _ = memory_limit_bytes;
         if flag_overlay.is_some() {
+            let operation = match operation {
+                FlagDiacriticOperation::Compose => "composition",
+                FlagDiacriticOperation::Intersect => "intersection",
+                FlagDiacriticOperation::Subtract => "subtraction",
+            };
             crate::bail!(
                 Hfst,
-                "this backend does not support virtual flag composition"
+                format!("this backend does not support virtual flag {operation}")
             );
         }
-        Ok(self.compose(&another))
+        Ok(match operation {
+            FlagDiacriticOperation::Compose => self.compose(&another),
+            FlagDiacriticOperation::Intersect => self.intersect(&another),
+            FlagDiacriticOperation::Subtract => self.subtract(&another),
+        })
     }
 
     // ----- construction (the define_transducer_* constructor arms) -----
@@ -605,13 +632,43 @@ impl AlgebraBackend for StdVectorFst {
     fn compose(&self, another: &Self) -> Self {
         TropicalWeightTransducer::compose(self, another)
     }
-    fn try_compose_owned(
+    fn try_flag_operation_owned(
         self,
         another: Self,
-        flag_overlay: Option<&FlagDiacriticComposeOverlay>,
+        operation: FlagDiacriticOperation,
+        flag_overlay: Option<&FlagDiacriticOverlay>,
         memory_limit_bytes: Option<u64>,
     ) -> crate::error::Result<Self> {
-        TropicalWeightTransducer::try_compose_owned(self, another, flag_overlay, memory_limit_bytes)
+        match operation {
+            FlagDiacriticOperation::Compose => TropicalWeightTransducer::try_compose_owned(
+                self,
+                another,
+                flag_overlay,
+                memory_limit_bytes,
+            ),
+            FlagDiacriticOperation::Intersect | FlagDiacriticOperation::Subtract => {
+                if flag_overlay.is_some() {
+                    let operation = match operation {
+                        FlagDiacriticOperation::Intersect => "intersection",
+                        FlagDiacriticOperation::Subtract => "subtraction",
+                        FlagDiacriticOperation::Compose => unreachable!(),
+                    };
+                    crate::bail!(
+                        Hfst,
+                        format!("this backend does not support virtual flag {operation}")
+                    );
+                }
+                Ok(match operation {
+                    FlagDiacriticOperation::Intersect => {
+                        TropicalWeightTransducer::intersect(&self, &another)
+                    }
+                    FlagDiacriticOperation::Subtract => {
+                        TropicalWeightTransducer::subtract(&self, &another)
+                    }
+                    FlagDiacriticOperation::Compose => unreachable!(),
+                })
+            }
+        }
     }
 
     fn define_transducer_spv(spv: &StringPairVector) -> Self {

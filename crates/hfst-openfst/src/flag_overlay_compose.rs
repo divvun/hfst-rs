@@ -40,6 +40,7 @@ type BaseMatcherIter = <BaseMatcher as Matcher<TropicalWeight, StdVectorFst, Fst
 /// disjoint (the both-sided `-F` path obtains that property by renaming the
 /// operands' flag features to `_1` and `_2`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+// [spec:hfst:req:virtual-flag-algebra.backend-core]
 pub struct FlagOverlay {
     left_self_loops: Arc<[Label]>,
     right_self_loops: Arc<[Label]>,

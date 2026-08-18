@@ -366,5 +366,11 @@ impl_evidence (
     ), rule_versions_seen (
         {id foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose, version 0}
     )}
-    {id virtual-flag-core}
+    {id virtual-flag-core, covered_rules (
+        virtual-flag-algebra.backend-core
+        virtual-flag-algebra.materialized-reference
+    ), covered_claims (
+        {impl_name target-impl, rule virtual-flag-algebra.backend-core}
+        {impl_name target-impl, rule virtual-flag-algebra.materialized-reference}
+    )}
 )

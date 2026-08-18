@@ -173,3 +173,58 @@ pub(super) fn decode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
     fst.fst.decode_flag_diacritics();
     reset_facade_metadata_after_flag_pass(fst);
 }
+
+impl FlagDiacriticOverlay {
+    /// Whether preparation found no missing flag transitions on either side.
+    pub fn is_empty(&self) -> bool {
+        self.left_self_loops.is_empty() && self.right_self_loops.is_empty()
+    }
+}
+
+impl<B: AlgebraBackend> HfstTransducer<B> {
+    /// Prepare operands for a flag-diacritic-aware algebra operation without
+    /// materializing the `states * missing_flags` self-loops.
+    ///
+    /// This performs the same flag renaming as [`Self::harmonize_flag_diacritics`]
+    /// when both operands originally contain flags. It then harmonizes only the
+    /// missing flag symbols into the opposite alphabets and returns those exact
+    /// differences for a backend operation overlay.
+    // [spec:hfst:req:virtual-flag-algebra.materialized-reference]
+    // [spec:hfst:req:virtual-flag-algebra.backend-core]
+    pub fn prepare_flag_diacritics_for_operation(
+        &mut self,
+        another: &mut HfstTransducer<B>,
+    ) -> crate::error::Result<FlagDiacriticOverlay> {
+        let left_had_flags = has_flags(self);
+        let right_had_flags = has_flags(another);
+
+        if left_had_flags && right_had_flags {
+            rename_flag_diacritics(self, "_1");
+            rename_flag_diacritics(another, "_2");
+        }
+
+        // Do this in order: after right-side flags are inserted into the left
+        // alphabet, the reverse difference still consists exactly of the
+        // original left-side flags because the post-rename sets are disjoint.
+        let left_self_loops = self.insert_missing_diacritics_to_alphabet_from(another)?;
+        let right_self_loops = another.insert_missing_diacritics_to_alphabet_from(self)?;
+        let enforce_left_before_right = left_had_flags
+            && right_had_flags
+            && !left_self_loops.is_empty()
+            && !right_self_loops.is_empty();
+
+        Ok(FlagDiacriticOverlay {
+            left_self_loops,
+            right_self_loops,
+            enforce_left_before_right,
+        })
+    }
+
+    /// Compatibility wrapper for callers preparing ordinary composition.
+    pub fn prepare_flag_diacritics_for_compose(
+        &mut self,
+        another: &mut HfstTransducer<B>,
+    ) -> crate::error::Result<FlagDiacriticComposeOverlay> {
+        self.prepare_flag_diacritics_for_operation(another)
+    }
+}

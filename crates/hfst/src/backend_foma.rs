@@ -9,7 +9,7 @@
 //! from the source-impl scope, so these rules are authored greenfield against
 //! the contract in `docs/spec/port/back-ends/foma/foma-backend.md`.
 
-use crate::backend::{AlgebraBackend, Backend, LookupBackend};
+use crate::backend::{AlgebraBackend, Backend, FlagDiacriticOperation, LookupBackend};
 use crate::backend_foma_sigma::{is_reserved_symbol, sigma_declare, sym};
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
@@ -20,7 +20,7 @@ use crate::hfst_data_types::{
 use crate::hfst_extract_strings::ExtractStringsCb;
 use crate::hfst_flag_diacritics::{FdOperation, FdState, FdTable};
 use crate::hfst_symbol_defs::StringSet;
-use crate::hfst_transducer::FlagDiacriticComposeOverlay;
+use crate::hfst_transducer::FlagDiacriticOverlay;
 use crate::hfst_tropical_transducer_transition_data::{SymbolType, WeightType};
 
 use foma::options::FomaOptions;
@@ -706,12 +706,33 @@ impl AlgebraBackend for FomaTransducer {
     }
 
     // [spec:hfst:req:foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose]
-    fn try_compose_owned(
+    // [spec:hfst:req:virtual-flag-algebra.backend-core]
+    fn try_flag_operation_owned(
         self,
         another: Self,
-        flag_overlay: Option<&FlagDiacriticComposeOverlay>,
+        operation: FlagDiacriticOperation,
+        flag_overlay: Option<&FlagDiacriticOverlay>,
         memory_limit_bytes: Option<u64>,
     ) -> crate::error::Result<Self> {
+        if operation != FlagDiacriticOperation::Compose {
+            if flag_overlay.is_some() {
+                let operation = match operation {
+                    FlagDiacriticOperation::Intersect => "intersection",
+                    FlagDiacriticOperation::Subtract => "subtraction",
+                    FlagDiacriticOperation::Compose => unreachable!(),
+                };
+                crate::bail!(
+                    Hfst,
+                    format!("this backend does not support virtual flag {operation}")
+                );
+            }
+            return Ok(match operation {
+                FlagDiacriticOperation::Intersect => self.intersect(&another),
+                FlagDiacriticOperation::Subtract => self.subtract(&another),
+                FlagDiacriticOperation::Compose => unreachable!(),
+            });
+        }
+
         let overlay = flag_overlay
             .map(|overlay| {
                 foma::constructions::ComposeFlagOverlay::new(

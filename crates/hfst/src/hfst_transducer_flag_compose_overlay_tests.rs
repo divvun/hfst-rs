@@ -38,6 +38,8 @@ fn size(fst: &HfstTransducer<StdVectorFst>) -> (u32, u32) {
 }
 
 #[test]
+// [spec:hfst:req:virtual-flag-algebra.materialized-reference/test]
+// [spec:hfst:req:virtual-flag-algebra.backend-core/test]
 fn one_sided_flags_become_only_the_opposite_overlay() {
     let left_flag = "@U.LEFT.VALUE@";
     let mut left = fixture(Some(left_flag), &[]);
@@ -45,7 +47,7 @@ fn one_sided_flags_become_only_the_opposite_overlay() {
     let sizes = (size(&left), size(&right));
 
     let overlay = left
-        .prepare_flag_diacritics_for_compose(&mut right)
+        .prepare_flag_diacritics_for_operation(&mut right)
         .expect("one-sided left overlay preparation");
     assert!(overlay.left_self_loops.is_empty());
     assert_eq!(overlay.right_self_loops, symbol_set(&[left_flag]));
@@ -59,7 +61,7 @@ fn one_sided_flags_become_only_the_opposite_overlay() {
     let sizes = (size(&left), size(&right));
 
     let overlay = left
-        .prepare_flag_diacritics_for_compose(&mut right)
+        .prepare_flag_diacritics_for_operation(&mut right)
         .expect("one-sided right overlay preparation");
     assert_eq!(overlay.left_self_loops, symbol_set(&[right_flag]));
     assert!(overlay.right_self_loops.is_empty());
@@ -75,7 +77,7 @@ fn both_sides_rename_to_disjoint_overlays() {
     let sizes = (size(&left), size(&right));
 
     let overlay = left
-        .prepare_flag_diacritics_for_compose(&mut right)
+        .prepare_flag_diacritics_for_operation(&mut right)
         .expect("two-sided overlay preparation");
     let renamed_left = "@U.FEATURE_1.LEFT@";
     let renamed_right = "@P.FEATURE_2.RIGHT@";
@@ -104,7 +106,7 @@ fn alphabet_only_flags_form_overlay() {
     let sizes = (size(&left), size(&right));
 
     let overlay = left
-        .prepare_flag_diacritics_for_compose(&mut right)
+        .prepare_flag_diacritics_for_operation(&mut right)
         .expect("alphabet-only overlay preparation");
     let renamed_left = "@U.ALPHA_1.LEFT@";
     let renamed_right = "@R.BETA_2.RIGHT@";
@@ -159,6 +161,7 @@ fn special_modes_reject_overlay_before_mutation() {
 #[cfg(feature = "foma")]
 #[test]
 // [spec:hfst:req:foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose/test]
+// [spec:hfst:req:virtual-flag-algebra.backend-core/test]
 fn foma_backend_accepts_virtual_overlay() {
     use crate::backend_foma::FomaTransducer;
 

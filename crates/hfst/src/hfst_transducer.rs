@@ -33,7 +33,7 @@ use std::collections::BTreeSet;
 
 use hfst_openfst::StdVectorFst;
 
-use crate::backend::{AlgebraBackend, Backend};
+use crate::backend::{AlgebraBackend, Backend, FlagDiacriticOperation};
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::ImplementationType;
@@ -78,14 +78,16 @@ pub type HfstTransducerPair<B> = (HfstTransducer<B>, HfstTransducer<B>);
 // [spec:hfst:def:hfst-data-types.hfst.hfst-transducer-pair-vector]
 pub type HfstTransducerPairVector<B> = Vec<HfstTransducerPair<B>>;
 
-/// The flag-diacritic self-loops that `-F` composition must expose virtually.
+/// The flag-diacritic self-loops that an `-F` algebra operation must expose
+/// virtually.
 ///
 /// Preparing an overlay inserts these symbols into the corresponding operand's
 /// alphabet, but deliberately does not insert transitions. The selected
-/// backend presents a unit-weight self-loop only when its composition engine
-/// asks for that symbol at that state.
+/// backend presents a unit-weight self-loop only when its operation engine asks
+/// for that symbol at that state.
+// [spec:hfst:req:virtual-flag-algebra.backend-core]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct FlagDiacriticComposeOverlay {
+pub struct FlagDiacriticOverlay {
     /// Flags logically inserted as self-loops at every state of the left FST.
     pub left_self_loops: StringSet,
     /// Flags logically inserted as self-loops at every state of the right FST.
@@ -94,6 +96,9 @@ pub struct FlagDiacriticComposeOverlay {
     /// symbols, matching HFST's two-state illegal-flag-path restriction.
     pub enforce_left_before_right: bool,
 }
+
+/// Backwards-compatible name for the overlay accepted by composition APIs.
+pub type FlagDiacriticComposeOverlay = FlagDiacriticOverlay;
 
 // -----------------------------------------------------------------------------
 // Static predicates (formerly static member functions of the facade; free
@@ -1562,42 +1567,6 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         Ok(())
     }
 
-    /// Prepare the operands for flag-diacritic-aware composition without
-    /// materializing the `states * missing_flags` self-loops.
-    ///
-    /// This performs the same flag renaming as [`Self::harmonize_flag_diacritics`]
-    /// when both operands originally contain flags.  It then harmonizes only
-    /// the missing flag symbols into the opposite alphabets and returns those
-    /// exact differences for the lazy OpenFst overlay.
-    pub fn prepare_flag_diacritics_for_compose(
-        &mut self,
-        another: &mut HfstTransducer<B>,
-    ) -> crate::error::Result<FlagDiacriticComposeOverlay> {
-        let left_had_flags = has_flags(self);
-        let right_had_flags = has_flags(another);
-
-        if left_had_flags && right_had_flags {
-            rename_flag_diacritics(self, "_1");
-            rename_flag_diacritics(another, "_2");
-        }
-
-        // Do this in order: after right-side flags are inserted into the left
-        // alphabet, the reverse difference still consists exactly of the
-        // original left-side flags because the post-rename sets are disjoint.
-        let left_self_loops = self.insert_missing_diacritics_to_alphabet_from(another)?;
-        let right_self_loops = another.insert_missing_diacritics_to_alphabet_from(self)?;
-        let enforce_left_before_right = left_had_flags
-            && right_had_flags
-            && !left_self_loops.is_empty()
-            && !right_self_loops.is_empty();
-
-        Ok(FlagDiacriticComposeOverlay {
-            left_self_loops,
-            right_self_loops,
-            enforce_left_before_right,
-        })
-    }
-
     // -------------------------------------------------------------------------
     // ----- compare, queries (HfstTransducer.cc ~1681-2663) -----
     // -------------------------------------------------------------------------
@@ -2549,8 +2518,9 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // (The HFST_OL/HFST_OLW arm threw HfstTransducerTypeMismatch — compose
         // simply does not exist on the lookup instantiations now.)
         let left = std::mem::replace(&mut self.fst, B::empty());
-        self.fst = left.try_compose_owned(
+        self.fst = left.try_flag_operation_owned(
             another_copy.fst,
+            FlagDiacriticOperation::Compose,
             flag_overlay,
             config.compose_memory_limit_bytes,
         )?;

@@ -270,6 +270,8 @@ fn virtual_left_loop_works_for_direct_query() -> Result<()> {
 }
 
 #[test]
+// [spec:hfst:req:virtual-flag-algebra.materialized-reference/test]
+// [spec:hfst:req:virtual-flag-algebra.backend-core/test]
 fn true_epsilon_interleaving_matches_materialized_loops() -> Result<()> {
     let mut left = StdVectorFst::new();
     let l0 = state(&mut left);
@@ -331,6 +333,7 @@ fn restriction(labels: &[Label]) -> Result<StdVectorFst> {
 }
 
 #[test]
+// [spec:hfst:req:virtual-flag-algebra.materialized-reference/test]
 fn both_sided_overlay_orders_left_before_right() -> Result<()> {
     let mut left = one_state_final()?;
     left.add_tr(
