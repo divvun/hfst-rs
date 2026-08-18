@@ -5766,9 +5766,10 @@ children (
                 title "Pin bounded Foma and enable virtual overlays plus memory limits"
                 kind @perf
                 implements {
-                    rust ([spec:hfst:req:foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose])
+                    target-impl ([spec:hfst:req:foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose])
                 }
                 deps (foma-compose-resource-contract)
+                sealed true
                 log (
                     {
                         at 2026-08-18T08:59:09.478654Z
@@ -5783,7 +5784,23 @@ children (
                         kind @note
                         text "Release benchmark (macOS /usr/bin/time -l, lang-sma/lang-sme retained Foma fixtures): automatic SMA 0.83s/130646016B vs eager 3.37s/490881024B; automatic SME 2.97s/329957376B vs eager 16.23s/2165440512B. Cutoffs SMA: 1GiB 0.83s/130727936B, 64MiB 0.82s/130727936B, 16MiB 2.03s/119504896B, 0 3.44s/118996992B. SME: 1GiB 2.91s/372817920B, 64MiB 3.90s/358744064B, 16MiB 8.05s/345309184B, 0 10.86s/344276992B. All cutoffs are byte-identical per language and semantically equal to the eager Foma result; no scratch survived."
                     }
+
+                    {
+                        at 2026-08-18T09:22:29.382685Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "sealed — decomposition asserted complete (nplan seal)"
+                    }
                 )
+            }
+        )
+        sealed true
+        log (
+            {
+                at 2026-08-18T09:22:36.538883Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "sealed — decomposition asserted complete (nplan seal)"
             }
         )
     }
