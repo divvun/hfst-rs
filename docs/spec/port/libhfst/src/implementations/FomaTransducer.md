@@ -151,6 +151,19 @@
 > [spec:hfst:sem:foma-transducer.hfst.implementations.foma-transducer.compose-fn]
 > Returns the composition of `t1` and `t2` as `fsm_compose(fsm_copy(t1), fsm_copy(t2))`. Both arguments are copied first (foma consumes its operands), so the originals are left intact.
 
+> [spec:hfst:req:foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose]
+> The owned Foma composition path consumes its two backend operands without
+> cloning, translates the facade's virtual flag-loop overlay into Foma's
+> compose overlay, and passes the exact optional `EngineConfig` composition
+> allowance to Foma's resource-controlled API. `None` preserves unbounded
+> library behavior; a configured allowance uses operation-owned scratch and
+> propagates contextual I/O failures. The `hfst compose` automatic, environment,
+> and command-line memory policies apply to both OpenFst tropical and Foma
+> inputs, and all Foma scratch is removed after success or failure. Modes whose
+> flag semantics are incompatible with virtual overlays retain the eager
+> harmonization fallback. Bounded and unbounded Foma results must be equivalent
+> and preserve the established Foma output behavior.
+
 > [spec:hfst:def:foma-transducer.hfst.implementations.foma-transducer.concatenate-fn]
 > fsm * FomaTransducer::concatenate
 
@@ -470,4 +483,3 @@
 > Unit-test entry point, compiled only under the `MAIN_TEST` build. Behavior depends on the `HAVE_FOMA` compile flag.
 > If `HAVE_FOMA` is defined: print `"Unit tests for " __FILE__ ":"` to `std::cout` (no newline). Using namespace `hfst::implementations`, build `epsilon = FomaTransducer::define_transducer("@_EPSILON_SYMBOL_@")` (the single-symbol overload), then `epsilon_i = FomaTransducer::extract_input_language(epsilon)`, then `epsilon_i_min = FomaTransducer::minimize(fsm_copy(epsilon_i))` (the result is cast to void / unused). Then build `a = FomaTransducer::define_transducer("a")` and `a2 = FomaTransducer::repeat_n(a, 2)` (also unused, cast to void). Print `std::endl` followed by `"ok"` and `std::endl`, then return `EXIT_SUCCESS`. (No assertions on the results; this exercises construction, projection, minimization, and repetition without crashing.)
 > If `HAVE_FOMA` is not defined: print `"Skipping unit tests for " << __FILE__ << ", FomaTransducer has not been enabled"` with a trailing newline to `std::cout`, and return 77 (the automake "test skipped" exit code).
-

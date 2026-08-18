@@ -5733,4 +5733,35 @@ children (
             }
         )
     }
+
+    {
+        id foma-compose-resource-control
+        title "Resource-controlled Foma composition in HFST"
+        kind @perf
+        children (
+            {
+                id foma-compose-resource-contract
+                title "Specify HFST Foma overlay and memory-policy integration"
+                kind @docs
+                log (
+                    {
+                        at 2026-08-18T08:57:13.222662Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
+            }
+
+            {
+                id foma-compose-resource-integration
+                title "Pin bounded Foma and enable virtual overlays plus memory limits"
+                kind @perf
+                implements {
+                    rust ([spec:hfst:req:foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose])
+                }
+                deps (foma-compose-resource-contract)
+            }
+        )
+    }
 )
