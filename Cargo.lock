@@ -1498,9 +1498,9 @@ checksum = "edc43cb7a0df0723017947e6fe7056c8ede64a471d5f4ca9ddd89c1bc5f71e8b"
 
 [[package]]
 name = "nfst-twolc"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d952b2abcd8f8a779de38538639d37991bd278075b1aa39f114996e6e980ccf"
+checksum = "c1174b2647c76ee0aff93ca05df95678486471a3f44ed20a28d0e15d57546431"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",
@@ -1509,9 +1509,9 @@ dependencies = [
 
 [[package]]
 name = "nfst-xfst"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9546e9118f5c8ee8a964b6b68a794781f69e8c4126b41b2deb4344d8001aa13c"
+checksum = "8ab528da625d89c00bf277a5b6c37bb847d24caeb41326f81239fb7991bac70d"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",

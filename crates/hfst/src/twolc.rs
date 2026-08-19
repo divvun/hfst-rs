@@ -3446,7 +3446,21 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             | TwolcRegex::RepeatNToK(inner, _, _) => {
                 self.collect_regex_pairs(inner, vvm, declared, pairs, undeclared);
             }
-            TwolcRegex::Symbol(_) | TwolcRegex::Epsilon | TwolcRegex::Any => {}
+            // A bare symbol atom is an implicit identity pair. Upstream's
+            // htwolcpre1 rewrote a lone 'X' into 'X __HFST_TWOLC_: X' before
+            // completion ran ('PAIR: GRAMMAR_SYMBOL_SPACE',
+            // htwolcpre1-parser.yy:481-493), so 'complete_alphabet' saw an
+            // ordinary pair. Walking only explicit 'X:Y' nodes lost every
+            // identity pair, so a grammar declaring its vocabulary in 'Sets'
+            // and then using it bare got no 'a:a' and died at rule-compile
+            // time with 'Unknown pair: a a'. Validation is unchanged: an
+            // undeclared bare symbol is still reported by 'register_alphabet'
+            // (hfst#334) rather than reaching that message.
+            TwolcRegex::Symbol(s) => {
+                let sym = substitute_symbol(s, vvm);
+                self.insert_grammar_pair(sym.clone(), sym, declared, pairs, undeclared);
+            }
+            TwolcRegex::Epsilon | TwolcRegex::Any => {}
         }
     }
 

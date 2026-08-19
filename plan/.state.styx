@@ -362,6 +362,7 @@ assertions (
     {id plan-node-kinds, kind @complete, author "brendan@necessary.nu", at 2026-08-18T11:07:48.927105Z}
     {id virtual-flag-contract, kind @complete, author "brendan@necessary.nu", at 2026-08-18T11:19:28.704235Z}
     {id lexc-diagnostic-accuracy, kind @complete, author "brendan@necessary.nu", at 2026-08-19T14:25:21.571126Z}
+    {id upstream-bugs.t3.rs2-3, kind @complete, author "brendan@necessary.nu", at 2026-08-19T15:08:18.091748Z}
 )
 
 impl_evidence (

@@ -63,5 +63,5 @@ rustfst = { git = "https://github.com/necessary-nu/rustfst", rev = "86ab28cf91c4
 nfst-xre = "0.3.0"
 nfst-lexc = "0.3.0"
 nfst-pmatch = "0.3.0"
-nfst-twolc = "0.3.0"
-nfst-xfst = "0.3.0"
+nfst-twolc = "0.3.1"
+nfst-xfst = "0.3.1"

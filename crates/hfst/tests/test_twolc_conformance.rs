@@ -215,3 +215,47 @@ a:b <=> Vowel _ ;
         "the compiled grammar must be a non-empty rule transducer"
     );
 }
+
+// ─────────────────────── bare-symbol identity pairs ───────────────────────
+// A symbol used bare in a rule context is an implicit X:X pair. Upstream's
+// htwolcpre1 rewrote `X` into `X:X` before alphabet completion ran, so the
+// pair reached the alphabet; the port collected only explicit `X:Y` nodes, so
+// a grammar whose vocabulary is declared in a `Sets` section and then used
+// bare lost every identity pair and failed at rule-compile time with
+// `Unknown pair: a a`. Reported via divvun/hfst-rs#3 (omorfi).
+
+#[test]
+fn bare_context_symbol_contributes_its_identity_pair() {
+    let _g = serialized();
+    // `a` and `e` are declared only as Sets members, and the rule uses them
+    // bare (via the where-variable) rather than as `a:a`.
+    let src = "\
+Alphabet %{h%}:0 %{h%}:%- %- ;
+Sets
+Vowels = a e ;
+Rules
+\"Disallow no hyphen between equal vowels\"
+%{h%}:0 /<= VOWEL :0* _ :0* VOWEL ;
+     where VOWEL in Vowels matched ;
+";
+    let t = compile(src).expect("a bare Sets-declared symbol in a context must compile");
+    let alpha = alphabet(&t);
+    for sym in ["a", "e"] {
+        assert!(
+            alpha.iter().any(|s| s == sym),
+            "the bare context symbol {sym:?} must reach the compiled alphabet, got {alpha:?}"
+        );
+    }
+}
+
+#[test]
+fn bare_symbol_identity_pair_still_checks_declaration() {
+    let _g = serialized();
+    // The counterpart: collecting bare symbols must not auto-declare them.
+    // `NOPE` is in no section at all, so hfst#334 still rejects the grammar.
+    let src = "Alphabet a b ;\nSets\nV = a ;\nRules\n\"R1\"\na:b <=> _ NOPE ;\n";
+    assert!(
+        compile(src).is_none(),
+        "a bare symbol declared nowhere must still fail compilation (hfst#334)"
+    );
+}

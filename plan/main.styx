@@ -3303,6 +3303,35 @@ children (
                             }
                         )
                     }
+
+                    {
+                        id upstream-bugs.t3.rs2-3
+                        title "divvun/hfst-rs#2 + #3: xfst regex body on a later line; twolc bare set-name where-clause; and the bare-symbol identity pairs the latter unhid"
+                        kind @fix
+                        sealed true
+                        log (
+                            {
+                                at 2026-08-19T15:07:30.37064Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan start)"
+                            }
+
+                            {
+                                at 2026-08-19T15:08:03.762993Z
+                                author "brendan@necessary.nu"
+                                kind @decision
+                                text "Three fixes, two repos. Both reported bugs were in the external nfst parser crates, not hfst.\n\nnfst (released as nfst-twolc 0.3.1 / nfst-xfst 0.3.1, commits acf2d27 + 456fd4e):\n(1) twolc where-clause: upstream has two productions for a variable initialisation (htwolcpre1-parser.yy:326-331), `VAR_SYMBOL IN ( LIST )` and bare `VAR_SYMBOL IN VAR_SYMBOL`. Only the parenthesised one was implemented, so `where VOWEL in Vowels matched` failed with \"expected `(`\". Both funnel through the same set_variable_values() upstream, so a bare name is exactly a one-element list; resolution stays in TwolcCompiler::build_rule_variables, which already expanded set names.\n(2) xfst regex body: upstream lexes bodies in an exclusive REGEX_STATE that spans newlines and enters it unconditionally for `regex` / `read regex` (xfst-lexer.ll:496) and for a `define NAME(proto)` prototype (:239). Only a bare `define NAME` at EOL (:234) is the empty-declaration form. nfst applied the empty-body rule to all of them, so `regex` alone on a line yielded an empty body and the next line was dispatched as a command (\"unknown command '['\"). Also made the body scanner skip `!` comments so a `;` inside one no longer ends the regex early; `#` deliberately left alone, since it opens a comment only in token position and `abc#def` is one multichar symbol.\nVersioning was also de-workspaced in nfst so the grammar crates can diverge.\n\nhfst (this commit):\n(3) Fixing (1) unhid a third bug. collect_regex_pairs walked only explicit `X:Y` nodes, so a bare symbol atom contributed no identity pair. Upstream's htwolcpre1 rewrote a lone `X` into `X:X` before complete_alphabet ran, so a grammar declaring its vocabulary in Sets and then using it bare got no `a:a` and died with \"Unknown pair: a a\". The hfst#334 declaration check is untouched — a bare symbol declared nowhere still errors, now with the readable message.\n\nOracle: the real omorfi generated grammar (github.com/flammie/omorfi, generate-twolcs.py -r hyphens) compiles, exit 0, 7954 bytes; issue #2's two scripts produce byte-identical transducers. Full suite 509 passed / 1 failed, identical before and after — the one failure (foma_backend replace_rule_leaves_no_markers_in_the_alphabet) is pre-existing and unrelated.\n\nNot fixed, noted for later: a bare `#` word boundary in a rule context is rejected as undeclared. That is pre-existing (the explicit `#:#` form already reported the same) and independent of this change."
+                            }
+
+                            {
+                                at 2026-08-19T15:08:18.091748Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan complete)"
+                            }
+                        )
+                    }
                 )
             }
 
