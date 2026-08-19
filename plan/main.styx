@@ -5763,6 +5763,15 @@ children (
                 title "The path-scoped epsilon_visited guard in pmatch.rs is a divergence from C++, which bounds the same traversal only by recursion depth. It was added under hfst#476/#293 to stop an epsilon-cycle memory and weight explosion (5000 analyses at weight 4999 down to 2 at weight 1), so it earns its place — but its key omits tape_pos, which means two arrivals at the same state with DIFFERENT accumulated output are treated as the same visit, and the second is pruned. In principle that can drop a legitimate reading. NOT PROVEN TO MATTER: disabling it changes nothing on lang-sma's tokeniser over 2000 corpus lines, and after the dedup and encoder fixes that output is byte-identical to C++ in -c, -c -w and -g, so no live case is known. Parked at P3 deliberately rather than chased. If a missing-reading report ever appears that the duplicate and normalisation fixes do not explain, start here: add tape_pos to the key and see whether the reading returns, then check the cycle bound still holds. Found while fixing pmatch-duplicate-path-readings"
                 priority 3
                 kind @fix
+                deps (pmatch-epsilon-guard-performance)
+                log (
+                    {
+                        at 2026-08-19T23:26:41.157801Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "The 2026-08-20 profile split the independently measurable BTreeSet representation cost into pmatch-epsilon-guard-performance. This correctness node remains scoped to the key and possible missing-reading behavior, and now follows the representation work so it does not duplicate or destabilize that optimization."
+                    }
+                )
             }
 
             {
@@ -6248,6 +6257,109 @@ children (
                 author "brendan@necessary.nu"
                 kind @decision
                 text "priority pinned to 1 — operator override: Operator wants the virtual-flag algebra project pursued now; P1 is the highest valid pass because it depends on the P1 compose-peak-memory predecessor, and it preempts the parked speculative P3 issue."
+            }
+        )
+    }
+
+    {
+        id profile-driven-performance
+        title "Profile-driven HFST performance program"
+        kind @perf
+        children (
+            {
+                id performance-language-gates
+                title "Establish SMA and SME iteration benchmarks with an opt-in KAL final stress gate"
+                kind @test
+                sealed true
+                log (
+                    {
+                        at 2026-08-19T23:26:29.582153Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Fresh 2026-08-20 release baselines at HEAD 99b1917, single-job builds: GLE 71.75s and 2,218,950,656 B peak RSS; SMA 70.32s and 2,054,127,616 B; SME 234.06s and 2,052,734,976 B. Completion requires reproducible SMA and SME iteration workloads that record wall/user/system time, peak RSS, output shape, and semantic equivalence. GLE may remain a secondary check. KAL is an explicit opt-in final stress gate only; it must not run in routine iteration or commit checks."
+                    }
+
+                    {
+                        at 2026-08-19T23:34:30.600709Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-19T23:38:32.606377Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Implemented scripts/profile-language-build.sh and scripts/hfst-profile-wrapper.sh. The gate builds a temporary legacy-tool overlay around one selected release hfst binary; records total and per-invocation wall, user, system, and maximum-RSS metrics on macOS and Linux; inventories .hfst/.hfstol/.pmhfst artifact sizes; and optionally compares every ordinary .hfst output with a baseline mirror through hfst compare. SMA, SME, and GLE are routine; KAL exits before work unless HFST_RUN_KAL_PERF_GATE=1. Verified POSIX shell syntax, the KAL refusal, and an end-to-end SMA-repository hfst-info run with both metric layers and artifact inventory."
+                    }
+
+                    {
+                        at 2026-08-19T23:38:36.054793Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
+
+            {
+                id pmatch-epsilon-guard-performance
+                title "Replace pmatch epsilon-guard tree churn while preserving traversal semantics"
+                kind @perf
+                deps (performance-language-gates)
+                log (
+                    {
+                        at 2026-08-19T23:26:31.707802Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Fresh SMA production-tokeniser profile: two corpus passes took 32.22s at 1,448,116,224 B peak RSS; take_epsilons plus path-scoped BTreeSet insertion/removal dominated the worker sample. Replace tree-based path membership with a stack-like or otherwise compact guard while preserving the current key, recursion bound, cycle handling, and convergent-path behavior. Completion requires byte-identical tokenize output, focused cycle/convergence regressions, and before/after runtime and RSS against the language gate. This is representation/performance work, distinct from the P3 pmatch-epsilon-visited-guard correctness question about whether the key should include tape position."
+                    }
+                )
+            }
+
+            {
+                id xre-intermediate-optimization
+                title "Reduce eager optimization between chained XRE and XFST operations"
+                kind @perf
+                deps (performance-language-gates)
+                log (
+                    {
+                        at 2026-08-19T23:26:34.26687Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Fresh normal-build evidence: hfst-xfst consumed 45.20 of 66.54 GLE user-seconds, 30.03 of 64.82 SMA, and 138.41 of 225.27 SME. The SME sample follows XRE eval_binary into optimize_with_config and Tropical minimize repeatedly across filter chains; virtual flag matching is not a major hotspot. Investigate deferred or fused intermediate optimization and reusable property/connect results without allowing uncontrolled graph growth. Completion requires semantic equivalence, focused chain tests, and improved wall/user time without a material RSS regression on SMA and SME."
+                    }
+                )
+            }
+
+            {
+                id lexc-morphotax-memory
+                title "Bound lexc morphotax construction memory and redundant optimization"
+                kind @perf
+                deps (performance-language-gates)
+                log (
+                    {
+                        at 2026-08-19T23:26:36.38907Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Fresh shared emoji lexc case: a 374,889-byte, 16,724-line source takes 6.34s and 2,054,111,232 B peak RSS to produce a 197 KB transducer with 5 states and 5,045 arcs. Removing --alignStrings changes neither the peak nor semantics. Profile implicates repeated repeat-star, composition, determinization, and minimization during morphotax assembly. Completion requires equivalent output and a measured material peak-RSS reduction on this fixture, with normal morphology lexc regressions and no hidden transfer of the peak to a later phase."
+                    }
+                )
+            }
+
+            {
+                id weighted-determinize-fallback
+                title "Use an earlier memory-aware fallback for weighted determinization"
+                kind @perf
+                deps (performance-language-gates)
+                log (
+                    {
+                        at 2026-08-19T23:26:38.503291Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "The excluded KAL diagnostic was stopped after 1,628.90s and 7,785,349,120 B peak RSS; its active compose-intersect spent roughly four fifths of sampled worker time sorting/normalizing determinized subsets, state-table lookup, and HashMap growth. The current max(1024, 256 * input_states) adaptive budget can permit hundreds of millions of states for a giant product. Design an absolute or memory-aware hybrid limit and earlier encoded-weight fallback while preserving weighted semantics. Completion uses focused adversarial and ordinary regression fixtures during iteration, then the opt-in KAL gate for final confirmation only."
+                    }
+                )
             }
         )
     }
