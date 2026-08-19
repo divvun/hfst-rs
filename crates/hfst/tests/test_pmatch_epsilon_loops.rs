@@ -8,7 +8,7 @@
 // step, so the search tree grows exponentially in width. hfst#399 is still open
 // upstream; the Rust port DELIBERATELY DIVERGES by TERMINATING via a per-search
 // visited memo over plain-epsilon configurations (see pmatch.rs, PmatchContainer
-// ::epsilon_visited).
+// ::epsilon_path).
 //
 // Every grammar here is inline. The tokenizer's `morphology` net is the
 // investigation's `ja.hfst` — the union [«:«] | [»:»] | [ja:ja+V] — which is

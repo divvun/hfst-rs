@@ -292,16 +292,15 @@ pub struct PmatchContainer {
     pub(crate) best_input_pos: u32,
     pub(crate) best_weight: Weight,
     // [PORT NOTE / DIVERGENCE hfst/hfst#399]
-    // Per-search memo of plain-epsilon-input configurations already fully
-    // explored during the current top-level match attempt. Keyed on
+    // Current DFS path of plain-epsilon-input configurations. Keyed on
     // (transducer symbol, target transition index, input_pos, context mode,
     // tape direction). Re-entering the same key is pruned. This TERMINATES
     // grammars whose compiled net contains an epsilon-input / unknown-output
     // arc under Kleene star (e.g. `0:?*`), which the C++ engine loops on
     // forever (still-open upstream bug hfst/hfst#399). Guarded strictly to
     // plain (non-flag, non-Ins/RTN) epsilon arcs so flag-diacritic traversal
-    // and RTN calls keep their own state and are never pruned by this memo.
-    pub(crate) epsilon_visited: std::collections::BTreeSet<EpsilonVisitKey>,
+    // and RTN calls keep their own state and are never pruned by this path.
+    pub(crate) epsilon_path: Vec<EpsilonVisitKey>,
 }
 
 // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.epsilon-visit-key]
@@ -1521,7 +1520,7 @@ impl PmatchContainer {
             stack_depth: 0,
             best_input_pos: 0,
             best_weight: 0.0,
-            epsilon_visited: std::collections::BTreeSet::new(),
+            epsilon_path: Vec::new(),
         }
     }
 
@@ -2689,8 +2688,8 @@ impl PmatchTransducer {
     // epsilon cycle (e.g. the '0:?*' loop of hfst#399) and must be pruned to
     // terminate.
     //
-    // The visited set is PATH-scoped (insert on descent, remove on backtrack),
-    // not a global per-attempt memo. A global memo also prunes CONVERGENT paths —
+    // The stack is PATH-scoped (push on descent, pop on backtrack), not a global
+    // per-attempt memo. A global memo also prunes CONVERGENT paths —
     // two distinct plain-epsilon branches that meet at the same state (e.g. the
     // 'cat+N' and 'cat+V' analyses of an ambiguous tokeniser converge on a shared
     // final state) — silently dropping every analysis but the first (hfst#354's
@@ -2716,18 +2715,24 @@ impl PmatchTransducer {
             frame.context as u8,
             frame.tape_step,
         );
-        if container.epsilon_visited.insert(key) {
-            Some(key)
-        } else {
-            None
+        if container
+            .epsilon_path
+            .iter()
+            .rev()
+            .any(|ancestor| *ancestor == key)
+        {
+            return None;
         }
+        container.epsilon_path.push(key);
+        Some(key)
     }
 
     // Leave a plain-epsilon configuration entered via 'epsilon_enter', so a
     // sibling branch that later reaches the same state is not mistaken for a
     // cycle. [hfst#399, #354]
     fn epsilon_leave(container: &mut PmatchContainer, key: EpsilonVisitKey) {
-        container.epsilon_visited.remove(&key);
+        let left = container.epsilon_path.pop();
+        debug_assert_eq!(left, Some(key), "epsilon configurations leave in DFS order");
     }
 
     // Helper: run 'f' with the callee RTN (the container's toplevel for
@@ -3530,8 +3535,8 @@ impl PmatchTransducer {
             top.default_symbol_trap = false;
         }
         // [DIVERGENCE hfst/hfst#399] Fresh epsilon-cycle memo per top-level
-        // match attempt (see PmatchContainer::epsilon_visited).
-        container.epsilon_visited.clear();
+        // match attempt (see PmatchContainer::epsilon_path).
+        container.epsilon_path.clear();
         self.get_analyses(input_pos, tape_pos, 0, container);
     }
 

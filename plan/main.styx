@@ -6307,12 +6307,34 @@ children (
                 title "Replace pmatch epsilon-guard tree churn while preserving traversal semantics"
                 kind @perf
                 deps (performance-language-gates)
+                sealed true
                 log (
                     {
                         at 2026-08-19T23:26:31.707802Z
                         author "brendan@necessary.nu"
                         kind @note
                         text "Fresh SMA production-tokeniser profile: two corpus passes took 32.22s at 1,448,116,224 B peak RSS; take_epsilons plus path-scoped BTreeSet insertion/removal dominated the worker sample. Replace tree-based path membership with a stack-like or otherwise compact guard while preserving the current key, recursion bound, cycle handling, and convergent-path behavior. Completion requires byte-identical tokenize output, focused cycle/convergence regressions, and before/after runtime and RSS against the language gate. This is representation/performance work, distinct from the P3 pmatch-epsilon-visited-guard correctness question about whether the key should include tape position."
+                    }
+
+                    {
+                        at 2026-08-19T23:39:25.796317Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-19T23:43:24.442158Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Replaced the path-scoped BTreeSet with a reverse-searched Vec DFS stack. The epsilon key and pruning semantics are unchanged; descent pushes and backtracking pops with a debug LIFO assertion. Real SMA production tokeniser, identical two-pass input: 32.22s/30.92 user/1,448,116,224 B baseline versus 25.76s/22.08 user/1,448,050,688 B after, a 20.0% wall and 28.6% user-CPU reduction; one-pass output is byte-identical at 40,221,671 bytes. All six epsilon-loop tests, 13 pmatch tests, 10 pmatch dedup/compose tests, tokenizer tests, release build, fmt, and hfst Clippy -D warnings pass. The broader hfst test sweep reaches an unrelated existing Foma replace-rule alphabet assertion failure; the pmatch-focused suites are green."
+                    }
+
+                    {
+                        at 2026-08-19T23:43:27.46316Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }
