@@ -6344,12 +6344,34 @@ children (
                 title "Reduce eager optimization between chained XRE and XFST operations"
                 kind @perf
                 deps (performance-language-gates)
+                sealed true
                 log (
                     {
                         at 2026-08-19T23:26:34.26687Z
                         author "brendan@necessary.nu"
                         kind @note
                         text "Fresh normal-build evidence: hfst-xfst consumed 45.20 of 66.54 GLE user-seconds, 30.03 of 64.82 SMA, and 138.41 of 225.27 SME. The SME sample follows XRE eval_binary into optimize_with_config and Tropical minimize repeatedly across filter chains; virtual flag matching is not a major hotspot. Investigate deferred or fused intermediate optimization and reusable property/connect results without allowing uncontrolled graph growth. Completion requires semantic equivalence, focused chain tests, and improved wall/user time without a material RSS regression on SMA and SME."
+                    }
+
+                    {
+                        at 2026-08-19T23:43:59.007052Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-19T23:54:56.856962Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Implemented root-finalization awareness in XreCompiler and XFST so roots whose final evaluator action already optimized are not optimized a second time; intermediate chain optimization remains unchanged. Controlled release A/B replays against 1f098cf: SMA's two normative XRE stages improved 5.26s/5.09 user/204,111,872 B to 4.41s/4.30 user/206,864,384 B (-16.2% wall, -15.5% user, +1.3% RSS); SME's 15-filter stage improved 5.45s/5.34 user/471,007,232 B to 4.29s/4.20 user/482,885,632 B (-21.3% wall/user, +2.5% RSS). Both outputs pass hfst compare; focused XRE/XFST chain, flag-front-end, upstream-regression, XFST, check, Clippy -D warnings, fmt, and diff checks pass."
+                    }
+
+                    {
+                        at 2026-08-19T23:55:03.286981Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }

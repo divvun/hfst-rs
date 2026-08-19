@@ -47,6 +47,9 @@ use crate::hfst_data_types::Symbol;
 use crate::hfst_transducer::HfstTransducer;
 use crate::virtual_flag_frontends::prepare_compose_flag_overlay;
 
+#[path = "xre_finalization.rs"]
+mod finalization;
+
 /// Arguments bundle mirroring 'hfst::xre::XreConstructorArguments'
 /// ('XreCompiler.h'). Carries the four definition maps used to seed a fresh
 /// ['XreCompiler']; the C++ 'format' member is the type parameter 'B' now
@@ -715,9 +718,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                     end += 1;
                 }
                 *chars_read = end as u32;
-                let mut t = self.eval(first).ok()?;
-                t.optimize_with_config(&self.opt_cfg()).ok()?;
-                Some(t)
+                self.eval_finalized(first).ok()
             }
             Ok(_) => {
                 self.contains_only_comments = true;
@@ -749,11 +750,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             return None;
         }
         match parse(src) {
-            Ok(expr) => {
-                let mut t = self.eval(&expr).ok()?;
-                t.optimize_with_config(&self.opt_cfg()).ok()?;
-                Some(t)
-            }
+            Ok(expr) => self.eval_finalized(&expr).ok(),
             Err(e) => {
                 // Distinguish comments-only (parse_all yields []) from a real
                 // parse error.

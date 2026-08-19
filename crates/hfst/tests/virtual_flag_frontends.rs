@@ -109,6 +109,30 @@ fn xfst_virtual_flags_match_eager() {
     }
 }
 
+#[test]
+fn composition_chain_finalization_preserves_result() {
+    let expression = "[ a:b ] .o. [ b:c ] .o. [ c:d ]";
+    let expected = HfstTransducer::<StdVectorFst>::new_symbol_pair("a", "d")
+        .expect("construct expected composition");
+
+    let mut xre = XreCompiler::<StdVectorFst>::new();
+    let xre_result = xre.compile(expression).expect("compile XRE chain");
+    assert!(
+        xre_result
+            .compare(&expected, true)
+            .expect("compare XRE chain")
+    );
+
+    let mut xfst = XfstCompiler::<StdVectorFst>::new_with_impl();
+    assert_eq!(xfst.parse(&format!("regex {expression} ;\n")), 0);
+    let top = *xfst.get_stack().last().expect("one XFST chain result");
+    assert!(
+        xfst.net(top)
+            .compare(&expected, true)
+            .expect("compare XFST chain")
+    );
+}
+
 #[cfg(feature = "foma")]
 #[test]
 // [spec:hfst:req:virtual-flag-algebra.frontend-compose/test]

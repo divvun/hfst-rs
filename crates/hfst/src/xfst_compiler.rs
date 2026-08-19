@@ -1742,8 +1742,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // to plain messages here. Body syntax errors are anchored properly a
         // layer up, where the body is re-parsed at its script offset.
         self.xre.source = String::new();
-        let mut t = self.xre.eval(xre)?;
-        t.optimize_with_config(&self.engine_config)?;
+        let t = self.xre.eval_finalized(xre)?;
         Ok(self.alloc_net(t))
     }
 
