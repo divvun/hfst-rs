@@ -889,7 +889,11 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     }
 
     pub fn add_alphabet(&mut self, alpha: &str) -> &mut Self {
-        self.alphabets.insert(Symbol::new(alpha));
+        // nfst-lexc preserves an escaped literal zero as `@ZERO@` so it stays
+        // distinct from bare `0` (epsilon) during tokenization. Entries are
+        // decoded back to the literal symbol before the missing-alphabet
+        // check, so declarations must use the same decoded spelling there.
+        self.alphabets.insert(Symbol::from(replace_zero(alpha)));
         self.tokenizer.add_multichar_symbol(alpha);
         if !self.quiet && self.verbose {
             // warn about undefined multichars
@@ -964,12 +968,20 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                     continue;
                 }
                 if self.warn_missing_alphabets {
-                    let errm = format!("Adding {} to Alphabets [Wmissing-alphabets]", first);
-                    if self.treat_warnings_as_errors {
-                        self.error_at_current_token(&errm);
+                    let message = format!("Adding {first} to Alphabets [-Wmissing-alphabets]");
+                    if first == "0" {
+                        crate::diag::emit(
+                            &self.source_name,
+                            &self.source,
+                            self.current_span.clone(),
+                            crate::diag::Severity::Info,
+                            &message,
+                        );
+                    } else if self.treat_warnings_as_errors {
+                        self.error_at_current_token(&message);
                         self.parseErrors_ = true;
                     } else {
-                        self.warning_at_current_token(&errm);
+                        self.warning_at_current_token(&message);
                     }
                 }
                 self.add_alphabet(&first);
@@ -1152,12 +1164,20 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                     continue;
                 }
                 if self.warn_missing_alphabets {
-                    let errm = format!("Adding {} to Alphabets [-Wmissing-alphabets]", first);
-                    if self.treat_warnings_as_errors {
-                        self.error_at_current_token(&errm);
+                    let message = format!("Adding {first} to Alphabets [-Wmissing-alphabets]");
+                    if first == "0" {
+                        crate::diag::emit(
+                            &self.source_name,
+                            &self.source,
+                            self.current_span.clone(),
+                            crate::diag::Severity::Info,
+                            &message,
+                        );
+                    } else if self.treat_warnings_as_errors {
+                        self.error_at_current_token(&message);
                         self.parseErrors_ = true;
                     } else {
-                        self.warning_at_current_token(&errm);
+                        self.warning_at_current_token(&message);
                     }
                 }
                 self.add_alphabet(&first);
@@ -1173,12 +1193,20 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                     continue;
                 }
                 if self.warn_missing_alphabets {
-                    let errm = format!("Adding {} to Alphabets [-Wmissing-alphabets]", second);
-                    if self.treat_warnings_as_errors {
-                        self.error_at_current_token(&errm);
+                    let message = format!("Adding {second} to Alphabets [-Wmissing-alphabets]");
+                    if second == "0" {
+                        crate::diag::emit(
+                            &self.source_name,
+                            &self.source,
+                            self.current_span.clone(),
+                            crate::diag::Severity::Info,
+                            &message,
+                        );
+                    } else if self.treat_warnings_as_errors {
+                        self.error_at_current_token(&message);
                         self.parseErrors_ = true;
                     } else {
-                        self.warning_at_current_token(&errm);
+                        self.warning_at_current_token(&message);
                     }
                 }
                 self.add_alphabet(&second);

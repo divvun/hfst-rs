@@ -3153,6 +3153,14 @@ children (
                                 kind @status
                                 text "Doing → Done (nplan_complete)"
                             }
+
+                            {
+                                at 2026-08-19T14:17:48.126849Z
+                                author "brendan@necessary.nu"
+                                kind @errata
+                                text "The zero-semantics regression tests covered output language but missed -Wmissing-alphabets: an escaped literal zero can still be reported as a warning/error during automatic alphabet registration."
+                                after_done true
+                            }
                         )
                     }
 
@@ -5092,6 +5100,14 @@ children (
                         kind @status
                         text "Todo → Done (nplan complete)"
                     }
+
+                    {
+                        at 2026-08-19T14:17:48.195743Z
+                        author "brendan@necessary.nu"
+                        kind @errata
+                        text "The caret test used an ASCII-only prefix. nfst supplies UTF-8 byte ranges, while the diagnostic renderer consumes character offsets, so Unicode preceding the target displaces the rendered span."
+                        after_done true
+                    }
                 )
             }
 
@@ -5750,6 +5766,36 @@ children (
 
                     {
                         at 2026-08-17T22:46:57.246529Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
+
+            {
+                id lexc-diagnostic-accuracy
+                title "Correct lexc Unicode spans and literal-zero notice severity"
+                kind @fix
+                deps (upstream-bugs.t3.i274 lexc-unicode-check-diagnostic)
+                sealed true
+                log (
+                    {
+                        at 2026-08-19T14:17:48.40398Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-19T14:25:21.520603Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Implemented shared UTF-8 byte-to-character span conversion for Ariadne, preserved literal %0 declarations in the decoded alphabet, and made implicit literal 0 an Info diagnostic immune to -Werror. Verified with multilingual CLI line/column regression, CLI severity regression, hfst lexc suites, all-target check, Clippy -D warnings, fmt, and diff checks."
+                    }
+
+                    {
+                        at 2026-08-19T14:25:21.571126Z
                         author "brendan@necessary.nu"
                         kind @status
                         text "Doing → Done (nplan complete)"

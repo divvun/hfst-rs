@@ -158,6 +158,36 @@ fn issue_274_pair_escaped_zeros_are_literal() {
     expect_strings("LEXICON Root\nc%0t:d%0g # ;\n", &["c0t:d0g"]);
 }
 
+#[test]
+fn issue_274_declared_zero_satisfies_alphabet_check() {
+    let _g = serialized();
+    let mut compiler = LexcCompiler::<StdVectorFst>::new();
+    compiler.set_align_strings(true);
+    compiler.set_warning("-Wmissing-alphabets", true);
+    compiler.set_treat_warnings_as_errors(true);
+
+    let source = "Multichar_Symbols a b %0\nLEXICON Root\na%0:b # ;\n";
+    assert!(
+        compiler.compile(source).is_some(),
+        "a declared literal zero must not be reported as a missing alphabet"
+    );
+}
+
+#[test]
+fn issue_274_implicit_literal_zero_is_informational() {
+    let _g = serialized();
+    let mut compiler = LexcCompiler::<StdVectorFst>::new();
+    compiler.set_align_strings(true);
+    compiler.set_warning("-Wmissing-alphabets", true);
+    compiler.set_treat_warnings_as_errors(true);
+
+    let source = "Multichar_Symbols a b\nLEXICON Root\na%0:b # ;\n";
+    assert!(
+        compiler.compile(source).is_some(),
+        "an implicit literal zero notice must not become an error under -Werror"
+    );
+}
+
 // ===================================================================
 // hfst#211 — multichar symbols containing zeros are atomic.
 // ===================================================================

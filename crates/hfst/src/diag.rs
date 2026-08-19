@@ -15,6 +15,7 @@ use ariadne::{Color, Label, Report, ReportKind, Source};
 pub enum Severity {
     Error,
     Warning,
+    Info,
 }
 
 /// Render one diagnostic to stderr: a header line, the relevant slice of
@@ -48,15 +49,16 @@ pub fn emit_with_notes(
         }
         return;
     }
-    // Clamp to the source bounds — a stale or degenerate span must never make
-    // ariadne panic on an out-of-range slice.
-    let end = span.end.min(source.len());
-    let start = span.start.min(end);
-    let span = start..end;
+    // The parsers report UTF-8 byte offsets, while ariadne's `Range<usize>`
+    // spans are character offsets. Convert at this shared boundary so a
+    // diagnostic after non-ASCII text still points at the right line and
+    // column. The conversion also clamps stale or mid-code-point offsets.
+    let span = byte_span_to_char_span(source, span);
 
     let (kind, color) = match severity {
         Severity::Error => (ReportKind::Error, Color::Red),
         Severity::Warning => (ReportKind::Warning, Color::Yellow),
+        Severity::Info => (ReportKind::Custom("Info", Color::Blue), Color::Blue),
     };
 
     let mut builder = Report::build(kind, (name, span.clone()))
@@ -90,5 +92,48 @@ fn emit_plain(severity: Severity, message: &str) {
     match severity {
         Severity::Error => tracing::error!("{}", message),
         Severity::Warning => tracing::warn!("{}", message),
+        Severity::Info => tracing::info!("{}", message),
+    }
+}
+
+fn byte_span_to_char_span(source: &str, span: Range<usize>) -> Range<usize> {
+    let end = span.end.min(source.len());
+    let start = span.start.min(end);
+
+    let mut start_byte = start;
+    while start_byte > 0 && !source.is_char_boundary(start_byte) {
+        start_byte -= 1;
+    }
+
+    let mut end_byte = end;
+    while end_byte < source.len() && !source.is_char_boundary(end_byte) {
+        end_byte += 1;
+    }
+
+    source[..start_byte].chars().count()..source[..end_byte].chars().count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::byte_span_to_char_span;
+
+    #[test]
+    fn byte_span_after_unicode_becomes_character_span() {
+        let source = "LEXICON Root\n组织机构 enddomain ;\nभा enddomain ;\n";
+        let byte_start = source.find("भा").expect("fixture contains grapheme");
+        let byte_span = byte_start..byte_start + "भा".len();
+        let char_start = source[..byte_start].chars().count();
+
+        assert_eq!(
+            byte_span_to_char_span(source, byte_span),
+            char_start..char_start + 2
+        );
+    }
+
+    #[test]
+    fn mid_codepoint_offsets_expand_to_character_boundaries() {
+        let source = "aभाb";
+
+        assert_eq!(byte_span_to_char_span(source, 2..6), 1..3);
     }
 }
