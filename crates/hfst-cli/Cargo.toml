@@ -18,7 +18,7 @@ foma = ["hfst/foma"]
 dhat-heap = ["dep:dhat"]
 
 [dependencies]
-clap = "4.6.1"
+clap = { version = "4.6.1", features = ["derive"] }
 hfst = { workspace = true }
 hfst-openfst = { workspace = true }
 mimalloc = { version = "0.1", default-features = false }

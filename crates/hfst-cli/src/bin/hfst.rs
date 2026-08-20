@@ -17,7 +17,7 @@
 //! subcommands. It never parses a tool's own flags.
 
 use clap::{Arg, ArgAction, Command};
-use hfst_cli::hfst_commandline::{VERSION_COPYRIGHT_BLOCK, version_line};
+use hfst_cli::hfst_commandline::{VERSION_COPYRIGHT_BLOCK, extend_options_from_env, version_line};
 use hfst_cli::tools::TOOLS;
 
 // The FST algorithms are allocation-heavy; mimalloc beats the system
@@ -226,6 +226,11 @@ fn run_main() {
     if basename != "hfst"
         && let Some(run) = find_tool(&basename)
     {
+        let mut argv = argv;
+        // $HFST_OPTIONS extends the argv of whichever tool runs, once, here —
+        // the tools' own parsers no longer each reach for the environment.
+        // [spec:hfst:req:cli.arg-parse]
+        extend_options_from_env(&mut argv);
         std::process::exit(run(argv));
     }
     // Unknown basename: fall through to the subcommand interface.
@@ -251,6 +256,8 @@ fn run_main() {
             let mut tool_argv = Vec::with_capacity(argv.len() - 1);
             tool_argv.push(format!("hfst {sub}"));
             tool_argv.extend(argv[2..].iter().cloned());
+            // [spec:hfst:req:cli.arg-parse]
+            extend_options_from_env(&mut tool_argv);
             #[cfg(feature = "dhat-heap")]
             let profiler = dhat::Profiler::new_heap();
             let code = run(tool_argv);

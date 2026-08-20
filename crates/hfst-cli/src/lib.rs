@@ -147,6 +147,12 @@ impl hfst::substitute_driver::SubstituteReporter for CliVerboseReporter<'_> {
     }
 }
 
+// The clap-4 argument layer: the shared derive groups, the argv pre-pass and
+// the error/exit-code mapping every migrated tool parses through. It replaces
+// hfst_getopt + the inc/ getopt-cases fragments tool by tool; both stay until
+// the last tool has moved across.
+pub mod cli;
+
 pub mod globals;
 pub mod hfst_commandline;
 pub mod hfst_getopt;

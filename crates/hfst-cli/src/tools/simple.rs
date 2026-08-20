@@ -23,160 +23,109 @@
 pub mod affix_guessify {
     //! Faithful 1:1 port of tools/src/hfst-affix-guessify.cc — the transducer
     //! guesser maker command-line tool. Creates a weighted affix guesser from an
-    //! automaton. Drives the hfst-cli foundation (globals, getopt, commandline,
-    //! program-options, tool-metadata, inc fragments).
+    //! automaton. Option handling is clap 4 derive through [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{
-        error, extend_options_from_env, hfst_set_program_name, hfst_strtoweight,
-        is_input_stream_in_ol_format, verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
+        error, hfst_set_program_name, hfst_strtoweight, is_input_stream_in_ol_format, verbose_print,
     };
     use hfst::guessify_fst::{GuessDirection, affix_guessify};
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
     use std::io::Write;
 
-    /// hfst-affix-guessify's own options (the former tool-specific `static mut`s).
+    /// hfst-affix-guessify's command line.
     ///
-    /// GuessDirection and the per-transducer affix-guesser construction now live in
+    /// GuessDirection and the per-transducer affix-guesser construction live in
     /// hfst::guessify_fst; this tool keeps only the option-driven state + the
     /// stream-driver loop.
-    struct Options {
-        /// '-D, --direction=DIR': direction of guessing.
-        direction: GuessDirection,
-        /// '-w, --weight=WEIGHT': weight difference of affix lengths.
-        weight: f32,
-    }
-
-    impl Default for Options {
-        fn default() -> Options {
-            Options {
-                direction: GuessDirection::GuessSuffix,
-                weight: 1.0f32,
-            }
-        }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nCreate weighted affix guesser from automaton\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        // (tool-specific options and short descriptions)
-        let _ = write!(
-            msg,
-            "Guesser parameters:\n  -D, --direction=DIR   set direction of guessing\n  -w, --weight=WEIGHT   set weight difference of affix lengths\n\n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = write!(
-            msg,
-            "DIR is either suffix or prefix, or suffix if omitted.\nWEIGHT is a weight of each arc not in the known suffix or prefix being guessed, as parsed with strtod(3), or 1.0 if omitted.\n"
-        );
-        let _ = writeln!(msg);
-    }
-
     // [spec:hfst:def:hfst-affix-guessify.parse-options-fn]
     // [spec:hfst:sem:hfst-affix-guessify.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "weight",
-                has_arg: 1, // required_argument
-                val: 'w' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "direction",
-                has_arg: 1, // required_argument
-                val: 'D' as i32,
-            });
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Create weighted affix guesser from automaton")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
 
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own ('w'/'D'), then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
+        /// Set direction of guessing: suffix or prefix, suffix if omitted
+        #[arg(short = 'D', long = "direction", value_name = "DIR")]
+        direction: Option<String>,
+
+        /// Set weight difference of affix lengths: the weight of each arc not
+        /// in the known suffix or prefix being guessed, as parsed with
+        /// strtod(3), or 1.0 if omitted
+        #[arg(
+            short = 'w',
+            long = "weight",
+            value_name = "WEIGHT",
+            allow_hyphen_values = true
+        )]
+        weight: Option<String>,
+    }
+
+    impl Args {
+        /// Case 'D': the C accepts any argument that STARTS WITH "prefix" or
+        /// "suffix" and rejects everything else.
+        fn direction(&self, common: &CommonOptions) -> GuessDirection {
+            let Some(dir) = self.direction.as_deref() else {
+                return GuessDirection::GuessSuffix;
+            };
+            if dir.starts_with("prefix") {
+                GuessDirection::GuessPrefix
+            } else if dir.starts_with("suffix") {
+                GuessDirection::GuessSuffix
+            } else {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!(
+                        "Unable to parse guessing direction from {};\nplease use one of 'prefix' or 'suffix'",
+                        dir
+                    ),
+                );
+                GuessDirection::GuessSuffix
             }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c {
-                x if x == 'w' as i32 => {
-                    options.weight = hfst_strtoweight(&common, &opt.optarg());
-                    continue;
-                }
-                x if x == 'D' as i32 => {
-                    let optarg = opt.optarg();
-                    if optarg.starts_with("prefix") {
-                        options.direction = GuessDirection::GuessPrefix;
-                    } else if optarg.starts_with("suffix") {
-                        options.direction = GuessDirection::GuessSuffix;
-                    } else {
-                        error(
-                            &common,
-                            1,
-                            0,
-                            &format!(
-                                "Unable to parse guessing direction from {};\nplease use one of 'prefix' or 'suffix'",
-                                optarg
-                            ),
-                        );
-                    }
-                    continue;
-                }
-                _ => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
+        /// Case 'w': strtod, fatal on anything else; the C initialiser is 1.0.
+        fn weight(&self, common: &CommonOptions) -> f32 {
+            match &self.weight {
+                Some(w) => hfst_strtoweight(common, w),
+                None => 1.0f32,
+            }
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // Both rejections happened inside the C getopt loop, before the
+            // parameter checks; run them here for the same ordering.
+            self.weight(opts);
+            self.direction(opts);
+            Ok(())
+        }
     }
 
     // [spec:hfst:def:hfst-affix-guessify.process-stream-fn]
     // [spec:hfst:sem:hfst-affix-guessify.process-stream-fn]
     fn process_stream(
         common: &CommonOptions,
-        options: &Options,
+        direction: GuessDirection,
+        weight: f32,
         instream: &mut HfstInputStream<'_>,
         outstream: &mut HfstOutputStream,
     ) -> i32 {
@@ -203,7 +152,7 @@ pub mod affix_guessify {
                 } else {
                     verbose_print(common, &format!("Guessifying {}... {}\n", inputname, transducer_n));
                 }
-                let mut t = match affix_guessify(&trans, options.direction, options.weight) {
+                let mut t = match affix_guessify(&trans, direction, weight) {
                     Ok(t) => t,
                     Err(e) => {
                         error(common, 1, 0, &format!("{e}"));
@@ -229,14 +178,17 @@ pub mod affix_guessify {
 
     // [spec:hfst:def:hfst-affix-guessify.main-fn]
     // [spec:hfst:sem:hfst-affix-guessify.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstAffixGuessify");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let direction = args.direction(&common);
+        let weight = args.weight(&common);
 
         // close buffers, we use streams
         let input_opened = common.input_filename != "<stdin>";
@@ -262,7 +214,7 @@ pub mod affix_guessify {
             Ok(s) => s,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
@@ -276,123 +228,65 @@ pub mod affix_guessify {
             Ok(s) => s,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-affix-guessify") {
-            return 1;
+            return Err(1);
         }
 
-        process_stream(&common, &options, &mut instream, &mut outstream)
+        cli::from_code(process_stream(
+            &common,
+            direction,
+            weight,
+            &mut instream,
+            &mut outstream,
+        ))
     }
 }
 
 pub mod determinize {
     //! Faithful 1:1 port of tools/src/hfst-determinize.cc — the transducer
-    //! determinisation command-line tool. Drives the hfst-cli foundation (globals,
-    //! getopt, commandline, program-options, tool-metadata, inc fragments).
+    //! determinisation command-line tool.
     //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
-    //! `static mut` globals and no `unsafe`.
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared -v/-q/-o/-i/... fields), built from
+    //! the parsed [`Args`] and threaded into the processing functions. There are
+    //! no `static mut` globals and no `unsafe`.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::hfst_set_program_name;
     use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::{EngineConfig, HfstTransducer};
     use std::borrow::Cow;
-    use std::io::Write;
 
-    /// hfst-determinize's own options (the former tool-specific `static mut`s).
-    #[derive(Default)]
-    struct Options {
-        /// '-E, --encode-weights': encode weights when determinizing.
+    /// hfst-determinize's command line.
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Determinize a transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// Encode weights when determinizing (default is false)
+        #[arg(short = 'E', long = "encode-weights")]
         encode_weights: bool,
     }
 
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nDeterminize a transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = writeln!(msg, "Command-specific options:");
-        let _ = write!(
-            msg,
-            "  -E, --encode-weights         Encode weights when determinizing\n\
-         \x20                             (default is false).\n\n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "encode-weights",
-                has_arg: getopt::NO_ARGUMENT,
-                val: 'E' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, unary cases, the terminal error arm, then the tool's own
-            // 'E' case.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == 'E' as i32 {
-                options.encode_weights = true;
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-determinize.process-stream-fn]
@@ -437,124 +331,64 @@ pub mod determinize {
 
     // [spec:hfst:def:hfst-determinize.main-fn]
     // [spec:hfst:sem:hfst-determinize.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstDeterminize");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
 
         let mut op = DeterminizeOp {
-            encode_weights: options.encode_weights,
+            encode_weights: args.encode_weights,
         };
-        run_unary_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_unary_tool(&common, &SPEC, &mut op))
     }
 }
 
 pub mod eliminate_flags {
     //! Port of tools/src/hfst-eliminate-flags.cc — the transducer flag elimination
-    //! command-line tool. Drives the hfst-cli foundation (getopt, commandline,
-    //! program-options, tool-metadata, inc fragments).
+    //! command-line tool.
     //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
-    //! `static mut` globals and no `unsafe`.
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared -v/-q/-o/-i/... fields), built from
+    //! the parsed [`Args`] and threaded into the processing functions. There are
+    //! no `static mut` globals and no `unsafe`.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{error, extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name};
     use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::HfstTransducer;
     use std::borrow::Cow;
-    use std::io::Write;
 
-    /// hfst-eliminate-flags's own options (the former tool-specific `static mut`s).
-    #[derive(Default)]
-    struct Options {
-        /// '-F, --flag=FLAG': only eliminate flag FLAG (else all flags).
+    /// hfst-eliminate-flags's command line.
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Eliminate flags from a transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// Only eliminate flag FLAG
+        #[arg(short = 'F', long = "flag", value_name = "FLAG")]
         flag: Option<String>,
     }
 
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        // Usage line
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nEliminate flags from a transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = writeln!(msg, "Command-specific options:");
-        let _ = write!(msg, "  -F, --flag=FLAG        Only eliminate flag FLAG\n\n");
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            long_options.push(getopt::GetOpt {
-                name: "flag",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'F' as i32,
-            });
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own ('F'), then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == 'F' as i32 {
-                options.flag = Some(opt.optarg());
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-eliminate-flags.process-stream-fn]
@@ -626,180 +460,138 @@ pub mod eliminate_flags {
 
     // [spec:hfst:def:hfst-eliminate-flags.main-fn]
     // [spec:hfst:sem:hfst-eliminate-flags.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstEliminateFlags");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
 
-        let flags = match &options.flag {
+        let flags = match &args.flag {
             None => String::from("flags"),
             Some(f) => format!("flag {}", f),
         };
         let mut op = EliminateFlagsOp {
-            flag: options.flag,
+            flag: args.flag,
             flags,
         };
-        run_unary_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_unary_tool(&common, &SPEC, &mut op))
     }
 }
 
 pub mod insert_freely {
     //! Faithful 1:1 port of tools/src/hfst-insert-freely.cc — the freely-insert
-    //! a symbol (pair) command-line tool. Drives the hfst-cli foundation (globals,
-    //! getopt, commandline, program-options, tool-metadata, inc fragments).
+    //! a symbol (pair) command-line tool.
     //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
-    //! `static mut` globals and no `unsafe`.
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared -v/-q/-o/-i/... fields), built from
+    //! the parsed [`Args`] and threaded into the processing functions. There are
+    //! no `static mut` globals and no `unsafe`.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{
-        error, extend_options_from_env, hfst_set_program_name, is_input_stream_in_ol_format,
-        verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
+        error, hfst_set_program_name, is_input_stream_in_ol_format, verbose_print,
     };
     use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
     use hfst::hfst_data_types::StringPair;
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
     use hfst::hfst_symbol_defs::{internal_epsilon, label_to_stringpair};
     use std::io::Write;
 
-    /// hfst-insert-freely's own options (the former tool-specific `static mut`s).
-    #[derive(Default)]
-    struct Options {
-        label: Option<String>,
-        harmonise_flags: bool,
-        symbol_pair: Option<StringPair>,
-    }
-
-    // FMT: Copied from hfst-substitute.cc ... should probably go in a library function
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        // Usage line
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nFreely insert a symbol (pair)\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Option:\n  -a, --symbol-pair=SYM   symbol pair SYM\n  -H, --harmonise   harmonise \n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(
-            msg,
-            "SYM must be either a single alphabeticsymbol or two symbols separated by a colon, :"
-        );
-        let _ = writeln!(msg);
-    }
-
+    /// hfst-insert-freely's command line.
     // [spec:hfst:def:hfst-insert-freely.parse-options-fn]
     // [spec:hfst:sem:hfst-insert-freely.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "symbol-pair",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'a' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "harmonise",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'H' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Freely insert a symbol (pair)")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
 
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own, then the terminal
-            // error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
+        /// Symbol pair SYM: either a single alphabetic symbol or two symbols
+        /// separated by a colon, :
+        #[arg(short = 'a', long = "symbol-pair", value_name = "SYM")]
+        symbol_pair: Option<String>,
+
+        /// Harmonise
+        #[arg(short = 'H')]
+        harmonise: bool,
+
+        /// Harmonise; upstream's long spelling takes a required argument that
+        /// nothing reads, while its short-option string gives -H none, so
+        /// '--harmonise SYM' swallows SYM and '-H SYM' leaves it as the input
+        /// operand. The two spellings are separate args so both keep their
+        /// upstream arity.
+        #[arg(long = "harmonise", value_name = "ARG")]
+        harmonise_long: Option<String>,
+    }
+
+    impl Args {
+        /// Either spelling of -H/--harmonise sets the flag; the long form's
+        /// argument is discarded, as upstream discards it.
+        fn harmonise_flags(&self) -> bool {
+            self.harmonise || self.harmonise_long.is_some()
+        }
+    }
+
+    impl Args {
+        /// Case 'a': "@0@" stands for the internal epsilon, and an empty label
+        /// is fatal (the C checks AFTER building the pair from it).
+        fn label(&self, common: &CommonOptions) -> Option<StringPair> {
+            let lbl = self.symbol_pair.as_deref()?;
+            // This will probably break for unicode
+            let lbl = if lbl == "@0@" {
+                internal_epsilon.to_string()
+            } else {
+                lbl.to_string()
+            };
+            let pair = label_to_stringpair(&lbl);
+            if lbl.is_empty() {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!(
+                        "argument of source label option is empty;\nif you REALLY want to replace epsilons with something, use @0@ or {}",
+                        internal_epsilon
+                    ),
+                );
             }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c as u8 {
-                b'a' => {
-                    // This will probably break for unicode
-                    let mut lbl = opt.optarg();
-                    if lbl == "@0@" {
-                        lbl = internal_epsilon.to_string();
-                    }
-                    options.symbol_pair = label_to_stringpair(&lbl);
-                    if lbl.is_empty() {
-                        error(
-                            &common,
-                            1,
-                            0,
-                            &format!(
-                                "argument of source label option is empty;\nif you REALLY want to replace epsilons with something, use @0@ or {}",
-                                internal_epsilon
-                            ),
-                        );
-                    }
-                    options.label = Some(lbl);
-                    continue;
-                }
-                b'H' => {
-                    options.harmonise_flags = true;
-                    continue;
-                }
-                _ => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
+            pair
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // The empty-label rejection happened inside the C getopt loop,
+            // before the parameter checks; run it here for the same ordering.
+            self.label(opts);
+            Ok(())
+        }
     }
 
     // [spec:hfst:def:hfst-insert-freely.process-stream-fn]
     // [spec:hfst:sem:hfst-insert-freely.process-stream-fn]
     fn process_stream(
         common: &CommonOptions,
-        options: &Options,
+        symbol_pair: Option<&StringPair>,
+        harmonise_flags: bool,
         instream: &mut HfstInputStream<'_>,
         outstream: &mut HfstOutputStream,
     ) -> i32 {
@@ -821,8 +613,8 @@ pub mod insert_freely {
                     // If harmonize is true, then identity and unknown symbols in the
                     // transducer will be expanded by the symbols in symbol pair.
                     // Otherwise they aren't.
-                    let pair = options.symbol_pair.as_ref().expect("symbol pair must be set");
-                    if let Err(e) = trans.insert_freely_pair(pair, options.harmonise_flags) {
+                    let pair = symbol_pair.expect("symbol pair must be set");
+                    if let Err(e) = trans.insert_freely_pair(pair, harmonise_flags) {
                         error(common, 1, 0, &format!("{e}"));
                         return 1;
                     }
@@ -854,14 +646,16 @@ pub mod insert_freely {
 
     // [spec:hfst:def:hfst-insert-freely.main-fn]
     // [spec:hfst:sem:hfst-insert-freely.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPush");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let symbol_pair = args.label(&common);
 
         // close buffers, we use streams
         let input_opened = common.input_filename != "<stdin>";
@@ -883,7 +677,7 @@ pub mod insert_freely {
             Ok(v) => v,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
@@ -899,106 +693,61 @@ pub mod insert_freely {
             Ok(v) => v,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-insert-freely") {
-            return 1;
+            return Err(1);
         }
 
-        process_stream(&common, &options, &mut instream, &mut outstream)
+        cli::from_code(process_stream(
+            &common,
+            symbol_pair.as_ref(),
+            args.harmonise_flags(),
+            &mut instream,
+            &mut outstream,
+        ))
     }
 }
 
 pub mod invert {
     //! Faithful 1:1 port of tools/src/hfst-invert.cc — the transducer inversion
-    //! command-line tool. Drives the hfst-cli foundation (getopt, commandline,
-    //! program-options, tool-metadata, inc fragments).
+    //! command-line tool.
     //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
-    //! `static mut` globals and no `unsafe`.
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared -v/-q/-o/-i/... fields), built from
+    //! the parsed [`Args`] and threaded into the processing functions. There are
+    //! no `static mut` globals and no `unsafe`.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::hfst_set_program_name;
     use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::HfstTransducer;
     use std::borrow::Cow;
-    use std::io::Write;
 
-    /// hfst-invert's own options. The tool has no tool-specific `static mut`s, so
-    /// this is empty and carries the type-level marker only.
-    #[derive(Default)]
-    struct Options;
-
+    /// hfst-invert's command line: the common and unary options only.
+    // [spec:hfst:req:cli.arg-parse]
     // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nInvert a transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
+    #[derive(clap::Parser)]
+    #[command(about = "Invert a transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
     }
 
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let options = Options;
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own (none here), then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-invert.process-stream-fn]
@@ -1037,16 +786,17 @@ pub mod invert {
 
     // [spec:hfst:def:hfst-invert.main-fn]
     // [spec:hfst:sem:hfst-invert.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstInvert");
-        let (common, _options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, _args) = cli::parse::<Args>(common, args)?;
 
-        run_unary_tool(&common, &SPEC, &mut InvertOp)
+        cli::from_code(run_unary_tool(&common, &SPEC, &mut InvertOp))
     }
 }
 
@@ -1054,31 +804,67 @@ pub mod kill_paths {
     //! Faithful 1:1 port of tools/src/hfst-kill-paths.cc — the path-killing
     //! command-line tool: removes every arc whose input or output symbol matches a
     //! given symbol (one --symbol, or a list from a --tsv-file), then removes
-    //! epsilons. Drives the hfst-cli foundation (globals, getopt, commandline,
-    //! program-options, tool-metadata, inc fragments).
+    //! epsilons. Option handling is clap 4 derive through [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{
-        error, extend_options_from_env, hfst_set_program_name, is_input_stream_in_ol_format,
-        verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
+        error, hfst_set_program_name, is_input_stream_in_ol_format, verbose_print,
     };
     use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
     use hfst::hfst_transducer::HfstTransducer;
     use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 
-    /// hfst-kill-paths's own options (the former tool-specific `static mut`s).
-    #[derive(Default)]
+    /// hfst-kill-paths's command line. Upstream spells the long name of -T
+    /// "tsv" while its help calls it --tsv-file; the registered name is the
+    /// one that parses, so it is kept.
+    // [spec:hfst:def:hfst-kill-paths.parse-options-fn]
+    // [spec:hfst:sem:hfst-kill-paths.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Kill all paths with specific symbols")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// Remove arcs with input or output symbol SYM or both
+        #[arg(short = 'S', long = "symbol", value_name = "SYM")]
+        symbol: Option<String>,
+
+        /// Read kill rules from TFILE, which should contain lines with
+        /// tab-separated pairs of SYM; comment lines starting with # and empty
+        /// lines are ignored
+        #[arg(short = 'T', long = "tsv", value_name = "TFILE")]
+        tsv: Option<String>,
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // The C ran this check after the getopt loop but BEFORE the
+            // parameter checks, so it outranks the too-many-files diagnostics.
+            if self.symbol.is_none() && self.tsv.is_none() {
+                error(opts, 1, 0, "Either --symbol or --tsv-file is required");
+                return Err(1);
+            }
+            Ok(())
+        }
+    }
+
+    /// The tool's option-driven state once the kill-rules file, which the C
+    /// opened after the parameter checks, has been opened.
     struct Options {
         /// '-S, --symbol=SYM': the symbol whose arcs to kill.
         symbol: Option<String>,
@@ -1088,102 +874,24 @@ pub mod kill_paths {
         tsv_file: Option<std::fs::File>,
     }
 
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        // Usage line
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nKill all paths with specific symbols\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Reweighting options:\n  -S, --symbol=SYM           remove arcs with input or output symbol SYM or both\n  -T, --tsv-file=TFILE       read kill rules from TFILE\n\n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(
-            msg,
-            "TFILE should contain lines with tab-separated pairs of SYM and Comment lines starting with # and empty lines are ignored."
-        );
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:def:hfst-kill-paths.parse-options-fn]
-    // [spec:hfst:sem:hfst-kill-paths.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "symbol",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'S' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "tsv",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'T' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own ('S'/'T'), then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == 'S' as i32 {
-                options.symbol = Some(opt.optarg());
-                continue;
-            }
-            if c == 'T' as i32 {
-                options.tsv_file_name = Some(opt.optarg());
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
-        }
-
-        if options.symbol.is_none() && options.tsv_file_name.is_none() {
-            error(&common, 1, 0, "Either --symbol or --tsv-file is required");
-            return Err(1);
-        }
-
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        if let Some(name) = &options.tsv_file_name {
-            match std::fs::File::open(name) {
-                Ok(f) => options.tsv_file = Some(f),
-                Err(_) => {
-                    error(&common, 1, 0, &format!("Could not open '{}'", name));
-                    return Err(1);
+    impl Options {
+        fn open(args: &Args, common: &CommonOptions) -> Result<Options, i32> {
+            let mut options = Options {
+                symbol: args.symbol.clone(),
+                tsv_file_name: args.tsv.clone(),
+                tsv_file: None,
+            };
+            if let Some(name) = &options.tsv_file_name {
+                match std::fs::File::open(name) {
+                    Ok(f) => options.tsv_file = Some(f),
+                    Err(_) => {
+                        error(common, 1, 0, &format!("Could not open '{}'", name));
+                        return Err(1);
+                    }
                 }
             }
+            Ok(options)
         }
-        Ok((common, options))
     }
 
     // [spec:hfst:def:hfst-kill-paths.original-fn]
@@ -1301,14 +1009,16 @@ pub mod kill_paths {
 
     // [spec:hfst:def:hfst-kill-paths.main-fn]
     // [spec:hfst:sem:hfst-kill-paths.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstKillPaths");
-        let (common, mut options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let mut options = Options::open(&args, &common)?;
 
         // close buffers, we use streams
         let input_opened = common.input_filename != "<stdin>";
@@ -1334,7 +1044,7 @@ pub mod kill_paths {
             Ok(s) => s,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
@@ -1350,121 +1060,65 @@ pub mod kill_paths {
             Ok(s) => s,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-kill-paths") {
-            return 1;
+            return Err(1);
         }
 
-        process_stream(&common, &mut options, &mut instream, &mut outstream)
+        cli::from_code(process_stream(
+            &common,
+            &mut options,
+            &mut instream,
+            &mut outstream,
+        ))
     }
 }
 
 pub mod minimize {
     //! Port of tools/src/hfst-minimize.cc — the transducer minimisation
-    //! command-line tool. Drives the hfst-cli foundation (getopt, commandline,
-    //! program-options, tool-metadata, inc fragments).
+    //! command-line tool.
     //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
-    //! `static mut` globals and no `unsafe`. This is the template the other tools
-    //! follow.
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared -v/-q/-o/-i/... fields), built from
+    //! the parsed [`Args`] and threaded into the processing functions. There are
+    //! no `static mut` globals and no `unsafe`. This is the template the other
+    //! unary tools follow.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::hfst_set_program_name;
     use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::{EngineConfig, HfstTransducer};
     use std::borrow::Cow;
-    use std::io::Write;
 
-    /// hfst-minimize's own options (the former tool-specific `static mut`s).
-    #[derive(Default)]
-    struct Options {
-        /// '-E, --encode-weights': encode weights when minimizing.
+    /// hfst-minimize's command line.
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Minimize a transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// Encode weights when minimizing (default is false)
+        #[arg(short = 'E', long = "encode-weights")]
         encode_weights: bool,
     }
 
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nMinimize a transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = writeln!(msg, "Command-specific options:");
-        let _ = write!(
-            msg,
-            "  -E, --encode-weights         Encode weights when minimizing\n                               (default is false).\n\n"
-        );
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "encode-weights",
-                has_arg: getopt::NO_ARGUMENT,
-                val: 'E' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, error case, then unary cases, then the tool's own ('E').
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == 'E' as i32 {
-                options.encode_weights = true;
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-minimize.process-stream-fn]
@@ -1509,143 +1163,96 @@ pub mod minimize {
 
     // [spec:hfst:def:hfst-minimize.main-fn]
     // [spec:hfst:sem:hfst-minimize.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstMinimize");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
 
         let mut op = MinimizeOp {
-            encode_weights: options.encode_weights,
+            encode_weights: args.encode_weights,
         };
-        run_unary_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_unary_tool(&common, &SPEC, &mut op))
     }
 }
 
 pub mod multiply {
     //! Faithful 1:1 port of tools/src/hfst-multiply.cc — the transducer archive
     //! duplication tool (writes the first transducer of an archive repeatedly).
-    //! Drives the hfst-cli foundation (globals, getopt, commandline,
-    //! program-options, tool-metadata, inc fragments).
     //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
-    //! `static mut` globals and no `unsafe`.
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared -v/-q/-o/-i/... fields), built from
+    //! the parsed [`Args`] and threaded into the processing functions. There are
+    //! no `static mut` globals and no `unsafe`.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{
-        extend_options_from_env, hfst_set_program_name, is_input_stream_in_ol_format, parse_u64,
-        verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
+        hfst_set_program_name, is_input_stream_in_ol_format, parse_u64, verbose_print,
     };
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
     use std::io::Write;
 
-    /// hfst-multiply's own options (the former tool-specific `static mut`s).
-    struct Options {
-        /// '-n, --n-times': duplicate each transducer this many times.
-        dupe_count: u64,
-    }
-
-    impl Default for Options {
-        fn default() -> Self {
-            Options { dupe_count: 1 }
-        }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nUse first transducer of an archive repeatedly\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Archive options:\n  -n, --n-last=NUMBER   Duplicate each transducer NUMBER times\n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(
-            msg,
-            "NUMBER must be a positive integer as parsed by strtoul base 10"
-        );
-        let _ = writeln!(msg);
-    }
-
+    /// hfst-multiply's command line.
     // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            long_options.push(getopt::GetOpt {
-                name: "n-times",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'n' as i32,
-            });
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Use first transducer of an archive repeatedly")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
 
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own ('n'), then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
+        /// Duplicate each transducer NUMBER times; NUMBER must be a positive
+        /// integer as parsed by strtoul base 10
+        #[arg(
+            short = 'n',
+            long = "n-times",
+            value_name = "NUMBER",
+            allow_hyphen_values = true
+        )]
+        n_times: Option<String>,
+    }
+
+    impl Args {
+        /// Case 'n': strtoul base 10, fatal on anything else. Without -n the
+        /// count stays at the C initialiser of 1.
+        fn dupe_count(&self, common: &CommonOptions) -> u64 {
+            match &self.n_times {
+                Some(n) => parse_u64(common, n, 10),
+                None => 1,
             }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == 'n' as i32 {
-                options.dupe_count = parse_u64(&common, &opt.optarg(), 10);
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // The C rejected a non-numeric NUMBER inside the getopt loop,
+            // before the parameter checks; run it here for the same ordering.
+            self.dupe_count(opts);
+            Ok(())
+        }
     }
 
     // [spec:hfst:def:hfst-multiply.process-stream-fn]
     // [spec:hfst:sem:hfst-multiply.process-stream-fn]
     fn process_stream(
         common: &CommonOptions,
-        options: &Options,
+        dupe_count: u64,
         instream: &mut HfstInputStream<'_>,
         outstream: &mut HfstOutputStream,
     ) -> i32 {
@@ -1670,9 +1277,9 @@ pub mod multiply {
 
                 verbose_print(common, &format!(
                     "Duplicate {} times {}...{}\n",
-                    inputname, options.dupe_count, transducer_n
+                    inputname, dupe_count, transducer_n
                 ));
-                for _ in 0..options.dupe_count {
+                for _ in 0..dupe_count {
                     if let Err(e) = outstream.redirect(&mut trans) {
                         eprintln!("hfst-multiply: {e}");
                         return 1;
@@ -1695,14 +1302,16 @@ pub mod multiply {
 
     // [spec:hfst:def:hfst-multiply.main-fn]
     // [spec:hfst:sem:hfst-multiply.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstDuplicate");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let dupe_count = args.dupe_count(&common);
 
         // close buffers, we use streams
         let input_opened = common.input_filename != "<stdin>";
@@ -1724,7 +1333,7 @@ pub mod multiply {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("hfst-multiply: cannot open input: {e}");
-                return 1;
+                return Err(1);
             }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
@@ -1732,7 +1341,7 @@ pub mod multiply {
         // is not reproduced here.)
 
         if is_input_stream_in_ol_format(&instream, "hfst-multiply") {
-            return 1;
+            return Err(1);
         }
 
         let ty = instream.get_type();
@@ -1744,93 +1353,55 @@ pub mod multiply {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("hfst-multiply: cannot open output: {e}");
-                return 1;
+                return Err(1);
             }
         };
 
-        process_stream(&common, &options, &mut instream, &mut outstream)
+        cli::from_code(process_stream(
+            &common,
+            dupe_count,
+            &mut instream,
+            &mut outstream,
+        ))
     }
 }
 
 pub mod preprocess_for_optimized_lookup_format {
     //! Faithful 1:1 port of tools/src/hfst-preprocess-for-optimized-lookup-format.cc
     //! — the transducer preprocessing tool (the C++ source is the epsilon-removal /
-    //! rebuild tool). Drives the hfst-cli foundation (globals, getopt, commandline,
-    //! program-options, tool-metadata, inc fragments).
+    //! rebuild tool). Option handling is clap 4 derive through [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{
-        error, extend_options_from_env, hfst_set_program_name, verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
     use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
     use hfst::hfst_basic_transducer::HfstBasicTransducer;
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
     use hfst::hfst_transducer::HfstTransducer;
     use std::io::Write;
 
+    /// hfst-preprocess-for-optimized-lookup-format's command line: the common
+    /// and unary options only.
+    // [spec:hfst:req:cli.arg-parse]
     // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        // Usage line
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nRemove epsilons from a transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
+    #[derive(clap::Parser)]
+    #[command(about = "Remove epsilons from a transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
     }
 
-    // [spec:hfst:req:cli.arg-parse]
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<CommonOptions, i32> {
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        // use of this function requires options are settable on global scope
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok(common)
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-preprocess-for-optimized-lookup-format.process-stream-fn]
@@ -1924,14 +1495,15 @@ pub mod preprocess_for_optimized_lookup_format {
 
     // [spec:hfst:def:hfst-preprocess-for-optimized-lookup-format.main-fn]
     // [spec:hfst:sem:hfst-preprocess-for-optimized-lookup-format.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPreprocessForOptimizedLookupFormat");
-        let common = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, _args) = cli::parse::<Args>(common, args)?;
         // close buffers, we use streams
         let input_opened = common.input_filename != "<stdin>";
         let output_opened = common.output_filename != "<stdout>";
@@ -1952,7 +1524,7 @@ pub mod preprocess_for_optimized_lookup_format {
             Ok(v) => v,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
@@ -1968,155 +1540,104 @@ pub mod preprocess_for_optimized_lookup_format {
             Ok(v) => v,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
-        process_stream(&common, &mut instream, &mut outstream)
+        cli::from_code(process_stream(&common, &mut instream, &mut outstream))
     }
 }
 
 pub mod project {
     //! Faithful 1:1 port of tools/src/hfst-project.cc — the transducer projection
-    //! command-line tool. Drives the hfst-cli foundation (globals, getopt,
-    //! commandline, program-options, tool-metadata, inc fragments).
+    //! command-line tool. Option handling is clap 4 derive through [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{error, extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name};
     use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::HfstTransducer;
     use std::borrow::Cow;
-    use std::io::Write;
 
-    /// hfst-project's own options (the former tool-specific `static mut`s).
-    #[derive(Default)]
-    struct Options {
-        /// '-p, --project=LEVEL': project extracting the input (first) tape when
-        /// true, the output (second) tape when false.
-        project_input: bool,
+    /// hfst-project's command line.
+    // [spec:hfst:def:hfst-project.parse-options-fn]
+    // [spec:hfst:sem:hfst-project.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Project (extract a level) transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// Project extracting tape LEVEL: upper, input, first, analysis or
+        /// lower, output, second, generation
+        #[arg(short = 'p', long = "project", value_name = "LEVEL")]
+        project: Option<String>,
+    }
+
+    impl Args {
+        /// Case 'p': the C compares only the FIRST character of the argument,
+        /// case-insensitively (strncasecmp with length 1), against each
+        /// candidate word. An argument matching none of them is fatal.
+        fn project_input(&self, common: &CommonOptions) -> bool {
+            let Some(level) = self.project.as_deref() else {
+                return false;
+            };
+            if first_char_matches(level, "upper")
+                || first_char_matches(level, "input")
+                || first_char_matches(level, "first")
+                || first_char_matches(level, "analysis")
+            {
+                true
+            } else if first_char_matches(level, "lower")
+                || first_char_matches(level, "output")
+                || first_char_matches(level, "second")
+                || first_char_matches(level, "generation")
+            {
+                false
+            } else {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!(
+                        "unknown project direction {}\nshould be one of upper, input, analysis, first, lower, output, second or generation\n",
+                        level
+                    ),
+                );
+                false
+            }
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // The C rejected an unknown LEVEL inside the getopt loop, before
+            // the parameter checks; run it here for the same ordering.
+            self.project_input(opts);
+            Ok(())
+        }
     }
 
     // strncasecmp(optarg, prefix, 1) == 0 — case-insensitive comparison of the
     // first byte only (the C calls always pass length 1).
-    fn first_char_matches(optarg: &Option<String>, prefix: &str) -> bool {
-        match optarg.as_ref().and_then(|s| s.bytes().next()) {
-            Some(first) => {
-                let want = prefix.as_bytes()[0];
-                first.eq_ignore_ascii_case(&want)
-            }
+    fn first_char_matches(level: &str, prefix: &str) -> bool {
+        match level.bytes().next() {
+            Some(first) => first.eq_ignore_ascii_case(&prefix.as_bytes()[0]),
             None => false,
         }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nProject (extract a level) transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Projection options:\n  -p, --project=LEVEL   project extracting tape LEVEL\n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(
-            msg,
-            "LEVEL must be one of upper, input, first, analysis or lower, output, second, generation"
-        );
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:def:hfst-project.parse-options-fn]
-    // [spec:hfst:sem:hfst-project.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "project",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'p' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own 'p', then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == 'p' as i32 {
-                let optarg = opt.optarg_opt();
-                if first_char_matches(&optarg, "upper")
-                    || first_char_matches(&optarg, "input")
-                    || first_char_matches(&optarg, "first")
-                    || first_char_matches(&optarg, "analysis")
-                {
-                    options.project_input = true;
-                } else if first_char_matches(&optarg, "lower")
-                    || first_char_matches(&optarg, "output")
-                    || first_char_matches(&optarg, "second")
-                    || first_char_matches(&optarg, "generation")
-                {
-                    options.project_input = false;
-                } else {
-                    error(
-                        &common,
-                        1,
-                        0,
-                        &format!(
-                            "unknown project direction {}\nshould be one of upper, input, analysis, first, lower, output, second or generation\n",
-                            opt.optarg()
-                        ),
-                    );
-                    return Err(1);
-                }
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
-        }
-
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
     }
 
     // [spec:hfst:def:hfst-project.process-stream-fn]
@@ -2178,133 +1699,69 @@ pub mod project {
 
     // [spec:hfst:def:hfst-project.main-fn]
     // [spec:hfst:sem:hfst-project.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstProject");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
 
         let mut op = ProjectOp {
-            project_input: options.project_input,
+            project_input: args.project_input(&common),
         };
-        run_unary_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_unary_tool(&common, &SPEC, &mut op))
     }
 }
 
 pub mod prune_alphabet {
     //! Faithful 1:1 port of tools/src/hfst-prune-alphabet.cc — the transducer
-    //! alphabet-pruning command-line tool. Drives the hfst-cli foundation
-    //! (globals, getopt, commandline, program-options, tool-metadata, inc
-    //! fragments).
+    //! alphabet-pruning command-line tool. Option handling is clap 4 derive
+    //! through [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::hfst_set_program_name;
     use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::HfstTransducer;
     use std::borrow::Cow;
-    use std::io::Write;
 
-    /// hfst-prune-alphabet's own options (the former tool-specific `static mut`s).
-    #[derive(Default)]
-    struct Options {
-        /// '-f, --force' sets true; '-S, --safe' sets false (default).
-        force_pruning: bool,
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nPrune the alphabet of a transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Alphabet pruning options:\n  -f, --force            force pruning\n  -S, --safe             prune only if no unknown or identity symbols\n                         are used in the transducer (default)"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
-    }
-
+    /// hfst-prune-alphabet's command line.
+    ///
+    /// The C cases assign the SAME flag ('f' sets it, 'S' clears it), so the
+    /// last of the two on the command line decides; mutual overrides_with is
+    /// how clap says that.
     // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "force",
-                has_arg: getopt::NO_ARGUMENT,
-                val: 'f' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "safe",
-                has_arg: getopt::NO_ARGUMENT,
-                val: 'S' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Prune the alphabet of a transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
 
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own ('f'/'S'), then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c as u8 as char {
-                'f' => {
-                    options.force_pruning = true;
-                    continue;
-                }
-                'S' => {
-                    options.force_pruning = false;
-                    continue;
-                }
-                _ => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
+        /// Force pruning
+        #[arg(short = 'f', long = "force", overrides_with = "safe")]
+        force: bool,
+
+        /// Prune only if no unknown or identity symbols are used in the
+        /// transducer (default)
+        #[arg(short = 'S', long = "safe", overrides_with = "force")]
+        safe: bool,
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-prune-alphabet.process-stream-fn]
@@ -2346,40 +1803,31 @@ pub mod prune_alphabet {
 
     // [spec:hfst:def:hfst-prune-alphabet.main-fn]
     // [spec:hfst:sem:hfst-prune-alphabet.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPruneAlphabet");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
 
         let mut op = PruneAlphabetOp {
-            force_pruning: options.force_pruning,
+            force_pruning: args.force,
         };
-        run_unary_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_unary_tool(&common, &SPEC, &mut op))
     }
 }
 
 pub mod push_labels {
     //! Faithful 1:1 port of tools/src/hfst-push-labels.cc — the label-pushing
-    //! command-line tool. Drives the hfst-cli foundation (globals, getopt,
-    //! commandline, program-options, tool-metadata, inc fragments).
+    //! command-line tool. Option handling is clap 4 derive through [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{
-        error, extend_options_from_env, hfst_set_program_name, is_input_stream_in_ol_format,
-        verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
+        error, hfst_set_program_name, is_input_stream_in_ol_format, verbose_print,
     };
     use crate::unary_ops::{
         UnaryOpSpec, UnaryToolOp, open_input_stream, open_output_stream_like, unary_streams,
@@ -2388,104 +1836,67 @@ pub mod push_labels {
     use hfst::hfst_data_types::PushType;
     use hfst::hfst_transducer::HfstTransducer;
     use std::borrow::Cow;
-    use std::io::Write;
 
-    /// hfst-push-labels's own options (the former tool-specific `static mut`s).
-    #[derive(Default)]
-    struct Options {
-        /// '-p, --push=DIRECTION': push towards the initial state when true.
-        push_initial: bool,
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nPush labels of transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Push options:\n  -p, --push=DIRECTION   push to DIRECTION\n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(
-            msg,
-            "DIRECTION must be one of start, initial, begin or end, final"
-        );
-        let _ = writeln!(msg);
-    }
-
+    /// hfst-push-labels's command line.
     // [spec:hfst:def:hfst-push-labels.parse-options-fn]
     // [spec:hfst:sem:hfst-push-labels.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "push",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: b'p' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Push labels of transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
 
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own ('p'), then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
+        /// Push to DIRECTION: start, initial, begin or end, final
+        #[arg(short = 'p', long = "push", value_name = "DIRECTION")]
+        push: Option<String>,
+    }
+
+    impl Args {
+        /// Case 'p': the C lowercases the argument and tests its first letter
+        /// against s/i/b (towards the start) and e/f (towards the end).
+        fn push_initial(&self, common: &CommonOptions) -> bool {
+            let Some(direction) = self.push.as_deref() else {
+                return false;
+            };
+            let lower = direction.to_ascii_lowercase();
+            if lower.starts_with('s') || lower.starts_with('i') || lower.starts_with('b') {
+                true
+            } else if lower.starts_with('e') || lower.starts_with('f') {
+                false
+            } else {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!(
+                        "unknown push direction {}\nshould be one of start, initial, begin, end or final.\n",
+                        direction
+                    ),
+                );
+                false
             }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == b'p' as i32 {
-                let optarg = opt.optarg();
-                let lower = optarg.to_ascii_lowercase();
-                if lower.starts_with('s') || lower.starts_with('i') || lower.starts_with('b') {
-                    options.push_initial = true;
-                } else if lower.starts_with('e') || lower.starts_with('f') {
-                    options.push_initial = false;
-                } else {
-                    error(
-                        &common,
-                        1,
-                        0,
-                        &format!(
-                            "unknown push direction {}\nshould be one of start, initial, begin, end or final.\n",
-                            optarg
-                        ),
-                    );
-                    return Err(1);
-                }
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // The C rejected an unknown DIRECTION inside the getopt loop,
+            // before the parameter checks; run it here for the same ordering.
+            self.push_initial(opts);
+            Ok(())
+        }
     }
 
     // [spec:hfst:def:hfst-push-labels.process-stream-fn]
@@ -2545,17 +1956,18 @@ pub mod push_labels {
 
     // [spec:hfst:def:hfst-push-labels.main-fn]
     // [spec:hfst:sem:hfst-push-labels.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPush");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
 
         let mut op = PushLabelsOp {
-            push_initial: options.push_initial,
+            push_initial: args.push_initial(&common),
         };
 
         // This tool orders the optimized-lookup rejection BEFORE the output stream
@@ -2571,54 +1983,103 @@ pub mod push_labels {
             ),
         );
 
-        let mut instream = match open_input_stream(&common) {
-            Ok(s) => s,
-            Err(code) => return code,
-        };
+        let mut instream = open_input_stream(&common)?;
 
         if is_input_stream_in_ol_format(&instream, "hfst-push-labels") {
-            return 1;
+            return Err(1);
         }
 
-        let mut outstream = match open_output_stream_like(&common, &instream) {
-            Ok(s) => s,
-            Err(code) => return code,
-        };
+        let mut outstream = open_output_stream_like(&common, &instream)?;
 
-        unary_streams(&common, &SPEC, &mut op, &mut instream, &mut outstream)
+        cli::from_code(unary_streams(
+            &common,
+            &SPEC,
+            &mut op,
+            &mut instream,
+            &mut outstream,
+        ))
     }
 }
 
 pub mod push_weights {
     //! Faithful 1:1 port of tools/src/hfst-push-weights.cc — the weight pushing
     //! command-line tool. Pushes the weights of a transducer towards its start or
-    //! end states. Drives the hfst-cli foundation (globals, getopt, commandline,
-    //! program-options, tool-metadata, inc fragments).
+    //! end states. Option handling is clap 4 derive through [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{error, extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name};
     use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_data_types::PushType;
     use hfst::hfst_transducer::HfstTransducer;
     use std::borrow::Cow;
-    use std::io::Write;
 
-    /// hfst-push-weights's own options (the former tool-specific `static mut`s).
-    #[derive(Default)]
-    struct Options {
-        /// '-p, --push=DIRECTION': push towards the start state when true, else the
-        /// end state (default is false, i.e. push towards the end/final state).
-        push_initial: bool,
+    /// hfst-push-weights's command line.
+    // [spec:hfst:def:hfst-push-weights.parse-options-fn]
+    // [spec:hfst:sem:hfst-push-weights.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Push weights of transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// Push to DIRECTION: start, initial, begin or end, final
+        #[arg(short = 'p', long = "push", value_name = "DIRECTION")]
+        push: Option<String>,
+    }
+
+    impl Args {
+        /// Case 'p': the C matches only the FIRST character of the argument
+        /// case-insensitively against each candidate word; the default (no
+        /// -p at all) is to push towards the end/final state.
+        fn push_initial(&self, common: &CommonOptions) -> bool {
+            let Some(direction) = self.push.as_deref() else {
+                return false;
+            };
+            if first_char_eq_ignore_case(direction, "start")
+                || first_char_eq_ignore_case(direction, "initial")
+                || first_char_eq_ignore_case(direction, "begin")
+            {
+                true
+            } else if first_char_eq_ignore_case(direction, "end")
+                || first_char_eq_ignore_case(direction, "final")
+            {
+                false
+            } else {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!(
+                        "unknown push direction {}\nshould be one of start, initial, begin, end or final.\n",
+                        direction
+                    ),
+                );
+                false
+            }
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // The C rejected an unknown DIRECTION inside the getopt loop,
+            // before the parameter checks; run it here for the same ordering.
+            self.push_initial(opts);
+            Ok(())
+        }
     }
 
     // strncasecmp(optarg, prefix, 1) == 0 : the first character of optarg matches
@@ -2630,105 +2091,6 @@ pub mod push_weights {
             (None, None) => true,
             _ => false,
         }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        // Usage line
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nPush weights of transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Push options:\n  -p, --push=DIRECTION   push to DIRECTION\n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(
-            msg,
-            "DIRECTION must be one of start, initial, begin or end, final"
-        );
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:def:hfst-push-weights.parse-options-fn]
-    // [spec:hfst:sem:hfst-push-weights.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "push",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'p' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own 'p', then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == 'p' as i32 {
-                let optarg = opt.optarg();
-                if first_char_eq_ignore_case(&optarg, "start")
-                    || first_char_eq_ignore_case(&optarg, "initial")
-                    || first_char_eq_ignore_case(&optarg, "begin")
-                {
-                    options.push_initial = true;
-                } else if first_char_eq_ignore_case(&optarg, "end")
-                    || first_char_eq_ignore_case(&optarg, "final")
-                {
-                    options.push_initial = false;
-                } else {
-                    error(
-                        &common,
-                        1,
-                        0,
-                        &format!(
-                            "unknown push direction {}\nshould be one of start, initial, begin, end or final.\n",
-                            optarg
-                        ),
-                    );
-                    return Err(1);
-                }
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
-        }
-
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
     }
 
     // [spec:hfst:def:hfst-push-weights.process-stream-fn]
@@ -2786,138 +2148,84 @@ pub mod push_weights {
 
     // [spec:hfst:def:hfst-push-weights.main-fn]
     // [spec:hfst:sem:hfst-push-weights.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPush");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
 
         let mut op = PushWeightsOp {
-            push_initial: options.push_initial,
+            push_initial: args.push_initial(&common),
         };
-        run_unary_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_unary_tool(&common, &SPEC, &mut op))
     }
 }
 
 pub mod realign {
     //! Faithful 1:1 port of tools/src/hfst-realign.cc — the transducer realign
-    //! command-line tool. Drives the hfst-cli foundation (globals, getopt,
-    //! commandline, program-options, tool-metadata, inc fragments).
+    //! command-line tool.
     //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
-    //! `static mut` globals and no `unsafe`.
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared -v/-q/-o/-i/... fields), built from
+    //! the parsed [`Args`] and threaded into the processing functions. There are
+    //! no `static mut` globals and no `unsafe`.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name, print_short_help};
     use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::HfstTransducer;
     use std::borrow::Cow;
-    use std::io::Write;
 
-    /// hfst-realign's own options (the former tool-specific `static mut`s).
-    struct Options {
-        /// '-b, --boundary=SYM': treat SYM as a boundary symbol.
-        boundary_symbol: u8,
-    }
+    /// The boundary symbol the C initialises and never changes; see
+    /// [`Args::validate`] for why -b cannot change it.
+    const DEFAULT_BOUNDARY_SYMBOL: u8 = b'>';
 
-    impl Default for Options {
-        fn default() -> Options {
-            Options {
-                boundary_symbol: b'>',
-            }
-        }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        // Usage line
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nRealign a transducer by pushing labels to the start\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Options:\n  -b, --boundary=SYM   treat SYM as a boundary symbol\n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg, "SYM must be in the alphabet");
-        let _ = writeln!(msg);
-    }
-
+    /// hfst-realign's command line.
     // [spec:hfst:def:hfst-realign.parse-options-fn]
     // [spec:hfst:sem:hfst-realign.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "boundary",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: b'b' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Realign a transducer by pushing labels to the start")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
 
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own, then the terminal
-            // error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            // The C source labels its tool-specific arm 'p' (not 'b'), which
-            // merely resets the boundary symbol to its default '>'.
-            if c == (b'p' as i32) {
-                options.boundary_symbol = b'>';
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
+        /// Treat SYM as a boundary symbol; SYM must be in the alphabet
+        #[arg(short = 'b', long = "boundary", value_name = "SYM")]
+        boundary: Option<String>,
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // Upstream registers --boundary under the option value 'b' but
+            // labels its own switch arm 'p', so a returned 'b' matches no case
+            // and falls through to the default error arm: giving -b/--boundary
+            // is fatal, and the arm that would have set the symbol is dead.
+            // Preserved as-is, so the option parses and then rejects.
+            if self.boundary.is_some() {
+                print_short_help(opts);
+                error(opts, 1, 0, "invalid option -b");
+                return Err(1);
+            }
+            Ok(())
+        }
     }
 
     // [spec:hfst:def:hfst-realign.process-stream-fn]
@@ -2968,103 +2276,60 @@ pub mod realign {
 
     // [spec:hfst:def:hfst-realign.main-fn]
     // [spec:hfst:sem:hfst-realign.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstRealign");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, _args) = cli::parse::<Args>(common, args)?;
 
         let mut op = RealignOp {
-            boundary_symbol: options.boundary_symbol,
+            boundary_symbol: DEFAULT_BOUNDARY_SYMBOL,
         };
-        run_unary_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_unary_tool(&common, &SPEC, &mut op))
     }
 }
 
 pub mod remove_epsilons {
     //! Faithful 1:1 port of tools/src/hfst-remove-epsilons.cc — the transducer
-    //! epsilon-removal command-line tool. Drives the hfst-cli foundation (globals,
-    //! getopt, commandline, program-options, tool-metadata, inc fragments).
+    //! epsilon-removal command-line tool.
     //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields), built by `parse_options` and threaded into
-    //! the processing functions. There are no `static mut` globals and no `unsafe`.
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared -v/-q/-o/-i/... fields), built from
+    //! the parsed [`Args`] and threaded into the processing functions. There are
+    //! no `static mut` globals and no `unsafe`.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::hfst_set_program_name;
     use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::HfstTransducer;
     use std::borrow::Cow;
-    use std::io::Write;
 
+    /// hfst-remove-epsilons's command line: the common and unary options only.
+    // [spec:hfst:req:cli.arg-parse]
     // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nRemove epsilons from a transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
+    #[derive(clap::Parser)]
+    #[command(about = "Remove epsilons from a transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
     }
 
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared options; `Err(code)` is an exit code the caller
-    // should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<CommonOptions, i32> {
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then the terminal error arm, then unary cases. The tool has
-            // no own options here.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok(common)
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-remove-epsilons.process-stream-fn]
@@ -3103,49 +2368,92 @@ pub mod remove_epsilons {
 
     // [spec:hfst:def:hfst-remove-epsilons.main-fn]
     // [spec:hfst:sem:hfst-remove-epsilons.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstRemoveEpsilons");
-        let common = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, _args) = cli::parse::<Args>(common, args)?;
 
-        run_unary_tool(&common, &SPEC, &mut RemoveEpsilonsOp)
+        cli::from_code(run_unary_tool(&common, &SPEC, &mut RemoveEpsilonsOp))
     }
 }
 
 pub mod repeat {
     //! Faithful 1:1 port of tools/src/hfst-repeat.cc — the transducer repetition
-    //! command-line tool. Drives the hfst-cli foundation (globals, getopt,
-    //! commandline, program-options, tool-metadata, inc fragments).
+    //! command-line tool.
     //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared -v/-q/-o/-i/... fields) and a
+    //! tool-local [`Options`] built from the parsed [`Args`]. There are no
     //! `static mut` globals and no `unsafe`.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{
-        error, extend_options_from_env, hfst_set_program_name, hfst_strtonumber,
-        is_input_stream_in_ol_format, verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
+        error, hfst_set_program_name, hfst_strtonumber, is_input_stream_in_ol_format, verbose_print,
     };
     use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
     use std::io::Write;
 
-    /// hfst-repeat's own options (the former tool-specific `static mut`s).
+    /// hfst-repeat's command line.
+    // [spec:hfst:def:hfst-repeat.parse-options-fn]
+    // [spec:hfst:sem:hfst-repeat.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Repeat transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// Repeat at least FNUM times; a positive integer or an infinity as
+        /// parsed by strtod(3), 0 if omitted, and less than TNUM
+        #[arg(
+            short = 'f',
+            long = "from",
+            value_name = "FNUM",
+            allow_hyphen_values = true
+        )]
+        from: Option<String>,
+
+        /// Repeat at most TNUM times; a positive integer or an infinity as
+        /// parsed by strtod(3), Inf if omitted
+        #[arg(
+            short = 't',
+            long = "to",
+            value_name = "TNUM",
+            allow_hyphen_values = true
+        )]
+        to: Option<String>,
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // Both numbers were parsed inside the C getopt loop, so a
+            // non-numeric FNUM/TNUM is rejected before the parameter checks;
+            // the range checks run after them, in Options::resolve.
+            Options::parse_bounds(self, opts);
+            Ok(())
+        }
+    }
+
+    /// hfst-repeat's option-driven state (the former tool-specific `static mut`s).
     struct Options {
         /// '-f, --from=FNUM': repeat at least FNUM times.
         at_least: u64,
@@ -3168,118 +2476,48 @@ pub mod repeat {
         }
     }
 
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nRepeat transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Repetition options:\n  -f, --from=FNUM   repeat at least FNUM times\n  -t, --to=TNUM     repeat at most TNUM times\n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = write!(
-            msg,
-            "FNUM and TNUM must be positive integers or infinities as parsed by strtod(3)\nif FNUM is omitted it defaults to 0, if TNUM is omitted it defaults to Inf\nFNUM must be less than TNUM\n"
-        );
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:def:hfst-repeat.parse-options-fn]
-    // [spec:hfst:sem:hfst-repeat.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            long_options.push(getopt::GetOpt {
-                name: "from",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: b'f' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "to",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: b't' as i32,
-            });
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
+    impl Options {
+        /// The 'f' and 't' cases: strtod each bound and note whether it came
+        /// out infinite. Fatal on a non-number.
+        fn parse_bounds(args: &Args, common: &CommonOptions) -> Options {
+            let mut options = Options::default();
+            if let Some(from) = &args.from {
+                let mut from_inf = false;
+                options.at_least = hfst_strtonumber(common, from, Some(&mut from_inf)) as u64;
+                options.from_infinity = from_inf;
             }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own f/t cases, then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
+            if let Some(to) = &args.to {
+                let mut to_inf = false;
+                options.at_most = hfst_strtonumber(common, to, Some(&mut to_inf)) as u64;
+                options.to_infinity = to_inf;
             }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c {
-                c if c == b'f' as i32 => {
-                    let mut from_inf = false;
-                    options.at_least =
-                        hfst_strtonumber(&common, &opt.optarg(), Some(&mut from_inf)) as u64;
-                    options.from_infinity = from_inf;
-                    continue;
-                }
-                c if c == b't' as i32 => {
-                    let mut to_inf = false;
-                    options.at_most =
-                        hfst_strtonumber(&common, &opt.optarg(), Some(&mut to_inf)) as u64;
-                    options.to_infinity = to_inf;
-                    continue;
-                }
-                _ => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
+            options
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        if options.at_least > options.at_most {
-            error(
-                &common,
-                1,
-                0,
-                &format!(
-                    "Cannot repeat from {} to {} times\n",
-                    options.at_least, options.at_most
-                ),
-            );
+        /// The post-loop validation the C ran AFTER the parameter checks.
+        fn resolve(args: &Args, common: &CommonOptions) -> Options {
+            let options = Options::parse_bounds(args, common);
+            if options.at_least > options.at_most {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!(
+                        "Cannot repeat from {} to {} times\n",
+                        options.at_least, options.at_most
+                    ),
+                );
+            }
+            if options.from_infinity && !options.to_infinity {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!("Cannot repeat from infinity to {} times\n", options.at_most),
+                );
+            }
+            options
         }
-        if options.from_infinity && !options.to_infinity {
-            error(
-                &common,
-                1,
-                0,
-                &format!("Cannot repeat from infinity to {} times\n", options.at_most),
-            );
-        }
-        Ok((common, options))
     }
 
     // [spec:hfst:def:hfst-repeat.process-stream-fn]
@@ -3391,14 +2629,16 @@ pub mod repeat {
 
     // [spec:hfst:def:hfst-repeat.main-fn]
     // [spec:hfst:sem:hfst-repeat.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstRepeat");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let options = Options::resolve(&args, &common);
 
         // close buffers, we use streams
         let input_opened = common.input_filename != "<stdin>";
@@ -3446,7 +2686,7 @@ pub mod repeat {
             Ok(s) => s,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
@@ -3462,99 +2702,60 @@ pub mod repeat {
             Ok(s) => s,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-repeat") {
-            return 1;
+            return Err(1);
         }
 
-        process_stream(&common, &options, &mut instream, &mut outstream)
+        cli::from_code(process_stream(
+            &common,
+            &options,
+            &mut instream,
+            &mut outstream,
+        ))
     }
 }
 
 pub mod reverse {
     //! Faithful 1:1 port of tools/src/hfst-reverse.cc — the transducer reversion
-    //! command-line tool. Drives the hfst-cli foundation (globals, getopt,
-    //! commandline, program-options, tool-metadata, inc fragments).
+    //! command-line tool.
     //!
-    //! The tool's state lives in [`CommonOptions`] (the shared `-v/-q/-o/-i/…`
-    //! fields), built by `parse_options` and threaded into the processing
-    //! functions. There are no `static mut` globals and no `unsafe`.
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared -v/-q/-o/-i/... fields), built from
+    //! the parsed [`Args`] and threaded into the processing functions. There are
+    //! no `static mut` globals and no `unsafe`.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::hfst_set_program_name;
     use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::HfstTransducer;
     use std::borrow::Cow;
-    use std::io::Write;
 
+    /// hfst-reverse's command line: the common and unary options only.
+    // [spec:hfst:req:cli.arg-parse]
     // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nReverse a transducer\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
+    #[derive(clap::Parser)]
+    #[command(about = "Reverse a transducer")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
     }
 
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared options; `Err(code)` is an exit code the caller
-    // should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<CommonOptions, i32> {
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own (none here), then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok(common)
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-reverse.process-stream-fn]
@@ -3593,15 +2794,16 @@ pub mod reverse {
 
     // [spec:hfst:def:hfst-reverse.main-fn]
     // [spec:hfst:sem:hfst-reverse.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstReverse");
-        let common = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, _args) = cli::parse::<Args>(common, args)?;
 
-        run_unary_tool(&common, &SPEC, &mut ReverseOp)
+        cli::from_code(run_unary_tool(&common, &SPEC, &mut ReverseOp))
     }
 }
