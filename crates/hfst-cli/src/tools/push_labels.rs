@@ -12,14 +12,17 @@ use crate::hfst_program_options::{
     hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
     print_common_unary_program_options, print_common_unary_program_parameter_instructions,
 };
-use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
 use crate::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
+use crate::unary_ops::{
+    UnaryOpSpec, UnaryToolOp, open_input_stream, open_output_stream_like, unary_streams,
+};
+use hfst::backend::AlgebraBackend;
 use hfst::hfst_data_types::PushType;
-use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_output_stream::HfstOutputStream;
+use hfst::hfst_transducer::HfstTransducer;
+use std::borrow::Cow;
 use std::io::Write;
 
 /// hfst-push-labels's own options (the former tool-specific `static mut`s).
@@ -122,82 +125,58 @@ fn parse_options(
 
 // [spec:hfst:def:hfst-push-labels.process-stream-fn]
 // [spec:hfst:sem:hfst-push-labels.process-stream-fn]
-fn process_stream(
-    common: &CommonOptions,
-    options: &Options,
-    instream: &mut HfstInputStream<'_>,
-    outstream: &mut HfstOutputStream,
-) -> i32 {
-    let mut transducer_n: usize = 0;
-    while instream.is_good() {
-        transducer_n += 1;
-        let any = match instream.read() {
-            Ok(v) => v,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-        // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
-        crate::for_algebra!(any, trans => {
-            let mut trans = trans;
-            let inputname = hfst_get_name(&trans, &common.input_filename);
-            if transducer_n == 1 {
-                if options.push_initial {
-                    verbose_print(common, &format!("Pushing towards start {}...\n", inputname));
-                } else {
-                    verbose_print(common, &format!("Pushing towards end {}...\n", inputname));
-                }
-            } else if options.push_initial {
-                verbose_print(common, &format!(
-                    "Pushing towards start {}... {}\n",
-                    inputname, transducer_n
-                ));
-            } else {
-                verbose_print(common, &format!(
-                    "Pushing towards end {}... {}\n",
-                    inputname, transducer_n
-                ));
-            }
-
-            if options.push_initial {
-                if let Err(e) = trans.push_labels(PushType::TO_INITIAL_STATE) {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                // C: hfst_set_name(trans, trans, ...); dest and src are the same
-                // object, which Rust cannot alias mut+const, so the read side is
-                // taken from a copy (name/formula are unchanged by the copy).
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "push-labels-i");
-                hfst_set_formula_unary(&mut trans, &src, "Id");
-            } else {
-                if let Err(e) = trans.push_labels(PushType::TO_FINAL_STATE) {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "push-labels-f");
-                hfst_set_formula_unary(&mut trans, &src, "Id");
-            }
-            if let Err(e) = outstream.redirect(&mut trans) {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        }, else => {
-            // Unreachable: the optimized-lookup stream rejection already
-            // returned before the loop; keep its text for safety.
-            let _ = writeln!(
-                std::io::stderr(),
-                "Error: hfst-push-labels cannot process transducers that are in optimized lookup format."
-            );
-            return 1;
-        });
-    }
-    instream.close();
-    outstream.close();
-    0
+//
+// The stream loop lives in the shared unary driver; this op is the
+// per-transducer body it dispatches into. Both the verbose verb and the name
+// stamp's -i/-f suffix follow the push direction.
+struct PushLabelsOp {
+    push_initial: bool,
 }
+
+impl UnaryToolOp for PushLabelsOp {
+    fn verbose_begin(&self, inputname: &str) -> String {
+        if self.push_initial {
+            format!("Pushing towards start {}", inputname)
+        } else {
+            format!("Pushing towards end {}", inputname)
+        }
+    }
+
+    fn verbose_sep(&self) -> &'static str {
+        " "
+    }
+
+    fn name_op(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed(if self.push_initial {
+            "push-labels-i"
+        } else {
+            "push-labels-f"
+        }))
+    }
+
+    fn formula(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed("Id"))
+    }
+
+    fn apply<B: AlgebraBackend>(
+        &mut self,
+        _common: &CommonOptions,
+        t: &mut HfstTransducer<B>,
+    ) -> hfst::error::Result<()> {
+        if self.push_initial {
+            t.push_labels(PushType::TO_INITIAL_STATE).map(|_| ())
+        } else {
+            t.push_labels(PushType::TO_FINAL_STATE).map(|_| ())
+        }
+    }
+}
+
+// `reject_ol` is left false because this tool rejects optimized-lookup input
+// BEFORE opening the output stream (see run); the flag would reject it after.
+const SPEC: UnaryOpSpec = UnaryOpSpec {
+    tool_name: "hfst-push-labels",
+    reject_ol: false,
+};
 
 // [spec:hfst:def:hfst-push-labels.main-fn]
 // [spec:hfst:sem:hfst-push-labels.main-fn]
@@ -210,9 +189,15 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Err(code) => return code,
     };
 
-    // close buffers, we use streams
-    let input_opened = common.input_filename != "<stdin>";
-    let output_opened = common.output_filename != "<stdout>";
+    let mut op = PushLabelsOp {
+        push_initial: options.push_initial,
+    };
+
+    // This tool orders the optimized-lookup rejection BEFORE the output stream
+    // is opened, unlike every other unary tool (and unlike run_unary_tool):
+    // rejecting an OL input must not have created/truncated '-o FILE' first.
+    // So the driver's steps are composed here in the tool's own order rather
+    // than going through run_unary_tool.
     verbose_print(
         &common,
         &format!(
@@ -221,38 +206,19 @@ pub fn run(mut args: Vec<String>) -> i32 {
         ),
     );
 
-    // here starts the buffer handling part
-    let mut instream = match if input_opened {
-        HfstInputStream::new_filename(&common.input_filename)
-    } else {
-        HfstInputStream::new()
-    } {
+    let mut instream = match open_input_stream(&common) {
         Ok(s) => s,
-        Err(e) => {
-            error(&common, 1, 0, &format!("{e}"));
-            return 1;
-        }
+        Err(code) => return code,
     };
-    // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
-    // currently panics on a bad file rather than throwing, so the catch arm
-    // is not reproduced here.)
 
     if is_input_stream_in_ol_format(&instream, "hfst-push-labels") {
         return 1;
     }
 
-    let ty = instream.get_type();
-    let mut outstream = match if output_opened {
-        HfstOutputStream::new_filename(&common.output_filename, ty, true)
-    } else {
-        HfstOutputStream::new(ty, true)
-    } {
+    let mut outstream = match open_output_stream_like(&common, &instream) {
         Ok(s) => s,
-        Err(e) => {
-            error(&common, 1, 0, &format!("{e}"));
-            return 1;
-        }
+        Err(code) => return code,
     };
 
-    process_stream(&common, &options, &mut instream, &mut outstream)
+    unary_streams(&common, &SPEC, &mut op, &mut instream, &mut outstream)
 }

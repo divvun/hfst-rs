@@ -8,22 +8,20 @@
 //! `static mut` globals and no `unsafe`.
 
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{
-    error, extend_options_from_env, hfst_set_program_name, is_input_stream_in_ol_format,
-    verbose_print,
-};
+use crate::hfst_commandline::{error, extend_options_from_env, hfst_set_program_name};
 use crate::hfst_getopt::{self as getopt, Getopt};
 use crate::hfst_program_options::{
     hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
     print_common_unary_program_options, print_common_unary_program_parameter_instructions,
 };
-use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
 use crate::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_output_stream::HfstOutputStream;
+use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
+use hfst::backend::AlgebraBackend;
+use hfst::hfst_transducer::HfstTransducer;
+use std::borrow::Cow;
 use std::io::Write;
 
 /// hfst-eliminate-flags's own options (the former tool-specific `static mut`s).
@@ -107,89 +105,70 @@ fn parse_options(
 
 // [spec:hfst:def:hfst-eliminate-flags.process-stream-fn]
 // [spec:hfst:sem:hfst-eliminate-flags.process-stream-fn]
-fn process_stream(
-    common: &CommonOptions,
-    options: &Options,
-    instream: &mut HfstInputStream<'_>,
-    outstream: &mut HfstOutputStream,
-) -> i32 {
-    let flag = options.flag.clone();
-    let flags: String = match &flag {
-        None => String::from("flags"),
-        Some(f) => format!("flag {}", f),
-    };
-    let mut transducer_n: usize = 0;
-    while instream.is_good() {
-        transducer_n += 1;
-        let any = match instream.read() {
-            Ok(v) => v,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-        // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
-        crate::for_algebra!(any, trans => {
-            let mut trans = trans;
-            let mut inputname = hfst_get_name(&trans, &common.input_filename);
-            if inputname.is_empty() {
-                inputname = common.input_filename.clone();
-            }
-            if transducer_n == 1 {
-                verbose_print(common, &format!("Eliminating {} {}...\n", flags, inputname));
-            } else {
-                verbose_print(common, &format!(
-                    "Eliminating {} {}...{}\n",
-                    flags, inputname, transducer_n
-                ));
-            }
-            match &flag {
-                None => {
-                    if let Err(e) = trans.eliminate_flags() {
-                        error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                }
-                Some(f) => {
-                    if trans.eliminate_flag(f).is_err() {
-                        error(
-                            common,
-                            1,
-                            0,
-                            &format!(
-                                "flag feature {} does not occur in the transducer\nonly the flag feature must be given, no value or operator",
-                                f
-                            ),
-                        );
-                        return 1;
-                    }
-                }
-            }
-            // C: hfst_set_name(trans, trans, "eliminate-flags"); the dest and
-            // src are the same object, which Rust cannot alias mut+const, so the
-            // read side is taken from a copy (name/formula are unchanged by the
-            // copy).
-            let src = trans.clone();
-            hfst_set_name_unary(&mut trans, &src, "eliminate-flags");
-            hfst_set_formula_unary(&mut trans, &src, "Id");
-            if let Err(e) = outstream.redirect(&mut trans) {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        }, else => {
-            // Unreachable: the optimized-lookup stream rejection already
-            // returned before the loop; keep its text for safety.
-            let _ = writeln!(
-                std::io::stderr(),
-                "Error: hfst-eliminate-flags cannot process transducers that are in optimized lookup format."
-            );
-            return 1;
-        });
-    }
-    instream.close();
-    outstream.close();
-    0
+//
+// The stream loop lives in the shared unary driver; this op is the
+// per-transducer body it dispatches into. The verbose verb names what is being
+// eliminated ("flags" or "flag FLAG"), which the C computes once before the
+// loop; here it is the op's own precomputed field.
+struct EliminateFlagsOp {
+    /// '-F, --flag=FLAG', if given.
+    flag: Option<String>,
+    /// The verbose line's object: "flags", or "flag FLAG".
+    flags: String,
 }
+
+impl UnaryToolOp for EliminateFlagsOp {
+    fn verbose_begin(&self, inputname: &str) -> String {
+        // The C additionally falls back to the input filename on an empty
+        // transducer name, which hfst_get_name has already done: it returns the
+        // filename whenever the name is empty, so the guard could only ever
+        // re-substitute the same empty filename.
+        format!("Eliminating {} {}", self.flags, inputname)
+    }
+
+    fn name_op(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed("eliminate-flags"))
+    }
+
+    fn formula(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed("Id"))
+    }
+
+    fn apply<B: AlgebraBackend>(
+        &mut self,
+        common: &CommonOptions,
+        t: &mut HfstTransducer<B>,
+    ) -> hfst::error::Result<()> {
+        match &self.flag {
+            None => t.eliminate_flags().map(|_| ()),
+            Some(f) => {
+                if t.eliminate_flag(f).is_err() {
+                    // The single-flag failure substitutes the tool's own text
+                    // for the error value's, so it is reported here rather than
+                    // through the driver's '{e}' path. `error` with a non-zero
+                    // status exits the process, so the Err below is never
+                    // observed; it stands for the C's `return 1`.
+                    error(
+                        common,
+                        1,
+                        0,
+                        &format!(
+                            "flag feature {} does not occur in the transducer\nonly the flag feature must be given, no value or operator",
+                            f
+                        ),
+                    );
+                    return Err(hfst::error::Error::new(hfst::error::ErrorKind::Fatal));
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+const SPEC: UnaryOpSpec = UnaryOpSpec {
+    tool_name: "hfst-eliminate-flags",
+    reject_ol: true,
+};
 
 // [spec:hfst:def:hfst-eliminate-flags.main-fn]
 // [spec:hfst:sem:hfst-eliminate-flags.main-fn]
@@ -202,49 +181,13 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Err(code) => return code,
     };
 
-    // close buffers, we use streams
-    let input_opened = common.input_filename != "<stdin>";
-    let output_opened = common.output_filename != "<stdout>";
-    verbose_print(
-        &common,
-        &format!(
-            "Reading from {}, writing to {}\n",
-            common.input_filename, common.output_filename
-        ),
-    );
-
-    // here starts the buffer handling part
-    let mut instream = match if input_opened {
-        HfstInputStream::new_filename(&common.input_filename)
-    } else {
-        HfstInputStream::new()
-    } {
-        Ok(v) => v,
-        Err(e) => {
-            error(&common, 1, 0, &format!("{e}"));
-            return 1;
-        }
+    let flags = match &options.flag {
+        None => String::from("flags"),
+        Some(f) => format!("flag {}", f),
     };
-    // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
-    // currently panics on a bad file rather than throwing, so the catch arm
-    // is not reproduced here.)
-
-    let ty = instream.get_type();
-    let mut outstream = match if output_opened {
-        HfstOutputStream::new_filename(&common.output_filename, ty, true)
-    } else {
-        HfstOutputStream::new(ty, true)
-    } {
-        Ok(v) => v,
-        Err(e) => {
-            error(&common, 1, 0, &format!("{e}"));
-            return 1;
-        }
+    let mut op = EliminateFlagsOp {
+        flag: options.flag,
+        flags,
     };
-
-    if is_input_stream_in_ol_format(&instream, "hfst-eliminate-flags") {
-        return 1;
-    }
-
-    process_stream(&common, &options, &mut instream, &mut outstream)
+    run_unary_tool(&common, &SPEC, &mut op)
 }

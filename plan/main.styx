@@ -6524,4 +6524,56 @@ children (
             }
         )
     }
+
+    {
+        id thin-cli
+        title "Thin idiomatic CLI (operator, 2026-08-20): hfst-cli becomes a thin passthrough to the library — clap-derive args with clap-format help (supersedes unify-cli's verbatim-getopt/verbatim-help stance), Result flow with one exit mapper, residual engines pushed into the hfst crate, ~73 files → ~20. Compat bar = the measured Giella surface (giella-core + lang repos sweep 2026-08-20), not the full getopt behavior space."
+        kind @refactor
+        children (
+            {
+                id unary-driver
+                title "unary_ops driver: mirror binary_ops.rs for the ~41 unary stream tools — one run_unary_stream_tool(common, spec, apply) owning open-streams/OL-reject/read-loop/counter/flush-close; each tool's run() shrinks to parse_options + driver call, keeping its annotated fn names. Zero flag-parsing change; oracle = full hfst-cli e2e suite."
+                sealed true
+                log (
+                    {
+                        at 2026-08-20T12:31:47.871138Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-20T12:55:41.677038Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
+
+            {
+                id family-files
+                title "Collapse the 46 sub-500-LOC tool files into ~5 family modules (simple/binary/convert/text/archive), fold ABOUTS into TOOLS (single table, no drift), move spec annotations with the code. No parsed byte changes."
+                deps (unary-driver)
+            }
+
+            {
+                id librarify2
+                title "Librarify wave 2: push residual engines out of the CLI into the hfst crate — unify lookup/flookup onto ONE lookup engine (flookup is an 80% clone: 15/16 identical fn names, 508 shared lines), move substitute's do_substitute/perform_delayed/process_loop (AlgebraBackend-generic), pair_test core, fst2strings enumeration control, guess/guessify compute. CLI keeps arg structs, stream wiring, rendering. Dedup against existing lib APIs where they already exist."
+                deps (family-files)
+            }
+
+            {
+                id spec-rewrite
+                title "Spec rewrite for the CLI reshape: retire/replace the ~176 per-tool print-usage-fn/parse-options-fn/main-fn rule ids (+sem twins) in docs/spec/port/tools/src/hfst-*.md with rules over the new shared surfaces (CommonArgs, drivers, dispatch, argv shim); nplan_audit must come out clean, no orphan refs."
+                deps (librarify2)
+            }
+
+            {
+                id clap-migration
+                title "clap-derive migration: #[derive(Args)] per tool + flattened CommonArgs; help text is clap's format (operator, 2026-08-20 — print_usage deleted, substring tests move to doc comments, --help still exits 0); Result-based tools, thiserror error enum, single exit-code mapper (HFST error text, exit 1 not clap's 2); argv normalization shim (single-dash longs incl. tokenise -cg, attached optional-arg -p/-S); resolve grep/optimized-lookup/twolc duplicate shorts; delete hfst_getopt.rs+inc.rs+CaseResult+error()-exit sites; replace the 20 getopt unit tests with e2e equivalents; HFST_OPTIONS handled once in dispatch. Oracle: e2e suite + full lang-sma build byte/behavior check."
+                deps (spec-rewrite)
+            }
+        )
+    }
 )

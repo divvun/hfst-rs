@@ -109,6 +109,10 @@ pub mod inc;
 // op descriptor.
 pub mod binary_ops;
 
+// The unary analogue: the run()/process_stream scaffolding of the
+// single-input-stream transform tools.
+pub mod unary_ops;
+
 // The tools themselves, one module per former standalone binary, plus the
 // TOOLS dispatch table the 'hfst' multiplexer binary drives.
 pub mod tools;

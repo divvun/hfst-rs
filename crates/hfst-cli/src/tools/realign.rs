@@ -8,22 +8,20 @@
 //! `static mut` globals and no `unsafe`.
 
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{
-    error, extend_options_from_env, hfst_set_program_name, is_input_stream_in_ol_format,
-    verbose_print,
-};
+use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
 use crate::hfst_getopt::{self as getopt, Getopt};
 use crate::hfst_program_options::{
     hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
     print_common_unary_program_options, print_common_unary_program_parameter_instructions,
 };
-use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
 use crate::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_output_stream::HfstOutputStream;
+use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
+use hfst::backend::AlgebraBackend;
+use hfst::hfst_transducer::HfstTransducer;
+use std::borrow::Cow;
 use std::io::Write;
 
 /// hfst-realign's own options (the former tool-specific `static mut`s).
@@ -119,73 +117,49 @@ fn parse_options(
 
 // [spec:hfst:def:hfst-realign.process-stream-fn]
 // [spec:hfst:sem:hfst-realign.process-stream-fn]
-fn process_stream(
-    common: &CommonOptions,
-    options: &Options,
-    instream: &mut HfstInputStream<'_>,
-    outstream: &mut HfstOutputStream,
-) -> i32 {
-    let mut transducer_n: usize = 0;
-    while instream.is_good() {
-        transducer_n += 1;
-        let any = match instream.read() {
-            Ok(v) => v,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-        // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
-        crate::for_algebra!(any, trans => {
-            let mut trans = trans;
-            let inputname = hfst_get_name(&trans, &common.input_filename);
-            if transducer_n == 1 {
-                if options.boundary_symbol != 0 {
-                    verbose_print(common, &format!("Pushing towards start {}...\n", inputname));
-                } else {
-                    verbose_print(common, &format!("Pushing towards end {}...\n", inputname));
-                }
-            } else if options.boundary_symbol != 0 {
-                verbose_print(common, &format!(
-                    "Pushing towards start {}... {}\n",
-                    inputname, transducer_n
-                ));
-            } else {
-                verbose_print(common, &format!(
-                    "Pushing towards end {}... {}\n",
-                    inputname, transducer_n
-                ));
-            }
-
-            if let Err(e) = trans.realign() {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-            // C: hfst_set_name(trans, trans, "realign"); the dest and src are the
-            // same object, which Rust cannot alias mut+const, so the read side is
-            // taken from a copy (name/formula are unchanged by the copy).
-            let src = trans.clone();
-            hfst_set_name_unary(&mut trans, &src, "realign");
-            hfst_set_formula_unary(&mut trans, &src, "Id");
-
-            if let Err(e) = outstream.redirect(&mut trans) {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        }, else => {
-            // Unreachable: the optimized-lookup stream rejection already
-            // returned before the loop; keep its text for safety.
-            let _ = writeln!(
-                std::io::stderr(),
-                "Error: hfst-realign cannot process transducers that are in optimized lookup format."
-            );
-            return 1;
-        });
-    }
-    instream.close();
-    outstream.close();
-    0
+//
+// The stream loop lives in the shared unary driver; this op is the
+// per-transducer body it dispatches into. The C's verbose verb is selected by
+// the boundary symbol (a leftover of the push-labels tool it was copied from),
+// so the op carries it.
+struct RealignOp {
+    boundary_symbol: u8,
 }
+
+impl UnaryToolOp for RealignOp {
+    fn verbose_begin(&self, inputname: &str) -> String {
+        if self.boundary_symbol != 0 {
+            format!("Pushing towards start {}", inputname)
+        } else {
+            format!("Pushing towards end {}", inputname)
+        }
+    }
+
+    fn verbose_sep(&self) -> &'static str {
+        " "
+    }
+
+    fn name_op(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed("realign"))
+    }
+
+    fn formula(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed("Id"))
+    }
+
+    fn apply<B: AlgebraBackend>(
+        &mut self,
+        _common: &CommonOptions,
+        t: &mut HfstTransducer<B>,
+    ) -> hfst::error::Result<()> {
+        t.realign().map(|_| ())
+    }
+}
+
+const SPEC: UnaryOpSpec = UnaryOpSpec {
+    tool_name: "hfst-realign",
+    reject_ol: true,
+};
 
 // [spec:hfst:def:hfst-realign.main-fn]
 // [spec:hfst:sem:hfst-realign.main-fn]
@@ -198,50 +172,8 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Err(code) => return code,
     };
 
-    // close buffers, we use streams
-    let input_opened = common.input_filename != "<stdin>";
-    let output_opened = common.output_filename != "<stdout>";
-
-    verbose_print(
-        &common,
-        &format!(
-            "Reading from {}, writing to {}\n",
-            common.input_filename, common.output_filename
-        ),
-    );
-
-    // here starts the buffer handling part
-    let mut instream = match if input_opened {
-        HfstInputStream::new_filename(&common.input_filename)
-    } else {
-        HfstInputStream::new()
-    } {
-        Ok(s) => s,
-        Err(e) => {
-            error(&common, 1, 0, &format!("{e}"));
-            return 1;
-        }
+    let mut op = RealignOp {
+        boundary_symbol: options.boundary_symbol,
     };
-    // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
-    // currently panics on a bad file rather than throwing, so the catch arm
-    // is not reproduced here.)
-
-    let ty = instream.get_type();
-    let mut outstream = match if output_opened {
-        HfstOutputStream::new_filename(&common.output_filename, ty, true)
-    } else {
-        HfstOutputStream::new(ty, true)
-    } {
-        Ok(s) => s,
-        Err(e) => {
-            error(&common, 1, 0, &format!("{e}"));
-            return 1;
-        }
-    };
-
-    if is_input_stream_in_ol_format(&instream, "hfst-realign") {
-        return 1;
-    }
-
-    process_stream(&common, &options, &mut instream, &mut outstream)
+    run_unary_tool(&common, &SPEC, &mut op)
 }

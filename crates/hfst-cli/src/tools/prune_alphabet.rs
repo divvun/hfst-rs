@@ -4,22 +4,20 @@
 //! fragments).
 
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{
-    error, extend_options_from_env, hfst_set_program_name, is_input_stream_in_ol_format,
-    verbose_print,
-};
+use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
 use crate::hfst_getopt::{self as getopt, Getopt};
 use crate::hfst_program_options::{
     hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
     print_common_unary_program_options, print_common_unary_program_parameter_instructions,
 };
-use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_name_unary};
 use crate::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_output_stream::HfstOutputStream;
+use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
+use hfst::backend::AlgebraBackend;
+use hfst::hfst_transducer::HfstTransducer;
+use std::borrow::Cow;
 use std::io::Write;
 
 /// hfst-prune-alphabet's own options (the former tool-specific `static mut`s).
@@ -116,60 +114,40 @@ fn parse_options(
 
 // [spec:hfst:def:hfst-prune-alphabet.process-stream-fn]
 // [spec:hfst:sem:hfst-prune-alphabet.process-stream-fn]
-fn process_stream(
-    common: &CommonOptions,
-    options: &Options,
-    instream: &mut HfstInputStream<'_>,
-    outstream: &mut HfstOutputStream,
-) -> i32 {
-    let mut transducer_n: usize = 0;
-    while instream.is_good() {
-        transducer_n += 1;
-        let any = match instream.read() {
-            Ok(v) => v,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-        // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
-        crate::for_algebra!(any, trans => {
-            let mut trans = trans;
-            let inputname = hfst_get_name(&trans, &common.input_filename);
-            if transducer_n == 1 {
-                verbose_print(common, &format!("Pruning {}...\n", inputname));
-            } else {
-                verbose_print(common, &format!("Pruning {}... {}\n", inputname, transducer_n));
-            }
-
-            if let Err(e) = trans.prune_alphabet(options.force_pruning) {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-            // C: hfst_set_name(trans, trans, "prune-alphabet"); the dest and src
-            // are the same object, which Rust cannot alias mut+const, so the read
-            // side is taken from a copy (name is unchanged by the copy).
-            let src = trans.clone();
-            hfst_set_name_unary(&mut trans, &src, "prune-alphabet");
-
-            if let Err(e) = outstream.redirect(&mut trans) {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        }, else => {
-            // Unreachable: the optimized-lookup stream rejection already
-            // returned before the loop; keep its text for safety.
-            let _ = writeln!(
-                std::io::stderr(),
-                "Error: hfst-prune-alphabet cannot process transducers that are in optimized lookup format."
-            );
-            return 1;
-        });
-    }
-    instream.close();
-    outstream.close();
-    0
+//
+// The stream loop lives in the shared unary driver; this op is the
+// per-transducer body it dispatches into. The tool stamps a name but no
+// formula, so `formula` keeps the trait default of None.
+struct PruneAlphabetOp {
+    force_pruning: bool,
 }
+
+impl UnaryToolOp for PruneAlphabetOp {
+    fn verbose_begin(&self, inputname: &str) -> String {
+        format!("Pruning {}", inputname)
+    }
+
+    fn verbose_sep(&self) -> &'static str {
+        " "
+    }
+
+    fn name_op(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed("prune-alphabet"))
+    }
+
+    fn apply<B: AlgebraBackend>(
+        &mut self,
+        _common: &CommonOptions,
+        t: &mut HfstTransducer<B>,
+    ) -> hfst::error::Result<()> {
+        t.prune_alphabet(self.force_pruning).map(|_| ())
+    }
+}
+
+const SPEC: UnaryOpSpec = UnaryOpSpec {
+    tool_name: "hfst-prune-alphabet",
+    reject_ol: true,
+};
 
 // [spec:hfst:def:hfst-prune-alphabet.main-fn]
 // [spec:hfst:sem:hfst-prune-alphabet.main-fn]
@@ -182,49 +160,8 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Err(code) => return code,
     };
 
-    // close buffers, we use streams
-    let input_opened = common.input_filename != "<stdin>";
-    let output_opened = common.output_filename != "<stdout>";
-    verbose_print(
-        &common,
-        &format!(
-            "Reading from {}, writing to {}\n",
-            common.input_filename, common.output_filename
-        ),
-    );
-
-    // here starts the buffer handling part
-    let mut instream = match if input_opened {
-        HfstInputStream::new_filename(&common.input_filename)
-    } else {
-        HfstInputStream::new()
-    } {
-        Ok(v) => v,
-        Err(e) => {
-            error(&common, 1, 0, &format!("{e}"));
-            return 1;
-        }
+    let mut op = PruneAlphabetOp {
+        force_pruning: options.force_pruning,
     };
-    // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
-    // currently panics on a bad file rather than throwing, so the catch arm
-    // is not reproduced here.)
-
-    let ty = instream.get_type();
-    let mut outstream = match if output_opened {
-        HfstOutputStream::new_filename(&common.output_filename, ty, true)
-    } else {
-        HfstOutputStream::new(ty, true)
-    } {
-        Ok(v) => v,
-        Err(e) => {
-            error(&common, 1, 0, &format!("{e}"));
-            return 1;
-        }
-    };
-
-    if is_input_stream_in_ol_format(&instream, "hfst-prune-alphabet") {
-        return 1;
-    }
-
-    process_stream(&common, &options, &mut instream, &mut outstream)
+    run_unary_tool(&common, &SPEC, &mut op)
 }

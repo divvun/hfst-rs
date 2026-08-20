@@ -370,6 +370,7 @@ assertions (
     {id weighted-determinize-fallback, kind @complete, author "brendan@necessary.nu", at 2026-08-20T00:54:06.249109Z}
     {id compose-intersect-product-memory, kind @complete, author "brendan@necessary.nu", at 2026-08-20T08:58:24.418049Z}
     {id hfst-info-compat-version, kind @complete, author "brendan@necessary.nu", at 2026-08-20T10:50:10.610793Z}
+    {id unary-driver, kind @complete, author "brendan@necessary.nu", at 2026-08-20T12:55:41.677038Z}
 )
 
 impl_evidence (
