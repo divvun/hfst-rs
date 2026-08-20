@@ -47,7 +47,6 @@ use crate::hfst_data_types::Symbol;
 use crate::hfst_transducer::HfstTransducer;
 use crate::virtual_flag_frontends::prepare_compose_flag_overlay;
 
-#[path = "xre_finalization.rs"]
 mod finalization;
 
 /// Arguments bundle mirroring 'hfst::xre::XreConstructorArguments'

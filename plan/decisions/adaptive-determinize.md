@@ -1,6 +1,6 @@
 ---
 id [dec:hfst:adaptive-determinize]
-epitome "Give weighted determinization a state budget with an automatic exact fallback: when label-only weighted determinization exceeds a generous per-input budget (it may never terminate on non-twins cyclic FSTs — hfst/hfst#435), transparently retry with weight encoding, which always terminates. Any input that converges unbounded stays byte-identical."
+epitome "Bound both the state count and weighted-subset population of determinization. Ordinary runs remain byte-identical; state divergence retries with weight encoding, while a subset-memory overrun during minimization tries the reverse orientation before preserving the exact relation without further minimization."
 state @decided
 category @existence
 scope {
@@ -28,9 +28,9 @@ alternatives (
 )
 consequences {
     accepted (
-        "The budget heuristic max(1024, 256 * input_states) is tunable: 256 is a generous fan-out constant chosen so every input that terminates under today's unbounded weighted determinization stays under budget (byte-identical), and the 1024 floor covers tiny inputs. If a real grammar is found that terminates unbounded yet trips the budget, raise the constant — the fallback keeps such a case correct (just less minimal) in the meantime, so it is a tuning issue, not a correctness regression."
-        "The fallback output is the weight-encoded determinization, which can be LESS MINIMAL than the true weighted-minimal FST. It is always correct (same weighted language) and always terminates. Callers that need true minimality on such inputs cannot get it (the true-minimal result is what does not terminate)."
-        "The mechanism lives in the rustfst fork as an optional DeterminizeConfig.max_states (default None = today's unbounded behavior, upstreamable) plus a LazyFst::compute_bounded; hfst-openfst exposes DeterminizeBounded returning Result, and TropicalWeightTransducer::minimize/determinize own the budget + retry policy. encode_weights == true is unchanged (no budget)."
+        "The default label-only envelope is min(max(1024, 256 * input_states), 2,000,000) output states and 4,194,304 coexisting logical weighted-subset elements. The latter was selected as roughly 256 MiB at a conservative 64-byte transient estimate; loaded inputs, outputs, and allocator overhead are outside that estimate."
+        "Within both limits, output is byte-identical to the unbounded algorithm. Crossing a limit is a correctness-preserving representation fallback, not an error: a state-count overrun retries with weight encoding; a subset-memory overrun in minimize first minimizes the reverse orientation and reverses back, then preserves the exact relation without further minimization only if both orientations exceed the limit. Such an output can be less minimal."
+        "The mechanism lives in the rustfst fork as optional DeterminizeConfig.max_states and max_subset_elements fields (both default None). RustFST merges duplicate default-semiring destinations while scanning instead of materializing and sorting every raw path, and raises a typed subset-limit error before either persistent or transient logical elements exceed the configured count. hfst-openfst preserves that distinction for TropicalWeightTransducer's retry policy."
         "A tracing::info! fires on every fallback so builds can observe when a grammar hit the non-termination path."
     )
     deferred (
@@ -58,26 +58,27 @@ encoding (`EncodeWeightsAndLabels`) before determinizing; encoded
 determinization is exact and always terminates. But `-E` is opt-in: the
 default still hangs.
 
-The port must not hang by default. The design is **budget then fall
-back**:
+The port must not hang or consume unbounded subset memory by default. The
+design is **budget then fall back**:
 
-1. Run label-only weighted determinization (today's behavior) under a
-   generous produced-state budget.
-2. If it converges within budget, keep its output verbatim — this is the
-   **byte-identity invariant**: every input that works today produces the
-   exact same machine, because the budget only ever trips where the
-   algorithm would otherwise loop forever.
-3. If it exceeds the budget, transparently re-run with weight encoding,
-   which terminates. Log it with `tracing::info!`.
+1. Run label-only weighted determinization under both an output-state bound
+   and a bound on the weighted-subset elements retained or accumulated during
+   the current expansion.
+2. If it converges within both bounds, keep its output verbatim. This is the
+   byte-identity invariant for ordinary inputs.
+3. A state-count overrun retains the hfst/hfst#435 behavior: retry with weight
+   encoding.
+4. A subset-memory overrun during minimization first tries the reverse
+   orientation, which is cheap for large co-deterministic rule machines such
+   as KAL's phonology. If both orientations exceed the bound, preserve the
+   exact weighted relation and warn that no further minimization was done.
 
-The budget is a produced-state count threaded through the rustfst fork as
-`DeterminizeConfig.max_states` (default `None`, so upstream behavior is
-untouched and the field is upstreamable) into a `LazyFst::compute_bounded`
-that aborts the on-demand BFS once the count is exceeded. `hfst-openfst`
-surfaces this as `DeterminizeBounded` (returns `Result` instead of the
-infallible OpenFST-shaped `Determinize`), and the budget + retry policy
-lives in `TropicalWeightTransducer::minimize`/`determinize`, the only two
-sites that weighted-determinize a possibly-cyclic FST.
+The state count remains threaded through `LazyFst::compute_bounded`. The
+subset limit lives inside RustFST's determinize state table and transition
+expansion, where it can account for the structure the generic lazy
+materializer cannot see. `hfst-openfst` surfaces a typed subset exhaustion,
+and the retry policy lives in `TropicalWeightTransducer::minimize` and
+`determinize`.
 
 `-E` is still restored as a first-class preference: the C++ process global
 that every tropical `minimize` read became `EngineConfig.encode_weights`

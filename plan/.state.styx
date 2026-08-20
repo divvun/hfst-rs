@@ -367,6 +367,7 @@ assertions (
     {id pmatch-epsilon-guard-performance, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:43:27.46316Z}
     {id xre-intermediate-optimization, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:55:03.286981Z}
     {id lexc-morphotax-memory, kind @complete, author "brendan@necessary.nu", at 2026-08-20T00:08:21.287187Z}
+    {id weighted-determinize-fallback, kind @complete, author "brendan@necessary.nu", at 2026-08-20T00:54:06.249109Z}
 )
 
 impl_evidence (

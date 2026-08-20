@@ -56,11 +56,8 @@ use crate::hfst_tokenizer::HfstTokenizer;
 use crate::transducer::{Transducer, UnweightedTables, WeightedTables};
 use crate::tropical_weight_transducer::TropicalWeightTransducer;
 
-#[path = "hfst_transducer_flag_ops.rs"]
 mod flag_ops;
-#[path = "hfst_transducer_intersect.rs"]
 mod intersect;
-#[path = "hfst_transducer_subtract.rs"]
 mod subtract;
 pub(crate) use flag_ops::{decode_flag, encode_flag};
 use flag_ops::{decode_flag_diacritics, encode_flag_diacritics, has_flags, rename_flag_diacritics};
@@ -4352,9 +4349,7 @@ impl FromAnyTransducer for crate::backend_thfst::ThfstTransducer {
 }
 
 #[cfg(test)]
-#[path = "hfst_transducer_flag_compose_overlay_tests.rs"]
 mod flag_compose_overlay_tests;
 
 #[cfg(test)]
-#[path = "hfst_transducer_flag_encode_tests.rs"]
 mod flag_encode_tests;

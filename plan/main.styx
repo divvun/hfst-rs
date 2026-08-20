@@ -6418,12 +6418,41 @@ children (
                 title "Use an earlier memory-aware fallback for weighted determinization"
                 kind @perf
                 deps (performance-language-gates)
+                sealed true
                 log (
                     {
                         at 2026-08-19T23:26:38.503291Z
                         author "brendan@necessary.nu"
                         kind @note
                         text "The excluded KAL diagnostic was stopped after 1,628.90s and 7,785,349,120 B peak RSS; its active compose-intersect spent roughly four fifths of sampled worker time sorting/normalizing determinized subsets, state-table lookup, and HashMap growth. The current max(1024, 256 * input_states) adaptive budget can permit hundreds of millions of states for a giant product. Design an absolute or memory-aware hybrid limit and earlier encoded-weight fallback while preserving weighted semantics. Completion uses focused adversarial and ordinary regression fixtures during iteration, then the opt-in KAL gate for final confirmation only."
+                    }
+
+                    {
+                        at 2026-08-20T00:08:50.021008Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-20T00:49:12.990851Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Implemented the memory-aware fallback in RustFST commit 1ba83300b9963b80a2cdadfdb106dd5aeff576fa and pinned HFST to it. RustFST now merges duplicate default-semiring destinations during expansion and enforces a typed cap on persistent plus transient weighted-subset elements; HFST caps label-only determinization at 2,000,000 states and 4,194,304 logical elements, then minimizes the reverse orientation on a subset overrun. Real KAL phonology.rev minimization fell from 1,587.36s / 7,785,349,120 B RSS to 1.63s / 473,890,816 B; output retained the exact 53,367-state / 3,104,062-arc relation shape. Ordinary SMA was 0.12s -> 0.07s and SME 0.43s -> 0.30s with byte-identical outputs. The now-reached KAL compose-intersect product is a separate bottleneck: it reached 6.7 GB after 33s and was stopped."
+                    }
+
+                    {
+                        at 2026-08-20T00:54:00.501995Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Final pinned-revision confirmation: SMA phonology.rev minimize is 0.08s real / 31,080,448 B peak RSS and SME is 0.32s / 52,232,192 B. Both outputs are SHA-256 byte-identical to their pre-change baselines (SMA dbb4d05f2465006372f5151dfb3e53d81b384bc5eeeececd7dec0341507d3341; SME 355a70a3743a97dc7e08ab4e7c181236bd745bcdf213130c0571d59ad92c56b7)."
+                    }
+
+                    {
+                        at 2026-08-20T00:54:06.249109Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }

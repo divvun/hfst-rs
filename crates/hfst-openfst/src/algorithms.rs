@@ -186,26 +186,41 @@ where
     propagate_symbols(ifst, ofst);
 }
 
-// [fst::Determinize] with a state budget — ofst := det(ifst), but abort with an
-// `Err` (instead of running away) once the on-demand expansion produces more
-// than `max_states` states. Weighted determinization of a non-twins cyclic FST
-// splits states forever; the caller uses this to detect that and retry with an
-// exact strategy (weight encoding). A `max_states` of `None` is unbounded and
-// behaves exactly like `Determinize`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DeterminizeBoundedError {
+    SubsetElements { limit: usize, attempted: usize },
+    Other(String),
+}
+
+// [fst::Determinize] with state and weighted-subset budgets — ofst := det(ifst),
+// but abort before either input-dependent structure can run away. A state count
+// alone is insufficient: one determinized state can contain a huge weighted
+// NFA subset. `None` leaves the corresponding dimension unbounded.
 pub fn DeterminizeBounded<W, F1, F2>(
     ifst: &F1,
     ofst: &mut F2,
     max_states: Option<usize>,
-) -> Result<(), String>
+    max_subset_elements: Option<usize>,
+) -> Result<(), DeterminizeBoundedError>
 where
     W: WeaklyDivisibleSemiring + WeightQuantize,
     F1: ExpandedFst<W>,
     F2: MutableFst<W> + AllocableFst<W>,
 {
-    let config =
-        rustfst::algorithms::determinize::DeterminizeConfig::default().with_max_states(max_states);
-    *ofst = rustfst::algorithms::determinize::determinize_with_config(ifst, config)
-        .map_err(|e| e.to_string())?;
+    let config = rustfst::algorithms::determinize::DeterminizeConfig::default()
+        .with_max_states(max_states)
+        .with_max_subset_elements(max_subset_elements);
+    *ofst = rustfst::algorithms::determinize::determinize_with_config(ifst, config).map_err(
+        |error| {
+            error
+                .downcast_ref::<rustfst::algorithms::determinize::DeterminizeSubsetLimitExceeded>()
+                .map(|limit| DeterminizeBoundedError::SubsetElements {
+                    limit: limit.limit,
+                    attempted: limit.attempted,
+                })
+                .unwrap_or_else(|| DeterminizeBoundedError::Other(error.to_string()))
+        },
+    )?;
     propagate_symbols(ifst, ofst);
     Ok(())
 }

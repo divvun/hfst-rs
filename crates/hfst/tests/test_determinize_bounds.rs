@@ -6,8 +6,9 @@
 // reported 6GB+ and a ^C). Upstream's only remedy is the `-E` switch (force
 // weight encoding before determinizing). The Rust port instead fixes it by
 // DEFAULT: `TropicalWeightTransducer::minimize`/`determinize` run label-only
-// weighted determinization under a generous produced-state budget and, on
-// overrun, transparently retry with weight encoding (exact, always terminates).
+// weighted determinization under state and subset-element budgets. State
+// divergence retries with weight encoding; a subset-memory overrun during
+// minimization tries the reverse orientation first.
 // See plan/decisions/adaptive-determinize.md.
 //
 // The 10s-per-test nextest cap is the point: before this fix these tests spin
