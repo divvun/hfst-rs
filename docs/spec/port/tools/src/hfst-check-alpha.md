@@ -30,35 +30,6 @@
 > buffers, and return EXIT_SUCCESS (note: main returns EXIT_SUCCESS regardless of
 > process_stream's mismatch result, which it discards).
 
-> [spec:hfst:def:hfst-check-alpha.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-check-alpha.parse-options-fn]
-> Parse command-line options for a binary (two-input) tool. First call
-> extend_options_getenv(&argc, &argv) to splice in environment-supplied options.
-> Then loop calling getopt_long over the option table built from the common long
-> options followed by the binary long options (then a terminating zero entry),
-> with the short-option string HFST_GETOPT_COMMON_SHORT HFST_GETOPT_BINARY_SHORT.
-> Stop the loop when getopt_long returns -1. For each returned option code,
-> dispatch through the binary cases first, then the common cases (whose --help
-> uses this tool's print_usage), then the error case; the case groups may return
-> a status code from parse_options or continue the loop. There are no
-> tool-specific options. After the loop, run the binary parameter check
-> (resolving firstfile/secondfile from the leftover positional arguments) and
-> then the common parameter check, and return EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-check-alpha.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-check-alpha.print-usage-fn]
-> Print the tool's help text to message_out. Write the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILEs]" followed by the description
-> "Compare the compatibility of alphabets between INFILEs" and a blank line.
-> Then print the common program options, the common binary program options, the
-> tool-specific section header "Check alpha options:" (which lists no actual
-> options) and a blank line, the common binary parameter instructions, a blank
-> line, the report-bugs notice, a blank line, and finally the more-info notice.
-
 > [spec:hfst:def:hfst-check-alpha.process-stream-fn]
 > int
 

@@ -56,23 +56,6 @@
 > negative epsilon cycles is not supported when reading prolog and outputting xfsm, and
 > returns EXIT_FAILURE. Otherwise returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-txt2fst.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-txt2fst.print-usage-fn]
-> Prints help text to message_out. Emits "Usage: <program_name> [OPTIONS...] [INFILE]"
-> followed by "Convert AT&T or prolog format into a binary transducer". Calls
-> print_common_program_options(message_out) and print_common_unary_program_options(
-> message_out). Then prints the "Text and format options:" block listing -f/--format,
-> -e/--epsilon, -p/--prolog; then the "Other options:" block listing
-> -C/--check-negative-epsilon-cycles and -j/--disjunct. Then prints the trailing notes:
-> that missing or "-" OUTFILE/INFILE use standard streams; that the default FMT is
-> OpenFst tropical; the set of possible FMT values { foma, openfst-tropical,
-> openfst-log, sfst, optimized-lookup-weighted, optimized-lookup-unweighted }; that the
-> default EPS is @0@; and that space in transition symbols must be escaped as
-> '@_SPACE_@' when using att format. Finally calls print_report_bugs() and
-> print_more_info(), with blank lines separating the sections.
-
 > [spec:hfst:def:hfst-txt2fst.process-stream-fn]
 > int
 

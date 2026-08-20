@@ -24,41 +24,6 @@
 > the tool's encode_weights flag was set, restores hfst::set_encode_weights(enc).
 > Frees inputfilename and outfilename, and returns retval.
 
-> [spec:hfst:def:hfst-determinize.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-determinize.parse-options-fn]
-> Parses the command-line options for hfst-determinize. First calls
-> extend_options_getenv(&argc, &argv) to splice in options from the
-> environment. Loops calling getopt_long with the long-option table built
-> from HFST_GETOPT_COMMON_LONG, HFST_GETOPT_UNARY_LONG, the tool-specific
-> entry {"encode-weights", no_argument, 0, 'E'}, and a terminating zero
-> entry; the short-option string is HFST_GETOPT_COMMON_SHORT
-> HFST_GETOPT_UNARY_SHORT "E". When getopt_long returns -1, the loop breaks.
-> Each returned option code is dispatched through the common getopt cases,
-> then the unary getopt cases, then the error case, and finally the
-> tool-specific case 'E' which sets encode_weights to true and breaks. After
-> the loop, runs the common parameter checks and the unary parameter checks
-> (which resolve inputfilename/inputfile and outfilename/outfile from any
-> remaining positional argument). Returns EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-determinize.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-determinize.print-usage-fn]
-> Prints the help/usage text to message_out. Prints a usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by "Determinize a
-> transducer" and a blank line. Then prints, in order: the common program
-> options (print_common_program_options), the common unary program options
-> (print_common_unary_program_options), a "Command-specific options:" header,
-> the tool-specific option line "  -E, --encode-weights         Encode
-> weights when determinizing" with a continuation line
-> "                               (default is false)." followed by a blank
-> line, then another blank line, the common unary program parameter
-> instructions (print_common_unary_program_parameter_instructions), a blank
-> line, the bug-reporting info (print_report_bugs), a blank line, and the
-> more-info footer (print_more_info).
-
 > [spec:hfst:def:hfst-determinize.process-stream-fn]
 > int
 

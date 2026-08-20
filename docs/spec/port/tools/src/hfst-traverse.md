@@ -74,30 +74,6 @@
 > Rust port reproduces that by keying a BTreeMap on (path-string, insertion
 > counter), preserving ordered iteration and duplicate keys.
 
-> [spec:hfst:def:hfst-traverse.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-traverse.parse-options-fn]
-> Standard unary-tool option parsing. First call extend_options_getenv to splice
-> in environment-provided options. Loop over getopt_long with the common+unary
-> short option strings and a long-option table = common long options, unary long
-> options, this tool's own {"cave", no_argument, 0, 'X'}, and the NULL
-> terminator. Dispatch each returned option code through the common cases, then
-> the unary cases, then the tool's own 'X' (which sets the global cave_mode flag
-> to true), then the error/default case. Break out of the loop when getopt_long
-> returns -1. Finally run the common and unary parameter checks and return
-> EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-traverse.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-traverse.print-usage-fn]
-> Print the --help text to message_out: a "Usage: <program_name> [OPTIONS...]
-> [INFILE]" line followed by "Walk through the transducer arc by arc" and a
-> blank line; then the common program options, the common unary program options,
-> a blank line, the common unary parameter instructions, a blank line, the
-> report-bugs notice, a blank line, and the more-info notice.
-
 > [spec:hfst:def:hfst-traverse.process-stream-fn]
 > int
 

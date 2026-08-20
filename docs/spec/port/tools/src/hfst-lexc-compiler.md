@@ -95,28 +95,3 @@
 > open it for reading, incrementing lexccount, and mark input as not-stdin.
 > Otherwise create a single entry named "<stdin>" bound to stdin, mark input as
 > stdin, and set lexccount to 1. Return EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-lexc-compiler.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-lexc-compiler.print-usage-fn]
-> Print the help text to 'message_out'. First the usage line "Usage: <program>
-> [OPTIONS...] [INFILE1...]]" and the one-line summary "Compile lexc files into
-> transducer", then a blank line. Print the common program options. Then the
-> "Input/Output options:" block documenting '-f, --format=FORMAT' and
-> '-o, --output=OUTFILE'. Then the "Lexc options:" block documenting
-> '-A/--alignStrings', '-E/--encode-weights', '-F/--withFlags',
-> '-M/--minimizeFlags', '-R/--renameFlags', '-x/--xerox-composition=BOOL',
-> '-X/--xfst=VARIABLE', '--split-characters', and the warning flags '-Wall',
-> '-Wone-sided-flags', '-Wrepeated-lexicons', '-Wmissing-lexicons',
-> '-Wunused-lexicons', '-Wmissing-alphabets', '-Wunnecessary-escapes',
-> '-Werror'. Then a blank line, the note that omitted/'-' INFILE/OUTFILE use the
-> standard streams, the list of legal FORMAT values { sfst, openfst-tropical,
-> openfst-log, foma, optimized-lookup-unweighted, optimized-lookup-weighted },
-> the legal BOOL values ({true,ON,yes}/{false,OFF,no}) and the Xfst variable list
-> {flag-is-epsilon (default OFF)}. Then an "Examples:" section showing a single-
-> file and a multi-file compile invocation (both interpolating the program name),
-> followed by a "Using weights:" example LEXICON and the note that weights only
-> matter for weighted FORMATs { openfst-tropical, openfst-log,
-> optimized-lookup-weighted }. Finally print the report-bugs blurb, a blank line,
-> and the more-info blurb.

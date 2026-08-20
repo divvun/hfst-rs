@@ -27,45 +27,6 @@
 > 10. Free firstfilename, secondfilename and outfilename, then return the
 >    captured value.
 
-> [spec:hfst:def:hfst-shuffle.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-shuffle.parse-options-fn]
-> Parse the command line for the binary tool hfst-shuffle.
-> 1. Call extend_options_getenv(&argc, &argv) to splice in any options coming
->    from the environment.
-> 2. Loop, calling getopt_long with the short-option string
->    HFST_GETOPT_COMMON_SHORT HFST_GETOPT_BINARY_SHORT and the long-option table
->    composed of HFST_GETOPT_COMMON_LONG, HFST_GETOPT_BINARY_LONG and a final
->    null terminator. The tool defines no options of its own.
->    Break out of the loop when getopt_long returns -1.
-> 3. Dispatch each returned option code c through, in order: the binary-option
->    cases, then the common-option cases (whose help case prints print_usage),
->    then the terminal error case. A handled case either returns an exit code
->    (e.g. help/version) or continues the loop; an unrecognized option falls to
->    the error case which returns EXIT_FAILURE.
-> 4. After the loop, run the binary parameter checks (check-params-binary) then
->    the common parameter checks (check-params-common), which validate and open
->    the first, second and output file handles.
-> 5. Return EXIT_CONTINUE to signal that main should proceed.
-
-> [spec:hfst:def:hfst-shuffle.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-shuffle.print-usage-fn]
-> Print the tool's usage/help text to message_out.
-> 1. Print "Usage: <program_name> [OPTIONS...] [INFILE1 [INFILE2]]" followed by
->    "Shuffle two transducers" and a blank line.
-> 2. Print the common program options (print_common_program_options) and the
->    common binary program options (print_common_binary_program_options),
->    followed by a newline.
-> 3. Print the common binary parameter instructions
->    (print_common_binary_program_parameter_instructions) and a newline.
-> 4. Print an Examples block containing
->    "<program_name> -o shuffled.hfst cat.hfst dog.hfst".
-> 5. Print the bug-reporting footer (print_report_bugs), a newline, and the
->    more-info footer (print_more_info).
-
 > [spec:hfst:def:hfst-shuffle.shuffle-streams-fn]
 > int
 

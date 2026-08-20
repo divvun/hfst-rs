@@ -60,22 +60,6 @@
 > output_format = TROPICAL_OPENFST_TYPE. If epsilonname is still null, sets it
 > to strdup("@0@"). Returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-strings2fst.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-strings2fst.print-usage-fn]
-> Prints the help text to message_out: the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by "Compile string
-> pairs and pair-strings into transducer(s)"; the common program options; the
-> Input/Output options block (-i/--input, -o/--output); the String and format
-> options block (-f/--format, -j/--disjunct-strings, --norm, --log, --log10,
-> -p/--pairstrings, -S/--has-spaces, -e/--epsilon, -m/--multichar-symbols);
-> a notes paragraph (standard streams when INFILE/OUTFILE missing or '-'; the
-> allowed FMT values; the default @0@ epsilon; --norm precedes --log; the -m
-> file format; backslash escaping rules; trailing-tab weight rule); an Examples
-> block with four echo|program invocations; the report-bugs footer; and the
-> more-info footer. Purely produces output, no return value.
-
 > [spec:hfst:def:hfst-strings2fst.process-stream-fn]
 > int
 

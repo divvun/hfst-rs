@@ -50,21 +50,6 @@
 > After the loop, runs the common and unary parameter checks
 > (check-params-common, check-params-unary) and returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-name.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-name.print-usage-fn]
-> Prints the tool's help text to message_out. Writes the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]\n" followed by "Name a
-> transducer\n\n". Then prints the name-options block:
-> "Name options:\n  -n, --name=NAME      Name the transducer NAME\n
->  -p, --print-name     Only print the current name\n  -t,
-> --truncate_length=LEN   Truncate name length to LEN\n". Then calls, in
-> order, print_common_program_options(message_out),
-> print_common_unary_program_options(message_out), a newline,
-> print_common_unary_program_parameter_instructions(message_out), a
-> newline, print_report_bugs(), a newline, and print_more_info().
-
 > [spec:hfst:def:hfst-name.process-stream-fn]
 > int
 

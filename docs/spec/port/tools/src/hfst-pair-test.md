@@ -161,23 +161,6 @@
 > remaining (unconsumed) pairs in the same unescaped form. Ends with two
 > newlines. Symbols are passed through unescape (epsilon -> "0", "@#@" -> "#").
 
-> [spec:hfst:def:hfst-pair-test.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-pair-test.print-usage-fn]
-> Prints the help/usage text to message_out: a usage line "Usage: <prog>
-> [OPTIONS...] [INFILE]" and a one-line description, the common program
-> options, the Input/Output options (-i/--input, -o/--output,
-> -N/--negative-test, -X/--xerox-mode), the Pair test options
-> (-I/--input-strings=SFILE), and several explanatory paragraphs describing:
-> default STDIN/STDOUT behaviour; how the rule file is tested with pair
-> strings; the pair-string file format and "!" comment lines; the three test
-> modes (positive, negative, Xerox); exit codes (0 success, 1 failure) and the
-> "Test passed"/"Test failed" messages; what is printed on failure in positive
-> vs negative mode; the Xerox-mode two-line "!!€"/"!!$" test-case format with
-> examples; and silent-mode (-s) behaviour. Finishes with the report-bugs and
-> more-info footers.
-
 > [spec:hfst:def:hfst-pair-test.process-stream-fn]
 > int
 

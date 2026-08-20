@@ -25,41 +25,6 @@
 > Otherwise calls process_stream(instream, outstream), frees inputfilename and
 > outfilename, and returns its result.
 
-> [spec:hfst:def:hfst-remove-epsilons.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-remove-epsilons.parse-options-fn]
-> Parses the command-line options for the tool.
-> First calls extend_options_getenv(&argc, &argv) to splice in any options from
-> the environment. Then loops calling getopt_long over the concatenation of the
-> common long options (HFST_GETOPT_COMMON_LONG) and the unary long options
-> (HFST_GETOPT_UNARY_LONG) terminated by the {0,0,0,0} sentinel, with the short
-> option string HFST_GETOPT_COMMON_SHORT HFST_GETOPT_UNARY_SHORT. The tool adds
-> no options of its own.
-> When getopt_long returns -1 the loop ends. Each returned option code is
-> dispatched through the included case groups in order: the common cases
-> (--help prints usage and returns EXIT_SUCCESS, --version, --verbose, --silent,
-> --quiet, --debug, --output, etc.), then the error case (the default arm,
-> returning EXIT_FAILURE on an unrecognized option), then the unary cases.
-> After the loop, runs the common parameter checks (check-params-common) and the
-> unary parameter checks (check-params-unary), which resolve the input and output
-> filenames/files. Returns EXIT_CONTINUE to signal that processing should
-> proceed.
-
-> [spec:hfst:def:hfst-remove-epsilons.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-remove-epsilons.print-usage-fn]
-> Prints the tool's usage/help text to message_out.
-> Prints the usage line "Usage: <program_name> [OPTIONS...] [INFILE]" followed by
-> the one-line description "Remove epsilons from a transducer" and a blank line.
-> Then prints the common program options (print_common_program_options), the
-> common unary program options (print_common_unary_program_options), a blank line,
-> the common unary program parameter instructions
-> (print_common_unary_program_parameter_instructions), a blank line, the
-> report-bugs notice (print_report_bugs), a blank line, and the more-info notice
-> (print_more_info).
-
 > [spec:hfst:def:hfst-remove-epsilons.process-stream-fn]
 > int
 

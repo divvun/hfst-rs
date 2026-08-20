@@ -6599,6 +6599,22 @@ children (
                 id spec-rewrite
                 title "Spec rewrite for the CLI reshape: retire/replace the ~176 per-tool print-usage-fn/parse-options-fn/main-fn rule ids (+sem twins) in docs/spec/port/tools/src/hfst-*.md with rules over the new shared surfaces (CommonArgs, drivers, dispatch, argv shim); nplan_audit must come out clean, no orphan refs."
                 deps (librarify2)
+                sealed true
+                log (
+                    {
+                        at 2026-08-20T16:10:13.699738Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-20T16:26:52.346169Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {

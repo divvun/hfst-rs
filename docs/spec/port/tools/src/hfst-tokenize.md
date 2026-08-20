@@ -149,22 +149,6 @@
 > tokenizer_filename = argv[optind] and return EXIT_CONTINUE; else print
 > "No input file given" and return EXIT_FAILURE.
 
-> [spec:hfst:def:hfst-tokenize.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-tokenize.print-usage-fn]
-> Print the help text to message_out: a usage line
-> "Usage: <program_name> [--segment | --xerox | --cg | --giella-cg]
-> [OPTIONS...] RULESET" followed by "perform matching/lookup on text streams"
-> and a blank line; then print_common_program_options(message_out); then the
-> block documenting every tool-specific option (-n/--newline, -a/--print-all,
-> -w/--print-weight, -W/--no-weights, -m/--tokenize-multichar, -b/--beam,
-> -tS/--time-cutoff, -lN/--weight-classes, -u/--unique, -z/--segment,
-> -i/--space-separated, -x/--xerox, -c/--cg, -S/--superblanks, -g/--giella-cg,
-> -C/--conllu, -f/--finnpos, -L/--visl) with their descriptions; then
-> "Use standard streams for input and output (for now)." and a blank line; then
-> print_report_bugs(); a newline; print_more_info(); a newline.
-
 > [spec:hfst:def:hfst-tokenize.process-input-0delim-fn]
 > int
 

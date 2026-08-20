@@ -64,6 +64,7 @@ pub use simple::{
 };
 
 /// A tool's `run` entry point: argv in, process exit code out.
+// [spec:hfst:req:cli.main]
 pub type ToolRun = fn(Vec<String>) -> i32;
 
 /// Dispatch table mapping the original standalone binary names to the
@@ -73,6 +74,7 @@ pub type ToolRun = fn(Vec<String>) -> i32;
 /// print_usage). Alias names (the C++ suite installed several of these,
 /// plus the British spellings Giella builds use) map to the same entry
 /// points.
+// [spec:hfst:req:cli.dispatch]
 pub const TOOLS: &[(&str, ToolRun, &str)] = &[
     (
         "hfst-affix-guessify",

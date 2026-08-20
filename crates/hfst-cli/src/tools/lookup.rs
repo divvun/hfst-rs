@@ -124,8 +124,7 @@ impl Options {
     }
 }
 
-// [spec:hfst:def:hfst-lookup.print-usage-fn]
-// [spec:hfst:sem:hfst-lookup.print-usage-fn]
+// [spec:hfst:req:cli.help]
 fn print_usage(common: &CommonOptions) {
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
     let mut msg = common.message_writer();
@@ -222,6 +221,7 @@ fn print_usage(common: &CommonOptions) {
 
 // [spec:hfst:def:hfst-lookup.parse-options-fn]
 // [spec:hfst:sem:hfst-lookup.parse-options-fn]
+// [spec:hfst:req:cli.arg-parse]
 //
 // Parse argv into the shared + tool options; `Err(code)` is an exit code the
 // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).

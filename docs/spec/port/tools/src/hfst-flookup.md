@@ -234,18 +234,6 @@
 > (i.e. input is being read interactively), print the prompt "> " to stderr.
 > Otherwise do nothing.
 
-> [spec:hfst:def:hfst-flookup.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-flookup.print-usage-fn]
-> Print the --help text to message_out: a usage line with the program name,
-> a one-paragraph description (lookup is done right to left like flookup/xfst),
-> the common program options, the Input/Output options (-i/-o/-p), the Lookup
-> options (-R,-I,-O,-e,-F,-x,-X,-c,-b,-t,-P,-f), the common unary parameter
-> instructions, notes on OFORMAT/IFORMAT/VARIABLE values and defaults, the
-> --pipe-mode STREAM explanation, the list of known bugs, the report-bugs line and
-> the more-info line.
-
 > [spec:hfst:def:hfst-flookup.replace-all-fn]
 > static std::string
 

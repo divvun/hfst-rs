@@ -16,31 +16,6 @@
 > EXIT_FAILURE. Construct the HfstOutputStream to outfilename (named) or stdout,
 > using the input stream's type. Return process_stream(instream, outstream).
 
-> [spec:hfst:def:hfst-invert.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-invert.parse-options-fn]
-> Parse the command line. First extend_options_getenv(&argc, &argv) to splice in
-> options from the environment. Then loop getopt_long over the option table built
-> from the common + unary long options (plus a null terminator) and the common +
-> unary short option strings; break when getopt_long returns -1. For each option
-> char, dispatch through the common case group, then the unary case group, then
-> (no tool-specific options here) the terminal error group, exactly as the C
-> switch chains its #include'd getopt-cases-{common,unary,error}.h. A case that
-> finishes the program returns its exit code; a handled case continues the loop.
-> After the loop run check-params-common then check-params-unary, then return
-> EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-invert.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-invert.print-usage-fn]
-> Print the GNU-style help to message_out: a "Usage: PROGRAM [OPTIONS...] [INFILE]"
-> line and the one-line "Invert a transducer" description, then the common program
-> options, the common unary program options, a blank line, the common unary
-> parameter instructions, a blank line, the report-bugs block, a blank line, and
-> the more-info block.
-
 > [spec:hfst:def:hfst-invert.process-stream-fn]
 > int
 

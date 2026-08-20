@@ -120,39 +120,6 @@
 > 7. retval = compose_streams(firststream, secondstream); free the duplicated
 >    filename strings; return retval.
 
-> [spec:hfst:def:hfst-compose-intersect.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-compose-intersect.parse-options-fn]
-> Parse command-line options for the binary tool. Steps:
-> 1. extend_options_getenv(&argc, &argv) so environment-supplied options are
->    spliced in.
-> 2. Loop over getopt_long using the long-option table built from the common
->    long options, the binary long options, and the tool's own
->    --invert (I), --encode-weights (e), --fast (f), --harmonize (a), with a
->    NULL terminator; and the short-option string
->    HFST_GETOPT_COMMON_SHORT + HFST_GETOPT_BINARY_SHORT + "FIeHfa". Stop when
->    getopt_long returns -1.
-> 3. Dispatch each option code through the binary cases, then the common cases,
->    then the tool-specific cases ('I' sets invert, 'e' sets encode_weights,
->    'f' sets fast_ci, 'a' sets harmonize), and finally the shared error arm.
-> 4. After the loop run the binary parameter check then the common parameter
->    check (resolve first/second/out filenames and streams). Return
->    EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-compose-intersect.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-compose-intersect.print-usage-fn]
-> Print the tool's --help text to message_out: a usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE1 [INFILE2]]" and a one-line
-> description; the common program options; the common binary program options;
-> the "Composition options:" block documenting -I/--invert, -f/--fast,
-> -e/--encode-weights, and -a/--harmonize; the note about std streams and that
-> INFILE1/INFILE2 must share a format, with INFILE1 (lexicon) holding exactly
-> one transducer and INFILE2 (rules) possibly several; an Examples block; the
-> bug-report footer; and the more-info footer.
-
 > [spec:hfst:def:hfst-compose-intersect.string-set]
 > typedef std::set<std::string> StringSet
 

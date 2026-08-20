@@ -416,13 +416,6 @@
 > Conditionally emit an ANSI colour escape. If should_colourise() is true, write
 > the colour string to file f; otherwise do nothing.
 
-> [spec:hfst:def:hfst-commandline.parse-options-fn]
-> int parse_options(int argc, char **argv)
-
-> [spec:hfst:sem:hfst-commandline.parse-options-fn]
-> TODO(sem): what this does, step by step — precisely enough to
-> re-implement from this rule alone, without reading the source.
-
 > [spec:hfst:def:hfst-commandline.print-more-info-fn]
 > void
 
@@ -446,13 +439,6 @@
 > [spec:hfst:sem:hfst-commandline.print-short-help-fn]
 > Print a one-line pointer to the full help, to message_out:
 > "Try ``<program_name> --help'' for more information.\n".
-
-> [spec:hfst:def:hfst-commandline.print-usage-fn]
-> void print_usage()
-
-> [spec:hfst:sem:hfst-commandline.print-usage-fn]
-> TODO(sem): what this does, step by step — precisely enough to
-> re-implement from this rule alone, without reading the source.
 
 > [spec:hfst:def:hfst-commandline.print-version-fn]
 > void

@@ -73,25 +73,6 @@
 > -w)". Then runs the common parameter checks and the unary parameter checks
 > and returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-fst2fst.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-fst2fst.print-usage-fn]
-> Prints the tool's usage text to message_out. Begins with
-> "Usage: <program_name> [OPTIONS...] [INFILE]" and the one-line description
-> "Convert transducers between binary formats", then a blank line. Prints the
-> common program options and the common unary program options. Then prints a
-> "Conversion options:" section listing -f/--format=FMT, -b/--use-backend-format,
-> -S/--sfst, -F/--foma, -x/--xfsm, -t/--openfst-tropical, -l/--openfst-log,
-> -O/--optimized-lookup-unweighted, -w/--optimized-lookup-weighted, and
-> -Q/--quick with their descriptions. Prints a blank line, then the common
-> unary program parameter instructions, then a note that FMT must be a format
-> usable by libhfst — one of { foma, openfst-tropical, openfst-log, sfst,
-> xfsm, optimized-lookup-weighted, optimized-lookup-unweighted } — and that
-> xfsm format is always written in native format without HFST wrappers.
-> Finally prints a blank line, the report-bugs notice, a blank line, and the
-> more-info notice.
-
 > [spec:hfst:def:hfst-fst2fst.process-stream-fn]
 > int
 

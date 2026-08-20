@@ -244,19 +244,6 @@
 > mode, and no lookup-strings file was given (i.e. only when reading
 > interactively).
 
-> [spec:hfst:def:hfst-lookup.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-lookup.print-usage-fn]
-> Print the GNU-style help text to message_out: the usage line, the note that
-> hfst-lookup looks up left-to-right (unlike xfst/foma, pointing to
-> hfst-flookup), the common program options, the input/output options
-> (-i/-o/-p), the lookup options (-I/-O/-e/-F/-x/-X/-c/-n/-b/-t/-C/-P), the
-> common unary parameter instructions, the explanations of OFORMAT/IFORMAT/xfst
-> VARIABLEs/cycles/epsilon/beam/time-cutoff/multi-transducer behaviour, the
-> CASCADE value list, the STREAM/pipe-mode explanation, the Todo and Known-bugs
-> notes, and finally the bug-report and more-info footers.
-
 > [spec:hfst:def:hfst-lookup.replace-all-fn]
 > static std::string
 

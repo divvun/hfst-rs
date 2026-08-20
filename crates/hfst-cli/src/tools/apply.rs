@@ -96,8 +96,7 @@ pub mod guess {
         -1.0
     }
 
-    // [spec:hfst:def:hfst-guess.print-usage-fn]
-    // [spec:hfst:sem:hfst-guess.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let mut msg = common.message_writer();
@@ -153,6 +152,7 @@ pub mod guess {
 
     // [spec:hfst:def:hfst-guess.parse-options-fn]
     // [spec:hfst:sem:hfst-guess.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -563,8 +563,7 @@ pub mod pmatch {
     // [spec:hfst:def:hfst-pmatch.libreadline-getline-fn]
     // [spec:hfst:sem:hfst-pmatch.libreadline-getline-fn]
 
-    // [spec:hfst:def:hfst-pmatch.print-usage-fn]
-    // [spec:hfst:sem:hfst-pmatch.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let mut msg = common.message_writer();
@@ -682,6 +681,7 @@ pub mod pmatch {
 
     // [spec:hfst:def:hfst-pmatch.parse-options-fn]
     // [spec:hfst:sem:hfst-pmatch.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -941,8 +941,7 @@ pub mod tokenize {
         }
     }
 
-    // [spec:hfst:def:hfst-tokenize.print-usage-fn]
-    // [spec:hfst:sem:hfst-tokenize.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -988,6 +987,7 @@ pub mod tokenize {
 
     // [spec:hfst:def:hfst-tokenize.parse-options-fn]
     // [spec:hfst:sem:hfst-tokenize.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     fn parse_options(
         mut common: CommonOptions,
         args: &mut Vec<String>,

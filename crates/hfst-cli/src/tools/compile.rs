@@ -71,8 +71,7 @@ pub mod guessify {
         best.unwrap_or(-1.0)
     }
 
-    // [spec:hfst:def:hfst-guessify.print-usage-fn]
-    // [spec:hfst:sem:hfst-guessify.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let mut msg = common.message_writer();
@@ -108,6 +107,7 @@ pub mod guessify {
 
     // [spec:hfst:def:hfst-guessify.parse-options-fn]
     // [spec:hfst:sem:hfst-guessify.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -348,8 +348,7 @@ pub mod pmatch2fst {
     // C: the compilation format, chosen at compile time from the available
     // back-ends. The Rust crate links the tropical OpenFST back-end.
 
-    // [spec:hfst:def:hfst-pmatch2fst.print-usage-fn]
-    // [spec:hfst:sem:hfst-pmatch2fst.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -379,8 +378,7 @@ pub mod pmatch2fst {
         let _ = writeln!(msg);
     }
 
-    // [spec:hfst:def:hfst-pmatch2fst.parse-options-fn]
-    // [spec:hfst:sem:hfst-pmatch2fst.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).

@@ -373,6 +373,7 @@ assertions (
     {id unary-driver, kind @complete, author "brendan@necessary.nu", at 2026-08-20T12:55:41.677038Z}
     {id family-files, kind @complete, author "brendan@necessary.nu", at 2026-08-20T13:11:09.513061Z}
     {id librarify2, kind @complete, author "brendan@necessary.nu", at 2026-08-20T14:59:19.432788Z}
+    {id spec-rewrite, kind @complete, author "brendan@necessary.nu", at 2026-08-20T16:26:52.346169Z}
 )
 
 impl_evidence (

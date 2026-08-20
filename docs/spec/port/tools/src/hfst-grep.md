@@ -172,20 +172,6 @@
 > write the input (first) side of each pair whose input symbol is not epsilon;
 > finish with a newline.
 
-> [spec:hfst:def:hfst-grep.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-grep.print-usage-fn]
-> Print the help text to message_out: a usage line "Usage: <program> [OPTIONS...]
-> PATTERN [FILE...]" with a one-paragraph description noting PATTERN defaults to a
-> Xerox regular expression and an example invocation; then the common program
-> options followed by the tool's "-9, --format=TYPE" line; then the grouped option
-> sections "Regexp selection and interpretation", "Miscellaneous options",
-> "Output control", and "Context control", each listing the tool's flags with
-> descriptions (matching GNU grep's layout, including options the tool does not
-> actually implement); then the bug-report address and the pointer to external
-> documentation.
-
 > [spec:hfst:def:hfst-grep.read-matcher-fn]
 > int
 

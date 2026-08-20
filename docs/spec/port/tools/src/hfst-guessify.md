@@ -51,26 +51,6 @@
 > parameter-checking blocks (check-params-common, check-params-unary) and
 > returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-guessify.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-guessify.print-usage-fn]
-> Prints the help text to message_out. Emits the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by the one-line
-> description "Compile a morphological analyzer into a guesser and generator.".
-> Then prints the common program options and the common unary program options.
-> Then prints the "Guesser options:" block describing -p/--default-penalty
-> (penalty for skipping one symbol of input, 1.0 by default) and
-> -G/--do-not-compile-generator (do not compile a model form generator). Then
-> prints an explanation that all analyses in the morphological analyzer should
-> have the form "w o r d f o r m POS <CATEGORY_SYMBOL_PREFIX>CLASS] X Y Z ..."
-> where CATEGORY_SYMBOL_PREFIX is "[GUESS_CATEGORY=", describing POS as the
-> part-of-speech tag, the category marker, and X/Y/Z as inflectional markers,
-> noting CLASS may be any string not containing "]". Then prints a note about
-> the -d option reducing file size by roughly half at a possible load-time
-> cost, and a note that missing or "-" OUTFILE/INFILE use standard streams.
-> Finally prints the report-bugs message and the more-info message.
-
 > [spec:hfst:def:hfst-guessify.process-stream-fn]
 > int
 

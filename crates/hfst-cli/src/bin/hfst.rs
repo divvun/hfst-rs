@@ -159,6 +159,7 @@ fn install_symlinks(args: &[String]) -> i32 {
 /// clap renders `--version` as "{name} {version}", which would prefix a bare
 /// "hfst" onto a line that already names the program, so `run_main` intercepts
 /// `--version` before clap sees it and prints this directly.
+// [spec:hfst:req:cli.version]
 static LONG_VERSION: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| format!("{}\n{}", version_line("hfst"), VERSION_COPYRIGHT_BLOCK));
 
@@ -215,6 +216,7 @@ fn main() {
     }
 }
 
+// [spec:hfst:req:cli.dispatch]
 fn run_main() {
     let argv: Vec<String> = std::env::args().collect();
 

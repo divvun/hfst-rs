@@ -647,8 +647,7 @@ fn setup(options: &Options, path: &str) -> i32 {
 // ---------------------------------------------------------------------------
 // print_usage / print_version / print_short_help
 // ---------------------------------------------------------------------------
-// [spec:hfst:def:hfst-optimized-lookup.print-usage-fn]
-// [spec:hfst:sem:hfst-optimized-lookup.print-usage-fn]
+// [spec:hfst:req:cli.help]
 fn print_usage(common: &CommonOptions) -> bool {
     let mut msg = common.message_writer();
     let _ = write!(

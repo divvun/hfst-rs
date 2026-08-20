@@ -94,18 +94,3 @@
 > The loop ends when getopt_long returns -1. Then runs the binary and common
 > parameter checks (check-params-binary, check-params-common) and returns
 > EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-compose.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-compose.print-usage-fn]
-> Prints the help text to message_out: a "Usage: <program_name> [OPTIONS...]
-> [INFILE1 [INFILE2]]" line with the description "Compose two transducers", then
-> the common program options, the common binary program options, the composition
-> options block (-x/--xerox-composition=VALUE, -X/--xfst=VARIABLE) and
-> harmonization options block (-H/--do-not-harmonize, -F/--harmonize-flags),
-> followed by the common binary parameter instructions, a note that the xfst
-> variables are {flag-is-epsilon (default OFF)}, an explanation that VALUE may be
-> [true|false], [yes|no] or [ON|OFF] with false being the default, an Examples
-> section showing "<program_name> -o cat2dog.hfst cat2mouse.hfst mouse2dog.hfst
-> composes two automata", then the report-bugs and more-info footers.

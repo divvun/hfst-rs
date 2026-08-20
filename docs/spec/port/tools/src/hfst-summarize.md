@@ -49,24 +49,6 @@
 > 4. After the loop, run the common parameter checks and the unary parameter
 >    checks. Return EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-summarize.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-summarize.print-usage-fn]
-> Print the help text for hfst-summarize to message_out:
-> 1. "Usage: <program_name> [OPTIONS...] [INFILE]" followed by
->    "Calculate the properties of a transducer" and a blank line.
-> 2. The common program options (print_common_program_options).
-> 3. The common unary program options (print_common_unary_program_options).
-> 4. A "Summarize options:" heading then the -S/--print-symbol-pair-statistics=N
->    option with its two-line description ("Print info about symbol pairs that
->    occur" / "at most N times (default is infinity)"), then a blank line.
-> 5. The common unary program parameter instructions
->    (print_common_unary_program_parameter_instructions) then a blank line.
-> 6. The note "The parameter --verbose gives more extensive information on the
->    properties of a transducer." then a blank line.
-> 7. print_report_bugs(), a blank line, then print_more_info().
-
 > [spec:hfst:def:hfst-summarize.process-stream-fn]
 > int
 

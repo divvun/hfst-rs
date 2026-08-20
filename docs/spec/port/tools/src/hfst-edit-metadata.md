@@ -48,20 +48,6 @@
 > After the loop, runs the common and unary parameter checks
 > (check-params-common, check-params-unary) and returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-edit-metadata.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-edit-metadata.print-usage-fn]
-> Prints the tool usage text to message_out. Prints "Usage: PROGRAM
-> [OPTIONS...] [INFILE]" followed by "Name a transducer" and a blank line. Then
-> prints the "Name options:" section listing -a/--add=ANAME=VALUE (add or
-> replace property ANAME with VALUE), -p/--print[=NAME] (print the current
-> PNAME), and -t/--truncate_length=LEN (truncate added properties' lengths to
-> LEN). Then prints the common program options, the common unary program
-> options, a blank line, the common unary program parameter instructions, the
-> line "If PNAME is omitted, all values are printed", a blank line, the
-> report-bugs text, a blank line, and the more-info text.
-
 > [spec:hfst:def:hfst-edit-metadata.process-stream-fn]
 > int
 

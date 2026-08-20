@@ -62,22 +62,6 @@
 > After the loop, run the common and unary parameter checks
 > (check-params-common, check-params-unary) and return EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-dump-alphabets.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-dump-alphabets.print-usage-fn]
-> Print the tool's --help text to message_out. Emit the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by "Print alphabets of
-> automaton" and a blank line. Then print_common_program_options(message_out),
-> print_common_unary_program_options(message_out), the "Alphabet dump options:"
-> header and the three tool-specific option lines:
->   "  -f, --format=AFORMAT     Print alphabet in AFORAMT"
->   "  -1, --exclude-seen       Ignore alphabets seen in automaton"
->   "  -2, --exclude-metadata   Ignore alphabets from headers"
-> a blank line, then
-> print_common_unary_program_parameter_instructions(message_out), a blank line,
-> print_report_bugs(), a blank line, and print_more_info().
-
 > [spec:hfst:def:hfst-dump-alphabets.process-stream-fn]
 > int
 

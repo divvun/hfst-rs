@@ -180,6 +180,7 @@ pub fn unary_streams(
 /// The whole post-parse_options body of a standard unary tool: the
 /// reading-from/writing-to verbose line, stream opening, the optional
 /// optimized-lookup rejection, and the loop.
+// [spec:hfst:req:cli.main]
 pub fn run_unary_tool(
     common: &CommonOptions,
     spec: &UnaryOpSpec,

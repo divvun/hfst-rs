@@ -798,6 +798,7 @@ pub fn print_short_help(opts: &CommonOptions) {
 // print version message
 // [spec:hfst:def:hfst-commandline.print-version-fn]
 // [spec:hfst:sem:hfst-commandline.print-version-fn]
+// [spec:hfst:req:cli.version]
 pub fn print_version(opts: &CommonOptions) {
     let mut mw = opts.message_writer();
     let _ = writeln!(mw, "{}", version_line(&opts.program_name));
@@ -806,6 +807,7 @@ pub fn print_version(opts: &CommonOptions) {
 
 // [spec:hfst:def:hfst-commandline.extend-options-getenv-fn]
 // [spec:hfst:sem:hfst-commandline.extend-options-getenv-fn]
+// [spec:hfst:req:cli.arg-parse]
 //
 // Append the space-separated tokens of $HFST_OPTIONS to the program arguments
 // (consecutive spaces collapse, as the C strtok loop did); getopt then permutes

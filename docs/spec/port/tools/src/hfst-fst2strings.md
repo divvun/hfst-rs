@@ -129,20 +129,6 @@ negative meaning unbounded), and the destination output stream `out_`.
 > When getopt_long returns -1, break. Then run the common and unary parameter
 > checks and return EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-fst2strings.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-fst2strings.print-usage-fn]
-> Print the help text to `message_out`. Emit the usage line "Usage: <prog>
-> [OPTIONS...] [INFILE]" and the one-line description "Display the strings
-> recognized by a transducer", then the common program options, then the
-> Fst2strings options block (-n/-N/-r/-c/-w/-S/-e/-X), then the Path filters
-> block (-b/-l/-L/-p/-P/-u/-U), then the common unary parameter instructions,
-> then the notes about NSTR/NBEST/NCYC defaults and overrides plus the supported
-> xfst variables, then the Examples block (using the program name twice), then
-> the Known bugs note about optimized lookup format, then report-bugs and
-> more-info footers.
-
 > [spec:hfst:def:hfst-fst2strings.process-stream-fn]
 > int
 

@@ -83,22 +83,3 @@
 > main. In the Rust port the return type is ImplementationType directly (rather
 > than int round-tripped through a cast), since the Rust enum discriminants do
 > not match the C++ enum's numeric layout; behaviour is otherwise identical.
-
-> [spec:hfst:def:hfst-format.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-format.print-usage-fn]
-> Prints the tool's help text to message_out. First the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]\ndetermine HFST transducer
-> format\n\n". Then print_common_program_options(message_out) and
-> print_common_unary_program_options(message_out). Then a tool-specific options
-> block:
->   "Tool-specific options:\n"
->   "  -l, --list-formats     List available transducer formats\n"
->   "                         and print them to standard output\n"
-> followed by
->   "  -t, --test-format FMT  Whether the format FMT is available,\n"
->   "                         exits with 0 if it is, else with 1\n".
-> Then a blank line, print_common_unary_program_parameter_instructions(
-> message_out), a blank line, print_report_bugs(), a blank line, and finally
-> print_more_info().

@@ -70,22 +70,6 @@ A module-level variable holds the selected format, defaulting to ATT_TEXT.
 > 5. After the loop, run the common parameter checks and the unary parameter
 >    checks, then return EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-fst2txt.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-fst2txt.print-usage-fn]
-> Print, to the message-output stream:
-> 1. 'Usage: <program_name> [OPTIONS...] [INFILE]' followed by 'Print transducer
->    in AT&T, dot, prolog or pckimmo format' and a blank line.
-> 2. The common program options and the common unary program options.
-> 3. A 'Text format options:' block listing -w/--print-weights (weights printed
->    in all cases), -D/--do-not-print-weights (weights never printed), and
->    -f/--format=TFMT (output in TFMT format, default att).
-> 4. A blank line, then an explanatory paragraph: missing or '-' OUTFILE/INFILE
->    use the standard streams; unless -w or -D is given, weights are printed iff
->    the transducer is weighted; TFMT is one of {att, dot, prolog, pckimmo}.
-> 5. A blank line, the report-bugs notice, a blank line, and the more-info notice.
-
 > [spec:hfst:def:hfst-fst2txt.process-stream-fn]
 > int
 

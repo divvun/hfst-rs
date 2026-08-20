@@ -26,6 +26,9 @@ pub enum ColourTristate {
 /// `crate::inc` case handlers) and threaded into the tool's processing
 /// functions — the idiomatic replacement for the former file-scope `static mut`
 /// globals.
+// [spec:hfst:req:cli.common-options]
+// [spec:hfst:req:cli.unary-options]
+// [spec:hfst:req:cli.binary-options]
 #[derive(Clone, Debug)]
 pub struct CommonOptions {
     // common (globals-common.h)

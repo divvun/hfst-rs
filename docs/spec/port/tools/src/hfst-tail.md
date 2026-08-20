@@ -54,26 +54,6 @@
 >    the unary parameter checks (check-params-unary).
 > 7. Return EXIT_CONTINUE to signal main to proceed.
 
-> [spec:hfst:def:hfst-tail.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-tail.print-usage-fn]
-> Print the --help usage text to message_out.
-> Steps:
-> 1. Print "Usage: <program_name> [OPTIONS...] [INFILE]" followed by
->    "Get last transducers from an archive" and a blank line.
-> 2. Call print_common_program_options(message_out).
-> 3. Call print_common_unary_program_options(message_out).
-> 4. Print the "Archive options:" block describing
->    "  -n, --n-last=[+]K   Print the last K transducers;" and
->    "                      use +K to print transducers starting from the Kth".
-> 5. Print a blank line.
-> 6. Call print_common_unary_program_parameter_instructions(message_out).
-> 7. Print "K must be an integer, as parsed by strtoul base 10, and not 0." and
->    "if K is omitted, it defaults to +1 (all except the first)".
-> 8. Print a blank line, then print_report_bugs(), then a blank line, then
->    print_more_info().
-
 > [spec:hfst:def:hfst-tail.process-stream-fn]
 > int
 

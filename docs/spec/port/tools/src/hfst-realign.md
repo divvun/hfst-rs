@@ -39,19 +39,6 @@
 > common parameter checks and the unary parameter checks, then returns
 > EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-realign.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-realign.print-usage-fn]
-> Prints the tool's help text to message_out. It writes the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]\nRealign a transducer by pushing
-> labels to the start\n\n", then print_common_program_options(message_out),
-> print_common_unary_program_options(message_out), then the tool option block
-> "Options:\n  -b, --boundary=SYM   treat SYM as a boundary symbol\n", then a
-> blank line, then print_common_unary_program_parameter_instructions(message_out),
-> then "SYM must be in the alphabet\n", a blank line, print_report_bugs(), a
-> blank line, and print_more_info().
-
 > [spec:hfst:def:hfst-realign.process-stream-fn]
 > int
 

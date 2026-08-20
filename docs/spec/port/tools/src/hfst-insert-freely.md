@@ -56,19 +56,6 @@
 > handler. After the loop, run the common and unary parameter checks and
 > return EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-insert-freely.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-insert-freely.print-usage-fn]
-> Print the help text to the message output stream: a usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by the description
-> "Freely insert a symbol (pair)". Then print the common program options, the
-> common unary program options, and the tool-specific Option block listing
-> "-a, --symbol-pair=SYM   symbol pair SYM" and "-H, --harmonise   harmonise".
-> Print the common unary parameter instructions and a note that SYM must be
-> either a single alphabetic symbol or two symbols separated by a colon.
-> Finally print the report-bugs and more-info footers.
-
 > [spec:hfst:def:hfst-insert-freely.process-stream-fn]
 > int
 

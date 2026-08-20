@@ -23,33 +23,6 @@
 > process_stream(input, output), frees inputfilename and outfilename, and
 > returns the result of process_stream.
 
-> [spec:hfst:def:hfst-reverse.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-reverse.parse-options-fn]
-> Parses the command-line options for hfst-reverse. It first calls
-> extend_options_getenv(&argc, &argv) to splice in any options from the
-> environment. It then loops calling getopt_long with the combined common and
-> unary short option string (HFST_GETOPT_COMMON_SHORT HFST_GETOPT_UNARY_SHORT)
-> and a long-option table consisting of HFST_GETOPT_COMMON_LONG followed by
-> HFST_GETOPT_UNARY_LONG terminated by a {0,0,0,0} sentinel. The tool defines no
-> tool-specific options. Each returned option code is dispatched through the
-> common getopt cases, then the unary getopt cases, then the error case (an
-> unrecognized option). The loop ends when getopt_long returns -1. After the
-> loop it runs the common parameter checks then the unary parameter checks
-> (resolving input/output file handles and names), and returns EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-reverse.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-reverse.print-usage-fn]
-> Prints the usage text for hfst-reverse to message_out. It writes the header
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by the line "Reverse a
-> transducer" and a blank line. It then prints the common program options and
-> the common unary program options, a newline, the common unary program
-> parameter instructions, a newline, the report-bugs banner, a newline, and the
-> more-info banner.
-
 > [spec:hfst:def:hfst-reverse.process-stream-fn]
 > int
 

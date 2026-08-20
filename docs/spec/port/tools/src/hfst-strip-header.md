@@ -14,33 +14,6 @@
 > to stdin/stdout). Frees inputfilename and outfilename and returns the value
 > process_stream produced.
 
-> [spec:hfst:def:hfst-strip-header.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-strip-header.parse-options-fn]
-> Parses command-line options into the global tool state. Loops calling
-> getopt_long with the concatenation of the common and unary short-option strings
-> and a long-option table built from the common long options followed by the
-> unary long options followed by a terminating zero entry. The tool defines no
-> options of its own. Each returned option code is dispatched first through the
-> common case group, then the unary case group, then the error case group (an
-> unrecognised option prints usage and exits with failure); a case that requests
-> "break" continues the loop, one that requests "return" returns its code. When
-> getopt_long returns -1 the loop ends and the common and unary check-params
-> steps run (resolving input/output file handles and names, defaulting to
-> stdin/stdout). Returns EXIT_CONTINUE to signal main to proceed.
-
-> [spec:hfst:def:hfst-strip-header.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-strip-header.print-usage-fn]
-> Prints the tool's help text to message_out: a usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by the description
-> "Remove any HFST3 headers" and a blank line. Then prints the common program
-> options, the common unary program options, a blank line, the common unary
-> program parameter instructions, a blank line, the report-bugs notice, a blank
-> line and the more-info notice.
-
 > [spec:hfst:def:hfst-strip-header.process-stream-fn]
 > int
 

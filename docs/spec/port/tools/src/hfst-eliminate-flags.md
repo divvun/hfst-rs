@@ -23,39 +23,6 @@
 > process_stream(instream, outstream), frees inputfilename and outfilename, and
 > returns that result.
 
-> [spec:hfst:def:hfst-eliminate-flags.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-eliminate-flags.parse-options-fn]
-> Parses the command-line options. First calls extend_options_getenv(&argc,
-> &argv) to splice in any options from the environment. Then loops calling
-> getopt_long over a long-option table consisting of the common long options,
-> the unary long options, a tool-specific {"flag", required_argument, 0, 'F'}
-> entry, and a terminating zero entry; the short-option string is the common
-> short options concatenated with the unary short options and "F:". The loop
-> ends when getopt_long returns -1. For each returned option character it
-> dispatches in order: the common cases (which include -h/--help printing usage,
-> -V/--version, the verbosity flags, and may return an exit code or break to
-> continue), then the unary cases (-i/--input, -o/--output), then the
-> tool-specific case 'F' which sets the global 'flag' to a duplicated copy of
-> optarg, and finally the error case for any unrecognized option. After the loop
-> it runs the common parameter checks and the unary parameter checks, then
-> returns EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-eliminate-flags.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-eliminate-flags.print-usage-fn]
-> Prints the tool's help text to message_out. Emits the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by the description
-> "Eliminate flags from a transducer" and a blank line. Then prints the common
-> program options and the common unary program options. Then prints a
-> "Command-specific options:" header followed by the single tool option line
-> "  -F, --flag=FLAG        Only eliminate flag FLAG" (with a trailing blank
-> line), then another blank line, then the common unary program parameter
-> instructions, a blank line, the "report bugs" footer, a blank line, and the
-> "more info" footer.
-
 > [spec:hfst:def:hfst-eliminate-flags.process-stream-fn]
 > int
 

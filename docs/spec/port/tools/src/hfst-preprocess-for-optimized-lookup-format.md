@@ -18,32 +18,6 @@
 > process_stream(instream, outstream), frees the input and output filenames, and
 > returns its result.
 
-> [spec:hfst:def:hfst-preprocess-for-optimized-lookup-format.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-preprocess-for-optimized-lookup-format.parse-options-fn]
-> Standard unary-tool option parser. First calls extend_options_getenv to splice
-> in any options from the environment. Loops over getopt_long with the long
-> option table built from the common long options followed by the unary long
-> options (and a terminating zero entry) and the short option string formed by
-> concatenating HFST_GETOPT_COMMON_SHORT and HFST_GETOPT_UNARY_SHORT. There are
-> no tool-specific options. Each returned option code is dispatched, in order,
-> through the common option cases, then the unary option cases, then the error
-> case (which reports an unknown option and returns EXIT_FAILURE). The loop ends
-> when getopt_long returns -1. After the loop, runs the common parameter checks
-> and the unary parameter checks, then returns EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-preprocess-for-optimized-lookup-format.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-preprocess-for-optimized-lookup-format.print-usage-fn]
-> Prints the help text to message_out. Writes the usage line "Usage:
-> <program_name> [OPTIONS...] [INFILE]" followed by the description "Remove
-> epsilons from a transducer" and a blank line. Then prints the common program
-> options, the common unary program options, a blank line, the common unary
-> program parameter instructions, a blank line, the bug-report footer, a blank
-> line, and the "more info" footer.
-
 > [spec:hfst:def:hfst-preprocess-for-optimized-lookup-format.process-stream-fn]
 > int
 

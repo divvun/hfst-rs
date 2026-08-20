@@ -28,38 +28,6 @@
 > was given, else to standard output. Calls 'process_stream' on it, frees the
 > input/output filename strings, and returns EXIT_SUCCESS.
 
-> [spec:hfst:def:hfst-pmatch2fst.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-pmatch2fst.parse-options-fn]
-> Parses the command line. First calls 'extend_options_getenv' to splice in any
-> options from the environment. Then loops calling 'getopt_long' with the common
-> and unary option tables plus three tool-specific options: '-e'/'--epsilon'
-> (required argument), '--flatten' (no argument, internal val '1'), and
-> '--cosine-distances' (no argument, internal val '2'); the short-option string
-> is the common + unary short options followed by "e:". For each returned option
-> it dispatches through the common cases, then the unary cases, then its own:
-> '-e' copies the argument into 'epsilonname' (via 'hfst_strdup'), '--flatten'
-> sets the 'flatten' flag, '--cosine-distances' sets the
-> 'include_cosine_distances' flag; an unrecognised option falls to the error
-> case. After the loop it runs the common and unary parameter checks and returns
-> EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-pmatch2fst.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-pmatch2fst.print-usage-fn]
-> Prints the help text to 'message_out': a usage line "Usage: PROGRAM
-> [OPTIONS...] [INFILE]" with the heading "Compile regular expressions into
-> transducer(s) (Experimental version)"; the common and common-unary program
-> options; then the tool's "String and format options" block documenting
-> '-e/--epsilon=EPS' (map EPS as zero), '--flatten' (compile in all RTNs), and
-> '--cosine-distances' (include cosine distance info when compiling Like()
-> operations); then a note that missing/'-' OUTFILE/INFILE use the standard
-> streams, that the default 0 is used when EPS is undefined, and that weights are
-> not implemented; then an Examples section showing a Define-TOP pmatch script
-> piped into the program; and finally the bug-report and more-info footers.
-
 > [spec:hfst:def:hfst-pmatch2fst.process-stream-fn]
 > int
 

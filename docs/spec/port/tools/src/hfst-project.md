@@ -43,20 +43,6 @@
 > return EXIT_FAILURE. After the loop runs the common and unary parameter checks
 > and returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-project.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-project.print-usage-fn]
-> Prints the help/usage text to message_out. Prints "Usage: <program_name>
-> [OPTIONS...] [INFILE]" followed by "Project (extract a level) transducer" and a
-> blank line. Then prints the common program options, the common unary program
-> options, and the projection-specific options block:
-> "Projection options:\n  -p, --project=LEVEL   project extracting tape LEVEL\n"
-> followed by a blank line. Then prints the common unary program parameter
-> instructions, followed by the line "LEVEL must be one of upper, input, first,
-> analysis or lower, output, second, generation", a blank line, the report-bugs
-> message, a blank line, and the more-info message.
-
 > [spec:hfst:def:hfst-project.process-stream-fn]
 > int
 

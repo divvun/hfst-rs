@@ -64,8 +64,7 @@ pub mod expand_equivalences {
         }
     }
 
-    // [spec:hfst:def:hfst-expand-equivalences.print-usage-fn]
-    // [spec:hfst:sem:hfst-expand-equivalences.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -104,6 +103,7 @@ pub mod expand_equivalences {
 
     // [spec:hfst:def:hfst-expand-equivalences.parse-options-fn]
     // [spec:hfst:sem:hfst-expand-equivalences.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -442,8 +442,7 @@ pub mod format {
         let _ = std::io::stderr().flush();
     }
 
-    // [spec:hfst:def:hfst-format.print-usage-fn]
-    // [spec:hfst:sem:hfst-format.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f.
         // http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -471,6 +470,7 @@ pub mod format {
 
     // [spec:hfst:def:hfst-format.parse-options-fn]
     // [spec:hfst:sem:hfst-format.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // This tool does the bulk of its work here (listing formats, testing a format,
     // or opening the input stream to report its type) and returns the (updated)
@@ -731,8 +731,7 @@ pub mod fst2fst {
         options.output_type = ty;
     }
 
-    // [spec:hfst:def:hfst-fst2fst.print-usage-fn]
-    // [spec:hfst:sem:hfst-fst2fst.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let mut msg = common.message_writer();
@@ -772,6 +771,7 @@ pub mod fst2fst {
 
     // [spec:hfst:def:hfst-fst2fst.parse-options-fn]
     // [spec:hfst:sem:hfst-fst2fst.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -1160,8 +1160,7 @@ pub mod fst2txt {
         }
     }
 
-    // [spec:hfst:def:hfst-fst2txt.print-usage-fn]
-    // [spec:hfst:sem:hfst-fst2txt.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let mut msg = common.message_writer();
@@ -1186,6 +1185,7 @@ pub mod fst2txt {
 
     // [spec:hfst:def:hfst-fst2txt.parse-options-fn]
     // [spec:hfst:sem:hfst-fst2txt.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     fn parse_options(
         mut common: CommonOptions,
         args: &mut Vec<String>,

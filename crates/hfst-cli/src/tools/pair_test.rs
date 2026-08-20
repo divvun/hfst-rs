@@ -57,8 +57,7 @@ fn pair_test_reader(name: &str) -> std::io::Result<Box<dyn BufRead>> {
     }
 }
 
-// [spec:hfst:def:hfst-pair-test.print-usage-fn]
-// [spec:hfst:sem:hfst-pair-test.print-usage-fn]
+// [spec:hfst:req:cli.help]
 fn print_usage(common: &CommonOptions) {
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
     let mut msg = common.message_writer();
@@ -160,6 +159,7 @@ fn print_usage(common: &CommonOptions) {
 
 // [spec:hfst:def:hfst-pair-test.parse-options-fn]
 // [spec:hfst:sem:hfst-pair-test.parse-options-fn]
+// [spec:hfst:req:cli.arg-parse]
 fn parse_options(
     mut common: CommonOptions,
     args: &mut Vec<String>,

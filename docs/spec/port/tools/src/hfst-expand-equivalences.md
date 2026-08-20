@@ -78,19 +78,6 @@
 > case. After the loop, runs the common and unary parameter checks and
 > returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-expand-equivalences.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-expand-equivalences.print-usage-fn]
-> Prints usage to message_out: a "Usage: PROG [OPTIONS...] [INFILE]" line
-> with the summary "Extend transducer arcs for equivalence classes", the
-> common program options, then the "Eqv. class extension options" block
-> documenting -f/--from, -t/--to, -a/--acx, -T/--tsv and -l/--level. Then
-> prints the note that either ACXFILE, TSVFILE or both ISYM and OSYM must
-> be specified, the accepted LEVEL spellings, and that LEVEL defaults to
-> first. Then prints an example invocation, the bug-report footer
-> (print_report_bugs), and the more-info footer (print_more_info).
-
 > [spec:hfst:def:hfst-expand-equivalences.process-stream-fn]
 > static
 

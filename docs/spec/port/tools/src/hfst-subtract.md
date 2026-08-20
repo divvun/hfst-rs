@@ -21,37 +21,6 @@
 > subtract_streams(first, second), frees firstfilename/secondfilename/outfilename
 > and returns that result.
 
-> [spec:hfst:def:hfst-subtract.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-subtract.parse-options-fn]
-> Parses command-line options for hfst-subtract. It first calls
-> extend_options_getenv to splice in options from the environment. It then loops
-> over getopt_long using the long-option tables HFST_GETOPT_COMMON_LONG and
-> HFST_GETOPT_BINARY_LONG plus two tool-specific long options:
-> "harmonize-flags" (no argument, 'F') and "do-not-harmonize" (no argument,
-> 'H'), terminated by a null entry; and the short-option string
-> HFST_GETOPT_COMMON_SHORT + HFST_GETOPT_BINARY_SHORT + "FH". The switch chains,
-> in order, the binary getopt cases, then the common getopt cases, then 'F'
-> (sets harmonize_flags = true) and 'H' (sets harmonize = false), then the
-> terminal error case. The loop ends when getopt_long returns -1. After the
-> loop it runs the binary parameter checks (check-params-binary) and the common
-> parameter checks (check-params-common), then returns EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-subtract.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-subtract.print-usage-fn]
-> Prints the help/usage text to message_out. It writes "Usage: <program_name>
-> [OPTIONS...] [INFILE1 [INFILE2]]" followed by "Subtract (minus) two
-> transducers" and a blank line. It then calls print_common_program_options and
-> print_common_binary_program_options, prints the flag-diacritics section
-> ("Flag diacritics:" with "-F, --harmonize-flags  Harmonize flag diacritics"
-> and "-H, --do-not-harmonize Do not harmonize"), a blank line,
-> print_common_binary_program_parameter_instructions, a blank line, then an
-> Examples block ("<program_name> -o catdog.hfst cat.hfst dog.hfst  subtracts
-> transducers"), then print_report_bugs, a blank line and print_more_info.
-
 > [spec:hfst:def:hfst-subtract.subtract-streams-fn]
 > int
 

@@ -88,36 +88,3 @@
 > If is_input_stream_in_ol_format() is true for either stream (program name
 > "hfst-conjunct"), return EXIT_FAILURE. Otherwise call conjunct_streams(first,
 > second); free firstfilename, secondfilename and outfilename; return its value.
-
-> [spec:hfst:def:hfst-conjunct.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-conjunct.parse-options-fn]
-> Parses the command-line options for hfst-conjunct. First call
-> extend_options_getenv(&argc, &argv) so environment-provided options are
-> merged in. Then loop calling getopt_long over the option table built from
-> HFST_GETOPT_COMMON_LONG, HFST_GETOPT_BINARY_LONG, the tool-specific long
-> options { "harmonize-flags", no_argument, 0, 'F' } and { "do-not-harmonize",
-> no_argument, 0, 'H' }, and the terminating zero entry; the short-option string
-> is HFST_GETOPT_COMMON_SHORT HFST_GETOPT_BINARY_SHORT "FH". Break out of the
-> loop when getopt_long returns -1.
->
-> Dispatch each returned option through the binary cases, then the common cases,
-> then the tool's own: 'F' sets harmonize_flags=true; 'H' sets harmonize=false;
-> any unrecognised option falls to the error case. After the loop run the binary
-> parameter checks and the common parameter checks, then return EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-conjunct.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-conjunct.print-usage-fn]
-> Prints the tool's help text to message_out. Writes the usage line "Usage:
-> <program_name> [OPTIONS...] [INFILE1 [INFILE2]]" followed by "Conjunct
-> (intersect, AND) two transducers" and a blank line. Then calls
-> print_common_program_options and print_common_binary_program_options. Then
-> prints a "Flag diacritics:" block listing "-F, --harmonize-flags  Harmonize
-> flag diacritics" and "-H, --do-not-harmonize Do not harmonize", followed by a
-> blank line. Then calls print_common_binary_program_parameter_instructions and
-> a blank line, prints an "Examples:" block "<program_name> -o dog.hfst
-> cat_or_dog.hfst dog_or_mouse.hfst", then calls print_report_bugs, a blank
-> line, and print_more_info.

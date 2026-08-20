@@ -86,25 +86,6 @@
 > apply. If a TSV filename was given, the TSV file is opened for reading.
 > Returns EXIT_CONTINUE on success.
 
-> [spec:hfst:def:hfst-reweight.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-reweight.print-usage-fn]
-> Prints help to the message-out stream: the usage line "Usage: <prog>
-> [OPTIONS...] [INFILE]" with the summary "Reweight transducer weights
-> simply", followed by the common and common-unary program options, then the
-> tool's "Reweighting options" block documenting -a/-b/-F/-l/-u/-I/-O/-S/-e/
-> -A/-T. It then prints the common-unary parameter instructions and a long
-> explanatory paragraph: defaults for omitted AVAL/BVAL/FNAME and LVAL/UVAL
-> and ISYM/OSYM/SYM; that floats are parsed with strtod(3) and integers with
-> strtoul(3); the list of allowed FNAME cmath functions; the precedence
-> formula BVAL * FNAME(w) + AVAL; the application predicate
-> ((LVAL <= w) && (w <= UVAL)) combined with the symbol/end-state match; the
-> TSV file format (tab-separated SYM and AVAL-with-leading-'+' or BVAL, with
-> '#' comment and empty lines ignored); and the note that weights are
-> modified for all arcs and end states unless --end-states-only or --arcs-only
-> is set. Finishes with the report-bugs and more-info footers.
-
 > [spec:hfst:def:hfst-reweight.process-stream-fn]
 > int
 

@@ -20,38 +20,6 @@
 > stdout, otherwise to stdout. It calls process_stream(instream, outstream),
 > frees inputfilename and outfilename, and returns process_stream's value.
 
-> [spec:hfst:def:hfst-multiply.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-multiply.parse-options-fn]
-> Parses the command line for hfst-multiply. It first calls
-> extend_options_getenv(&argc, &argv) to splice in any options from the
-> environment. It then loops calling getopt_long with the long-option table
-> formed by the common long options, the unary long options, and one
-> tool-specific entry {"n-times", required_argument, 0, 'n'}, and the short
-> option string HFST_GETOPT_COMMON_SHORT + HFST_GETOPT_UNARY_SHORT + "n:".
-> The loop terminates when getopt_long returns -1. Each returned option code is
-> dispatched through the common getopt cases, then the unary getopt cases, then
-> the tool's own case: 'n' sets dupe_count = hfst_strtoul(optarg, 10) (base-10
-> unsigned parse of the argument); unrecognised codes fall through to the error
-> case. After the loop it runs the common parameter checks and the unary
-> parameter checks, then returns EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-multiply.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-multiply.print-usage-fn]
-> Prints the tool's help text to message_out. It writes the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by the description
-> "Use first transducer of an archive repeatedly" and a blank line. It then
-> prints the common program options and the common unary program options,
-> followed by an "Archive options:" section listing
-> "  -n, --n-last=NUMBER   Duplicate each transducer NUMBER times". It prints a
-> blank line, the common unary program parameter instructions, the note
-> "NUMBER must be a positive integer as parsed by strtoul base 10", another
-> blank line, the report-bugs block, a blank line, and finally the more-info
-> block.
-
 > [spec:hfst:def:hfst-multiply.process-stream-fn]
 > int
 

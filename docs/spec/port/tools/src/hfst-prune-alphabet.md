@@ -21,40 +21,6 @@
 > process_stream(instream, outstream), frees inputfilename and outfilename, and
 > returns its result.
 
-> [spec:hfst:def:hfst-prune-alphabet.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-prune-alphabet.parse-options-fn]
-> Parses command-line options. First calls extend_options_getenv(&argc, &argv)
-> to splice in options from the environment. Loops over getopt_long with the
-> long-option table built from HFST_GETOPT_COMMON_LONG, HFST_GETOPT_UNARY_LONG,
-> the two tool-specific entries {"force", no_argument, 0, 'f'} and
-> {"safe", no_argument, 0, 'S'}, and a NULL terminator; the short-option string
-> is HFST_GETOPT_COMMON_SHORT + HFST_GETOPT_UNARY_SHORT + "fS". Breaks the loop
-> when getopt_long returns -1. Each returned option character is dispatched
-> through, in order, the common cases (which include the --help arm that prints
-> usage), the unary cases, then the tool-specific cases: 'f' sets
-> force_pruning = true, 'S' sets force_pruning = false; an unrecognized option
-> falls through to the error case. After the loop, runs the common parameter
-> checks and the unary parameter checks (which resolve inputfilename/inputfile
-> and outfilename/outfile from any positional arguments), then returns
-> EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-prune-alphabet.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-prune-alphabet.print-usage-fn]
-> Prints help text to message_out. Writes the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by the description
-> "Prune the alphabet of a transducer" and a blank line. Then prints the common
-> program options, the common unary program options, and the alphabet pruning
-> options block:
->   -f, --force            force pruning
->   -S, --safe             prune only if no unknown or identity symbols
->                          are used in the transducer (default)
-> followed by a newline, the common unary program parameter instructions, a
-> newline, the report-bugs text, a newline, and the more-info text.
-
 > [spec:hfst:def:hfst-prune-alphabet.process-stream-fn]
 > int
 

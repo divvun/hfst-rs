@@ -87,18 +87,6 @@
 > minimises, then inverts the net and composes it on the left (assigning the
 > composed result back into the working transducer) and minimises again.
 
-> [spec:hfst:def:hfst-substitute.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-substitute.print-usage-fn]
-> Prints the help text to the message stream: a usage line "Usage: PROG
-> [OPTIONS...] [INFILE]" with the heading "Relabel transducer arcs", then the
-> common and common-unary option blocks, the relabeling options (-f, -t, -T, -F,
-> -R), the input option (-C), and the transient optimisation option (-9),
-> followed by the common unary parameter instructions, an explanation of what a
-> LABEL/TFILE/LABELFILE is, three worked examples (substituting a symbol, a pair,
-> and a pair with a transducer), the bug-report footer and the more-info footer.
-
 > [spec:hfst:def:hfst-substitute.process-stream-fn]
 > int
 

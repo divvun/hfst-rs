@@ -54,6 +54,9 @@ pub enum CaseResult {
 ///
 /// 'print_usage' is the tool's own usage printer (per-tool in C; passed in
 /// here): invoked by the '-h' case before it returns EXIT_SUCCESS.
+// [spec:hfst:req:cli.common-options]
+// [spec:hfst:req:cli.help]
+// [spec:hfst:req:cli.version]
 pub fn handle_common_case(
     opts: &mut CommonOptions,
     getopt: &Getopt,
@@ -113,6 +116,7 @@ pub fn handle_common_case(
 // ---------------------------------------------------------------------------
 
 /// The shared unary-tool input-option switch case ('-i / --input').
+// [spec:hfst:req:cli.unary-options]
 pub fn handle_unary_case(opts: &mut CommonOptions, getopt: &Getopt, c: i32) -> CaseResult {
     if c == b'i' as i32 {
         opts.input_filename = getopt.optarg();
@@ -132,6 +136,7 @@ pub fn handle_unary_case(opts: &mut CommonOptions, getopt: &Getopt, c: i32) -> C
 
 /// The shared binary-tool input-option switch cases
 /// ('-1 / --input1', '-2 / --input2', '-C / --do-not-convert').
+// [spec:hfst:req:cli.binary-options]
 pub fn handle_binary_case(opts: &mut CommonOptions, getopt: &Getopt, c: i32) -> CaseResult {
     if c == b'1' as i32 {
         opts.first_filename = getopt.optarg();
@@ -165,6 +170,7 @@ pub fn handle_binary_case(opts: &mut CommonOptions, getopt: &Getopt, c: i32) -> 
 /// and the 'default' (invalid option). This is the terminal arm — every 'c'
 /// that no earlier handler matched lands here, and each branch calls 'error'
 /// (which exits) and then returns EXIT_FAILURE.
+// [spec:hfst:req:cli.arg-parse]
 pub fn handle_error_case(opts: &CommonOptions, getopt: &Getopt, c: i32) -> i32 {
     if c == b'?' as i32 {
         hfst_commandline::print_short_help(opts);
@@ -219,6 +225,7 @@ pub fn handle_error_case(opts: &CommonOptions, getopt: &Getopt, c: i32) -> i32 {
 
 /// Post-parse default for the common output stream: if '-o' was never given,
 /// point the output at stdout and the messages at stderr.
+// [spec:hfst:req:cli.common-options]
 pub fn check_common_params(opts: &mut CommonOptions) {
     if !opts.output_named {
         opts.output_filename = "<stdout>".to_string();
@@ -234,6 +241,7 @@ pub fn check_common_params(opts: &mut CommonOptions) {
 
 /// Post-parse resolution of the unary input file from the leftover free
 /// argument ('args[optind]'). 'optind' is read from the getopt parser state.
+// [spec:hfst:req:cli.unary-options]
 pub fn check_unary_params(opts: &mut CommonOptions, getopt: &Getopt, args: &[String]) {
     let optind = getopt.optind;
     let remaining = args.len() - optind;
@@ -269,6 +277,7 @@ pub fn check_unary_params(opts: &mut CommonOptions, getopt: &Getopt, args: &[Str
 
 /// Post-parse resolution of the two binary input files from the leftover free
 /// arguments, honouring whichever of '-1'/'-2' was already supplied.
+// [spec:hfst:req:cli.binary-options]
 pub fn check_binary_params(opts: &mut CommonOptions, getopt: &Getopt, args: &[String]) {
     let optind = getopt.optind;
     let remaining = args.len() - optind;

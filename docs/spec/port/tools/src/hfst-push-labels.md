@@ -37,19 +37,6 @@
 > EXIT_FAILURE. After the loop, runs the common and unary parameter checks and
 > returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-push-labels.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-push-labels.print-usage-fn]
-> Prints the usage/help text to message_out. Emits the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by "Push labels of
-> transducer" and a blank line. Then prints the common program options, the
-> common unary program options, and a "Push options:" section documenting
-> "-p, --push=DIRECTION   push to DIRECTION". Then prints the common unary
-> program parameter instructions, the note "DIRECTION must be one of start,
-> initial, begin or end, final", the bug-reporting footer, and the more-info
-> footer.
-
 > [spec:hfst:def:hfst-push-labels.process-stream-fn]
 > int
 

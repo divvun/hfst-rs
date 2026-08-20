@@ -38,23 +38,6 @@
 > (status 0, errnum 0) "Argument 0 for count is not sensible". Return
 > EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-head.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-head.print-usage-fn]
-> Print help to message_out. Print the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by the description
-> "Get first transducers from an archive" and a blank line. Print the common
-> program options, then the common unary program options. Print the archive
-> options block:
-> "Archive options:
->   -n, --n-first=[-]K   print the first K transducers;
->                        with the leading `-', print all but last K transducers".
-> Print a blank line, then the common unary program parameter instructions,
-> then the note "K must be an integer, as parsed by strtoul base 10, and not 0.
-> If K is omitted default is 1." Print a blank line, the report-bugs notice, a
-> blank line, and the more-info notice.
-
 > [spec:hfst:def:hfst-head.process-stream-fn]
 > int
 

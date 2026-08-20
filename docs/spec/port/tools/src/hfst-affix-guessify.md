@@ -57,25 +57,6 @@
 > 4. After the loop, run the common parameter checks and the unary parameter
 >    checks, then return EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-affix-guessify.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-affix-guessify.print-usage-fn]
-> Print the tool's usage/help text to 'message_out'.
-> 1. Print "Usage: <program_name> [OPTIONS...] [INFILE]" followed by
->    "Create weighted affix guesser from automaton" and a blank line.
-> 2. Print the common program options and the common unary program options.
-> 3. Print the tool-specific "Guesser parameters:" block describing
->    '-D, --direction=DIR' (set direction of guessing) and
->    '-w, --weight=WEIGHT' (set weight difference of affix lengths), then a blank
->    line, then another blank line.
-> 4. Print the common unary program parameter instructions, then explain that DIR
->    is either "suffix" or "prefix" (defaulting to suffix when omitted) and that
->    WEIGHT is the weight of each arc not in the known suffix/prefix being
->    guessed, parsed with strtod(3), defaulting to 1.0 when omitted.
-> 5. Print a blank line, the "report bugs" footer, another blank line, and the
->    "more info" footer.
-
 > [spec:hfst:def:hfst-affix-guessify.process-stream-fn]
 > int
 

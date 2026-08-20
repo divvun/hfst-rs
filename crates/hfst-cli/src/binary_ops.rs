@@ -253,6 +253,7 @@ pub fn print_do_not_convert_error(
 /// Everything a binary tool's real_main does after parse_options: the
 /// reading/writing verbose line, opening both input streams, the OL-format
 /// rejection, and the shared <op>_streams loop.
+// [spec:hfst:req:cli.main]
 pub fn run_binary_streams_tool(
     common: &CommonOptions,
     spec: &BinaryOpSpec,

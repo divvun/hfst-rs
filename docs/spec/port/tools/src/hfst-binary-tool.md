@@ -45,32 +45,3 @@
 > secondstream, outstream)` (the C source's `concatenate_streams` call names
 > the same routine), stores its return in `retval`, frees `firstfilename`,
 > `secondfilename`, and `outfilename`, and returns `retval`.
-
-> [spec:hfst:def:hfst-binary-tool.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-binary-tool.parse-options-fn]
-> Parses the command line into the tool's global option state. Loops calling
-> `getopt_long` with the short-option string `HFST_GETOPT_COMMON_SHORT
-> HFST_GETOPT_BINARY_SHORT` and the long-option table formed by concatenating
-> `HFST_GETOPT_COMMON_LONG`, `HFST_GETOPT_BINARY_LONG`, and a terminating zero
-> entry (no tool-specific options). Breaks the loop when `getopt_long` returns
-> `-1`. Each returned option code is dispatched through the chained case groups
-> in order: the common cases (`getopt-cases-common.h`, with `print_usage` as
-> the help handler), then the binary cases (`getopt-cases-binary.h`), then the
-> error case (`getopt-cases-error.h`). After the loop, runs the common and
-> binary parameter checks (`check-params-common.h`, `check-params-binary.h`)
-> and returns `EXIT_CONTINUE`.
-
-> [spec:hfst:def:hfst-binary-tool.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-binary-tool.print-usage-fn]
-> Prints the tool usage text to `message_out`. Writes `"Usage: <program_name>
-> [OPTIONS...] [INFILE1 [INFILE2]]\nDo things with two transducers\n\n"`, then
-> `print_common_program_options(message_out)`,
-> `print_common_binary_program_options(message_out)`, a newline,
-> `print_common_binary_program_parameter_instructions(message_out)`, a newline,
-> an examples block `"\nExamples:\n  <program_name> -o catdog.hfst cat.hfst
-> dog.hfst  does things\n\n"`, then `print_report_bugs()` and
-> `print_more_info()`.

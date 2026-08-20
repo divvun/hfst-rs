@@ -107,22 +107,3 @@
 > Any unrecognised option falls through to the standard error case.
 > After the loop, run the common and unary parameter checks
 > (check-params-common, check-params-unary) and return EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-guess.print-usage-fn]
-> void print_usage()
-
-> [spec:hfst:sem:hfst-guess.print-usage-fn]
-> Print the tool's help text to message_out following the GNU --help
-> conventions. Print the usage line "Usage: <program_name> [OPTIONS...]
-> [INFILE]" and a two-line summary that the tool uses a guesser (and generator)
-> to guess analyses or inflectional paradigms of unknown words. Then print the
-> common program options and the common unary program options. Then print the
-> "Guesser options:" block documenting -f/--model-form-filename,
-> -n/--max-number-of-guesses (5 by default), -m/--max-number-of-forms (2 by
-> default), and -g/--generate-threshold (50 by default). Then print explanatory
-> paragraphs: that the guesser and generator should be constructed with
-> hfst-guessify (which packages both in the same fst-file); that if -f is used
-> but no generator was compiled with the guesser, a generator will be compiled
-> (increasing load time); and that if OUTFILE or INFILE is missing or -,
-> standard streams are used. Finally print the report-bugs notice and the
-> more-info notice.

@@ -42,25 +42,6 @@
 > (inc/check-params-common.h) and the unary parameter checks
 > (inc/check-params-unary.h), then returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-split.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-split.print-usage-fn]
-> Prints the tool's help text to message_out. It writes the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by the one-line
-> description "Extract transducers from archive with systematic file names" and
-> a blank line. It then prints the common program options
-> (print_common_program_options), followed by an "Input/Output options:" block
-> documenting -i/--input=INFILE, -p/--prefix=PRE and -e/--extension=EXT. After
-> a blank line it prints the explanatory paragraph: if INFILE is omitted or -,
-> stdin is used; if PRE is omitted, no prefix is used; if EXT is omitted, .hfst
-> is used; the extracted files are named "PRE" + N + "EXT" where N is the
-> number of the transducer in the archive; plus a worked example showing
-> "cat transducer_a transducer_b | hfst-split -p \"rule\" -e \".tr\"" producing
-> "rule1.tr" and "rule2.tr". Finally it prints the report-bugs notice
-> (print_report_bugs) and the more-info notice (print_more_info), separated by
-> blank lines.
-
 > [spec:hfst:def:hfst-split.process-stream-fn]
 > int
 

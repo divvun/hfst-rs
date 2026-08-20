@@ -110,25 +110,3 @@
 > against. strtoul follows libc semantics: it consumes the maximal leading
 > run of digits and yields 0 with the whole input as remainder when no
 > digit is present.
-
-> [spec:hfst:def:hfst-info.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-info.print-usage-fn]
-> Print the tool's --help text to message_out.
-> 1. Print "Usage: <program_name> [OPTIONS...] [INFILE]\nshow or test HFST
->    versions and features\n\n".
-> 2. Call print_common_program_options(message_out) to list the shared
->    -h/-V/-v/-q/-s/-d/-o/--colour options.
-> 3. Print the "Test features:" block listing -a/--atleast-version=MVER,
->    -e/--exact-version=EVER, -m/--max-version=UVER and
->    -f/--requirefeature=FEAT with their descriptions, followed by a blank
->    line.
-> 4. Print the explanatory paragraph: MVER/EVER/UVER must be one to three
->    full-stop separated runs of digits, and FEAT should be the name of a
->    feature supported by HFST such as SFST, foma or openfst, followed by a
->    blank line.
-> 5. Call print_report_bugs(), print a blank line, then call
->    print_more_info().
-> Note this tool takes no transducer input, so unlike the unary tools it
-> emits no input/output parameter-instruction block.

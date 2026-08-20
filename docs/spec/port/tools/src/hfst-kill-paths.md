@@ -68,20 +68,6 @@
 > parameter checks, then — if a tsv_file_name was given — opens it for reading
 > via hfst_fopen(tsv_file_name, "r") into 'tsv_file'. Returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-kill-paths.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-kill-paths.print-usage-fn]
-> Prints the help text to message_out. Emits the usage line "Usage: PROGRAM
-> [OPTIONS...] [INFILE]" followed by "Kill all paths with specific symbols" and a
-> blank line. Then prints the common program options, the common unary program
-> options, and the tool-specific "Reweighting options:" block documenting
-> -S/--symbol=SYM ("remove arcs with input or output symbol SYM or both") and
-> -T/--tsv-file=TFILE ("read kill rules from TFILE"). Prints a blank line, the
-> common unary program parameter instructions, the note that TFILE should contain
-> tab-separated lines (comment lines starting with # and empty lines are ignored),
-> another blank line, the report-bugs blurb, a blank line, and the more-info blurb.
-
 > [spec:hfst:def:hfst-kill-paths.process-stream-fn]
 > int
 

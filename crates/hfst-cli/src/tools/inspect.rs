@@ -70,8 +70,7 @@ pub mod dump_alphabets {
         false
     }
 
-    // [spec:hfst:def:hfst-dump-alphabets.print-usage-fn]
-    // [spec:hfst:sem:hfst-dump-alphabets.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let mut msg = common.message_writer();
@@ -101,6 +100,7 @@ pub mod dump_alphabets {
 
     // [spec:hfst:def:hfst-dump-alphabets.parse-options-fn]
     // [spec:hfst:sem:hfst-dump-alphabets.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -391,8 +391,7 @@ pub mod edit_metadata {
         }
     }
 
-    // [spec:hfst:def:hfst-edit-metadata.print-usage-fn]
-    // [spec:hfst:sem:hfst-edit-metadata.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         // Usage line
@@ -419,6 +418,7 @@ pub mod edit_metadata {
 
     // [spec:hfst:def:hfst-edit-metadata.parse-options-fn]
     // [spec:hfst:sem:hfst-edit-metadata.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -708,8 +708,7 @@ pub mod head {
         }
     }
 
-    // [spec:hfst:def:hfst-head.print-usage-fn]
-    // [spec:hfst:sem:hfst-head.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         // Usage line
@@ -736,6 +735,7 @@ pub mod head {
 
     // [spec:hfst:def:hfst-head.parse-options-fn]
     // [spec:hfst:sem:hfst-head.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -1136,8 +1136,7 @@ pub mod info {
         -1
     }
 
-    // [spec:hfst:def:hfst-info.print-usage-fn]
-    // [spec:hfst:sem:hfst-info.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let mut msg = common.message_writer();
@@ -1160,6 +1159,7 @@ pub mod info {
 
     // [spec:hfst:def:hfst-info.parse-options-fn]
     // [spec:hfst:sem:hfst-info.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -1397,8 +1397,7 @@ pub mod name {
         truncate_length: u64,
     }
 
-    // [spec:hfst:def:hfst-name.print-usage-fn]
-    // [spec:hfst:sem:hfst-name.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         // Usage line
@@ -1421,6 +1420,7 @@ pub mod name {
 
     // [spec:hfst:def:hfst-name.parse-options-fn]
     // [spec:hfst:sem:hfst-name.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -1660,8 +1660,7 @@ pub mod split {
         }
     }
 
-    // [spec:hfst:def:hfst-split.print-usage-fn]
-    // [spec:hfst:sem:hfst-split.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let mut msg = common.message_writer();
@@ -1685,6 +1684,7 @@ pub mod split {
 
     // [spec:hfst:def:hfst-split.parse-options-fn]
     // [spec:hfst:sem:hfst-split.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -1881,8 +1881,7 @@ pub mod strip_header {
     use hfst::hfst_input_stream::strip_hfst3_headers;
     use std::io::Write;
 
-    // [spec:hfst:def:hfst-strip-header.print-usage-fn]
-    // [spec:hfst:sem:hfst-strip-header.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let mut msg = common.message_writer();
@@ -1898,8 +1897,7 @@ pub mod strip_header {
         let _ = writeln!(msg);
     }
 
-    // [spec:hfst:def:hfst-strip-header.parse-options-fn]
-    // [spec:hfst:sem:hfst-strip-header.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared options; `Err(code)` is an exit code the caller
     // should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -2030,8 +2028,7 @@ pub mod tail {
         }
     }
 
-    // [spec:hfst:def:hfst-tail.print-usage-fn]
-    // [spec:hfst:sem:hfst-tail.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let mut msg = common.message_writer();
@@ -2057,6 +2054,7 @@ pub mod tail {
 
     // [spec:hfst:def:hfst-tail.parse-options-fn]
     // [spec:hfst:sem:hfst-tail.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     fn parse_options(
         mut common: CommonOptions,
         args: &mut Vec<String>,
@@ -2297,8 +2295,7 @@ pub mod traverse {
     // [spec:hfst:sem:hfst-traverse.arclabel-completion-fn]
     // (readline-only: not compiled — see note above)
 
-    // [spec:hfst:def:hfst-traverse.print-usage-fn]
-    // [spec:hfst:sem:hfst-traverse.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         // Usage line
@@ -2317,8 +2314,7 @@ pub mod traverse {
         let _ = writeln!(msg);
     }
 
-    // [spec:hfst:def:hfst-traverse.parse-options-fn]
-    // [spec:hfst:sem:hfst-traverse.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     fn parse_options(
         mut common: CommonOptions,
         args: &mut Vec<String>,

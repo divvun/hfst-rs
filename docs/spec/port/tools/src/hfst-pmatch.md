@@ -81,20 +81,6 @@
 > EXIT_FAILURE with "No input file given" when inputfilename is null, otherwise
 > EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-pmatch.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-pmatch.print-usage-fn]
-> Print the GNU-style help to message_out: a "Usage: PROGRAM [OPTIONS...]
-> TRANSDUCER" line with the "perform matching/lookup on text streams" description,
-> then the common program options, the common unary program options, the
-> "Pmatch options:" block listing -n/--newline, -x/--extract-patterns,
-> -l/--locate, -w/--print-weights, -c/--count-patterns, --delete-patterns,
-> --no-mark-patterns, --max-context, --max-recursion, --weight-cutoff=W,
-> -t/--time-cutoff=S and -p/--profile, then "Use standard streams for input and
-> output.", a blank line, the report-bugs block, a blank line, the more-info
-> block, and a blank line.
-
 > [spec:hfst:def:hfst-pmatch.process-input-fn]
 > int
 

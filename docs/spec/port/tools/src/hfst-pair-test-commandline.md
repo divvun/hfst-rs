@@ -28,13 +28,6 @@
 > TODO(sem): what this does, step by step — precisely enough to
 > re-implement from this rule alone, without reading the source.
 
-> [spec:hfst:def:hfst-pair-test-commandline.parse-options-fn]
-> void parse_options(int argc, char * argv[])
-
-> [spec:hfst:sem:hfst-pair-test-commandline.parse-options-fn]
-> TODO(sem): what this does, step by step — precisely enough to
-> re-implement from this rule alone, without reading the source.
-
 > [spec:hfst:def:hfst-pair-test-commandline.read-rule-names-fn]
 > void read_rule_names(size_t number_of_rules)
 

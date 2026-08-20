@@ -93,16 +93,3 @@
 >
 > Note: the usage text advertises -F/--harmonize-flags, but this option is not
 > wired into getopt here; the harmonize_flags static stays false.
-
-> [spec:hfst:def:hfst-disjunct.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-disjunct.print-usage-fn]
-> Prints the tool's help text to message_out. In order: a "Usage: <program_name>
-> [OPTIONS...] [INFILE1 [INFILE2]]" line followed by "Disjunct (union, OR) two
-> transducers" and a blank line; the common program options; the common binary
-> program options; a blank line; the common binary program parameter
-> instructions; a "Harmonization:" block listing "-H, --do-not-harmonize Do not
-> harmonize symbols." and "-F, --harmonize-flags  Harmonize flag diacritics.";
-> a blank line; an "Examples:" block with "<program_name> -o cat_or_dog.hfst
-> cat.hfst dog.hfst"; the report-bugs notice; a blank line; the more-info notice.

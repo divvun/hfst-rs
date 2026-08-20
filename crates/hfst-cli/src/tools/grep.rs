@@ -125,8 +125,7 @@ struct MatcherState {
     linen: u64,
 }
 
-// [spec:hfst:def:hfst-grep.print-usage-fn]
-// [spec:hfst:sem:hfst-grep.print-usage-fn]
+// [spec:hfst:req:cli.help]
 fn print_usage(common: &CommonOptions) {
     // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
     // Usage line
@@ -222,6 +221,7 @@ fn print_usage(common: &CommonOptions) {
 
 // [spec:hfst:def:hfst-grep.parse-options-fn]
 // [spec:hfst:sem:hfst-grep.parse-options-fn]
+// [spec:hfst:req:cli.arg-parse]
 //
 // Parse argv into the shared + tool options; `Err(code)` is an exit code the
 // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).

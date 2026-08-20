@@ -297,15 +297,6 @@
 > [spec:hfst:sem:hfst-optimized-lookup.print-short-help-fn]
 > Call print_usage and return true.
 
-> [spec:hfst:def:hfst-optimized-lookup.print-usage-fn]
-> bool
-
-> [spec:hfst:sem:hfst-optimized-lookup.print-usage-fn]
-> Print the multi-line usage/help text (program name, the left-to-right lookup
-> note, every option with its description, the constraints on N/B/S, the
-> pipe-mode STREAM explanation, and the bug-report address) to standard output.
-> Return true.
-
 > [spec:hfst:def:hfst-optimized-lookup.print-version-fn]
 > bool
 

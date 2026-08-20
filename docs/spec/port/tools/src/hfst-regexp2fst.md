@@ -51,28 +51,6 @@
 > verbose notice and defaults output_format to TROPICAL_OPENFST_TYPE. It
 > returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-regexp2fst.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-regexp2fst.print-usage-fn]
-> Prints the tool's help text to message_out. It writes the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" and the summary "Compile
-> (weighted) regular expressions into transducer(s)", then the common program
-> options and common unary program options. It then prints the tool-specific
-> "String and format options" block (-f/--format, -j/--disjunct, -l/--line,
-> -S/--semicolon, -e/--epsilon, -x/--xerox-composition, -X/--xfst) and the
-> "Harmonization and optimization options" block (-H/--do-not-harmonize,
-> -F/--harmonize-flags, -E/--encode-weights, -M/--do-not-minimize). It then
-> prints the notes paragraph: standard streams are used when OUTFILE/INFILE is
-> missing or '-'; FMT must be one of {foma, sfst, openfst-tropical,
-> openfst-log}; the default 0 representation is used when EPS is undefined;
-> recognized VALUEs are {true,ON,yes} and {false,OFF,no}; xfst variables are
-> {flag-is-epsilon (default OFF)}. It then prints an Examples block showing
-> four echo-piped invocations of the program (transducer {cat}:{dog}, the same
-> with weight 3, weight 3 in the middle, and semicolon-separated "cat"/"dog"/"3"
-> with -S). Finally it calls print_report_bugs and print_more_info, each
-> followed by a newline.
-
 > [spec:hfst:def:hfst-regexp2fst.process-stream-fn]
 > int
 

@@ -40,8 +40,7 @@ pub mod binary_tool {
     /// The skeleton tool has none.
     struct Options;
 
-    // [spec:hfst:def:hfst-binary-tool.print-usage-fn]
-    // [spec:hfst:sem:hfst-binary-tool.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -62,8 +61,7 @@ pub mod binary_tool {
         );
     }
 
-    // [spec:hfst:def:hfst-binary-tool.parse-options-fn]
-    // [spec:hfst:sem:hfst-binary-tool.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -325,8 +323,7 @@ pub mod check_alpha {
 
     use std::io::Write;
 
-    // [spec:hfst:def:hfst-check-alpha.print-usage-fn]
-    // [spec:hfst:sem:hfst-check-alpha.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
         let mut msg = common.message_writer();
@@ -357,8 +354,7 @@ pub mod check_alpha {
         }
     }
 
-    // [spec:hfst:def:hfst-check-alpha.parse-options-fn]
-    // [spec:hfst:sem:hfst-check-alpha.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared options; `Err(code)` is an exit code the caller
     // should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -735,8 +731,7 @@ pub mod compare {
         }
     }
 
-    // [spec:hfst:def:hfst-compare.print-usage-fn]
-    // [spec:hfst:sem:hfst-compare.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -761,8 +756,7 @@ pub mod compare {
         );
     }
 
-    // [spec:hfst:def:hfst-compare.parse-options-fn]
-    // [spec:hfst:sem:hfst-compare.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -1115,8 +1109,7 @@ pub mod compose {
         }
     }
 
-    // [spec:hfst:def:hfst-compose.print-usage-fn]
-    // [spec:hfst:sem:hfst-compose.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -1161,6 +1154,7 @@ pub mod compose {
 
     // [spec:hfst:def:hfst-compose.parse-options-fn]
     // [spec:hfst:sem:hfst-compose.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -1532,8 +1526,7 @@ pub mod concatenate {
         }
     }
 
-    // [spec:hfst:def:hfst-concatenate.print-usage-fn]
-    // [spec:hfst:sem:hfst-concatenate.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -1558,8 +1551,7 @@ pub mod concatenate {
         );
     }
 
-    // [spec:hfst:def:hfst-concatenate.parse-options-fn]
-    // [spec:hfst:sem:hfst-concatenate.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -1742,8 +1734,7 @@ pub mod conjunct {
         }
     }
 
-    // [spec:hfst:def:hfst-conjunct.print-usage-fn]
-    // [spec:hfst:sem:hfst-conjunct.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -1768,8 +1759,7 @@ pub mod conjunct {
         );
     }
 
-    // [spec:hfst:def:hfst-conjunct.parse-options-fn]
-    // [spec:hfst:sem:hfst-conjunct.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     fn parse_options(
         mut common: CommonOptions,
         args: &mut Vec<String>,
@@ -1966,8 +1956,7 @@ pub mod disjunct {
         }
     }
 
-    // [spec:hfst:def:hfst-disjunct.print-usage-fn]
-    // [spec:hfst:sem:hfst-disjunct.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -1994,6 +1983,7 @@ pub mod disjunct {
 
     // [spec:hfst:def:hfst-disjunct.parse-options-fn]
     // [spec:hfst:sem:hfst-disjunct.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -2142,8 +2132,7 @@ pub mod priority_disjunct {
         }
     }
 
-    // [spec:hfst:def:hfst-priority-disjunct.print-usage-fn]
-    // [spec:hfst:sem:hfst-priority-disjunct.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -2168,8 +2157,7 @@ pub mod priority_disjunct {
         );
     }
 
-    // [spec:hfst:def:hfst-priority-disjunct.parse-options-fn]
-    // [spec:hfst:sem:hfst-priority-disjunct.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -2296,8 +2284,7 @@ pub mod shuffle {
     use hfst::hfst_transducer::HfstTransducer;
     use std::io::Write;
 
-    // [spec:hfst:def:hfst-shuffle.print-usage-fn]
-    // [spec:hfst:sem:hfst-shuffle.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -2318,8 +2305,7 @@ pub mod shuffle {
         );
     }
 
-    // [spec:hfst:def:hfst-shuffle.parse-options-fn]
-    // [spec:hfst:sem:hfst-shuffle.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared options; `Err(code)` is an exit code the caller
     // should return (the former EXIT_CONTINUE sentinel is now `Ok`).
@@ -2453,8 +2439,7 @@ pub mod subtract {
         }
     }
 
-    // [spec:hfst:def:hfst-subtract.print-usage-fn]
-    // [spec:hfst:sem:hfst-subtract.print-usage-fn]
+    // [spec:hfst:req:cli.help]
     fn print_usage(common: &CommonOptions) {
         let mut msg = common.message_writer();
         // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
@@ -2479,8 +2464,7 @@ pub mod subtract {
         );
     }
 
-    // [spec:hfst:def:hfst-subtract.parse-options-fn]
-    // [spec:hfst:sem:hfst-subtract.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
     //
     // Parse argv into the shared + tool options; `Err(code)` is an exit code the
     // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).

@@ -43,19 +43,6 @@
 > parameter checks, then returns EXIT_CONTINUE to signal that processing should
 > proceed.
 
-> [spec:hfst:def:hfst-push-weights.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-push-weights.print-usage-fn]
-> Prints the tool's help text to message_out. First a usage line "Usage:
-> <program_name> [OPTIONS...] [INFILE]" followed by "Push weights of transducer"
-> and a blank line. Then the common program options, the common unary program
-> options, and a "Push options:" section listing "-p, --push=DIRECTION   push to
-> DIRECTION". Then a blank line, the common unary program parameter instructions,
-> and the line "DIRECTION must be one of start, initial, begin or end, final".
-> Then a blank line, the report-bugs notice, a blank line, and the more-info
-> notice.
-
 > [spec:hfst:def:hfst-push-weights.process-stream-fn]
 > int
 

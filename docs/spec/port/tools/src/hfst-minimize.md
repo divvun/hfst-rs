@@ -29,40 +29,6 @@
 > the global encode-weights flag to the saved 'enc'. Finally it frees
 > inputfilename and outfilename and returns the saved return value.
 
-> [spec:hfst:def:hfst-minimize.parse-options-fn]
-> int
-
-> [spec:hfst:sem:hfst-minimize.parse-options-fn]
-> Parses the command-line options. It first calls extend_options_getenv(&argc,
-> &argv) to splice in options from the environment. It then loops calling
-> getopt_long with the long-option table built from HFST_GETOPT_COMMON_LONG,
-> HFST_GETOPT_UNARY_LONG, the tool-specific entry { "encode-weights",
-> no_argument, 0, 'E' }, and the terminating zero entry; the short-option string
-> is HFST_GETOPT_COMMON_SHORT HFST_GETOPT_UNARY_SHORT "E". The loop ends when
-> getopt_long returns -1. Each returned option code is dispatched through the
-> standard included case groups in order: the common cases (getopt-cases-common,
-> e.g. help/version/verbose/quiet/output/input handling, which may print usage
-> and return), the error case (getopt-cases-error), and the unary cases
-> (getopt-cases-unary). The tool adds one case: 'E' sets the module-static
-> encode_weights flag to true. After the loop it runs the common parameter
-> checks (check-params-common) and the unary parameter checks
-> (check-params-unary), then returns EXIT_CONTINUE.
-
-> [spec:hfst:def:hfst-minimize.print-usage-fn]
-> void
-
-> [spec:hfst:sem:hfst-minimize.print-usage-fn]
-> Prints the tool's help text to message_out. It writes the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by "Minimize a
-> transducer" and a blank line. It then calls print_common_program_options and
-> print_common_unary_program_options. It prints "Command-specific options:" and
-> the tool-specific option description:
-> "  -E, --encode-weights         Encode weights when minimizing" followed by a
-> second line indented to "(default is false)." (31 leading spaces) and a blank
-> line. It then calls print_common_unary_program_parameter_instructions, prints
-> a newline, calls print_report_bugs, prints a newline, and calls
-> print_more_info.
-
 > [spec:hfst:def:hfst-minimize.process-stream-fn]
 > int
 

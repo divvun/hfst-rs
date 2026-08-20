@@ -50,22 +50,6 @@
 > to_infinity it errors (EXIT_FAILURE) with "Cannot repeat from infinity to
 > <at_most> times". On success it returns EXIT_CONTINUE.
 
-> [spec:hfst:def:hfst-repeat.print-usage-fn]
-> void print_usage()
-
-> [spec:hfst:sem:hfst-repeat.print-usage-fn]
-> Prints the tool's help text to message_out. It writes the usage line
-> "Usage: <program_name> [OPTIONS...] [INFILE]" followed by "Repeat
-> transducer" and a blank line. It then prints the common program options and
-> the common unary program options, then the repetition options block:
-> "Repetition options:" with "  -f, --from=FNUM   repeat at least FNUM times"
-> and "  -t, --to=TNUM     repeat at most TNUM times". After a blank line it
-> prints the common unary program parameter instructions, then the note that
-> FNUM and TNUM must be positive integers or infinities as parsed by strtod(3),
-> that FNUM defaults to 0 and TNUM defaults to Inf when omitted, and that FNUM
-> must be less than TNUM. Finally, after a blank line, it prints the report-bugs
-> footer, a blank line, and the more-info footer.
-
 > [spec:hfst:def:hfst-repeat.process-stream-fn]
 > int process_stream(HfstInputStream& instream, HfstOutputStream& outstream)
 
