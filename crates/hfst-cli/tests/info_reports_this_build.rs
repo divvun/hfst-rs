@@ -2,8 +2,10 @@
 //! copied from a C++ 3.17.1 config.h and its `-f` tests were polarity-inverted,
 //! so it claimed a version this project does not have, advertised SFST (out of
 //! scope, deleted) and rejected `-f foma` / `-f openfst` — the two backends it
-//! actually ships. These lock the exit codes and the absence of the false
-//! upstream claim.
+//! actually ships. These lock the exit codes, the identity/compatibility split
+//! (the listing reports Divvun HFST plus an explicit upstream-compat line, and
+//! never claims to BE upstream HFST), and the version gates that the Giella
+//! configure scripts depend on.
 
 use std::process::Command;
 
@@ -71,31 +73,58 @@ fn unknown_feature_fails() {
 }
 
 #[test]
-fn listing_claims_no_upstream_version() {
+fn listing_reports_identity_and_upstream_compat() {
     let listing = listing();
-    for lie in ["3.17", "300170001"] {
-        assert!(
-            !listing.contains(lie),
-            "the listing still claims upstream HFST {lie}:\n{listing}"
-        );
-    }
     assert!(
         listing.contains(env!("CARGO_PKG_VERSION")),
         "the listing must report this crate's version:\n{listing}"
     );
+    assert!(
+        !listing.contains("HFST version: 3.17"),
+        "the listing must not claim to BE upstream HFST:\n{listing}"
+    );
+    assert!(
+        listing.contains("Compatible with upstream HFST: 3.17.1"),
+        "the listing must state the upstream compat version:\n{listing}"
+    );
+}
+
+/// The Giella ecosystem's configure gate: every language repo requires
+/// `hfst-info --atleast-version=3.16.0`. This build provides the 3.17.1 tool
+/// interface, so these must pass or no Giella repo configures against it.
+#[test]
+fn version_gate_accepts_the_compatible_upstream_version() {
+    for (opt, ver) in [
+        ("-a", "3.16.0"),
+        ("-a", "3.17"),
+        ("-a", "3.17.1"),
+        ("-e", "3.17.1"),
+        ("-m", "3.17.1"),
+        ("-m", "4"),
+    ] {
+        let (code, _, stderr) = info(&[opt, ver]);
+        assert_eq!(
+            code, 0,
+            "{opt} {ver} must pass via the upstream compat version. stderr: {stderr}"
+        );
+    }
 }
 
 #[test]
-fn version_gate_refuses_an_upstream_version() {
-    for (opt, ver) in [("-a", "3.17"), ("-a", "3.17.0"), ("-e", "3.17.1")] {
+fn version_gate_refuses_beyond_the_compatible_version() {
+    for (opt, ver) in [("-a", "3.17.2"), ("-a", "3.18"), ("-e", "3.16.0")] {
         let (code, _, stderr) = info(&[opt, ver]);
         assert_eq!(
             code, 1,
-            "{opt} {ver} must fail: this build is not upstream HFST {ver}"
+            "{opt} {ver} must fail: neither this build nor its compat version is {ver}"
         );
         assert!(
             stderr.contains("Version requirements not met"),
             "got: {stderr}"
+        );
+        assert!(
+            stderr.contains("interface-compatible with upstream HFST 3.17.1"),
+            "the refusal must name the compat version so the no is actionable, got: {stderr}"
         );
     }
 }
@@ -110,7 +139,8 @@ fn version_gate_accepts_this_version() {
 }
 
 /// Upstream's `--max-version` used the `--atleast-version` comparison, so it
-/// accepted only the builds it was supposed to reject.
+/// accepted only the builds it was supposed to reject. Neither the fork
+/// version nor the compat version is ≤ 0.0.1, so this still rejects.
 #[test]
 fn max_version_rejects_a_newer_build() {
     let (code, _, _) = info(&["-m", "0.0.1"]);

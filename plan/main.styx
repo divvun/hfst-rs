@@ -6495,4 +6495,33 @@ children (
             }
         )
     }
+
+    {
+        id hfst-info-compat-version
+        title "hfst-info: answer configure version gates via an upstream-compat version (3.17.1) alongside the fork's own"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-08-20T10:47:50.700985Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Surfaced by the 2026-08-20 divvunspell accuracy differential (sme/sma/gle dual-toolchain builds): ba64dcb made -a/-e/-m compare against the crate version (0.1.0), so every Giella configure gate (hfst-info --atleast-version=3.16.0) now fails and lang repos cannot configure against the Rust dist without an HFST_INFO shim. The build previously answered yes (lang-sma configure-run.log). Fix: dual-accept — a version requirement passes if either the fork's own version or the upstream-interface-compat version 3.17.1 (the C++ oracle this port is validated equivalent against) satisfies it. Identity reporting (-V, listing) stays Divvun HFST; the listing gains an explicit upstream-compat line. Keeps ba64dcb's polarity fixes and single FEATURES table untouched."
+            }
+
+            {
+                at 2026-08-20T10:47:53.204754Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-08-20T10:50:10.610793Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan complete)"
+            }
+        )
+    }
 )

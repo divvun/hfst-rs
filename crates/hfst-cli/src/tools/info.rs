@@ -9,7 +9,16 @@
 //! literals copied from a C++ 3.17.1 build — so it announced a version it is
 //! not and backends it does not have. This tool's entire job is to be believed
 //! by a configure script, so it answers from what this build actually is: the
-//! crate version, and the backend table below.
+//! crate version, the upstream interface-compatibility version, and the
+//! backend table below.
+//!
+//! Version tests speak two namespaces. Existing build systems (every Giella
+//! language repo) gate on upstream HFST versions (`--atleast-version=3.16.0`),
+//! which this build satisfies through [`HFST_COMPAT_VERSION`] — the upstream
+//! release whose tool interface it provides. The fork's own version answers
+//! too, so `-a` keeps working against Divvun HFST versions once those are what
+//! scripts ask about. A requirement is met if either version meets it;
+//! identity reporting (`-V`, the listing) never claims to BE upstream HFST.
 //!
 //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
 //! shared `-v/-q/-o/…` fields) and a tool-local [`Options`] — both built by
@@ -53,6 +62,14 @@ const fn version_component(s: &str) -> i64 {
 const HFST_LONGVERSION: i64 = version_component(env!("CARGO_PKG_VERSION_MAJOR")) * 10000 * 10000
     + version_component(env!("CARGO_PKG_VERSION_MINOR")) * 10000
     + version_component(env!("CARGO_PKG_VERSION_PATCH"));
+
+/// The upstream HFST release whose command-line interface this build provides:
+/// the C++ oracle the port is validated against (Giella lang builds produce
+/// equivalent artifacts). Configure scripts across the Giella ecosystem gate on
+/// `--atleast-version=3.16.0` in this namespace; without a compat answer no
+/// language repo can configure against this toolchain.
+const HFST_COMPAT_VERSION: &str = "3.17.1";
+const HFST_COMPAT_LONGVERSION: i64 = 3 * 10000 * 10000 + 17 * 10000 + 1;
 
 /// One backend, as `-f` tests it and as the listing reports it.
 struct Feature {
@@ -192,7 +209,7 @@ fn print_usage(common: &CommonOptions) {
     let _ = writeln!(msg);
     let _ = write!(
         msg,
-        "MVER, EVER or UVER version vectors must be composed of one to three full stop separated runs of digits,\nand are compared against this build's own version, not against upstream HFST's.\nFEAT should be name of feature supported by HFST, such as openfst, foma or icu\n\n"
+        "MVER, EVER or UVER version vectors must be composed of one to three full stop separated runs of digits.\nA requirement is met if either this build's own version or the upstream HFST version\nit is interface-compatible with ({HFST_COMPAT_VERSION}) meets it.\nFEAT should be name of feature supported by HFST, such as openfst, foma or icu\n\n"
     );
 }
 
@@ -280,44 +297,12 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(v) => v,
         Err(code) => return code,
     };
-    if options.min_version != -1 {
-        verbose_print(
-            &common,
-            &format!(
-                "Requiring current version {} to be at least {}\n",
-                HFST_LONGVERSION, options.min_version
-            ),
-        );
-        if HFST_LONGVERSION < options.min_version {
-            version_requirements_not_met(&common);
-        }
-    }
-    if options.exact_version != -1 {
-        verbose_print(
-            &common,
-            &format!(
-                "Requiring current version {} to be exactly {}\n",
-                HFST_LONGVERSION, options.exact_version
-            ),
-        );
-        if HFST_LONGVERSION != options.exact_version {
-            version_requirements_not_met(&common);
-        }
-    }
-    if options.max_version != -1 {
-        verbose_print(
-            &common,
-            &format!(
-                "Requiring current version {} to be at most {}\n",
-                HFST_LONGVERSION, options.max_version
-            ),
-        );
-        // Upstream tested `<` here, the same comparison as --atleast-version,
-        // so --max-version rejected exactly the builds it was meant to accept.
-        if HFST_LONGVERSION > options.max_version {
-            version_requirements_not_met(&common);
-        }
-    }
+    version_gate(&common, options.min_version, "at least", |v, req| v < req);
+    version_gate(&common, options.exact_version, "exactly", |v, req| v != req);
+    // Upstream tested `<` for --max-version, the same comparison as
+    // --atleast-version, so it rejected exactly the builds it was meant to
+    // accept.
+    version_gate(&common, options.max_version, "at most", |v, req| v > req);
     if let Some(features) = options.required_features.as_ref() {
         for f in features.iter() {
             match FEATURES
@@ -353,12 +338,14 @@ pub fn run(mut args: Vec<String>) -> i32 {
     verbose_print(
         &common,
         &format!(
-            "{}\nHFST packaging: {} {}\nHFST version: {}\nHFST long version: {}\n",
+            "{}\nHFST packaging: {} {}\nHFST version: {}\nHFST long version: {}\nCompatible with upstream HFST: {} (long version {})\n",
             version_line(&common.program_name),
             PACKAGE_NAME,
             PACKAGE_VERSION,
             PACKAGE_VERSION,
-            HFST_LONGVERSION
+            HFST_LONGVERSION,
+            HFST_COMPAT_VERSION,
+            HFST_COMPAT_LONGVERSION
         ),
     );
     for feature in FEATURES {
@@ -379,9 +366,34 @@ pub fn run(mut args: Vec<String>) -> i32 {
     EXIT_SUCCESS
 }
 
-// A build script asking "is this HFST at least 3.17" has no truthful yes to
-// receive, so it gets a no that says what this actually is instead of a bare
-// refusal it would have to guess at.
+/// One `-a/-e/-m` test: `requirement` is -1 when the option was not given, and
+/// `fails` is the failing comparison for one version against it. The gate
+/// passes if either the fork's own version or the upstream interface-compat
+/// version satisfies it — the two namespaces scripts ask in, and a requirement
+/// met in either one is genuinely met.
+fn version_gate(
+    common: &CommonOptions,
+    requirement: i64,
+    relation: &str,
+    fails: impl Fn(i64, i64) -> bool,
+) {
+    if requirement == -1 {
+        return;
+    }
+    verbose_print(
+        common,
+        &format!(
+            "Requiring current version {} (upstream-compatible {}) to be {} {}\n",
+            HFST_LONGVERSION, HFST_COMPAT_LONGVERSION, relation, requirement
+        ),
+    );
+    if fails(HFST_LONGVERSION, requirement) && fails(HFST_COMPAT_LONGVERSION, requirement) {
+        version_requirements_not_met(common);
+    }
+}
+
+// The refusal names both identities so a build script's log says what was
+// actually asked of what, instead of a bare no it would have to guess at.
 fn version_requirements_not_met(common: &CommonOptions) {
     error(
         common,
@@ -389,8 +401,12 @@ fn version_requirements_not_met(common: &CommonOptions) {
         0,
         &format!(
             "Version requirements not met: this is {} {} (long version {}), \
-             an independent fork that does not carry an upstream HFST version",
-            PACKAGE_NAME, PACKAGE_VERSION, HFST_LONGVERSION
+             interface-compatible with upstream HFST {} (long version {})",
+            PACKAGE_NAME,
+            PACKAGE_VERSION,
+            HFST_LONGVERSION,
+            HFST_COMPAT_VERSION,
+            HFST_COMPAT_LONGVERSION
         ),
     );
 }
