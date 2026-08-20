@@ -26,18 +26,13 @@ use crate::inc::{
     CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
     handle_unary_case,
 };
-use hfst::hfst_data_types::{ImplementationType, StringPair, Symbol};
+use hfst::hfst_data_types::{ImplementationType, StringPair};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_symbol_defs::{internal_epsilon, label_to_stringpair};
 use hfst::hfst_transducer::HfstTransducer;
-use std::collections::BTreeMap;
+use hfst::substitute_driver::{SubstituteEngine, SubstituteRequest};
 use std::io::{BufRead, BufReader, Write};
-
-// [spec:hfst:def:hfst-substitute.hfst-symbol-substitutions]
-type HfstSymbolSubstitutions = BTreeMap<Symbol, Symbol>;
-// [spec:hfst:def:hfst-substitute.hfst-symbol-pair-substitutions]
-type HfstSymbolPairSubstitutions = BTreeMap<StringPair, StringPair>;
 
 /// hfst-substitute's own options (the former tool-specific `static mut`s). The
 /// `-C, --do-not-convert` flag lives in [`CommonOptions::allow_transducer_conversion`].
@@ -51,18 +46,20 @@ struct Options {
     to_pair: Option<StringPair>,
     to_transducer_filename: Option<String>,
     compose: bool,
-    delayed: bool,
-    label_substitution_map: Option<HfstSymbolSubstitutions>,
-    pair_substitution_map: Option<HfstSymbolPairSubstitutions>,
     in_order: bool,
 }
 
-// The C statics 'to_transducer' and 'substitution_trans' carry the loop's
-// backend type parameter now ([dec:hfst:monomorphic-backends]), so they live
-// in this state struct threaded through the typed body instead of in statics.
-struct SubstState<B: hfst::backend::AlgebraBackend> {
-    to_transducer: Option<HfstTransducer<B>>,
-    substitution_trans: Option<HfstTransducer<B>>,
+// The substitution the engine is asked for, rebuilt from the options before
+// every call: a relabel file rewrites the from/to fields line by line.
+fn substitute_request(options: &Options) -> SubstituteRequest {
+    SubstituteRequest {
+        from_label: options.from_label.clone(),
+        from_pair: options.from_pair.clone(),
+        to_label: options.to_label.clone(),
+        to_pair: options.to_pair.clone(),
+        to_transducer_filename: options.to_transducer_filename.clone(),
+        compose: options.compose,
+    }
 }
 
 // Reads one line from a buffered reader the way 'hfst_getline' does: the
@@ -273,155 +270,6 @@ fn parse_options(
     Ok((common, options))
 }
 
-// Resolves the display name of the replacement transducer: its stored name, or
-// the '-T' filename when unnamed.
-fn to_transducer_name<B: hfst::backend::AlgebraBackend>(
-    options: &Options,
-    state: &SubstState<B>,
-) -> String {
-    let n = state.to_transducer.as_ref().unwrap().get_name();
-    if n.is_empty() {
-        options.to_transducer_filename.clone().unwrap()
-    } else {
-        n
-    }
-}
-
-// The 'HfstTransducer&' overload of 'do_substitute'.
-fn do_substitute<B: hfst::backend::AlgebraBackend>(
-    common: &CommonOptions,
-    options: &mut Options,
-    trans: &mut HfstTransducer<B>,
-    transducer_n: usize,
-    state: &mut SubstState<B>,
-) -> hfst::error::Result<()> {
-    let from_pair = options.from_pair.clone();
-    let to_pair = options.to_pair.clone();
-    let from_label = options.from_label.clone();
-    let to_label = options.to_label.clone();
-    let has_to_transducer = state.to_transducer.is_some();
-    if let (Some(fp), Some(tp)) = (&from_pair, &to_pair) {
-        verbose_print(
-            common,
-            &format!(
-                "Substituting pair {}:{} with pair {}:{}...\n",
-                fp.0, fp.1, tp.0, tp.1
-            ),
-        );
-        trans.substitute_symbol_pair(fp, tp)?;
-    } else if let (Some(fl), Some(tl)) = (&from_label, &to_label) {
-        if options.compose {
-            if transducer_n < 2 {
-                verbose_print(
-                    common,
-                    &format!(
-                        "Delaying substitution of label {} with label {}...\n",
-                        fl, tl
-                    ),
-                );
-            } else {
-                verbose_print(
-                    common,
-                    &format!(
-                        "Delaying substitution of label {} with label {}... {}\n",
-                        fl, tl, transducer_n
-                    ),
-                );
-            }
-            let substitution: HfstTransducer<B> = HfstTransducer::new_symbol_pair(fl, tl)?;
-            state
-                .substitution_trans
-                .as_mut()
-                .expect("substitution_trans initialized per transducer above")
-                .disjunct(&substitution, true)?;
-            options.delayed = true;
-        } else {
-            if transducer_n < 2 {
-                verbose_print(
-                    common,
-                    &format!("Substituting label {} with label {}...\n", fl, tl),
-                );
-            } else {
-                verbose_print(
-                    common,
-                    &format!(
-                        "Substituting label {} with label {}... {}\n",
-                        fl, tl, transducer_n
-                    ),
-                );
-            }
-            trans.substitute(fl, tl, true, true)?;
-        }
-    } else if let (Some(fp), true) = (&from_pair, has_to_transducer) {
-        let to_name = to_transducer_name(options, state);
-        if transducer_n < 2 {
-            verbose_print(
-                common,
-                &format!(
-                    "Substituting pair {}:{} with transducer {}...\n",
-                    fp.0, fp.1, to_name
-                ),
-            );
-        } else {
-            verbose_print(
-                common,
-                &format!(
-                    "Substituting pair {}:{} with transducer {}... {}\n",
-                    fp.0, fp.1, to_name, transducer_n
-                ),
-            );
-        }
-        let to_t = state
-            .to_transducer
-            .as_mut()
-            .expect("to_transducer present when has_to_transducer is true");
-        trans.substitute_symbol_pair_with_transducer(fp, to_t, true)?;
-    } else if let (Some(fl), true) = (&from_label, has_to_transducer) {
-        let to_name = to_transducer_name(options, state);
-        if transducer_n < 2 {
-            verbose_print(
-                common,
-                &format!(
-                    "Substituting id. label {} with transducer {}...\n",
-                    fl, to_name
-                ),
-            );
-        } else {
-            verbose_print(
-                common,
-                &format!(
-                    "Substituting id. label {} with transducer {}... {}\n",
-                    fl, to_name, transducer_n
-                ),
-            );
-        }
-        let from_arc: StringPair = (Symbol::new(fl), Symbol::new(fl));
-        let to_t = state
-            .to_transducer
-            .as_mut()
-            .expect("to_transducer present when has_to_transducer is true");
-        trans.substitute_symbol_pair_with_transducer(&from_arc, to_t, true)?;
-    }
-    Ok(())
-}
-
-// [spec:hfst:def:hfst-substitute.perform-delayed-fn]
-// [spec:hfst:sem:hfst-substitute.perform-delayed-fn]
-fn perform_delayed<B: hfst::backend::AlgebraBackend>(
-    common: &CommonOptions,
-    trans: &mut HfstTransducer<B>,
-    state: &SubstState<B>,
-) -> hfst::error::Result<()> {
-    verbose_print(common, "Finalising substitution transducer...\n");
-    trans.substitute_by_composition(
-        state
-            .substitution_trans
-            .as_ref()
-            .expect("substitution_trans initialized per transducer above"),
-    )?;
-    Ok(())
-}
-
 // [spec:hfst:def:hfst-substitute.process-stream-fn]
 // [spec:hfst:sem:hfst-substitute.process-stream-fn]
 fn process_stream(
@@ -551,9 +399,6 @@ fn process_loop<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
     outstream: &mut HfstOutputStream,
     to_any: Option<hfst::hfst_transducer::AnyTransducer>,
 ) -> i32 {
-    let mut symbol_pair_map_in_use = false;
-    let mut symbol_map_in_use = false;
-
     let mut transducer_n: usize = 0;
 
     let to_transducer: Option<HfstTransducer<B>> = match to_any {
@@ -566,10 +411,8 @@ fn process_loop<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
         },
         None => None,
     };
-    let mut state = SubstState {
-        to_transducer,
-        substitution_trans: None,
-    };
+    let mut engine: SubstituteEngine<B> = SubstituteEngine::new(to_transducer);
+    let reporter = crate::CliVerboseReporter::new(common);
 
     while instream.is_good() {
         transducer_n += 1;
@@ -603,7 +446,7 @@ fn process_loop<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             );
         }
         // initialize delayed substitutor automaton
-        state.substitution_trans = Some(HfstTransducer::new());
+        engine.begin_transducer();
         if options.from_file.is_some() {
             let from_file_name = options.from_file_name.clone().unwrap();
             let mut line_n: u32 = 0;
@@ -672,77 +515,35 @@ fn process_loop<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
                 options.from_label = Some(fl.clone());
                 options.to_label = Some(tl.clone());
 
-                if options.from_pair.is_some() && options.to_pair.is_some() {
-                    if !options.in_order {
-                        options.pair_substitution_map.as_mut().unwrap().insert(
-                            options.from_pair.clone().unwrap(),
-                            options.to_pair.clone().unwrap(),
-                        );
-                        symbol_pair_map_in_use = true;
-                    } else if let Err(e) =
-                        do_substitute(common, options, &mut trans, transducer_n, &mut state)
-                    {
-                        hfst_error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                } else if !fl.is_empty() && !tl.is_empty() {
-                    if !options.in_order {
-                        options
-                            .label_substitution_map
-                            .as_mut()
-                            .unwrap()
-                            .insert(Symbol::new(&fl), Symbol::new(&tl));
-                        symbol_map_in_use = true;
-                    } else if let Err(e) =
-                        do_substitute(common, options, &mut trans, transducer_n, &mut state)
-                    {
-                        hfst_error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                } else if let Err(e) =
-                    do_substitute(common, options, &mut trans, transducer_n, &mut state)
-                {
+                if let Err(e) = engine.apply_relabel_entry(
+                    &substitute_request(options),
+                    &mut trans,
+                    transducer_n,
+                    options.in_order,
+                    &reporter,
+                ) {
                     hfst_error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
             } // while getline
 
-            // perform label-to-label substitution right away
-            if !options.in_order && symbol_map_in_use {
-                if let Err(e) = trans.substitute_substitutions(
-                    options
-                        .label_substitution_map
-                        .as_ref()
-                        .expect("label_substitution_map initialized when from_file present"),
-                ) {
-                    hfst_error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                symbol_map_in_use = false;
-            }
-
-            // perform symbol pair-to-symbol pair substitution right away
-            if !options.in_order && symbol_pair_map_in_use {
-                if let Err(e) = trans.substitute_symbol_pairs(
-                    options
-                        .pair_substitution_map
-                        .as_ref()
-                        .expect("pair_substitution_map initialized when from_file present"),
-                ) {
-                    hfst_error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                symbol_pair_map_in_use = false;
+            if let Err(e) = engine.flush_batched(&mut trans, options.in_order) {
+                hfst_error(common, 1, 0, &format!("{e}"));
+                return 1;
             }
         }
         // if not from file
-        else if let Err(e) = do_substitute(common, options, &mut trans, transducer_n, &mut state)
-        {
+        else if let Err(e) = engine.do_substitute(
+            &substitute_request(options),
+            &mut trans,
+            transducer_n,
+            &reporter,
+        ) {
             hfst_error(common, 1, 0, &format!("{e}"));
             return 1;
         }
-        if options.delayed
-            && let Err(e) = perform_delayed(common, &mut trans, &state)
+        if engine.is_delayed()
+            && let Err(e) = engine.perform_delayed(&mut trans, &reporter)
         {
             hfst_error(common, 1, 0, &format!("{e}"));
             return 1;
@@ -786,7 +587,7 @@ fn process_loop<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
         }
     }
     // delete to_transducer
-    state.to_transducer = None;
+    engine.release_to_transducer();
     instream.close();
     outstream.close();
     0
@@ -813,10 +614,8 @@ pub fn run(mut args: Vec<String>) -> i32 {
         ),
     );
 
-    if options.from_file.is_some() {
-        options.label_substitution_map = Some(HfstSymbolSubstitutions::new());
-        options.pair_substitution_map = Some(HfstSymbolPairSubstitutions::new());
-    }
+    // (the C allocated the two batched substitution maps here; they are now
+    // fields of the library engine, allocated with it in process_loop.)
 
     // here starts the buffer handling part
     // (the C wraps the ctor in try/catch on HfstException; the Rust ctor

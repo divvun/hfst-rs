@@ -6577,12 +6577,20 @@ children (
                 id librarify2
                 title "Librarify wave 2: push residual engines out of the CLI into the hfst crate — unify lookup/flookup onto ONE lookup engine (flookup is an 80% clone: 15/16 identical fn names, 508 shared lines), move substitute's do_substitute/perform_delayed/process_loop (AlgebraBackend-generic), pair_test core, fst2strings enumeration control, guess/guessify compute. CLI keeps arg structs, stream wiring, rendering. Dedup against existing lib APIs where they already exist."
                 deps (family-files)
+                sealed true
                 log (
                     {
                         at 2026-08-20T13:19:58.08547Z
                         author "brendan@necessary.nu"
                         kind @status
                         text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-20T14:59:19.432788Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }

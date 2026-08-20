@@ -128,6 +128,25 @@ impl hfst::lookup_driver::LookupReporter for CliLookupReporter<'_> {
     }
 }
 
+/// Routes the progress lines of the library engines that only report progress
+/// — the substitution engine, the pair-test engine — through the tool's own
+/// `--verbose` writer.
+pub struct CliVerboseReporter<'a> {
+    common: &'a globals::CommonOptions,
+}
+
+impl<'a> CliVerboseReporter<'a> {
+    pub fn new(common: &'a globals::CommonOptions) -> CliVerboseReporter<'a> {
+        CliVerboseReporter { common }
+    }
+}
+
+impl hfst::substitute_driver::SubstituteReporter for CliVerboseReporter<'_> {
+    fn verbose(&self, msg: &str) {
+        hfst_commandline::verbose_print(self.common, msg);
+    }
+}
+
 pub mod globals;
 pub mod hfst_commandline;
 pub mod hfst_getopt;

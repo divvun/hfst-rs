@@ -15,22 +15,13 @@ use crate::inc::{
     handle_unary_case,
 };
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
-use hfst::hfst_basic_transition::HfstBasicTransition;
-use hfst::hfst_data_types::implementations::HfstState;
 use hfst::hfst_data_types::{StringPairVector, Symbol};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_strings2_fst_tokenizer::HfstStrings2FstTokenizer;
-use hfst::hfst_symbol_defs::{internal_epsilon, is_epsilon};
-use hfst::hfst_transducer::HfstTransducer;
-use std::collections::BTreeSet;
+use hfst::pair_test_driver::{
+    PairTestGrammar, StringVector, Verdict, add_word_boundaries, backslash_escape, unescape,
+};
 use std::io::{BufRead, Write};
-
-// [spec:hfst:def:hfst-pair-test.basic-transducer-vector]
-type BasicTransducerVector = Vec<HfstBasicTransducer>;
-// [spec:hfst:def:hfst-pair-test.string-vector]
-type StringVector = Vec<String>;
-// [spec:hfst:def:hfst-pair-test.symbol-set]
-type SymbolSet = BTreeSet<String>;
 
 /// hfst-pair-test's own options (the former tool-specific `static mut`s). The
 /// C++ PAIR_TEST_FILE FILE* is replaced by opening `pair_test_file_name` as a
@@ -248,134 +239,17 @@ fn parse_options(
     Ok((common, options))
 }
 
-// replace every occurrence of substr in str with repl, in place.
-fn replace_all_substr(substr: &str, repl: &str, str: &mut String) {
-    let mut pos = 0;
-    while let Some(found) = str[pos..].find(substr) {
-        let at = pos + found;
-        str.replace_range(at..at + substr.len(), repl);
-        pos = at + repl.len();
-    }
-}
-
-const PTPP: &str = "PAIR_TEST_PERC_PERC";
-const PTPC: &str = "PAIR_TEST_PERC_COL";
-
-// perc_escaped is a string where special symols are escaped using
-// %. Transform it into a string where specail symbols are escaped
-// using \.
-// [spec:hfst:def:hfst-pair-test.backslash-escape-fn]
-// [spec:hfst:sem:hfst-pair-test.backslash-escape-fn]
-fn backslash_escape(mut perc_escaped: String) -> String {
-    replace_all_substr("%%", PTPP, &mut perc_escaped);
-    replace_all_substr("%:", PTPC, &mut perc_escaped);
-    replace_all_substr("%", "", &mut perc_escaped);
-    replace_all_substr(PTPC, "\\:", &mut perc_escaped);
-    replace_all_substr(PTPP, "%", &mut perc_escaped);
-    perc_escaped
-}
-
-// [spec:hfst:def:hfst-pair-test.get-target-fn]
-// [spec:hfst:sem:hfst-pair-test.get-target-fn]
-fn get_target(
-    isymbol: &str,
-    osymbol: &str,
-    s: HfstState,
-    t: &HfstBasicTransducer,
-    known_symbols: &SymbolSet,
-) -> HfstState {
-    t.pair_target_state(s, isymbol, osymbol, known_symbols)
-        .unwrap_or(u32::MAX)
-}
-
-// [spec:hfst:def:hfst-pair-test.is-final-state-fn]
-// [spec:hfst:sem:hfst-pair-test.is-final-state-fn]
-fn is_final_state(s: HfstState, t: &HfstBasicTransducer) -> bool {
-    t.is_final_state(s)
-}
-
-// One-rule test (overload of test). Mirrors the C++ 5-argument test().
-fn test_rule(
-    tokenized_pair_string: &StringPairVector,
-    t: &HfstBasicTransducer,
-    positive: bool,
-    _outfile: &mut dyn std::io::Write,
-    known_symbols: &SymbolSet,
-) -> i32 {
-    let mut s: HfstState = 0;
-    for it in tokenized_pair_string.iter() {
-        s = get_target(&it.0, &it.1, s, t, known_symbols);
-        if s == u32::MAX {
-            if positive {
-                return 1;
-            } else {
-                return 0;
-            }
-        }
-    }
-
-    if is_final_state(s, t) && positive {
-        0
-    } else if positive {
-        1
-    } else if !is_final_state(s, t) {
-        0
-    } else {
-        1
-    }
-}
-
-// [spec:hfst:def:hfst-pair-test.get-transducer-fn]
-// [spec:hfst:sem:hfst-pair-test.get-transducer-fn]
-fn get_transducer(
-    common: &CommonOptions,
-    tokenized_pair_string: &StringPairVector,
-) -> HfstTransducer<hfst_openfst::StdVectorFst> {
-    let mut t = HfstBasicTransducer::new();
-    let mut s: HfstState = 0;
-    for it in tokenized_pair_string.iter() {
-        let target = t.add_state_new();
-        let tr = HfstBasicTransition::new_symbols(
-            target,
-            it.0.clone(),
-            it.1.clone(),
-            0.0,
-            t.coder_mut(),
-        );
-        t.add_transition(s, &tr, true);
-        s = target;
-    }
-    t.set_final_weight(s, &0.0);
-    match HfstTransducer::new_from_basic(&t) {
-        Ok(v) => v,
-        Err(e) => {
-            error(common, 1, 0, &format!("{e}"));
-            unreachable!()
-        }
-    }
-}
-
-// [spec:hfst:def:hfst-pair-test.unescape-fn]
-// [spec:hfst:sem:hfst-pair-test.unescape-fn]
-fn unescape(symbol: &str) -> String {
-    if is_epsilon(symbol) {
-        return "0".to_string();
-    }
-    if symbol == "@#@" {
-        return "#".to_string();
-    }
-    symbol.to_string()
-}
-
 // [spec:hfst:def:hfst-pair-test.print-recognized-prefix-fn]
 // [spec:hfst:sem:hfst-pair-test.print-recognized-prefix-fn]
+//
+// Renders one rule's failure: the pairs it recognized, the 'HERE --->' marker
+// at 'prefix_len', then the rest of the pair string.
 fn print_recognized_prefix(
     common: &CommonOptions,
     tokenized_pair_string: &StringPairVector,
-    str_transducer: &HfstBasicTransducer,
+    prefix_len: usize,
     name: &str,
     outfile: &mut dyn std::io::Write,
-    known_symbols: &SymbolSet,
 ) {
     if common.silent {
         return;
@@ -383,16 +257,9 @@ fn print_recognized_prefix(
 
     let _ = writeln!(outfile, "Rule {} fails:", name);
 
-    let mut s: HfstState = 0;
     let mut idx = 0;
-    while idx < tokenized_pair_string.len() {
+    while idx < prefix_len {
         let it = &tokenized_pair_string[idx];
-        s = get_target(&it.0, &it.1, s, str_transducer, known_symbols);
-
-        if s == u32::MAX {
-            break;
-        }
-
         if it.0 == it.1 {
             let _ = write!(outfile, "{} ", unescape(&it.0));
         } else {
@@ -420,48 +287,27 @@ fn print_recognized_prefix(
 fn print_failure_info(
     common: &CommonOptions,
     tokenized_pair_string: &StringPairVector,
-    t: &HfstBasicTransducer,
-    name: &str,
+    grammar: &PairTestGrammar,
+    index: usize,
     outfile: &mut dyn std::io::Write,
-    known_symbols: &SymbolSet,
 ) {
-    let mut str_transducer = get_transducer(common, tokenized_pair_string);
-    let tt: HfstTransducer<hfst_openfst::StdVectorFst> = match HfstTransducer::new_from_basic(t) {
-        Ok(v) => v,
+    // The prefix is computed even when the tool is silent: the C++ tool ran
+    // the composition before consulting the silent flag, and a failure in it
+    // is reported (and exits) either way.
+    let prefix_len = match grammar.recognized_prefix_length(index, tokenized_pair_string) {
+        Ok(n) => n,
         Err(e) => {
             error(common, 1, 0, &format!("{e}"));
             return;
         }
     };
-    if let Err(e) = str_transducer.input_project() {
-        error(common, 1, 0, &format!("{e}"));
-        return;
-    }
-    if let Err(e) = str_transducer.compose(&tt, true) {
-        error(common, 1, 0, &format!("{e}"));
-        return;
-    }
-    if let Err(e) = str_transducer.minimize() {
-        error(common, 1, 0, &format!("{e}"));
-        return;
-    }
-    let basic = HfstBasicTransducer::new_from_transducer(&str_transducer);
     print_recognized_prefix(
         common,
         tokenized_pair_string,
-        &basic,
-        name,
+        prefix_len,
+        grammar.name(index),
         outfile,
-        known_symbols,
     );
-}
-
-/// The compiled pair-test grammar: rule transducers, their names, and the
-/// known-symbol set — bundled so `test` takes one grammar reference.
-struct Grammar<'a> {
-    transducers: &'a BasicTransducerVector,
-    names: &'a StringVector,
-    known_symbols: &'a SymbolSet,
 }
 
 // [spec:hfst:def:hfst-pair-test.test-fn]
@@ -470,31 +316,18 @@ fn test(
     common: &CommonOptions,
     tokenized_pair_string: &StringPairVector,
     pair_string: &str,
-    grammar: &Grammar<'_>,
+    grammar: &PairTestGrammar,
     positive: bool,
     outfile: &mut dyn std::io::Write,
-) -> i32 {
-    let mut positive_exit_code: i32 = 0;
-    let mut negative_exit_code: i32 = 1;
+) -> Verdict {
+    let mut positive_exit_code: Verdict = 0;
+    let mut negative_exit_code: Verdict = 1;
 
-    for (ind, it) in grammar.transducers.iter().enumerate() {
-        let new_exit_code = test_rule(
-            tokenized_pair_string,
-            it,
-            positive,
-            &mut *outfile,
-            grammar.known_symbols,
-        );
+    for ind in 0..grammar.len() {
+        let new_exit_code = grammar.test_rule(ind, tokenized_pair_string, positive);
 
         if positive && new_exit_code == 1 {
-            print_failure_info(
-                common,
-                tokenized_pair_string,
-                it,
-                &grammar.names[ind],
-                &mut *outfile,
-                grammar.known_symbols,
-            );
+            print_failure_info(common, tokenized_pair_string, grammar, ind, &mut *outfile);
         }
 
         if positive && positive_exit_code == 0 {
@@ -525,23 +358,6 @@ fn test(
     }
 }
 
-// [spec:hfst:def:hfst-pair-test.demangle-fn]
-// [spec:hfst:sem:hfst-pair-test.demangle-fn]
-fn demangle(mut name: String) -> String {
-    let space_subst = "__HFST_TWOLC_SPACE";
-    let name_subst = "__HFST_TWOLC_RULE_NAME=";
-
-    while let Some(pos) = name.find(name_subst) {
-        name.replace_range(pos..pos + name_subst.len(), "");
-    }
-
-    while let Some(pos) = name.find(space_subst) {
-        name.replace_range(pos..pos + space_subst.len(), " ");
-    }
-
-    name
-}
-
 // [spec:hfst:def:hfst-pair-test.is-empty-or-comment-fn]
 // [spec:hfst:sem:hfst-pair-test.is-empty-or-comment-fn]
 fn is_empty_or_comment(line: &str) -> bool {
@@ -554,12 +370,6 @@ fn is_empty_or_comment(line: &str) -> bool {
         return true;
     }
     false
-}
-
-// [spec:hfst:def:hfst-pair-test.get-symbols-fn]
-// [spec:hfst:sem:hfst-pair-test.get-symbols-fn]
-fn get_symbols(t: &HfstBasicTransducer, known_symbols: &mut SymbolSet) {
-    known_symbols.extend(t.symbols_used().into_iter().map(String::from));
 }
 
 // [spec:hfst:def:hfst-pair-test.strip-space-fn]
@@ -608,8 +418,7 @@ fn process_stream(
     inputstream: &mut HfstInputStream<'_>,
     outstream: &mut dyn std::io::Write,
 ) -> i32 {
-    let mut grammar: BasicTransducerVector = Vec::new();
-    let mut rule_names: StringVector = Vec::new();
+    let mut grammar = PairTestGrammar::new();
 
     // Read transducers in rule file.
     let mut transducer_n: usize = 0;
@@ -633,17 +442,15 @@ fn process_stream(
         // one dispatch per read: the rules only feed the basic-transducer
         // grammar ([dec:hfst:monomorphic-backends]).
         let basic = crate::for_any!(&trans, t => HfstBasicTransducer::new_from_transducer(t));
-        grammar.push(basic);
-        rule_names.push(demangle(trans.get_name()));
+        grammar.push_rule(basic, trans.get_name());
     }
 
     inputstream.close();
 
-    let mut known_symbols: SymbolSet = BTreeSet::new();
     if !grammar.is_empty() {
         verbose_print(common, "Defining known symbols.\n");
-        get_symbols(&grammar[0], &mut known_symbols);
-        for it in known_symbols.iter() {
+        grammar.define_known_symbols();
+        for it in grammar.known_symbols().iter() {
             verbose_print(common, &format!("Symbol {}\n", it));
         }
     }
@@ -696,28 +503,13 @@ fn process_stream(
 
             match tok_result {
                 Ok(mut tokenized_pair_string) => {
-                    tokenized_pair_string.insert(
-                        0,
-                        (
-                            Symbol::new_static("@#@"),
-                            Symbol::new_static(internal_epsilon),
-                        ),
-                    );
-                    tokenized_pair_string.push((
-                        Symbol::new_static("@#@"),
-                        Symbol::new_static(internal_epsilon),
-                    ));
+                    add_word_boundaries(&mut tokenized_pair_string);
 
-                    let grammar_ctx = Grammar {
-                        transducers: &grammar,
-                        names: &rule_names,
-                        known_symbols: &known_symbols,
-                    };
                     let new_exit_code = test(
                         common,
                         &tokenized_pair_string,
                         &line_for_panic,
-                        &grammar_ctx,
+                        &grammar,
                         options.positive_test,
                         &mut *outstream,
                     );
@@ -756,7 +548,7 @@ fn process_stream(
         let mut positive_test_cases: StringVector = Vec::new();
         let mut negative_test_cases: StringVector = Vec::new();
 
-        let symbols: Vec<Symbol> = known_symbols.iter().map(Symbol::new).collect();
+        let symbols: Vec<Symbol> = grammar.known_symbols().iter().map(Symbol::new).collect();
 
         let input_tokenizer = match HfstStrings2FstTokenizer::new(&symbols, "0") {
             Ok(t) => t,
@@ -854,28 +646,13 @@ fn process_stream(
                     unreachable!("error(1, ...) exits the process")
                 }
             };
-            test_case.insert(
-                0,
-                (
-                    Symbol::new_static("@#@"),
-                    Symbol::new_static(internal_epsilon),
-                ),
-            );
-            test_case.push((
-                Symbol::new_static("@#@"),
-                Symbol::new_static(internal_epsilon),
-            ));
+            add_word_boundaries(&mut test_case);
 
-            let grammar_ctx = Grammar {
-                transducers: &grammar,
-                names: &rule_names,
-                known_symbols: &known_symbols,
-            };
             let new_exit_code = test(
                 common,
                 &test_case,
                 &format!("{} : {}", input_case, output_case),
-                &grammar_ctx,
+                &grammar,
                 true,
                 &mut *outstream,
             );
@@ -920,28 +697,13 @@ fn process_stream(
                     unreachable!("error(1, ...) exits the process")
                 }
             };
-            test_case.insert(
-                0,
-                (
-                    Symbol::new_static("@#@"),
-                    Symbol::new_static(internal_epsilon),
-                ),
-            );
-            test_case.push((
-                Symbol::new_static("@#@"),
-                Symbol::new_static(internal_epsilon),
-            ));
+            add_word_boundaries(&mut test_case);
 
-            let grammar_ctx = Grammar {
-                transducers: &grammar,
-                names: &rule_names,
-                known_symbols: &known_symbols,
-            };
             let new_exit_code = test(
                 common,
                 &test_case,
                 &format!("{} : {}", input_case, output_case),
-                &grammar_ctx,
+                &grammar,
                 false,
                 &mut *outstream,
             );
