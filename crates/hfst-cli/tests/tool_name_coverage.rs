@@ -18,8 +18,8 @@ use hfst_cli::tools::TOOLS;
 fn run_for(name: &str) -> Option<hfst_cli::tools::ToolRun> {
     TOOLS
         .iter()
-        .find(|(tool, _)| *tool == name)
-        .map(|&(_, run)| run)
+        .find(|(tool, _, _)| *tool == name)
+        .map(|&(_, run, _)| run)
 }
 
 /// (alias, canonical) pairs the C++ suite symlinks together.
@@ -62,11 +62,17 @@ fn every_tool_name_is_hfst_prefixed_and_unique() {
     // bin/hfst.rs derives each subcommand by stripping "hfst-", and panics if
     // the prefix is absent; a duplicate would shadow a real tool.
     let mut seen = std::collections::BTreeSet::new();
-    for (tool, _) in TOOLS {
+    for (tool, _, about) in TOOLS {
         assert!(
             tool.strip_prefix("hfst-").is_some(),
             "TOOLS entry '{tool}' is not named hfst-<tool>"
         );
         assert!(seen.insert(*tool), "TOOLS lists '{tool}' more than once");
+        // The about string is what `hfst --help` prints beside the subcommand;
+        // an empty one leaves the tool listed with no description.
+        assert!(
+            !about.is_empty(),
+            "TOOLS entry '{tool}' has no about string"
+        );
     }
 }

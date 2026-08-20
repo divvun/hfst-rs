@@ -6555,6 +6555,22 @@ children (
                 id family-files
                 title "Collapse the 46 sub-500-LOC tool files into ~5 family modules (simple/binary/convert/text/archive), fold ABOUTS into TOOLS (single table, no drift), move spec annotations with the code. No parsed byte changes."
                 deps (unary-driver)
+                sealed true
+                log (
+                    {
+                        at 2026-08-20T12:59:07.660639Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-20T13:11:09.513061Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
