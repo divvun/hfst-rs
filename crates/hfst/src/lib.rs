@@ -72,6 +72,7 @@ pub mod hfst_tropical_transducer_transition_data;
 pub mod hfst_xerox_rules;
 pub mod io_utils;
 pub mod lexc;
+pub mod lookup_driver;
 pub mod ospell;
 pub mod pmatch;
 pub mod pmatch_compiler;

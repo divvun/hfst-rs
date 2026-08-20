@@ -92,6 +92,42 @@ impl IntoAny for hfst::hfst_transducer::HfstTransducer<hfst::backend_thfst::Thfs
     }
 }
 
+// -----------------------------------------------------------------------------
+// The bridge from the tools' message printers to the library lookup engine.
+// -----------------------------------------------------------------------------
+
+/// Routes the lookup engine's messages through the tool's own printers, so a
+/// warning raised inside the library is indistinguishable from one the tool
+/// raised itself: verbose lines go to the tool's message writer, warnings to
+/// `hfst_warning` (and nowhere at all when the tool is silent), and a fatal
+/// error to `hfst_error`, which prints and exits.
+pub struct CliLookupReporter<'a> {
+    common: &'a globals::CommonOptions,
+}
+
+impl<'a> CliLookupReporter<'a> {
+    pub fn new(common: &'a globals::CommonOptions) -> CliLookupReporter<'a> {
+        CliLookupReporter { common }
+    }
+}
+
+impl hfst::lookup_driver::LookupReporter for CliLookupReporter<'_> {
+    fn verbose(&self, msg: &str) {
+        hfst_commandline::verbose_print(self.common, msg);
+    }
+
+    fn warning(&self, msg: &str) {
+        if !self.common.silent {
+            hfst_commandline::hfst_warning(self.common, 0, 0, msg);
+        }
+    }
+
+    fn fatal(&self, msg: &str) -> ! {
+        hfst_commandline::hfst_error(self.common, 1, 0, msg);
+        unreachable!("hfst_error with a non-zero status exits the process")
+    }
+}
+
 pub mod globals;
 pub mod hfst_commandline;
 pub mod hfst_getopt;

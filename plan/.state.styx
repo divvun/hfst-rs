@@ -372,6 +372,7 @@ assertions (
     {id hfst-info-compat-version, kind @complete, author "brendan@necessary.nu", at 2026-08-20T10:50:10.610793Z}
     {id unary-driver, kind @complete, author "brendan@necessary.nu", at 2026-08-20T12:55:41.677038Z}
     {id family-files, kind @complete, author "brendan@necessary.nu", at 2026-08-20T13:11:09.513061Z}
+    {id librarify2, kind @doing, author "brendan@necessary.nu", at 2026-08-20T13:19:58.08547Z}
 )
 
 impl_evidence (

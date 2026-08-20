@@ -10,7 +10,16 @@
 //! and a tool-local [`Options`] — both built by `parse_options` and threaded
 //! into the processing functions. There are no `static mut` globals and no
 //! `unsafe`.
+//!
+//! The lookup machinery itself is not here: it lives in the library, as
+//! [`hfst::lookup_driver`] (the cascade and the lookup paths) and
+//! [`hfst::hfst_lookup_format`] (the output templates and the input parser),
+//! shared with hfst-lookup. What this file keeps is the driving: option
+//! parsing, the `-R`/`-f` inversion of each transducer as it is read, the
+//! writers, the interactive prompt and the stdin loop, plus the
+//! [`LookupEngineOptions`] that select hfst-flookup's dialect of the engine.
 
+use crate::CliLookupReporter;
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
     convert_any, extend_options_from_env, hfst_error, hfst_error_at_line, hfst_set_program_name,
@@ -26,21 +35,17 @@ use crate::inc::{
     handle_unary_case,
 };
 use hfst::error::ErrorKind;
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
-use hfst::hfst_data_types::{
-    HfstOneLevelPath, HfstOneLevelPaths, HfstTwoLevelPaths, ImplementationType, StringVector,
-};
-use hfst::hfst_flag_diacritics::FdOperation;
+use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_lookup_flag_diacritics::FlagDiacriticTable;
 use hfst::hfst_lookup_format::{
-    self as lookup_format, CascadeStep, CascadeVariant, LookupFormats, LookupInputFormat,
-    LookupOutputFormat, LookupRenderOptions, LookupStats, apply_cascade, is_possible_to_get_result,
-    parse_lookup_line, print_lookups,
+    CascadeVariant, LookupFormats, LookupInputFormat, LookupOutputFormat, LookupRenderOptions,
+    LookupStats, parse_lookup_line, print_lookups,
 };
 use hfst::hfst_strings2_fst_tokenizer::HfstStrings2FstTokenizer;
-use hfst::hfst_symbol_defs::{StringSet, internal_identity, internal_unknown};
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::lookup_driver::{
+    AmbiguityLimit, FlagPolicy, LookupCascade, LookupEngineOptions, PairPrintStyle,
+    is_optimized_lookup_type,
+};
 use std::io::{BufRead, Write};
 
 // ---------------------------------------------------------------------------
@@ -48,8 +53,8 @@ use std::io::{BufRead, Write};
 // ---------------------------------------------------------------------------
 
 /// hfst-flookup's own options + runtime state (the former tool-specific
-/// `static mut`s). Options set in `parse_options`; the cascade/lookup counters
-/// are updated in `process_stream`.
+/// `static mut`s). Options set in `parse_options`; the line counter and the
+/// statistics counters are updated in `process_stream`.
 struct Options {
     lookup_file_name: String,
     // The lookup-strings input. In the C this was a FILE* (a named file from -I,
@@ -66,10 +71,6 @@ struct Options {
     invert: bool,
     // accept also ol transducers when -R is not specified inverting is slow then
     force_ol: bool,
-
-    // symbols actually seen in (non-ol) transducers
-    cascade_symbols_seen: Vec<StringSet>,
-    cascade_unknown_or_identity_seen: Vec<bool>,
 
     input_format: LookupInputFormat,
     output_format: LookupOutputFormat,
@@ -94,9 +95,6 @@ struct Options {
 
     // statistic counting
     stats: LookupStats,
-
-    // which transducer in the cascade we are handling
-    transducer_number: u32,
 }
 
 impl Default for Options {
@@ -112,8 +110,6 @@ impl Default for Options {
             beam: -1.0,
             invert: false,
             force_ol: false,
-            cascade_symbols_seen: Vec::new(),
-            cascade_unknown_or_identity_seen: Vec::new(),
             input_format: LookupInputFormat::Utf8TokenInput,
             output_format: LookupOutputFormat::XeroxOutput,
             time_cutoff: 0.0,
@@ -128,7 +124,6 @@ impl Default for Options {
             print_statistics: false,
             show_progress_bar: false,
             stats: LookupStats::new(),
-            transducer_number: 0,
         }
     }
 }
@@ -431,20 +426,6 @@ fn print_prompt(common: &CommonOptions, options: &Options) {
     }
 }
 
-// [spec:hfst:def:hfst-flookup.is-valid-flag-diacritic-path-fn]
-// [spec:hfst:sem:hfst-flookup.is-valid-flag-diacritic-path-fn]
-fn is_valid_flag_diacritic_path(common: &CommonOptions, arcs: StringVector) -> bool {
-    let mut fd_t = FlagDiacriticTable::new();
-    let res = fd_t.is_valid_string(&arcs);
-    if !res {
-        verbose_print(common, "blocked by flags: ");
-        for s in arcs.iter() {
-            verbose_print(common, &format!("{} ", s));
-        }
-    }
-    res
-}
-
 // The renderer knobs for the library %-template engine, snapshotted from the
 // tool's options.
 fn render_opts(options: &Options) -> LookupRenderOptions {
@@ -460,343 +441,26 @@ fn render_opts(options: &Options) -> LookupRenderOptions {
     }
 }
 
-fn get_print_format(options: &Options, s: &str) -> String {
-    lookup_format::get_print_format(s, &options.epsilon_format, options.quote_special)
-}
-
-// [spec:hfst:def:hfst-flookup.print-lookup-string-fn]
-// [spec:hfst:sem:hfst-flookup.print-lookup-string-fn]
-fn print_lookup_string(options: &Options, s: &StringVector) {
-    for it in s.iter() {
-        eprint!("{}", get_print_format(options, it));
-    }
-}
-
-// [spec:hfst:def:hfst-flookup.lookup-fd-and-print-fn]
-// [spec:hfst:sem:hfst-flookup.lookup-fd-and-print-fn]
-fn lookup_fd_and_print(
-    common: &CommonOptions,
-    options: &Options,
-    t: &HfstBasicTransducer,
-    results: &mut HfstOneLevelPaths,
-    s: &HfstOneLevelPath,
-    _limit: isize,
-    out: &mut dyn Write,
-) {
-    // If we want a StringPairVector representation
-    let mut results_spv: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
-
-    if is_possible_to_get_result(
-        s,
-        &options.cascade_symbols_seen[options.transducer_number as usize],
-        options.cascade_unknown_or_identity_seen[options.transducer_number as usize],
-    ) {
-        t.lookup(
-            &s.second,
-            &mut results_spv,
-            Some(options.infinite_cutoff),
-            None,
-            -1,
-            false,
-        );
-    }
-
-    if options.print_pairs {
-        if results_spv.is_empty() {
-            // No results, print just the lookup string.
-            print_lookup_string(options, &s.second);
-            let _ = out.write_all(b"\n");
-        } else {
-            let mut lowest_weight: f32 = -1.0;
-            let mut first = true;
-            for it in results_spv.iter() {
-                if first {
-                    lowest_weight = it.first;
-                }
-                first = false;
-                if options.beam < 0.0 || it.first <= (lowest_weight + options.beam) {
-                    print_lookup_string(options, &s.second);
-                    let _ = out.write_all(b"\t");
-                    let mut first_pair = true;
-                    for it2 in it.second.iter() {
-                        if options.print_space && !first_pair {
-                            let _ = out.write_all(b" ");
-                        }
-                        first_pair = false;
-                        let _ = write!(
-                            out,
-                            "{}:{}",
-                            get_print_format(options, &it2.0),
-                            get_print_format(options, &it2.1)
-                        );
-                    }
-                    let _ = writeln!(out, "\t{:.6}", it.first);
-                }
-            }
-            let _ = out.write_all(b"\n");
-        }
-        let _ = out.flush();
-    }
-
-    // Convert HfstTwoLevelPaths into HfstOneLevelPaths
-    for it in results_spv.iter() {
-        let mut sv: StringVector = Vec::new();
-        for spv_it in it.second.iter() {
-            sv.push(spv_it.1.clone());
-        }
-        results.insert(HfstOneLevelPath {
-            first: it.first,
-            second: sv,
-        });
-    }
-
-    let mut filtered: HfstOneLevelPaths = HfstOneLevelPaths::new();
-    for res in results.iter() {
-        if is_valid_flag_diacritic_path(common, res.second.clone()) || !options.obey_flags {
-            let mut unflagged: StringVector = Vec::new();
-            for arc in res.second.iter() {
-                if options.show_flags || !FdOperation::is_diacritic(arc) {
-                    unflagged.push(arc.clone());
-                }
-            }
-            filtered.insert(HfstOneLevelPath {
-                first: res.first,
-                second: unflagged,
-            });
-        }
-    }
-    *results = filtered;
-}
-
-// The two optimized-lookup table shapes the stream can produce; the fast
-// lookup path runs on either ([dec:hfst:monomorphic-backends]).
-enum OlTransducer {
-    W(HfstTransducer<hfst::transducer::Transducer<hfst::transducer::WeightedTables>>),
-    U(HfstTransducer<hfst::transducer::Transducer<hfst::transducer::UnweightedTables>>),
-}
-
-impl OlTransducer {
-    fn lookup_fd_string_vector(
-        &mut self,
-        s: &StringVector,
-        limit: isize,
-        time_cutoff: f64,
-    ) -> hfst::error::Result<HfstOneLevelPaths> {
-        match self {
-            OlTransducer::W(t) => t.lookup_fd_string_vector(s, limit, time_cutoff),
-            OlTransducer::U(t) => t.lookup_fd_string_vector(s, limit, time_cutoff),
-        }
-    }
-
-    fn is_lookup_infinitely_ambiguous_string_vector(&mut self, s: &StringVector) -> bool {
-        match self {
-            OlTransducer::W(t) => t.is_lookup_infinitely_ambiguous_string_vector(s),
-            OlTransducer::U(t) => t.is_lookup_infinitely_ambiguous_string_vector(s),
-        }
-    }
-}
-
-// HfstTransducer (optimized-lookup) variant.
-// [spec:hfst:def:hfst-flookup.lookup-simple-fn]
-// [spec:hfst:sem:hfst-flookup.lookup-simple-fn]
-fn lookup_simple_ol(
-    common: &CommonOptions,
-    options: &Options,
-    s: &HfstOneLevelPath,
-    t: &mut OlTransducer,
-    infinity: &mut bool,
-) -> HfstOneLevelPaths {
-    let results: HfstOneLevelPaths;
-    if options.time_cutoff == 0.0 && t.is_lookup_infinitely_ambiguous_string_vector(&s.second) {
-        if !common.silent && options.infinite_cutoff > 0 {
-            hfst_warning(
-                common,
-                0,
-                0,
-                &format!(
-                    "Got infinite results, number of cycles limited to {}",
-                    options.infinite_cutoff
-                ),
-            );
-        }
-        results = match t.lookup_fd_string_vector(
-            &s.second,
-            options.infinite_cutoff as isize,
-            options.time_cutoff,
-        ) {
-            Ok(v) => v,
-            Err(e) => {
-                hfst_error(common, 1, 0, &format!("{e}"));
-                HfstOneLevelPaths::new()
-            }
-        };
-        *infinity = true;
-    } else {
-        results = match t.lookup_fd_string_vector(&s.second, -1, options.time_cutoff) {
-            Ok(v) => v,
-            Err(e) => {
-                hfst_error(common, 1, 0, &format!("{e}"));
-                HfstOneLevelPaths::new()
-            }
-        };
-    }
-
-    if results.is_empty() {
-        verbose_print(common, "Got no results\n");
-    }
-    results
-}
-
-// HfstBasicTransducer variant.
-fn lookup_simple_basic(
-    common: &CommonOptions,
-    options: &Options,
-    s: &HfstOneLevelPath,
-    t: &HfstBasicTransducer,
-    infinity: &mut bool,
-    out: &mut dyn Write,
-) -> HfstOneLevelPaths {
-    let mut results: HfstOneLevelPaths = HfstOneLevelPaths::new();
-
-    let possible = is_possible_to_get_result(
-        s,
-        &options.cascade_symbols_seen[options.transducer_number as usize],
-        options.cascade_unknown_or_identity_seen[options.transducer_number as usize],
-    );
-
-    if possible && t.is_lookup_infinitely_ambiguous_path(s, false) {
-        if !common.silent && options.infinite_cutoff > 0 {
-            hfst_warning(
-                common,
-                0,
-                0,
-                &format!(
-                    "Got infinite results, number of cycles limited to {}",
-                    options.infinite_cutoff
-                ),
-            );
-        }
-        lookup_fd_and_print(
-            common,
-            options,
-            t,
-            &mut results,
-            s,
-            options.infinite_cutoff as isize,
-            &mut *out,
-        );
-        *infinity = true;
-    } else {
-        lookup_fd_and_print(common, options, t, &mut results, s, -1, &mut *out);
-    }
-
-    if results.is_empty() {
-        verbose_print(common, "Got no results\n");
-    }
-    results
-}
-
-// HfstTransducer (optimized-lookup) cascade variant: the library cascade
-// engine (hfst-flookup always combines by union) driving this tool's
-// optimized-lookup single-transducer lookup. Union never writes, so the
-// engine gets a sink writer.
-fn lookup_cascading_ol(
-    common: &CommonOptions,
-    options: &Options,
-    s: &HfstOneLevelPath,
-    cascade: &mut [OlTransducer],
-    infinity: &mut bool,
-) -> HfstOneLevelPaths {
-    let result = apply_cascade(
-        s,
-        cascade.len(),
-        CascadeVariant::Union,
-        options.print_pairs,
-        &mut |msg: &str| verbose_print(common, msg),
-        &mut |input: &HfstOneLevelPath, step: &CascadeStep<'_>, _out: &mut dyn Write| {
-            lookup_simple_ol(common, options, input, &mut cascade[step.index], infinity)
-        },
-        &mut std::io::sink(),
-    );
-    match result {
-        Ok(r) => r,
-        Err(e) => {
-            hfst_error(common, 1, 0, &format!("{e}"));
-            unreachable!()
-        }
-    }
-}
-
-// HfstBasicTransducer cascade variant: the library cascade engine
-// (hfst-flookup always combines by union) driving this tool's
-// basic-transducer single-transducer lookup.
-fn lookup_cascading_basic(
-    common: &CommonOptions,
-    options: &mut Options,
-    s: &HfstOneLevelPath,
-    cascade: &[HfstBasicTransducer],
-    infinity: &mut bool,
-    out: &mut dyn Write,
-) -> HfstOneLevelPaths {
-    let result = apply_cascade(
-        s,
-        cascade.len(),
-        CascadeVariant::Union,
-        options.print_pairs,
-        &mut |msg: &str| verbose_print(common, msg),
-        &mut |input: &HfstOneLevelPath, step: &CascadeStep<'_>, out: &mut dyn Write| {
-            options.transducer_number = step.index as u32; // needed for lookup_simple
-            lookup_simple_basic(common, options, input, &cascade[step.index], infinity, out)
-        },
-        out,
-    );
-    match result {
-        Ok(r) => r,
-        Err(e) => {
-            hfst_error(common, 1, 0, &format!("{e}"));
-            unreachable!()
-        }
-    }
-}
-
-fn perform_lookups_ol(
-    common: &CommonOptions,
-    options: &Options,
-    origin: &HfstOneLevelPath,
-    cascade: &mut [OlTransducer],
-    unknown: bool,
-    infinite: &mut bool,
-) -> HfstOneLevelPaths {
-    if !unknown {
-        if cascade.len() == 1 {
-            lookup_simple_ol(common, options, origin, &mut cascade[0], infinite)
-        } else {
-            lookup_cascading_ol(common, options, origin, cascade, infinite)
-        }
-    } else {
-        HfstOneLevelPaths::new()
-    }
-}
-
-// [spec:hfst:def:hfst-flookup.perform-lookups-fn]
-// [spec:hfst:sem:hfst-flookup.perform-lookups-fn]
-fn perform_lookups_basic(
-    common: &CommonOptions,
-    options: &mut Options,
-    origin: &HfstOneLevelPath,
-    cascade: &[HfstBasicTransducer],
-    unknown: bool,
-    infinite: &mut bool,
-    out: &mut dyn Write,
-) -> HfstOneLevelPaths {
-    if !unknown {
-        if cascade.len() == 1 {
-            lookup_simple_basic(common, options, origin, &cascade[0], infinite, &mut *out)
-        } else {
-            lookup_cascading_basic(common, options, origin, cascade, infinite, &mut *out)
-        }
-    } else {
-        HfstOneLevelPaths::new()
+/// The engine knobs for the library lookup driver, snapshotted from the tool's
+/// options. hfst-flookup validates flags after the lookup instead of inside
+/// it, bounds an infinitely ambiguous lookup by epsilon cycles, always unions
+/// a multi-transducer cascade, and lays print-pairs out xerox-style with the
+/// input form echoed on the message stream.
+fn engine_opts(options: &Options) -> LookupEngineOptions {
+    LookupEngineOptions {
+        obey_flags: options.obey_flags,
+        show_flags: options.show_flags,
+        print_pairs: options.print_pairs,
+        print_space: options.print_space,
+        quote_special: options.quote_special,
+        epsilon_format: options.epsilon_format.clone(),
+        beam: options.beam,
+        time_cutoff: options.time_cutoff,
+        infinite_cutoff: options.infinite_cutoff,
+        cascade: CascadeVariant::Union,
+        flags: FlagPolicy::PostFilter,
+        ambiguity: AmbiguityLimit::Cycles,
+        pair_style: PairPrintStyle::Flookup,
     }
 }
 
@@ -806,18 +470,10 @@ fn process_stream(
     inputstream: &mut HfstInputStream<'_>,
     outstream: &mut dyn Write,
 ) -> i32 {
-    let mut cascade: Vec<OlTransducer> = Vec::new();
-    // the type of the first transducer read (C: cascade[0].get_type()).
-    let mut first_type = ImplementationType::UNSPECIFIED_TYPE;
-    let mut cascade_mut: Vec<HfstBasicTransducer> = Vec::new();
-    // set to false if non-ol transducer is pushed into the cascade
-    let mut only_optimized_lookup = true;
+    let reporter = CliLookupReporter::new(common);
+    let mut cascade = LookupCascade::new();
 
-    let mut transducer_n: usize = 0;
-    let mut mc_symbols: StringVector = Vec::new();
-    let mut id_or_unk_seen = false;
     while inputstream.is_good() {
-        transducer_n += 1;
         // [spec:hfst:def:hfst-flookup.trans-fn]
         // [spec:hfst:sem:hfst-flookup.trans-fn]
         let mut trans = match inputstream.read() {
@@ -828,17 +484,7 @@ fn process_stream(
             }
         };
         let ty = trans.get_type();
-        if transducer_n == 1 {
-            first_type = ty;
-        }
-        let mut symbols_seen: StringSet = StringSet::new();
-
-        if ty != ImplementationType::HFST_OL_TYPE
-            && ty != ImplementationType::HFST_OLW_TYPE
-            && ty != ImplementationType::THFST_TYPE
-        {
-            only_optimized_lookup = false;
-        } else if !options.invert && !options.force_ol {
+        if is_optimized_lookup_type(ty) && !options.invert && !options.force_ol {
             hfst_error(
                 common,
                 1,
@@ -848,24 +494,10 @@ fn process_stream(
             );
         }
 
-        let mut inputname = trans.get_name();
-        if inputname.is_empty() {
-            inputname = common.input_filename.clone();
-        }
-        if transducer_n == 1 {
-            verbose_print(common, &format!("Reading {}...\n", inputname));
-        } else {
-            verbose_print(
-                common,
-                &format!("Reading {}...{}\n", inputname, transducer_n),
-            );
-        }
+        cascade.begin_transducer(&trans, &common.input_filename, &reporter);
 
         if !options.invert {
-            if ty != ImplementationType::HFST_OL_TYPE
-                && ty != ImplementationType::HFST_OLW_TYPE
-                && ty != ImplementationType::THFST_TYPE
-            {
+            if !is_optimized_lookup_type(ty) {
                 crate::for_algebra!(&mut trans, t => {
                     if let Err(e) = t.invert() {
                         hfst_error(common, 1, 0, &format!("{e}"));
@@ -900,71 +532,15 @@ fn process_stream(
             }
         }
 
-        // add multicharacter symbols to mc_symbols
-        if ty == ImplementationType::SFST_TYPE
-            || ty == ImplementationType::TROPICAL_OPENFST_TYPE
-            || ty == ImplementationType::FOMA_TYPE
-        {
-            // [spec:hfst:def:hfst-flookup.basic-fn]
-            // [spec:hfst:sem:hfst-flookup.basic-fn]
-            let basic = crate::for_any!(&trans, t => {
-                match HfstBasicTransducer::try_from_transducer(t) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        hfst_error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                }
-            });
-            for it in basic.iter() {
-                for tr_it in it.iter() {
-                    let mcs = tr_it.get_input_symbol(basic.coder());
-                    symbols_seen.insert(mcs.clone());
-                    if mcs == internal_unknown || mcs == internal_identity {
-                        id_or_unk_seen = true;
-                    }
-                    if mcs.chars().count() > 1 {
-                        mc_symbols.push(mcs.clone());
-                        verbose_print(common, &format!("multicharacter symbol: {}\n", mcs));
-                    }
-                }
-            }
-            cascade_mut.push(basic);
-            options.cascade_symbols_seen.push(symbols_seen);
-            if id_or_unk_seen {
-                options.cascade_unknown_or_identity_seen.push(true);
-            } else {
-                options.cascade_unknown_or_identity_seen.push(false);
-            }
+        if let Err(e) = cascade.push_transducer(trans, &reporter) {
+            hfst_error(common, 1, 0, &format!("{e}"));
+            return 1;
         }
-
-        // one dispatch per read ([dec:hfst:monomorphic-backends]): the
-        // OL variants carry the fast lookup path; the algebra variants
-        // were already converted to the basic cascade above.
-        match trans {
-            hfst::hfst_transducer::AnyTransducer::OlW(t) => cascade.push(OlTransducer::W(t)),
-            hfst::hfst_transducer::AnyTransducer::OlU(t) => cascade.push(OlTransducer::U(t)),
-            // THFST is the weighted OL engine under a distinct tag; recover it
-            // as the weighted lookup handle (O(1) table move).
-            hfst::hfst_transducer::AnyTransducer::Thfst(t) => {
-                cascade.push(OlTransducer::W(t.into_olw()))
-            }
-            hfst::hfst_transducer::AnyTransducer::Tropical(_) => {}
-            // Foma is an algebra backend, already flattened into the basic
-            // cascade above, like Tropical.
-            #[cfg(feature = "foma")]
-            hfst::hfst_transducer::AnyTransducer::Foma(_) => {}
-        }
-        id_or_unk_seen = false;
     }
 
     inputstream.close();
 
-    if options.print_pairs
-        && (inputstream.get_type() == ImplementationType::HFST_OL_TYPE
-            || inputstream.get_type() == ImplementationType::HFST_OLW_TYPE
-            || inputstream.get_type() == ImplementationType::THFST_TYPE)
-    {
+    if options.print_pairs && is_optimized_lookup_type(inputstream.get_type()) {
         hfst_error(
             common,
             1,
@@ -975,15 +551,18 @@ fn process_stream(
 
     let mut line: String;
 
-    let input_tokenizer =
-        match HfstStrings2FstTokenizer::new(&mc_symbols, &options.epsilon_format.clone()) {
-            Ok(t) => t,
-            Err(e) => {
-                hfst_error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
+    let input_tokenizer = match HfstStrings2FstTokenizer::new(
+        cascade.multichar_symbols(),
+        &options.epsilon_format.clone(),
+    ) {
+        Ok(t) => t,
+        Err(e) => {
+            hfst_error(common, 1, 0, &format!("{e}"));
+            return 1;
+        }
+    };
 
+    let only_optimized_lookup = cascade.only_optimized_lookup();
     if !only_optimized_lookup && !common.silent {
         hfst_warning(
             common,
@@ -992,10 +571,12 @@ fn process_stream(
             &format!(
                 "It is not possible to perform fast lookups with {} format automata.\n\
                  Using HFST basic transducer format and performing slow lookups",
-                hfst_strformat(first_type)
+                hfst_strformat(cascade.first_type())
             ),
         );
     }
+
+    let engine = engine_opts(options);
 
     let mut filesize: i64 = -1;
     if options.show_progress_bar {
@@ -1048,7 +629,6 @@ fn process_stream(
 
         let mut markup = String::new();
         let mut unknown = false;
-        let mut infinite = false;
 
         options.stats.inputs += 1;
         let kv = match parse_lookup_line(
@@ -1084,19 +664,16 @@ fn process_stream(
             verbose_print(common, "\n");
         }
 
-        let kvs = if only_optimized_lookup {
-            perform_lookups_ol(common, options, &kv, &mut cascade, unknown, &mut infinite)
-        } else {
-            perform_lookups_basic(
-                common,
-                options,
-                &kv,
-                &cascade_mut,
-                unknown,
-                &mut infinite,
-                &mut *outstream,
-            )
-        };
+        // hfst-flookup echoes a print-pairs input form on the message stream
+        // while the pairs go to the result stream.
+        let (kvs, infinite) = cascade.perform_lookups(
+            &kv,
+            unknown,
+            &engine,
+            &reporter,
+            &mut *outstream,
+            &mut std::io::stderr(),
+        );
 
         if !options.print_pairs {
             // printing was already done in function lookup_fd
