@@ -258,6 +258,12 @@ impl UnaryIo {
 ///
 /// The numeric shorts parse natively as long as no command turns
 /// allow_negative_numbers on.
+///
+/// '--input2' is an alias of '--input1', not the long name of '-2'. That is
+/// the HFST_GETOPT_BINARY_LONG macro's own wiring — its 'input2' entry carries
+/// the '1' option value — so the long spelling has always filled the FIRST
+/// slot while '-2' filled the second. Preserved bug-for-bug; only the help
+/// text stops advertising the two as the same option.
 // [spec:hfst:req:cli.binary-options]
 #[derive(clap::Args, Debug, Clone, Default)]
 pub struct BinaryIo {
@@ -265,18 +271,14 @@ pub struct BinaryIo {
     #[arg(
         short = '1',
         long = "input1",
+        alias = "input2",
         value_name = "INFILE1",
         allow_hyphen_values = true
     )]
     pub input1: Option<String>,
 
     /// Read second input transducer from INFILE2
-    #[arg(
-        short = '2',
-        long = "input2",
-        value_name = "INFILE2",
-        allow_hyphen_values = true
-    )]
+    #[arg(short = '2', value_name = "INFILE2", allow_hyphen_values = true)]
     pub input2: Option<String>,
 
     /// Do not allow transducers to be converted into the same type
@@ -414,6 +416,24 @@ pub trait ToolArgs: clap::Parser {
     fn validate(&self, _opts: &CommonOptions) -> ToolResult {
         Ok(())
     }
+
+    /// Recover state that depends on the ORDER two different options were
+    /// written in — the one thing a derive struct cannot carry, because a C
+    /// getopt loop let both write the same variable and the last write won
+    /// (hfst-edit-metadata's '-a' and bare '-p' both set
+    /// print_all_properties). Defaulted to nothing; a tool that needs it
+    /// reads [`clap::ArgMatches::index_of`] here.
+    fn absorb_matches(&mut self, _matches: &clap::ArgMatches) {}
+
+    /// Whether the tool's switch chained getopt-cases-common.h and ran
+    /// check-params-common.h afterwards. Every tool did except hfst-info,
+    /// whose switch reads only its own version/feature options: there
+    /// '-v/-q/-s/-d/-o/--colour' are accepted and discarded and no output
+    /// file is resolved, which is why its report goes to stdout instead of
+    /// the messages-to-stderr default. '-V' is answered either way.
+    fn applies_common_options(&self) -> bool {
+        true
+    }
 }
 
 /// Parse a tool's argv into its derive struct and the shared
@@ -432,18 +452,24 @@ pub fn parse<T: ToolArgs>(
         Ok(m) => m,
         Err(e) => return Err(report_clap_error(&common, &cmd, e)),
     };
-    let args = match T::from_arg_matches(&matches) {
+    let mut args = match T::from_arg_matches(&matches) {
         Ok(a) => a,
         Err(e) => return Err(report_clap_error(&common, &cmd, e)),
     };
+    args.absorb_matches(&matches);
 
-    args.common().apply(&mut common);
+    let shares_common = args.applies_common_options();
+    if shares_common {
+        args.common().apply(&mut common);
+    }
     if args.common().version {
         print_version(&common);
         return Err(EXIT_SUCCESS);
     }
     args.validate(&common)?;
-    check_common_params(&mut common);
+    if shares_common {
+        check_common_params(&mut common);
+    }
     args.apply_io(&mut common);
     Ok((common, args))
 }

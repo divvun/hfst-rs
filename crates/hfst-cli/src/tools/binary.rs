@@ -15,93 +15,46 @@
 
 pub mod binary_tool {
     //! Faithful 1:1 port of tools/src/hfst-binary-tool.cc — the GENERIC BINARY
-    //! TOOL TEMPLATE command-line tool. Drives the hfst-cli foundation (globals,
-    //! getopt, commandline, program-options, tool-metadata, inc fragments).
+    //! TOOL TEMPLATE command-line tool. Option handling is clap 4 derive through
+    //! [`crate::cli`]; the rest drives the hfst-cli foundation (globals,
+    //! commandline, tool-metadata).
 
+    use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{
-        extend_options_from_env, hfst_set_program_name, verbose_print, warning,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
-        print_common_binary_program_parameter_instructions, print_common_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_binary_params, check_common_params, handle_binary_case,
-        handle_common_case, handle_error_case,
-    };
+    use crate::hfst_commandline::{hfst_set_program_name, verbose_print, warning};
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
     use hfst::hfst_transducer::HfstTransducer;
-    use std::io::Write;
 
-    /// hfst-binary-tool's own options (the former tool-specific `static mut`s).
-    /// The skeleton tool has none.
-    struct Options;
-
+    /// hfst-binary-tool's command line. The skeleton tool adds nothing to the
+    /// shared common + binary option groups.
+    // [spec:hfst:req:cli.arg-parse]
     // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nDo things with two transducers\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        let _ = writeln!(msg);
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "\nExamples:\n  {} -o catdog.hfst cat.hfst dog.hfst  does things\n\n",
-            common.program_name
-        );
+    #[derive(clap::Parser)]
+    #[command(
+        about = "Do things with two transducers",
+        after_help = "The operation is applied pairwise for INFILE1 and INFILE2, which must hold the \
+same number of transducers; if INFILE2 holds only one, it is kept constant \
+across INFILE1.
+
+Examples:
+  hfst-binary-tool -o catdog.hfst cat.hfst dog.hfst  does things"
+    )]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: BinaryIo,
     }
 
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let options = Options;
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        // use of this function requires options are settable on global scope
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then binary cases, then the tool's own (none here), then
-            // the terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_binary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_binary_params(&mut common, &opt, args);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-binary-tool.binaryoperate-streams-fn]
@@ -226,14 +179,15 @@ pub mod binary_tool {
 
     // [spec:hfst:def:hfst-binary-tool.main-fn]
     // [spec:hfst:sem:hfst-binary-tool.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstGenericBinaryTool");
-        let (common, _options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, _args) = cli::parse::<Args>(common, args)?;
 
         // close buffers, we use streams
         let first_opened = common.first_filename != "<stdin>";
@@ -259,7 +213,7 @@ pub mod binary_tool {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("hfst-binary-tool: {e}");
-                return 1;
+                return Err(1);
             }
         };
         let secondstream_res = if second_opened {
@@ -271,7 +225,7 @@ pub mod binary_tool {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("hfst-binary-tool: {e}");
-                return 1;
+                return Err(1);
             }
         };
         let ty = firststream.get_type();
@@ -284,61 +238,61 @@ pub mod binary_tool {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("hfst-binary-tool: {e}");
-                return 1;
+                return Err(1);
             }
         };
 
         // (the C main calls concatenate_streams; the defined function is
         // binaryoperate_streams — the same routine — which is invoked here.)
-        binaryoperate_streams(&common, &mut firststream, &mut secondstream, &mut outstream)
+        cli::from_code(binaryoperate_streams(
+            &common,
+            &mut firststream,
+            &mut secondstream,
+            &mut outstream,
+        ))
     }
 }
 
 pub mod check_alpha {
     //! Faithful 1:1 port of tools/src/hfst-check-alpha.cc — the tool that compares
-    //! the compatibility of alphabets within and between automata. Drives the
-    //! hfst-cli foundation (getopt, commandline, program-options, tool-metadata,
-    //! inc fragments). A binary tool (two input streams).
+    //! the compatibility of alphabets within and between automata. A binary tool
+    //! (two input streams).
     //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-1/-2/…` fields) built by `parse_options` and threaded into
-    //! the processing functions. There are no `static mut` globals and no `unsafe`.
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared `-v/-q/-1/-2/…` fields), built from
+    //! the parsed [`Args`] and threaded into the processing functions. There are no
+    //! `static mut` globals and no `unsafe`.
 
+    use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{
-        error, extend_options_from_env, hfst_set_program_name, verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
-        print_common_binary_program_parameter_instructions, print_common_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_binary_params, check_common_params, handle_binary_case,
-        handle_common_case, handle_error_case,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
     use hfst::hfst_basic_transducer::HfstBasicTransducer;
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_symbol_defs::StringSet;
 
     use std::io::Write;
 
+    /// hfst-check-alpha's command line. The tool declares no options of its own
+    /// (its C usage printed an empty "Check alpha options:" heading).
+    // [spec:hfst:req:cli.arg-parse]
     // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILEs]\nCompare the compatibility of alphabets between INFILEs\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        // (tool-specific options and short descriptions)
-        let _ = writeln!(msg, "Check alpha options:");
-        let _ = writeln!(msg);
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
+    #[derive(clap::Parser)]
+    #[command(about = "Compare the compatibility of alphabets between INFILEs")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: BinaryIo,
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-check-alpha.fprint-stringset-fn]
@@ -352,47 +306,6 @@ pub mod check_alpha {
             let _ = write!(outfile, "{}", s);
             first = false;
         }
-    }
-
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared options; `Err(code)` is an exit code the caller
-    // should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<CommonOptions, i32> {
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: binary
-            // cases, then common cases, then the tool's own (none here), then the
-            // terminal error arm.
-            match handle_binary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
-        }
-
-        check_binary_params(&mut common, &opt, args);
-        check_common_params(&mut common);
-        Ok(common)
     }
 
     // [spec:hfst:def:hfst-check-alpha.process-stream-fn]
@@ -595,14 +508,15 @@ pub mod check_alpha {
 
     // [spec:hfst:def:hfst-check-alpha.main-fn]
     // [spec:hfst:sem:hfst-check-alpha.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstALphaFix");
-        let common = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, _args) = cli::parse::<Args>(common, args)?;
 
         // close buffers, we use streams
         let first_opened = common.first_filename != "<stdin>";
@@ -629,7 +543,7 @@ pub mod check_alpha {
                         0,
                         &format!("{} is not a valid transducer file", name),
                     );
-                    return 1;
+                    return Err(1);
                 }
             }
         } else {
@@ -642,7 +556,7 @@ pub mod check_alpha {
                         0,
                         &format!("{} is not a valid transducer file", common.first_filename),
                     );
-                    return 1;
+                    return Err(1);
                 }
             }
         };
@@ -657,7 +571,7 @@ pub mod check_alpha {
                         0,
                         &format!("{} is not a valid transducer file", name),
                     );
-                    return 1;
+                    return Err(1);
                 }
             }
         } else {
@@ -670,7 +584,7 @@ pub mod check_alpha {
                         0,
                         &format!("{} is not a valid transducer file", common.second_filename),
                     );
-                    return 1;
+                    return Err(1);
                 }
             }
         };
@@ -679,144 +593,74 @@ pub mod check_alpha {
 
         let _retval = process_stream(&common, &mut firststream, &mut secondstream);
 
-        0
+        Ok(())
     }
 }
 
 pub mod compare {
     //! Faithful 1:1 port of tools/src/hfst-compare.cc — the transducer comparison
-    //! command-line tool. Drives the hfst-cli foundation (getopt, commandline,
-    //! program-options, inc fragments). A binary tool: it reads from two input
-    //! streams (first + second) and writes a comparison log.
+    //! command-line tool. A binary tool: it reads from two input streams (first +
+    //! second) and writes a comparison log.
     //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
+    //! Option handling is clap 4 derive through [`crate::cli`]: the tool's state
+    //! lives in [`CommonOptions`] (the shared `-v/-q/-o/-i/…` fields) and the
+    //! parsed [`Args`], threaded into the processing functions. There are no
     //! `static mut` globals and no `unsafe`.
 
     use crate::binary_ops::open_two_input_streams;
+    use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{
-        error, extend_options_from_env, hfst_set_program_name, hfst_strformat,
-        is_input_stream_in_ol_format, verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
-        print_common_binary_program_parameter_instructions, print_common_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_binary_params, check_common_params, handle_binary_case,
-        handle_common_case, handle_error_case,
+        error, hfst_set_program_name, hfst_strformat, is_input_stream_in_ol_format, verbose_print,
     };
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
     use std::io::Write;
 
-    /// hfst-compare's own options (the former tool-specific `static mut`s: C's
-    /// 'static bool harmonize=true; static bool eliminate_flags=false;').
-    struct Options {
-        /// '-H, --do-not-harmonize': harmonize symbols before comparing.
-        harmonize: bool,
-        /// '-e, --eliminate-flags': eliminate flag diacritics before comparing.
+    /// hfst-compare's command line (the C's 'static bool harmonize=true;
+    /// static bool eliminate_flags=false;' pair, now negated flags).
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(
+        about = "Compare two transducers",
+        after_help = "Examples:
+  $ hfst-compare cat.hfst dog.hfst
+  cat.hfst[1] != dog.hfst[1]
+  $ hfst-compare cat.hfst cat.hfst
+  cat.hfst[1] == cat.hfst[1]"
+    )]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: BinaryIo,
+
+        /// Do not harmonize symbols
+        #[arg(short = 'H', long = "do-not-harmonize")]
+        do_not_harmonize: bool,
+
+        /// Eliminate flag diacritics
+        #[arg(short = 'e', long = "eliminate-flags")]
         eliminate_flags: bool,
     }
 
-    impl Default for Options {
-        fn default() -> Self {
-            Options {
-                harmonize: true,
-                eliminate_flags: false,
-            }
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
         }
     }
 
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nCompare two transducers\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Harmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -e, --eliminate-flags  Eliminate flag diacritics.\n"
-        );
-        let _ = writeln!(msg);
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "\nExamples:\n  $ {0} cat.hfst dog.hfst\n  cat.hfst[1] != dog.hfst[1]\n  $ {0} cat.hfst cat.hfst\n  cat.hfst[1] == cat.hfst[1]\n\n",
-            common.program_name
-        );
-    }
-
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "do-not-harmonize",
-                has_arg: getopt::NO_ARGUMENT,
-                val: 'H' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "eliminate-flags",
-                has_arg: getopt::NO_ARGUMENT,
-                val: 'e' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then binary cases, then the tool's own ('H'/'e'), then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_binary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c as u8 as char {
-                'H' => {
-                    options.harmonize = false;
-                    continue;
-                }
-                'e' => {
-                    options.eliminate_flags = true;
-                    continue;
-                }
-                _ => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
-        }
-
-        check_common_params(&mut common);
-        check_binary_params(&mut common, &opt, args);
-        Ok((common, options))
+    /// The per-pair knobs `compare_pair` reads.
+    struct Options {
+        /// '-H, --do-not-harmonize' clears this: harmonize symbols before comparing.
+        harmonize: bool,
+        /// '-e, --eliminate-flags': eliminate flag diacritics before comparing.
+        eliminate_flags: bool,
     }
 
     // [spec:hfst:def:hfst-compare.compare-streams-fn]
@@ -1019,13 +863,18 @@ pub mod compare {
 
     // [spec:hfst:def:hfst-compare.main-fn]
     // [spec:hfst:sem:hfst-compare.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstCompare");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let options = Options {
+            harmonize: !args.do_not_harmonize,
+            eliminate_flags: args.eliminate_flags,
         };
 
         // close buffers, we use streams
@@ -1036,238 +885,160 @@ pub mod compare {
                 common.first_filename, common.second_filename, common.output_filename
             ),
         );
-        let (mut firststream, mut secondstream) = match open_two_input_streams(&common) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (mut firststream, mut secondstream) = open_two_input_streams(&common)?;
 
         if is_input_stream_in_ol_format(&firststream, "hfst-compare")
             || is_input_stream_in_ol_format(&secondstream, "hfst-compare")
         {
-            return 1;
+            return Err(1);
         }
 
-        compare_streams(&common, &options, &mut firststream, &mut secondstream)
+        cli::from_code(compare_streams(
+            &common,
+            &options,
+            &mut firststream,
+            &mut secondstream,
+        ))
     }
 }
 
 pub mod compose {
     //! Faithful 1:1 port of tools/src/hfst-compose.cc — the transducer composition
-    //! command-line tool. Drives the hfst-cli foundation (globals, getopt,
-    //! commandline, program-options, tool-metadata, inc fragments). A binary tool:
-    //! it reads two input streams (firstfile + secondfile) and composes them; the
-    //! shared scaffolding lives in crate::binary_ops.
+    //! command-line tool. A binary tool: it reads two input streams (firstfile +
+    //! secondfile) and composes them; the shared scaffolding lives in
+    //! crate::binary_ops and the option layer in crate::cli.
 
     use crate::binary_ops::{
         BinaryOpSpec, BinaryToolOp, LoopStyle, PairContext, RetryPolicy, run_binary_streams_tool,
     };
+    use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{error, extend_options_from_env, hfst_set_program_name, warning};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
-        print_common_binary_program_parameter_instructions, print_common_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_binary_params, check_common_params, handle_binary_case,
-        handle_common_case, handle_error_case,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name, warning};
     use crate::memory_limit::{self, LimitSource, ResolvedMemoryLimit};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_transducer::{EngineConfig, FlagDiacriticComposeOverlay, HfstTransducer};
     use std::io::Write;
 
-    const GETOPT_MEMORY_LIMIT: i32 = 0x100;
-
-    /// hfst-compose's own options (the former tool-specific `static mut`s).
-    struct Options {
-        /// '-F, --harmonize-flags': harmonize flag diacritics.
-        harmonize_flags: bool,
-        /// '-H, --do-not-harmonize': off harmonizes symbols (default on).
-        harmonize: bool,
-        /// '--xfst flag-is-epsilon' (was the 'flag_is_epsilon_in_composition'
-        /// file-static global in the library; now threaded into compose via
-        /// EngineConfig).
-        flag_is_epsilon: bool,
-        /// '--xerox-composition' (was the 'xerox_composition' file-static global in
-        /// the library; now threaded into compose via EngineConfig).
-        xerox_composition: bool,
-        /// '--memory-limit=SIZE': allowance for budget-aware compose working data.
-        memory_limit_bytes: Option<u64>,
-    }
-
-    impl Default for Options {
-        fn default() -> Self {
-            Options {
-                harmonize_flags: false,
-                harmonize: true,
-                flag_is_epsilon: false,
-                xerox_composition: false,
-                memory_limit_bytes: None,
-            }
-        }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nCompose two transducers\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Composition options:\n  -x, --xerox-composition=VALUE Whether flag diacritics are treated as ordinary\n                                symbols in composition (default is false).\n  -X, --xfst=VARIABLE    Toggle xfst compatibility option VARIABLE.\n      --memory-limit=SIZE\n                         Working-memory allowance for budget-aware OpenFst tropical\n                         and Foma compose state (default: 50% of available RAM;\n                         excess spills).\nHarmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n"
-        );
-        let _ = writeln!(msg);
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
-        let _ = writeln!(msg, "Xfst variables are {{flag-is-epsilon (default OFF)}}.");
-        let _ = writeln!(
-            msg,
-            "VALUE can be one of the following: [true|false], [yes|no] or [ON|OFF],"
-        );
-        let _ = writeln!(msg, "false being the default.");
-        let _ = writeln!(
-            msg,
-            "SIZE is an integer byte count with an optional binary K/KB/KiB through T/TB/TiB suffix; 0 forces nonempty budget-aware products to spill."
-        );
-        let _ = writeln!(
-            msg,
-            "The allowance is not an RSS ceiling: loaded operands and the final result are not included."
-        );
-        let _ = writeln!(
-            msg,
-            "HFST_COMPOSE_MEMORY_LIMIT supplies SIZE when --memory-limit is absent."
-        );
-        let _ = write!(
-            msg,
-            "\nExamples:\n  {} -o cat2dog.hfst cat2mouse.hfst mouse2dog.hfst  composes two automata\n\n",
-            common.program_name
-        );
-    }
-
+    /// hfst-compose's command line.
     // [spec:hfst:def:hfst-compose.parse-options-fn]
     // [spec:hfst:sem:hfst-compose.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "harmonize-flags",
-                has_arg: 0,
-                val: b'F' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "do-not-harmonize",
-                has_arg: 0,
-                val: b'H' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "xerox-composition",
-                has_arg: 1,
-                val: b'x' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "xfst",
-                has_arg: 1,
-                val: b'X' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "memory-limit",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: GETOPT_MEMORY_LIMIT,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(
+        about = "Compose two transducers",
+        after_help = "Xfst variables are {flag-is-epsilon (default OFF)}.
+VALUE can be one of the following: [true|false], [yes|no] or [ON|OFF], false being the default.
+SIZE, in --memory-limit=SIZE, is an integer byte count with an optional binary K/KB/KiB through T/TB/TiB suffix; 0 forces nonempty budget-aware products to spill.
+The allowance is not an RSS ceiling: loaded operands and the final result are not included.
+HFST_COMPOSE_MEMORY_LIMIT supplies SIZE when --memory-limit is absent.
 
-            // The C switch chains the #include'd case groups in order: binary
-            // cases, then common cases, then the tool's own, then the terminal
-            // error arm.
-            match handle_binary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == b'F' as i32 {
-                options.harmonize_flags = true;
-                continue;
-            } else if c == b'H' as i32 {
-                options.harmonize = false;
-                continue;
-            } else if c == b'x' as i32 {
-                let argument = opt.optarg();
-                if argument == "yes" || argument == "true" || argument == "ON" {
-                    options.xerox_composition = true;
-                } else if argument == "no" || argument == "false" || argument == "OFF" {
-                    options.xerox_composition = false;
-                } else {
+Examples:
+  hfst-compose -o cat2dog.hfst cat2mouse.hfst mouse2dog.hfst  composes two automata"
+    )]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: BinaryIo,
+
+        /// Harmonize flag diacritics
+        #[arg(short = 'F', long = "harmonize-flags")]
+        harmonize_flags: bool,
+
+        /// Do not harmonize symbols
+        #[arg(short = 'H', long = "do-not-harmonize")]
+        do_not_harmonize: bool,
+
+        /// Whether flag diacritics are treated as ordinary symbols in
+        /// composition (default is false)
+        #[arg(short = 'x', long = "xerox-composition", value_name = "VALUE")]
+        xerox_composition: Option<String>,
+
+        /// Toggle xfst compatibility option VARIABLE
+        #[arg(short = 'X', long = "xfst", value_name = "VARIABLE")]
+        xfst: Option<String>,
+
+        /// Working-memory allowance for budget-aware OpenFst tropical and Foma
+        /// compose state, as --memory-limit=SIZE (default: 50% of available RAM;
+        /// excess spills)
+        #[arg(long = "memory-limit", value_name = "SIZE")]
+        memory_limit: Option<String>,
+    }
+
+    impl Args {
+        /// Case 'x': the xerox-composition vocabulary, rejected in the C's
+        /// getopt loop with a bare stderr line and EXIT_FAILURE.
+        fn xerox(&self) -> Result<bool, i32> {
+            match self.xerox_composition.as_deref() {
+                None => Ok(false),
+                Some("yes") | Some("true") | Some("ON") => Ok(true),
+                Some("no") | Some("false") | Some("OFF") => Ok(false),
+                Some(other) => {
                     let _ = writeln!(
                         std::io::stderr(),
                         "Error: unknown option to --xerox-composition: '{}'",
-                        opt.optarg()
+                        other
                     );
-                    return Err(1);
+                    Err(1)
                 }
-                continue;
-            } else if c == b'X' as i32 {
-                let argument = opt.optarg();
-                if argument == "flag-is-epsilon" {
-                    options.flag_is_epsilon = true;
-                } else {
+            }
+        }
+
+        /// Case 'X': the one xfst variable this tool knows.
+        fn flag_is_epsilon(&self) -> Result<bool, i32> {
+            match self.xfst.as_deref() {
+                None => Ok(false),
+                Some("flag-is-epsilon") => Ok(true),
+                Some(other) => {
                     let _ = writeln!(
                         std::io::stderr(),
                         "Error: unknown option to --xfst: '{}'",
-                        opt.optarg()
+                        other
                     );
-                    return Err(1);
+                    Err(1)
                 }
-                continue;
-            } else if c == GETOPT_MEMORY_LIMIT {
-                let argument = opt.optarg();
-                options.memory_limit_bytes = match memory_limit::parse_size(&argument) {
-                    Ok(bytes) => Some(bytes),
-                    Err(detail) => {
-                        let _ = writeln!(
-                            std::io::stderr(),
-                            "{}: invalid value for --memory-limit: {detail}",
-                            common.program_name
-                        );
-                        return Err(1);
-                    }
-                };
-                continue;
             }
-            return Err(handle_error_case(&common, &opt, c));
         }
 
-        check_binary_params(&mut common, &opt, args);
-        check_common_params(&mut common);
-        Ok((common, options))
+        /// Case GETOPT_MEMORY_LIMIT: parse SIZE, or refuse before any input is
+        /// opened.
+        fn memory_limit_bytes(&self, common: &CommonOptions) -> Result<Option<u64>, i32> {
+            let Some(argument) = self.memory_limit.as_deref() else {
+                return Ok(None);
+            };
+            match memory_limit::parse_size(argument) {
+                Ok(bytes) => Ok(Some(bytes)),
+                Err(detail) => {
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "{}: invalid value for --memory-limit: {detail}",
+                        common.program_name
+                    );
+                    Err(1)
+                }
+            }
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // All three were rejected inside the C getopt loop, before the
+            // parameter checks; run them here for the same ordering.
+            self.xerox()?;
+            self.flag_is_epsilon()?;
+            self.memory_limit_bytes(opts)?;
+            Ok(())
+        }
     }
 
     // [spec:hfst:def:hfst-compose.compose-streams-fn]
@@ -1294,39 +1065,40 @@ pub mod compose {
 
     // [spec:hfst:def:hfst-compose.main-fn]
     // [spec:hfst:sem:hfst-compose.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstCompose");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
 
         // Resolve the allowance before either input stream is opened, so the
         // automatic 50% value is a stable startup snapshot rather than a moving
         // target as transducers are loaded.
-        let memory_limit = match memory_limit::resolve(options.memory_limit_bytes) {
+        let memory_limit = match memory_limit::resolve(args.memory_limit_bytes(&common)?) {
             Ok(limit) => limit,
             Err(detail) => {
                 let _ = writeln!(std::io::stderr(), "{}: {detail}", common.program_name);
-                return 1;
+                return Err(1);
             }
         };
         let mut op = ComposeOp {
-            harmonize: options.harmonize,
-            harmonize_flags: options.harmonize_flags,
+            harmonize: !args.do_not_harmonize,
+            harmonize_flags: args.harmonize_flags,
             flag_overlay: None,
             memory_limit,
             memory_policy_reported: false,
             cfg: EngineConfig {
-                flag_is_epsilon_in_composition: options.flag_is_epsilon,
-                xerox_composition: options.xerox_composition,
+                flag_is_epsilon_in_composition: args.flag_is_epsilon()?,
+                xerox_composition: args.xerox()?,
                 compose_memory_limit_bytes: Some(memory_limit.allowance_bytes),
                 ..EngineConfig::default()
             },
         };
-        run_binary_streams_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_binary_streams_tool(&common, &SPEC, &mut op))
     }
 
     struct ComposeOp {
@@ -1479,136 +1251,55 @@ pub mod compose {
 
 pub mod concatenate {
     //! Faithful 1:1 port of tools/src/hfst-concatenate.cc — the transducer
-    //! concatenation command-line tool. Drives the hfst-cli foundation (getopt,
-    //! commandline, program-options, tool-metadata, inc fragments).
+    //! concatenation command-line tool.
     //!
     //! This is a BINARY tool: it reads two input streams (firststream and
     //! secondstream) and writes their pairwise concatenation; the shared
-    //! scaffolding lives in crate::binary_ops.
-    //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
-    //! `static mut` globals and no `unsafe`.
+    //! scaffolding lives in crate::binary_ops and the option layer in
+    //! crate::cli.
 
     use crate::binary_ops::{
         BinaryOpSpec, BinaryToolOp, LoopStyle, PairContext, RetryPolicy, run_binary_streams_tool,
     };
+    use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{error, extend_options_from_env, hfst_set_program_name, warning};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
-        print_common_binary_program_parameter_instructions, print_common_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_binary_params, check_common_params, handle_binary_case,
-        handle_common_case, handle_error_case,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name, warning};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::HfstTransducer;
-    use std::io::Write;
 
-    /// hfst-concatenate's own options (the former tool-specific `static mut`s).
-    struct Options {
-        /// '-F, --harmonize-flags': harmonize flag diacritics.
-        harmonize_flags: bool,
-        /// '-H, --do-not-harmonize': whether to harmonize symbols (default true).
-        harmonize: bool,
-    }
-
-    impl Default for Options {
-        fn default() -> Self {
-            Options {
-                harmonize_flags: false,
-                harmonize: true,
-            }
-        }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nConcatenate two transducers\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Harmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n"
-        );
-        let _ = writeln!(msg);
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "\nExamples:\n  {} -o catdog.hfst cat.hfst dog.hfst\nconcatenates cat.hfst with dog.hfst and writes results to catdog.hfst\n\n",
-            common.program_name
-        );
-    }
-
+    /// hfst-concatenate's command line.
     // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "harmonize-flags",
-                has_arg: 0,
-                val: b'F' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "do-not-harmonize",
-                has_arg: 0,
-                val: b'H' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(
+        about = "Concatenate two transducers",
+        after_help = "Examples:
+  hfst-concatenate -o catdog.hfst cat.hfst dog.hfst
+concatenates cat.hfst with dog.hfst and writes results to catdog.hfst"
+    )]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: BinaryIo,
 
-            // The C switch chains the #include'd case groups in order: binary
-            // cases, then common cases, then the tool's own ('F'/'H'), then the
-            // terminal error arm.
-            match handle_binary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == b'F' as i32 {
-                options.harmonize_flags = true;
-                continue;
-            }
-            if c == b'H' as i32 {
-                options.harmonize = false;
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
+        /// Do not harmonize symbols
+        #[arg(short = 'H', long = "do-not-harmonize")]
+        do_not_harmonize: bool,
+
+        /// Harmonize flag diacritics
+        #[arg(short = 'F', long = "harmonize-flags")]
+        harmonize_flags: bool,
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_binary_params(&mut common, &opt, args);
-        check_common_params(&mut common);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-concatenate.concatenate-streams-fn]
@@ -1634,20 +1325,21 @@ pub mod concatenate {
 
     // [spec:hfst:def:hfst-concatenate.main-fn]
     // [spec:hfst:sem:hfst-concatenate.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstConcatenate");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
 
         let mut op = ConcatenateOp {
-            harmonize: options.harmonize,
-            harmonize_flags: options.harmonize_flags,
+            harmonize: !args.do_not_harmonize,
+            harmonize_flags: args.harmonize_flags,
         };
-        run_binary_streams_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_binary_streams_tool(&common, &SPEC, &mut op))
     }
 
     struct ConcatenateOp {
@@ -1694,126 +1386,51 @@ pub mod concatenate {
 
 pub mod conjunct {
     //! Faithful 1:1 port of tools/src/hfst-conjunct.cc — the transducer
-    //! conjunction (intersect, AND) command-line tool. Drives the hfst-cli
-    //! foundation (globals, getopt, commandline, program-options, tool-metadata,
-    //! inc fragments). A BINARY tool: it reads two input streams (first + second);
-    //! the shared scaffolding lives in crate::binary_ops.
+    //! conjunction (intersect, AND) command-line tool. A BINARY tool: it reads two
+    //! input streams (first + second); the shared scaffolding lives in
+    //! crate::binary_ops and the option layer in crate::cli.
 
     use crate::binary_ops::{
         BinaryOpSpec, BinaryToolOp, LoopStyle, PairContext, RetryPolicy, run_binary_streams_tool,
     };
+    use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{error, extend_options_from_env, hfst_set_program_name, warning};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
-        print_common_binary_program_parameter_instructions, print_common_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_binary_params, check_common_params, handle_binary_case,
-        handle_common_case, handle_error_case,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name, warning};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::{FlagDiacriticOverlay, HfstTransducer};
-    use std::io::Write;
 
-    /// hfst-conjunct's own options (the former tool-specific `static mut`s).
-    struct Options {
-        /// '-F, --harmonize-flags': harmonize flag diacritics.
-        harmonize_flags: bool,
-        /// '-H, --do-not-harmonize': whether to harmonize (default true).
-        harmonize: bool,
-    }
-
-    impl Default for Options {
-        fn default() -> Self {
-            Options {
-                harmonize_flags: false,
-                harmonize: true,
-            }
-        }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nConjunct (intersect, AND) two transducers\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Flag diacritics:\n  -F, --harmonize-flags  Harmonize flag diacritics\n  -H, --do-not-harmonize Do not harmonize\n"
-        );
-        let _ = writeln!(msg);
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "\nExamples:\n  {} -o dog.hfst cat_or_dog.hfst dog_or_mouse.hfst\n\n",
-            common.program_name
-        );
-    }
-
+    /// hfst-conjunct's command line.
     // [spec:hfst:req:cli.arg-parse]
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "harmonize-flags",
-                has_arg: 0,
-                val: 'F' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "do-not-harmonize",
-                has_arg: 0,
-                val: 'H' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(
+        about = "Conjunct (intersect, AND) two transducers",
+        after_help = "Examples:
+  hfst-conjunct -o dog.hfst cat_or_dog.hfst dog_or_mouse.hfst"
+    )]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: BinaryIo,
 
-            // The C switch chains the #include'd case groups in order: binary
-            // cases, common cases, then the tool's own ('F'/'H'), then the
-            // terminal error arm.
-            match handle_binary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == 'F' as i32 {
-                options.harmonize_flags = true;
-                continue;
-            }
-            if c == 'H' as i32 {
-                options.harmonize = false;
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
+        /// Harmonize flag diacritics
+        #[arg(short = 'F', long = "harmonize-flags")]
+        harmonize_flags: bool,
+
+        /// Do not harmonize
+        #[arg(short = 'H', long = "do-not-harmonize")]
+        do_not_harmonize: bool,
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_binary_params(&mut common, &opt, args);
-        check_common_params(&mut common);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-conjunct.conjunct-streams-fn]
@@ -1839,20 +1456,21 @@ pub mod conjunct {
 
     // [spec:hfst:def:hfst-conjunct.main-fn]
     // [spec:hfst:sem:hfst-conjunct.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstConjunct");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
         let mut op = ConjunctOp {
-            harmonize: options.harmonize,
-            harmonize_flags: options.harmonize_flags,
+            harmonize: !args.do_not_harmonize,
+            harmonize_flags: args.harmonize_flags,
             flag_overlay: None,
         };
-        run_binary_streams_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_binary_streams_tool(&common, &SPEC, &mut op))
     }
 
     struct ConjunctOp {
@@ -1915,124 +1533,54 @@ pub mod conjunct {
 
 pub mod disjunct {
     //! Faithful 1:1 port of tools/src/hfst-disjunct.cc — the transducer
-    //! disjunction (union, OR) command-line tool. Drives the hfst-cli foundation
-    //! (globals, getopt, commandline, program-options, tool-metadata, inc
-    //! fragments). A BINARY tool: it reads two input streams (firstfile +
-    //! secondfile) and writes their disjunction; the shared scaffolding lives in
-    //! crate::binary_ops.
+    //! disjunction (union, OR) command-line tool. A BINARY tool: it reads two input
+    //! streams (firstfile + secondfile) and writes their disjunction; the shared
+    //! scaffolding lives in crate::binary_ops and the option layer in crate::cli.
 
     use crate::binary_ops::{
         BinaryOpSpec, BinaryToolOp, LoopStyle, RetryPolicy, run_binary_streams_tool,
     };
+    use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
-        print_common_binary_program_parameter_instructions, print_common_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_binary_params, check_common_params, handle_binary_case,
-        handle_common_case, handle_error_case,
-    };
+    use crate::hfst_commandline::hfst_set_program_name;
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::HfstTransducer;
-    use std::io::Write;
 
-    /// hfst-disjunct's own options (the former tool-specific `static mut`s).
-    struct Options {
-        /// '-F, --harmonize-flags': harmonize flag diacritics.
-        harmonize_flags: bool,
-        /// '-H, --do-not-harmonize' clears this (harmonize symbols; default true).
-        harmonize: bool,
-    }
-
-    impl Default for Options {
-        fn default() -> Options {
-            Options {
-                harmonize_flags: false,
-                harmonize: true,
-            }
-        }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nDisjunct (union, OR) two transducers\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        let _ = writeln!(msg);
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        let _ = write!(
-            msg,
-            "Harmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n"
-        );
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "\nExamples:\n  {} -o cat_or_dog.hfst cat.hfst dog.hfst\n\n",
-            common.program_name
-        );
-    }
-
+    /// hfst-disjunct's command line.
+    ///
+    /// '-F, --harmonize-flags' is DELIBERATELY absent: upstream's usage text
+    /// advertises it, but its getopt table never carried the option and the
+    /// harmonize_flags static stayed false, so the flag was never accepted.
+    /// Preserved bug-for-bug — the usage text is what stops advertising it.
     // [spec:hfst:def:hfst-disjunct.parse-options-fn]
     // [spec:hfst:sem:hfst-disjunct.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "do-not-harmonize",
-                has_arg: getopt::NO_ARGUMENT,
-                val: b'H' as i32,
-            });
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(
+        about = "Disjunct (union, OR) two transducers",
+        after_help = "Examples:
+  hfst-disjunct -o cat_or_dog.hfst cat.hfst dog.hfst"
+    )]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: BinaryIo,
 
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then binary cases, then the tool's own ('H'), then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_binary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == b'H' as i32 {
-                options.harmonize = false;
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
+        /// Do not harmonize symbols
+        #[arg(short = 'H', long = "do-not-harmonize")]
+        do_not_harmonize: bool,
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_common_params(&mut common);
-        check_binary_params(&mut common, &opt, args);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-disjunct.disjunct-streams-fn]
@@ -2058,20 +1606,20 @@ pub mod disjunct {
 
     // [spec:hfst:def:hfst-disjunct.main-fn]
     // [spec:hfst:sem:hfst-disjunct.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstDisjunct");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
 
-        let _ = options.harmonize_flags;
         let mut op = DisjunctOp {
-            harmonize: options.harmonize,
+            harmonize: !args.do_not_harmonize,
         };
-        run_binary_streams_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_binary_streams_tool(&common, &SPEC, &mut op))
     }
 
     struct DisjunctOp {
@@ -2091,121 +1639,53 @@ pub mod disjunct {
 
 pub mod priority_disjunct {
     //! Faithful 1:1 port of tools/src/hfst-priority-disjunct.cc — the transducer
-    //! priority disjunction (priority union) command-line tool. Drives the
-    //! hfst-cli foundation (globals, getopt, commandline, program-options,
-    //! tool-metadata, inc fragments). A BINARY tool: it reads two input streams
-    //! (firstfile + secondfile) and writes their priority union; the shared
-    //! scaffolding lives in crate::binary_ops.
+    //! priority disjunction (priority union) command-line tool. A BINARY tool: it
+    //! reads two input streams (firstfile + secondfile) and writes their priority
+    //! union; the shared scaffolding lives in crate::binary_ops and the option
+    //! layer in crate::cli.
 
     use crate::binary_ops::{
         BinaryOpSpec, BinaryToolOp, LoopStyle, RetryPolicy, run_binary_streams_tool,
     };
+    use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
-        print_common_binary_program_parameter_instructions, print_common_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_binary_params, check_common_params, handle_binary_case,
-        handle_common_case, handle_error_case,
-    };
+    use crate::hfst_commandline::hfst_set_program_name;
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::HfstTransducer;
-    use std::io::Write;
 
-    /// hfst-priority-disjunct's own options (the former tool-specific `static mut`s).
-    struct Options {
-        /// '-F, --harmonize-flags': harmonize flag diacritics.
-        harmonize_flags: bool,
-        /// '-H, --do-not-harmonize': off harmonizes symbols (default on).
-        harmonize: bool,
-    }
-
-    impl Default for Options {
-        fn default() -> Self {
-            Options {
-                harmonize_flags: false,
-                harmonize: true,
-            }
-        }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nDisjunct (union, OR) two transducers\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        let _ = writeln!(msg);
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        let _ = write!(
-            msg,
-            "Harmonization:\n  -H, --do-not-harmonize Do not harmonize symbols.\n  -F, --harmonize-flags  Harmonize flag diacritics.\n"
-        );
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "\nExamples:\n  {} -o cat_or_dog.hfst cat.hfst dog.hfst\n\n",
-            common.program_name
-        );
-    }
-
+    /// hfst-priority-disjunct's command line.
+    ///
+    /// '-H' is accepted and has no effect, and '-F' is not accepted at all:
+    /// upstream's usage text advertises both, its getopt table carried only
+    /// 'do-not-harmonize', and priority_union takes no harmonize parameter, so
+    /// neither static ever reached the operation. Preserved bug-for-bug.
     // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "do-not-harmonize",
-                has_arg: getopt::NO_ARGUMENT,
-                val: b'H' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(
+        about = "Disjunct (union, OR) two transducers",
+        after_help = "Examples:
+  hfst-priority-disjunct -o cat_or_dog.hfst cat.hfst dog.hfst"
+    )]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: BinaryIo,
 
-            // The C switch chains the #include'd case groups in order: binary
-            // cases, then common cases, then the tool's own ('H'), then the
-            // terminal error arm.
-            match handle_binary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == b'H' as i32 {
-                options.harmonize = false;
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
+        /// Do not harmonize symbols (accepted; priority union does not harmonize)
+        #[arg(short = 'H', long = "do-not-harmonize")]
+        do_not_harmonize: bool,
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_binary_params(&mut common, &opt, args);
-        check_common_params(&mut common);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-priority-disjunct.priority-disjunct-streams-fn]
@@ -2231,18 +1711,22 @@ pub mod priority_disjunct {
 
     // [spec:hfst:def:hfst-priority-disjunct.main-fn]
     // [spec:hfst:sem:hfst-priority-disjunct.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPriorityDisjunct");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let _ = args.do_not_harmonize;
 
-        let _ = options.harmonize_flags;
-        let _ = options.harmonize;
-        run_binary_streams_tool(&common, &SPEC, &mut PriorityDisjunctOp)
+        cli::from_code(run_binary_streams_tool(
+            &common,
+            &SPEC,
+            &mut PriorityDisjunctOp,
+        ))
     }
 
     struct PriorityDisjunctOp;
@@ -2261,89 +1745,43 @@ pub mod priority_disjunct {
 
 pub mod shuffle {
     //! Faithful 1:1 port of tools/src/hfst-shuffle.cc — the transducer shuffle
-    //! command-line tool. Drives the hfst-cli foundation (globals, getopt,
-    //! commandline, program-options, tool-metadata, inc fragments). A BINARY tool:
-    //! it reads two input streams (firstfile + secondfile) and writes their
-    //! shuffle; the shared scaffolding lives in crate::binary_ops.
+    //! command-line tool. A BINARY tool: it reads two input streams (firstfile +
+    //! secondfile) and writes their shuffle; the shared scaffolding lives in
+    //! crate::binary_ops and the option layer in crate::cli.
 
     use crate::binary_ops::{
         BinaryOpSpec, BinaryToolOp, LoopStyle, RetryPolicy, run_binary_streams_tool,
     };
+    use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
-        print_common_binary_program_parameter_instructions, print_common_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_binary_params, check_common_params, handle_binary_case,
-        handle_common_case, handle_error_case,
-    };
+    use crate::hfst_commandline::hfst_set_program_name;
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::HfstTransducer;
-    use std::io::Write;
 
+    /// hfst-shuffle's command line. The tool declares no options of its own.
+    // [spec:hfst:req:cli.arg-parse]
     // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nShuffle two transducers\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        let _ = writeln!(msg);
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "\nExamples:\n  {} -o shuffled.hfst cat.hfst dog.hfst\n\n",
-            common.program_name
-        );
+    #[derive(clap::Parser)]
+    #[command(
+        about = "Shuffle two transducers",
+        after_help = "Examples:
+  hfst-shuffle -o shuffled.hfst cat.hfst dog.hfst"
+    )]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: BinaryIo,
     }
 
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared options; `Err(code)` is an exit code the caller
-    // should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<CommonOptions, i32> {
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: binary
-            // cases, then common cases, then the terminal error arm. (The tool
-            // defines no options of its own.)
-            match handle_binary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_binary_params(&mut common, &opt, args);
-        check_common_params(&mut common);
-        Ok(common)
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-shuffle.shuffle-streams-fn]
@@ -2371,16 +1809,17 @@ pub mod shuffle {
 
     // [spec:hfst:def:hfst-shuffle.main-fn]
     // [spec:hfst:sem:hfst-shuffle.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstShuffle");
-        let common = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, _args) = cli::parse::<Args>(common, args)?;
 
-        run_binary_streams_tool(&common, &SPEC, &mut ShuffleOp)
+        cli::from_code(run_binary_streams_tool(&common, &SPEC, &mut ShuffleOp))
     }
 
     struct ShuffleOp;
@@ -2398,130 +1837,52 @@ pub mod shuffle {
 
 pub mod subtract {
     //! Faithful 1:1 port of tools/src/hfst-subtract.cc — the transducer subtraction
-    //! (minus) command-line tool. Drives the hfst-cli foundation (globals, getopt,
-    //! commandline, program-options, tool-metadata, inc fragments). A BINARY tool:
-    //! it reads two input streams (first + second); the shared scaffolding lives
-    //! in crate::binary_ops.
+    //! (minus) command-line tool. A BINARY tool: it reads two input streams (first +
+    //! second); the shared scaffolding lives in crate::binary_ops and the option
+    //! layer in crate::cli.
 
     use crate::binary_ops::{
         BinaryOpSpec, BinaryToolOp, LoopStyle, PairContext, RetryPolicy, run_binary_streams_tool,
     };
+    use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{error, extend_options_from_env, hfst_set_program_name, warning};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
-        print_common_binary_program_parameter_instructions, print_common_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_binary_params, check_common_params, handle_binary_case,
-        handle_common_case, handle_error_case,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name, warning};
     use hfst::backend::AlgebraBackend;
     use hfst::hfst_transducer::FlagDiacriticOverlay;
     use hfst::hfst_transducer::HfstTransducer;
-    use std::io::Write;
 
-    /// hfst-subtract's own options (the former tool-specific `static mut`s).
-    struct Options {
-        /// '-F, --harmonize-flags': harmonize flag diacritics.
-        harmonize_flags: bool,
-        /// '-H, --do-not-harmonize': off harmonizes symbols (default on).
-        harmonize: bool,
-    }
-
-    impl Default for Options {
-        fn default() -> Self {
-            Options {
-                harmonize_flags: false,
-                harmonize: true,
-            }
-        }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\nSubtract (minus) two transducers\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_binary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Flag diacritics:\n  -F, --harmonize-flags  Harmonize flag diacritics\n  -H, --do-not-harmonize Do not harmonize\n",
-        );
-        let _ = writeln!(msg);
-        print_common_binary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "\nExamples:\n  {} -o catdog.hfst cat.hfst dog.hfst  subtracts transducers\n\n",
-            common.program_name
-        );
-    }
-
+    /// hfst-subtract's command line.
     // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_binary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "harmonize-flags",
-                has_arg: getopt::NO_ARGUMENT,
-                val: 'F' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "do-not-harmonize",
-                has_arg: getopt::NO_ARGUMENT,
-                val: 'H' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(
+        about = "Subtract (minus) two transducers",
+        after_help = "Examples:
+  hfst-subtract -o catdog.hfst cat.hfst dog.hfst  subtracts transducers"
+    )]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: BinaryIo,
 
-            // The C switch chains the #include'd case groups in order: binary
-            // cases, common cases, then the tool's own ('F'/'H'), then the
-            // terminal error arm.
-            match handle_binary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == 'F' as i32 {
-                options.harmonize_flags = true;
-                continue;
-            }
-            if c == 'H' as i32 {
-                options.harmonize = false;
-                continue;
-            }
-            return Err(handle_error_case(&common, &opt, c));
+        /// Harmonize flag diacritics
+        #[arg(short = 'F', long = "harmonize-flags")]
+        harmonize_flags: bool,
+
+        /// Do not harmonize
+        #[arg(short = 'H', long = "do-not-harmonize")]
+        do_not_harmonize: bool,
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
         }
 
-        check_binary_params(&mut common, &opt, args);
-        check_common_params(&mut common);
-        Ok((common, options))
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
     }
 
     // [spec:hfst:def:hfst-subtract.subtract-streams-fn]
@@ -2547,21 +1908,22 @@ pub mod subtract {
 
     // [spec:hfst:def:hfst-subtract.main-fn]
     // [spec:hfst:sem:hfst-subtract.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstSubtract");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
 
         let mut op = SubtractOp {
-            harmonize: options.harmonize,
-            harmonize_flags: options.harmonize_flags,
+            harmonize: !args.do_not_harmonize,
+            harmonize_flags: args.harmonize_flags,
             flag_overlay: None,
         };
-        run_binary_streams_tool(&common, &SPEC, &mut op)
+        cli::from_code(run_binary_streams_tool(&common, &SPEC, &mut op))
     }
 
     struct SubtractOp {
