@@ -39,6 +39,7 @@ use icu::segmenter::GraphemeClusterSegmenter;
 
 use crate::backend::AlgebraBackend;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
+use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::{
     ImplementationType, StringPair, StringPairVector, StringVector, Symbol,
 };
@@ -1567,7 +1568,31 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         lexicons.substitute_symbol_substitutions(&small_substitutions)?;
         lexicons.prune_alphabet(true)?;
 
+        // This graph denotes (ordinary-output-symbol | valid-joiner-pair)*.
+        // Construct the closure directly: feeding a 5,000-way union through
+        // generic repeat-star + determinize used gigabytes to discover this
+        // same small cyclic graph.
         let mut joiners_trie = HfstBasicTransducer::new();
+        joiners_trie.set_final_weight(0, &0.0);
+        let add_cycle_path = |graph: &mut HfstBasicTransducer, path: &StringPairVector| {
+            let mut source = 0;
+            for (index, pair) in path.iter().enumerate() {
+                let target = if index + 1 == path.len() {
+                    0
+                } else {
+                    graph.add_state_new()
+                };
+                let transition = HfstBasicTransition::new_symbols(
+                    target,
+                    pair.0.clone(),
+                    pair.1.clone(),
+                    0.0,
+                    graph.coder_mut(),
+                );
+                graph.add_transition(source, &transition, true);
+                source = target;
+            }
+        };
 
         let mut all_joiners_to_epsilon = HfstSymbolSubstitutions::new();
 
@@ -1593,7 +1618,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 // joiners trie version (later compose)
                 let doubled = format!("{}{}", joiner_enc, joiner_enc);
                 let new_vector = self.tokenizer.tokenize(&doubled, false);
-                joiners_trie.disjunct_path(&new_vector, 0.0f32);
+                add_cycle_path(&mut joiners_trie, &new_vector);
 
                 all_joiners_to_epsilon.insert(
                     Symbol::from(joiner_enc),
@@ -1648,44 +1673,44 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 // joiners trie version (later compose)
                 let combined = format!("{}{}", flag_p_string, flag_r_string);
                 let new_vector = self.tokenizer.tokenize(&combined, false);
-                joiners_trie.disjunct_path(&new_vector, 0.0f32);
+                add_cycle_path(&mut joiners_trie, &new_vector);
             }
         }
+        // Get the right side of every pair. Keep the temporary basic graph in
+        // this narrow scope: on large lexicons retaining it through the later
+        // determinization needlessly keeps a complete second graph resident.
+        let right_symbols = {
+            let fsm = HfstBasicTransducer::from_transducer(&lexicons);
+            let mut symbols: StringSet = BTreeSet::new();
+            for state in fsm.states_and_transitions() {
+                for tr in state {
+                    let alph2 = tr.get_output_symbol(fsm.coder());
 
-        // get right side of every pair
-        let fsm = HfstBasicTransducer::from_transducer(&lexicons);
-        let mut right_symbols: StringSet = BTreeSet::new();
-        // Go through all states
-        for state in fsm.states_and_transitions() {
-            // Go through all transitions
-            for tr in state {
-                let alph2 = tr.get_output_symbol(fsm.coder());
-
-                if !alph2.starts_with("@@ANOTHER_EPSILON@@")
-                    && !alph2.starts_with("$_LEXC_JOINER.")
-                    && !alph2.starts_with("$P.LEXNAME.")
-                    && !alph2.starts_with("$R.LEXNAME.")
-                    && !alph2.starts_with("@_")
-                {
-                    right_symbols.insert(alph2);
+                    if !alph2.starts_with("@@ANOTHER_EPSILON@@")
+                        && !alph2.starts_with("$_LEXC_JOINER.")
+                        && !alph2.starts_with("$P.LEXNAME.")
+                        && !alph2.starts_with("$R.LEXNAME.")
+                        && !alph2.starts_with("@_")
+                    {
+                        symbols.insert(alph2);
+                    }
                 }
             }
-        }
-
+            symbols
+        };
         for alph in &right_symbols {
             self.tokenizer.add_multichar_symbol(alph);
             let new_vector = self.tokenizer.tokenize(alph, false);
-            joiners_trie.disjunct_path(&new_vector, 0.0f32);
+            add_cycle_path(&mut joiners_trie, &new_vector);
         }
 
-        let mut joiners_all: HfstTransducer<B> = HfstTransducer::new_from_basic(&joiners_trie)?;
-
-        joiners_all.repeat_star()?;
-        joiners_all.optimize()?;
+        let joiners_all: HfstTransducer<B> = HfstTransducer::new_from_basic(&joiners_trie)?;
 
         lexicons
             .compose_with_config(&joiners_all, true, &self.compose_cfg())?
             .optimize()?;
+        drop(joiners_all);
+        drop(joiners_trie);
 
         let mut all_substitutions = HfstSymbolSubstitutions::new();
         if self.with_flags {
@@ -1708,9 +1733,11 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             all_substitutions.extend(all_joiners_to_epsilon);
         }
 
-        lexicons
-            .substitute_symbol_substitutions(&all_substitutions)?
-            .optimize()?;
+        if !all_substitutions.is_empty() {
+            lexicons
+                .substitute_symbol_substitutions(&all_substitutions)?
+                .optimize()?;
+        }
         lexicons.prune_alphabet(true)?;
 
         // replace reg exp key with transducers
@@ -1727,11 +1754,12 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 fake_regexpr_to_real.insert(key.clone(), Symbol::from(alph));
             }
         }
-        lexicons
-            .substitute_symbol_substitutions(&fake_regexpr_to_real)?
-            .optimize()?;
-        lexicons.prune_alphabet(true)?;
-
+        if !fake_regexpr_to_real.is_empty() {
+            lexicons
+                .substitute_symbol_substitutions(&fake_regexpr_to_real)?
+                .optimize()?;
+            lexicons.prune_alphabet(true)?;
+        }
         let mut reg_mark_to_tr: crate::hfst_basic_transducer::SubstMap = BTreeMap::new();
 
         for (key, tr) in self.regexps.iter() {
@@ -1745,13 +1773,19 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             reg_mark_to_tr.insert(Symbol::from(alph), btr);
         }
 
-        let mut lexicons_basic = HfstBasicTransducer::from_transducer(&lexicons);
-        lexicons_basic.substitute_subst_map(&mut reg_mark_to_tr, true)?;
-
-        lexicons_basic.prune_alphabet(true);
-
-        let mut rv: HfstTransducer<B> = HfstTransducer::new_from_basic(&lexicons_basic)?;
-
+        let mut rv_needs_optimization = !reg_mark_to_tr.is_empty();
+        let mut rv = if rv_needs_optimization {
+            let mut lexicons_basic = HfstBasicTransducer::from_transducer(&lexicons);
+            drop(lexicons);
+            lexicons_basic.substitute_subst_map(&mut reg_mark_to_tr, true)?;
+            lexicons_basic.prune_alphabet(true);
+            HfstTransducer::new_from_basic(&lexicons_basic)?
+        } else {
+            // No regex entries means the graph is already the optimized result
+            // of morphotax composition and joiner substitution. Moving it
+            // avoids two full graph copies and a duplicate final minimize.
+            lexicons
+        };
         // Preserve only first flag of consecutive P and R lexname flag series,
         // e.g. change P.LEXNAME.1 R.LEXNAME.1 P.LEXNAME.2 R.LEXNAME.2 into
         // P.LEXNAME.1
@@ -1808,10 +1842,12 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 .optimize()?;
 
             rv.assign(&filtered_lexicons)?;
+            rv_needs_optimization = false;
         }
 
-        rv.optimize()?;
-
+        if rv_needs_optimization {
+            rv.optimize()?;
+        }
         Ok(Some(rv))
     }
 

@@ -142,6 +142,31 @@ fn valid_file_read_lexc_tropical() -> Result<(), hfst::error::Error> {
 }
 
 #[test]
+fn flags_keep_multilexicon_language() -> Result<(), hfst::error::Error> {
+    let _g = serialized();
+    let source =
+        std::fs::read_to_string(fixture_path("test_lexc.lexc")).expect("read multilexicon fixture");
+    let mut compiler = LexcCompiler::<StdVectorFst>::new_with_flags(true, false);
+    let mut actual = compiler.compile(&source).expect("flagged lexc compiles");
+    actual.eliminate_flags()?;
+    assert!(build_animals::<StdVectorFst>()?.compare_default(&actual)?);
+    Ok(())
+}
+
+#[test]
+fn regex_entries_still_expand() -> Result<(), hfst::error::Error> {
+    let _g = serialized();
+    let mut compiler = LexcCompiler::<StdVectorFst>::new();
+    let actual = compiler
+        .compile("LEXICON Root\n< [ a | b ] > # ;\n")
+        .expect("regexp lexc entry compiles");
+    let mut expected = HfstTransducer::<StdVectorFst>::new_symbol("a")?;
+    expected.disjunct(&HfstTransducer::new_symbol("b")?, true)?;
+    assert!(expected.compare_default(&actual)?);
+    Ok(())
+}
+
+#[test]
 fn invalid_file_parse_tropical() {
     let _g = serialized();
     invalid_file_parse::<StdVectorFst>();

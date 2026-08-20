@@ -6381,12 +6381,34 @@ children (
                 title "Bound lexc morphotax construction memory and redundant optimization"
                 kind @perf
                 deps (performance-language-gates)
+                sealed true
                 log (
                     {
                         at 2026-08-19T23:26:36.38907Z
                         author "brendan@necessary.nu"
                         kind @note
                         text "Fresh shared emoji lexc case: a 374,889-byte, 16,724-line source takes 6.34s and 2,054,111,232 B peak RSS to produce a 197 KB transducer with 5 states and 5,045 arcs. Removing --alignStrings changes neither the peak nor semantics. Profile implicates repeated repeat-star, composition, determinization, and minimization during morphotax assembly. Completion requires equivalent output and a measured material peak-RSS reduction on this fixture, with normal morphology lexc regressions and no hidden transfer of the peak to a later phase."
+                    }
+
+                    {
+                        at 2026-08-19T23:57:38.593162Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-20T00:08:15.414973Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Replaced the generic (ordinary-output | joiner-pair)* construction (union trie + repeat_star + determinize/minimize) with its direct cyclic automaton, scoped temporary graph lifetimes, and skipped empty substitutions/copies and duplicate final optimization. Stage profiling showed the old joiner closure alone caused the 2 GB peak. Controlled release A/B: shared emoji 6.37s/6.13 user/2,054,127,616 B -> 0.16s/0.13 user/43,679,744 B (-97.5% wall, -97.9% RSS); withFlags 6.11s/2,055,077,888 B -> 0.17s/44,122,112 B; full SMA morphology 4.02s/3.94 user/458,964,992 B -> 3.71s/3.63 user/422,608,896 B (-7.7% wall, -7.9% RSS). All three outputs pass hfst compare. Focused plain/flagged/regex lexc tests, conformance, CLI diagnostics, hfst lib, all-target checks, Clippy -D warnings, fmt, and diff checks pass."
+                    }
+
+                    {
+                        at 2026-08-20T00:08:21.287187Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }
