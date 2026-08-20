@@ -190,6 +190,7 @@ fn owned_compose_matches_all_memory_plans() {
             hfst_openfst::compose_storage::ComposeMemoryPlan::from_allowance(Some(allowance)),
             scratch.path().to_path_buf(),
             false,
+            super::compose::ProductPruning::Sequence,
         )
         .unwrap();
         assert_eq!(
@@ -220,6 +221,7 @@ fn unbounded_compose_ignores_scratch_parent() {
         hfst_openfst::compose_storage::ComposeMemoryPlan::Unbounded,
         not_a_directory,
         false,
+        super::compose::ProductPruning::Sequence,
     )
     .expect("unbounded compose must not touch its scratch parent");
 }
@@ -239,6 +241,7 @@ fn external_trim_matches_connect() {
         hfst_openfst::compose_storage::ComposeMemoryPlan::from_allowance(Some(0)),
         scratch.path().to_path_buf(),
         false,
+        super::compose::ProductPruning::Sequence,
     )
     .unwrap();
 
@@ -248,4 +251,46 @@ fn external_trim_matches_connect() {
     assert_eq!(trimmed.get_trs(start).unwrap().len(), 1);
     assert!(Arc::ptr_eq(trimmed.input_symbols().unwrap(), &symbols));
     assert!(scratch.is_empty(), "external trim left scratch behind");
+}
+
+#[test]
+fn lookahead_matches_sequence_and_spill() {
+    let symbols = symbol_table();
+    let (left, right) = successful_and_dead_branches(symbols);
+    let scratch = TestScratchDir::new();
+
+    let sequence = TropicalWeightTransducer::try_compose_owned_with_memory_plan(
+        left.clone(),
+        right.clone(),
+        None,
+        hfst_openfst::compose_storage::ComposeMemoryPlan::Unbounded,
+        scratch.path().to_path_buf(),
+        false,
+        super::compose::ProductPruning::Sequence,
+    )
+    .unwrap();
+    let lookahead = TropicalWeightTransducer::try_compose_owned_with_memory_plan(
+        left.clone(),
+        right.clone(),
+        None,
+        hfst_openfst::compose_storage::ComposeMemoryPlan::Unbounded,
+        scratch.path().to_path_buf(),
+        false,
+        super::compose::ProductPruning::LabelLookAhead,
+    )
+    .unwrap();
+    let spilled = TropicalWeightTransducer::try_compose_owned_with_memory_plan(
+        left,
+        right,
+        None,
+        hfst_openfst::compose_storage::ComposeMemoryPlan::from_allowance(Some(0)),
+        scratch.path().to_path_buf(),
+        false,
+        super::compose::ProductPruning::LabelLookAhead,
+    )
+    .unwrap();
+
+    assert_eq!(lookahead, sequence);
+    assert_eq!(spilled, sequence);
+    assert!(scratch.is_empty(), "lookahead compose left scratch behind");
 }

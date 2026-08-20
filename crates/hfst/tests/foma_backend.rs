@@ -762,6 +762,17 @@ fn compose_intersect_parity_vs_tropical() {
         "compose_intersect with an unknown-carrying rule",
     );
 
+    // The rule's literal unknown label is protected from harmonization while
+    // composing, then restored in the result rather than leaking the private
+    // placeholder used by the fast path.
+    let unknown_output = basic_pair("a", "a");
+    assert_compose_intersect_parity(
+        &unknown_output,
+        &[basic_arcs(&[(0, "a", UNKNOWN, 1)], &[1])],
+        &[("a", UNKNOWN)],
+        "compose_intersect preserves a literal unknown output",
+    );
+
     // A rule whose alphabet carries the word boundary `@#@` takes the branch
     // that wraps the lexicon in boundaries before composing.
     assert_compose_intersect_parity(

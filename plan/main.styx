@@ -6458,4 +6458,41 @@ children (
             }
         )
     }
+
+    {
+        id compose-intersect-product-memory
+        title "Bound the compose-intersect product and eliminate KAL's post-determinization blowup"
+        kind @perf
+        deps (weighted-determinize-fallback)
+        sealed true
+        log (
+            {
+                at 2026-08-20T01:03:31.744442Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Fresh successor bottleneck exposed after weighted-determinize-fallback: KAL phonology.rev now minimizes in 1.63s/473,890,816 B, but the immediately following compose-intersect product reached roughly 6.7 GB RSS after 33s and was stopped. Reproduce from saved KAL lexicon/rule artifacts, identify whether growth is in ComposeIntersectLexicon's StatePairMap/agenda/result or backend conversion/minimization, then bound or avoid the dominant structure without changing the weighted relation. Validate with a small exact regression and the opt-in KAL stress case; report product-stage wall time, peak RSS, output shape, and semantic equivalence separately from rule minimization."
+            }
+
+            {
+                at 2026-08-20T01:03:35.684138Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-08-20T08:58:08.63928Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "KAL validation: legacy compose-intersect was stopped after 180.44 s at 22,866,771,968 B peak RSS with no output. The final label-lookahead implementation completes in 257.31 s wall / 205.34 s user / 16.07 s sys at 13,536,231,424 B peak RSS, producing 829,052 states and 1,484,631 arcs. It is 2.20x faster than the first successful lookahead implementation (565.06 s), uses 40.8% less peak RSS than the stopped legacy run, is semantically equal to the reference, is byte-identical across optimized reruns, and leaves no scratch directories."
+            }
+
+            {
+                at 2026-08-20T08:58:24.418049Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan complete)"
+            }
+        )
+    }
 )

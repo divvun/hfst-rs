@@ -56,11 +56,18 @@ use crate::hfst_tokenizer::HfstTokenizer;
 use crate::transducer::{Transducer, UnweightedTables, WeightedTables};
 use crate::tropical_weight_transducer::TropicalWeightTransducer;
 
+mod compose_intersect;
+#[cfg(test)]
+mod compose_intersect_tests;
 mod flag_ops;
 mod intersect;
 mod subtract;
 pub(crate) use flag_ops::{decode_flag, encode_flag};
-use flag_ops::{decode_flag_diacritics, encode_flag_diacritics, has_flags, rename_flag_diacritics};
+use flag_ops::{
+    decode_flag_diacritics, encode_flag_diacritics, has_flags, rename_flag_diacritics,
+    substitute_input_flag_with_epsilon, substitute_one_sided_flags,
+    substitute_output_flag_with_epsilon,
+};
 
 // -----------------------------------------------------------------------------
 // Facade type aliases (the 'HfstTransducer'-dependent typedefs deferred out of
@@ -2886,7 +2893,20 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         &mut self,
         v: &HfstTransducerVector<B>,
         invert: bool,
+        b: bool,
+    ) -> crate::error::Result<&mut HfstTransducer<B>> {
+        self.compose_intersect_with_config(v, invert, b, &EngineConfig::default())
+    }
+
+    /// Resource-aware compose-intersect. A single non-inverted rule can use
+    /// backend label lookahead to reject dead product pairs before interning
+    /// them; other modes retain the legacy lazy rule-intersection engine.
+    pub fn compose_intersect_with_config(
+        &mut self,
+        v: &HfstTransducerVector<B>,
+        invert: bool,
         _b: bool,
+        config: &EngineConfig,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         // (The C++ converted foma inputs to TROPICAL_OPENFST_TYPE first. This
         // runs over the generic backend, so no conversion is needed.)
@@ -2927,11 +2947,19 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             let _ = lexicon_alphabet;
         }
 
+        if let Some(result) =
+            compose_intersect::try_lookahead(self, first, v.len(), invert, config)?
+        {
+            *self = result;
+            return Ok(self);
+        }
+
         let mut rule_1 = v[0].clone();
 
         // foma / no harmonization -> use our own copy.
         let mut harmonized_lexicon: HfstTransducer<B> =
             rule_1.harmonize_copy(self)?.unwrap_or_else(|| self.clone());
+        drop(rule_1);
 
         if invert {
             harmonized_lexicon.invert()?;
@@ -4051,49 +4079,6 @@ pub enum MinimizationAlgorithm {
     BRZOZOWSKI,
 }
 
-// C++ file-static substitution callbacks passed to substitute_with_func; deferred
-// port (signature fn(&StringPair, &mut StringPairSet) -> bool).
-// [spec:hfst:def:hfst-transducer.hfst.substitute-one-sided-flags-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.substitute-one-sided-flags-fn]
-fn substitute_one_sided_flags(sp: &StringPair, sps: &mut StringPairSet) -> bool {
-    if FdOperation::is_diacritic(&sp.0) && (sp.1 == crate::hfst_symbol_defs::internal_epsilon) {
-        let new_pair: StringPair = (sp.0.clone(), sp.0.clone());
-        sps.insert(new_pair);
-        return true;
-    }
-    if FdOperation::is_diacritic(&sp.1) && (sp.0 == crate::hfst_symbol_defs::internal_epsilon) {
-        let new_pair: StringPair = (sp.1.clone(), sp.1.clone());
-        sps.insert(new_pair);
-        return true;
-    }
-    false
-}
-// [spec:hfst:def:hfst-transducer.hfst.substitute-input-flag-with-epsilon-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.substitute-input-flag-with-epsilon-fn]
-fn substitute_input_flag_with_epsilon(sp: &StringPair, sps: &mut StringPairSet) -> bool {
-    if FdOperation::is_diacritic(&sp.0) {
-        let new_pair: StringPair = (
-            Symbol::new_static(crate::hfst_symbol_defs::internal_epsilon),
-            sp.1.clone(),
-        );
-        sps.insert(new_pair);
-        return true;
-    }
-    false
-}
-// [spec:hfst:def:hfst-transducer.hfst.substitute-output-flag-with-epsilon-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.substitute-output-flag-with-epsilon-fn]
-fn substitute_output_flag_with_epsilon(sp: &StringPair, sps: &mut StringPairSet) -> bool {
-    if FdOperation::is_diacritic(&sp.1) {
-        let new_pair: StringPair = (
-            sp.0.clone(),
-            Symbol::new_static(crate::hfst_symbol_defs::internal_epsilon),
-        );
-        sps.insert(new_pair);
-        return true;
-    }
-    false
-}
 // ===== integration shims: HfstBasicTransducer<-facade ctors, method + free-fn aliases =====
 impl HfstBasicTransducer {
     /// 'HfstBasicTransducer(const HfstTransducer&)' — convert a facade transducer

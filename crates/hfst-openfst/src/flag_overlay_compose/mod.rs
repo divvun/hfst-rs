@@ -18,6 +18,7 @@ use rustfst::algorithms::compose::matchers::{
 };
 use rustfst::algorithms::compose::{
     ComposeFst, ComposeFstOpOptions, ComposeFstOpState, ComposeStateStoreConfig, ComposeStateTuple,
+    LabelReachable,
 };
 use rustfst::algorithms::lazy::NullCache;
 use rustfst::fst_properties::FstProperties;
@@ -26,6 +27,13 @@ use rustfst::semirings::{Semiring, TropicalWeight};
 use rustfst::{EPS_LABEL, Label, NO_LABEL, StateId, Tr, Trs, TrsVec};
 
 use crate::StdVectorFst;
+
+mod lookahead;
+
+#[cfg(test)]
+use lookahead::OverlayLookAheadComposeFilterBuilder;
+pub use lookahead::{FlagOverlayLookAheadComposeFst, compose_lookahead_with_store};
+use lookahead::{LookaheadPairCache, LookaheadPeerIndex};
 
 type FstHandle = Arc<StdVectorFst>;
 type BaseMatcher = SortedMatcher<TropicalWeight, StdVectorFst, FstHandle>;
@@ -275,6 +283,11 @@ struct OverlayMatcher {
     loop_labels: Arc<[Label]>,
     listed_labels: Arc<[Label]>,
     flags_as_epsilon: bool,
+    lookahead: Option<LabelReachable>,
+    lookahead_label_map: Arc<[(Label, Label)]>,
+    lookahead_dense_label_map: Option<Arc<[Label]>>,
+    lookahead_peer_index: Option<Arc<LookaheadPeerIndex>>,
+    lookahead_pair_cache: Option<Arc<LookaheadPairCache>>,
 }
 
 impl OverlayMatcher {
@@ -295,6 +308,11 @@ impl OverlayMatcher {
             loop_labels,
             listed_labels,
             flags_as_epsilon,
+            lookahead: None,
+            lookahead_label_map: Arc::from([]),
+            lookahead_dense_label_map: None,
+            lookahead_peer_index: None,
+            lookahead_pair_cache: None,
         })
     }
 
@@ -370,7 +388,17 @@ impl Matcher<TropicalWeight, StdVectorFst, FstHandle> for OverlayMatcher {
     }
 
     fn flags(&self) -> MatcherFlags {
-        self.base.flags()
+        let flags = self.base.flags();
+        if self.lookahead.is_some() {
+            let direction = if self.match_type == MatchType::MatchInput {
+                MatcherFlags::INPUT_LOOKAHEAD_MATCHER
+            } else {
+                MatcherFlags::OUTPUT_LOOKAHEAD_MATCHER
+            };
+            flags | direction | MatcherFlags::LOOKAHEAD_NON_EPSILONS
+        } else {
+            flags
+        }
     }
 
     fn priority(&self, state: StateId) -> Result<usize> {
@@ -678,7 +706,6 @@ type InnerOverlayComposeFst = ComposeFst<
     OverlayComposeFilterBuilder,
     NullCache<TropicalWeight>,
 >;
-
 /// A one-shot lazy composition FST backed by [`NullCache`].
 ///
 /// The inputs are owned through `Arc` so this concrete rustfst `ComposeFst`

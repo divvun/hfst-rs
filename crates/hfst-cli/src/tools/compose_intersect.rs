@@ -25,6 +25,7 @@ use crate::inc::{
     CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
     handle_error_case,
 };
+use crate::memory_limit::{self, LimitSource, ResolvedMemoryLimit};
 use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::internal_identity;
@@ -32,6 +33,8 @@ use hfst::hfst_tokenizer::HfstTokenizer;
 use hfst::hfst_transducer::EngineConfig;
 use hfst::hfst_transducer::{HfstTransducer, HfstTransducerVector};
 use std::io::Write;
+
+const GETOPT_MEMORY_LIMIT: i32 = 0x100;
 
 // static bool insert_missing_flags=false;
 
@@ -48,6 +51,8 @@ struct Options {
     fast_ci: bool,
     /// '-a, --harmonize': harmonize symbols.
     harmonize: bool,
+    /// '--memory-limit=SIZE': one-rule tropical product memory allowance.
+    memory_limit_bytes: Option<u64>,
 }
 
 // [spec:hfst:def:hfst-compose-intersect.print-usage-fn]
@@ -76,6 +81,14 @@ fn print_usage(common: &CommonOptions) {
          \x20 -e, --encode-weights         Encode weights when minimizing\n\
          \x20                              (default is false).\n\
          \x20 -a, --harmonize              Harmonize symbols.\n"
+    );
+    let _ = writeln!(
+        msg,
+        "      --memory-limit=SIZE         Working-memory allowance for one-rule, non-inverted OpenFst tropical compose-intersect (default: 50% of available RAM; excess spills)."
+    );
+    let _ = writeln!(
+        msg,
+        "SIZE is an integer byte count with an optional binary K/KB/KiB through T/TB/TiB suffix; 0 forces a nonempty product to spill. HFST_COMPOSE_MEMORY_LIMIT supplies SIZE when the option is absent."
     );
     // print_common_binary_program_parameter_instructions(message_out);
     let _ = write!(
@@ -132,6 +145,11 @@ fn parse_options(
             has_arg: 0,
             val: b'a' as i32,
         });
+        long_options.push(getopt::GetOpt {
+            name: "memory-limit",
+            has_arg: getopt::REQUIRED_ARGUMENT,
+            val: GETOPT_MEMORY_LIMIT,
+        });
         let c = opt.getopt_long(args, &long_options);
         if -1 == c {
             break;
@@ -162,6 +180,20 @@ fn parse_options(
             continue;
         } else if c == b'a' as i32 {
             options.harmonize = true;
+            continue;
+        } else if c == GETOPT_MEMORY_LIMIT {
+            let argument = opt.optarg();
+            options.memory_limit_bytes = match memory_limit::parse_size(&argument) {
+                Ok(bytes) => Some(bytes),
+                Err(detail) => {
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "{}: invalid value for --memory-limit: {detail}",
+                        common.program_name
+                    );
+                    return Err(1);
+                }
+            };
             continue;
         }
         return Err(handle_error_case(&common, &opt, c));
@@ -255,11 +287,47 @@ fn harmonize_rules<B: hfst::backend::AlgebraBackend>(
     Ok(())
 }
 
+fn explicit_memory_limit_name(source: LimitSource) -> Option<&'static str> {
+    match source {
+        LimitSource::Cli => Some("--memory-limit"),
+        LimitSource::Environment => Some("HFST_COMPOSE_MEMORY_LIMIT"),
+        LimitSource::Automatic | LimitSource::ProbeFallback => None,
+    }
+}
+
+fn report_memory_policy(common: &CommonOptions, memory_limit: ResolvedMemoryLimit) {
+    if common.silent {
+        return;
+    }
+    if memory_limit.source == LimitSource::ProbeFallback {
+        warning(
+            common,
+            0,
+            0,
+            "Could not determine available RAM; using a 0-byte compose-intersect memory allowance and spilling immediately. Use --memory-limit to override.",
+        );
+    }
+    if memory_limit.cgroup_clamped
+        && let Some(requested) = memory_limit.requested_bytes
+    {
+        warning(
+            common,
+            0,
+            0,
+            &format!(
+                "Requested compose-intersect memory allowance of {requested} bytes exceeds current cgroup headroom; using {} bytes.",
+                memory_limit.allowance_bytes
+            ),
+        );
+    }
+}
+
 // [spec:hfst:def:hfst-compose-intersect.compose-streams-fn]
 // [spec:hfst:sem:hfst-compose-intersect.compose-streams-fn]
 fn compose_streams(
     common: &CommonOptions,
     options: &Options,
+    memory_limit: ResolvedMemoryLimit,
     firststream: &mut HfstInputStream<'_>,
     secondstream: &mut HfstInputStream<'_>,
 ) -> i32 {
@@ -273,6 +341,21 @@ fn compose_streams(
         type1,
         type2,
     );
+
+    let tropical = output_type == hfst::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
+    if !tropical {
+        if let Some(name) = explicit_memory_limit_name(memory_limit.source) {
+            error(
+                common,
+                1,
+                0,
+                &format!("{name} is supported only for OpenFst tropical compose-intersect"),
+            );
+            return 1;
+        }
+    } else {
+        report_memory_policy(common, memory_limit);
+    }
 
     let mut outstream = match open_output_stream(common, output_type) {
         Ok(s) => s,
@@ -296,6 +379,7 @@ fn compose_streams(
             compose_streams_typed::<hfst::backend_foma::FomaTransducer>(
                 common,
                 options,
+                memory_limit,
                 firststream,
                 secondstream,
                 &mut outstream,
@@ -304,6 +388,7 @@ fn compose_streams(
         _ => compose_streams_typed::<hfst_openfst::StdVectorFst>(
             common,
             options,
+            memory_limit,
             firststream,
             secondstream,
             &mut outstream,
@@ -316,6 +401,7 @@ fn compose_streams_typed<
 >(
     common: &CommonOptions,
     options: &Options,
+    memory_limit: ResolvedMemoryLimit,
     firststream: &mut HfstInputStream<'_>,
     secondstream: &mut HfstInputStream<'_>,
     outstream: &mut hfst::hfst_output_stream::HfstOutputStream,
@@ -355,6 +441,25 @@ fn compose_streams_typed<
         rules.push(rule);
         rule_n += 1;
     }
+
+    if explicit_memory_limit_name(memory_limit.source).is_some()
+        && (rules.len() != 1 || options.invert || options.fast_ci || !B::SUPPORTS_COMPOSE_LOOKAHEAD)
+    {
+        error(
+            common,
+            1,
+            0,
+            "an explicit compose-intersect memory limit requires exactly one rule, non-inverted composition without --fast, and the OpenFst tropical backend",
+        );
+        return 1;
+    }
+
+    let engine_config = EngineConfig {
+        encode_weights: options.encode_weights,
+        compose_memory_limit_bytes: B::SUPPORTS_COMPOSE_LOOKAHEAD
+            .then_some(memory_limit.allowance_bytes),
+        ..EngineConfig::default()
+    };
 
     while firststream.is_good() {
         verbose_print(common, "Reading lexicon...");
@@ -438,12 +543,14 @@ fn compose_streams_typed<
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
-                if let Err(e) = lexicon_input.compose_intersect(&rules, true, true) {
+                if let Err(e) =
+                    lexicon_input.compose_intersect_with_config(&rules, true, true, &engine_config)
+                {
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
 
-                if let Err(e) = lexicon_input.compose(&lexicon, true) {
+                if let Err(e) = lexicon_input.compose_with_config(&lexicon, true, &engine_config) {
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
@@ -458,17 +565,24 @@ fn compose_streams_typed<
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
-                if let Err(e) = lexicon_output.compose_intersect(&rules, false, true) {
+                if let Err(e) = lexicon_output.compose_intersect_with_config(
+                    &rules,
+                    false,
+                    true,
+                    &engine_config,
+                ) {
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
-                if let Err(e) = lexicon.compose(&lexicon_output, true) {
+                if let Err(e) = lexicon.compose_with_config(&lexicon_output, true, &engine_config) {
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
             }
         } else {
-            if let Err(e) = lexicon.compose_intersect(&rules, options.invert, true) {
+            if let Err(e) =
+                lexicon.compose_intersect_with_config(&rules, options.invert, true, &engine_config)
+            {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
@@ -508,6 +622,13 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(v) => v,
         Err(code) => return code,
     };
+    let memory_limit = match memory_limit::resolve(options.memory_limit_bytes) {
+        Ok(limit) => limit,
+        Err(detail) => {
+            let _ = writeln!(std::io::stderr(), "{}: {detail}", common.program_name);
+            return 1;
+        }
+    };
     // close buffers, we use streams
     verbose_print(
         &common,
@@ -521,5 +642,34 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Err(code) => return code,
     };
 
-    compose_streams(&common, &options, &mut firststream, &mut secondstream)
+    compose_streams(
+        &common,
+        &options,
+        memory_limit,
+        &mut firststream,
+        &mut secondstream,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_limit_sources_are_named() {
+        assert_eq!(
+            explicit_memory_limit_name(LimitSource::Cli),
+            Some("--memory-limit")
+        );
+        assert_eq!(
+            explicit_memory_limit_name(LimitSource::Environment),
+            Some("HFST_COMPOSE_MEMORY_LIMIT")
+        );
+    }
+
+    #[test]
+    fn automatic_limits_are_implicit() {
+        assert_eq!(explicit_memory_limit_name(LimitSource::Automatic), None);
+        assert_eq!(explicit_memory_limit_name(LimitSource::ProbeFallback), None);
+    }
 }

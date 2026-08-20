@@ -23,12 +23,49 @@ impl TropicalWeightTransducer {
         Self::try_compose_mode(t1, t2, flag_overlay, memory_limit_bytes, false)
     }
 
+    /// Composition for product-heavy callers such as one-rule
+    /// compose-intersect. Label reachability rejects pairs that cannot lead to
+    /// another match before they are interned or materialized.
+    pub fn try_compose_lookahead_owned(
+        t1: StdVectorFst,
+        t2: StdVectorFst,
+        flag_overlay: Option<&crate::hfst_transducer::FlagDiacriticOverlay>,
+        memory_limit_bytes: Option<u64>,
+    ) -> crate::error::Result<StdVectorFst> {
+        Self::try_compose_mode_with_pruning(
+            t1,
+            t2,
+            flag_overlay,
+            memory_limit_bytes,
+            false,
+            ProductPruning::LabelLookAhead,
+        )
+    }
+
     pub(crate) fn try_compose_mode(
         t1: StdVectorFst,
         t2: StdVectorFst,
         flag_overlay: Option<&crate::hfst_transducer::FlagDiacriticOverlay>,
         memory_limit_bytes: Option<u64>,
         flags_as_epsilon: bool,
+    ) -> crate::error::Result<StdVectorFst> {
+        Self::try_compose_mode_with_pruning(
+            t1,
+            t2,
+            flag_overlay,
+            memory_limit_bytes,
+            flags_as_epsilon,
+            ProductPruning::Sequence,
+        )
+    }
+
+    fn try_compose_mode_with_pruning(
+        t1: StdVectorFst,
+        t2: StdVectorFst,
+        flag_overlay: Option<&crate::hfst_transducer::FlagDiacriticOverlay>,
+        memory_limit_bytes: Option<u64>,
+        flags_as_epsilon: bool,
+        pruning: ProductPruning,
     ) -> crate::error::Result<StdVectorFst> {
         let memory_plan =
             hfst_openfst::compose_storage::ComposeMemoryPlan::from_allowance(memory_limit_bytes);
@@ -52,6 +89,7 @@ impl TropicalWeightTransducer {
             memory_plan,
             scratch_dir,
             flags_as_epsilon,
+            pruning,
         )
     }
 
@@ -62,6 +100,7 @@ impl TropicalWeightTransducer {
         memory_plan: hfst_openfst::compose_storage::ComposeMemoryPlan,
         scratch_dir: std::path::PathBuf,
         flags_as_epsilon: bool,
+        pruning: ProductPruning,
     ) -> crate::error::Result<StdVectorFst> {
         let input_symbols = t1
             .input_symbols()
@@ -108,11 +147,24 @@ impl TropicalWeightTransducer {
             None => hfst_openfst::flag_overlay_compose::FlagOverlay::default(),
         };
 
-        let mut result =
-            try_flag_overlay_product_owned(t1, t2, overlay, memory_plan, scratch_dir, "compose")?;
+        let mut result = try_flag_overlay_product_owned(
+            t1,
+            t2,
+            overlay,
+            memory_plan,
+            scratch_dir,
+            "compose",
+            pruning,
+        )?;
         result.set_input_symbols(input_symbols);
         Ok(result)
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ProductPruning {
+    Sequence,
+    LabelLookAhead,
 }
 
 pub(super) fn try_flag_overlay_product_owned(
@@ -122,6 +174,7 @@ pub(super) fn try_flag_overlay_product_owned(
     memory_plan: hfst_openfst::compose_storage::ComposeMemoryPlan,
     scratch_dir: std::path::PathBuf,
     operation: &str,
+    pruning: ProductPruning,
 ) -> crate::error::Result<StdVectorFst> {
     algorithms::ArcSortOutput(&mut t1);
     algorithms::ArcSortInput(&mut t2);
@@ -148,24 +201,45 @@ pub(super) fn try_flag_overlay_product_owned(
             ),
         ),
     };
-    let lazy = hfst_openfst::flag_overlay_compose::compose_flag_overlay_lazy_with_store(
-        std::sync::Arc::new(t1),
-        std::sync::Arc::new(t2),
-        overlay,
-        pair_store,
-    )
-    .map_err(|error| crate::err!(Hfst, format!("OpenFst {operation} setup: {error}")))?;
-    let mut artifact = hfst_openfst::compose_storage::materialize_fst(lazy.as_fst(), &storage)
+    let t1 = std::sync::Arc::new(t1);
+    let t2 = std::sync::Arc::new(t2);
+    let mut artifact = if pruning == ProductPruning::LabelLookAhead {
+        let lazy = hfst_openfst::flag_overlay_compose::compose_lookahead_with_store(
+            t1, t2, overlay, pair_store,
+        )
         .map_err(|error| {
             crate::err!(
                 Hfst,
-                format!("OpenFst {operation} materialization: {error}")
+                format!("OpenFst {operation} lookahead setup: {error}")
             )
         })?;
+        let artifact = hfst_openfst::compose_storage::materialize_fst(lazy.as_fst(), &storage)
+            .map_err(|error| {
+                crate::err!(
+                    Hfst,
+                    format!("OpenFst {operation} materialization: {error}")
+                )
+            })?;
+        drop(lazy);
+        artifact
+    } else {
+        let lazy = hfst_openfst::flag_overlay_compose::compose_flag_overlay_lazy_with_store(
+            t1, t2, overlay, pair_store,
+        )
+        .map_err(|error| crate::err!(Hfst, format!("OpenFst {operation} setup: {error}")))?;
+        let artifact = hfst_openfst::compose_storage::materialize_fst(lazy.as_fst(), &storage)
+            .map_err(|error| {
+                crate::err!(
+                    Hfst,
+                    format!("OpenFst {operation} materialization: {error}")
+                )
+            })?;
+        drop(lazy);
+        artifact
+    };
 
     // A spilled artifact is intentionally trimmed and loaded only after the
     // lazy FST releases both operands and its pair-state store.
-    drop(lazy);
     let externally_trimmed = artifact.prepare_for_reload().map_err(|error| {
         crate::err!(Hfst, format!("OpenFst {operation} external trim: {error}"))
     })?;

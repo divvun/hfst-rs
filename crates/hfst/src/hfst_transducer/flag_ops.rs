@@ -2,6 +2,44 @@
 
 use super::*;
 
+// C++ file-static substitution callbacks passed to `substitute_with_func`.
+// [spec:hfst:def:hfst-transducer.hfst.substitute-one-sided-flags-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.substitute-one-sided-flags-fn]
+pub(super) fn substitute_one_sided_flags(sp: &StringPair, sps: &mut StringPairSet) -> bool {
+    if FdOperation::is_diacritic(&sp.0) && sp.1 == internal_epsilon {
+        sps.insert((sp.0.clone(), sp.0.clone()));
+        return true;
+    }
+    if FdOperation::is_diacritic(&sp.1) && sp.0 == internal_epsilon {
+        sps.insert((sp.1.clone(), sp.1.clone()));
+        return true;
+    }
+    false
+}
+
+// [spec:hfst:def:hfst-transducer.hfst.substitute-input-flag-with-epsilon-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.substitute-input-flag-with-epsilon-fn]
+pub(super) fn substitute_input_flag_with_epsilon(sp: &StringPair, sps: &mut StringPairSet) -> bool {
+    if FdOperation::is_diacritic(&sp.0) {
+        sps.insert((Symbol::new_static(internal_epsilon), sp.1.clone()));
+        return true;
+    }
+    false
+}
+
+// [spec:hfst:def:hfst-transducer.hfst.substitute-output-flag-with-epsilon-fn]
+// [spec:hfst:sem:hfst-transducer.hfst.substitute-output-flag-with-epsilon-fn]
+pub(super) fn substitute_output_flag_with_epsilon(
+    sp: &StringPair,
+    sps: &mut StringPairSet,
+) -> bool {
+    if FdOperation::is_diacritic(&sp.1) {
+        sps.insert((sp.0.clone(), Symbol::new_static(internal_epsilon)));
+        return true;
+    }
+    false
+}
+
 // C++ file-static flag-diacritic helpers. `has_flags` is read-only; the others
 // mutate the transducer in place (C++ `fst = HfstTransducer(...)`), so they take
 // `&mut HfstTransducer` (callers pass `&mut self` / `&mut another`).

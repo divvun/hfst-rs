@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use rustfst::algorithms::compose::compose;
+use rustfst::algorithms::compose::lookahead_matchers::LookaheadMatcher;
 use rustfst::algorithms::tr_compares::{ILabelCompare, OLabelCompare};
 use rustfst::algorithms::{connect, isomorphic, tr_sort};
 use rustfst::fst_traits::{ExpandedFst, MutableFst};
@@ -71,6 +72,12 @@ fn add_self_loops(fst: &mut StdVectorFst, labels: &[Label]) -> Result<()> {
 }
 
 fn materialize(lazy: &FlagOverlayComposeFst) -> Result<StdVectorFst> {
+    let mut result: StdVectorFst = lazy.inner.compute()?;
+    connect(&mut result)?;
+    Ok(result)
+}
+
+fn materialize_lookahead(lazy: &FlagOverlayLookAheadComposeFst) -> Result<StdVectorFst> {
     let mut result: StdVectorFst = lazy.inner.compute()?;
     connect(&mut result)?;
     Ok(result)
@@ -216,6 +223,181 @@ fn empty_overlay_is_identical_to_ordinary_composition() -> Result<()> {
     right.add_tr(r0, Tr::new(REGULAR, 9, TropicalWeight::new(1.25), r1))?;
 
     assert_overlay_matches_explicit(left, right, FlagOverlay::default())?;
+    Ok(())
+}
+
+#[test]
+fn lookahead_rejects_dead_pairs_before_interning() -> Result<()> {
+    const LIVE: Label = 40;
+    const DEAD: Label = 50;
+
+    let mut left = StdVectorFst::new();
+    let l0 = state(&mut left);
+    let l_live = state(&mut left);
+    let l_dead = state(&mut left);
+    let l_final = state(&mut left);
+    left.set_start(l0)?;
+    left.set_final(l_final, TropicalWeight::one())?;
+    left.add_tr(l0, Tr::new(7, REGULAR, TropicalWeight::one(), l_live))?;
+    left.add_tr(l0, Tr::new(8, REGULAR, TropicalWeight::one(), l_dead))?;
+    left.add_tr(l_live, Tr::new(9, LIVE, TropicalWeight::one(), l_final))?;
+    left.add_tr(l_dead, Tr::new(10, DEAD, TropicalWeight::one(), l_final))?;
+
+    let mut right = StdVectorFst::new();
+    let r0 = state(&mut right);
+    let r1 = state(&mut right);
+    let r_final = state(&mut right);
+    right.set_start(r0)?;
+    right.set_final(r_final, TropicalWeight::one())?;
+    right.add_tr(r0, Tr::new(REGULAR, 70, TropicalWeight::one(), r1))?;
+    right.add_tr(r1, Tr::new(LIVE, 80, TropicalWeight::one(), r_final))?;
+
+    sort_left(&mut left);
+    sort_right(&mut right);
+    let left = Arc::new(left);
+    let right = Arc::new(right);
+    let mut matcher = OverlayMatcher::with_overlay(
+        Arc::clone(&left),
+        MatchType::MatchOutput,
+        Arc::from([]),
+        Arc::from([]),
+        false,
+    )?
+    .with_lookahead()?;
+    matcher.init_lookahead_fst::<StdVectorFst, FstHandle>(&right)?;
+    assert!(
+        matcher
+            .lookahead_fst::<StdVectorFst, FstHandle>(l_dead, &right, r1)?
+            .is_none(),
+        "the dead left branch cannot meet the right branch's future label"
+    );
+    let matcher2 = OverlayMatcher::with_overlay(
+        Arc::clone(&right),
+        MatchType::MatchInput,
+        Arc::from([]),
+        Arc::from([]),
+        false,
+    )?;
+    let builder = OverlayLookAheadComposeFilterBuilder {
+        base: OverlayComposeFilterBuilder::with_overlay(
+            Arc::clone(&left),
+            Arc::clone(&right),
+            Some(matcher),
+            Some(matcher2),
+            FlagOverlay::default(),
+        )?,
+    };
+    let mut filter = builder.build()?;
+    let start_filter = filter.start();
+    filter.set_state(l0, r0, &start_filter)?;
+    let mut dead_arc = left.get_trs(l0)?.trs()[1].clone();
+    let mut right_arc = right.get_trs(r0)?.trs()[0].clone();
+    assert_eq!(dead_arc.nextstate, l_dead);
+    assert_eq!(
+        filter.filter_tr(&mut dead_arc, &mut right_arc)?,
+        OverlayFilterState::new_no_state()
+    );
+    let sequence = compose_flag_overlay_lazy(
+        Arc::clone(&left),
+        Arc::clone(&right),
+        FlagOverlay::default(),
+    )?;
+    let sequence_raw: StdVectorFst = sequence.inner.compute()?;
+    assert_eq!(
+        sequence_raw.num_states(),
+        4,
+        "fixture must create one dead pair"
+    );
+
+    let lookahead = compose_lookahead_with_store(
+        Arc::clone(&left),
+        Arc::clone(&right),
+        FlagOverlay::default(),
+        None,
+    )?;
+    let lookahead_raw: StdVectorFst = lookahead.inner.compute()?;
+    let lookahead_shape: Vec<Vec<(Label, Label, StateId)>> = (0..lookahead_raw.num_states())
+        .map(|state| {
+            lookahead_raw
+                .get_trs(state as StateId)
+                .expect("state is in range")
+                .trs()
+                .iter()
+                .map(|transition| (transition.ilabel, transition.olabel, transition.nextstate))
+                .collect()
+        })
+        .collect();
+    assert_eq!(lookahead_raw.num_states(), 3, "{lookahead_shape:?}");
+
+    let mut expected = sequence_raw;
+    connect(&mut expected)?;
+    let mut actual = lookahead_raw;
+    connect(&mut actual)?;
+    assert_eq!(actual, expected);
+
+    let scratch = TestScratchDir::new()?;
+    let spilled = compose_lookahead_with_store(
+        left,
+        right,
+        FlagOverlay::default(),
+        Some(ComposeStateStoreConfig::new(0, scratch.path())),
+    )?;
+    assert_eq!(materialize_lookahead(&spilled)?, expected);
+    drop(spilled);
+    assert!(scratch.is_empty()?);
+    Ok(())
+}
+
+#[test]
+fn lookahead_follows_peer_epsilon_closure() -> Result<()> {
+    const LIVE: Label = 40;
+    const DEAD: Label = 50;
+
+    let mut left = StdVectorFst::new();
+    let l0 = state(&mut left);
+    let l_live = state(&mut left);
+    let l_dead = state(&mut left);
+    let l_final = state(&mut left);
+    left.set_start(l0)?;
+    left.set_final(l_final, TropicalWeight::one())?;
+    left.add_tr(l0, Tr::new(1, REGULAR, TropicalWeight::one(), l_live))?;
+    left.add_tr(l0, Tr::new(2, REGULAR, TropicalWeight::one(), l_dead))?;
+    left.add_tr(l_live, Tr::new(3, LIVE, TropicalWeight::one(), l_final))?;
+    left.add_tr(l_dead, Tr::new(4, DEAD, TropicalWeight::one(), l_final))?;
+
+    let mut right = StdVectorFst::new();
+    let r0 = state(&mut right);
+    let r_epsilon = state(&mut right);
+    let r1 = state(&mut right);
+    let r_final = state(&mut right);
+    right.set_start(r0)?;
+    right.set_final(r_final, TropicalWeight::one())?;
+    right.add_tr(r0, Tr::new(REGULAR, 5, TropicalWeight::one(), r_epsilon))?;
+    right.add_tr(r_epsilon, Tr::new(EPS_LABEL, 6, TropicalWeight::one(), r1))?;
+    right.add_tr(r1, Tr::new(LIVE, 7, TropicalWeight::one(), r_final))?;
+
+    sort_left(&mut left);
+    sort_right(&mut right);
+    let left = Arc::new(left);
+    let right = Arc::new(right);
+    let sequence = compose_flag_overlay_lazy(
+        Arc::clone(&left),
+        Arc::clone(&right),
+        FlagOverlay::default(),
+    )?;
+    let sequence_raw: StdVectorFst = sequence.inner.compute()?;
+    let lookahead = compose_lookahead_with_store(left, right, FlagOverlay::default(), None)?;
+    let lookahead_raw: StdVectorFst = lookahead.inner.compute()?;
+    assert!(
+        lookahead_raw.num_states() < sequence_raw.num_states(),
+        "epsilon closure did not reject the incompatible dead pair"
+    );
+
+    let mut expected = sequence_raw;
+    connect(&mut expected)?;
+    let mut actual = lookahead_raw;
+    connect(&mut actual)?;
+    assert_eq!(actual, expected);
     Ok(())
 }
 

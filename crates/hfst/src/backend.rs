@@ -13,7 +13,6 @@
 //! wrapper signatures, so they move here verbatim. An impl ignores arguments
 //! its backend never used.
 
-use crate::backend_ol::{ol_counts, ol_has_weights};
 use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
@@ -25,7 +24,6 @@ use crate::hfst_data_types::{
 };
 use crate::hfst_extract_strings::ExtractStringsCb;
 use crate::hfst_flag_diacritics::FdOperation;
-use crate::hfst_ol_transducer::HfstOlTransducer;
 use crate::hfst_symbol_defs::StringSet;
 use crate::hfst_transducer::{FlagDiacriticOverlay, decode_flag, encode_flag};
 use crate::transducer::{Transducer, UnweightedTables, WeightedTables};
@@ -374,6 +372,10 @@ pub trait AlgebraBackend: Backend {
     /// Whether this backend consumes virtual flag loops during composition.
     const SUPPORTS_VIRTUAL_FLAG_COMPOSE: bool = Self::SUPPORTS_FLAG_OVERLAY;
 
+    /// Whether this backend can reject composition pairs using future-label
+    /// reachability before those pairs enter the product-state table.
+    const SUPPORTS_COMPOSE_LOOKAHEAD: bool = false;
+
     /// Whether this backend consumes virtual flag loops during intersection.
     const SUPPORTS_VIRTUAL_FLAG_INTERSECTION: bool = false;
 
@@ -436,6 +438,23 @@ pub trait AlgebraBackend: Backend {
             FlagDiacriticOperation::Intersect => self.intersect(&another),
             FlagDiacriticOperation::Subtract => self.subtract(&another),
         })
+    }
+
+    /// Fallible consuming composition with product-state lookahead. The
+    /// compatibility default preserves ordinary composition semantics for
+    /// backends without a specialized reachability index.
+    fn try_compose_lookahead_owned(
+        self,
+        another: Self,
+        flag_overlay: Option<&FlagDiacriticOverlay>,
+        memory_limit_bytes: Option<u64>,
+    ) -> crate::error::Result<Self> {
+        self.try_flag_operation_owned(
+            another,
+            FlagDiacriticOperation::Compose,
+            flag_overlay,
+            memory_limit_bytes,
+        )
     }
 
     // ----- construction (the define_transducer_* constructor arms) -----
@@ -584,6 +603,7 @@ impl Backend for StdVectorFst {
 
 impl AlgebraBackend for StdVectorFst {
     const SUPPORTS_FLAG_OVERLAY: bool = true;
+    const SUPPORTS_COMPOSE_LOOKAHEAD: bool = true;
     const SUPPORTS_VIRTUAL_FLAG_INTERSECTION: bool = true;
     const SUPPORTS_VIRTUAL_FLAG_SUBTRACTION: bool = true;
 
@@ -677,6 +697,20 @@ impl AlgebraBackend for StdVectorFst {
         }
     }
 
+    fn try_compose_lookahead_owned(
+        self,
+        another: Self,
+        flag_overlay: Option<&FlagDiacriticOverlay>,
+        memory_limit_bytes: Option<u64>,
+    ) -> crate::error::Result<Self> {
+        TropicalWeightTransducer::try_compose_lookahead_owned(
+            self,
+            another,
+            flag_overlay,
+            memory_limit_bytes,
+        )
+    }
+
     fn define_transducer_spv(spv: &StringPairVector) -> Self {
         TropicalWeightTransducer::define_transducer_spv(spv)
     }
@@ -736,139 +770,6 @@ impl AlgebraBackend for StdVectorFst {
     }
     fn disjunct_spv(&mut self, spv: &StringPairVector) {
         TropicalWeightTransducer::disjunct_spv(self, spv);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Optimized-lookup (the two table instantiations)
-// ---------------------------------------------------------------------------
-
-impl Backend for Transducer<WeightedTables> {
-    const TYPE: ImplementationType = ImplementationType::HFST_OLW_TYPE;
-    fn stream_type(&self) -> ImplementationType {
-        // Weighted-shaped tables may carry a logically-unweighted transducer
-        // (interim invariant); the header flag is the tag.
-        if self.is_weighted() {
-            ImplementationType::HFST_OLW_TYPE
-        } else {
-            ImplementationType::HFST_OL_TYPE
-        }
-    }
-    fn write(&self, os: &mut dyn std::io::Write, _hfst_format: bool) -> crate::error::Result<()> {
-        Transducer::write(self, os);
-        Ok(())
-    }
-    fn empty() -> Self {
-        Transducer::new_empty()
-    }
-    fn copy(&self) -> crate::error::Result<Self> {
-        Transducer::copy(self)
-    }
-    fn to_basic(&self) -> crate::error::Result<HfstBasicTransducer> {
-        Ok(ConversionFunctions::hfst_ol_to_hfst_basic_transducer(self))
-    }
-    fn from_basic(net: &HfstBasicTransducer) -> crate::error::Result<Self> {
-        ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, true, "", None)
-    }
-    fn get_alphabet(&self) -> StringSet {
-        HfstOlTransducer::get_alphabet(self)
-    }
-    fn is_cyclic(&self) -> bool {
-        HfstOlTransducer::is_cyclic(self)
-    }
-    fn number_of_states(&self) -> u32 {
-        ol_counts(self).0
-    }
-    fn number_of_arcs(&self) -> u32 {
-        ol_counts(self).1
-    }
-    fn has_weights(&self) -> bool {
-        ol_has_weights(self)
-    }
-    fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
-        self.include_symbol_in_alphabet(symbol);
-        Ok(())
-    }
-    fn is_infinitely_ambiguous(&self) -> crate::error::Result<bool> {
-        Ok(Transducer::is_infinitely_ambiguous(self))
-    }
-    fn extract_paths_cb(&self, callback: &mut dyn ExtractStringsCb, cycles: i32) {
-        HfstOlTransducer::extract_paths(self, callback, cycles, None, false);
-    }
-    fn extract_paths_fd_cb(
-        &self,
-        callback: &mut dyn ExtractStringsCb,
-        cycles: i32,
-        filter_fd: bool,
-    ) {
-        let t_hfst_ol = HfstOlTransducer::get_flag_diacritics(self);
-        HfstOlTransducer::extract_paths(self, callback, cycles, Some(t_hfst_ol), filter_fd);
-        // don't delete t_hfst_ol, it's not a copy of the FdTable but the
-        // real thing
-    }
-}
-
-impl Backend for Transducer<UnweightedTables> {
-    const TYPE: ImplementationType = ImplementationType::HFST_OL_TYPE;
-    fn write(&self, os: &mut dyn std::io::Write, _hfst_format: bool) -> crate::error::Result<()> {
-        Transducer::write(self, os);
-        Ok(())
-    }
-    fn empty() -> Self {
-        Transducer::new_empty()
-    }
-    fn copy(&self) -> crate::error::Result<Self> {
-        Transducer::copy(self)
-    }
-    fn to_basic(&self) -> crate::error::Result<HfstBasicTransducer> {
-        Ok(ConversionFunctions::hfst_ol_to_hfst_basic_transducer(self))
-    }
-    fn from_basic(_net: &HfstBasicTransducer) -> crate::error::Result<Self> {
-        // Interim invariant ([dec:hfst:monomorphic-backends]): conversions
-        // always build weighted-shaped tables in memory (as the C++ did even
-        // for HFST_OL_TYPE output); an unweighted-tables backend can only be
-        // produced by a disk load.
-        crate::bail!(
-            Fatal,
-            "from_basic: HFST_OL conversions produce weighted-shaped tables; \
-             build Transducer<WeightedTables> instead"
-        )
-    }
-    fn get_alphabet(&self) -> StringSet {
-        HfstOlTransducer::get_alphabet(self)
-    }
-    fn is_cyclic(&self) -> bool {
-        HfstOlTransducer::is_cyclic(self)
-    }
-    fn number_of_states(&self) -> u32 {
-        ol_counts(self).0
-    }
-    fn number_of_arcs(&self) -> u32 {
-        ol_counts(self).1
-    }
-    fn has_weights(&self) -> bool {
-        ol_has_weights(self)
-    }
-    fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
-        self.include_symbol_in_alphabet(symbol);
-        Ok(())
-    }
-    fn is_infinitely_ambiguous(&self) -> crate::error::Result<bool> {
-        Ok(Transducer::is_infinitely_ambiguous(self))
-    }
-    fn extract_paths_cb(&self, callback: &mut dyn ExtractStringsCb, cycles: i32) {
-        HfstOlTransducer::extract_paths(self, callback, cycles, None, false);
-    }
-    fn extract_paths_fd_cb(
-        &self,
-        callback: &mut dyn ExtractStringsCb,
-        cycles: i32,
-        filter_fd: bool,
-    ) {
-        let t_hfst_ol = HfstOlTransducer::get_flag_diacritics(self);
-        HfstOlTransducer::extract_paths(self, callback, cycles, Some(t_hfst_ol), filter_fd);
-        // don't delete t_hfst_ol, it's not a copy of the FdTable but the
-        // real thing
     }
 }
 

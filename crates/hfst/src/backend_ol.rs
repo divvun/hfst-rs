@@ -1,8 +1,164 @@
-//! Shared graph queries for the optimized-lookup backend implementations.
+//! Backend implementations and shared graph queries for optimized lookup.
 
+use crate::backend::Backend;
+use crate::convert_transducer_format::ConversionFunctions;
+use crate::hfst_basic_transducer::HfstBasicTransducer;
+use crate::hfst_data_types::ImplementationType;
+use crate::hfst_extract_strings::ExtractStringsCb;
+use crate::hfst_ol_transducer::HfstOlTransducer;
+use crate::hfst_symbol_defs::StringSet;
 use crate::transducer::{
-    Transducer, TransducerTablesInterface, TransitionTableIndex, TransitionTableIndexSet, Weight,
+    Transducer, TransducerTablesInterface, TransitionTableIndex, TransitionTableIndexSet,
+    UnweightedTables, Weight, WeightedTables,
 };
+
+impl Backend for Transducer<WeightedTables> {
+    const TYPE: ImplementationType = ImplementationType::HFST_OLW_TYPE;
+
+    fn stream_type(&self) -> ImplementationType {
+        if self.is_weighted() {
+            ImplementationType::HFST_OLW_TYPE
+        } else {
+            ImplementationType::HFST_OL_TYPE
+        }
+    }
+
+    fn write(&self, os: &mut dyn std::io::Write, _hfst_format: bool) -> crate::error::Result<()> {
+        Transducer::write(self, os);
+        Ok(())
+    }
+
+    fn empty() -> Self {
+        Transducer::new_empty()
+    }
+
+    fn copy(&self) -> crate::error::Result<Self> {
+        Transducer::copy(self)
+    }
+
+    fn to_basic(&self) -> crate::error::Result<HfstBasicTransducer> {
+        Ok(ConversionFunctions::hfst_ol_to_hfst_basic_transducer(self))
+    }
+
+    fn from_basic(net: &HfstBasicTransducer) -> crate::error::Result<Self> {
+        ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, true, "", None)
+    }
+
+    fn get_alphabet(&self) -> StringSet {
+        HfstOlTransducer::get_alphabet(self)
+    }
+
+    fn is_cyclic(&self) -> bool {
+        HfstOlTransducer::is_cyclic(self)
+    }
+
+    fn number_of_states(&self) -> u32 {
+        ol_counts(self).0
+    }
+
+    fn number_of_arcs(&self) -> u32 {
+        ol_counts(self).1
+    }
+
+    fn has_weights(&self) -> bool {
+        ol_has_weights(self)
+    }
+
+    fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
+        self.include_symbol_in_alphabet(symbol);
+        Ok(())
+    }
+
+    fn is_infinitely_ambiguous(&self) -> crate::error::Result<bool> {
+        Ok(Transducer::is_infinitely_ambiguous(self))
+    }
+
+    fn extract_paths_cb(&self, callback: &mut dyn ExtractStringsCb, cycles: i32) {
+        HfstOlTransducer::extract_paths(self, callback, cycles, None, false);
+    }
+
+    fn extract_paths_fd_cb(
+        &self,
+        callback: &mut dyn ExtractStringsCb,
+        cycles: i32,
+        filter_fd: bool,
+    ) {
+        let flag_diacritics = HfstOlTransducer::get_flag_diacritics(self);
+        HfstOlTransducer::extract_paths(self, callback, cycles, Some(flag_diacritics), filter_fd);
+    }
+}
+
+impl Backend for Transducer<UnweightedTables> {
+    const TYPE: ImplementationType = ImplementationType::HFST_OL_TYPE;
+
+    fn write(&self, os: &mut dyn std::io::Write, _hfst_format: bool) -> crate::error::Result<()> {
+        Transducer::write(self, os);
+        Ok(())
+    }
+
+    fn empty() -> Self {
+        Transducer::new_empty()
+    }
+
+    fn copy(&self) -> crate::error::Result<Self> {
+        Transducer::copy(self)
+    }
+
+    fn to_basic(&self) -> crate::error::Result<HfstBasicTransducer> {
+        Ok(ConversionFunctions::hfst_ol_to_hfst_basic_transducer(self))
+    }
+
+    fn from_basic(_net: &HfstBasicTransducer) -> crate::error::Result<Self> {
+        crate::bail!(
+            Fatal,
+            "from_basic: HFST_OL conversions produce weighted-shaped tables; \
+             build Transducer<WeightedTables> instead"
+        )
+    }
+
+    fn get_alphabet(&self) -> StringSet {
+        HfstOlTransducer::get_alphabet(self)
+    }
+
+    fn is_cyclic(&self) -> bool {
+        HfstOlTransducer::is_cyclic(self)
+    }
+
+    fn number_of_states(&self) -> u32 {
+        ol_counts(self).0
+    }
+
+    fn number_of_arcs(&self) -> u32 {
+        ol_counts(self).1
+    }
+
+    fn has_weights(&self) -> bool {
+        ol_has_weights(self)
+    }
+
+    fn insert_to_alphabet(&mut self, symbol: &str) -> crate::error::Result<()> {
+        self.include_symbol_in_alphabet(symbol);
+        Ok(())
+    }
+
+    fn is_infinitely_ambiguous(&self) -> crate::error::Result<bool> {
+        Ok(Transducer::is_infinitely_ambiguous(self))
+    }
+
+    fn extract_paths_cb(&self, callback: &mut dyn ExtractStringsCb, cycles: i32) {
+        HfstOlTransducer::extract_paths(self, callback, cycles, None, false);
+    }
+
+    fn extract_paths_fd_cb(
+        &self,
+        callback: &mut dyn ExtractStringsCb,
+        cycles: i32,
+        filter_fd: bool,
+    ) {
+        let flag_diacritics = HfstOlTransducer::get_flag_diacritics(self);
+        HfstOlTransducer::extract_paths(self, callback, cycles, Some(flag_diacritics), filter_fd);
+    }
+}
 
 /// Walk the reachable states of an optimized-lookup table pair from the start
 /// offset, handing each state index and its outgoing transition indices to

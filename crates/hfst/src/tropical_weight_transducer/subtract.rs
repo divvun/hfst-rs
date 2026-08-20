@@ -122,6 +122,7 @@ impl TropicalWeightTransducer {
             memory_plan,
             scratch_dir,
             "subtract",
+            super::compose::ProductPruning::Sequence,
         )?;
         algorithms::Decode(&mut result, encoder);
         result.set_input_symbols(input_symbols);

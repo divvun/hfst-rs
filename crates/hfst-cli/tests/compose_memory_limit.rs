@@ -144,6 +144,21 @@ fn compose_help_documents_memory_allowance_policy() {
 }
 
 #[test]
+fn compose_intersect_help_documents_memory_policy() {
+    let output = hfst()
+        .args(["compose-intersect", "--help"])
+        .output()
+        .expect("run hfst compose-intersect --help");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("--memory-limit=SIZE"), "{stdout}");
+    assert!(stdout.contains("50% of available RAM"), "{stdout}");
+    assert!(stdout.contains("one-rule"), "{stdout}");
+    assert!(stdout.contains("HFST_COMPOSE_MEMORY_LIMIT"), "{stdout}");
+}
+
+#[test]
 fn invalid_cli_precedes_input_open() {
     let output = hfst()
         .args(["compose", "--memory-limit=1.5GiB", "missing-a", "missing-b"])
@@ -236,6 +251,77 @@ fn missing_flag_spill_parity_and_cleanup() {
     let text = String::from_utf8_lossy(&text.stdout);
     assert!(text.contains("@P.FEATURE.VALUE@"), "{text}");
     assert!(text.contains("\tb\tc"), "{text}");
+}
+
+#[test]
+fn compose_intersect_spill_parity_and_cleanup() {
+    let temp = tempfile::tempdir().expect("create compose-intersect working directory");
+    let dir = temp.path();
+    let (lexicon, rule) = build_missing_flag_operands(dir);
+    let spilled = dir.join("ci-spilled.hfst");
+    let memory = dir.join("ci-memory.hfst");
+    let spilled_path = spilled.to_str().expect("UTF-8 temporary path");
+    let memory_path = memory.to_str().expect("UTF-8 temporary path");
+
+    for (limit, output_path) in [("0", spilled_path), ("1GiB", memory_path)] {
+        let memory_limit = format!("--memory-limit={limit}");
+        let output = hfst()
+            .current_dir(dir)
+            .args([
+                "compose-intersect",
+                memory_limit.as_str(),
+                "-o",
+                output_path,
+                &lexicon,
+                &rule,
+            ])
+            .output()
+            .expect("run bounded compose-intersect");
+        assert_success("bounded compose-intersect", &output);
+    }
+
+    assert_semantically_equal(dir, spilled_path, memory_path);
+    let text = hfst()
+        .current_dir(dir)
+        .args(["fst2txt", spilled_path])
+        .output()
+        .expect("render compose-intersect result");
+    assert_success("render compose-intersect result", &text);
+    let text = String::from_utf8_lossy(&text.stdout);
+    assert!(text.contains("@P.FEATURE.VALUE@"), "{text}");
+    assert!(text.contains("\tb\tc"), "{text}");
+    assert!(
+        scratch_artifacts(dir).is_empty(),
+        "compose-intersect left scratch behind: {:?}",
+        scratch_artifacts(dir)
+    );
+}
+
+#[test]
+fn compose_intersect_rejects_limited_fast_mode() {
+    let temp = tempfile::tempdir().expect("create compose-intersect working directory");
+    let dir = temp.path();
+    let (lexicon, rule) = build_missing_flag_operands(dir);
+    let output_path = dir.join("unsupported-fast.hfst");
+
+    let output = hfst()
+        .current_dir(dir)
+        .args([
+            "compose-intersect",
+            "--fast",
+            "--memory-limit=0",
+            "-o",
+            output_path.to_str().expect("UTF-8 temporary path"),
+            &lexicon,
+            &rule,
+        ])
+        .output()
+        .expect("run explicitly limited fast compose-intersect");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("without --fast"), "{stderr}");
+    assert!(scratch_artifacts(dir).is_empty());
 }
 
 #[test]
