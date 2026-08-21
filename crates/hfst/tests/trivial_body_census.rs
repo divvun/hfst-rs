@@ -16,7 +16,7 @@
 //! list with a reason is the only check such a method can get.
 //!
 //! Scope is every trait impl under `crates/*/src`, and the whole workspace
-//! currently holds seven. A new entry means a reviewer had to think; that is
+//! currently holds fourteen. A new entry means a reviewer had to think; that is
 //! the point, and at this rate it is not a tax.
 
 use std::collections::BTreeSet;
@@ -71,7 +71,67 @@ const SANCTIONED: &[(&str, &str, &str, &str)] = &[
         "self.clone()",
         "Unweighted: the transform has no weights to apply itself to.",
     ),
+    (
+        "crates/hfst-cli/src/tools/bhfst.rs",
+        "applies_check_common_params",
+        "false",
+        "A successor tool with no C counterpart (it replaces zip + thfst-tools), \
+         so there is no check-params-common run to inherit. It wants that \
+         header's message routing but not its '<stdout>' output-stream default, \
+         and its own apply_io does the routing half by hand.",
+    ),
+    (
+        "crates/hfst-cli/src/tools/optimized_lookup.rs",
+        "applies_common_options",
+        "false",
+        "hfst-optimized-lookup.cc includes neither getopt-cases-common.h nor \
+         check-params-common.h: it carries its own option table with its own \
+         '-v/-q/-s' semantics, so none of the shared handling ran.",
+    ),
+    (
+        "crates/hfst-cli/src/tools/xfst.rs",
+        "applies_common_options",
+        "false",
+        "hfst-xfst.cc copies the common cases inline 'with exceptions' \
+         (its own comment, hfst-xfst.cc:158) rather than chaining \
+         getopt-cases-common.h, and never runs check-params-common.h.",
+    ),
+    (
+        "crates/hfst-cli/src/tools/lexc_compiler.rs",
+        "apply_io",
+        "{}",
+        "apply_io folds a UnaryIo / BinaryIo operand group into the shared \
+         state, and this Args has none: lexc takes a positional INFILE list of \
+         its own. '-o' rides on CommonArgs and the shared path resolves it, \
+         since applies_common_options is left at its default.",
+    ),
+    (
+        "crates/hfst-cli/src/tools/optimized_lookup.rs",
+        "apply_io",
+        "{}",
+        "No UnaryIo / BinaryIo operand group to fold, and applies_common_options \
+         above is false, so nothing resolves an output stream for this tool.",
+    ),
+    (
+        "crates/hfst-cli/src/tools/xfst.rs",
+        "apply_io",
+        "{}",
+        "As optimized_lookup: no operand group, and its common options are never \
+         populated.",
+    ),
+    (
+        "crates/hfst-openfst/src/flag_overlay_compose/lookahead.rs",
+        "lookahead_prefix",
+        "false",
+        "There is never a prefix to push: every lookahead_fst return in this \
+         matcher is a bare LookAheadMatcherData::default(), which carries \
+         neither prefix nor weight. rustfst's own TrivialLookAheadMatcher \
+         answers false for the same reason.",
+    ),
 ];
+
+/// How a method with no body at all is spelled in the census.
+const EMPTY_BODY: &str = "{}";
 
 /// Bodies that count as constant. Deliberately a closed list — anything with
 /// real structure is not this shape, and widening it would start catching
@@ -147,8 +207,32 @@ fn scan(path: &Path, rel: &str, out: &mut Vec<Finding>) {
             continue;
         };
 
-        // Walk to the brace that opens the body; the signature may wrap.
-        let Some(open) = (i..lines.len().min(i + 12)).find(|k| lines[*k].ends_with('{')) else {
+        // Walk to the brace that opens the body; the signature may wrap. Two
+        // ways out: `{}` closes the whole method on one line, and the next
+        // `    fn ` means this signature never opened a body here. Stopping at
+        // that `fn` is the point — walking past it hands this method the NEXT
+        // one's body, which is how three one-line `apply_io`s were once
+        // censused under their neighbour's constant.
+        let mut open = None;
+        let mut empty_one_liner = false;
+        for k in i..lines.len().min(i + 12) {
+            if lines[k].ends_with("{}") {
+                empty_one_liner = true;
+                break;
+            }
+            if lines[k].ends_with('{') {
+                open = Some(k);
+                break;
+            }
+            if k > i && lines[k].starts_with("    fn ") {
+                break;
+            }
+        }
+        if empty_one_liner {
+            out.push((rel.to_string(), name.to_string(), EMPTY_BODY.to_string()));
+            continue;
+        }
+        let Some(open) = open else {
             continue;
         };
         let Some(close) = (open + 1..lines.len().min(open + 40)).find(|k| lines[*k] == "    }")
@@ -160,8 +244,15 @@ fn scan(path: &Path, rel: &str, out: &mut Vec<Finding>) {
             .map(|l| l.trim())
             .filter(|l| !l.is_empty() && !l.starts_with("//"))
             .collect();
-        if body.len() == 1 && CONSTANT_BODIES.contains(&body[0]) {
-            out.push((rel.to_string(), name.to_string(), body[0].to_string()));
+        // An empty body is this shape at its purest: the method states that
+        // there is nothing to do. It is censused like any other constant.
+        let shape = match body.as_slice() {
+            [] => Some(EMPTY_BODY),
+            [only] if CONSTANT_BODIES.contains(only) => Some(*only),
+            _ => None,
+        };
+        if let Some(shape) = shape {
+            out.push((rel.to_string(), name.to_string(), shape.to_string()));
         }
     }
 }
